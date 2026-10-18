@@ -398,7 +398,7 @@ type Incident = {
 
 const TYPE_LABELS: Record<string, string> = {
   quality_yellow: "Quality dropped to Medium — warning only, sending continues",
-  quality_red: "Number flagged Red — automatic failover triggered",
+  quality_red: "Quality dropped to Low — number resting for 7 days, broadcasts stopped on it",
   failover: "Standby promoted to primary sender",
   migration_sent: "Channel migration notice sent to recent leads",
   appeal_filed: "Meta policy appeal filed",
@@ -469,7 +469,9 @@ const QUALITY_DOT: Record<string, string> = {
 
 function IncidentRow({ incident }: { incident: Incident }) {
   const badgeClass = TYPE_BADGE[incident.type] ?? "bg-surface-mid text-on-surface-muted border-border";
-  const label = TYPE_LABELS[incident.type] ?? incident.type.replace(/_/g, " ");
+  const label = incident.detail.message === "no_standby_available"
+    ? "No healthy backup number — broadcasts paused until a number recovers or you add one"
+    : TYPE_LABELS[incident.type] ?? incident.type.replace(/_/g, " ");
   const isSnapshot = incident.type === "quality_snapshot";
   const snapQuality = isSnapshot ? (incident.detail.quality_rating as string) : null;
 
