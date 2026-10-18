@@ -81,7 +81,7 @@ ed296fa2 (51.7s stereo)
 - [ ] Show the numbers to the user before the UI work
 
 ### Phase 2: Frontend
-- [ ] Task 4: `CallReport` panel: types, pure helpers, and render in CallDetail (verdict, mood, turning point, objections, promises, coach, talk)
+- [x] Task 4: `CallReport` panel: types, pure helpers, and render in CallDetail (verdict, mood, turning point, objections, promises, coach, talk)
 - [ ] Task 5: `SplitAudio`: channel toggle, speech bars, seek from any timestamp
 
 ### Checkpoint B: Complete

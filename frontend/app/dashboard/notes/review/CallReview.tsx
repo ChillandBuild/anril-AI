@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ChevronDown, Loader2, Phone, Pin, Search, StickyNote, Users, X } from "lucide-react";
@@ -8,6 +8,8 @@ import { cn, formatPhone, timeAgo } from "@/lib/utils";
 import { useCallers, useNotes } from "@/hooks/useApi";
 import { SegmentBadge } from "@/components/segment-badge";
 import { CallAiDetail, anyProcessing, scoreColor } from "@/components/CallAi";
+import { CallReport } from "@/components/CallReport";
+import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
 
@@ -617,6 +619,21 @@ function CallDetail({
   onChanged: () => void;
 }) {
   const resultKey = callResultKey(call);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const isTelecmi = call.provider === "telecmi";
+  // CallReport's verdict row already shows the next step when the report renders.
+  const reportShowsNextStep =
+    isTelecmi && hasReportContent(call.evaluation?.report) && Boolean(call.ai_summary?.next_action?.trim());
+
+  function seek(seconds: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = seconds;
+    audio.play().catch(() => {
+      // Autoplay can be blocked; the playhead has still moved, so the user can press play.
+    });
+  }
+
   return (
     <div className="flex flex-col gap-2.5">
       <div className="rounded-2xl border border-[#e2e8f0] p-3.5 flex flex-col gap-3">
@@ -634,19 +651,20 @@ function CallDetail({
           )}
         </div>
         {call.recording_url ? (
-          <audio key={call.id} src={call.recording_url} controls className="w-full h-9" />
+          <audio ref={audioRef} key={call.id} src={call.recording_url} controls className="w-full h-9" />
         ) : (
           <p className="font-label text-[11px] italic text-[#94a3b8]">No recording for this call.</p>
         )}
       </div>
-      {call.provider === "telecmi" ? (
+      {isTelecmi && <CallReport log={call} onSeek={call.recording_url ? seek : undefined} />}
+      {isTelecmi ? (
         <CallAiDetail log={call} onChanged={onChanged} />
       ) : (
         call.ai_summary?.brief && (
           <p className="rounded-xl border border-[#f1f5f9] bg-white px-3 py-2.5 font-body text-[11px] leading-relaxed text-[#1e293b]">{call.ai_summary.brief}</p>
         )
       )}
-      {call.ai_summary?.next_action && (
+      {call.ai_summary?.next_action && !reportShowsNextStep && (
         <div className="rounded-xl border border-[#f1f5f9] bg-white px-3 py-2.5">
           <p className="font-label text-[9px] uppercase tracking-widest font-extrabold text-primary mb-1">Next step</p>
           <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{call.ai_summary.next_action}</p>

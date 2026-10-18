@@ -261,6 +261,35 @@ export interface EarlyExitCheck {
   no_wrapup?: boolean;
 }
 
+export type ReportMood = "positive" | "neutral" | "negative";
+export type ReportHandling = "handled" | "partly" | "dodged";
+export type ReportDirection = "warmed" | "cooled";
+
+/** Every report moment: `time` is the label ("02:40"), `start` the seconds to seek to. */
+export interface ReportMoment {
+  time: string;
+  start: number;
+  quote: string;
+}
+export interface ReportMoodPoint extends ReportMoment { mood: ReportMood }
+export interface ReportTurningPoint extends ReportMoment { direction: ReportDirection; why: string }
+export interface ReportObjection extends ReportMoment { handling: ReportHandling; why: string }
+export interface ReportPromise extends ReportMoment { risky: boolean; why: string }
+export interface ReportCoach extends ReportMoment { tip: string }
+export type SpeechSegments = [number, number][];
+
+/** Call Report v1 (SPEC.md). Manager review route only; every key is optional. */
+export interface CallReport {
+  report_version?: number;
+  mood?: ReportMoodPoint[];
+  turning_point?: ReportTurningPoint | null;
+  objections?: ReportObjection[];
+  promises?: ReportPromise[];
+  coach?: ReportCoach | null;
+  talk?: { longest_monologue_s?: number | null; dead_air_s?: number | null } | null;
+  segments?: { telecaller?: SpeechSegments; customer?: SpeechSegments } | null;
+}
+
 /** v4 evaluation (CallIQ Steps 1-2). Older rows have no evaluation_version 4 and are not shown. */
 export interface CallEvaluation {
   evaluation_version: number;
@@ -277,6 +306,8 @@ export interface CallEvaluation {
   language_barrier?: boolean;
   /** D10: the AI's Hot/Warm/Cold reading replaced the telecaller's. */
   crm_correction?: { from: CallTemperature; to: CallTemperature } | null;
+  /** Manager review route only. */
+  report?: CallReport;
 }
 
 export type CallAiStatus = "pending" | "transcribing" | "scoring" | "done" | "failed";
@@ -376,6 +407,9 @@ export interface CallLog {
     next_action?: string;
     sentiment?: string;
     brief?: string;
+    objections?: string | string[];
+    commitments?: string | string[];
+    open_questions?: string | string[];
   } | null;
   /** Absent entirely for SIM clients -- they get no evaluation at all. */
   evaluation?: CallEvaluation | null;
