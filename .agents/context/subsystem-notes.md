@@ -84,6 +84,14 @@
 - Warnings go to `call_alerts`: the admin-only **Needs attention** list + sidebar badge, one **09:00 IST** summary notification, and instant alerts only for `rude`/`wrong_info`, capped at 1 per telecaller per hour. Quotes on alerts and checks are sent to the browser (clipped); the full transcript stays masked (first/last line only) same as before.
 - `MAX_ATTEMPTS = 2` retries per call before giving up. **SIM calls (`sim_basic` provider) are never scored** — test/demo traffic only.
 - `call_logs.score_status` check constraint still allows the old pre-v4 values (`pending`/`awaiting_outcome`/`short_call`/`no_answer`/`no_recording`/`scored`) alongside the new set until migration 207 runs post-deploy and narrows it (see decisions/log.md).
+- **Call Report v1 (2026-10-18, SPEC.md)** lives at `evaluation.report`, no migration:
+  - The AI parts (mood, turning point, objections, promises, coach) ride on the same Step 2 request. `REPORT_RUBRIC` and `build_report` are in `call_report.py`, and every quote goes through `find_quote` with a speaker filter.
+  - Step 2 `max_tokens` was raised to 6000 so the longer answer can't truncate and sink the vote.
+  - So only `real_conversation` calls get AI parts. Early-exit stereo calls get only `talk` and `segments`.
+  - `talk` (longest monologue, dead air) and `segments` (0.1 s) are saved for stereo calls only.
+  - Report failure → `{}`, never affects `score`.
+  - **Stripping is default-deny**: `strip_evaluation` removes `report` everywhere except the manager-only review route (`keep_report=True` in routes/call_review.py), so telecallers on /recent etc. never get it.
+  - UI: `CallReport.tsx` + `SplitAudio.tsx` (Web Audio channel routing, right = telecaller) in Notes → Review.
 - Gone in this rebuild, don't look for them: `call_summarizer.py`, `call_digest.py`'s old composite, and the `0.5×outcome + 0.5×AI` score blend — scores are now a straight 100-point sum of the 10 checks.
 
 ## AI provider keys & billing model (all providers, 2026-07-17)
