@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CallLog, CallReport } from "./api";
 import {
-  directionLabel, directionTone, formatSeconds, handlingLabel, handlingTone, hasReportContent, hasVerdict,
+  directionLabel, directionTone, formatSeconds, handlingLabel, handlingTone, hasReportContent, hasSegments, hasVerdict,
+  segmentsDuration,
   moodLabel, moodTone, speechBars, temperatureLabel, temperatureTone, temperatureOf,
 } from "./call-report";
 
@@ -140,5 +141,32 @@ describe("speechBars", () => {
     expect(speechBars([], 100)).toEqual([]);
     expect(speechBars([[0, 5]], 0)).toEqual([]);
     expect(speechBars([[0, 5]], Number.NaN)).toEqual([]);
+  });
+});
+
+describe("hasSegments", () => {
+  it("is true when either side has a segment", () => {
+    expect(hasSegments({ telecaller: [[0, 5]], customer: [] })).toBe(true);
+    expect(hasSegments({ customer: [[1, 2]] })).toBe(true);
+  });
+
+  it("is false for null, undefined and empty sides", () => {
+    expect(hasSegments(null)).toBe(false);
+    expect(hasSegments(undefined)).toBe(false);
+    expect(hasSegments({})).toBe(false);
+    expect(hasSegments({ telecaller: [], customer: [] })).toBe(false);
+  });
+});
+
+describe("segmentsDuration", () => {
+  it("is the latest end across both sides", () => {
+    expect(segmentsDuration({ telecaller: [[0, 5], [10, 42.5]], customer: [[3, 60]] })).toBe(60);
+    expect(segmentsDuration({ telecaller: [[0, 7]] })).toBe(7);
+  });
+
+  it("is 0 with no usable segments", () => {
+    expect(segmentsDuration(null)).toBe(0);
+    expect(segmentsDuration({ telecaller: [], customer: [] })).toBe(0);
+    expect(segmentsDuration({ telecaller: [[0, Number.NaN]] as unknown as [number, number][] })).toBe(0);
   });
 });

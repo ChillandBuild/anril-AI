@@ -104,3 +104,21 @@ export function speechBars(segments: SpeechSegments | null | undefined, duration
   }
   return bars;
 }
+
+type SegmentsBySide = { telecaller?: SpeechSegments; customer?: SpeechSegments } | null | undefined;
+
+/** True when either side has at least one saved speech segment (mono and legacy calls have none). */
+export function hasSegments(segments: SegmentsBySide): boolean {
+  return Boolean(segments?.telecaller?.length || segments?.customer?.length);
+}
+
+/** Latest segment end across both sides, in seconds; 0 when there are none. */
+export function segmentsDuration(segments: SegmentsBySide): number {
+  let max = 0;
+  for (const side of [segments?.telecaller, segments?.customer]) {
+    for (const seg of side ?? []) {
+      if (Array.isArray(seg) && isNumber(seg[1]) && seg[1] > max) max = seg[1];
+    }
+  }
+  return max;
+}

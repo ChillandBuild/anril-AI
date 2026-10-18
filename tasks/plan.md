@@ -82,7 +82,7 @@ ed296fa2 (51.7s stereo)
 
 ### Phase 2: Frontend
 - [x] Task 4: `CallReport` panel: types, pure helpers, and render in CallDetail (verdict, mood, turning point, objections, promises, coach, talk)
-- [ ] Task 5: `SplitAudio`: channel toggle, speech bars, seek from any timestamp
+- [x] Task 5: `SplitAudio`: channel toggle, speech bars, seek from any timestamp
 
 ### Checkpoint B: Complete
 - [ ] Frontend `npm run typecheck && npm run lint && npm test` pass

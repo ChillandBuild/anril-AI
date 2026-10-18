@@ -9,6 +9,7 @@ import { useCallers, useNotes } from "@/hooks/useApi";
 import { SegmentBadge } from "@/components/segment-badge";
 import { CallAiDetail, anyProcessing, scoreColor } from "@/components/CallAi";
 import { CallReport } from "@/components/CallReport";
+import { SplitAudio, type SplitAudioHandle } from "@/components/SplitAudio";
 import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
@@ -619,19 +620,14 @@ function CallDetail({
   onChanged: () => void;
 }) {
   const resultKey = callResultKey(call);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const playerRef = useRef<SplitAudioHandle>(null);
   const isTelecmi = call.provider === "telecmi";
   // CallReport's verdict row already shows the next step when the report renders.
   const reportShowsNextStep =
     isTelecmi && hasReportContent(call.evaluation?.report) && Boolean(call.ai_summary?.next_action?.trim());
 
   function seek(seconds: number) {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = seconds;
-    audio.play().catch(() => {
-      // Autoplay can be blocked; the playhead has still moved, so the user can press play.
-    });
+    playerRef.current?.seek(seconds);
   }
 
   return (
@@ -651,7 +647,14 @@ function CallDetail({
           )}
         </div>
         {call.recording_url ? (
-          <audio ref={audioRef} key={call.id} src={call.recording_url} controls className="w-full h-9" />
+          <SplitAudio
+            key={call.id}
+            ref={playerRef}
+            src={call.recording_url}
+            segments={call.evaluation?.report?.segments}
+            telecallerLabel="Telecaller"
+            leadLabel="Lead"
+          />
         ) : (
           <p className="font-label text-[11px] italic text-[#94a3b8]">No recording for this call.</p>
         )}
