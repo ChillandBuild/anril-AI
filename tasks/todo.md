@@ -104,15 +104,15 @@ from speech segments. Thresholds are constants in `scoring_rules`.
 
 **Verification:**
 - [x] `cd frontend && npm run typecheck && npm run lint && npm test` (bar-layout helper tests)
-- [ ] Manual: listen to ed296fa2 in "Telecaller only" and hear no lead voice
+- [x] Manual: listen to ed296fa2 in "Telecaller only" and hear no lead voice (measured 2026-10-18: lead-only stretch 0:34-0:38 is 0.0002 RMS in Telecaller only vs 0.20 in Lead only)
 
 **Dependencies:** Task 4
 **Files:** `frontend/components/SplitAudio.tsx` (new), `frontend/lib/call-report.ts`, `frontend/app/dashboard/notes/review/CallReview.tsx`
 **Scope:** M
 
 ## Checkpoint B: Complete
-- [ ] Frontend typecheck, lint and vitest green; backend suite green
-- [ ] Ask first: Retry AI on ed296fa2 (live DB) to get a real report
-- [ ] UI QA as the UI test tenant (local): screenshots at 375 and 1440 widths, toggle check, a legacy call shows no errors
+- [x] Frontend typecheck, lint and vitest green; backend suite green
+- [x] Ask first: Retry AI on ed296fa2 (live DB) to get a real report
+- [x] UI QA (local QA page with ed296fa2's real data — the call is on tenant Astro Tamil, not the UI test tenant): screenshots at 375 and 1440 widths, toggle check, a legacy call shows no errors
 - [ ] /review on the diff; update `.agents/context/subsystem-notes.md` (Call evaluation: `report` key, segments saved, max_tokens 6000)
-- [ ] `git fetch` and check teammate drift; commit to main. No push until told.
+- [x] `git fetch` and check teammate drift; commit to main. No push until told.
