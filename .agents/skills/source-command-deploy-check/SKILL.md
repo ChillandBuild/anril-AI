@@ -13,7 +13,7 @@ When this skill is invoked, do the following in order. Report each step as a one
 
 ## Step 1 — Backend liveness
 `curl -s -o /dev/null -w "%{http_code}" --max-time 120 https://aira-ai-5tfr.onrender.com/health`
-- 200 → PASS. Non-200 / timeout → FAIL (retry once — the service restarts every ~5h, so a request can land mid-restart).
+- 200 → PASS. Non-200 / timeout → FAIL (retry once — the service restarts every ~5h, so a request can land mid-restart; if it still fails, check Render logs).
 
 ## Step 2 — Scheduler health
 Fetch the operator scheduler-health view (`GET /api/v1/operator/scheduler-health`) or query `scheduler_runs`.
