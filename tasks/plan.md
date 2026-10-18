@@ -67,8 +67,8 @@ ed296fa2 (51.7s stereo)
 ## Task List
 
 ### Phase 1: Backend (data ready, no UI change)
-- [ ] Task 1: Talk metrics: `longest_monologue`, `dead_air` (pure, TDD)
-- [ ] Task 2: `call_report.py`: report rubric + `build_report` validation (pure, TDD)
+- [x] Task 1: Talk metrics: `longest_monologue`, `dead_air` (pure, TDD)
+- [x] Task 2: `call_report.py`: report rubric + `build_report` validation (pure, TDD)
 - [ ] Task 3: Wire the report into `mark_call` and the pipeline, raise max_tokens, add `ai_call_status` to the call card fields
 
 ### Checkpoint A: Backend + AI quality (stop and show numbers)
