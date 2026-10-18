@@ -271,3 +271,43 @@ class MarkCallVotingTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkCallReportTests(unittest.IsolatedAsyncioTestCase):
+    """The manager's report rides on the same Step 2 request and never touches the marks."""
+
+    async def _run_votes(self, ai_list):
+        with patch.object(cm, "gemini_analysis_json", AsyncMock(side_effect=ai_list)) as gem:
+            result = await cm.mark_call(
+                LINES, kb_context="Plan: 12000 per year", previous_notes="", talk_share=50.0,
+                interruptions_per_5min=0.5, interruption_count=0, duration_seconds=60, tenant_id="t",
+            )
+        return result, gem
+
+    def _report(self):
+        return {"mood": [{"quote": "A bit costly, I'll think.", "mood": "negative"}],
+                "coach": {"quote": "A bit costly", "tip": "Answer the price with the EMI option."}}
+
+    async def test_prompt_asks_for_the_report_with_a_bigger_budget(self):
+        _, gem = await self._run_votes([_ai(report=self._report())] * cm.AI_VOTES)
+        kwargs = gem.call_args.kwargs
+        self.assertIn('"report"', kwargs["user_prompt"])
+        self.assertEqual(kwargs["max_tokens"], cm.MARKING_MAX_TOKENS)
+        self.assertGreaterEqual(cm.MARKING_MAX_TOKENS, 6000)
+
+    async def test_report_is_validated_and_timed_from_the_transcript(self):
+        result, _ = await self._run_votes([_ai(report=self._report())] * cm.AI_VOTES)
+        self.assertEqual(result.report["mood"][0]["time"], "00:30")
+        self.assertEqual(result.report["coach"]["tip"], "Answer the price with the EMI option.")
+
+    async def test_first_vote_with_a_usable_report_is_taken(self):
+        votes = [_ai(report="junk"), _ai(report=self._report()), _ai()]
+        result, _ = await self._run_votes(votes)
+        self.assertEqual(result.report["mood"][0]["mood"], "negative")
+
+    async def test_garbage_report_leaves_the_marks_unchanged(self):
+        clean, _ = await self._run_votes([_ai()] * cm.AI_VOTES)
+        junk, _ = await self._run_votes([_ai(report={"mood": [None, 3, {"quote": "never said"}]})] * cm.AI_VOTES)
+        self.assertEqual(junk.report, {})
+        self.assertEqual(clean.checks, junk.checks)
+        self.assertEqual(clean.proof_missing, junk.proof_missing)

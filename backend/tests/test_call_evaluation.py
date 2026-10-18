@@ -48,3 +48,29 @@ class StripEvaluationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManagerReportTests(unittest.TestCase):
+    """The manager's call report is removed everywhere except the manager-only review route."""
+
+    def _row(self):
+        return {"id": "c1", "score": 70.0, "evaluation": {"checks": [], "report": {"coach": {"tip": "Smile."}}}}
+
+    def test_report_removed_by_default_for_telecmi(self):
+        row = self._row()
+        out = strip_evaluation([row], False)
+        self.assertNotIn("report", out[0]["evaluation"])
+        self.assertEqual(out[0]["evaluation"]["checks"], [])
+        self.assertIn("report", row["evaluation"])  # input not mutated
+
+    def test_review_route_keeps_the_report(self):
+        out = strip_evaluation([self._row()], False, keep_report=True)
+        self.assertEqual(out[0]["evaluation"]["report"], {"coach": {"tip": "Smile."}})
+
+    def test_single_row_and_rows_without_report(self):
+        self.assertNotIn("report", strip_evaluation(self._row(), False)["evaluation"])
+        plain = {"id": "c2", "evaluation": {"checks": []}}
+        self.assertIs(strip_evaluation([plain], False)[0], plain)
+
+    def test_sim_still_removes_everything(self):
+        self.assertNotIn("evaluation", strip_evaluation([self._row()], True, keep_report=True)[0])

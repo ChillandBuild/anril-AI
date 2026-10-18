@@ -368,3 +368,46 @@ class SweepCrmCutoffTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _saved_evaluation(db):
+    for call in db.table.return_value.update.call_args_list:
+        payload = call.args[0]
+        if "evaluation" in payload:
+            return payload["evaluation"]
+    raise AssertionError("evaluation was never saved")
+
+
+class ReportPersistenceTests(unittest.IsolatedAsyncioTestCase):
+    async def _process(self, tracks, group, report=None):
+        db = MagicMock()
+        marking = MarkResult(checks=[{"key": c["key"], "full": c["full"], "level": "good" if c["key"] != "crm_update" else None} for c in CHECKS],
+                             report=report or {})
+        with patch.object(pipe, "_load_audio", AsyncMock(return_value=(b"wav", "audio/wav"))), \
+             patch.object(pipe, "transcribe_tracks", AsyncMock(return_value=tracks)), \
+             patch.object(pipe, "sort_call", AsyncMock(return_value=_sort(group))), \
+             patch.object(pipe, "mark_call", AsyncMock(return_value=marking)), \
+             patch.object(pipe, "raise_alert"), \
+             patch("app.services.knowledge_service.get_knowledge_context", AsyncMock(return_value="")):
+            await pipe._process(db, {"id": "c", "tenant_id": "t", "duration_seconds": 90, "lead_id": None}, None)
+        return _saved_evaluation(db)
+
+    async def test_stereo_real_conversation_saves_report_talk_and_segments(self):
+        tracks = TrackTranscript([Line(1, "telecaller", "Hello"), Line(3, "customer", "I need a demo")],
+                                 [(1.04, 2.0), (9.0, 9.5)], [(3.0, 5.01)], True)
+        report = {"report_version": 1, "coach": {"time": "00:01", "start": 1.0, "quote": "Hello", "tip": "Smile."}}
+        ev = await self._process(tracks, "real_conversation", report)
+        self.assertEqual(ev["report"]["coach"]["tip"], "Smile.")
+        self.assertEqual(ev["report"]["segments"], {"telecaller": [[1.0, 2.0], [9.0, 9.5]], "customer": [[3.0, 5.0]]})
+        self.assertEqual(ev["report"]["talk"], {"longest_monologue_s": 1.0, "dead_air_s": 4.0})
+        self.assertEqual(ev["evaluation_version"], 4)
+
+    async def test_early_exit_stereo_call_still_gets_segments_for_the_player(self):
+        ev = await self._process(_tracks(), "early_exit")
+        self.assertIn("segments", ev["report"])
+        self.assertNotIn("coach", ev["report"])
+
+    async def test_mono_call_has_no_segments_or_talk(self):
+        tracks = TrackTranscript([Line(1, "telecaller", "Hello"), Line(3, "customer", "Hi")], [], [], False)
+        ev = await self._process(tracks, "real_conversation")
+        self.assertNotIn("report", ev)

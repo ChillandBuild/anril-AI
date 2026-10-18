@@ -110,6 +110,12 @@ class MarkCrmUpdateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("what happened: Interested, needs time or more information", prompt)
         self.assertIn("did the call connect: Connected", prompt)
 
+    async def test_crm_check_keeps_the_manager_report(self):
+        row = _row(**WARM, notes="needs demo friday")
+        row["evaluation"]["report"] = {"report_version": 1, "coach": {"tip": "Smile."}}
+        _, writes, _, _, _, _ = await self._run(row, ai={"level": "good", "reason": "ok", "customer": "warm"})
+        self.assertEqual(writes[0]["evaluation"]["report"], {"report_version": 1, "coach": {"tip": "Smile."}})
+
     async def test_changed_wrapup_is_remarked(self):
         row = _row(feedback_at=NOW.isoformat(), manual_status="connected", outcome="call_later", next_action_at=None)
         row["evaluation"]["checks"] = _checks(crm_level="excellent")

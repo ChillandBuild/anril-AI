@@ -40,7 +40,7 @@ router = APIRouter()
 CALL_CARD_FIELDS = (
     "id,created_at,duration_seconds,status,outcome,manual_status,next_action_at,provider,score,score_status,"
     "evaluation,ai_summary,ai_status,ai_error,recording_url,transcript,"
-    "call_group,talk_share,interruption_count,interruptions_per_5min,score_final,"
+    "call_group,talk_share,interruption_count,interruptions_per_5min,score_final,ai_call_status,"
     "lead_id,caller_id"
 )
 public_router = APIRouter()  # No auth — TeleCMI calls these directly

@@ -19,6 +19,7 @@ from app.services.audio_format import detect_audio_format, detect_gemini_audio_m
 from app.services.call_alerts import raise_alert
 from app.services.call_lines import format_transcript
 from app.services.call_marking import mark_call, mark_crm_update, top_improve
+from app.services.call_metrics import dead_air, longest_monologue
 from app.services.call_metrics import talk_share as compute_talk_share
 from app.services.call_scorer import finalize_call_score
 from app.services.call_sorting import sort_call
@@ -188,6 +189,18 @@ def _previous_notes(db, lead_id: str | None, call_log_id: str) -> str:
     return "\n".join(f"- {r['content']}" for r in rows if r.get("content"))
 
 
+def _speech_report(tracks) -> dict:
+    """Speech bars and talk numbers for the manager's player (stereo only: they come from the two tracks)."""
+    tele, cust = tracks.telecaller_segments, tracks.customer_segments
+    return {
+        "talk": {"longest_monologue_s": longest_monologue(tele), "dead_air_s": dead_air(tele, cust)},
+        "segments": {
+            "telecaller": [[round(s, 1), round(e, 1)] for s, e in tele],
+            "customer": [[round(s, 1), round(e, 1)] for s, e in cust],
+        },
+    }
+
+
 async def _process(db, row: dict, appid_override: str | None) -> None:
     from app.services.knowledge_service import get_knowledge_context
 
@@ -226,6 +239,7 @@ async def _process(db, row: dict, appid_override: str | None) -> None:
         "language_barrier": sorting.language_barrier,
     }
     rude_quote = sorting.rude_quote
+    report = _speech_report(tracks) if tracks.stereo else {}
     if sorting.group == "real_conversation":
         marking = await mark_call(
             tracks.lines, kb_context=kb_context, previous_notes=_previous_notes(db, row.get("lead_id"), call_log_id),
@@ -236,6 +250,7 @@ async def _process(db, row: dict, appid_override: str | None) -> None:
             "checks": marking.checks, "top_improve": top_improve(marking.checks), "tips": marking.tips,
             "wrong_info": marking.wrong_info, "unverified_claims": marking.unverified_claims,
         })
+        report = {**marking.report, **report}
         rude_quote = rude_quote or marking.rude_quote
         for item in marking.wrong_info:
             raise_alert(db, tenant_id=tenant_id, type="wrong_info", call_log_id=call_log_id, caller_id=caller_id,
@@ -245,6 +260,8 @@ async def _process(db, row: dict, appid_override: str | None) -> None:
                         quote=f"No proof for: {', '.join(marking.proof_missing)}", detail={"checks": marking.proof_missing})
     else:
         evaluation["early_exit_check"] = sorting.early_exit_check
+    if report:
+        evaluation["report"] = report
     if rude_quote:
         raise_alert(db, tenant_id=tenant_id, type="rude", call_log_id=call_log_id, caller_id=caller_id, quote=rude_quote)
     if sorting.language_barrier:

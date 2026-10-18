@@ -134,4 +134,4 @@ async def review_lead_calls(
         q = q.eq("caller_id", str(caller_id))
     rows = q.order("created_at", desc=True).limit(50).execute().data or []
     is_sim = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi") == "sim_basic"
-    return {"data": strip_evaluation(mask_transcripts(rows), is_sim)}
+    return {"data": strip_evaluation(mask_transcripts(rows), is_sim, keep_report=True)}

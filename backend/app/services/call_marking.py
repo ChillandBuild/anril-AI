@@ -15,6 +15,7 @@ from app.services.call_alerts import raise_alert
 from app.services.call_lines import Line, clock, format_transcript, parse_transcript
 from app.services.call_metrics import courtesy_cap, listening_cap_reason, lower_level, plurality, tips
 from app.services.call_quotes import clean_quote, clip, find_quote
+from app.services.call_report import REPORT_RUBRIC, build_report
 from app.services.call_scorer import finalize_call_score
 from app.services.call_wrapup import (
     AI_CALL_STATUSES, CONNECT_LABEL, LANGUAGE_LABEL, OUTCOME_LABEL, TEMPERATURE_FOR_OUTCOME, TEMPERATURES,
@@ -25,6 +26,8 @@ from app.services.scoring_rules import AI_VOTES, CHECK_MARKS, LEVEL_ORDER, LEVEL
 logger = logging.getLogger(__name__)
 
 CRM_AI_ATTEMPT_CAP = 3
+# The 9 checks plus the manager's report; a cut-off reply fails the whole vote, so leave headroom.
+MARKING_MAX_TOKENS = 6000
 
 CHECKS: list[dict] = [
     {"key": "opening", "label": "Opening", "stage": "connect"},
@@ -55,6 +58,7 @@ class MarkResult:
     unverified_claims: list[str] = field(default_factory=list)
     proof_missing: list[str] = field(default_factory=list)
     tips: list[str] = field(default_factory=list)
+    report: dict = field(default_factory=dict)
 
 
 def check_marks(key: str, level: str | None) -> float:
@@ -159,11 +163,12 @@ async def mark_call(
         f"Transcript:\n{format_transcript(lines)}\n\n"
         f"Knowledge base:\n{kb}\n\n"
         f"Previous notes on this lead:\n{previous_notes or 'none'}\n\n"
-        f"{_numbers_block(talk_share, interruptions_per_5min, interruption_count)}\n{_RUBRIC}"
+        f"{_numbers_block(talk_share, interruptions_per_5min, interruption_count)}\n{_RUBRIC}\n\n{REPORT_RUBRIC}"
     )
     runs = await _gather_votes((
         gemini_analysis_json(
             system_prompt=_SYSTEM, user_prompt=prompt, tenant_id=tenant_id, temperature=0.0, purpose="call_marking",
+            max_tokens=MARKING_MAX_TOKENS,
         )
         for _ in range(AI_VOTES)
     ), label="mark_call")
@@ -272,6 +277,8 @@ async def mark_call(
         unverified_claims=unverified,
         proof_missing=proof_missing,
         tips=tips(talk_share, interruptions_per_5min),
+        # Display-only, so no vote: the first run whose report survives quote checks.
+        report=next((r for r in (build_report(d.get("report"), lines) for d in runs) if r), {}),
     )
 
 
