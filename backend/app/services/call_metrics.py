@@ -4,11 +4,13 @@ from typing import Callable, TypeVar
 
 from app.services.call_lines import Line
 from app.services.scoring_rules import (
-    INTERRUPTIONS_GOOD_MAX, INTERRUPTIONS_SOMETIMES_MAX, LEVEL_ORDER, TALK_SHARE_HEALTHY_MAX,
-    TALK_SHARE_HIGH_MAX, TALK_SHARE_MIN_WORDS, TALK_SHARE_PASSIVE,
+    DEAD_AIR_MIN_S, INTERRUPTIONS_GOOD_MAX, INTERRUPTIONS_SOMETIMES_MAX, LEVEL_ORDER,
+    MONOLOGUE_GAP_S, TALK_SHARE_HEALTHY_MAX, TALK_SHARE_HIGH_MAX, TALK_SHARE_MIN_WORDS,
+    TALK_SHARE_PASSIVE,
 )
 
 _T = TypeVar("_T")
+_Segment = tuple[float, float]
 
 
 def plurality(votes: list[_T], tie_break: Callable[[list[_T]], _T]) -> _T:
@@ -107,3 +109,30 @@ def tips(share: float | None, ipm: float | None) -> list[str]:
     if ipm is not None and ipm > INTERRUPTIONS_GOOD_MAX:
         out.append("Let the customer finish before you reply.")
     return out
+
+
+def longest_monologue(segments: list[_Segment]) -> float:
+    """Longest unbroken telecaller run in seconds; gaps under MONOLOGUE_GAP_S keep a run going."""
+    longest = 0.0
+    run_start = run_end = None
+    for start, end in sorted(segments):
+        if run_end is not None and start - run_end < MONOLOGUE_GAP_S:
+            run_end = max(run_end, end)
+            continue
+        if run_start is not None:
+            longest = max(longest, run_end - run_start)
+        run_start, run_end = start, end
+    if run_start is not None:
+        longest = max(longest, run_end - run_start)
+    return round(longest, 1)
+
+
+def dead_air(telecaller_segments: list[_Segment], customer_segments: list[_Segment]) -> float:
+    """Seconds of silence between the first and last speech, counting only gaps of DEAD_AIR_MIN_S or more."""
+    total = 0.0
+    merged_end = None
+    for start, end in sorted(telecaller_segments + customer_segments):
+        if merged_end is not None and start - merged_end >= DEAD_AIR_MIN_S:
+            total += start - merged_end
+        merged_end = end if merged_end is None else max(merged_end, end)
+    return round(total, 1)

@@ -20,6 +20,8 @@ MIN_SPEECH_RUN_S = 0.2
 MERGE_GAP_S = 0.3
 OVERLAP_MIN_S = 1.0
 TELECALLER_RUN_MIN_S = 1.0
+MONOLOGUE_GAP_S = 1.5   # pauses shorter than this don't end a telecaller monologue
+DEAD_AIR_MIN_S = 3.0    # a silence must last this long to count as dead air
 SNAP_WINDOW_S = 3.0
 
 # Talk share / interruptions (defaults from the method document)

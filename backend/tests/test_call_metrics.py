@@ -79,5 +79,55 @@ class CapTests(unittest.TestCase):
         self.assertIn("Guide the conversation more: ask questions and explain the next step.", cm.tips(25, 0))
 
 
+class MonologueAndDeadAirTests(unittest.TestCase):
+    def test_longest_monologue_empty(self):
+        self.assertEqual(cm.longest_monologue([]), 0.0)
+
+    def test_longest_monologue_single_segment(self):
+        self.assertEqual(cm.longest_monologue([(2.0, 7.5)]), 5.5)
+
+    def test_longest_monologue_small_gap_merges(self):
+        self.assertEqual(cm.longest_monologue([(0, 5), (6, 10)]), 10.0)
+
+    def test_longest_monologue_large_gap_splits(self):
+        self.assertEqual(cm.longest_monologue([(0, 5), (7, 8)]), 5.0)
+
+    def test_longest_monologue_unsorted_input(self):
+        self.assertEqual(cm.longest_monologue([(6, 10), (0, 5)]), 10.0)
+
+    def test_longest_monologue_picks_longest_run(self):
+        self.assertEqual(cm.longest_monologue([(0, 2), (10, 12), (12.5, 20)]), 10.0)
+
+    def test_dead_air_both_empty(self):
+        self.assertEqual(cm.dead_air([], []), 0.0)
+
+    def test_dead_air_single_segment(self):
+        self.assertEqual(cm.dead_air([(1, 5)], []), 0.0)
+
+    def test_dead_air_ignores_leading_silence(self):
+        self.assertEqual(cm.dead_air([(5, 6)], [(10, 11)]), 4.0)
+
+    def test_dead_air_ignores_trailing_silence(self):
+        self.assertEqual(cm.dead_air([(0, 1)], [(1.5, 2)]), 0.0)
+
+    def test_dead_air_ignores_gaps_under_minimum(self):
+        self.assertEqual(cm.dead_air([(0, 1), (3, 4)], [(6.5, 7)]), 0.0)
+
+    def test_dead_air_counts_gap_at_minimum(self):
+        self.assertEqual(cm.dead_air([(0, 1)], [(4, 5)]), 3.0)
+
+    def test_dead_air_sums_multiple_gaps(self):
+        self.assertEqual(cm.dead_air([(0, 1), (9, 10)], [(5, 6)]), 7.0)
+
+    def test_dead_air_overlap_between_sides_has_no_gap(self):
+        self.assertEqual(cm.dead_air([(0, 4)], [(2, 6)]), 0.0)
+
+    def test_dead_air_one_side_empty(self):
+        self.assertEqual(cm.dead_air([], [(0, 1), (6, 7)]), 5.0)
+
+    def test_dead_air_unsorted_input(self):
+        self.assertEqual(cm.dead_air([(10, 11)], [(5, 6), (0, 1)]), 8.0)
+
+
 if __name__ == "__main__":
     unittest.main()
