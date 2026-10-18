@@ -397,7 +397,7 @@ type Incident = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  quality_yellow: "Number flagged Yellow — outbound volume halved",
+  quality_yellow: "Quality dropped to Medium — warning only, sending continues",
   quality_red: "Number flagged Red — automatic failover triggered",
   failover: "Standby promoted to primary sender",
   migration_sent: "Channel migration notice sent to recent leads",
