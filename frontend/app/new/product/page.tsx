@@ -4,7 +4,8 @@ import { ChannelFlow } from "@/components/site/ChannelFlow";
 import { DemoSection } from "@/components/site/DemoSection";
 import { FeatureRow } from "@/components/site/FeatureRow";
 import { FEATURES } from "@/components/site/features";
-import { PageIntro } from "@/components/site/PageIntro";
+import { ProductIntro } from "@/components/site/ProductIntro";
+import { BeforeAfter } from "@/components/site/BeforeAfter";
 import { Frame, Kicker } from "@/components/site/primitives";
 
 export const metadata: Metadata = {
@@ -16,13 +17,11 @@ export const metadata: Metadata = {
 export default function ProductPage() {
   return (
     <Frame>
-      <PageIntro
-        title="From first message to the right call"
-        lede="Anril AI answers enquiries on WhatsApp, web chat and phone, marks every lead hot, warm or cold, sends the hot ones to a telecaller and scores the call that follows."
-      />
+      <ProductIntro />
       {FEATURES.map((f, i) => (
         <FeatureRow key={f.id} feature={f} flip={i % 2 === 1} showPoints linkHref="#demo" linkLabel="See it in a demo" />
       ))}
+      <BeforeAfter />
       <section className={ui.band} id="channels" aria-labelledby="ch-h">
         <Kicker>Channels</Kicker>
         <h2 className={ui.secH} id="ch-h">Every channel, one list of leads</h2>

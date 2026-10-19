@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import ui from "@/components/site/site.module.css";
-import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, MODULES } from "@/components/site/content";
+import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL } from "@/components/site/content";
 import { DemoSection } from "@/components/site/DemoSection";
-import { InfoGrid } from "@/components/site/InfoGrid";
-import m from "@/components/site/Modules.module.css";
+import { Faq } from "@/components/site/Faq";
+import { ModuleChips } from "@/components/site/ModuleChips";
+import { ModulePicker } from "@/components/site/ModulePicker";
 import { PageIntro } from "@/components/site/PageIntro";
 import { Frame, Kicker } from "@/components/site/primitives";
 
@@ -14,28 +15,6 @@ export const metadata: Metadata = {
 };
 
 const PRICING_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("Anril AI pricing")}`;
-
-// No prices are published: every module says "contact us for pricing".
-const ITEMS = MODULES.map((mod, i) => ({
-  id: mod.id,
-  title: mod.name,
-  body: (
-    <>
-      <span className={m.num}>Module {i + 1}</span>
-      <p>{mod.tagline}</p>
-      <ul className={m.feats}>
-        {mod.features.map(([name, text]) => (
-          <li key={name}>
-            <b>{name}</b>
-            {text}
-          </li>
-        ))}
-      </ul>
-      <p className={m.flow}>{mod.flow}</p>
-      <p className={m.price}>Contact us for pricing</p>
-    </>
-  ),
-}));
 
 // Answers that hold whatever the quote says; billing terms are given in the quote itself.
 const FAQ = [
@@ -82,18 +61,12 @@ export default function PricingPage() {
           </a>
         </div>
       </PageIntro>
-      <InfoGrid items={ITEMS} label="Modules" className={m.grid} />
+      <ModuleChips />
+      <ModulePicker />
       <section className={ui.band} aria-labelledby="faq-h">
         <Kicker>Pricing</Kicker>
         <h2 className={ui.secH} id="faq-h">Questions about pricing</h2>
-        <dl className={m.faq}>
-          {FAQ.map(({ q, a }) => (
-            <div key={q}>
-              <dt>{q}</dt>
-              <dd>{a}</dd>
-            </div>
-          ))}
-        </dl>
+        <Faq items={FAQ} />
       </section>
       <DemoSection />
     </Frame>

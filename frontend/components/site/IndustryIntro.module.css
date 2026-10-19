@@ -1,0 +1,7 @@
+.intro { padding-top: clamp(128px, 14vw, 176px); }
+.title { font-size: clamp(2.4rem, 5.4vw, 4.4rem); line-height: 1.04; max-width: 16em; min-height: 2.1em; }
+.word { font-style: italic; color: var(--teal-d); display: inline-block; }
+/* A new word slides up into place. */
+.swap { animation: swap 0.5s var(--ease) both; }
+@keyframes swap { from { opacity: 0; transform: translateY(0.4em); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .swap { animation: none; } }

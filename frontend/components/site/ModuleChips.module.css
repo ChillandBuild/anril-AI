@@ -1,0 +1,11 @@
+.chips { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: clamp(20px, 3vw, 32px) clamp(20px, 4vw, 56px) clamp(24px, 3.4vw, 40px); list-style: none; }
+.chips a {
+  display: inline-flex; align-items: baseline; gap: 12px; min-height: 52px; padding: 12px 22px;
+  border: 1px solid var(--line); background: var(--white); color: var(--navy); text-decoration: none;
+  font: 300 1.7rem var(--serif); letter-spacing: -0.02em;
+  transition: border-color 0.2s var(--ease), background-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.chips a span { font: 700 0.7rem var(--mono); letter-spacing: 0.08em; color: var(--copper); }
+.chips a:hover { border-color: var(--teal); background: var(--wash-2); transform: translateY(-2px); }
+.chips a:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .chips a { transition: none; } }

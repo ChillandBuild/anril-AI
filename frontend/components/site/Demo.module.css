@@ -11,16 +11,46 @@
 .rule { width: 56px; height: 2px; background: var(--copper); }
 
 .form { background: var(--white); padding: 24px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field label { font-weight: 700; font-size: 0.84rem; }
+.field { position: relative; display: flex; flex-direction: column; gap: 6px; }
 .field :is(input, select) {
   font: 500 1rem var(--sans); color: var(--navy); background: var(--white);
-  border: 1px solid #94A3B8; border-radius: 0; min-height: 48px; padding: 0 12px; width: 100%;
+  border: 1px solid #94A3B8; border-radius: 0; min-height: 56px; padding: 22px 40px 6px 12px; width: 100%;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
+.field :is(input, select):focus { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+/* The label sits where the text will go, then floats up out of the way. */
+.field label {
+  position: absolute; left: 13px; top: 28px; transform: translateY(-50%);
+  font-weight: 600; font-size: 1rem; color: var(--muted); pointer-events: none; transform-origin: left top;
+  transition: top 0.2s var(--ease), font-size 0.2s var(--ease), color 0.2s var(--ease);
+}
+.field:focus-within label, .filled label { top: 10px; font-size: 0.72rem; color: var(--navy); letter-spacing: 0.02em; }
+.field:focus-within label { color: var(--teal-d); }
+.field input:-webkit-autofill + label { top: 10px; font-size: 0.72rem; color: var(--navy); letter-spacing: 0.02em; }
+.tick { position: absolute; right: 12px; top: 19px; color: var(--teal); animation: pop 0.3s var(--ease); }
+.field:has(select) .tick { right: 34px; }
+@keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
 .field [aria-invalid="true"] { border-color: #B42318; border-width: 2px; }
+.field:has([aria-invalid="true"]) label { color: #B42318; }
 .fieldError { color: #B42318; font-size: 0.84rem; font-weight: 600; }
 .note { font-size: 0.84rem; color: #B42318; font-weight: 700; }
 .note:empty { display: none; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .doneTitle { font-size: 1.8rem; line-height: 1.1; outline: none; }
 .doneText { color: var(--body); }
+.submit { position: relative; overflow: hidden; }
+.submit:disabled::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 35%; background: var(--teal-l);
+  animation: sending 1s var(--ease) infinite;
+}
+@keyframes sending { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+.doneIcon { color: var(--teal); }
+.doneIcon circle { stroke-dasharray: 132; stroke-dashoffset: 132; animation: draw 0.6s var(--ease) forwards; }
+.doneIcon path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw 0.4s var(--ease) 0.4s forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .field label, .field :is(input, select) { transition: none; }
+  .tick { animation: none; }
+  .submit:disabled::after { animation: none; width: 100%; opacity: 0.5; }
+  .doneIcon circle, .doneIcon path { animation: none; stroke-dashoffset: 0; }
+}

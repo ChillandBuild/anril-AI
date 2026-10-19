@@ -1,0 +1,26 @@
+/* Six cells fill three columns, then two, then one, so the last row is never short. */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--line); }
+.cell {
+  padding: clamp(24px, 4vw, 44px) clamp(20px, 3vw, 40px);
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 14px; min-width: 0; color: var(--body);
+}
+.cell:nth-child(3n + 1) { border-left: 0; }
+.title { font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.15; color: var(--navy); }
+.chat { display: flex; flex-direction: column; gap: 8px; }
+/* Once the cell is revealed, the question lands, then the reply. */
+:global([data-site][data-motion="on"]) .cell[data-in] .b1 { animation: bubble 0.5s var(--ease) 0.2s both; }
+:global([data-site][data-motion="on"]) .cell[data-in] .b2 { animation: bubble 0.5s var(--ease) 0.75s both; }
+@keyframes bubble { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+@media (max-width: 1000px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cell:nth-child(3n + 1) { border-left: 1px solid var(--line); }
+  .cell:nth-child(2n + 1) { border-left: 0; }
+}
+@media (max-width: 640px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .cell, .cell:nth-child(n) { border-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :global([data-site][data-motion="on"]) .cell .b1, :global([data-site][data-motion="on"]) .cell .b2 { animation: none; }
+}

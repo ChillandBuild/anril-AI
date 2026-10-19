@@ -1,10 +1,15 @@
-/* Hero from the mockup (.hx3): no zoom, no blue tint, a light warm darkening on the left. */
+/* Hero from the mockup (.hx3): no blue tint, a light warm darkening on the left. The photo drifts and the
+   copy rises line by line; the laptop screen is real HTML pinned onto the photo. */
 .hero {
   position: relative; overflow: hidden;
   background: #1A120C; color: var(--white);
   aspect-ratio: 1672 / 941;
+  container-type: inline-size;
   --focus: var(--copper-l);
 }
+.scene { position: absolute; inset: 0; will-change: transform; }
+.zoom { position: absolute; inset: 0; transform-origin: 62% 50%; transform: scale(1.04); animation: settle 2.2s var(--ease) both; }
+@keyframes settle { from { transform: scale(1.14); } to { transform: scale(1.04); } }
 .photo { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; }
 .hero::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -12,36 +17,116 @@
     linear-gradient(90deg, rgba(24, 12, 6, 0.6) 0%, rgba(24, 12, 6, 0.46) 34%, rgba(24, 12, 6, 0.1) 60%, rgba(24, 12, 6, 0) 100%),
     linear-gradient(180deg, rgba(24, 12, 6, 0.42) 0%, rgba(24, 12, 6, 0) 20%);
 }
+
+/* The laptop screen. The stage is a 1000-wide copy of the photo, scaled to the hero's width; .screen is a
+   440 x 275 dashboard mapped onto the photo's four screen corners (top-left, top-right, bottom-right,
+   bottom-left at 515,135 / 857,165 / 833,394 / 490,336 in that 1000-wide space). */
+.stage {
+  position: absolute; left: 0; top: 0; width: 1000px; height: 563px;
+  transform-origin: 0 0; transform: scale(tan(atan2(100cqw, 1000px)));
+  pointer-events: none;
+}
+@supports not (transform: scale(tan(atan2(1px, 1px)))) { .stage { display: none; } }
+@media (max-width: 700px) { .stage { display: none; } }
+.screen {
+  position: absolute; left: 0; top: 0; width: 440px; height: 275px; overflow: hidden;
+  transform-origin: 0 0;
+  transform: matrix3d(0.53351194, 0.019230982, 0, -0.00028390208, -0.10913133, 0.71565308, 0, -3.8485971e-05, 0, 0, 1, 0, 515.2512, 135.46651, 0, 1);
+  display: flex; background: #EEF1F5; color: #0A1528;
+  font-family: var(--sans); line-height: 1.25; text-shadow: none;
+}
+.glare {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(112deg, rgba(255, 255, 255, 0) 38%, rgba(255, 230, 190, 0.2) 50%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(180deg, rgba(10, 21, 40, 0.1), rgba(10, 21, 40, 0) 18%);
+}
+.side { width: 96px; flex: none; background: #0A1528; color: #D5DCE6; padding: 14px 8px; display: flex; flex-direction: column; gap: 14px; }
+.brand { font: 800 15px var(--sans); letter-spacing: -0.03em; color: #fff; }
+.brand i { font-style: normal; color: var(--teal-l); }
+.side ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; font-weight: 600; }
+.side li { padding: 6px 7px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; gap: 4px; white-space: nowrap; }
+.side li.on { background: #1B4B6E; color: #fff; }
+.side em { font-style: normal; font-size: 8.5px; font-weight: 800; min-width: 14px; height: 14px; border-radius: 99px; background: #E8962B; color: #1A120C; display: grid; place-items: center; }
+
+.main { flex: 1; min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.top > div:first-child { display: flex; flex-direction: column; gap: 1px; }
+.top b { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+.top span { font-size: 9.5px; color: #566579; }
+.who { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.who b { font-size: 10px; }
+.clock { background: #fff; border: 1px solid #DDE3EA; border-radius: 6px; padding: 3px 6px; font-weight: 700; color: #0A1528 !important; font-size: 10px !important; }
+.avatar { width: 20px; height: 20px; border-radius: 99px; background: #0A1528; color: #fff !important; display: grid; place-items: center; font-weight: 800; font-size: 10px !important; }
+
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.kpi { background: #fff; border-radius: 8px; border-top: 2.5px solid var(--c); padding: 7px 8px 8px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 1px 4px rgba(10, 21, 40, 0.08); }
+.green { --c: #1F9D6B; } .amber { --c: #E8962B; } .teal { --c: #038285; }
+.kpi span { font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #566579; }
+.kpi b { font-size: 24px; line-height: 1.05; font-weight: 800; letter-spacing: -0.03em; }
+.kpi small { font-size: 9.5px; color: #566579; }
+
+.panel { background: #fff; border-radius: 8px; padding: 8px 10px 9px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 1px 4px rgba(10, 21, 40, 0.08); }
+.panel > b { font-size: 11.5px; font-weight: 800; }
+.stats { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr 1fr; gap: 6px; }
+.stats > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.stats span { font-size: 8.5px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; color: #566579; }
+.stats b { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+.stats small { font-size: 8.5px; color: #566579; white-space: nowrap; }
+.alert b { color: #D92D4C; }
+
+.pipe { background: #fff; border-radius: 8px; padding: 7px 10px; display: grid; gap: 1px; position: relative; box-shadow: 0 1px 4px rgba(10, 21, 40, 0.08); }
+.pipe b { font-size: 11px; font-weight: 800; }
+.pipe span { font-size: 9px; color: #566579; }
+.pipe i { height: 5px; border-radius: 99px; margin-top: 4px; background: linear-gradient(90deg, #E8962B 0 38%, #E5B849 38% 60%, #1B8AA0 60% 100%); }
+
+/* Copy */
 .copy {
   position: absolute; z-index: 1;
   left: var(--hdr-x); top: 25.6%; width: min(46vw, 800px);
   display: flex; flex-direction: column; align-items: flex-start; gap: clamp(14px, 1.7vw, 30px);
 }
-.hero .title {
-  font-family: var(--sans); font-weight: 600; letter-spacing: -0.02em;
-  font-size: clamp(1.9rem, 3.86vw, 4.6rem); line-height: 1.12; text-wrap: nowrap;
-}
-.sub { color: var(--white); font-size: clamp(0.95rem, 1.3vw, 1.5rem); line-height: 1.28; max-width: 30em; }
+.hero .title { font-family: var(--serif); font-weight: 300; letter-spacing: -0.025em; font-size: clamp(2.1rem, 4vw, 4.9rem); line-height: 1.04; }
+/* Each line slides up from behind its own edge. */
+.ln { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.ln > span { display: block; animation: lineUp 0.95s var(--ease) 0.15s both; }
+@keyframes lineUp { from { transform: translateY(105%); } to { transform: none; } }
+.sub { color: var(--white); font-size: clamp(0.95rem, 1.3vw, 1.5rem); line-height: 1.28; max-width: 30em; animation: rise 0.8s var(--ease) 0.55s both; }
 /* Sun streaks behind the copy dip the brightest pixels to about 4.1:1 on tablets; an offset
    shadow keeps every letter edge readable without darkening the photo any further. */
 .title, .sub { text-shadow: 0 1px 3px rgba(24, 12, 6, 0.55); }
-.cta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: clamp(2px, 0.5vw, 10px); }
+.cta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: clamp(2px, 0.5vw, 10px); animation: rise 0.8s var(--ease) 0.7s both; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .pill {
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 48px; padding: 0 19px; border-radius: 99px;
   font: 500 clamp(0.95rem, 1.12vw, 1.2rem) var(--sans); text-decoration: none;
+  transition: transform 0.16s var(--ease), background-color 0.2s var(--ease);
 }
+.pill:active { transform: scale(0.97); }
 .white { background: var(--white); color: #111418; }
+.white:hover { background: #F1EFE8; }
 .grey { background: rgba(86, 84, 82, 0.86); color: var(--white); }
+.grey:hover { background: rgba(86, 84, 82, 1); }
 
+/* On tablets the laptop starts closer to the copy, so the copy narrows to stay clear of the screen. */
+@media (max-width: 1000px) and (min-width: 701px) {
+  .copy { width: 40vw; }
+  .sub { font-size: 0.95rem; }
+}
 @media (max-width: 700px) {
   .hero { aspect-ratio: auto; min-height: 700px; }
   .photo { object-position: center top; }
+  .zoom { transform: scale(1.02); animation-name: settleMobile; }
+  @keyframes settleMobile { from { transform: scale(1.08); } to { transform: scale(1.02); } }
   .hero::after {
     background: linear-gradient(0deg, rgba(24, 12, 6, 0.95) 0%, rgba(24, 12, 6, 0.82) 42%, rgba(24, 12, 6, 0.15) 75%, rgba(24, 12, 6, 0.5) 100%);
   }
   .copy { left: 20px; right: 20px; top: auto; bottom: 44px; width: auto; }
-  .hero .title { text-wrap: balance; font-size: 2.1rem; }
-  .title br { display: none; }
+  .hero .title { font-size: 2.2rem; }
   .sub { font-size: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zoom, .ln > span, .sub, .cta { animation: none; }
+  .pill { transition: none; }
 }

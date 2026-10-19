@@ -1,0 +1,23 @@
+.faq { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 860px; border-bottom: 1px solid var(--line); }
+.item { border-top: 1px solid var(--line); }
+.item h3 { font: inherit; letter-spacing: 0; }
+.item button {
+  display: flex; justify-content: space-between; align-items: center; gap: 20px; width: 100%; min-height: 64px; padding: 14px 0;
+  background: none; border: 0; cursor: pointer; text-align: left; color: var(--navy);
+  font: 400 1.3rem var(--serif); line-height: 1.25;
+}
+.item button:hover span { color: var(--teal-d); }
+.item button span { transition: color 0.2s var(--ease); }
+/* A plus whose upright bar folds away to make a minus. */
+.item i { position: relative; flex: none; width: 18px; height: 18px; }
+.item i::before, .item i::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: currentColor; transition: transform 0.3s var(--ease); }
+.item i::after { transform: rotate(90deg); }
+.item[data-open] i::after { transform: rotate(0deg); }
+.panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s var(--ease); }
+.panel > div { overflow: hidden; min-height: 0; }
+/* Closed answers leave the tab order and the accessibility tree once the fold finishes. */
+.item:not([data-open]) .panel > div { visibility: hidden; transition: visibility 0s 0.32s; }
+.answer { color: var(--body); padding-bottom: 20px; max-width: 62ch; }
+.panel a { text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.item[data-open] .panel { grid-template-rows: 1fr; }
+@media (prefers-reduced-motion: reduce) { .panel, .item i::before, .item i::after, .item button span { transition: none; } }

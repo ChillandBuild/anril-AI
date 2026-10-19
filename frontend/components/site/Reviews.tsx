@@ -75,7 +75,31 @@ function Stars() {
   );
 }
 
+function Card({ r, lead = false }: { r: Review; lead?: boolean }) {
+  return (
+    <figure className={lead ? `${s.card} ${s.lead}` : s.card}>
+      <Stars />
+      <span className={s.topic}>{r.topic}</span>
+      {lead ? <h3 className={s.leadTitle}>{r.title}</h3> : <h3 className={s.title}>{r.title}</h3>}
+      <blockquote className={lead ? `${s.quote} ${s.leadQuote}` : s.quote}>
+        <p>&ldquo;{r.quote}&rdquo;</p>
+      </blockquote>
+      <figcaption className={s.who}>
+        <b>{r.name}</b>
+        <span>
+          {r.role} · {r.business}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** One review set large beside a 2 x 2 grid of four more, with the sixth under the lead so both sides finish together. */
 export function Reviews() {
+  // The layout is built for exactly six reviews: one lead, four in the grid, one under the lead.
+  const [first, ...others] = REVIEWS;
+  const last = others[others.length - 1];
+  const middle = others.slice(0, -1);
   return (
     <section className={s.reviews} id="reviews" aria-labelledby="rev-h">
       <div className={ui.band}>
@@ -83,26 +107,23 @@ export function Reviews() {
         <h2 className={ui.secH} id="rev-h">What our customers say</h2>
         <p className={ui.lede}>From businesses in India and overseas. Every one of them rated Anril AI five stars.</p>
       </div>
-      <ul className={s.grid}>
-        {REVIEWS.map((r) => (
-          <li key={r.title}>
-            <figure className={s.card}>
-              <Stars />
-              <span className={s.topic}>{r.topic}</span>
-              <h3 className={s.title}>{r.title}</h3>
-              <blockquote className={s.quote}>
-                <p>&ldquo;{r.quote}&rdquo;</p>
-              </blockquote>
-              <figcaption className={s.who}>
-                <b>{r.name}</b>
-                <span>
-                  {r.role} · {r.business}
-                </span>
-              </figcaption>
-            </figure>
-          </li>
-        ))}
-      </ul>
+      <div className={s.layout}>
+        <div className={s.leadCol}>
+          <div className={s.leadWrap} data-reveal>
+            <Card r={first} lead />
+          </div>
+          <div className={s.under} data-reveal>
+            <Card r={last} />
+          </div>
+        </div>
+        <ul className={s.masonry}>
+          {middle.map((r, i) => (
+            <li key={r.title} data-reveal style={{ "--rd": `${i * 80}ms` } as React.CSSProperties}>
+              <Card r={r} />
+            </li>
+          ))}
+        </ul>
+      </div>
       <p className={s.note}>Names changed and logos left out at our customers&apos; request.</p>
     </section>
   );

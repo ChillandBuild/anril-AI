@@ -1,7 +1,7 @@
 .figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
-.figs > p { color: var(--body); font-size: 0.92rem; padding: clamp(24px, 4vw, 48px); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; }
+.figs > p { color: var(--body); font-size: 0.95rem; padding: clamp(28px, 5vw, 64px) clamp(24px, 4vw, 48px); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; }
 .figs > p:first-child { border-left: 0; }
-.big { font: 300 clamp(3.4rem, 8vw, 5.6rem) var(--serif); line-height: 1; letter-spacing: -0.03em; color: var(--teal); font-variant-numeric: tabular-nums; }
+.big { font: 300 clamp(4.2rem, 9.4vw, 8rem) var(--serif); line-height: 0.95; letter-spacing: -0.04em; color: var(--teal); font-variant-numeric: tabular-nums; }
 .figs > p:nth-child(2) .big { color: var(--copper); }
 @media (max-width: 760px) {
   .figs { grid-template-columns: minmax(0, 1fr); }
@@ -9,16 +9,59 @@
   .figs > p:first-child { border-top: 0; }
 }
 
-.chans {
-  padding: 28px clamp(20px, 4vw, 56px); border-bottom: 1px solid var(--line);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 40px;
-}
+/* Channel marquee: two identical tracks slide left together, so the join never shows. */
+.chans { padding: 28px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
+.chansHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-inline: clamp(20px, 4vw, 56px); }
 .chans .chansH { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-.chans ul { display: flex; flex-wrap: wrap; gap: 10px 32px; margin: 0; padding: 0; list-style: none; }
-.chans li { font: 400 1.35rem var(--serif); color: var(--navy); }
+.marquee {
+  display: flex; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.track { display: flex; flex: none; min-width: 100%; align-items: center; justify-content: space-around; gap: 40px; margin: 0; padding: 0 20px; list-style: none; animation: marquee 34s linear infinite; }
+.marquee:hover .track, .marquee[data-paused] .track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-100%); } }
+.track li { display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; font: 400 1.35rem var(--serif); color: var(--navy); }
+.mark { width: 30px; height: 30px; flex: none; display: grid; place-items: center; background: var(--navy); color: var(--white); }
+.track li:nth-child(even) .mark { background: var(--teal); }
+@media (prefers-reduced-motion: reduce) {
+  .marquee { -webkit-mask-image: none; mask-image: none; padding-inline: clamp(20px, 4vw, 56px); }
+  .track { animation: none; flex-wrap: wrap; justify-content: flex-start; padding: 0; gap: 14px 40px; }
+  .copy { display: none; }
+}
 
-.ind ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-top: 1px solid var(--line); }
-.ind li { border-bottom: 2px solid var(--line); }
-.ind li:first-child { border-bottom-color: var(--copper); }
-.ind a { display: flex; align-items: center; min-height: 44px; padding: 20px 4px; font: 400 1.35rem var(--serif); text-decoration: none; }
-.ind a:hover { color: var(--teal-d); }
+/* Industry tiles: a quiet card that opens to show one example conversation. */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
+.tiles > li { background: var(--white); min-width: 0; }
+/* Seven tiles: the last one is wide, so no row is ever short. */
+.tiles > li:last-child { grid-column: span 2; }
+.tile {
+  display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 150px;
+  padding: 22px 20px; text-decoration: none; color: var(--navy);
+  transition: background-color 0.28s var(--ease), box-shadow 0.28s var(--ease);
+}
+.tile svg { color: var(--teal-d); transition: transform 0.28s var(--ease); }
+.tname { font: 400 1.4rem var(--serif); line-height: 1.15; }
+.more .tname { color: var(--teal-d); }
+.peek { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s var(--ease), opacity 0.25s var(--ease); }
+.peek > span { overflow: hidden; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.q, .r { font-size: 0.8rem; line-height: 1.4; padding: 7px 10px; }
+.q { background: var(--grey); color: var(--navy); align-self: flex-start; }
+.r { background: var(--navy); color: var(--white); align-self: flex-end; }
+.peek small { font: 500 0.64rem var(--mono); color: var(--muted); }
+.tile:hover, .tile:focus-visible { background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--teal); }
+.tile:hover svg, .tile:focus-visible svg { transform: translateY(-2px); }
+.tile:hover .peek, .tile:focus-visible .peek { grid-template-rows: 1fr; opacity: 1; }
+/* No hover on touch screens, so the question simply shows. */
+@media (hover: none) {
+  .peek { grid-template-rows: 1fr; opacity: 1; }
+  .r, .peek small { display: none; }
+}
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .tiles { grid-template-columns: minmax(0, 1fr); } .tiles > li:last-child { grid-column: auto; } }
+@media (prefers-reduced-motion: reduce) { .tile, .tile svg, .peek { transition: none; } }
+
+.pause { min-height: 44px; padding: 0 14px; background: none; border: 1px solid var(--soft); color: var(--navy); font: 700 0.72rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: border-color 0.2s var(--ease), transform 0.16s var(--ease); }
+.pause:hover { border-color: var(--navy); }
+.pause:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .pause { display: none; } }

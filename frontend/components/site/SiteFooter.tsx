@@ -1,33 +1,67 @@
 import Link from "next/link";
 import { AnrilLogo } from "@/components/logo";
-import { CONTACT_EMAIL, LEGAL_LINKS, MAKER } from "./content";
-import { Frame } from "./primitives";
+import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, LEGAL_LINKS, MAKER, NAV } from "./content";
 import s from "./SiteFooter.module.css";
 
+const PRODUCT = NAV.find((n) => n.label === "Products")?.children ?? [];
+const COMPANY = [
+  { label: "About", href: "/new/about" },
+  { label: "Plans", href: "/new/pricing" },
+  { label: "Industries", href: "/new/industries" },
+  { label: "Contact", href: "/new/about#contact" },
+];
+const LEGAL = LEGAL_LINKS.filter((l) => l.label !== "Contact");
+
+/** A navy close to every page: the promise again, three link columns, and the wordmark set large. */
 export function SiteFooter() {
   return (
-    <Frame>
-      <footer className={s.footer}>
-        <div className={s.brand}>
-          <Link prefetch={false} href="/new" className={s.logo} aria-label="Anril AI home">
-            <AnrilLogo height={22} aria-hidden="true" focusable="false" />
-          </Link>
+    <footer className={s.footer}>
+      <div className={s.inner}>
+        <div className={s.top}>
+          <div className={s.lead}>
+            <p>Answer every enquiry. Call the right lead first.</p>
+            <a className={s.cta} href={DEMO_HREF}>{DEMO_LABEL}</a>
+          </div>
+          <nav aria-label="Footer" className={s.cols}>
+            <div>
+              <h2>Product</h2>
+              <ul>
+                {PRODUCT.map((l) => (
+                  <li key={l.href}><Link prefetch={false} href={l.href}>{l.label}</Link></li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2>Company</h2>
+              <ul>
+                {COMPANY.map((l) => (
+                  <li key={l.href}><Link prefetch={false} href={l.href}>{l.label}</Link></li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2>Legal</h2>
+              <ul>
+                {LEGAL.map((l) => (
+                  <li key={l.href}><Link prefetch={false} href={l.href}>{l.label}</Link></li>
+                ))}
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <Link prefetch={false} href="/new" className={s.mark} aria-label="Anril AI home">
+          <AnrilLogo aria-hidden="true" focusable="false" />
+        </Link>
+        <div className={s.base}>
           <p>
             A product of{" "}
             <a href={MAKER.href} rel="noopener">
               {MAKER.name}
             </a>
           </p>
-        </div>
-        <nav aria-label="Footer" className={s.nav}>
-          {LEGAL_LINKS.map((l) => (
-            <Link prefetch={false} key={l.href} href={l.href}>
-              {l.label}
-            </Link>
-          ))}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-        </nav>
-      </footer>
-    </Frame>
+        </div>
+      </div>
+    </footer>
   );
 }

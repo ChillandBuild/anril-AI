@@ -21,7 +21,7 @@ export function FeatureRow({ feature, flip, showPoints = false, linkHref, linkLa
   const titleId = `${feature.id}-h`;
   return (
     <section id={feature.id} className={`${s.row} ${flip ? s.flip : ""}`} aria-labelledby={titleId}>
-      <div className={s.txt}>
+      <div className={s.txt} data-reveal>
         <Kicker>{feature.kicker}</Kicker>
         <h2 id={titleId}>{feature.title}</h2>
         <p className={s.b}>{feature.body}</p>
@@ -36,7 +36,9 @@ export function FeatureRow({ feature, flip, showPoints = false, linkHref, linkLa
           {linkLabel}
         </a>
       </div>
-      <div className={`${s.vis} ${s[feature.wash]}`}>{feature.visual}</div>
+      <div className={`${s.vis} ${s[feature.wash]}`} data-reveal style={{ "--rd": "120ms" } as React.CSSProperties}>
+        {feature.visual}
+      </div>
     </section>
   );
 }

@@ -23,7 +23,7 @@ export default function NewHomePage() {
       <Frame>
         <ChannelStrip />
 
-        <section className={ui.band} id="hours" aria-labelledby="hr-h">
+        <section className={ui.band} id="hours" aria-labelledby="hr-h" data-reveal="fade">
           <Kicker>After hours</Kicker>
           <h2 className={ui.secH} id="hr-h">Enquiries do not keep office hours</h2>
           <p className={ui.lede}>
@@ -39,7 +39,7 @@ export default function NewHomePage() {
           ))}
         </div>
 
-        <section className={ui.band} id="channels" aria-labelledby="ch-h">
+        <section className={ui.band} id="channels" aria-labelledby="ch-h" data-reveal>
           <Kicker>Channels</Kicker>
           <h2 className={ui.secH} id="ch-h">Every channel, one list of leads</h2>
           <p className={ui.lede}>

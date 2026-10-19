@@ -1,0 +1,15 @@
+.intro { padding-top: clamp(128px, 14vw, 176px); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+.text { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.title { font-size: clamp(2.4rem, 5vw, 4.2rem); line-height: 1.04; max-width: 14em; }
+.frame { background: linear-gradient(135deg, var(--wash-1), var(--wash-2)); padding: clamp(20px, 3vw, 44px); display: flex; justify-content: center; min-width: 0; }
+.window { max-width: 440px; box-shadow: 0 24px 44px -22px rgba(10, 21, 40, 0.4); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 6px; border-top: 1px solid var(--line); }
+/* One enquiry plays through, holds, then starts again. */
+.step { animation: step 12s var(--ease) infinite both; animation-delay: calc(var(--i) * 1.1s); }
+@keyframes step {
+  0% { opacity: 0; transform: translateY(10px) scale(0.97); }
+  5%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+@media (max-width: 900px) { .intro { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .step { animation: none; } }
