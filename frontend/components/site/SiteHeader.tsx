@@ -28,13 +28,15 @@ export function SiteHeader() {
     menuButtonRef.current?.focus();
   }, []);
 
-  const solid = pathname !== "/new" || scrolled;
+  // The home page is served at "/" (rewritten from /new), so both addresses count as home.
+  const isHome = pathname === "/" || pathname === "/new";
+  const solid = !isHome || scrolled;
   const cls = [s.hdr, mounted && s.live, solid && s.solid].filter(Boolean).join(" ");
 
   return (
     <header className={cls}>
       <div className={s.inner}>
-        <Link prefetch={false} href="/new" className={s.home} aria-label="Anril AI home">
+        <Link prefetch={false} href="/" className={s.home} aria-label="Anril AI home">
           <AnrilLogo height={26} aria-hidden="true" focusable="false" />
         </Link>
         <div className={s.right}>

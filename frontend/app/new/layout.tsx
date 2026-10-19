@@ -20,8 +20,7 @@ const newsreader = localFont({
 
 export const metadata: Metadata = {
   title: { default: "Anril AI", template: "%s | Anril AI" },
-  // Kept out of search until the owner decides to swap /new in for the current homepage.
-  robots: { index: false, follow: false },
+  // Live: this site is the homepage, so it is indexed like any public page.
 };
 
 // Runs before first paint: turns scroll motion on unless the visitor asked for less, and turns it

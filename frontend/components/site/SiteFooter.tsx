@@ -49,7 +49,7 @@ export function SiteFooter() {
             </div>
           </nav>
         </div>
-        <Link prefetch={false} href="/new" className={s.mark} aria-label="Anril AI home">
+        <Link prefetch={false} href="/" className={s.mark} aria-label="Anril AI home">
           <AnrilLogo aria-hidden="true" focusable="false" />
         </Link>
         <div className={s.base}>
