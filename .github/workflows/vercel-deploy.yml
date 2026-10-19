@@ -1,0 +1,73 @@
+name: Deploy frontend to Vercel
+
+# Why this exists: Vercel's Git integration blocks commits whose author is not a
+# member of the Vercel team (only the owner is). This workflow builds and deploys
+# with the owner's VERCEL_TOKEN instead, so a teammate's push still ships.
+# Setup: add a repo secret named VERCEL_TOKEN (Vercel > Account > Tokens).
+# Until that secret exists the workflow skips itself with a warning.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/vercel-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: team_3Qiq09Rp7bzrdQ3NrW9AgFlZ
+  VERCEL_PROJECT_ID: prj_gHCZgUeAk5okXV9iwj4X07KkZPt0
+
+jobs:
+  deploy:
+    name: Build and deploy (production)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for VERCEL_TOKEN
+        id: gate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::warning::VERCEL_TOKEN secret is not set, skipping deploy."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout code
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install Vercel CLI
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
