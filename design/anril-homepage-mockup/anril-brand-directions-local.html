@@ -1,0 +1,296 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}</style></head><body><title>Anril Brand Directions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: a three-part decision board. 1) companion colours around the fixed teal, navy and white,
+   2) section patterns read off the four reference sites, 3) three page structures drawn as wireframes. */
+:root {
+  --bg: #F4F6F8; --panel: #FFFFFF; --fg: #0A1528; --sub: #475569; --line: #D9DFE7; --chip: #E8ECF1;
+  --ok: #0B6B3A; --bad: #B3261E; --brand: #038285;
+  --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0A1120; --panel: #121B2E; --fg: #EEF2F7; --sub: #A8B3C4; --line: #263247; --chip: #1C2740;
+  --ok: #5FD39A; --bad: #FF8A80; --brand: #3FBCBF; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0A1120; --panel: #121B2E; --fg: #EEF2F7; --sub: #A8B3C4; --line: #263247; --chip: #1C2740;
+  --ok: #5FD39A; --bad: #FF8A80; --brand: #3FBCBF; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 72px; display: flex; flex-direction: column; gap: 56px; }
+h1 { font-weight: 800; font-size: clamp(1.9rem, 4.6vw, 2.9rem); line-height: 1.08; letter-spacing: -0.03em; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h3 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.kicker { font: 700 0.7rem var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--brand); }
+p { margin: 0; }
+.lede { color: var(--sub); max-width: 66ch; font-size: 1.02rem; }
+.head, .sec, .part-head { display: flex; flex-direction: column; gap: 12px; }
+.sec { gap: 22px; }
+.part-head p { color: var(--sub); max-width: 72ch; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px; }
+nav.toc a { font-weight: 700; font-size: 0.85rem; color: var(--fg); background: var(--chip); border-radius: 8px; padding: 10px 14px; text-decoration: none; }
+a:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+
+.fixed { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.fx { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.fx i { display: block; height: 64px; border-bottom: 1px solid var(--line); }
+.fx div { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 2px; }
+.fx b { font-size: 0.92rem; } .fx code, .sw code { font: 500 0.72rem var(--mono); color: var(--sub); }
+.fx span { font-size: 0.8rem; color: var(--sub); }
+.logo-strip { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.logo-strip > div { display: flex; align-items: center; justify-content: center; padding: 22px 14px; }
+.logo-strip svg, .spec svg { max-width: 100%; height: auto; }
+
+.opt { display: flex; flex-direction: column; gap: 14px; }
+.opt-head { display: flex; flex-direction: column; gap: 6px; }
+.tagrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.letter { font: 700 0.8rem var(--mono); background: var(--fg); color: var(--bg); border-radius: 6px; padding: 3px 8px; }
+.opt-head p { color: var(--sub); max-width: 72ch; }
+.opt-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .opt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mix { display: flex; height: 16px; border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+.mix i { display: block; height: 100%; }
+.mixcap { font-size: 0.76rem; color: var(--sub); }
+
+.spec { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 640px) { .spec { grid-template-columns: minmax(0, 1fr); } }
+.s-dark { background: #0A1528; color: #FFFFFF; padding: 18px 22px 26px; display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+.s-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.s-nav span { font-size: 0.72rem; color: #CBD5E1; }
+.s-hero { display: flex; flex-direction: column; gap: 12px; }
+.hl { font-weight: 800; letter-spacing: -0.03em; font-size: clamp(1.5rem, 3vw, 2.05rem); line-height: 1.08; text-wrap: balance; }
+.hl em { font-style: normal; color: var(--p-em); }
+.s-hero .sub { font-size: 0.86rem; color: #CBD5E1; max-width: 34ch; }
+.s-btn { align-self: flex-start; font: 700 0.84rem var(--body); border-radius: 9px; padding: 11px 16px; background: var(--p-btn-dark); color: var(--p-btn-dark-text); }
+.s-rule { height: 2px; width: 56px; background: var(--p-comp); }
+.s-light { background: #FFFFFF; color: #0A1528; padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.eyebrow { font: 700 0.66rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: #038285; }
+.hl2 { font-weight: 800; letter-spacing: -0.02em; font-size: 1.3rem; line-height: 1.15; }
+.bd { font-size: 0.84rem; color: #475569; }
+.lead { background: var(--p-band); border-radius: 10px; padding: 11px 12px; display: flex; flex-direction: column; gap: 6px; }
+.lead-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lead-name { font-weight: 700; font-size: 0.86rem; }
+.hot { font: 700 0.64rem var(--mono); letter-spacing: 0.06em; background: var(--p-hot); color: #0A1528; border-radius: 99px; padding: 3px 8px; }
+.lead-meta { font-size: 0.76rem; color: #566579; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.lead-meta b { font-family: var(--mono); color: #0A1528; font-variant-numeric: tabular-nums; }
+.lead-meta u { text-decoration: none; color: #04585B; font-weight: 700; }
+.s-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.s-btn2 { font: 700 0.8rem var(--body); border-radius: 9px; padding: 10px 14px; background: #038285; color: #FFFFFF; }
+.s-link { font-size: 0.8rem; font-weight: 700; color: #038285; text-decoration: underline; text-underline-offset: 3px; }
+.ex { font-size: 0.68rem; color: #566579; }
+
+.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.sw div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sw i { display: block; height: 42px; border-radius: 8px; border: 1px solid var(--line); }
+.sw b { font-size: 0.72rem; font-weight: 700; }
+.sw small { font-size: 0.66rem; color: var(--sub); }
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+td, th { padding: 7px 0; border-top: 1px solid var(--line); vertical-align: top; text-align: left; }
+.ct td:nth-child(2) { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; padding-inline: 10px; white-space: nowrap; }
+.ct td:nth-child(3) { text-align: right; font-weight: 700; white-space: nowrap; }
+.pass { color: var(--ok); } .fail { color: var(--bad); }
+.fine { font-size: 0.8rem; color: var(--sub); }
+
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.pt { min-width: 720px; font-size: 0.84rem; }
+.pt th { font: 700 0.68rem var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--sub); border-top: 0; padding: 12px 14px; }
+.pt td { padding: 12px 14px; }
+.pt td:first-child { font-weight: 700; width: 22%; }
+.pt td:nth-child(2) { width: 20%; color: var(--sub); }
+.note { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 10px; padding: 14px 16px; font-size: 0.88rem; max-width: 80ch; }
+
+.pages { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px; align-items: start; }
+.pg { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.pg p { font-size: 0.85rem; color: var(--sub); }
+.wf { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.wf div { padding: 8px 10px; font-size: 0.72rem; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; align-items: center; border-top: 1px solid rgba(120,135,160,.28); }
+.wf div:first-child { border-top: 0; }
+.wf span { font: 500 0.62rem var(--mono); opacity: .8; text-align: right; }
+.t-navy { background: #0A1528; color: #FFFFFF; } .t-white { background: #FFFFFF; color: #0A1528; }
+.t-band { background: #EEF2F5; color: #0A1528; } .t-teal { background: #038285; color: #FFFFFF; }
+.pg ul { margin: 0; padding-left: 1.1em; font-size: 0.82rem; color: var(--sub); display: flex; flex-direction: column; gap: 4px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.refbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 0.88rem; }
+.spec .s-btn, .spec .s-btn2 { border-radius: var(--p-r); }
+.spec .s-btn2 { background: var(--p-btn-light); color: var(--p-btn-light-text); }
+.spec .s-link { color: var(--p-link); }
+.panel { background: var(--p-panel); border-radius: var(--p-r2); padding: 14px; }
+.panel .lead { background: #FFFFFF; border-radius: var(--p-r2); }
+.bandblock { background: var(--p-band); margin: 4px -22px -22px; padding: 14px 22px 18px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.bignum { font-weight: 800; font-size: 2rem; letter-spacing: -0.03em; line-height: 1; color: var(--p-num); font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <span class="kicker">Anril AI · homepage redesign</span>
+    <h1>What your four references do with colour and sections, applied to Anril AI</h1>
+    <p class="lede">Teal, deep navy and white are fixed. The logo and wordmark are shown exactly as they are in the dashboard and are not changed anywhere on this page. Wording inside the previews is placeholder text.</p>
+    <nav class="toc" aria-label="On this page">
+      <a href="#colour">1. Colour patterns</a><a href="#patterns">2. Section patterns</a><a href="#pages">3. Page structures</a>
+    </nav>
+  </header>
+
+  <section class="sec" id="colour" aria-labelledby="colour-h">
+    <div class="part-head">
+      <span class="kicker">Part 1</span>
+      <h2 id="colour-h">How each reference uses colour, translated to teal, navy and white</h2>
+      <p>For each reference: the colours measured on its homepage and how much of the page they cover, the rule it follows, and that same rule applied to Anril AI's fixed colours. Contrast figures are calculated in this page against the 4.5:1 target for normal text.</p><p class="note">What all four share: a neutral dark covering 27 to 45% of the page, an accent colour covering less than 1%, buttons that are white or black and never the accent, and product screens placed on a soft tinted panel.</p>
+    </div>
+    <div class="fixed">
+      <div class="fx"><i style="background:#038285"></i><div><b>Teal</b><code>#038285</code><span>Fixed. The logo accent.</span></div></div>
+      <div class="fx"><i style="background:#0A1528"></i><div><b>Deep navy</b><code>#0A1528</code><span>Fixed. Text and dark sections.</span></div></div>
+      <div class="fx"><i style="background:#FFFFFF"></i><div><b>White</b><code>#FFFFFF</code><span>Fixed. Light sections.</span></div></div>
+    </div>
+    <div class="logo-strip" id="logostrip"></div>
+    <div id="opts" class="sec" style="gap:44px"></div>
+  </section>
+
+  <section class="sec" id="patterns" aria-labelledby="pat-h">
+    <div class="part-head">
+      <span class="kicker">Part 2</span>
+      <h2 id="pat-h">Section patterns on the four reference sites</h2>
+      <p>Read from full-page desktop captures of each homepage at 1920px wide. Only the homepages were captured, not inner pages.</p>
+    </div>
+    <div class="scroll"><table class="pt"><thead><tr><th>Pattern</th><th>Seen on</th><th>What it is</th></tr></thead><tbody id="pat"></tbody></table></div>
+    <p class="note">Two of the captures show large empty areas: Agiloft's hero panel and a long blank stretch lower down, and Aira's browser frame. Those sections only appear after a scroll animation runs. It is the behaviour your brief rules out, so the patterns can be borrowed without that part.</p>
+  </section>
+
+  <section class="sec" id="pages" aria-labelledby="pg-h">
+    <div class="part-head">
+      <span class="kicker">Part 3</span>
+      <h2 id="pg-h">Three page structures using the existing palette</h2>
+      <p>Each wireframe is the homepage from top to bottom, drawn in teal, navy and white only. Section names describe the job of each block. No copy or customer proof is implied.</p>
+    </div>
+    <div class="pages" id="pgs"></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var LETTERS = "M257 10Q190 10 137.25 -23.0Q84.5 -56.0 54.25 -113.0Q24 -170 24.0 -242.5Q24.0 -315.5 54.25 -372.75Q84.5 -430.0 137.25 -463.0Q190 -496 257 -496Q306 -496 345.5 -477.0Q385 -458 409.75 -424.5Q434.5 -391.0 438 -348V-138Q434.5 -95.0 410.0 -61.5Q385.5 -28.0 345.75 -9.0Q306 10 257 10ZM288 -128Q337 -128 367.0 -160.25Q397.0 -192.5 397 -243Q397 -277 383.5 -302.75Q370.0 -328.5 345.5 -343.25Q321 -358 288.5 -358.0Q256.5 -358.0 232.0 -343.25Q207.5 -328.5 193.25 -302.5Q179.0 -276.5 179 -243Q179.0 -209.5 193.0 -183.5Q207.0 -157.5 231.75 -142.75Q256.5 -128.0 288 -128ZM390.5 0.0V-130.5L413.5 -249.0L390.5 -366.5V-486.0H541V0Z M970 0V-276.5Q970 -315 946.5 -338.25Q923.0 -361.5 886.6224489795918 -361.5Q861.8724489795918 -361.5 842.6862244897959 -351.0Q823.5 -340.5 812.75 -321.25Q802 -302 802.0 -276.5L742.5 -305.5Q742.5 -363.0 767.75 -405.75Q793.0 -448.5 837.4479695431472 -472.25Q881.8959390862944 -496.0 938.1979695431472 -496.0Q991.5 -496.0 1033.25 -470.5Q1075 -445 1099.0 -403.0Q1123 -361 1123 -311V0ZM649 0V-486H802V0Z M1221 0V-486H1374V0ZM1374.0 -266.5 1309.5 -316.5Q1328.5 -402.0 1373.9969325153374 -449.0Q1419.493865030675 -496.0 1498.5 -496.0Q1533.5 -496.0 1560.25 -485.5Q1587 -475 1607 -453L1516 -338Q1506 -349 1491.1944444444443 -354.75Q1476.388888888889 -360.5 1457.0 -360.5Q1419.0 -360.5 1396.5 -337.125786163522Q1374.0 -313.751572327044 1374.0 -266.5Z M1665 0V-486H1818V0Z M1926 0V-726H2079V0Z";
+  var I_DOT = "M1741.5 -553.0Q1706 -553 1682.5 -577.25Q1659.0 -601.5 1659 -637Q1659.0 -672.5 1682.5 -696.75Q1706 -721 1741.5 -721.0Q1778 -721 1801.0 -696.75Q1824.0 -672.5 1824 -637Q1824.0 -601.5 1801.0 -577.25Q1778 -553 1741.5 -553.0Z";
+  var AI = "M2252.5 0 2532.0 -706.0H2674.0L2951.0 0.0H2785.0L2573.5 -586H2630.5L2415.5 0ZM2411.5 -127.5V-255.5H2796.0V-127.5Z M3034.0 0.0V-706.0H3191.5V0Z";
+  var TEAL = '#038285', NAVY = '#0A1528', WHITE = '#FFFFFF';
+
+  // The logo exactly as components/logo.tsx draws it: letters follow the text colour, accent always #038285.
+  function logo(h) {
+    var w = Math.round(h * 4140 / 736), sq = [[0,0,0],[105,0,1],[0,105,0],[105,105,0]].map(function (s) {
+      return '<rect x="' + s[0] + '" y="' + s[1] + '" width="95" height="95" rx="26" fill="' + (s[2] ? TEAL : 'currentColor') + '"/>'; }).join('');
+    return '<svg width="' + w + '" height="' + h + '" viewBox="-948 -726 4140 736" role="img" aria-label="Anril AI logo"><g transform="translate(-948 -726) scale(3.68)">' + sq +
+      '</g><path d="' + LETTERS + '" fill="currentColor"/><path d="' + I_DOT + '" fill="' + TEAL + '"/><path d="' + AI + '" fill="' + TEAL + '"/></svg>';
+  }
+  document.getElementById('logostrip').innerHTML =
+    '<div style="background:#FFFFFF;color:#0A1528">' + logo(30) + '</div><div style="background:#0A1528;color:#FFFFFF">' + logo(30) + '</div>';
+
+  function lum(hex) {
+    var c = [1, 3, 5].map(function (i) { var v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  function row(label, fg, bg) {
+    var r = ratio(fg, bg), ok = r >= 4.5;
+    return '<tr><td>' + label + '</td><td>' + r.toFixed(2) + ':1</td><td class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'Passes' : 'Fails') + '</td></tr>';
+  }
+  function sw(name, hex, note) { return '<div><i style="background:' + hex + '"></i><b>' + name + '</b><code>' + hex + '</code>' + (note ? '<small>' + note + '</small>' : '') + '</div>'; }
+
+  var REFS = [
+    { k: 'A', site: 'Aira', dark: 45, light: 38,
+      seen: [['Near-black', '#080808', '26% of page'], ['Off-white', '#F8F8F8', '17%'], ['Warm blush grey', '#F0E8E8', '9%'], ['Coral chip', '#E0A080', 'under 0.1%']],
+      rule: 'Almost no colour at all. Near-black and off-white carry the page, one warm grey band softens it, and colour appears only in tiny status chips. Buttons are white on dark and black on light, never a brand colour.',
+      map: 'Navy replaces the black. Teal appears only in the logo, a small label and status chips. Buttons are white on navy and navy on white.',
+      band: '#F2ECEA', bandName: 'Warm blush grey', panel: '#F2ECEA', em: '#FFFFFF', rule2: '#FFFFFF', btnL: NAVY, btnLT: WHITE, link: NAVY, num: NAVY, hot: '#3FBCBF', r: '99px', r2: '12px',
+      sw: [['Warm blush grey', '#F2ECEA', 'Band'], ['Light teal', '#3FBCBF', 'Chips on navy']] },
+    { k: 'B', site: 'Paradigm', dark: 31, light: 61,
+      seen: [['Black-navy', '#080810', '14% of page'], ['White', '#F8F8F8', '31%'], ['Cool grey', '#F0F0F0', '16%'], ['Periwinkle panel', '#A0C0E0', 'product panels'], ['Deep blue', '#204080', 'one panel']],
+      rule: 'White and cool grey carry the page. The only colour is a soft blue wash on the panels that sit behind product screens. Buttons are square: white on dark, with underlined text links on light.',
+      map: 'The blue wash becomes a pale teal wash behind product screens, so the brand colour frames the product. Buttons and links stay navy and white.',
+      band: '#F1F3F6', bandName: 'Cool grey', panel: 'linear-gradient(135deg,#ADE9EA,#EFFBFB)', em: '#FFFFFF', rule2: '#3FBCBF', btnL: NAVY, btnLT: WHITE, link: NAVY, num: NAVY, hot: '#3FBCBF', r: '0px', r2: '0px',
+      sw: [['Cool grey', '#F1F3F6', 'Band'], ['Pale teal', '#ADE9EA', 'Panel wash'], ['Palest teal', '#EFFBFB', 'Panel wash']] },
+    { k: 'C', site: 'Primefold', dark: 27, light: 54,
+      seen: [['Off-white', '#F8F8F8', '51% of page'], ['Black panels', '#080808', 'about 5%'], ['Warm brown', '#804000', 'from photographs'], ['Teal glow', '#1F6F66', 'inside dark panels']],
+      rule: 'An off-white page with rounded black panels. Colour comes from soft glows inside the dark panels (teal and copper) and from warm photographs. Buttons are white pills on dark and black pills on light.',
+      map: 'White page, rounded navy panels, and the teal used as a soft glow inside them. A copper glow is the optional second colour.',
+      band: '#F7F7F5', bandName: 'Off-white', panel: 'radial-gradient(120% 140% at 0% 100%,#038285 0%,rgba(3,130,133,0) 55%),radial-gradient(90% 120% at 100% 0%,#9A5A3C 0%,rgba(154,90,60,0) 55%),#0A1528', em: '#FFFFFF', rule2: '#3FBCBF', btnL: NAVY, btnLT: WHITE, link: NAVY, num: NAVY, hot: '#3FBCBF', r: '99px', r2: '16px',
+      sw: [['Off-white', '#F7F7F5', 'Band'], ['Copper', '#9A5A3C', 'Glow only'], ['Teal', '#038285', 'Glow']] },
+    { k: 'D', site: 'Agiloft', dark: 31, light: 63,
+      seen: [['White', '#F8F8F8', '52% of page'], ['Black', '#000000', '16%'], ['Slate navy', '#101820', '9%'], ['Orange', '#E08020', '0.55%'], ['Pale blue panel', '#D0E8F8', '2%'], ['Beige panel', '#F0F0E8', '2%']],
+      rule: 'Black and white with one accent, orange, that covers about half a percent of the page yet is seen everywhere: thin lines, tab underlines, the big figures. Product screens sit on pale blue or beige panels. Buttons are square, white or black.',
+      map: 'Teal takes the job orange does on Agiloft: thin lines, underlines and large figures. Pale blue and beige panels stay as backgrounds for product screens.',
+      band: '#F1EFE8', bandName: 'Beige', panel: '#D8EAF6', em: '#3FBCBF', rule2: '#3FBCBF', btnL: NAVY, btnLT: WHITE, link: '#04585B', num: '#04585B', hot: '#3FBCBF', r: '0px', r2: '0px',
+      sw: [['Beige', '#F1EFE8', 'Band'], ['Pale blue', '#D8EAF6', 'Panel'], ['Light teal', '#3FBCBF', 'Lines on navy'], ['Deep teal', '#04585B', 'Figures, links']] }
+  ];
+
+  document.getElementById('opts').innerHTML = REFS.map(function (d) {
+    var vars = '--p-band:' + d.band + ';--p-panel:' + d.panel + ';--p-em:' + d.em + ';--p-comp:' + d.rule2 + ';--p-btn-dark:#FFFFFF;--p-btn-dark-text:#0A1528;--p-btn-light:' + d.btnL +
+      ';--p-btn-light-text:' + d.btnLT + ';--p-link:' + d.link + ';--p-num:' + d.num + ';--p-hot:' + d.hot + ';--p-r:' + d.r + ';--p-r2:' + d.r2;
+    return '<article class="opt" aria-labelledby="o-' + d.k + '">' +
+      '<div class="opt-head"><div class="tagrow"><span class="letter">' + d.k + '</span><h3 id="o-' + d.k + '">The ' + d.site + ' colour pattern, in Anril AI colours</h3></div></div>' +
+      '<div class="two">' +
+        '<div class="refbox"><span class="kicker">Measured on ' + d.site + '</span><div class="sw">' + d.seen.map(function (s) { return sw(s[0], s[1], s[2]); }).join('') + '</div>' +
+          '<p class="fine">Dark areas ' + d.dark + '% of the page, light areas ' + d.light + '%.</p><p>' + d.rule + '</p></div>' +
+        '<div class="refbox"><span class="kicker">Translated to Anril AI</span><div class="sw">' + sw('Navy', NAVY, 'Fixed') + sw('Teal', TEAL, 'Fixed') + sw('White', WHITE, 'Fixed') + d.sw.map(function (s) { return sw(s[0], s[1], s[2]); }).join('') + '</div><p>' + d.map + '</p></div>' +
+      '</div>' +
+      '<div class="opt-grid">' +
+        '<div class="spec" style="' + vars + '">' +
+          '<div class="s-dark"><div class="s-nav">' + logo(20) + '<span>Login</span></div>' +
+            '<div class="s-hero"><div class="s-rule"></div><div class="hl">Every enquiry answered. <em>Every hot lead called.</em></div>' +
+            '<div class="sub">Placeholder line describing what Anril AI does for the business.</div><span class="s-btn">Book a demo</span></div></div>' +
+          '<div class="s-light"><div>' + logo(18) + '</div>' +
+            '<span class="eyebrow">Lead scoring</span><div class="hl2">Know who to call first</div>' +
+            '<div class="panel"><div class="lead"><div class="lead-top"><span class="lead-name">Example lead</span><span class="hot">HOT</span></div>' +
+              '<div class="lead-meta"><span>Asked about fees · <u>WhatsApp</u></span><span>Score <b>86</b></span></div></div></div>' +
+            '<div class="s-row"><span class="s-btn2">Book a demo</span><span class="s-link">See how it works</span></div>' +
+            '<div class="bandblock"><span class="bignum">00%</span><span class="ex">Placeholder figure on the ' + d.bandName.toLowerCase() + ' band. Example data only.</span></div></div>' +
+        '</div>' +
+        '<div class="side"><table class="ct"><tbody>' +
+            row('Body grey on white', '#475569', WHITE) + row('Muted grey on ' + d.bandName.toLowerCase(), '#566579', d.band) + row('Figure on ' + d.bandName.toLowerCase(), d.num, d.band) +
+            row('Link on white', d.link, WHITE) + row('Highlight on navy', d.em, NAVY) + row('Button label on navy sections', NAVY, WHITE) +
+            row('Button label on light sections', d.btnLT, d.btnL) + row('Hot chip label', NAVY, d.hot) +
+          '</tbody></table></div>' +
+      '</div></article>';
+  }).join('');
+
+  var PAT = [
+    ['Dark hero with product on screen', 'Aira, Agiloft', 'Headline, one line of support and the demo button on a dark background, with a real product view beside or directly under it.'],
+    ['Headline low on a full-width image', 'Paradigm, Primefold', 'A dimmed photograph fills the first screen; the headline sits bottom-left with one button.'],
+    ['Product tabs in the hero', 'Primefold, Agiloft', 'Three or four tabs under the headline switch what the product panel shows.'],
+    ['Customer logo strip under the hero', 'Paradigm, Agiloft', 'A single quiet row of customer logos with a short "trusted by" label.'],
+    ['One-sentence statement band', 'Paradigm, Aira', 'A single large sentence alone on a plain band, with nothing else competing.'],
+    ['Many sources into one', 'Aira, Primefold', 'A list of inputs on the left with thin lines converging on the product in the middle.'],
+    ['Numbered rows that alternate sides', 'Paradigm, Aira', 'Each row has a small number and label, a headline and a link on one side and a product panel on the other. Sides swap each row.'],
+    ['Full-width product screenshot', 'Aira', 'A real screen shown large inside a framed panel, with a headline above it.'],
+    ['Tabbed feature panel', 'Agiloft', 'Numbered tabs (01, 02, 03) switch the text and picture in one shared panel.'],
+    ['Big-number band', 'Aira, Agiloft, Primefold', 'Three or four large figures with a short caption each. Primefold attaches a named customer to every figure.'],
+    ['Customer stories by logo', 'Agiloft, Primefold', 'Clicking a customer logo shows that customer\'s story; Primefold uses quote cards in a carousel.'],
+    ['Cards by role or industry', 'Primefold, Agiloft', 'A sideways-scrolling row of cards, one per job role or industry.'],
+    ['Integrations grid', 'Paradigm, Agiloft', 'A grid of the tools the product connects to, grouped under tabs.'],
+    ['Security and trust band', 'Paradigm, Primefold', 'A dark band with a heading and a short row of ticked assurances.'],
+    ['Price teaser on the homepage', 'Aira', 'A "starting at" price beside a ticked list of what is included.'],
+    ['Questions and answers', 'Paradigm', 'Heading on the left, expandable questions on the right.'],
+    ['Closing demo panel', 'Primefold, Paradigm', 'One dark panel near the end with a short headline and a single demo button.'],
+    ['Footer with oversized wordmark', 'Primefold, Agiloft', 'Link columns, then the brand name set very large across the bottom edge.'],
+    ['Floating demo button', 'Aira', 'A "Book a demo" pill that stays in the bottom-right corner while scrolling.'],
+    ['Thin guide lines framing the content', 'Aira, Paradigm', 'Hairline vertical and horizontal lines mark the content column and separate sections.']
+  ];
+  document.getElementById('pat').innerHTML = PAT.map(function (p) { return '<tr><td>' + p[0] + '</td><td>' + p[1] + '</td><td>' + p[2] + '</td></tr>'; }).join('');
+
+  var PAGES = [
+    { name: '1. Dark and editorial', like: 'Closest to Aira and Agiloft', text: 'Navy carries most of the page. White sections are the pauses between dark ones.',
+      rows: [['navy','Hero: headline, demo button, product view','first screen'],['navy','Customer logo strip',''],['white','One-sentence statement',''],['navy','Numbered rows, alternating sides','3 to 4 rows'],['white','Full-width product screenshot',''],['navy','Big-number band',''],['white','Industries',''],['teal','Demo form',''],['navy','Footer with large wordmark','']],
+      pts: ['Most premium-looking of the three', 'Needs strong product visuals to avoid feeling heavy', 'Furthest from the current light homepage'] },
+    { name: '2. Light with a ruled grid', like: 'Closest to Paradigm', text: 'White carries the page, held together by thin guide lines. Navy appears at the top, once in the middle and at the end.',
+      rows: [['navy','Hero: headline, demo button','first screen'],['band','Customer logo strip',''],['white','Numbered rows, alternating sides','3 to 4 rows'],['band','One-sentence statement',''],['white','Many sources into one',''],['navy','Security and trust band',''],['white','Industries',''],['band','Questions and answers',''],['navy','Demo form and footer','']],
+      pts: ['Calmest and easiest to read', 'Closest to the dashboard and login page', 'Least dramatic first impression'] },
+    { name: '3. Product first', like: 'Closest to Primefold', text: 'The hero is the product itself, with tabs for each channel. Sections are rounded panels on a white page.',
+      rows: [['navy','Hero: headline, demo button, channel tabs','first screen'],['white','Many sources into one',''],['white','Tabbed feature panel',''],['band','Cards by industry','scrolls sideways'],['white','Customer stories with a figure each',''],['white','Security and trust',''],['navy','Closing demo panel',''],['white','Demo form',''],['white','Footer','']],
+      pts: ['Shows the most product in the least scrolling', 'Depends on tabs, which need care on phones', 'Customer stories section needs real customers'] }
+  ];
+  document.getElementById('pgs').innerHTML = PAGES.map(function (p) {
+    return '<article class="pg"><div><h3>' + p.name + '</h3><p>' + p.like + '</p></div><p>' + p.text + '</p><div class="wf">' +
+      p.rows.map(function (r) { return '<div class="t-' + r[0] + '">' + r[1] + (r[2] ? '<span>' + r[2] + '</span>' : '') + '</div>'; }).join('') +
+      '</div><ul>' + p.pts.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul></article>';
+  }).join('');
+})();
+</script>
+</body></html>

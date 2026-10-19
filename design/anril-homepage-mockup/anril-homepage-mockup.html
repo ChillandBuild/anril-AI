@@ -1,0 +1,396 @@
+<title>Anril AI Homepage Mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap">
+<style>
+/* Layout: one dark moment (a centred serif hero on navy with travelling line markers), then a white
+   page framed by hairlines. Square corners throughout. Teal marks the product and its data; copper
+   marks structure: rules, numbers, active states and anything "hot". Motion loops quietly and every
+   animated element rests in its finished state. Single light look by design (a page mockup). */
+:root {
+  --navy: #0A1528; --teal: #038285; --teal-l: #3FBCBF; --teal-d: #04585B; --copper: #9A5A3C; --copper-l: #D9966B;
+  --wash-1: #ADE9EA; --wash-2: #EFFBFB; --blue: #D8EAF6; --beige: #F1EFE8; --grey: #F1F3F6;
+  --white: #FFFFFF; --body: #475569; --muted: #566579; --line: #E1E6EC; --soft: #D5DCE6;
+  --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+body { background: var(--white); color: var(--navy); font-family: var(--sans); font-size: 16px; line-height: 1.55; }
+p { margin: 0; } h1, h2, h3 { margin: 0; text-wrap: balance; font-family: var(--serif); font-weight: 300; letter-spacing: -0.02em; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--copper-l); outline-offset: 2px; }
+.page { max-width: 1240px; margin: 0 auto; padding-inline: 20px; }
+.frame { border-inline: 1px solid var(--line); }
+@media (max-width: 700px) { .frame { border-inline: 0; } }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; font: 700 0.95rem var(--sans); text-decoration: none; border: 0; border-radius: 0; cursor: pointer; }
+.btn.dark { background: var(--navy); color: var(--white); } .btn.light { background: var(--white); color: var(--navy); }
+.kicker { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.eg { font: 500 0.68rem var(--mono); color: var(--muted); }
+.logo { display: block; height: 26px; width: auto; }
+
+/* chooser strip (mockup control, not part of the page) */
+.chooser { background: var(--grey); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; font: 500 0.74rem var(--mono); color: var(--muted); }
+.chooser button { font: 700 0.76rem var(--mono); min-width: 40px; min-height: 36px; background: var(--white); color: var(--navy); border: 1px solid #B6C2CF; border-radius: 0; cursor: pointer; }
+.chooser button[aria-pressed="true"] { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+/* hero */
+.hero { background: var(--navy); color: var(--white); position: relative; overflow: hidden; }
+.hero .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; flex-wrap: wrap; border-bottom: 1px solid rgba(255,255,255,.16); position: relative; z-index: 2; }
+.nav-links { display: flex; gap: 30px; font-weight: 600; font-size: 0.93rem; }
+.nav-links a, .nav .login { text-decoration: none; padding-block: 12px; }
+.nav-right { display: flex; align-items: center; gap: 20px; } .nav .login { font-weight: 700; font-size: 0.93rem; }
+@media (max-width: 860px) { .nav-links { display: none; } }
+.lines { position: absolute; left: 0; right: 0; bottom: 250px; width: 100%; height: 340px; pointer-events: none; }
+.hero-copy { position: relative; z-index: 1; text-align: center; padding: clamp(40px, 7vw, 96px) 20px clamp(28px, 4vw, 48px); display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.hero h1 { font-size: clamp(2.5rem, 6.6vw, 5.5rem); line-height: 1.03; max-width: 14.5em; min-height: 2.06em; }
+.hero .sub { color: var(--soft); font-size: 1.1rem; max-width: 50ch; }
+.tabs { position: relative; z-index: 1; display: flex; justify-content: center; gap: clamp(8px, 4vw, 56px); flex-wrap: wrap; padding-inline: 16px; }
+.tabs button { background: none; border: 0; border-radius: 0; color: #B9C3D1; font: 600 0.95rem var(--sans); padding: 14px 6px; min-height: 48px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--white); border-bottom-color: var(--copper-l); }
+.stage { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; background: var(--blue); padding: clamp(20px, 4vw, 48px); display: flex; justify-content: center; }
+.stage .screen { background: var(--white); color: var(--navy); padding: 20px; width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 10px; min-height: 240px; box-shadow: 0 20px 40px -20px rgba(10,21,40,.35); }
+.screen[hidden] { display: none; }
+.msg { max-width: 84%; padding: 10px 13px; font-size: 0.9rem; }
+.msg.in { background: var(--grey); align-self: flex-start; } .msg.out { background: var(--navy); color: var(--white); align-self: flex-end; }
+.msg small { display: block; font: 500 0.64rem var(--mono); opacity: .75; margin-top: 4px; }
+.result { margin-top: auto; border-top: 1px solid var(--line); padding-top: 12px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 0.86rem; }
+.result b, .sc { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+.chip { font: 700 0.64rem var(--mono); letter-spacing: 0.06em; padding: 4px 9px; background: var(--copper); color: var(--white); }
+.chip.warm { background: var(--wash-1); color: var(--navy); } .chip.cold { background: var(--grey); color: var(--muted); }
+
+.slot { border: 1.5px dashed #9AA8B8; color: var(--muted); font: 500 0.78rem var(--mono); padding: 14px 16px; text-align: center; }
+.band { padding: clamp(32px, 6vw, 80px) clamp(20px, 4vw, 56px); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 22px; }
+.sec-h { font-size: clamp(1.9rem, 3.8vw, 3.1rem); line-height: 1.08; max-width: 20em; }
+.lede { color: var(--body); max-width: 54ch; font-size: 1.05rem; }
+.num { color: var(--copper); display: flex; align-items: center; gap: 12px; }
+.num::after { content: ""; flex: 0 0 40px; height: 2px; background: var(--copper); }
+
+/* hours ruler */
+.ruler-wrap { background: var(--beige); padding: clamp(20px, 3vw, 36px); display: flex; flex-direction: column; gap: 14px; }
+.ruler { position: relative; height: 120px; border-bottom: 1px solid var(--navy);
+  background: repeating-linear-gradient(90deg, rgba(10,21,40,.45) 0 1px, transparent 1px calc(100% / 24)) bottom / 100% 18px no-repeat; }
+.office { position: absolute; top: 0; bottom: 0; left: calc(10 / 24 * 100%); width: calc(9 / 24 * 100%); background: rgba(255,255,255,.7); }
+.office span { position: absolute; top: 8px; left: 8px; font: 500 0.66rem var(--mono); color: var(--muted); }
+.mark { position: absolute; bottom: 26px; width: 10px; height: 10px; margin-left: -5px; background: var(--teal); }
+.mark.late { background: var(--copper); }
+.sweep { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--navy); left: 100%; animation: sweep 16s linear infinite; }
+@keyframes sweep { from { left: 0; } to { left: 100%; } }
+.hours { display: flex; justify-content: space-between; font: 500 0.7rem var(--mono); color: var(--muted); }
+.legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.86rem; color: var(--body); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--teal); } .legend i.late { background: var(--copper); }
+
+/* numbered rows */
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--line); }
+.row > div { min-width: 0; }
+.row .txt { padding: clamp(28px, 5vw, 72px) clamp(20px, 4vw, 56px); display: flex; flex-direction: column; gap: 16px; justify-content: center; }
+.row .vis { padding: clamp(24px, 4vw, 56px); display: flex; align-items: center; justify-content: center; }
+.row.flip .txt { order: 2; }
+@media (max-width: 860px) { .row { grid-template-columns: minmax(0, 1fr); } .row.flip .txt { order: 0; } }
+.row h2 { font-size: clamp(1.8rem, 3.3vw, 2.7rem); line-height: 1.1; }
+.row p.b { color: var(--body); max-width: 44ch; }
+.tlink { font-weight: 700; color: var(--teal-d); text-decoration: underline; text-underline-offset: 4px; align-self: flex-start; padding-block: 12px; }
+.w-teal { background: linear-gradient(135deg, var(--wash-1), var(--wash-2)); } .w-blue { background: var(--blue); } .w-beige { background: var(--beige); }
+.card { background: var(--white); padding: 18px; width: 100%; max-width: 430px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 34px -18px rgba(10,21,40,.3); }
+.card h3 { font: 700 0.82rem var(--sans); letter-spacing: 0; color: var(--muted); }
+.li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.li b { font-weight: 700; } .li .meta { display: flex; align-items: center; gap: 10px; }
+.who { display: flex; align-items: center; gap: 10px; }
+.av { width: 34px; height: 34px; background: var(--navy); color: var(--white); font: 700 0.72rem var(--mono); display: flex; align-items: center; justify-content: center; flex: none; }
+/* motion: chat bubbles arrive in turn */
+.chatloop .msg { animation: arrive 9s ease-out infinite; } .chatloop .msg:nth-child(3) { animation-delay: 1.4s; } .chatloop .msg:nth-child(4) { animation-delay: 2.8s; }
+@keyframes arrive { 0% { opacity: 0; transform: translateY(8px); } 8%, 100% { opacity: 1; transform: none; } }
+/* motion: score builds from signals */
+.sig { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; animation: sig 8s ease-out infinite; }
+.sig::before { content: ""; width: 8px; height: 8px; background: var(--teal); flex: none; }
+.sig:nth-of-type(2) { animation-delay: 1.2s; } .sig:nth-of-type(3) { animation-delay: 2.4s; }
+@keyframes sig { 0% { opacity: .25; } 10%, 100% { opacity: 1; } }
+.meter { height: 10px; background: var(--grey); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 86%; background: linear-gradient(90deg, var(--teal), var(--copper)); animation: fill 8s ease-out infinite; transform-origin: left; }
+@keyframes fill { 0% { transform: scaleX(.05); } 45%, 100% { transform: scaleX(1); } }
+.scoreline { display: flex; justify-content: space-between; align-items: baseline; }
+.scoreline .n { font: 300 3rem var(--serif); line-height: 1; color: var(--navy); font-variant-numeric: tabular-nums; }
+/* motion: call waveform */
+.wave { display: flex; align-items: center; gap: 3px; height: 64px; }
+.wave i { flex: 1 1 0; background: var(--teal); height: var(--h); animation: wave 1.6s ease-in-out infinite; animation-delay: var(--d); transform-origin: center; }
+.wave i.me { background: var(--copper); }
+@keyframes wave { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1); } }
+
+/* flow */
+.flow { background: linear-gradient(135deg, var(--wash-2), var(--wash-1)); padding: clamp(16px, 3vw, 36px); }
+.flow svg { width: 100%; height: auto; display: block; }
+
+.figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.figs > div { padding: clamp(24px, 4vw, 48px); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.figs > div:first-child { border-left: 0; }
+@media (max-width: 760px) { .figs { grid-template-columns: minmax(0, 1fr); } .figs > div { border-left: 0; border-top: 1px solid var(--line); } .figs > div:first-child { border-top: 0; } }
+.big { font: 300 clamp(3.4rem, 8vw, 5.6rem) var(--serif); line-height: 1; letter-spacing: -0.03em; color: var(--teal); font-variant-numeric: tabular-nums; }
+.figs > div:nth-child(2) .big { color: var(--copper); }
+.figs p { color: var(--body); font-size: 0.92rem; }
+
+.ind ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-top: 1px solid var(--line); }
+.ind li { padding: 20px 4px; border-bottom: 2px solid var(--line); font: 400 1.35rem var(--serif); }
+.ind li:first-child { border-bottom-color: var(--copper); }
+
+.close { background: var(--beige); padding: clamp(32px, 6vw, 80px) clamp(20px, 4vw, 56px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+@media (max-width: 900px) { .close { grid-template-columns: minmax(0, 1fr); } }
+.close .t { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.close h2 { font-size: clamp(2.1rem, 4.4vw, 3.6rem); line-height: 1.05; }
+.close p { color: var(--body); max-width: 40ch; }
+.rule { width: 56px; height: 2px; background: var(--copper); }
+form { background: var(--white); padding: 24px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+label { font-weight: 700; font-size: 0.84rem; display: flex; flex-direction: column; gap: 6px; }
+input, select { font: 500 1rem var(--sans); color: var(--navy); background: var(--white); border: 1px solid #94A3B8; border-radius: 0; min-height: 48px; padding: 0 12px; width: 100%; box-sizing: border-box; }
+form .btn { width: 100%; }
+#form-note { font-size: 0.84rem; color: var(--teal-d); font-weight: 700; }
+footer { padding: 28px 24px 44px; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 0.88rem; }
+footer .logo { color: var(--navy); }
+footer nav { display: flex; gap: 22px; flex-wrap: wrap; } footer a { padding-block: 12px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+.stage.photo { padding: 0; background: none; max-width: 1100px; }
+.stage.photo picture { display: block; width: 100%; }
+.stage.photo img { display: block; width: 100%; height: auto; }
+.hero .lines { bottom: min(590px, 54vw); }
+.photo-note { padding: 10px 24px 0; text-align: center; }
+/* fixed header: clear over the photo, then a frosted bar once the page scrolls */
+.hdr { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 50; color: var(--white); padding: 0; transition: padding .4s ease, color .4s ease; }
+.hdr-in { max-width: 1240px; margin: 0 auto; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border: 1px solid transparent;
+  transition: background-color .4s ease, border-color .4s ease, box-shadow .4s ease, padding .4s ease; }
+.hdr .nav-links a, .hdr .login { text-decoration: none; }
+.hdr .login { display: inline-flex; align-items: center; min-height: 46px; padding: 0 18px; font-weight: 700; font-size: 0.93rem; background: rgba(255,255,255,.16); border: 1px solid transparent; transition: background-color .4s ease, border-color .4s ease; }
+.hdr .btn { background: var(--white); color: var(--navy); transition: background-color .4s ease, color .4s ease; }
+.hdr.scrolled { color: var(--navy); padding: 10px 20px 0; }
+.hdr.scrolled .hdr-in { background: rgba(255,255,255,.8); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); border-color: rgba(10,21,40,.1); box-shadow: 0 12px 30px -18px rgba(10,21,40,.45); padding: 10px 18px; }
+.hdr.scrolled .login { background: transparent; border-color: rgba(10,21,40,.25); }
+.hdr.scrolled .btn { background: var(--navy); color: var(--white); }
+/* hero: the photo is the whole section; copy sits on its dark left side */
+.hero2 { position: relative; overflow: hidden; background: var(--navy); color: var(--white); min-height: clamp(580px, 90vh, 880px); display: flex; align-items: center; }
+.hero2 picture img { position: absolute; left: 0; top: 0; width: 136%; height: 136%; max-width: none; object-fit: cover; object-position: left 12%; }
+.hero2::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(10,21,40,.95) 0%, rgba(10,21,40,.9) 38%, rgba(10,21,40,.3) 58%, rgba(10,21,40,.05) 100%), linear-gradient(180deg, rgba(10,21,40,.6) 0%, rgba(10,21,40,0) 24%); }
+.hero2-copy { position: relative; z-index: 1; width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 130px 24px 70px; display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
+.hero2 h1 { font-size: clamp(2.3rem, 4.4vw, 4rem); line-height: 1.06; max-width: 9.6em; }
+.hero2 .sub { color: #E2E8F0; font-size: 1.08rem; max-width: 40ch; }
+@media (max-width: 480px) { .hdr .login { display: none; } }
+@media (max-width: 700px) {
+  .hero2 { align-items: flex-end; min-height: 700px; }
+  .hero2 picture img { width: 100%; height: 100%; object-position: center top; }
+  .hero2::after { background: linear-gradient(0deg, rgba(10,21,40,.96) 0%, rgba(10,21,40,.86) 42%, rgba(10,21,40,.2) 75%, rgba(10,21,40,.55) 100%); }
+  .hero2-copy { padding: 110px 20px 44px; }
+}
+/* mockup control, floats so it does not sit under the fixed header */
+.chooser { position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: var(--white); border: 1px solid #B6C2CF; box-shadow: 0 10px 24px -12px rgba(10,21,40,.4); padding: 6px 10px; gap: 6px; justify-content: flex-start; }
+@media (prefers-reduced-motion: reduce) { .hdr, .hdr * { transition: none !important; } }
+/* hero rebuilt to the reference: the whole photo at its own 16:9 shape, no zoom, sans headline, pill buttons */
+.hdr-in { max-width: none; padding: 20px max(20px, 8.55vw); }
+.hdr-r { display: flex; align-items: center; gap: clamp(20px, 3.6vw, 62px); }
+.hdr .nav-links { gap: clamp(16px, 1.9vw, 32px); font-weight: 500; font-size: clamp(0.95rem, 1.08vw, 1.14rem); }
+.hdr .nav-links a { display: inline-flex; align-items: center; gap: 10px; }
+.hdr .nav-right { gap: 16px; }
+.hdr .login, .hdr .btn { border-radius: 99px; min-height: 48px; padding: 0 20px; font-weight: 500; font-size: clamp(0.95rem, 1.08vw, 1.14rem); }
+.hdr .login { background: rgba(38,42,46,.78); }
+.hdr.scrolled { padding: 10px calc(max(20px, 8.55vw) - 24px) 0; }
+.hdr.scrolled .hdr-in { padding: 12px 24px; border-radius: 16px; background: rgba(240,240,240,.82); }
+.hx3 { position: relative; overflow: hidden; background: #1A120C; color: var(--white); aspect-ratio: 1672 / 941; }
+.hx3 picture img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; }
+.hx3::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(24,12,6,.6) 0%, rgba(24,12,6,.46) 34%, rgba(24,12,6,.1) 60%, rgba(24,12,6,0) 100%), linear-gradient(180deg, rgba(24,12,6,.42) 0%, rgba(24,12,6,0) 20%); }
+.hx3-copy { position: absolute; z-index: 1; left: max(20px, 8.55vw); top: 25.6%; width: min(46vw, 800px); display: flex; flex-direction: column; align-items: flex-start; gap: clamp(14px, 1.7vw, 30px); }
+.hx3 h1 { font-family: var(--sans); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(1.9rem, 3.86vw, 4.6rem); line-height: 1.12; text-wrap: nowrap; }
+.hx3 .sub { color: var(--white); font-size: clamp(0.95rem, 1.3vw, 1.5rem); line-height: 1.28; max-width: 30em; }
+.hx3-cta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: clamp(2px, .5vw, 10px); }
+.pill { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 19px; border-radius: 99px; font: 500 clamp(0.95rem, 1.12vw, 1.2rem) var(--sans); text-decoration: none; }
+.p-white { background: var(--white); color: #111418; } .p-grey { background: rgba(86,84,82,.86); color: var(--white); }
+@media (max-width: 900px) { .hdr .nav-links { display: none; } }
+@media (max-width: 700px) {
+  .hx3 { aspect-ratio: auto; min-height: 700px; }
+  .hx3 picture img { object-position: center top; }
+  .hx3::after { background: linear-gradient(0deg, rgba(24,12,6,.95) 0%, rgba(24,12,6,.82) 42%, rgba(24,12,6,.15) 75%, rgba(24,12,6,.5) 100%); }
+  .hx3-copy { left: 20px; right: 20px; top: auto; bottom: 44px; width: auto; }
+  .hx3 h1 { text-wrap: balance; font-size: 2.1rem; } .hx3 h1 br { display: none; }
+  .hx3 .sub { font-size: 1rem; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="anril-logo" viewBox="-948 -726 4140 736">
+    <g transform="translate(-948 -726) scale(3.68)">
+      <rect x="0" y="0" width="95" height="95" rx="26" fill="currentColor"/><rect x="105" y="0" width="95" height="95" rx="26" fill="#038285"/>
+      <rect x="0" y="105" width="95" height="95" rx="26" fill="currentColor"/><rect x="105" y="105" width="95" height="95" rx="26" fill="currentColor"/>
+    </g>
+    <path fill="currentColor" d="M257 10Q190 10 137.25 -23.0Q84.5 -56.0 54.25 -113.0Q24 -170 24.0 -242.5Q24.0 -315.5 54.25 -372.75Q84.5 -430.0 137.25 -463.0Q190 -496 257 -496Q306 -496 345.5 -477.0Q385 -458 409.75 -424.5Q434.5 -391.0 438 -348V-138Q434.5 -95.0 410.0 -61.5Q385.5 -28.0 345.75 -9.0Q306 10 257 10ZM288 -128Q337 -128 367.0 -160.25Q397.0 -192.5 397 -243Q397 -277 383.5 -302.75Q370.0 -328.5 345.5 -343.25Q321 -358 288.5 -358.0Q256.5 -358.0 232.0 -343.25Q207.5 -328.5 193.25 -302.5Q179.0 -276.5 179 -243Q179.0 -209.5 193.0 -183.5Q207.0 -157.5 231.75 -142.75Q256.5 -128.0 288 -128ZM390.5 0.0V-130.5L413.5 -249.0L390.5 -366.5V-486.0H541V0Z M970 0V-276.5Q970 -315 946.5 -338.25Q923.0 -361.5 886.6224489795918 -361.5Q861.8724489795918 -361.5 842.6862244897959 -351.0Q823.5 -340.5 812.75 -321.25Q802 -302 802.0 -276.5L742.5 -305.5Q742.5 -363.0 767.75 -405.75Q793.0 -448.5 837.4479695431472 -472.25Q881.8959390862944 -496.0 938.1979695431472 -496.0Q991.5 -496.0 1033.25 -470.5Q1075 -445 1099.0 -403.0Q1123 -361 1123 -311V0ZM649 0V-486H802V0Z M1221 0V-486H1374V0ZM1374.0 -266.5 1309.5 -316.5Q1328.5 -402.0 1373.9969325153374 -449.0Q1419.493865030675 -496.0 1498.5 -496.0Q1533.5 -496.0 1560.25 -485.5Q1587 -475 1607 -453L1516 -338Q1506 -349 1491.1944444444443 -354.75Q1476.388888888889 -360.5 1457.0 -360.5Q1419.0 -360.5 1396.5 -337.125786163522Q1374.0 -313.751572327044 1374.0 -266.5Z M1665 0V-486H1818V0Z M1926 0V-726H2079V0Z"/>
+    <path fill="#038285" d="M1741.5 -553.0Q1706 -553 1682.5 -577.25Q1659.0 -601.5 1659 -637Q1659.0 -672.5 1682.5 -696.75Q1706 -721 1741.5 -721.0Q1778 -721 1801.0 -696.75Q1824.0 -672.5 1824 -637Q1824.0 -601.5 1801.0 -577.25Q1778 -553 1741.5 -553.0Z"/>
+    <path fill="#038285" d="M2252.5 0 2532.0 -706.0H2674.0L2951.0 0.0H2785.0L2573.5 -586H2630.5L2415.5 0ZM2411.5 -127.5V-255.5H2796.0V-127.5Z M3034.0 0.0V-706.0H3191.5V0Z"/>
+  </symbol>
+</svg>
+
+<header class="hdr" id="hdr">
+  <div class="hdr-in">
+    <a href="#top" aria-label="Anril AI home"><svg class="logo" viewBox="0 0 4140 736" role="img" aria-label="Anril AI"><use href="#anril-logo"/></svg></a>
+    <div class="hdr-r">
+      <nav class="nav-links" aria-label="Main"><a href="#how">Products <svg class="chev" viewBox="0 0 12 8" width="12" height="8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="#hours">Plans</a><a href="#channels">Security</a><a href="#industries">Resources <svg class="chev" viewBox="0 0 12 8" width="12" height="8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="#demo">Company <svg class="chev" viewBox="0 0 12 8" width="12" height="8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></nav>
+      <div class="nav-right"><a class="login" href="#top">Sign in</a><a class="btn" href="#demo">Book a call</a></div>
+    </div>
+  </div>
+</header>
+
+<section class="hx3" id="top" aria-labelledby="h1">
+  <picture>
+    <source media="(max-width: 700px)" srcset="hero-mobile.jpg">
+    <img src="hero-desktop.jpg" width="1672" height="941" alt="A laptop on a sunlit desk showing the Anril AI dashboard, with a hand on the keyboard">
+  </picture>
+  <div class="hx3-copy">
+    <h1 id="h1">Answer every enquiry.<br>Call the right lead first.</h1>
+    <p class="sub">Anril AI answers every enquiry on WhatsApp, web chat and phone, shows you which leads are ready to buy, and gets your telecallers calling them first.</p>
+    <div class="hx3-cta"><a class="pill p-white" href="#demo">Book a call</a><a class="pill p-grey" href="#how">See how it works</a></div>
+  </div>
+</section>
+
+<div class="page"><div class="frame">
+  <main>
+    <div class="band" style="padding-block:28px"><div class="slot">Slot: customer logos. Empty until you provide real customers.</div></div>
+
+    <section class="band" id="hours" aria-labelledby="hr-h">
+      <span class="kicker num">After hours</span>
+      <h2 class="sec-h" id="hr-h">Enquiries do not keep office hours</h2>
+      <p class="lede">People message when it suits them. Anril AI answers each enquiry when it arrives, so the ones that come in at night are not waiting for you in the morning.</p>
+      <div class="ruler-wrap">
+        <div class="ruler" id="ruler" role="img" aria-label="Example day: enquiries arriving across 24 hours, many outside office hours"><div class="office"><span>Office hours</span></div><div class="sweep"></div></div>
+        <div class="hours"><span>12 am</span><span>6 am</span><span>12 pm</span><span>6 pm</span><span>12 am</span></div>
+        <div class="legend"><span><i></i>Enquiry during office hours</span><span><i class="late"></i>Enquiry after hours</span><span class="eg">Example day, not real data</span></div>
+      </div>
+    </section>
+
+    <div id="how">
+      <section class="row" aria-labelledby="r1">
+        <div class="txt"><span class="kicker num">01 Answer</span><h2 id="r1">Every enquiry gets a reply</h2><p class="b">Anril AI answers on WhatsApp, web chat and phone, using what you have told it about your business.</p><a class="tlink" href="#demo">See it in a demo</a></div>
+        <div class="vis w-teal"><div class="card chatloop"><h3>WhatsApp</h3><div class="msg in">Is the showroom open on Sunday?<small>Enquiry</small></div><div class="msg out">Yes, 10 am to 7 pm. Would you like to book a test drive?<small>Anril AI</small></div><div class="msg in">Yes please, around 4.<small>Enquiry</small></div><span class="eg">Example</span></div></div>
+      </section>
+      <section class="row flip" aria-labelledby="r2">
+        <div class="txt"><span class="kicker num">02 Score</span><h2 id="r2">Know who to call first</h2><p class="b">Each lead gets a score built from what they asked and how they answered, so your team starts with the people most likely to buy.</p><a class="tlink" href="#demo">See it in a demo</a></div>
+        <div class="vis w-blue"><div class="card"><h3>Example lead</h3>
+          <div class="sig">Asked about fees</div><div class="sig">Wants a weekend batch</div><div class="sig">Asked to visit this week</div>
+          <div class="scoreline"><span class="n">86</span><span class="chip">HOT</span></div><div class="meter"><i></i></div><span class="eg">Example data</span></div></div>
+      </section>
+      <section class="row" aria-labelledby="r3">
+        <div class="txt"><span class="kicker num">03 Route</span><h2 id="r3">Hot leads go straight to a telecaller</h2><p class="b">The telecaller sees what the lead asked and what was said, before they pick up the phone.</p><a class="tlink" href="#demo">See it in a demo</a></div>
+        <div class="vis w-beige"><div class="card"><h3>Assigned just now</h3>
+          <div class="li" style="border-top:0"><div class="who"><span class="av">TC</span><div><b>Telecaller</b><div class="eg">Next call</div></div></div><span class="chip">HOT</span></div>
+          <div class="li"><span>Asked about</span><b>Course fees</b></div><div class="li"><span>Channel</span><b>WhatsApp</b></div><span class="eg">Example data</span></div></div>
+      </section>
+      <section class="row flip" aria-labelledby="r4">
+        <div class="txt"><span class="kicker num">04 Measure</span><h2 id="r4">Know which calls were good</h2><p class="b">Every telecaller call is scored, so you can see who is closing and who needs help.</p><a class="tlink" href="#demo">See it in a demo</a></div>
+        <div class="vis w-teal"><div class="card"><h3>Call with telecaller · 4 min 12 s</h3><div class="wave" id="wave" aria-hidden="true"></div>
+          <div class="li"><span><span style="color:var(--teal-d);font-weight:700">Lead</span> and <span style="color:var(--copper);font-weight:700">telecaller</span></span><span class="sc">8 / 10</span></div><span class="eg">Example call</span></div></div>
+      </section>
+    </div>
+
+    <section class="band" id="channels" aria-labelledby="ch">
+      <span class="kicker num">Channels</span>
+      <h2 class="sec-h" id="ch">Three channels, one list of leads</h2>
+      <p class="lede">WhatsApp, web chat and phone enquiries arrive in the same place and leave sorted, with the hot ones at the top.</p>
+      <div class="flow">
+        <svg id="flow-svg" viewBox="0 0 900 260" role="img" aria-label="WhatsApp, web chat and phone lead into Anril AI, which sorts leads into hot, warm and cold">
+          <g fill="none" stroke="#0A1528" stroke-opacity=".35" stroke-width="1.3">
+            <path id="f1" d="M170 50 C290 50 290 130 400 130"/><path id="f2" d="M170 130 H400"/><path id="f3" d="M170 210 C290 210 290 130 400 130"/>
+            <path id="o1" d="M500 130 C610 130 610 50 720 50"/><path id="o2" d="M500 130 H720"/><path id="o3" d="M500 130 C610 130 610 210 720 210"/>
+          </g>
+          <g font-family="Manrope, system-ui, sans-serif" font-weight="700" font-size="16">
+            <rect x="10" y="26" width="160" height="48" fill="#FFFFFF"/><text x="90" y="56" text-anchor="middle" fill="#0A1528">WhatsApp</text>
+            <rect x="10" y="106" width="160" height="48" fill="#FFFFFF"/><text x="90" y="136" text-anchor="middle" fill="#0A1528">Web chat</text>
+            <rect x="10" y="186" width="160" height="48" fill="#FFFFFF"/><text x="90" y="216" text-anchor="middle" fill="#0A1528">Phone</text>
+            <rect x="400" y="80" width="100" height="100" fill="#0A1528"/>
+            <g transform="translate(422 102) scale(0.28)"><rect x="0" y="0" width="95" height="95" rx="26" fill="#FFFFFF"/><rect x="105" y="0" width="95" height="95" rx="26" fill="#038285"/><rect x="0" y="105" width="95" height="95" rx="26" fill="#FFFFFF"/><rect x="105" y="105" width="95" height="95" rx="26" fill="#FFFFFF"/></g>
+            <rect x="720" y="26" width="170" height="48" fill="#9A5A3C"/><text x="805" y="56" text-anchor="middle" fill="#FFFFFF">Hot · call now</text>
+            <rect x="720" y="106" width="170" height="48" fill="#FFFFFF"/><text x="805" y="136" text-anchor="middle" fill="#0A1528">Warm · follow up</text>
+            <rect x="720" y="186" width="170" height="48" fill="#FFFFFF"/><text x="805" y="216" text-anchor="middle" fill="#566579">Cold · keep in touch</text>
+          </g>
+          <rect x="-5" y="-5" width="10" height="10" fill="#038285"><animateMotion dur="4s" begin="-1s" repeatCount="indefinite"><mpath href="#f1"/></animateMotion></rect>
+          <rect x="-5" y="-5" width="10" height="10" fill="#038285"><animateMotion dur="5s" begin="-3s" repeatCount="indefinite"><mpath href="#f2"/></animateMotion></rect>
+          <rect x="-5" y="-5" width="10" height="10" fill="#038285"><animateMotion dur="4.5s" begin="-2s" repeatCount="indefinite"><mpath href="#f3"/></animateMotion></rect>
+          <rect x="-5" y="-5" width="10" height="10" fill="#9A5A3C"><animateMotion dur="4s" begin="-2.5s" repeatCount="indefinite"><mpath href="#o1"/></animateMotion></rect>
+          <rect x="-5" y="-5" width="10" height="10" fill="#038285"><animateMotion dur="5s" begin="-1.5s" repeatCount="indefinite"><mpath href="#o2"/></animateMotion></rect>
+          <rect x="-5" y="-5" width="10" height="10" fill="#566579"><animateMotion dur="6s" begin="-4s" repeatCount="indefinite"><mpath href="#o3"/></animateMotion></rect>
+        </svg>
+      </div>
+    </section>
+
+    <section class="figs" aria-label="Results">
+      <div><span class="big">00%</span><p>Slot for a real result, for example enquiries answered.</p></div>
+      <div><span class="big">00</span><p>Slot for a real result, for example days to go live.</p></div>
+      <div><span class="big">00×</span><p>Slot for a real result from a named customer.</p></div>
+    </section>
+
+    <section class="band ind" id="industries" aria-labelledby="ind-h">
+      <span class="kicker num">Industries</span>
+      <h2 class="sec-h" id="ind-h">Built for businesses that run on enquiries</h2>
+      <ul><li>Education</li><li>Real estate</li><li>Healthcare</li><li>Automotive</li><li>Manufacturing</li><li>Financial services</li></ul>
+    </section>
+
+    <section class="close" id="demo" aria-labelledby="cl">
+      <div class="t"><div class="rule"></div><h2 id="cl">See it working on your own enquiries</h2><p>Tell us a little about your business and we will set up a demo.</p></div>
+      <form id="demo-form" novalidate>
+        <label for="f-name">Your name<input id="f-name" name="name" autocomplete="name"></label>
+        <label for="f-phone">Phone number<input id="f-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel"></label>
+        <label for="f-co">Business name<input id="f-co" name="company" autocomplete="organization"></label>
+        <label for="f-ind">Industry<select id="f-ind" name="industry"><option value="">Choose one</option><option>Education</option><option>Real estate</option><option>Healthcare</option><option>Automotive</option><option>Manufacturing</option><option>Financial services</option><option>Other</option></select></label>
+        <button class="btn dark" type="submit">Book a demo</button>
+        <p id="form-note" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+  <footer>
+    <svg class="logo" style="height:22px" viewBox="0 0 4140 736" role="img" aria-label="Anril AI"><use href="#anril-logo"/></svg>
+    <nav aria-label="Legal"><a href="#top">Privacy policy</a><a href="#top">Terms and conditions</a><a href="#top">Data deletion</a><a href="#top">Contact</a></nav>
+  </footer>
+</div></div>
+
+<script>
+(function () {
+  var HEADLINES = [
+    'Your next customer has already messaged you.',
+    'Every enquiry answered. Every hot lead called.',
+    'Stop losing the leads you already paid for.',
+    'Answer every enquiry. Call the right lead first.',
+    'The enquiry came in at 9 pm. So did the reply.',
+    'From first message to booked call, without the chase.'
+  ];
+  var h1 = document.getElementById('h1'), hb = Array.prototype.slice.call(document.querySelectorAll('.chooser button'));
+  hb.forEach(function (b, i) { b.addEventListener('click', function () {
+    hb.forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    h1.textContent = HEADLINES[i];
+  }); });
+
+  var hdr = document.getElementById('hdr');
+  function onScroll() { hdr.classList.toggle('scrolled', (window.scrollY || document.documentElement.scrollTop) > 40); }
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  function pick(t) { tabs.forEach(function (x) { var on = x === t; x.setAttribute('aria-selected', on ? 'true' : 'false'); x.tabIndex = on ? 0 : -1; document.getElementById(x.getAttribute('aria-controls')).hidden = !on; }); }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { pick(t); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; pick(n); n.focus();
+    });
+  });
+
+  var ruler = document.getElementById('ruler');
+  [0.6, 1.9, 6.8, 8.1, 9.2, 10.4, 11.3, 12.6, 13.4, 14.7, 15.5, 16.8, 18.1, 19.6, 20.4, 21.2, 21.9, 22.7, 23.4].forEach(function (h) {
+    var m = document.createElement('div'); m.className = 'mark' + (h < 10 || h >= 19 ? ' late' : ''); m.style.left = (h / 24 * 100) + '%'; ruler.appendChild(m);
+  });
+
+  var wave = document.getElementById('wave');
+  for (var i = 0; i < 44; i++) {
+    var b = document.createElement('i'), h = 25 + Math.round(70 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6)));
+    b.style.setProperty('--h', h + '%'); b.style.setProperty('--d', (-(i % 9) * 0.18) + 's');
+    if (Math.floor(i / 7) % 2 === 1) b.className = 'me';
+    wave.appendChild(b);
+  }
+
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    ['hero-lines', 'flow-svg'].forEach(function (id) { var s = document.getElementById(id); if (s && s.pauseAnimations) s.pauseAnimations(); });
+  }
+
+  document.getElementById('demo-form').addEventListener('submit', function (e) {
+    e.preventDefault(); document.getElementById('form-note').textContent = 'This is a mockup. Nothing was sent.';
+  });
+})();
+</script>

@@ -124,7 +124,6 @@ export function Reviews() {
           ))}
         </ul>
       </div>
-      <p className={s.note}>Names changed and logos left out at our customers&apos; request.</p>
     </section>
   );
 }

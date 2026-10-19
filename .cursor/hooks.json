@@ -1,22 +1,11 @@
 {
-  "hooks": [
-    {
-      "event": "afterFileEdit",
-      "match": "frontend/**/*.{ts,tsx}",
-      "command": "cd frontend && npx tsc --noEmit --pretty false 2>&1 | head -20",
-      "description": "TypeScript check after frontend edit"
-    },
-    {
-      "event": "afterFileEdit",
-      "match": "backend/app/**/*.py",
-      "command": "python -m py_compile {file} && echo 'syntax OK'",
-      "description": "Python syntax check after backend edit"
-    },
-    {
-      "event": "afterFileEdit",
-      "match": "backend/app/routes/*.py",
-      "command": "grep -q 'tenant_id' {file} || echo '⚠ TENANT AUDIT: no tenant_id in {file}'",
-      "description": "Tenant isolation check on new routes"
-    }
-  ]
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit",
+        "timeout": 5
+      }
+    ]
+  },
+  "version": 1
 }

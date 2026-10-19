@@ -8,7 +8,7 @@ import s from "./AboutBlocks.module.css";
 const PRINCIPLES = [
   { line: "Answer fast.", text: "Every enquiry gets a reply when it arrives, including nights, weekends and holidays." },
   { line: "Show the hot lead.", text: "Every lead is marked hot, warm or cold, so your team calls the right person first." },
-  { line: "Be honest about examples.", text: "When we show a conversation or a number, we say it is an example. Customer names are changed and logos left out at their request." },
+  { line: "Hand over to a person.", text: "When a customer needs a person, the conversation goes to your team with everything said so far." },
 ] as const;
 
 export function Principles() {

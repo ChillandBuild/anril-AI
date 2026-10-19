@@ -16,6 +16,17 @@
             "command": "cd /Users/prem/Documents/Aira\\ Ai/frontend && npx tsc --noEmit 2>&1 | tail -5 && echo 'Frontend type check done'"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook",
+            "commandWindows": "cmd /c if exist \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" hook",
+            "timeout": 30,
+            "statusMessage": "Design deep pass"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -33,6 +44,18 @@
           {
             "type": "command",
             "command": "FILE_PATH=\"$(echo $CLAUDE_TOOL_INPUT | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get(\"file_path\",d.get(\"path\",\"\")))' 2>/dev/null)\"; if [[ \"$FILE_PATH\" == */routes/*.py ]]; then if ! grep -q 'tenant_id' \"$FILE_PATH\" 2>/dev/null; then echo \"[TENANT-AUDIT] WARNING: $FILE_PATH has no tenant_id reference — verify isolation\"; fi; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook",
+            "commandWindows": "cmd /c if exist \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" hook",
+            "timeout": 5,
+            "statusMessage": "Checking UI changes"
           }
         ]
       }
