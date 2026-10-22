@@ -1,8 +1,8 @@
-# web-product-video profile for Aira. Committed; holds NO secrets.
+# web-product-video profile for Anril AI. Committed; holds NO secrets.
 # Field reference: ~/.claude/skills/web-product-video/references/profile-schema.md
-product: Aira AI
-public_url: https://www.bloommatrix.in/aira
-app_url: https://www.bloommatrix.in/aira
+product: Anril AI
+public_url: https://www.anrilaitech.com
+app_url: https://www.anrilaitech.com
 
 login:
   path: /login
