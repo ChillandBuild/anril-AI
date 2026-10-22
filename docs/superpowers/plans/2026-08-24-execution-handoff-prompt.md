@@ -1,6 +1,6 @@
 # Execution handoff prompt — paste this to the executing model
 
-You are implementing three related pieces of work in the Aira AI repo (`ChillandBuild/Aira-AI`). Read in this order before writing any code:
+You are implementing three related pieces of work in the Aira AI repo (`ChillandBuild/anril-AI`). Read in this order before writing any code:
 
 1. `docs/superpowers/specs/2026-08-23-nested-packages-and-settings-nav-design.md` — the design and *why*. Read the whole thing once, don't skim.
 2. `docs/superpowers/plans/2026-08-24-settings-navigation-restructure.md` — plan A.

@@ -76,7 +76,7 @@ To prevent context dilution, general invariants and rules have been split into m
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `ChillandBuild/Aira-AI`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `ChillandBuild/anril-AI`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

@@ -3,7 +3,7 @@
 **Feature**: Global White Background & Surface Elevation Refinement  
 **Status**: APPROVED (via /grill-me Socratic Alignment)  
 **Date**: 2026-10-07  
-**Corpus**: ChillandBuild/Aira-AI  
+**Corpus**: ChillandBuild/anril-AI  
 
 ---
 
