@@ -487,6 +487,7 @@ export default function TemplatesPage() {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Scrollable Templates Content */}
       <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
@@ -658,7 +659,6 @@ export default function TemplatesPage() {
         </div>
       )}
       </div>
-    </div>
 
       {/* ── View Detail Drawer/Modal ─────────────────────────────────────────── */}
       {selectedTemplate && (
