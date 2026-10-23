@@ -43,36 +43,25 @@ function filterTemplates(list: Template[], searchQuery: string, category: string
   });
 }
 
-function csvEscape(value: string): string {
-  return `"${(value ?? "").replace(/"/g, '""')}"`;
+// Template parts split into their own spreadsheet columns, so each template reads as one tidy row
+function headerCell(t: Template): string {
+  if (t.header_text) return t.header_text;
+  if (t.header_media_type && t.header_media_type !== "NONE") return `[${t.header_media_type}]`;
+  return "";
 }
 
-// Everything a template can carry, flattened into one readable cell.
-function buildTemplateContent(t: Template): string {
-  const parts: string[] = [];
-  if (t.header_text) {
-    parts.push(`Header: ${t.header_text}`);
-  } else if (t.header_media_type && t.header_media_type !== "NONE") {
-    parts.push(`Header: [${t.header_media_type}]`);
-  }
-  parts.push(`Body: ${t.body_text}`);
-  if (t.footer_text) parts.push(`Footer: ${t.footer_text}`);
-  if (t.buttons && t.buttons.length > 0) {
-    const buttonsStr = t.buttons.map((b) => {
-      if (b.type === "URL") return `URL: ${b.text} (${b.url || ""})`;
-      if (b.type === "PHONE_NUMBER") return `Call: ${b.text} (${b.phone || ""})`;
-      if (b.type === "ONE_TAP") return `OTP Autofill: ${b.autofill_text || b.text}`;
-      if (b.type === "COPY_CODE") return `Copy Code: ${b.text}`;
-      return `${b.type}: ${b.text}`;
-    }).join(" | ");
-    parts.push(`Buttons: ${buttonsStr}`);
-  }
-  if (t.carousel_cards && t.carousel_cards.length > 0) {
-    t.carousel_cards.forEach((c, i) => {
-      parts.push(`Carousel Card ${i + 1}: ${c.body_text}`);
-    });
-  }
-  return parts.join("\n");
+function buttonsCell(t: Template): string {
+  return (t.buttons ?? []).map((b) => {
+    if (b.type === "URL") return `URL: ${b.text} (${b.url || ""})`;
+    if (b.type === "PHONE_NUMBER") return `Call: ${b.text} (${b.phone || ""})`;
+    if (b.type === "ONE_TAP") return `OTP Autofill: ${b.autofill_text || b.text}`;
+    if (b.type === "COPY_CODE") return `Copy Code: ${b.text}`;
+    return `${b.type}: ${b.text}`;
+  }).join(" | ");
+}
+
+function carouselCell(t: Template): string {
+  return (t.carousel_cards ?? []).map((c, i) => `Card ${i + 1}: ${c.body_text}`).join("\n");
 }
 
 // Remembers filters, view mode and list scroll for the session, so opening a template and coming back lands where you left off
@@ -180,8 +169,8 @@ export default function TemplatesPage() {
     pendingScrollTop.current = null;
   }, [loading, viewStateRestored]);
 
-  // Export the currently filtered list as CSV, re-fetching first so an approval since page-load is reflected
-  async function handleExportCsv() {
+  // Export the currently filtered list as an Excel sheet, re-fetching first so an approval since page-load is reflected
+  async function handleExportExcel() {
     setExporting(true);
     setError(null);
     try {
@@ -192,27 +181,33 @@ export default function TemplatesPage() {
       const freshTemplates: Template[] = data.data || [];
       const rows = filterTemplates(freshTemplates, searchQuery, selectedCategory, selectedStatus);
 
-      const header = ["Template Name", "Anril ID", "Content", "Category", "Language", "Status"];
-      const csvLines = [header, ...rows.map((t) => [
+      const header = ["Template Name", "Anril ID", "Category", "Language", "Status", "Header", "Body", "Footer", "Buttons", "Carousel Cards"];
+      const body = rows.map((t) => [
         t.name,
         t.short_code || "",
-        buildTemplateContent(t),
         t.category,
         LANGUAGES.find((l) => l.code === t.language)?.label || t.language,
         t.status,
-      ])].map((row) => row.map(csvEscape).join(","));
+        headerCell(t),
+        t.body_text,
+        t.footer_text || "",
+        buttonsCell(t),
+        carouselCell(t),
+      ]);
 
-      const blob = new Blob(["﻿" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `whatsapp-templates-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+      // Size each column to its longest single line, capped so long bodies don't make one giant column
+      const maxWidths = [40, 12, 14, 16, 12, 30, 70, 30, 40, 50];
+      ws["!cols"] = header.map((h, col) => ({
+        wch: Math.min(maxWidths[col], Math.max(h.length, ...body.map((r) => Math.max(0, ...r[col].split("\n").map((line) => line.length)))) + 2),
+      }));
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: header.length - 1 } }) };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Templates");
+      XLSX.writeFile(wb, `whatsapp-templates-${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to export CSV");
+      setError(e instanceof Error ? e.message : "Failed to export Excel file");
     } finally {
       setExporting(false);
     }
@@ -410,13 +405,13 @@ export default function TemplatesPage() {
               Carousel
             </Link>
             <button
-              onClick={handleExportCsv}
+              onClick={handleExportExcel}
               disabled={exporting || filteredTemplates.length === 0}
-              title="Download the currently filtered templates as CSV"
+              title="Download the currently filtered templates as an Excel file"
               className="flex-1 px-3 py-2 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               <Download size={12} className={exporting ? "animate-pulse" : ""} />
-              {exporting ? "Exporting..." : "CSV"}
+              {exporting ? "Exporting..." : "Excel"}
             </button>
           </div>
           <Link
