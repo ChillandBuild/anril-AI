@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,6 +16,7 @@ import {
   Layers,
   ChevronRight,
   ChevronDown,
+  Download,
   X,
   AlertCircle,
   HelpCircle,
@@ -28,6 +29,54 @@ import WhatsAppPreview from "./components/whatsapp-preview";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AiraId from "./components/aira-id";
 
+const TEMPLATES_SCROLL_KEY = "templates-list-scroll-y";
+
+// Shared by the on-screen list and the CSV export so "download based on the filter" always matches what's visible.
+function filterTemplates(list: Template[], searchQuery: string, category: string, status: string): Template[] {
+  const q = searchQuery.trim().toLowerCase();
+  return list.filter((t) => {
+    const matchesSearch = !q ||
+      t.name.toLowerCase().includes(q) ||
+      t.body_text.toLowerCase().includes(q) ||
+      (t.short_code ?? "").includes(q);
+    const matchesCategory = category === "ALL" || t.category === category;
+    const matchesStatus = status === "ALL" || t.status === status;
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+}
+
+function csvEscape(value: string): string {
+  return `"${(value ?? "").replace(/"/g, '""')}"`;
+}
+
+// Everything a template can carry, flattened into one readable cell.
+function buildTemplateContent(t: Template): string {
+  const parts: string[] = [];
+  if (t.header_text) {
+    parts.push(`Header: ${t.header_text}`);
+  } else if (t.header_media_type && t.header_media_type !== "NONE") {
+    parts.push(`Header: [${t.header_media_type}]`);
+  }
+  parts.push(`Body: ${t.body_text}`);
+  if (t.footer_text) parts.push(`Footer: ${t.footer_text}`);
+  if (t.buttons && t.buttons.length > 0) {
+    const buttonsStr = t.buttons.map((b) => {
+      if (b.type === "URL") return `URL: ${b.text} (${b.url || ""})`;
+      if (b.type === "PHONE_NUMBER") return `Call: ${b.text} (${b.phone || ""})`;
+      if (b.type === "ONE_TAP") return `OTP Autofill: ${b.autofill_text || b.text}`;
+      if (b.type === "COPY_CODE") return `Copy Code: ${b.text}`;
+      return `${b.type}: ${b.text}`;
+    }).join(" | ");
+    parts.push(`Buttons: ${buttonsStr}`);
+  }
+  if (t.carousel_cards && t.carousel_cards.length > 0) {
+    t.carousel_cards.forEach((c, i) => {
+      parts.push(`Carousel Card ${i + 1}: ${c.body_text}`);
+    });
+  }
+  return parts.join("\n");
+}
+
 export default function TemplatesPage() {
   const router = useRouter();
   const { role, permissions } = useAuthRole();
@@ -39,6 +88,20 @@ export default function TemplatesPage() {
   // Sync / Action states
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  // Preserve scroll position across navigating into a template and back
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollSaveFrame = useRef<number | null>(null);
+  function handleListScroll() {
+    if (scrollSaveFrame.current !== null) return;
+    scrollSaveFrame.current = requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        sessionStorage.setItem(TEMPLATES_SCROLL_KEY, String(scrollContainerRef.current.scrollTop));
+      }
+      scrollSaveFrame.current = null;
+    });
+  }
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +140,52 @@ export default function TemplatesPage() {
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  // Restore list scroll position once templates have rendered after mount
+  useEffect(() => {
+    if (!loading && scrollContainerRef.current) {
+      const saved = sessionStorage.getItem(TEMPLATES_SCROLL_KEY);
+      if (saved) scrollContainerRef.current.scrollTop = parseInt(saved, 10);
+    }
+  }, [loading]);
+
+  // Export the currently filtered list as CSV, re-fetching first so an approval since page-load is reflected
+  async function handleExportCsv() {
+    setExporting(true);
+    setError(null);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/templates/`, { headers: authHeaders });
+      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      const freshTemplates: Template[] = data.data || [];
+      const rows = filterTemplates(freshTemplates, searchQuery, selectedCategory, selectedStatus);
+
+      const header = ["Template Name", "Anril ID", "Content", "Category", "Language", "Status"];
+      const csvLines = [header, ...rows.map((t) => [
+        t.name,
+        t.short_code || "",
+        buildTemplateContent(t),
+        t.category,
+        LANGUAGES.find((l) => l.code === t.language)?.label || t.language,
+        t.status,
+      ])].map((row) => row.map(csvEscape).join(","));
+
+      const blob = new Blob(["﻿" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `whatsapp-templates-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Sync all templates from Meta
   async function handleSyncAll() {
@@ -214,16 +323,7 @@ export default function TemplatesPage() {
   }
 
   // Filter Logic
-  const filteredTemplates = templates.filter((t) => {
-    const q = searchQuery.trim().toLowerCase();
-    const matchesSearch = !q ||
-      t.name.toLowerCase().includes(q) ||
-      t.body_text.toLowerCase().includes(q) ||
-      (t.short_code ?? "").includes(q);
-    const matchesCategory = selectedCategory === "ALL" || t.category === selectedCategory;
-    const matchesStatus = selectedStatus === "ALL" || t.status === selectedStatus;
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+  const filteredTemplates = filterTemplates(templates, searchQuery, selectedCategory, selectedStatus);
 
   const hasFilters = !!(searchQuery || selectedCategory !== "ALL" || selectedStatus !== "ALL");
   const activeFilterCount = [searchQuery, selectedCategory !== "ALL" ? selectedCategory : "", selectedStatus !== "ALL" ? selectedStatus : ""].filter(Boolean).length;
@@ -278,6 +378,15 @@ export default function TemplatesPage() {
               <Layers size={12} />
               Carousel
             </Link>
+            <button
+              onClick={handleExportCsv}
+              disabled={exporting || filteredTemplates.length === 0}
+              title="Download the currently filtered templates as CSV"
+              className="flex-1 px-3 py-2 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <Download size={12} className={exporting ? "animate-pulse" : ""} />
+              {exporting ? "Exporting..." : "CSV"}
+            </button>
           </div>
           <Link
             href="/dashboard/templates/new"
@@ -404,7 +513,7 @@ export default function TemplatesPage() {
     </div>
 
       {/* Scrollable Templates Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
+      <div ref={scrollContainerRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
         {/* Main Content Area */}
         {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
