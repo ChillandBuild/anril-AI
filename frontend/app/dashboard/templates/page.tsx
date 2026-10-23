@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -75,6 +75,33 @@ function buildTemplateContent(t: Template): string {
   return parts.join("\n");
 }
 
+// Remembers filters, view mode and list scroll for the session, so opening a template and coming back lands where you left off
+const VIEW_STATE_KEY = "templates:view-state";
+
+type SavedViewState = {
+  searchQuery: string;
+  selectedCategory: string;
+  selectedStatus: string;
+  viewMode: "GRID" | "TABLE";
+  scrollTop: number;
+};
+
+function readViewState(): Partial<SavedViewState> {
+  try {
+    return JSON.parse(sessionStorage.getItem(VIEW_STATE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeViewState(patch: Partial<SavedViewState>) {
+  try {
+    sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ ...readViewState(), ...patch }));
+  } catch {
+    // storage unavailable (private mode) — the page still works, it just won't remember
+  }
+}
+
 export default function TemplatesPage() {
   const router = useRouter();
   const { role, permissions } = useAuthRole();
@@ -93,6 +120,11 @@ export default function TemplatesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [viewMode, setViewMode] = useState<"GRID" | "TABLE">("GRID");
+
+  // Scroll memory for the list area (the header above it stays locked)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingScrollTop = useRef<number | null>(null);
+  const [viewStateRestored, setViewStateRestored] = useState(false);
 
   // Selected Detail Modal
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -125,6 +157,28 @@ export default function TemplatesPage() {
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  useEffect(() => {
+    const saved = readViewState();
+    if (saved.searchQuery) setSearchQuery(saved.searchQuery);
+    if (saved.selectedCategory) setSelectedCategory(saved.selectedCategory);
+    if (saved.selectedStatus) setSelectedStatus(saved.selectedStatus);
+    if (saved.viewMode === "GRID" || saved.viewMode === "TABLE") setViewMode(saved.viewMode);
+    pendingScrollTop.current = saved.scrollTop ?? null;
+    setViewStateRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!viewStateRestored) return;
+    writeViewState({ searchQuery, selectedCategory, selectedStatus, viewMode });
+  }, [viewStateRestored, searchQuery, selectedCategory, selectedStatus, viewMode]);
+
+  // Once the list has rendered, jump back to where the user was
+  useEffect(() => {
+    if (loading || !viewStateRestored || pendingScrollTop.current === null) return;
+    scrollRef.current?.scrollTo({ top: pendingScrollTop.current });
+    pendingScrollTop.current = null;
+  }, [loading, viewStateRestored]);
 
   // Export the currently filtered list as CSV, re-fetching first so an approval since page-load is reflected
   async function handleExportCsv() {
@@ -490,7 +544,11 @@ export default function TemplatesPage() {
     </div>
 
       {/* Scrollable Templates Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
+      <div
+        ref={scrollRef}
+        onScroll={(e) => writeViewState({ scrollTop: e.currentTarget.scrollTop })}
+        className="relative flex-1 overflow-y-auto min-h-0 pr-1 pb-6"
+      >
         {/* Main Content Area */}
         {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
