@@ -2680,7 +2680,7 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
 
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number")
+        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
 
     if _has_dynamic_header_or_url(template):
         return _partner_error(400, "unsupported_template", "Only templates with body variables can be sent")
@@ -2751,7 +2751,7 @@ async def partner_send_text(payload: dict, tenant_id: str, db=None) -> tuple[int
 
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number")
+        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
 
     reference = _partner_reference(payload)
     try:

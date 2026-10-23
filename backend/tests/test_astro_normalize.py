@@ -221,6 +221,28 @@ def test_normalize_phone_honours_default_cc():
     assert normalize_phone("4155552671", default_cc="+1") == "+14155552671"
 
 
+# Partner sends country code + number with no "+" (2026-10-23: 168 of 168 overseas sends refused).
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("94771234567", "+94771234567"),
+        ("+94771234567", "+94771234567"),
+        ("60123456789", "+60123456789"),
+        ("971501234567", "+971501234567"),
+        ("00971501234567", "+971501234567"),
+        ("447911123456", "+447911123456"),
+        ("97455123456", "+97455123456"),
+    ],
+)
+def test_normalize_phone_reads_foreign_country_code_without_plus(raw, expected):
+    assert normalize_phone(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["9477123456789", "947712345", "+9477123", "60123"])
+def test_normalize_phone_rejects_foreign_numbers_of_the_wrong_length(raw):
+    assert normalize_phone(raw) is None
+
+
 @pytest.mark.parametrize(
     "raw",
     [

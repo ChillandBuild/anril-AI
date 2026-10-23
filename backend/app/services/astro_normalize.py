@@ -2,6 +2,8 @@ import re
 import unicodedata
 from datetime import date
 
+import phonenumbers
+
 _MAX_INPUT_LEN = 120
 _MIN_YEAR = 1900
 
@@ -256,15 +258,31 @@ def normalize_phone(raw, default_cc: str = "+91") -> str | None:
     if not cc or not digits:
         return None
 
+    if had_plus:
+        return _international_phone(digits)
     if len(digits) == 10:
         national = digits
     elif digits.startswith(cc) and len(digits) == len(cc) + 10:
         national = digits[len(cc):]
-    elif had_plus and not digits.startswith(cc) and 8 <= len(digits) <= 15:
-        return f"+{digits}"
     else:
-        return None
+        # Partners send country code + number with no "+" (94771234567), so
+        # anything that is not a national number is read as international.
+        return _international_phone(digits)
 
     if cc == "91" and national[0] not in "6789":
         return None
     return f"+{cc}{national}"
+
+
+def _international_phone(digits: str) -> str | None:
+    """E.164 for country code + number, checked against that country's numbering plan."""
+    try:
+        number = phonenumbers.parse(f"+{digits}")
+    except phonenumbers.NumberParseException:
+        return None
+    if not phonenumbers.is_valid_number(number):
+        return None
+    e164 = phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
+    if e164.startswith("+91") and e164[3] not in "6789":
+        return None
+    return e164

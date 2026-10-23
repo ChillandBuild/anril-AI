@@ -305,6 +305,12 @@ def test_invalid_phone_is_400():
     send.assert_not_awaited()
 
 
+def test_foreign_number_without_plus_is_sent():
+    res, send, _ = _post(TEMPLATE_URL, _template_body(phone="94771234567"), _db(APPROVED))
+    assert res.status_code == 200
+    assert send.await_args.kwargs["to_number"] == "+94771234567"
+
+
 def test_meta_rejection_is_502():
     send = AsyncMock(side_effect=HTTPException(status_code=400, detail='{"error":"131026"}'))
     res, _, _ = _post(TEMPLATE_URL, _template_body(), _db(APPROVED), send=send)

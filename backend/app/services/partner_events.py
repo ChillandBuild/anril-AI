@@ -94,7 +94,7 @@ async def partner_send_event(payload: dict, tenant_id: str, db) -> tuple[int, di
         )
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number")
+        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
 
     if private_send_svc.has_active_key(db, tenant_id):
         return _partner_error(409, "private_send_on", "This account sends from its own server")

@@ -191,6 +191,13 @@ def test_event_mode_invalid_phone_is_400(db):
     send.assert_not_awaited()
 
 
+def test_event_mode_sends_to_a_foreign_number_without_plus(db):
+    _order_rule(db)
+    res, send = _post(_event_body(phone="60123456789"), db)
+    assert res.status_code == 200, res.text
+    assert send.await_args.kwargs["to_number"] == "+60123456789"
+
+
 def test_unknown_event_is_400_unknown_event_and_sends_nothing(db):
     _order_rule(db)
     db.add("auto_message_events", tenant_id=OTHER, key="kundli_ready", label="x", description=None)
