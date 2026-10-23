@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -28,8 +28,6 @@ import TemplateCard from "./components/template-card";
 import WhatsAppPreview from "./components/whatsapp-preview";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AiraId from "./components/aira-id";
-
-const TEMPLATES_SCROLL_KEY = "templates-list-scroll-y";
 
 // Shared by the on-screen list and the CSV export so "download based on the filter" always matches what's visible.
 function filterTemplates(list: Template[], searchQuery: string, category: string, status: string): Template[] {
@@ -90,19 +88,6 @@ export default function TemplatesPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  // Preserve scroll position across navigating into a template and back
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollSaveFrame = useRef<number | null>(null);
-  function handleListScroll() {
-    if (scrollSaveFrame.current !== null) return;
-    scrollSaveFrame.current = requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        sessionStorage.setItem(TEMPLATES_SCROLL_KEY, String(scrollContainerRef.current.scrollTop));
-      }
-      scrollSaveFrame.current = null;
-    });
-  }
-
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -140,14 +125,6 @@ export default function TemplatesPage() {
   useEffect(() => {
     loadTemplates();
   }, []);
-
-  // Restore list scroll position once templates have rendered after mount
-  useEffect(() => {
-    if (!loading && scrollContainerRef.current) {
-      const saved = sessionStorage.getItem(TEMPLATES_SCROLL_KEY);
-      if (saved) scrollContainerRef.current.scrollTop = parseInt(saved, 10);
-    }
-  }, [loading]);
 
   // Export the currently filtered list as CSV, re-fetching first so an approval since page-load is reflected
   async function handleExportCsv() {
@@ -512,7 +489,7 @@ export default function TemplatesPage() {
       </div>
 
       {/* Scrollable Templates Content */}
-      <div ref={scrollContainerRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
+      <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-6">
         {/* Main Content Area */}
         {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
