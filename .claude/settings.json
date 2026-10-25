@@ -25,7 +25,7 @@
           },
           {
             "type": "command",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-/Users/prem/Documents/Aira AI}\" 2>/dev/null && N=$(find backend/app frontend/app -type f \\( -name '*.py' -o -name '*.ts' -o -name '*.tsx' \\) -newer graphify-out/manifest.json 2>/dev/null | wc -l | tr -d ' ') && [ \"${N:-0}\" -gt 15 ] && echo \"\ud83d\uddfa\ufe0f  WIKI STALE \u2014 $N source files changed since the last graphify build. Run /wiki to refresh graphify-out/wiki/ before it drifts from the code.\" || true"
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null && N=$(find backend/app frontend/app -type f \\( -name '*.py' -o -name '*.ts' -o -name '*.tsx' \\) -newer graphify-out/manifest.json 2>/dev/null | wc -l | tr -d ' ') && [ \"${N:-0}\" -gt 15 ] && echo \"\ud83d\uddfa\ufe0f  WIKI STALE \u2014 $N source files changed since the last graphify build. Run /wiki to refresh graphify-out/wiki/ before it drifts from the code.\" || true"
           }
         ]
       }

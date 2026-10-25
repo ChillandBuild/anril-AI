@@ -26,7 +26,7 @@
       "Bash(cd backend && python -c*)",
       "Bash(uvicorn app.main:app*)",
       "Bash(curl -s http://127.0.0.1:8000/api/v1/*)",
-      "Write(/Users/prem/Documents/Aira AI/graphify-out/*)",
+      "Edit(/graphify-out/**)",
       "mcp__render__list_services"
     ]
   },
