@@ -86,7 +86,7 @@
 - Warnings go to `call_alerts`: the admin-only **Needs attention** list + sidebar badge, one **09:00 IST** summary notification, and instant alerts only for `rude`/`wrong_info`, capped at 1 per telecaller per hour. Quotes on alerts and checks are sent to the browser (clipped); the full transcript stays masked (first/last line only) same as before.
 - `MAX_ATTEMPTS = 2` retries per call before giving up. **SIM calls (`sim_basic` provider) are never scored** — test/demo traffic only.
 - `call_logs.score_status` check constraint still allows the old pre-v4 values (`pending`/`awaiting_outcome`/`short_call`/`no_answer`/`no_recording`/`scored`) alongside the new set until migration 207 runs post-deploy and narrows it (see decisions/log.md).
-- **Call Report v1 (2026-10-18, SPEC.md)** lives at `evaluation.report`, no migration:
+- **Call Report v1 (2026-10-18)** lives at `evaluation.report`, no migration:
   - The AI parts (mood, turning point, objections, promises, coach) ride on the same Step 2 request. `REPORT_RUBRIC` and `build_report` are in `call_report.py`, and every quote goes through `find_quote` with a speaker filter.
   - Step 2 `max_tokens` was raised to 6000 so the longer answer can't truncate and sink the vote.
   - So only `real_conversation` calls get AI parts. Early-exit stereo calls get only `talk` and `segments`.

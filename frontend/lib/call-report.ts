@@ -1,5 +1,5 @@
 /**
- * Call Report v1 helpers (SPEC.md): labels, tones and speech-bar layout for the manager's
+ * Call Report v1 helpers: labels, tones and speech-bar layout for the manager's
  * report panel. Pure functions, no React. Tones reuse the TONE_CHIP palette in call-wrapup.ts.
  */
 import type {

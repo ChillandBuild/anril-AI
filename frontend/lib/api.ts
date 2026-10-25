@@ -278,7 +278,7 @@ export interface ReportPromise extends ReportMoment { risky: boolean; why: strin
 export interface ReportCoach extends ReportMoment { tip: string }
 export type SpeechSegments = [number, number][];
 
-/** Call Report v1 (SPEC.md). Manager review route only; every key is optional. */
+/** Call Report v1. Manager review route only; every key is optional. */
 export interface CallReport {
   report_version?: number;
   mood?: ReportMoodPoint[];

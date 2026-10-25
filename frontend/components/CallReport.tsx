@@ -195,7 +195,7 @@ function Talk({ log }: { log: CallLog }) {
   );
 }
 
-/** Manager-only Call Report (SPEC.md): verdict, mood, turning point, objections, promises, coach, talk. */
+/** Manager-only Call Report: verdict, mood, turning point, objections, promises, coach, talk. */
 export function CallReport({ log, onSeek }: { log: CallLog; onSeek?: (seconds: number) => void }) {
   const report = log.evaluation?.report;
   // No report (old, early-exit or failed calls) -> nothing, so those calls look exactly as before.
