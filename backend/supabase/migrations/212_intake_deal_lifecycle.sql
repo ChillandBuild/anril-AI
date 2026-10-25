@@ -1,5 +1,5 @@
 -- 212_intake_deal_lifecycle.sql
--- Deal lifecycle (.agents/decisions/deal-lifecycle-blueprint.md, R2 + R3):
+-- Deal lifecycle (.agents/decisions/log.md 2026-09-30, R2 + R3):
 --   last_activity_at         reset only by a lead message or real deal progress; the idle-close
 --                            sweep measures from here (updated_at is never written).
 --   razorpay_payment_link_id the CURRENT plink, so an old link can be cancelled on Razorpay and

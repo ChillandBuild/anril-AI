@@ -1,4 +1,4 @@
-"""Per-tenant deal-lifecycle settings (.agents/decisions/deal-lifecycle-blueprint.md, D1).
+"""Per-tenant deal-lifecycle settings (decision D1, .agents/decisions/log.md 2026-09-30).
 
 deal_idle_close_days: how many idle days before the sweep closes an unpaid deal.
 Stored in app_settings as a string; every reader goes through here so the bounds and the
