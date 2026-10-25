@@ -8,3 +8,10 @@ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
 url = "https://mcp.render.com/mcp?ownerId=tea-d7m36fsvikkc73fo8pcg"
 # Key comes from the RENDER_API_KEY environment variable — never paste it here.
 bearer_token_env_var = "RENDER_API_KEY"
+
+# OAuth: run `codex mcp login supabase` / `codex mcp login vercel` once; no key in this file.
+[mcp_servers.supabase]
+url = "https://mcp.supabase.com/mcp?project_ref=ayftynkgmfkaqmmnlmoc"
+
+[mcp_servers.vercel]
+url = "https://mcp.vercel.com"
