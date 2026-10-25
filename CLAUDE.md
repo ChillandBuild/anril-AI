@@ -1,8 +1,8 @@
 # Aira AI — Agent Operating Manual
 
 ## Core Commands
-- **Backend Dev**: `make dev-backend` (safe mode: scheduler paused, outbound dry-run). No `make` on the Windows machine: run `bash scripts/dev-backend.sh` (same thing). Never plain `uvicorn` on a laptop — it shares the live DB.
-- **Backend Test**: `cd backend && python -m pytest` (runs tests under `backend/tests/`). Use `python -m pytest`, not bare `pytest` — several test modules import `app.*` without adding the backend dir to `sys.path`, so bare `pytest` dies at collection with `ModuleNotFoundError: No module named 'app'`. `python -m` puts the cwd on `sys.path` and the suite passes (4403 tests as of 2026-10-17). On Windows run it as `PYTHONUTF8=1 python -m pytest`: `test_anril_rename_copy` reads every backend file and fails under the default cp1252 encoding. Run it from `backend/`, not the repo root.
+- **Backend Dev**: `make dev-backend` (safe mode: scheduler paused, outbound dry-run). No `make` on the Windows machine: run `bash scripts/dev-backend.sh` (same thing). Never plain `uvicorn` on a laptop — it shares the live DB, so the scheduler would message real leads.
+- **Backend Test**: `cd backend && python -m pytest` — never bare `pytest` (dies at collection). On Windows: `PYTHONUTF8=1 python -m pytest`. Why: [stack-and-rules.md § Running the Backend Tests](.agents/context/stack-and-rules.md).
 - **Production Run (Render)**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (executed from `backend/` directory)
 
 ---
@@ -15,9 +15,6 @@
 - This runs automatically for every task; the user does NOT have to say "use the wiki/graph."
 
 ## How we work — the sprint (every task, no need to be told)
-
-> Still applies: push or deploy only when the user says so, and the pre-commit checks
-> (pytest, typecheck, lint) still run as before.
 
 - Skills and commands below are Addy Osmani's agent-skills (installed globally in `~/.claude/`).
 - Front door: new feature, idea or behavior change → `interview-me`, one question at a time, until
@@ -32,15 +29,14 @@
   auth, webhooks, payments, RLS, migrations. The planner runs `code-review-and-quality` on every
   worker diff before showing it. Flat only: workers do not spawn workers.
 - UI change → `frontend-ui-engineering` for the design in the plan; after building, run a UI QA pass
-  as the UI test tenant — on the live site, or locally. Local backend ONLY via `make dev-backend`
-  (plain uvicorn would run the scheduler and message real leads from the live DB; see
-  subsystem-notes.md). Point the local frontend at it with NEXT_PUBLIC_API_URL=http://localhost:8000.
+  as the UI test tenant — on the live site, or locally (backend via `make dev-backend` only, frontend
+  pointed at it with NEXT_PUBLIC_API_URL=http://localhost:8000).
 - Auth, webhooks, payments, RLS → also `security-and-hardening` + the security-checklist.md;
   anything irreversible → `doubt-driven-development`.
 - Before any commit → run the checks that fit the change (`/review` on the diff, `python -m pytest` for
   backend, typecheck + lint for frontend), without asking. Do NOT repeat a check that already passed on the same
   code: if no code or test file changed since the last passing run, or the change is docs/config only, skip it and
-  just commit. Commit to `main`, no branch. Push only when the user says so.
+  just commit. Commit to `main`, no branch.
 - Before finishing → `git fetch`, check `HEAD..origin/main` for teammate commits on the
   same files; if any, rebase and re-run the tests.
 - Weekly → a short retro: what shipped, what broke.
@@ -48,37 +44,16 @@
   `/ship` is the go/no-go checklist, not permission to push.
 
 ## Agent Routing Instructions
-To prevent context dilution, general invariants and rules have been split into modular guides. **Always read these files first based on the scope of your task:**
+Read ONLY the file your task's scope points to:
 
-1.  **Identity, Dev Persona & Code Style Rules**:
-    *   Location: [.agents/context/identity.md](.agents/context/identity.md)
-    *   Read when: You start a new session or need to review coding styles, formatting preferences, and file/API response conventions.
-2.  **Invariants, Tech Stack & File Map**:
-    *   Location: [.agents/context/stack-and-rules.md](.agents/context/stack-and-rules.md)
-    *   Read when: Modifying DB calls, working with WhatsApp/TeleCMI webhooks, routing outbound calls, or checking security policies (RLS).
-3.  **Historical Decisions & DB Migrations**:
-    *   Location: [.agents/decisions/log.md](.agents/decisions/log.md)
-    *   Read when: Seeking context on why specific modules (e.g., Bot Flow Builder) were dropped, checking migration histories, or verifying schema structures.
-4.  **Active Roadmap & Technical Debt**:
-    *   Location: [.agents/projects/active-backlog.md](.agents/projects/active-backlog.md)
-    *   Read when: Checking current backlog tasks or reviewing known tech debt (e.g., orphaned tables).
-5.  **Subsystem Notes & Load-Bearing Gotchas**:
-    *   Location: [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md)
-    *   Read when: Editing broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, or operator console — holds the *why* and the traps the wiki can't.
-6.  **Security & Vulnerability Guidance**:
-    *   Location: [.agents/context/security-checklist.md](.agents/context/security-checklist.md)
-    *   Read when: Touching auth, webhooks, payments (Razorpay), file uploads, RLS policies, or any route reading `tenant_id`. Escalate to the `security-reviewer` agent for new auth/webhook/payment code or RLS changes.
-7.  **AI Reply Master Prompt**:
-    *   Location: [docs/whatsapp-master-prompt.md](docs/whatsapp-master-prompt.md)
-    *   Read when: Touching `_build_base_prompt()` / `ai_reply.py`'s prompt assembly, or the `ai_prompts` table's `master` row — this is the canonical text and explains why the per-channel rows (`whatsapp_reply` etc.) are dead weight.
+1. [.agents/context/identity.md](.agents/context/identity.md) — new session; code style, formatting, file/API response conventions.
+2. [.agents/context/stack-and-rules.md](.agents/context/stack-and-rules.md) — DB calls, WhatsApp/TeleCMI webhooks, outbound call routing, RLS, tech stack, file map, running tests.
+3. [.agents/decisions/log.md](.agents/decisions/log.md) — why a module was dropped (e.g. Bot Flow Builder), migration history, schema structure.
+4. [.agents/projects/active-backlog.md](.agents/projects/active-backlog.md) — backlog tasks, known tech debt (e.g. orphaned tables).
+5. [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md) — broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, operator console: the *why* and the traps the wiki can't hold.
+6. [.agents/context/security-checklist.md](.agents/context/security-checklist.md) — auth, webhooks, payments (Razorpay), file uploads, RLS, any route reading `tenant_id`. New auth/webhook/payment code or RLS changes → escalate to the `security-reviewer` agent.
+7. [docs/whatsapp-master-prompt.md](docs/whatsapp-master-prompt.md) — `_build_base_prompt()` / `ai_reply.py` prompt assembly, or the `ai_prompts` `master` row. Canonical text; explains why the per-channel rows (`whatsapp_reply` etc.) are dead weight.
 
 ## Agent skills
-
-### Issue tracker
-
-Issues live in GitHub Issues for `ChillandBuild/anril-AI`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Domain docs
-
-Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root (created lazily as needed). See `docs/agents/domain.md`.
-
+- Issues: GitHub Issues for `ChillandBuild/anril-AI` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+- Domain docs: single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.

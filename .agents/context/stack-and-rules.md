@@ -82,3 +82,8 @@ repo.
 - Incidents: [routes/numbers.py](../../backend/app/routes/numbers.py), [services/failover.py](../../backend/app/services/failover.py), [routes/incidents.py](../../backend/app/routes/incidents.py)
 - Broadcasts/Templates: [routes/upload.py](../../backend/app/routes/upload.py), [services/broadcast_executor.py](../../backend/app/services/broadcast_executor.py), [routes/templates.py](../../backend/app/routes/templates.py)
 - Settings & Health: [routes/app_settings.py](../../backend/app/routes/app_settings.py)
+
+## Running the Backend Tests
+- `cd backend && python -m pytest`, run from `backend/`, not the repo root. 4403 tests as of 2026-10-17.
+- Bare `pytest` fails at collection with `ModuleNotFoundError: No module named 'app'`: several test modules import `app.*` without adding the backend dir to `sys.path`. `python -m` puts the cwd on `sys.path`.
+- Windows: run `PYTHONUTF8=1 python -m pytest`. `test_anril_rename_copy` reads every backend file and fails under the default cp1252 encoding.
