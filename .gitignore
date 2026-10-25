@@ -83,4 +83,3 @@ videos/*/capture/app-raw/
 /videos/
 output
 # Playwright CLI output (may contain credentials)
-.playwright-cli/
