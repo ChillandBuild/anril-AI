@@ -1,4 +1,0 @@
-interface:
-  display_name: "Aira Wiki"
-  short_description: "Refresh the local architecture wiki"
-  default_prompt: "Use $aira-wiki to refresh the Aira architecture wiki."
