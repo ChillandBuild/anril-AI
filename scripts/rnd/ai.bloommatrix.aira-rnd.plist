@@ -15,7 +15,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/prem/Documents/Aira AI/scripts/rnd/run.sh</string>
+    <string>/Users/prem/Documents/anril AI/scripts/rnd/run.sh</string>
     <string>auto</string>
   </array>
   <key>StartCalendarInterval</key>

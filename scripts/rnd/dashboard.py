@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MAIN = Path(__file__).resolve().parents[2]
-OUT = MAIN / "rnd" / "reports"
+OUT = Path(os.environ.get("RND_OUT") or Path.home() / "Documents" / "anril-assets" / "rnd" / "reports")  # same as run.sh
 STATE = Path.home() / ".aira-rnd"
 PAGE = Path(__file__).with_name("dashboard.html")
 SCRIPT = Path(__file__).with_name("dashboard.js")

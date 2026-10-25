@@ -73,7 +73,7 @@ def test_reading_and_testing_is_not_blocked(cmd):
 def test_writes_only_inside_worktree_and_reports():
     assert run("Write", {"file_path": f"{OUT}/2026-09-28.md"}) == "pass"
     assert run("Edit", {"file_path": f"{ROOT}/backend/app/x.py"}) == "pass"
-    assert run("Edit", {"file_path": "/Users/prem/Documents/Aira AI/backend/app/x.py"}) == "deny"
+    assert run("Edit", {"file_path": "/Users/prem/Documents/anril AI/backend/app/x.py"}) == "deny"
     assert run("Write", {"file_path": f"{ROOT}/../escape.py"}) == "deny"
     assert run("Write", {"file_path": "/Users/prem/.claude/settings.json"}) == "deny"
 

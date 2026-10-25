@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"/Users/prem/Documents/Aira AI/scripts/rnd/fence.py\"",
+            "command": "python3 \"__MAIN__/scripts/rnd/fence.py\"",
             "timeout": 10
           }
         ]
@@ -15,9 +15,9 @@
   },
   "permissions": {
     "deny": [
-      "Read(//Users/prem/Documents/Aira AI/backend/.env)",
-      "Read(//Users/prem/Documents/Aira AI/backend/.env.*)",
-      "Read(//Users/prem/Documents/Aira AI/frontend/.env.local)",
+      "Read(/__MAIN__/backend/.env)",
+      "Read(/__MAIN__/backend/.env.*)",
+      "Read(/__MAIN__/frontend/.env.local)",
       "Read(//Users/prem/.aira-rnd/env)",
       "Read(//Users/prem/.claude/settings.json)",
       "Read(//Users/prem/.claude.json)"
@@ -36,8 +36,8 @@
     },
     "filesystem": {
       "denyRead": [
-        "/Users/prem/Documents/Aira AI/backend/.env",
-        "/Users/prem/Documents/Aira AI/frontend/.env.local",
+        "__MAIN__/backend/.env",
+        "__MAIN__/frontend/.env.local",
         "/Users/prem/.aira-rnd/env",
         "/Users/prem/.claude/settings.json",
         "/Users/prem/.claude.json",

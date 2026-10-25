@@ -73,12 +73,11 @@ PROFILES_REVIEW.md
 backend/evals/ui/.test-account.json
 backend/evals/ui/screenshots/
 
-# R&D run reports: may hold aggregated customer patterns, local only (scripts/rnd/run.sh)
+# R&D run reports now go to ~/Documents/anril-assets/rnd (scripts/rnd/run.sh); kept as a guard
 /rnd/
 
-# web-product-video
-.product-video/session.json
-.product-video/capture/
+# web-product-video (moved to ~/Documents/anril-assets/product-video)
+.product-video/
 videos/*/capture/app-raw/
 /videos/
 output

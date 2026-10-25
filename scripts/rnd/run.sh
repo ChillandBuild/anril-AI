@@ -14,14 +14,14 @@
 #
 # Safety: AIRA_AUTONOMOUS=1 switches on scripts/rnd/fence.py (loaded via fence-settings.json,
 # regardless of what the worktree contains). The run happens in a dedicated worktree reset
-# to the committed local main; reports go to rnd/reports/ (gitignored: they can hold
-# aggregated customer patterns). Caps: RND_NIGHT_BUDGET / RND_STRATEGY_BUDGET (USD estimate).
+# to the committed local main; reports go to ~/Documents/anril-assets/rnd/reports (outside
+# the repo: they can hold aggregated customer patterns). Caps: RND_NIGHT_BUDGET / RND_STRATEGY_BUDGET (USD estimate).
 set -euo pipefail
 
 MAIN="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE="$HOME/.aira-rnd"
 WT="$MAIN/.worktrees/rnd"
-OUT="$MAIN/rnd/reports"
+OUT="${RND_OUT:-$HOME/Documents/anril-assets/rnd/reports}"
 KIND="${1:-auto}"
 NIGHT_BUDGET="${RND_NIGHT_BUDGET:-8}"
 STRATEGY_BUDGET="${RND_STRATEGY_BUDGET:-20}"
@@ -31,6 +31,10 @@ MAX_SECONDS="${RND_MAX_SECONDS:-5400}"
 
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 mkdir -p "$STATE/logs" "$OUT"
+# fence-settings.json names the checkout as __MAIN__; fill it in so the .env deny rules and
+# the fence hook follow the repo wherever it lives (a hard-coded path broke on the rename).
+FENCE="$STATE/fence-settings.json"
+sed "s|__MAIN__|$MAIN|g" "$MAIN/scripts/rnd/fence-settings.json" >"$FENCE"
 # The Supabase MCP token lives here (chmod 600, never in git); launchd does not load a shell profile.
 [ -f "$STATE/env" ] && source "$STATE/env"
 
@@ -69,7 +73,7 @@ agent() {
       --model "$model" \
       --max-budget-usd "$budget" \
       --permission-mode bypassPermissions \
-      --settings "$MAIN/scripts/rnd/fence-settings.json" \
+      --settings "$FENCE" \
       --add-dir "$OUT" \
       --no-session-persistence
   ) >>"$log" 2>&1 || rc=$?
@@ -98,7 +102,7 @@ run_one() {
   echo "[$(date)] $kind run finished (exit $rc)" >>"$log"
   # Success means a fresh report exists, not just a clean exit.
   if [ "$rc" -eq 0 ] && [ "$OUT/LATEST-$kind.md" -nt "$started" ]; then
-    notify "$kind report ready" "Open rnd/reports/LATEST-$kind.md"
+    notify "$kind report ready" "Open anril-assets/rnd/reports/LATEST-$kind.md"
   else
     notify "$kind run needs a look" "Exit $rc, no fresh report. Log: ~/.aira-rnd/logs/$(basename "$log")"
   fi
@@ -119,7 +123,7 @@ run_builds() {
     for ((k = 0; k < count; k++)); do
       build_one "$items/item-$k.env" "$items/item-$k.md" "$log" "$builds"
     done
-    notify "$count build(s) ready to review" "Open rnd/reports/builds-$(date +%Y-%m-%d).md"
+    notify "$count build(s) ready to review" "Open anril-assets/rnd/reports/builds-$(date +%Y-%m-%d).md"
   fi
   rm -rf "$items"
 }
@@ -158,8 +162,8 @@ $(cat "$itemfile")"
     printf '\n### %s\n' "$ITEM_TITLE"
     printf -- '- Item: %s · Status: **%s**\n' "$ITEM_ID" "${status:-no summary written}"
     printf -- '- Branch: `%s` · Commit: %s\n' "$ITEM_BRANCH" "$commit"
-    printf -- '- make verify on the branch: **%s** (`rnd/reports/build/%s-verify.txt`)\n' "$result" "$ITEM_SAFE"
-    printf -- '- What the builder says: `rnd/reports/build/%s.md`\n' "$ITEM_SAFE"
+    printf -- '- make verify on the branch: **%s** (`build/%s-verify.txt`)\n' "$result" "$ITEM_SAFE"
+    printf -- '- What the builder says: `build/%s.md`\n' "$ITEM_SAFE"
     printf -- '- Accept: `git merge --no-ff %s` then push · Drop: `git worktree remove .worktrees/build-%s && git branch -D %s`\n' "$ITEM_BRANCH" "$ITEM_SAFE" "$ITEM_BRANCH"
   } >>"$builds"
 }
