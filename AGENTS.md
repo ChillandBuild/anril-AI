@@ -40,8 +40,6 @@
   same files; if any, rebase and re-run the tests.
 - Weekly → a short retro: what shipped, what broke.
 - A push to `main` auto-deploys the backend on Render. Push or deploy only when the user says so, every time.
-- Rough or voice-typed idea → `/brief <idea>` first. It shows a short brief and waits for "go" (see
-  `.agents/skills/source-command-brief/SKILL.md`; glossary in `.agents/context/prem-glossary.md`).
 
 ## Agent Routing Instructions
 To prevent context dilution, general invariants and rules have been split into modular guides. **Always read these files first based on the scope of your task:**

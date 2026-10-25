@@ -1,4 +1,0 @@
-interface:
-  display_name: "Aira RLS Audit"
-  short_description: "Audit Aira tenant isolation and RLS"
-  default_prompt: "Use $aira-rls-audit to audit multi-tenant isolation."

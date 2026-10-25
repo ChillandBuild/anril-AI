@@ -1,4 +1,0 @@
-interface:
-  display_name: "Aira Deploy Check"
-  short_description: "Check Aira production deployment health"
-  default_prompt: "Use $aira-deploy-check to check production health for Aira."

@@ -31,9 +31,6 @@
       }
     ]
   },
-  "skillOverrides": {
-    "brief": "user-invocable-only"
-  },
   "claudeMdExcludes": [
     "**/.claude/rules/README.md",
     "**/.claude/rules/common/agents.md",
