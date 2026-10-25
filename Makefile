@@ -37,7 +37,7 @@ doctor:
 verify:
 	bash scripts/verify.sh
 
-# The unattended R&D team (report-only). Normally started by launchd at night; these run it now.
+# The unattended R&D team (report-only). Normally started at 01:30 by the Claude desktop scheduled task anril-rnd-nightly; these run it now.
 rnd-night:
 	bash scripts/rnd/run.sh night
 

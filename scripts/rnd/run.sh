@@ -4,7 +4,8 @@
 #   scripts/rnd/run.sh night      quality scouts (errors, conversations, live UI, code health)
 #   scripts/rnd/run.sh strategy   the weekly strategy run (.agents/rnd/charter.md)
 #   scripts/rnd/run.sh build      build the report items the founder ticked (- [x] Approve)
-#   scripts/rnd/run.sh auto       what launchd calls: build, then night; strategy on Sundays
+#   scripts/rnd/run.sh auto       what the nightly Claude desktop task (anril-rnd-nightly, 01:30)
+#                                 starts: build, then night; strategy on Sundays
 #
 # Builds: each ticked item gets its own branch rnd/<report>-<n>-<slug> and worktree
 # .worktrees/build-<...>; the agent edits and tests there, then THIS script runs make verify
@@ -35,7 +36,7 @@ mkdir -p "$STATE/logs" "$OUT"
 # the fence hook follow the repo wherever it lives (a hard-coded path broke on the rename).
 FENCE="$STATE/fence-settings.json"
 sed "s|__MAIN__|$MAIN|g" "$MAIN/scripts/rnd/fence-settings.json" >"$FENCE"
-# The Supabase MCP token lives here (chmod 600, never in git); launchd does not load a shell profile.
+# The Supabase MCP token lives here (chmod 600, never in git); the nightly task starts this script with a clean env (env -i), so no shell profile.
 [ -f "$STATE/env" ] && source "$STATE/env"
 
 notify() { osascript -e "display notification \"$2\" with title \"Aira R&D\" subtitle \"$1\"" >/dev/null 2>&1 || true; }
