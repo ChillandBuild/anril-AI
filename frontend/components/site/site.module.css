@@ -1,6 +1,6 @@
 /* Shared tokens and primitives for the marketing site under /new.
-   Values come from design/anril-homepage-mockup (its :root). Square corners
-   everywhere except the hero and header pills, which follow the mockup. */
+   These tokens are the source of truth for the site's look: change brand colours
+   and fonts here. Square corners everywhere except the hero and header pills. */
 .site {
   --navy: #0A1528; --teal: #038285; --teal-l: #3FBCBF; --teal-d: #04585B;
   --copper: #9A5A3C; --copper-l: #D9966B;
