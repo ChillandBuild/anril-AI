@@ -22,7 +22,8 @@ from app.services.growth import record_stage_event, sync_follow_up_jobs
 from app.services.assignment import get_telecalling_config, record_assignment_event
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.share_product import ShareProductError, share_product
-from app.services.call_details_share import ShareError, compose_templates, send_approved_template
+from app.services import scheduled_templates
+from app.services.call_details_share import ShareError, _whatsapp_ready, compose_templates, prepare_template, send_approved_template
 
 logger = logging.getLogger(__name__)
 
@@ -1007,6 +1008,63 @@ def compose_template_options(ctx: dict = Depends(require_leads_manage)):
     return {"templates": compose_templates(get_supabase(), ctx["tenant_id"])}
 
 
+def _compose_phone(raw: str) -> str:
+    phone = raw.strip().replace(" ", "").replace("-", "")
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    if len(phone) < 8:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    return phone
+
+
+def _compose_lead(db, tenant_id: str, phone: str, name: str | None) -> str:
+    """The lead for this number, created when there isn't one yet; the typed name is kept."""
+    existing = db.table("leads").select("id").eq("phone", phone).eq("tenant_id", tenant_id).limit(1).execute()
+    if existing.data:
+        lead_id = existing.data[0]["id"]
+        if name:
+            db.table("leads").update({"name": name}).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
+        return lead_id
+    initial_score, initial_segment = new_lead_score_and_segment(tenant_id)
+    insert_data = {"phone": phone, "source": "manual", "score": initial_score, "segment": initial_segment, "tenant_id": tenant_id}
+    if name:
+        insert_data["name"] = name
+    lead_id = db.table("leads").insert(insert_data).execute().data[0]["id"]
+    record_stage_event(lead_id, to_segment=initial_segment, event_type="created", metadata={"source": "manual"}, tenant_id=tenant_id, db=db)
+    return lead_id
+
+
+class ComposeSchedule(BaseModel):
+    phone: str
+    name: str | None = None
+    template_id: str = Field(..., max_length=64)
+    variables: list[str] = Field(default_factory=list, max_length=20)
+    send_at: datetime
+
+
+@router.post("/compose/schedule")
+def compose_schedule_template(payload: ComposeSchedule, ctx: dict = Depends(require_leads_manage)):
+    """The New message form's Schedule: same lead handling as /compose, but the template goes out later."""
+    tenant_id = ctx["tenant_id"]
+    phone = _compose_phone(payload.phone)
+    db = get_supabase()
+    try:
+        # Checked before the lead is created, so a bad time or an unfilled blank leaves nothing behind.
+        scheduled_templates.check_send_at(payload.send_at, scheduled_templates.utcnow())
+        prepare_template(db, tenant_id, payload.template_id, payload.variables)
+        if not _whatsapp_ready(tenant_id, {"phone": phone, "opted_out": False}):
+            raise ShareError("WhatsApp isn't connected. Connect it in Settings first.")
+        lead_id = _compose_lead(db, tenant_id, phone, payload.name)
+        row = scheduled_templates.schedule_template(
+            db, tenant_id, ctx.get("user_id"), lead_id, payload.template_id, payload.variables, payload.send_at,
+        )
+    except scheduled_templates.NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ShareError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {**row, "phone": phone}
+
+
 @router.post("/compose")
 async def compose_new_message(
     payload: ComposeMessage,
@@ -1021,26 +1079,9 @@ async def compose_new_message(
     if payload.template_id is not None and content:
         raise HTTPException(status_code=400, detail="Send either a message or a template")
 
-    phone = payload.phone.strip().replace(" ", "").replace("-", "")
-    if not phone.startswith("+"):
-        phone = "+" + phone
-    if len(phone) < 8:
-        raise HTTPException(status_code=400, detail="Invalid phone number")
-
+    phone = _compose_phone(payload.phone)
     db = get_supabase()
-    existing = db.table("leads").select("id").eq("phone", phone).eq("tenant_id", tenant_id).limit(1).execute()
-    if existing.data:
-        lead_id = existing.data[0]["id"]
-        if payload.name:
-            db.table("leads").update({"name": payload.name}).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
-    else:
-        initial_score, initial_segment = new_lead_score_and_segment(tenant_id)
-        insert_data = {"phone": phone, "source": "manual", "score": initial_score, "segment": initial_segment, "tenant_id": tenant_id}
-        if payload.name:
-            insert_data["name"] = payload.name
-        new_lead = db.table("leads").insert(insert_data).execute()
-        lead_id = new_lead.data[0]["id"]
-        record_stage_event(lead_id, to_segment=initial_segment, event_type="created", metadata={"source": "manual"}, tenant_id=tenant_id, db=db)
+    lead_id = _compose_lead(db, tenant_id, phone, payload.name)
 
     if payload.template_id is not None:
         try:

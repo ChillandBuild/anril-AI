@@ -66,6 +66,7 @@ _heartbeats = {
     "call-alert-summary": None,
     "brain-weekly-digest": None,
     "auto-messages": None,
+    "scheduled-templates": None,
     "private-send-meta-reconcile": None,
 }
 
@@ -321,6 +322,18 @@ async def _process_auto_messages() -> None:
         logger.error(f"Auto-messages scheduler error: {e}")
 
 
+async def _process_scheduled_templates() -> None:
+    """APScheduler job: send scheduled templates whose time has come. See services/scheduled_templates.py."""
+    _heartbeats["scheduled-templates"] = datetime.now(timezone.utc)
+    try:
+        from app.services.scheduled_templates import process_due
+        count = await process_due()
+        if count:
+            logger.info(f"Scheduled-templates scheduler: sent {count} message(s)")
+    except Exception as e:
+        logger.error(f"Scheduled-templates scheduler error: {e}")
+
+
 async def _reconcile_private_send_meta() -> None:
     """APScheduler job: store Meta's message count for yesterday per Private Send tenant."""
     _heartbeats["private-send-meta-reconcile"] = datetime.now(timezone.utc)
@@ -501,6 +514,8 @@ async def lifespan(app: FastAPI):
     )
     _scheduler.add_job(_process_auto_messages, trigger="interval", minutes=1, id="auto-messages",
                        replace_existing=True)
+    _scheduler.add_job(_process_scheduled_templates, trigger="interval", minutes=1, id="scheduled-templates",
+                       replace_existing=True)
     # Fixed clock times, not interval=12h: Render recycles the process every ~5h,
     # so an interval of 5h+ never fires (subsystem-notes.md, 2026-09-19).
     _scheduler.add_job(_sync_numbers_pool, trigger="cron", hour="6,18", minute=0,
@@ -523,9 +538,9 @@ async def lifespan(app: FastAPI):
     _scheduler_started_at = datetime.now(timezone.utc)
     _scheduler.start(paused=not settings.scheduler_enabled)
     if settings.scheduler_enabled:
-        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
+        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
     else:
-        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — 20 jobs registered but PAUSED; nothing will run")
+        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — 21 jobs registered but PAUSED; nothing will run")
 
     yield
 

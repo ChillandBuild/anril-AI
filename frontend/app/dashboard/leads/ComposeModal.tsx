@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Loader2, MessageSquare, Send, X } from "lucide-react";
+import { CalendarClock, FileText, Loader2, MessageSquare, Send, X } from "lucide-react";
+import { toast } from "sonner";
 import { api, type SendDetailsTemplate } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { WhenToSend } from "@/components/schedule/WhenToSend";
+import { defaultWhen, formatSendTime, resolveWhen, type WhenValue } from "@/lib/schedule-time";
 import { VARIABLE_LABEL, blankVariables, renderTemplate, templateLabel } from "@/app/dashboard/telecalling/lib/send-details";
 
 type Mode = "text" | "template";
@@ -23,6 +26,9 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
   const [values, setValues] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [when, setWhen] = useState<WhenValue>(() => defaultWhen(new Date()));
+  // Filled-in details fold into one line; blanks keep the fields open, and they stay open while typed into.
+  const [fieldsOpen, setFieldsOpen] = useState(false);
 
   // Load the approved templates the first time Template is picked.
   useEffect(() => {
@@ -43,7 +49,9 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
 
   // Fresh blanks for each template: business details come pre-filled, the name follows the Name field.
   useEffect(() => {
-    setValues(template ? template.variables.map((v) => (v.role === "customer_name" ? name.trim() : v.value)) : []);
+    const fresh = template ? template.variables.map((v) => (v.role === "customer_name" ? name.trim() : v.value)) : [];
+    setValues(fresh);
+    setFieldsOpen(blankVariables(fresh) > 0);
     // Only when the template changes; typing in Name updates its blank below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template]);
@@ -57,18 +65,29 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
   }
 
   const blanksLeft = template ? blankVariables(values) : 0;
+  const resolved = resolveWhen(when, new Date());
+  const scheduling = mode === "template" && resolved.mode === "later";
   const canSend =
     canManageLeads &&
     !sending &&
     phone.trim().length > 0 &&
-    (mode === "text" ? message.trim().length > 0 : !!template && blanksLeft === 0);
+    (mode === "text" ? message.trim().length > 0 : !!template && blanksLeft === 0 && !(scheduling && resolved.error));
 
   async function send() {
     if (!canSend) return;
     setSending(true);
     setError(null);
     try {
-      if (mode === "template" && template) {
+      if (mode === "template" && template && scheduling && resolved.at) {
+        await api.leads.composeSchedule({
+          phone: phone.trim(),
+          name: name.trim() || undefined,
+          template_id: template.id,
+          variables: values,
+          send_at: resolved.at.toISOString(),
+        });
+        toast.success(`Scheduled for ${formatSendTime(resolved.at)} IST. You can cancel it from the chat with this number.`);
+      } else if (mode === "template" && template) {
         await api.leads.composeTemplate(phone.trim(), template.id, values, name.trim() || undefined);
       } else {
         await api.leads.compose(phone.trim(), message.trim(), name.trim() || undefined);
@@ -85,7 +104,7 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
   return (
     <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-surface rounded-card shadow-card w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6"
+        className="bg-surface rounded-card shadow-card w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto px-6 pt-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -199,19 +218,39 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
                 </select>
               </div>
 
-              {template?.variables.map((v, i) => (
-                <div key={v.key}>
-                  <label className={LABEL} htmlFor={`compose-var-${v.key}`}>
-                    {`{{${v.key}}}`} · {v.role ? VARIABLE_LABEL[v.role] : "Fill this in"}
-                  </label>
-                  <input
-                    id={`compose-var-${v.key}`}
-                    value={values[i] ?? ""}
-                    onChange={(e) => setValues((prev) => prev.map((old, j) => (j === i ? e.target.value : old)))}
-                    className={INPUT}
-                  />
-                </div>
-              ))}
+              {template && template.variables.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFieldsOpen((open) => !open)}
+                  disabled={blanksLeft > 0}
+                  aria-expanded={fieldsOpen}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-surface-mid bg-surface-low px-4 py-2.5 text-left font-body text-sm font-semibold text-on-surface-muted disabled:cursor-default"
+                >
+                  <span>
+                    {fieldsOpen
+                      ? "Template details"
+                      : `${template.variables.length} detail${template.variables.length === 1 ? "" : "s"} filled in`}
+                  </span>
+                  <b className={cn("font-extrabold", blanksLeft > 0 ? "text-amber-700" : "text-primary")}>
+                    {blanksLeft > 0 ? `${blanksLeft} to fill` : fieldsOpen ? "Hide" : "Edit"}
+                  </b>
+                </button>
+              )}
+
+              {fieldsOpen &&
+                template?.variables.map((v, i) => (
+                  <div key={v.key}>
+                    <label className={LABEL} htmlFor={`compose-var-${v.key}`}>
+                      {`{{${v.key}}}`} · {v.role ? VARIABLE_LABEL[v.role] : "Fill this in"}
+                    </label>
+                    <input
+                      id={`compose-var-${v.key}`}
+                      value={values[i] ?? ""}
+                      onChange={(e) => setValues((prev) => prev.map((old, j) => (j === i ? e.target.value : old)))}
+                      className={INPUT}
+                    />
+                  </div>
+                ))}
 
               {template && (
                 <div>
@@ -226,6 +265,8 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
                   )}
                 </div>
               )}
+
+              {template && <WhenToSend idPrefix="compose" variant="form" value={when} onChange={setWhen} disabled={sending} />}
             </>
           )}
 
@@ -236,7 +277,8 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
           )}
         </div>
 
-        <div className="flex justify-end gap-2 mt-6">
+        {/* Pinned to the bottom of the scrolling form so Send stays in reach. */}
+        <div className="sticky bottom-0 -mx-6 mt-4 flex flex-wrap justify-end gap-2 bg-surface px-6 pb-6 pt-3">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-surface-low text-on-surface-muted rounded-xl font-label text-sm font-semibold hover:bg-surface-mid"
@@ -246,11 +288,11 @@ export function ComposeModal({ onClose, onSent, canManageLeads }: { onClose: () 
           <button
             onClick={send}
             disabled={!canSend}
-            title={canManageLeads ? "Send message" : "Read-only role: sending is disabled"}
+            title={canManageLeads ? (scheduling ? "Schedule message" : "Send message") : "Read-only role: sending is disabled"}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-50"
           >
-            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {sending ? "Sending…" : mode === "template" ? "Send template" : "Send"}
+            {sending ? <Loader2 size={14} className="animate-spin" /> : scheduling ? <CalendarClock size={14} /> : <Send size={14} />}
+            {sending ? (scheduling ? "Scheduling…" : "Sending…") : scheduling ? "Schedule template" : mode === "template" ? "Send template" : "Send"}
           </button>
         </div>
       </div>

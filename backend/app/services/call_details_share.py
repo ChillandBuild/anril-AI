@@ -163,8 +163,9 @@ def compose_templates(db, tenant_id: str) -> list[dict]:
     ]
 
 
-async def send_approved_template(db, tenant_id: str, phone: str, template_id: str, variables: list[str]) -> tuple[str | None, str]:
-    """Send one approved template; returns (Meta message id, the text as the customer sees it)."""
+def prepare_template(db, tenant_id: str, template_id: str, variables: list[str]) -> tuple[dict, list[str], str]:
+    """Checks a template is approved on the current WhatsApp account and every blank is filled.
+    Returns (template, values, the text as the customer sees it); nothing is sent."""
     template = next((t for t in _approved_templates(db, tenant_id) if t["id"] == template_id), None)
     if not template:
         raise ShareError("That template isn't approved for this WhatsApp number.")
@@ -172,7 +173,13 @@ async def send_approved_template(db, tenant_id: str, phone: str, template_id: st
     count = len(template_variables(template["name"], template.get("body_text"), {}))
     if len(values) != count or any(not v for v in values):
         raise ShareError("Fill every blank in the template.")
-    components = [{"type": "body", "parameters": [{"type": "text", "text": v} for v in values]}] if count else None
+    return template, values, render_template(template.get("body_text"), values)
+
+
+async def send_approved_template(db, tenant_id: str, phone: str, template_id: str, variables: list[str]) -> tuple[str | None, str]:
+    """Send one approved template; returns (Meta message id, the text as the customer sees it)."""
+    template, values, content = prepare_template(db, tenant_id, template_id, variables)
+    components = [{"type": "body", "parameters": [{"type": "text", "text": v} for v in values]}] if values else None
     try:
         resp = await send_template_message(
             phone, template["name"], template.get("language") or "en", components=components, tenant_id=tenant_id,
@@ -180,7 +187,7 @@ async def send_approved_template(db, tenant_id: str, phone: str, template_id: st
     except HTTPException as e:
         raise ShareError(f"WhatsApp didn't send it: {str(e.detail)[:300]}")
     sid = ((resp or {}).get("messages") or [{}])[0].get("id")
-    return sid, render_template(template.get("body_text"), values)
+    return sid, content
 
 
 def share_context(db, tenant_id: str, lead_id: str, *, now: datetime) -> dict | None:

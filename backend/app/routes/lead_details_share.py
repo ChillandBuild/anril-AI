@@ -6,10 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_and_role
+from app.dependencies.tenant import get_tenant_and_role, require_any_permission
+from app.services import scheduled_templates
 from app.services.call_details_share import ShareError, send_details, share_context
 
 router = APIRouter()
+
+# Changing a scheduled message needs the same right as sending one, from either place it can be made.
+require_schedule_manage = require_any_permission("telecalling.dialer", "conversations.reply", "leads.manage")
 
 
 def require_share_permission(ctx: dict = Depends(get_tenant_and_role)) -> dict:
@@ -44,3 +48,53 @@ async def post_send_details(lead_id: UUID, payload: SendDetailsIn, ctx: dict = D
         )
     except ShareError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------- scheduled templates
+
+class ScheduleIn(BaseModel):
+    template_id: str = Field(..., max_length=64)
+    variables: list[str] = Field(default_factory=list, max_length=20)
+    send_at: datetime
+
+
+class RescheduleIn(BaseModel):
+    send_at: datetime
+
+
+def _scheduled(action, *args, **kwargs):
+    """Runs a scheduled_templates call and turns its refusals into 404 / 400."""
+    try:
+        return action(*args, **kwargs)
+    except scheduled_templates.NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ShareError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{lead_id}/scheduled-templates")
+def list_scheduled_templates(lead_id: UUID, ctx: dict = Depends(require_share_permission)):
+    return {"items": scheduled_templates.list_for_lead(get_supabase(), ctx["tenant_id"], str(lead_id))}
+
+
+@router.post("/{lead_id}/scheduled-templates")
+def create_scheduled_template(lead_id: UUID, payload: ScheduleIn, ctx: dict = Depends(require_share_permission)):
+    return _scheduled(
+        scheduled_templates.schedule_template, get_supabase(), ctx["tenant_id"], ctx.get("user_id"), str(lead_id),
+        payload.template_id, payload.variables, payload.send_at,
+    )
+
+
+@router.patch("/scheduled-templates/{schedule_id}")
+def reschedule_template(schedule_id: UUID, payload: RescheduleIn, ctx: dict = Depends(require_schedule_manage)):
+    return _scheduled(scheduled_templates.reschedule, get_supabase(), ctx["tenant_id"], str(schedule_id), payload.send_at)
+
+
+@router.post("/scheduled-templates/{schedule_id}/cancel")
+def cancel_scheduled_template(schedule_id: UUID, ctx: dict = Depends(require_schedule_manage)):
+    return _scheduled(scheduled_templates.cancel, get_supabase(), ctx["tenant_id"], str(schedule_id))
+
+
+@router.post("/scheduled-templates/{schedule_id}/restore")
+def restore_scheduled_template(schedule_id: UUID, ctx: dict = Depends(require_schedule_manage)):
+    return _scheduled(scheduled_templates.restore, get_supabase(), ctx["tenant_id"], str(schedule_id))

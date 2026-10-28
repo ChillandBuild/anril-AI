@@ -217,6 +217,21 @@ export interface SendDetailsTemplate {
   variables: SendDetailsVariable[];
 }
 
+/** A template waiting to go out (or one that was not sent, kept visible for two days). */
+export interface ScheduledTemplate {
+  id: string;
+  lead_id: string;
+  template_name: string;
+  /** The text as the customer will see it. */
+  content: string;
+  /** UTC ISO time. */
+  send_at: string;
+  status: "scheduled" | "sending" | "sent" | "failed" | "skipped" | "cancelled";
+  /** Plain-words reason when it was not sent. */
+  reason: string | null;
+  created_at: string;
+}
+
 export type SendDetailsContext =
   | { available: false }
   | { available: true; window_open: boolean; last_inbound_at: string | null; free_text: string; templates: SendDetailsTemplate[] };
@@ -1758,6 +1773,27 @@ export const api = {
       apiFetch<SendDetailsContext>(`/api/v1/leads/${leadId}/send-details`),
     sendDetails: (leadId: string, body: { text: string } | { template_id: string; variables: string[] }) =>
       apiFetch<Message>(`/api/v1/leads/${leadId}/send-details`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    scheduledTemplates: async (leadId: string) =>
+      (await apiFetch<{ items: ScheduledTemplate[] }>(`/api/v1/leads/${leadId}/scheduled-templates`)).items ?? [],
+    scheduleTemplate: (leadId: string, body: { template_id: string; variables: string[]; send_at: string }) =>
+      apiFetch<ScheduledTemplate>(`/api/v1/leads/${leadId}/scheduled-templates`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    rescheduleTemplate: (id: string, sendAt: string) =>
+      apiFetch<ScheduledTemplate>(`/api/v1/leads/scheduled-templates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ send_at: sendAt }),
+      }),
+    cancelScheduledTemplate: (id: string) =>
+      apiFetch<ScheduledTemplate>(`/api/v1/leads/scheduled-templates/${id}/cancel`, { method: "POST" }),
+    restoreScheduledTemplate: (id: string) =>
+      apiFetch<ScheduledTemplate>(`/api/v1/leads/scheduled-templates/${id}/restore`, { method: "POST" }),
+    composeSchedule: (body: { phone: string; name?: string; template_id: string; variables: string[]; send_at: string }) =>
+      apiFetch<ScheduledTemplate & { phone: string }>(`/api/v1/leads/compose/schedule`, {
         method: "POST",
         body: JSON.stringify(body),
       }),

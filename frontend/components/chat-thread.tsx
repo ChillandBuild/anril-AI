@@ -5,6 +5,8 @@ import { api, Lead, Message } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { cn, formatPhone } from "@/lib/utils";
 import { usePolling } from "@/hooks/usePolling";
+import { useScheduledTemplates } from "@/hooks/useScheduledTemplates";
+import { ScheduledBubbles } from "@/components/schedule/scheduled-messages";
 import { ChannelAvatar, getChannel, CHANNEL_LABEL } from "./channel-avatar";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { SwitchPill } from "@/components/ui/controls";
@@ -251,6 +253,15 @@ export function ChatThread({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [resolvingHandover, setResolvingHandover] = useState(false);
 
+  // Templates waiting to go out show in the thread as dashed bubbles.
+  const scheduled = useScheduledTemplates(lead.id, { enabled: canReplyToConversations });
+  const reloadScheduled = scheduled.refresh;
+  const refreshScheduled = useRef(reloadScheduled);
+  useEffect(() => {
+    refreshScheduled.current = reloadScheduled;
+  });
+  const scheduledKey = scheduled.items.map((s) => `${s.id}:${s.status}:${s.send_at}`).join("|");
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -475,6 +486,8 @@ export function ChatThread({
             if (prev.some((m) => m.id === payload.new.id)) return prev;
             return [...prev, payload.new as Message];
           });
+          // A scheduled template that just went out is now a real message, so its dashed bubble must go.
+          if (payload.new.direction === "outbound") void refreshScheduled.current();
         }
       )
       .subscribe();
@@ -495,13 +508,14 @@ export function ChatThread({
         return prev;
       });
     }).catch(() => { /* silent — realtime is primary */ });
-  }, [lead.id]);
+    void reloadScheduled();
+  }, [lead.id, reloadScheduled]);
 
   usePolling(pollMessages, 15000);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, scheduledKey]);
 
   const aiEnabled = current.ai_enabled !== false;
   const converted = Boolean(current.converted_at);
@@ -694,21 +708,29 @@ export function ChatThread({
           <div className="flex items-center justify-center h-full text-[#64748b] font-body text-sm">
             Loading messages…
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && scheduled.items.length === 0 ? (
           <div className="flex items-center justify-center h-full text-[#64748b] font-body text-sm">
             No messages yet
           </div>
         ) : (
-          messages.map((msg, i) => {
-            const prev = messages[i - 1];
-            const showDivider = !prev || !isSameDay(new Date(msg.created_at), new Date(prev.created_at));
-            return (
-              <Fragment key={msg.id}>
-                {showDivider && <DateDivider dateStr={msg.created_at} />}
-                <MessageBubble msg={msg} />
-              </Fragment>
-            );
-          })
+          <>
+            {messages.map((msg, i) => {
+              const prev = messages[i - 1];
+              const showDivider = !prev || !isSameDay(new Date(msg.created_at), new Date(prev.created_at));
+              return (
+                <Fragment key={msg.id}>
+                  {showDivider && <DateDivider dateStr={msg.created_at} />}
+                  <MessageBubble msg={msg} />
+                </Fragment>
+              );
+            })}
+            <ScheduledBubbles
+              items={scheduled.items}
+              canChange={canReplyToConversations}
+              onCancel={(id) => void scheduled.cancel(id)}
+              onReschedule={scheduled.reschedule}
+            />
+          </>
         )}
         <div ref={bottomRef} />
       </div>
@@ -797,8 +819,9 @@ export function ChatThread({
         {/* Template modal */}
         {templateModalOpen && (
           <div className="fixed inset-0 z-dialog bg-black/40 flex items-center justify-center p-4" onClick={closeTemplateModal}>
-            <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
+            {/* No bottom padding on the scrolling box: the pinned Send bar then sits flush at its edge. */}
+            <div className="bg-white rounded-2xl max-w-lg w-full px-5 pt-5 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-[#0A1528]">Send template</h2>
                 <button
                   onClick={closeTemplateModal}
@@ -808,7 +831,9 @@ export function ChatThread({
                   <X size={18} />
                 </button>
               </div>
-              <SendDetailsCard leadId={current.id} explainUnavailable />
+              <div className="pb-5">
+                <SendDetailsCard leadId={current.id} explainUnavailable inDialog onScheduleChange={() => void scheduled.refresh()} />
+              </div>
             </div>
           </div>
         )}

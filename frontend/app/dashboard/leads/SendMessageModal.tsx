@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Loader2, MessageSquare, Send, X } from "lucide-react";
+import { CalendarClock, FileText, Loader2, MessageSquare, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, Lead, type SendDetailsTemplate } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { WhenToSend } from "@/components/schedule/WhenToSend";
+import { defaultWhen, formatSendTime, resolveWhen, type WhenValue } from "@/lib/schedule-time";
 import { VARIABLE_LABEL, blankVariables, renderTemplate, templateLabel } from "@/app/dashboard/telecalling/lib/send-details";
 
 interface SendMessageModalProps {
@@ -38,6 +40,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
   const [nameFallback, setNameFallback] = useState("");
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [when, setWhen] = useState<WhenValue>(() => defaultWhen(new Date()));
 
   // The approved templates come with the selected lead's send context.
   useEffect(() => {
@@ -83,11 +86,13 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
 
   const sharedBlanksLeft = template ? blankVariables(values.filter((_, i) => i !== nameIndex)) : 0;
   const needsFallback = nameIndex >= 0 && unnamed > 0 && !nameFallback.trim();
+  const resolved = resolveWhen(when, new Date());
+  const scheduling = mode === "template" && resolved.mode === "later";
   const canSend =
     !sending &&
     (mode === "text"
       ? openLeads.length > 0 && message.trim().length > 0
-      : !!template && sharedBlanksLeft === 0 && !needsFallback);
+      : !!template && sharedBlanksLeft === 0 && !needsFallback && !(scheduling && resolved.error));
 
   async function send() {
     if (!canSend) return;
@@ -99,7 +104,13 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
     for (const lead of targets) {
       try {
         if (mode === "text") await api.leads.sendMessage(lead.id, message.trim());
-        else if (template) await api.leads.sendDetails(lead.id, { template_id: template.id, variables: valuesFor(lead) });
+        else if (template && scheduling && resolved.at) {
+          await api.leads.scheduleTemplate(lead.id, {
+            template_id: template.id,
+            variables: valuesFor(lead),
+            send_at: resolved.at.toISOString(),
+          });
+        } else if (template) await api.leads.sendDetails(lead.id, { template_id: template.id, variables: valuesFor(lead) });
         sent++;
       } catch {
         failed++;
@@ -107,7 +118,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
       setProgress((n) => n + 1);
     }
     setSending(false);
-    let msg = `Sent ${sent}`;
+    let msg = scheduling && resolved.at ? `Scheduled ${sent} for ${formatSendTime(resolved.at)} IST` : `Sent ${sent}`;
     if (mode === "text" && skipped > 0) msg += ` · ${skipped} skipped, reply window closed`;
     if (failed > 0) msg += ` · ${failed} failed`;
     if (sent > 0) toast.success(msg);
@@ -122,7 +133,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
   return (
     <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-lg w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-5"
+        className="bg-white rounded-2xl shadow-lg w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto px-5 pt-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -257,10 +268,13 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
                 </p>
               </div>
             )}
+
+            {template && <WhenToSend idPrefix="bulk" variant="form" value={when} onChange={setWhen} disabled={sending} />}
           </div>
         )}
 
-        <div className="mt-5 flex items-center justify-end gap-2">
+        {/* Pinned to the bottom of the scrolling dialog so Send stays in reach. */}
+        <div className="sticky bottom-0 -mx-5 mt-4 flex items-center justify-end gap-2 bg-white px-5 pb-5 pt-3">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-sm font-semibold hover:bg-[#e2e8f0]"
@@ -272,8 +286,12 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
             disabled={!canSend}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-50"
           >
-            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {sending ? `Sending ${progress}/${total}…` : `Send to ${total}`}
+            {sending ? <Loader2 size={14} className="animate-spin" /> : scheduling ? <CalendarClock size={14} /> : <Send size={14} />}
+            {sending
+              ? `${scheduling ? "Scheduling" : "Sending"} ${progress}/${total}…`
+              : scheduling
+                ? `Schedule for ${total}`
+                : `Send to ${total}`}
           </button>
         </div>
       </div>
