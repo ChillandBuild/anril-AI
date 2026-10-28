@@ -163,7 +163,7 @@ def _plain_reason(message: str) -> str:
     return _plain_failure(message)
 
 
-def _notify_failure(db, row: dict, lead: dict | None, reason: str) -> None:
+def _notify_not_sent(db, row: dict, lead: dict | None, reason: str) -> None:
     if not row.get("created_by"):
         return
     from app.services.notify import notify_user
@@ -184,14 +184,17 @@ async def send_one(db, row: dict) -> bool:
         return False
     tenant_id = row["tenant_id"]
     lead = _lead(db, tenant_id, row["lead_id"])
+    skip_reason = None
     if not lead:
-        _finish(db, row["id"], "skipped", "The lead was removed.")
-        return False
-    if lead.get("opted_out"):
-        _finish(db, row["id"], "skipped", "The customer opted out.")
-        return False
-    if not _whatsapp_ready(tenant_id, lead):
-        _finish(db, row["id"], "skipped", "WhatsApp isn't available for this lead.")
+        skip_reason = "The lead was removed."
+    elif lead.get("opted_out"):
+        skip_reason = "The customer opted out."
+    elif not _whatsapp_ready(tenant_id, lead):
+        skip_reason = "WhatsApp isn't available for this lead."
+    if skip_reason:
+        # Not a fault, but whoever scheduled it may be counting on it going out, so they are told.
+        _finish(db, row["id"], "skipped", skip_reason)
+        _notify_not_sent(db, row, lead, skip_reason)
         return False
     try:
         sid, content = await send_approved_template(
@@ -200,13 +203,13 @@ async def send_one(db, row: dict) -> bool:
     except ShareError as e:
         reason = _plain_reason(str(e))
         _finish(db, row["id"], "failed", reason)
-        _notify_failure(db, row, lead, reason)
+        _notify_not_sent(db, row, lead, reason)
         return False
     except Exception as e:
         logger.error(f"scheduled_templates: send {row['id']} crashed for tenant {tenant_id}: {e}")
         reason = "Something went wrong while sending it."
         _finish(db, row["id"], "failed", reason)
-        _notify_failure(db, row, lead, reason)
+        _notify_not_sent(db, row, lead, reason)
         return False
     _finish(db, row["id"], "sent")
     try:
@@ -230,7 +233,7 @@ async def process_due(limit: int = 50) -> int:
     ).data or []
     for row in stuck:
         # Nobody can tell whether the customer got it, so whoever scheduled it is told to look.
-        _notify_failure(db, row, _lead(db, row["tenant_id"], row["lead_id"]), INTERRUPTED)
+        _notify_not_sent(db, row, _lead(db, row["tenant_id"], row["lead_id"]), INTERRUPTED)
     due = (
         db.table(TABLE).select("*").eq("status", "scheduled").lte("send_at", now.isoformat())
         .order("send_at").limit(limit).execute()

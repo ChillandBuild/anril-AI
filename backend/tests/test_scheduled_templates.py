@@ -186,18 +186,40 @@ class SendDueTests(_Sched):
         self.assertEqual(self.send_template.await_count, 1)
         self.assertEqual(len(self.db.rows("messages")), 1)
 
-    async def test_a_customer_who_opted_out_in_the_meantime_is_skipped(self):
+    async def test_a_customer_who_opted_out_in_the_meantime_is_skipped_and_the_scheduler_is_told(self):
         self.db.rows("leads")[-1]["opted_out"] = True
         made = self.add_row(id="optout")["id"]
         self.assertEqual(await sched.process_due(), 0)
         self.assertEqual((self.row(made)["status"], self.row(made)["reason"]), ("skipped", "The customer opted out."))
         self.send_template.assert_not_awaited()
-        self.notify.assert_not_called()
+        self.assertEqual(self.db.rows("messages"), [])
+        self.notify.assert_called_once()
+        args = self.notify.call_args.args
+        self.assertEqual(args[:3], ("t1", "u1", "scheduled_template_failed"))
+        self.assertIn("Asha Menon", args[4])
+        self.assertIn("The customer opted out.", args[4])
 
-    async def test_a_removed_lead_is_skipped(self):
+    async def test_a_removed_lead_is_skipped_and_the_scheduler_is_told(self):
         made = self.add_row(id="gone", lead_id="33333333-3333-3333-3333-333333333333")["id"]
         await sched.process_due()
         self.assertEqual((self.row(made)["status"], self.row(made)["reason"]), ("skipped", "The lead was removed."))
+        self.notify.assert_called_once()
+        self.assertIn("a lead", self.notify.call_args.args[4])
+
+    async def test_whatsapp_being_disconnected_in_the_meantime_is_skipped_and_the_scheduler_is_told(self):
+        self.settings.pop("meta_access_token")
+        made = self.add_row(id="disconnected")["id"]
+        await sched.process_due()
+        self.assertEqual((self.row(made)["status"], self.row(made)["reason"]), ("skipped", "WhatsApp isn't available for this lead."))
+        self.send_template.assert_not_awaited()
+        self.notify.assert_called_once()
+
+    async def test_a_skip_with_nobody_to_tell_is_still_recorded(self):
+        self.db.rows("leads")[-1]["opted_out"] = True
+        made = self.add_row(id="nobody", created_by=None)["id"]
+        await sched.process_due()
+        self.assertEqual(self.row(made)["status"], "skipped")
+        self.notify.assert_not_called()
 
     async def test_a_template_that_is_no_longer_approved_fails_and_tells_who_scheduled_it(self):
         made = self.add_row(id="stale", template_id="tpl-3", template_name="pending_one", variables=[])["id"]
