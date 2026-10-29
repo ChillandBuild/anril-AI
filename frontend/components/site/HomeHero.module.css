@@ -32,9 +32,10 @@
   position: absolute; left: 0; top: 0; width: 440px; height: 275px; overflow: hidden;
   transform-origin: 0 0;
   transform: matrix3d(0.53351194, 0.019230982, 0, -0.00028390208, -0.10913133, 0.71565308, 0, -3.8485971e-05, 0, 0, 1, 0, 515.2512, 135.46651, 0, 1);
-  display: flex; background: #EEF1F5; color: #0A1528;
+  display: flex; background: #F7F9FB; color: #0A1528;
   font-family: var(--sans); line-height: 1.25; text-shadow: none;
 }
+.shot { width: 100%; height: auto; display: block; }
 .glare {
   position: absolute; inset: 0; pointer-events: none;
   background:
