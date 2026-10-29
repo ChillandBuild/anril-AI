@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -244,6 +244,9 @@ export function ScheduledTemplatesClient() {
   const [openBatches, setOpenBatches] = useState<Set<string>>(() => new Set());
   const [showAll, setShowAll] = useState<Set<string>>(() => new Set());
   const [dialog, setDialog] = useState<{ refs: Ref[]; seq: number } | null>(null);
+  // One change at a time: the ref blocks a second request before React re-renders, the state disables the buttons.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const templates = data?.templates ?? [];
   const broadcasts = data?.broadcasts ?? [];
@@ -334,13 +337,27 @@ export function ScheduledTemplatesClient() {
   const selectableKeys = new Set<string>();
   for (const t of templates) if (isSelectable("template", t.status)) selectableKeys.add(refKey({ kind: "template", id: t.id }));
   for (const b of broadcasts) if (isSelectable("broadcast", b.status)) selectableKeys.add(refKey({ kind: "broadcast", id: b.id }));
-  const selectedRefs: Ref[] = Array.from(selected).filter((k) => selectableKeys.has(k)).map(refFromKey);
+  // Keys of every selectable row the user can see now. Rows in a collapsed batch count: their batch row is visible.
   const visibleKeys = [
     ...visibleBroadcasts.filter((b) => isSelectable("broadcast", b.status)).map((b) => refKey({ kind: "broadcast", id: b.id })),
     ...visibleTemplates.filter((t) => isSelectable("template", t.status)).map((t) => refKey({ kind: "template", id: t.id })),
   ];
-  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
-  const someVisibleSelected = visibleKeys.some((k) => selected.has(k));
+  // Selected ids that are still on screen. Everything counting or acting on the selection uses this, never the raw set.
+  const visibleKeySet = new Set(visibleKeys);
+  const visibleSelected = new Set(Array.from(selected).filter((k) => visibleKeySet.has(k)));
+  const selectedRefs: Ref[] = Array.from(visibleSelected).filter((k) => selectableKeys.has(k)).map(refFromKey);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => visibleSelected.has(k));
+  const someVisibleSelected = visibleKeys.some((k) => visibleSelected.has(k));
+
+  // Drop hidden ids from the stored selection too, so clearing a filter does not bring them back selected.
+  const visibleSig = visibleKeys.join("\n");
+  useEffect(() => {
+    const keep = new Set(visibleSig.split("\n"));
+    setSelected((prev) => {
+      const next = new Set(Array.from(prev).filter((k) => keep.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleSig]);
 
   function setKeys(keys: string[], on: boolean) {
     setSelected((prev) => {
@@ -382,7 +399,21 @@ export function ScheduledTemplatesClient() {
     return result;
   }
 
+  // Returns false when another change is still in flight; the caller then does nothing (Undo is ignored).
+  function startChange(): boolean {
+    if (savingRef.current) return false;
+    savingRef.current = true;
+    setSaving(true);
+    return true;
+  }
+
+  function endChange() {
+    savingRef.current = false;
+    setSaving(false);
+  }
+
   async function restoreRefs(refs: Ref[]) {
+    if (!startChange()) return;
     try {
       const result = await runBulk("restore", refs);
       const done = kept(refs, result).length;
@@ -390,10 +421,13 @@ export function ScheduledTemplatesClient() {
       reportLeftAlone(result.failed);
     } catch (err) {
       toast.error(messageOf(err, "Couldn't undo that"));
+    } finally {
+      endChange();
     }
   }
 
   async function cancelRefs(refs: Ref[]) {
+    if (!startChange()) return;
     try {
       const result = await runBulk("cancel", refs);
       const done = kept(refs, result);
@@ -407,21 +441,28 @@ export function ScheduledTemplatesClient() {
       dropFromSelection(done);
     } catch (err) {
       toast.error(messageOf(err, "Couldn't cancel them"));
+    } finally {
+      endChange();
     }
   }
 
   /** Resolves with the reason to show in the dialog, or null once the move went through. */
   async function rescheduleRefs(refs: Ref[], at: Date): Promise<string | null> {
-    const result = await runBulk("reschedule", refs, at);
-    const done = kept(refs, result);
-    if (done.length === 0) {
-      const reasons = Array.from(new Set(result.failed.map((f) => f.reason))).join(" ");
-      return reasons || "None of them could be moved.";
+    if (!startChange()) return "Still saving the last change. Try again in a moment.";
+    try {
+      const result = await runBulk("reschedule", refs, at);
+      const done = kept(refs, result);
+      if (done.length === 0) {
+        const reasons = Array.from(new Set(result.failed.map((f) => f.reason))).join(" ");
+        return reasons || "None of them could be moved.";
+      }
+      toast.success(done.length === 1 ? `Moved to ${formatSendTime(at)} IST.` : `${done.length} messages moved to ${formatSendTime(at)} IST.`);
+      reportLeftAlone(result.failed);
+      dropFromSelection(done);
+      return null;
+    } finally {
+      endChange();
     }
-    toast.success(done.length === 1 ? `Moved to ${formatSendTime(at)} IST.` : `${done.length} messages moved to ${formatSendTime(at)} IST.`);
-    reportLeftAlone(result.failed);
-    dropFromSelection(done);
-    return null;
   }
 
   function openReschedule(refs: Ref[]) {
@@ -459,11 +500,11 @@ export function ScheduledTemplatesClient() {
       const busy = t.status === "sending";
       return [
         { label: "Reschedule", tone: "outline", disabled: busy, onClick: () => openReschedule([ref]) },
-        { label: "Cancel", tone: "danger", disabled: busy, onClick: () => void cancelRefs([ref]) },
+        { label: "Cancel", tone: "danger", disabled: busy || saving, onClick: () => void cancelRefs([ref]) },
       ];
     }
     if (canTemplates && t.status === "cancelled") {
-      return [{ label: "Undo cancel", tone: "outline", onClick: () => void restoreRefs([ref]) }];
+      return [{ label: "Undo cancel", tone: "outline", disabled: saving, onClick: () => void restoreRefs([ref]) }];
     }
     return [{ label: "Open chat", tone: "link", onClick: () => openChat(t.lead_id) }];
   }
@@ -475,10 +516,10 @@ export function ScheduledTemplatesClient() {
       const busy = b.status === "sending";
       return [
         { label: "Reschedule", tone: "outline", disabled: busy, onClick: () => openReschedule([ref]) },
-        { label: "Cancel", tone: "danger", disabled: busy, onClick: () => void cancelRefs([ref]) },
+        { label: "Cancel", tone: "danger", disabled: busy || saving, onClick: () => void cancelRefs([ref]) },
       ];
     }
-    if (b.status === "cancelled") return [{ label: "Undo cancel", tone: "outline", onClick: () => void restoreRefs([ref]) }];
+    if (b.status === "cancelled") return [{ label: "Undo cancel", tone: "outline", disabled: saving, onClick: () => void restoreRefs([ref]) }];
     // A broadcast that was not sent can't be moved (the server only moves waiting days); resend it from Outbound Leads.
     return [];
   }
@@ -490,11 +531,11 @@ export function ScheduledTemplatesClient() {
     if (tab === "scheduled" && waiting.length > 0) {
       return [
         { label: "Reschedule all", tone: "outline", onClick: () => openReschedule(waiting) },
-        { label: "Cancel all", tone: "danger", onClick: () => void cancelRefs(waiting) },
+        { label: "Cancel all", tone: "danger", disabled: saving, onClick: () => void cancelRefs(waiting) },
       ];
     }
     if (tab === "cancelled" && cancelled.length > 0) {
-      return [{ label: "Undo all", tone: "outline", onClick: () => void restoreRefs(cancelled) }];
+      return [{ label: "Undo all", tone: "outline", disabled: saving, onClick: () => void restoreRefs(cancelled) }];
     }
     return [];
   }
@@ -526,10 +567,10 @@ export function ScheduledTemplatesClient() {
     const sendAt = new Date(b.send_at);
     const waiting = tabOf(b.status) === "scheduled";
     return (
-      <div key={key} className={cn(GRID, "border-b border-[#f1f5f9] py-3 transition-colors hover:bg-[#f8fafc]", selected.has(key) && "bg-primary/5")}>
+      <div key={key} className={cn(GRID, "border-b border-[#f1f5f9] py-3 transition-colors hover:bg-[#f8fafc]", visibleSelected.has(key) && "bg-primary/5")}>
         <div>
           {canSelect && selectableKeys.has(key) && (
-            <SelectBox checked={selected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${b.template_name}`} />
+            <SelectBox checked={visibleSelected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${b.template_name}`} />
           )}
         </div>
         <div className="flex min-w-0 items-center gap-2.5">
@@ -574,12 +615,12 @@ export function ScheduledTemplatesClient() {
           GRID,
           "cursor-pointer border-b border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]",
           child ? "bg-[#f8fafc] py-2.5" : "py-3",
-          selected.has(key) && "bg-primary/5",
+          visibleSelected.has(key) && "bg-primary/5",
         )}
       >
         <div onClick={(e) => e.stopPropagation()}>
           {canSelect && selectableKeys.has(key) && (
-            <SelectBox checked={selected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${name}`} />
+            <SelectBox checked={visibleSelected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${name}`} />
           )}
         </div>
         <div className={cn("flex min-w-0 items-center gap-2.5", child && "pl-[30px]")}>
@@ -621,8 +662,8 @@ export function ScheduledTemplatesClient() {
     const first = new Date(rows[0].send_at);
     const earliest = new Date(Math.min(...rows.map((r) => Date.parse(r.send_at))));
     const selectKeys = rows.filter((r) => isSelectable("template", r.status)).map((r) => refKey({ kind: "template", id: r.id }));
-    const everyKeySelected = selectKeys.length > 0 && selectKeys.every((k) => selected.has(k));
-    const someKeySelected = selectKeys.some((k) => selected.has(k));
+    const everyKeySelected = selectKeys.length > 0 && selectKeys.every((k) => visibleSelected.has(k));
+    const someKeySelected = selectKeys.some((k) => visibleSelected.has(k));
     const senders = Array.from(new Set(rows.map((r) => r.created_by_name))).join(", ");
 
     return (
@@ -701,7 +742,7 @@ export function ScheduledTemplatesClient() {
     return (
       <div className="mt-4 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
         <div>
-          {canSelect && selectable && <SelectBox checked={selected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${label}`} />}
+          {canSelect && selectable && <SelectBox checked={visibleSelected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${label}`} />}
         </div>
         <ActionRow actions={actions} />
       </div>
@@ -712,7 +753,7 @@ export function ScheduledTemplatesClient() {
     const key = refKey({ kind: "broadcast", id: b.id });
     const sendAt = new Date(b.send_at);
     return (
-      <MobileRecordCard key={key} className={cn(selected.has(key) && "border-primary/40 bg-primary/5")}>
+      <MobileRecordCard key={key} className={cn(visibleSelected.has(key) && "border-primary/40 bg-primary/5")}>
         <MobileRecordHeader
           title={b.template_name}
           subtitle={`${b.kind === "drip" ? `Drip · ${b.days} days` : "Broadcast"} · ${b.recipients.toLocaleString("en-IN")} recipients`}
@@ -732,7 +773,7 @@ export function ScheduledTemplatesClient() {
     const key = refKey({ kind: "template", id: t.id });
     const name = t.lead_name || t.lead_phone || "Lead";
     return (
-      <MobileRecordCard key={key} onClick={() => openChat(t.lead_id)} className={cn("cursor-pointer", selected.has(key) && "border-primary/40 bg-primary/5")}>
+      <MobileRecordCard key={key} onClick={() => openChat(t.lead_id)} className={cn("cursor-pointer", visibleSelected.has(key) && "border-primary/40 bg-primary/5")}>
         <MobileRecordHeader
           title={name}
           subtitle={t.reason ? <span className="text-[#c2410c]">{t.reason}</span> : t.lead_name ? t.lead_phone : null}
@@ -792,7 +833,7 @@ export function ScheduledTemplatesClient() {
               return (
                 <div key={key} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                   {canSelect && isSelectable("template", t.status) && (
-                    <SelectBox checked={selected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${name}`} />
+                    <SelectBox checked={visibleSelected.has(key)} onChange={(on) => setKeys([key], on)} label={`Select ${name}`} />
                   )}
                   <Avatar text={initialsOf(name)} color={avatarColor(t.lead_id)} size="sm" />
                   <button type="button" onClick={() => openChat(t.lead_id)} className="min-w-0 flex-1 text-left">
@@ -1032,8 +1073,9 @@ export function ScheduledTemplatesClient() {
           </button>
           <button
             type="button"
+            disabled={saving}
             onClick={() => void cancelRefs(selectedRefs)}
-            className="h-8 rounded-lg border border-white/35 px-3 text-xs font-bold text-white hover:bg-white/10"
+            className="h-8 rounded-lg border border-white/35 px-3 text-xs font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>

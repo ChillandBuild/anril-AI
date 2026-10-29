@@ -616,6 +616,7 @@ export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | nul
       {sendMessageModalOpen && (
         <SendMessageModal
           selectedLeads={sendMessageLeads}
+          batchLabel={`${SEGMENT_LABELS[tab]} leads`}
           onClose={closeSendMessageModal}
           onAfterSend={() => {
             mutateList();

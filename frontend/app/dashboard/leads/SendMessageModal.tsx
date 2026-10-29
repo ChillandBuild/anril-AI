@@ -13,6 +13,8 @@ interface SendMessageModalProps {
   selectedLeads: Lead[];
   onClose: () => void;
   onAfterSend: () => void;
+  /** Names the batch on the Scheduled templates page, e.g. "Hot leads". Only used when several leads are scheduled together. */
+  batchLabel?: string;
 }
 
 type Mode = "text" | "template";
@@ -25,7 +27,7 @@ function windowOpen(lead: Lead, now: number): boolean {
   return !!lead.last_inbound_at && now - new Date(lead.last_inbound_at).getTime() < 24 * 60 * 60 * 1000;
 }
 
-export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMessageModalProps) {
+export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLabel }: SendMessageModalProps) {
   const [now] = useState(() => Date.now());
   const openLeads = useMemo(() => selectedLeads.filter((l) => windowOpen(l, now)), [selectedLeads, now]);
   const skipped = selectedLeads.length - openLeads.length;
@@ -112,6 +114,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
             variables: valuesFor(lead),
             send_at: resolved.at.toISOString(),
             batch_id: batchId,
+            ...(batchId && batchLabel ? { batch_label: batchLabel } : {}),
           });
         } else if (template) await api.leads.sendDetails(lead.id, { template_id: template.id, variables: valuesFor(lead) });
         sent++;

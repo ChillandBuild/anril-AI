@@ -120,6 +120,15 @@ class BroadcastChangeTests(_Base):
             with self.assertRaises(share.ShareError):
                 ov.reschedule_broadcast(self.db, "t1", row["id"], when, NOW)
 
+    def test_a_drip_whose_last_day_would_pass_thirty_days_is_refused_and_left_alone(self):
+        days = [self.broadcast(schedule_type="drip", drip_group_id="g1", fire_at=at(days=d + 1)) for d in range(5)]
+        before = [r["fire_at"] for r in self.db.rows(BC)]
+        with self.assertRaises(share.ShareError) as err:
+            ov.reschedule_broadcast(self.db, "t1", days[0]["id"], NOW + timedelta(days=28), NOW)  # last day would be day 32
+        self.assertIn("last day", str(err.exception))
+        self.assertEqual([r["fire_at"] for r in self.db.rows(BC)], before)
+        self.assertEqual(ov.reschedule_broadcast(self.db, "t1", days[0]["id"], NOW + timedelta(days=26), NOW), 5)  # last day = day 30
+
     def test_another_tenants_broadcast_cannot_be_touched(self):
         row = self.broadcast(tenant_id="t2")
         with self.assertRaises(sched.NotFound):

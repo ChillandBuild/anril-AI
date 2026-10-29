@@ -365,7 +365,12 @@ class RiskAuditRequest(BaseModel):
 
 def _validate_csv_storage_path(path: str, tenant_id: str) -> str:
     clean_path = path.strip().lstrip("/")
-    if not clean_path or not clean_path.startswith(f"{tenant_id}/"):
+    if (
+        not clean_path
+        or not clean_path.startswith(f"{tenant_id}/")
+        or ".." in clean_path.split("/")
+        or "\\" in clean_path
+    ):
         raise HTTPException(status_code=403, detail="CSV path is outside this tenant")
     return clean_path
 

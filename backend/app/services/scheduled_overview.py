@@ -202,9 +202,12 @@ def reschedule_broadcast(db, tenant_id: str, broadcast_id: str, send_at: datetim
     if not rows:
         raise ShareError("It is not waiting any more.")
     shift = send_at - _iso(rows[0]["fire_at"])
-    for r in rows:
-        moved = _iso(r["fire_at"]) + shift
-        db.table(BROADCASTS).update({"fire_at": moved.astimezone(timezone.utc).isoformat()}).eq("id", r["id"]).eq("tenant_id", tenant_id).eq("status", "pending").execute()
+    moved = [(r["id"], (_iso(r["fire_at"]) + shift).astimezone(timezone.utc)) for r in rows]
+    # Later days move with the first one, so the last day is the one that can run past the limit.
+    if moved[-1][1] - now > templates.MAX_AHEAD:
+        raise ShareError("The last day of this drip would be more than 30 days ahead. Pick an earlier time.")
+    for row_id, fire_at in moved:
+        db.table(BROADCASTS).update({"fire_at": fire_at.isoformat()}).eq("id", row_id).eq("tenant_id", tenant_id).eq("status", "pending").execute()
     return len(rows)
 
 
