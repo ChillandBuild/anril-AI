@@ -20,9 +20,7 @@ import {
   Music, Video, Download, X, Eraser, MoreVertical,
   ArrowLeft, Check, CheckCheck, Flag, Info, Smile, SendHorizontal, Paperclip, CreditCard, Lock,
 } from "lucide-react";
-import dynamic from "next/dynamic";
-
-const SendDetailsCard = dynamic(() => import("@/app/dashboard/telecalling/components/SendDetailsCard"), { ssr: false });
+import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -818,24 +816,11 @@ export function ChatThread({
 
         {/* Template modal */}
         {templateModalOpen && (
-          <div className="fixed inset-0 z-dialog bg-black/40 flex items-center justify-center p-4" onClick={closeTemplateModal}>
-            {/* No bottom padding on the scrolling box: the pinned Send bar then sits flush at its edge. */}
-            <div className="bg-white rounded-2xl max-w-lg w-full px-5 pt-5 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-bold text-[#0A1528]">Send template</h2>
-                <button
-                  onClick={closeTemplateModal}
-                  aria-label="Close"
-                  className="p-1 hover:bg-slate-100 rounded-lg text-[#64748b]"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="pb-5">
-                <SendDetailsCard leadId={current.id} explainUnavailable inDialog onScheduleChange={() => void scheduled.refresh()} />
-              </div>
-            </div>
-          </div>
+          <SendTemplateModal
+            leadId={current.id}
+            onClose={closeTemplateModal}
+            onScheduleChange={() => void scheduled.refresh()}
+          />
         )}
 
         {selectedFile ? (
