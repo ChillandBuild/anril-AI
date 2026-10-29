@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ChevronRight, FileText, Layers, RefreshCw, Search, Send } from "lucide-react";
+import { ChevronRight, Download, FileText, Layers, RefreshCw, Search, Send } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { CheckTick } from "@/components/ui/controls";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { clockOf, formatSendTime, toIstInputs, untilSend } from "@/lib/schedule-time";
 import { cn } from "@/lib/utils";
+import { buildCsv, downloadCsv } from "./exportCsv";
 import { RescheduleDialog } from "./RescheduleDialog";
 
 const UNDO_MS = 6000;
@@ -35,7 +36,7 @@ const ALLOWED_PERMISSIONS = [
 ];
 
 // One grid for the header and every row, so each column's label and content share a left edge.
-// The column minimums add up to less than the card's width inside max-w-6xl, so the Action column never clips.
+// The page fills the dashboard width like Segments; the fr columns share what the fixed ones leave.
 const GRID = "grid grid-cols-[36px_minmax(200px,2fr)_minmax(150px,1.4fr)_minmax(150px,1.2fr)_110px_110px_200px] items-center gap-x-2 px-4";
 
 // Same palette as the Segments table, so a lead keeps its avatar colour across pages.
@@ -198,7 +199,7 @@ function SelectBox({ checked, indeterminate = false, onChange, label }: { checke
 function WhenCell({ sendAt, sub }: { sendAt: Date; sub: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-sm font-bold tabular-nums text-[#0A1528]">{formatSendTime(sendAt)}</div>
+      <div className="truncate text-sm font-semibold text-[#0A1528]">{formatSendTime(sendAt)}</div>
       {sub && <div className="truncate text-xs text-[#64748b]">{sub}</div>}
     </div>
   );
@@ -381,6 +382,33 @@ export function ScheduledTemplatesClient() {
   function chooseTab(next: Tab) {
     setTab(next);
     setSelected(new Set());
+  }
+
+  // The file holds exactly the rows the table shows: the open tab plus the search and every filter.
+  function exportRows() {
+    const rows: string[][] = [];
+    for (const b of visibleBroadcasts) {
+      rows.push([
+        b.kind === "drip" ? `Drip broadcast (${b.days} days)` : "Broadcast", b.template_name, "", "", b.template_name,
+        formatSendTime(new Date(b.send_at)), b.created_by_name, STATUS_LABEL[b.status], b.error ?? "", String(b.recipients), b.file_name ?? "",
+      ]);
+    }
+    for (const block of blocks) {
+      const list = block.kind === "batch" ? block.rows : [block.row];
+      for (const t of list) {
+        rows.push([
+          "Template", t.lead_name || "", t.lead_phone || "", block.kind === "batch" ? block.label : "", t.template_name,
+          formatSendTime(new Date(t.send_at)), t.created_by_name, STATUS_LABEL[t.status], t.reason ?? "", "", "",
+        ]);
+      }
+    }
+    if (rows.length === 0) {
+      toast.error("Nothing to export with these filters.");
+      return;
+    }
+    const header = ["Type", "Name", "Phone", "Batch", "Template", "Sends at (IST)", "Scheduled by", "Status", "Reason", "Recipients", "File"];
+    downloadCsv(`scheduled_${tab}_${toIstInputs(new Date()).date}.csv`, buildCsv(header, rows));
+    toast.success(`Exported ${rows.length} ${rows.length === 1 ? "row" : "rows"}`);
   }
 
   function openChat(leadId: string) {
@@ -635,7 +663,7 @@ export function ScheduledTemplatesClient() {
           <div />
         ) : (
           <div className="min-w-0">
-            <div className="truncate font-mono text-xs text-[#0A1528]">{t.template_name}</div>
+            <div className="truncate text-xs font-semibold text-[#0A1528]">{t.template_name}</div>
             <div className="truncate text-xs text-[#64748b]">{t.content}</div>
           </div>
         )}
@@ -706,7 +734,7 @@ export function ScheduledTemplatesClient() {
               <div className="truncate text-xs text-[#64748b]">{tally}</div>
             </div>
           </div>
-          <div className="min-w-0 truncate font-mono text-xs text-[#0A1528]">{rows[0].template_name}</div>
+          <div className="min-w-0 truncate text-xs font-semibold text-[#0A1528]">{rows[0].template_name}</div>
           {times.size === 1 ? (
             <WhenCell sendAt={first} sub={tab === "scheduled" ? untilSend(first, now) : ""} />
           ) : (
@@ -976,7 +1004,7 @@ export function ScheduledTemplatesClient() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-6">
+    <div className="w-full space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {TABS.map((t) => {
           const active = tab === t.key;
@@ -1049,6 +1077,14 @@ export function ScheduledTemplatesClient() {
           >
             <RefreshCw size={14} className={cn(isValidating && "animate-spin")} />
             Refresh
+          </button>
+          <button
+            type="button"
+            onClick={exportRows}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 text-xs font-bold text-[#0A1528] transition-colors hover:bg-[#f8fafc]"
+          >
+            <Download size={14} />
+            Export
           </button>
         </div>
 
