@@ -1,5 +1,5 @@
 import {
-  BarChart2, BookOpen, Brain, Calendar, CreditCard, FileCheck, HandCoins, Layers,
+  BarChart2, BookOpen, Brain, Calendar, CalendarClock, CreditCard, FileCheck, HandCoins, Layers,
   Megaphone, MessageSquare, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
   StickyNote, Upload, Users, Zap, type LucideIcon,
 } from "lucide-react";
@@ -165,6 +165,19 @@ const AUTO_MESSAGES: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/auto-messages"),
 };
 
+const SCHEDULED_TEMPLATES: NavLeaf = {
+  kind: "link",
+  key: "scheduled-templates",
+  href: "/dashboard/scheduled-templates",
+  label: "Scheduled templates",
+  icon: CalendarClock,
+  visible: (a) =>
+    a.isSubscribed &&
+    a.canAny(["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"]) &&
+    (a.outboundOn || a.messagingOn),
+  isActive: (p) => p.startsWith("/dashboard/scheduled-templates"),
+};
+
 const OUTBOUND_LEADS: NavLeaf = {
   kind: "link",
   key: "outbound-leads",
@@ -294,7 +307,7 @@ const SETTINGS_GROUP: NavGroup = {
 /** Sections render top to bottom in this order. Dashboard and Analytics sit above them. */
 export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "inbox", title: "INBOX & LEADS", defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
-  { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] },
+  { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
   { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS] },
   { key: "commerce", title: "SALES · ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
   { key: "callIq", title: "ANRIL CALL IQ", defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },

@@ -48,6 +48,7 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Inbound Leads", href: "/dashboard/inbound-leads" },
   { label: "Meta Ads", href: "/dashboard/meta-ads" },
   { label: "Auto-Messages", href: "/dashboard/auto-messages" },
+  { label: "Scheduled templates", href: "/dashboard/scheduled-templates" },
   { label: "Outbound Leads", href: "/dashboard/outbound-leads" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
@@ -81,7 +82,7 @@ describe("navSections tab coverage", () => {
     expect(matches, label).toHaveLength(1);
   });
 
-  it("holds the 16 leaf tabs plus the Telecalling and Settings groups", () => {
+  it("holds the 17 leaf tabs plus the Telecalling and Settings groups", () => {
     expect(allLeaves()).toHaveLength(OLD_TABS.length);
     expect(allEntries().filter((e) => e.kind === "group")).toHaveLength(2);
   });

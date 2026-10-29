@@ -56,6 +56,10 @@ class ScheduleIn(BaseModel):
     template_id: str = Field(..., max_length=64)
     variables: list[str] = Field(default_factory=list, max_length=20)
     send_at: datetime
+    # Set by Leads when it schedules the same template for several leads at once, so the Scheduled
+    # templates page can show them as one batch.
+    batch_id: UUID | None = None
+    batch_label: str | None = Field(None, max_length=80)
 
 
 class RescheduleIn(BaseModel):
@@ -82,6 +86,7 @@ def create_scheduled_template(lead_id: UUID, payload: ScheduleIn, ctx: dict = De
     return _scheduled(
         scheduled_templates.schedule_template, get_supabase(), ctx["tenant_id"], ctx.get("user_id"), str(lead_id),
         payload.template_id, payload.variables, payload.send_at,
+        batch_id=str(payload.batch_id) if payload.batch_id else None, batch_label=payload.batch_label,
     )
 
 

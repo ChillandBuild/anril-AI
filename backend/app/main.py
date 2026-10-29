@@ -27,6 +27,7 @@ from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
 from app.routes import lead_details_share
+from app.routes import scheduled_overview
 from app.routes import auto_messages
 from app.routes import private_send, private_send_keys
 
@@ -719,6 +720,7 @@ app.include_router(intake_public_router, prefix="/api/v1/expert-handoff", tags=[
 app.include_router(intake.router, prefix="/api/v1/expert-handoff", tags=["intake-legacy"], dependencies=_auth)
 # API routes — all require auth
 app.include_router(lead_details_share.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
+app.include_router(scheduled_overview.router, prefix="/api/v1/scheduled-overview", tags=["scheduled-overview"], dependencies=_auth)
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)

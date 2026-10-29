@@ -232,6 +232,65 @@ export interface ScheduledTemplate {
   created_at: string;
 }
 
+export type ScheduledOverviewStatus = "scheduled" | "sending" | "sent" | "failed" | "skipped" | "cancelled";
+
+/** One template scheduled for one lead, as the Scheduled templates page lists it. */
+export interface ScheduledOverviewTemplate {
+  id: string;
+  lead_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  lead_source: string | null;
+  template_name: string;
+  /** The text as the customer will see it. */
+  content: string;
+  /** UTC ISO time. */
+  send_at: string;
+  status: ScheduledOverviewStatus;
+  reason: string | null;
+  created_by_name: string;
+  /** Messages scheduled together from Segments share one batch. Null for a single message. */
+  batch_id: string | null;
+  batch_label: string | null;
+}
+
+/** A broadcast waiting in Outbound Leads (scheduled once, or a drip). */
+export interface ScheduledOverviewBroadcast {
+  id: string;
+  ids: string[];
+  kind: "scheduled" | "drip";
+  template_name: string;
+  /** UTC ISO time of the first send. */
+  send_at: string;
+  status: "scheduled" | "sending" | "sent" | "failed" | "cancelled";
+  recipients: number;
+  days: number;
+  file_name: string | null;
+  has_file: boolean;
+  created_by_name: string;
+  error: string | null;
+}
+
+export interface ScheduledOverview {
+  templates: ScheduledOverviewTemplate[];
+  broadcasts: ScheduledOverviewBroadcast[];
+  can_change_templates: boolean;
+  can_change_broadcasts: boolean;
+}
+
+export interface ScheduledBulkRequest {
+  action: "cancel" | "restore" | "reschedule";
+  template_ids: string[];
+  broadcast_ids: string[];
+  /** UTC ISO time. Required for "reschedule". */
+  send_at?: string;
+}
+
+export interface ScheduledBulkResult {
+  done: number;
+  failed: { kind: "template" | "broadcast"; id: string; reason: string }[];
+}
+
 export type SendDetailsContext =
   | { available: false }
   | { available: true; window_open: boolean; last_inbound_at: string | null; free_text: string; templates: SendDetailsTemplate[] };
@@ -1688,6 +1747,13 @@ function dealFilterParams(filters: Omit<DealFilters, "stage">): URLSearchParams 
 }
 
 export const api = {
+  scheduledOverview: {
+    get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),
+    bulk: (body: ScheduledBulkRequest) =>
+      apiFetch<ScheduledBulkResult>("/api/v1/scheduled-overview/bulk", { method: "POST", body: JSON.stringify(body) }),
+    broadcastFile: (id: string) =>
+      apiFetch<{ url: string; file_name: string }>(`/api/v1/scheduled-overview/broadcasts/${id}/file`),
+  },
   ask: (question: string) =>
     apiFetch<AskAnalyticsResult>("/api/v1/ask", {
       method: "POST",
@@ -1778,7 +1844,10 @@ export const api = {
       }),
     scheduledTemplates: async (leadId: string) =>
       (await apiFetch<{ items: ScheduledTemplate[] }>(`/api/v1/leads/${leadId}/scheduled-templates`)).items ?? [],
-    scheduleTemplate: (leadId: string, body: { template_id: string; variables: string[]; send_at: string }) =>
+    scheduleTemplate: (
+      leadId: string,
+      body: { template_id: string; variables: string[]; send_at: string; batch_id?: string; batch_label?: string },
+    ) =>
       apiFetch<ScheduledTemplate>(`/api/v1/leads/${leadId}/scheduled-templates`, {
         method: "POST",
         body: JSON.stringify(body),

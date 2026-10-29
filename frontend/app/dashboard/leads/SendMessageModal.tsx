@@ -99,6 +99,8 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
     setSending(true);
     setProgress(0);
     const targets = mode === "text" ? openLeads : selectedLeads;
+    // One batch per send, so the Scheduled templates page shows these messages as one group.
+    const batchId = scheduling && selectedLeads.length > 1 ? crypto.randomUUID() : undefined;
     let sent = 0;
     let failed = 0;
     for (const lead of targets) {
@@ -109,6 +111,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend }: SendMe
             template_id: template.id,
             variables: valuesFor(lead),
             send_at: resolved.at.toISOString(),
+            batch_id: batchId,
           });
         } else if (template) await api.leads.sendDetails(lead.id, { template_id: template.id, variables: valuesFor(lead) });
         sent++;

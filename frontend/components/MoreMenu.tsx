@@ -8,6 +8,7 @@ import {
   BookOpen,
   Brain,
   Calendar,
+  CalendarClock,
   Grid3X3,
   HandCoins,
   Inbox,
@@ -82,6 +83,7 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/inbound-leads", icon: Inbox, label: "Inbound Leads", section: "engage", permissionAny: ["inbound_leads.view", "inbound_leads.manage"], feature: "inbound_messaging" },
   { href: "/dashboard/meta-ads", icon: Megaphone, label: "Meta Ads", section: "engage", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" },
   { href: "/dashboard/auto-messages", icon: Zap, label: "Auto-Messages", section: "engage", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
+  { href: "/dashboard/scheduled-templates", icon: CalendarClock, label: "Scheduled templates", section: "engage", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
   { href: "/dashboard/outbound-leads", icon: Upload, label: "Send", section: "reach", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" },
   { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
   {

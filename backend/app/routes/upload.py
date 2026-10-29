@@ -918,6 +918,7 @@ async def _execute_immediate_send(
                     "schedule_type": "scheduled",
                     "fire_at": next_send_time(tenant_id).isoformat(),
                     "leads_json": [l.model_dump() for l in deferred_leads],
+                    "recipient_count": len(deferred_leads),
                     "variable_mapping": body.variable_mapping,
                     "opt_in_source": _clean_text(deferred_leads[0].opt_in_source) or "unknown",
                     "csv_file_url": body.csv_file_url,
@@ -1115,6 +1116,8 @@ async def bulk_send(
                 "csv_file_url": body.csv_file_url,
                 "csv_file_path": body.csv_file_path,
                 "csv_file_name": body.csv_file_name,
+                "created_by": _ctx.get("user_id"),
+                "recipient_count": len(leads_payload),
             })
             return {"status": "scheduled", "fire_at": fire_at.isoformat(), "total": len(eligible)}
 
@@ -1135,6 +1138,7 @@ async def bulk_send(
                 return (now + timedelta(days=day_index)).isoformat()
 
             records = []
+            drip_group_id = str(uuid.uuid4())  # the daily rows of one drip share this id
             for i in range(days):
                 batch = eligible[i * batch_size:(i + 1) * batch_size]
                 if not batch:
@@ -1150,6 +1154,9 @@ async def bulk_send(
                     "csv_file_url": body.csv_file_url,
                     "csv_file_path": body.csv_file_path,
                     "csv_file_name": body.csv_file_name,
+                    "created_by": _ctx.get("user_id"),
+                    "drip_group_id": drip_group_id,
+                    "recipient_count": len(batch),
                 })
             if records:
                 _insert_scheduled_broadcasts(db, records)

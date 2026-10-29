@@ -162,6 +162,12 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Send your approved WhatsApp template when something happens: a form fill, a sign-up or a purchase.",
     };
   }
+  if (pathname === "/dashboard/scheduled-templates") {
+    return {
+      title: "Scheduled templates",
+      description: "Every template and broadcast waiting to go out, in one place.",
+    };
+  }
   if (pathname === "/dashboard/templates") {
     return {
       title: "WhatsApp Message Templates",

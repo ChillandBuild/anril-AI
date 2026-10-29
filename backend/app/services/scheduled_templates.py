@@ -54,7 +54,8 @@ def check_send_at(send_at: datetime, now: datetime) -> datetime:
 
 
 def schedule_template(db, tenant_id: str, user_id: str | None, lead_id: str, template_id: str,
-                      variables: list[str], send_at: datetime, now: datetime | None = None) -> dict:
+                      variables: list[str], send_at: datetime, now: datetime | None = None,
+                      batch_id: str | None = None, batch_label: str | None = None) -> dict:
     now = now or utcnow()
     send_at = check_send_at(send_at, now)
     lead = _lead(db, tenant_id, lead_id)
@@ -69,11 +70,15 @@ def schedule_template(db, tenant_id: str, user_id: str | None, lead_id: str, tem
     if len(pending) >= MAX_PENDING_PER_LEAD:
         raise ShareError(f"This lead already has {MAX_PENDING_PER_LEAD} messages scheduled.")
     template, values, content = prepare_template(db, tenant_id, template_id, variables)
-    rows = db.table(TABLE).insert({
+    record = {
         "tenant_id": tenant_id, "lead_id": lead_id, "template_id": template["id"], "template_name": template["name"],
         "variables": values, "content": content, "send_at": send_at.isoformat(), "status": "scheduled",
         "created_by": user_id,
-    }).execute().data or []
+    }
+    if batch_id:
+        record["batch_id"] = batch_id
+        record["batch_label"] = (batch_label or "").strip()[:80] or None
+    rows = db.table(TABLE).insert(record).execute().data or []
     return public(rows[0])
 
 
