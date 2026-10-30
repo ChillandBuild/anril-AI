@@ -1,3 +1,4 @@
+import contextvars
 import logging
 import time
 
@@ -23,15 +24,42 @@ _TRANSIENT = (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError)
 # Only replay what is safe to replay. A dropped POST/PATCH/DELETE may already
 # have been applied server-side, so those keep raising.
 _REPLAYABLE = frozenset({"GET", "HEAD", "OPTIONS"})
+# postgrest's default is 120 s. Every app query finishes in under 8 s on the
+# database (pg_stat_statements, 2026-10-30), but a stalled connection held calls
+# for 35-45 s on 24 and 26 Oct and AstroTamil's partner sends timed out. A read
+# timeout also marks the HTTP/2 connection broken, so the next query opens a
+# fresh one instead of queueing on the dead one.
+_TIMEOUT = httpx.Timeout(10.0)
+# Queries slower than this are logged with the table and the route that ran them.
+_SLOW_SECONDS = 2.0
+# The request being served, for that log. Set by middleware in main.py;
+# asyncio.to_thread copies it into the worker thread. Scheduler jobs keep the default.
+current_route: contextvars.ContextVar[str] = contextvars.ContextVar("current_route", default="background")
 
 
 class _RetryTransport(httpx.BaseTransport):
-    """Replays idempotent PostgREST requests when the pooled connection dies."""
+    """Replays idempotent PostgREST requests when the pooled connection dies,
+    and logs slow ones."""
 
     def __init__(self, inner: httpx.BaseTransport) -> None:
         self._inner = inner
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        started = time.monotonic()
+        try:
+            return self._send_with_retry(request)
+        finally:
+            elapsed = time.monotonic() - started
+            if elapsed >= _SLOW_SECONDS:
+                logger.warning(
+                    "Slow Supabase %s %s: %.1fs (route %s)",
+                    request.method,
+                    request.url.path,
+                    elapsed,
+                    current_route.get(),
+                )
+
+    def _send_with_retry(self, request: httpx.Request) -> httpx.Response:
         last_exc: Exception | None = None
         for attempt in range(_MAX_ATTEMPTS):
             try:
@@ -69,7 +97,7 @@ def _wrap_postgrest_session(client: Client) -> None:
     client.postgrest.session = httpx.Client(
         base_url=old.base_url,
         headers=old.headers,
-        timeout=old.timeout,
+        timeout=_TIMEOUT,
         follow_redirects=True,
         transport=_RetryTransport(httpx.HTTPTransport(http2=True, limits=limits)),
     )

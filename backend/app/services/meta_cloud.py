@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -917,7 +918,9 @@ async def send_template_message(
     access_token: Optional[str] = None,
     tenant_id: Optional[str] = None,
 ) -> dict:
-    pid, tok = _creds(phone_number_id, access_token, tenant_id)
+    # Settings reads and the send count are sync Supabase calls: off the event
+    # loop, so a stalled query can't freeze every other request.
+    pid, tok = await asyncio.to_thread(_creds, phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     payload = {
         "messaging_product": "whatsapp",
@@ -939,7 +942,9 @@ async def send_template_message(
     # Meta counts every template send against the business's daily limit, so
     # Anril counts every one too -- broadcasts, app triggers, alerts alike.
     from app.services.outbound_router import count_template_send
-    count_template_send(pid, tenant_id, to_number, ((data.get("messages") or [{}])[0] or {}).get("id"))
+    await asyncio.to_thread(
+        count_template_send, pid, tenant_id, to_number, ((data.get("messages") or [{}])[0] or {}).get("id"),
+    )
     return data
 
 

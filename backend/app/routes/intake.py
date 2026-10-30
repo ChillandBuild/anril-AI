@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import logging
@@ -556,7 +557,7 @@ async def _partner_request(request: Request) -> tuple[dict, str] | JSONResponse:
     if not tenant_id:
         return _astro_unauthorized()
 
-    secret = astro_bridge.get_bridge_secret(tenant_id)
+    secret = await asyncio.to_thread(astro_bridge.get_bridge_secret, tenant_id)
     if not astro_bridge.verify_astro_signature(raw_body, signature, secret):
         logger.warning(f"Partner send: rejected signature for tenant {tenant_id}")
         return _astro_unauthorized()

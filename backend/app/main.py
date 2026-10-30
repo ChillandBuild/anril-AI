@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from app.dependencies.auth import get_current_user
 
 import os
 from app.config import settings
+from app.db.supabase import current_route
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
 from app.routes import webhook, leads, messages, analytics, upload, segments, calls, callers, ai_tune, knowledge, system, follow_ups, numbers, incidents, lead_notes, voice_numbers, app_settings, templates, onboarding, team, media, todos, conversations, operator, chat_handovers, telegram, instagram, facebook, tags, inbound_leads, reengagement, notifications, assignment_log, call_scripts, telecalling_upload, push, subscriptions, catalog, rbac, feedback, ask, consistency
 from app.routes.calls import public_router as calls_public_router
@@ -414,6 +416,24 @@ def _record_scheduler_event(event) -> None:
         logger.warning(f"scheduler_runs record failed (non-fatal): {e}")
 
 
+# Any sync call left on the event loop (a Supabase query not sent to a thread)
+# freezes every request, health checks and the scheduler with it: 35-45 s on 24
+# and 26 Oct, CPU idle, nothing in the logs. This makes such a freeze visible;
+# the "Slow Supabase" log in db/supabase.py names the query.
+_LOOP_LAG_INTERVAL = 0.5
+_LOOP_LAG_WARN = 1.0
+
+
+async def _watch_event_loop_lag() -> None:
+    loop = asyncio.get_running_loop()
+    while True:
+        started = loop.time()
+        await asyncio.sleep(_LOOP_LAG_INTERVAL)
+        lag = loop.time() - started - _LOOP_LAG_INTERVAL
+        if lag >= _LOOP_LAG_WARN:
+            logger.warning(f"Event loop blocked for {lag:.1f}s")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Anril AI backend starting up...")
@@ -543,8 +563,11 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — 21 jobs registered but PAUSED; nothing will run")
 
+    lag_watchdog = asyncio.create_task(_watch_event_loop_lag())
+
     yield
 
+    lag_watchdog.cancel()
     _scheduler.shutdown(wait=False)
     logger.info("Anril AI backend shutting down.")
 
@@ -575,6 +598,7 @@ app.add_middleware(SlowAPIASGIMiddleware)
 
 @app.middleware("http")
 async def server_error_json_middleware(request: Request, call_next):
+    current_route.set(f"{request.method} {request.url.path}")
     try:
         return await call_next(request)
     except RateLimitExceeded:
