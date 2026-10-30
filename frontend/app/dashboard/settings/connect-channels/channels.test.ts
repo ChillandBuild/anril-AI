@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { META_CHANNELS, STANDALONE_CHANNELS, buildSettingsUpdates, hasUnsavedChanges, resolveConnectionSource } from "./channels";
+import { CHANNELS, META_CHANNELS, STANDALONE_CHANNELS, buildSettingsUpdates, hasUnsavedChanges, isChannelConfigured, razorpayOAuthAccount, resolveConnectionSource } from "./channels";
 import type { FieldDef, Setting } from "./channels";
 
 function setting(key: string, display_value: string, is_set = true): Setting {
@@ -111,5 +111,26 @@ describe("hasUnsavedChanges", () => {
 
   test("editing a plain field makes it dirty", () => {
     expect(hasUnsavedChanges(fields, { razorpay_key_id: "rzp_live_NEW" }, stored)).toBe(true);
+  });
+});
+
+describe("Razorpay connected through OAuth", () => {
+  const razorpay = CHANNELS.find(c => c.id === "razorpay")!;
+
+  test("the OAuth account stands in for the pasted keys", () => {
+    const settings = [setting("razorpay_oauth_account_id", "acc_Dhk2qDbmu6FwZH")];
+    expect(razorpayOAuthAccount(settings)).toBe("acc_Dhk2qDbmu6FwZH");
+    expect(isChannelConfigured(razorpay, settings)).toBe(true);
+  });
+
+  test("without OAuth, all required keys are still needed", () => {
+    const settings = [setting("razorpay_key_id", "rzp_live_x")];
+    expect(razorpayOAuthAccount(settings)).toBeNull();
+    expect(isChannelConfigured(razorpay, settings)).toBe(false);
+  });
+
+  test("an OAuth account never configures another channel", () => {
+    const telegram = CHANNELS.find(c => c.id === "telegram")!;
+    expect(isChannelConfigured(telegram, [setting("razorpay_oauth_account_id", "acc_x")])).toBe(false);
   });
 });

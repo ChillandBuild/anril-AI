@@ -74,7 +74,9 @@ async def test_stored_expiry_is_the_one_razorpay_reports():
     client.post.return_value = fake_resp
     client.__aenter__.return_value = client
     client.__aexit__.return_value = False
-    with patch.object(pr, "get_setting", side_effect=["k", "s"]), patch("httpx.AsyncClient", return_value=client):
+    with patch.object(pr, "get_setting", side_effect=["k", "s"]), \
+         patch.object(pr.razorpay_oauth, "get_access_token", AsyncMock(return_value=None)), \
+         patch("httpx.AsyncClient", return_value=client):
         out = await pr.create_payment_link("key", {}, 100, "A", "+91", "d", tenant_id="t")
     assert datetime.fromisoformat(out["payment_link_expires_at"]) == datetime.fromtimestamp(reported, tz=timezone.utc)
 

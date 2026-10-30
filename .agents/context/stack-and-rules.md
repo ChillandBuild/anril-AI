@@ -18,6 +18,13 @@
 - **Voice**: TeleCMI (click-to-call + recording).
 - **AI providers (per-workload, updated 2026-07-18)**: WhatsApp AI replies route to the tenant's explicit `ai_reply_model` choice — Sarvam, Groq, Gemini, or OpenAI as **equal peers**, no hardcoded default (operator picks per tenant, same contract as provider keys). STT (voice notes + call recordings), knowledge doc digitization, TeleCMI call evaluation (v4, 2026-09-28), lead scoring, conversation compaction and AI tuning run on Gemini 3.1 Flash-Lite; voice-reply TTS on Gemini. Groq survives only as a tenant-selectable reply model (updated 2026-09-28). Every provider key is strictly per-tenant (see subsystem-notes) — never add a platform-key fallback.
 - **Payments**: Razorpay (Payment Links API — no SDK, direct httpx/httpx-async calls).
+  Two ways a tenant connects (added 2026-10-30): pasted keys (`razorpay_key_id/_secret/_webhook_secret`,
+  webhook `/api/v1/intake/razorpay-webhook`) or **Connect with Razorpay** OAuth
+  (`services/razorpay_oauth.py`, tokens in `razorpay_oauth_*` rows, OAuth wins when both exist).
+  OAuth uses one partner app for every tenant, like Meta: Render env `RAZORPAY_OAUTH_CLIENT_ID`,
+  `_CLIENT_SECRET`, `_REDIRECT_URI` (frontend `/dashboard/settings/razorpay-callback`),
+  `_WEBHOOK_SECRET`, `_MODE` (test|live). The app's single webhook is
+  `/api/v1/intake/razorpay-oauth-webhook`, routed by payload `account_id`. Plan: docs/plans/2026-10-30-razorpay-oauth.md.
 
 ## Production Configs
 - **Supabase Project ID**: `ayftynkgmfkaqmmnlmoc`

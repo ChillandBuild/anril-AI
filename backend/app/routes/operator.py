@@ -1411,6 +1411,10 @@ def update_client_config(
         )
     if not payload.settings:
         raise HTTPException(status_code=400, detail="No settings to update")
+    from app.services.razorpay_oauth import KEY_PREFIX as RAZORPAY_OAUTH_PREFIX
+    if any(key.startswith(RAZORPAY_OAUTH_PREFIX) for key in payload.settings):
+        # The account id routes the shared OAuth webhook; only the Connect flow may write it.
+        raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
 
     # Validate the whole batch before writing anything, so one bad value can't leave
     # its siblings half-saved.

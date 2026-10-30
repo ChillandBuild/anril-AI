@@ -17,6 +17,8 @@ export default function ChannelCard({
   onRefreshHealth,
   onOpen,
   onEmbeddedConnect,
+  connectLabel = "Connect via Meta",
+  connectedLabel,
   onDisconnect,
 }: {
   channel: ChannelConfig;
@@ -30,18 +32,22 @@ export default function ChannelCard({
   embeddedBusy?: boolean;
   onRefreshHealth: () => void;
   onOpen: () => void;
-  // Only the Meta-backed channels pass this; Telegram and Razorpay have no
-  // Embedded Signup, so their cards keep the manual button alone.
+  // The Meta-backed channels pass this for Embedded Signup, Razorpay for Connect with
+  // Razorpay (OAuth); Telegram has neither, so its card keeps the manual button alone.
   onEmbeddedConnect?: () => void;
+  connectLabel?: string;
+  // Badge for a provider-guided connection; defaults to Meta's when the source is embedded.
+  connectedLabel?: string | null;
   onDisconnect: () => void;
 }) {
-  const viaMeta = source === "embedded" && configured;
+  const guidedLabel = configured ? (connectedLabel ?? (source === "embedded" ? "Connected via Meta" : null)) : null;
+  const viaGuided = Boolean(guidedLabel);
 
   return (
     <article
       className={cn(
         "flex min-h-[270px] flex-col justify-between rounded-3xl border bg-white p-5 transition-all duration-300",
-        viaMeta
+        viaGuided
           ? "border-primary-300/90 bg-gradient-to-b from-[#fdfcff] to-white shadow-[0_0_18px_rgba(var(--primary-600-rgb),0.18),0_2px_8px_rgba(var(--primary-600-rgb),0.08)] ring-1 ring-primary-400/25 hover:-translate-y-0.5 hover:border-primary-500 hover:shadow-[0_0_28px_rgba(var(--primary-600-rgb),0.36)]"
           : "border-primary-200/80 shadow-[0_0_15px_rgba(var(--primary-600-rgb),0.14),0_2px_6px_rgba(var(--primary-600-rgb),0.06)] ring-1 ring-primary-300/20 hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-[0_0_25px_rgba(var(--primary-600-rgb),0.32)]"
       )}
@@ -51,9 +57,9 @@ export default function ChannelCard({
           <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300", channel.iconBg)}>
             <channel.icon size={22} className={channel.iconColor} />
           </div>
-          {viaMeta ? (
+          {viaGuided ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-[#f4f0ff] px-2.5 py-1 font-label text-[10px] font-bold text-primary">
-              Connected via Meta
+              {guidedLabel}
             </span>
           ) : (
             <ChannelStatusBadge configured={configured} hasTokenAlert={hasTokenAlert} isLive={isLive} />
@@ -93,7 +99,7 @@ export default function ChannelCard({
             >
               {embeddedBusy
                 ? <><Loader2 size={12} className="animate-spin" /> Opening…</>
-                : <><Sparkles size={12} /> Connect via Meta</>}
+                : <><Sparkles size={12} /> {connectLabel}</>}
             </button>
           )}
           <button
@@ -101,7 +107,7 @@ export default function ChannelCard({
             onClick={onOpen}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f4f0ff] px-2.5 py-1.5 font-label text-[10px] font-bold text-primary transition-colors hover:bg-[var(--primary-100)]"
           >
-            <Settings2 size={12} /> {viaMeta ? "Override manually" : configured ? "Manage" : "Set up"}
+            <Settings2 size={12} /> {viaGuided ? (connectedLabel ? "API keys" : "Override manually") : configured ? "Manage" : "Set up"}
           </button>
         </div>
       </div>

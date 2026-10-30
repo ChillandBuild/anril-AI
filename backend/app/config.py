@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     vapid_public_key: str | None = None
     vapid_private_key: str | None = None
     vapid_subject: str | None = None
+    # Razorpay OAuth partner app (services/razorpay_oauth.py): one app for every tenant, like Meta's.
+    razorpay_oauth_client_id: str | None = None
+    razorpay_oauth_client_secret: str | None = None
+    razorpay_oauth_redirect_uri: str | None = None  # the frontend's /dashboard/settings/razorpay-callback
+    razorpay_oauth_webhook_secret: str | None = None
+    razorpay_oauth_mode: str = "live"  # "test" with the Development client
     # Local-run safety (see scripts/dev-backend.sh). Production defaults: scheduler runs,
     # outbound is live. A laptop sets SCHEDULER_ENABLED=false + OUTBOUND_MODE=dry_run so it
     # never runs the 15 jobs against the live DB or messages real people.

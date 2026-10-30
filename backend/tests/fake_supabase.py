@@ -105,7 +105,7 @@ class _Query:
         self.op, self.payload = "update", payload
         return self
 
-    def upsert(self, payload: dict, on_conflict: str = "id"):
+    def upsert(self, payload: dict | list[dict], on_conflict: str = "id"):
         self.op, self.payload, self._conflict = "upsert", payload, [c.strip() for c in on_conflict.split(",")]
         return self
 
@@ -231,15 +231,20 @@ class _Query:
             return SimpleNamespace(data=created, count=len(created))
 
         if self.op == "upsert":
-            existing = [r for r in self.db.rows(self.name) if all(r.get(c) == self.payload.get(c) for c in self._conflict)]
-            if existing:
-                existing[0].update(self.payload)
-                return SimpleNamespace(data=[dict(existing[0])], count=1)
-            row = {**_DEFAULTS.get(self.name, {}), **self.payload}
-            row.setdefault("id", str(uuid.uuid4()))
-            row.setdefault("created_at", self.db._stamp())
-            self.db.rows(self.name).append(row)
-            return SimpleNamespace(data=[dict(row)], count=1)
+            payloads = self.payload if isinstance(self.payload, list) else [self.payload]
+            written = []
+            for p in payloads:
+                existing = [r for r in self.db.rows(self.name) if all(r.get(c) == p.get(c) for c in self._conflict)]
+                if existing:
+                    existing[0].update(p)
+                    written.append(dict(existing[0]))
+                    continue
+                row = {**_DEFAULTS.get(self.name, {}), **p}
+                row.setdefault("id", str(uuid.uuid4()))
+                row.setdefault("created_at", self.db._stamp())
+                self.db.rows(self.name).append(row)
+                written.append(dict(row))
+            return SimpleNamespace(data=written, count=len(written))
 
         matched = self._matching()
         if self.op == "update":

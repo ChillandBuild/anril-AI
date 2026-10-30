@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
-from app.services import astro_bridge, partner_send_mode
+from app.services import astro_bridge, partner_send_mode, razorpay_oauth
 from app.services.audit_log import record_audit_event
 from app.services.ai_reply import send_whatsapp
 from app.services.deals import format_deal_number
@@ -328,16 +328,7 @@ async def razorpay_webhook(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    payload_data = payload.get("payload", {})
-    pl_entity = payload_data.get("payment_link", {}).get("entity", {})
-    # payment.failed carries no payment_link entity at all -- its notes live one
-    # level down, under payload.payment.entity.notes instead. Both are the same
-    # notes dict payment_razorpay.py wrote at link-creation time.
-    payment_entity = payload_data.get("payment", {}).get("entity", {})
-    notes = pl_entity.get("notes") or payment_entity.get("notes") or {}
-    session_id = notes.get("booking_id")
-    deal_id = notes.get("deal_id")
-
+    session_id, deal_id = _payment_note_ids(payload)
     if not session_id and not deal_id:
         logger.error("Intake webhook: no session id or deal id in notes")
         return {"status": "error", "detail": "no session id"}
@@ -347,11 +338,7 @@ async def razorpay_webhook(request: Request):
     # check runs (see get_session_tenant_id's docstring for why this lookup
     # is safe to do before the payload is trusted). deal_id follows the
     # exact same reasoning via deals.get_deal_tenant_id.
-    if session_id:
-        tenant_id = get_session_tenant_id(session_id)
-    else:
-        from app.services.deals import get_deal_tenant_id
-        tenant_id = get_deal_tenant_id(deal_id)
+    tenant_id = _payment_note_tenant_id(session_id, deal_id)
     if not tenant_id:
         logger.warning(f"Intake webhook: unknown session/deal id {session_id or deal_id}")
         raise HTTPException(status_code=400, detail="Unknown session")
@@ -360,7 +347,84 @@ async def razorpay_webhook(request: Request):
         logger.warning(f"Intake Razorpay webhook: invalid signature for tenant {tenant_id}")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+    return await _handle_payment_event(payload, session_id, deal_id, tenant_id)
+
+
+def _payment_note_ids(payload: dict) -> tuple[str | None, str | None]:
+    """(booking_id, deal_id) from the notes payment_razorpay.py wrote at link-creation time."""
+    payload_data = payload.get("payload", {})
+    pl_entity = payload_data.get("payment_link", {}).get("entity", {})
+    # payment.failed carries no payment_link entity at all -- its notes live one
+    # level down, under payload.payment.entity.notes instead. Both are the same
+    # notes dict payment_razorpay.py wrote at link-creation time.
+    payment_entity = payload_data.get("payment", {}).get("entity", {})
+    notes = pl_entity.get("notes") or payment_entity.get("notes") or {}
+    return notes.get("booking_id"), notes.get("deal_id")
+
+
+def _payment_note_tenant_id(session_id: str | None, deal_id: str | None) -> str | None:
+    if session_id:
+        return get_session_tenant_id(session_id)
+    from app.services.deals import get_deal_tenant_id
+    return get_deal_tenant_id(deal_id)
+
+
+@public_router.post("/razorpay-oauth-webhook")
+async def razorpay_oauth_webhook(request: Request):
+    """Webhook of the Razorpay OAuth partner app: one URL and one secret for every tenant that
+    connected through Connect with Razorpay. Pasted-key tenants keep /razorpay-webhook.
+
+    The signature proves Razorpay sent it, not which tenant it is for: the tenant comes from
+    the payload's account_id, and the payment's own notes must point at that same tenant --
+    otherwise a merchant could pay a link whose notes name another tenant's deal."""
+    raw_body = await request.body()
+    if not razorpay_oauth.verify_app_webhook(raw_body, request.headers.get("x-razorpay-signature", "")):
+        logger.warning("Razorpay OAuth webhook: invalid signature")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
     event = payload.get("event", "")
+    account_id = payload.get("account_id")
+    db = get_supabase()
+    tenant_id = razorpay_oauth.tenant_for_account(db, account_id)
+
+    if event == "account.app.authorization_revoked":
+        if tenant_id and razorpay_oauth.connected_after(db, tenant_id, payload.get("created_at")):
+            return {"status": "ignored", "event": event}  # about a grant older than this connection
+        if tenant_id:
+            razorpay_oauth.clear_tokens(db, tenant_id)
+            record_audit_event(
+                db, tenant_id=tenant_id, actor_user_id=None, actor_role="system",
+                action="settings.channel_disconnected", target_type="channel", target_id="razorpay",
+                metadata={"source": "oauth", "reason": "revoked_in_razorpay", "account_id": account_id},
+            )
+        return {"status": "ok" if tenant_id else "ignored", "event": event}
+
+    if not tenant_id:
+        logger.warning(f"Razorpay OAuth webhook: no connected tenant for account {account_id} ({event})")
+        return {"status": "ignored", "event": event}
+
+    session_id, deal_id = _payment_note_ids(payload)
+    if not session_id and not deal_id:
+        return {"status": "ignored", "event": event}
+    if _payment_note_tenant_id(session_id, deal_id) != tenant_id:
+        logger.warning(
+            f"Razorpay OAuth webhook: notes {session_id or deal_id} don't belong to tenant {tenant_id} ({account_id})"
+        )
+        raise HTTPException(status_code=400, detail="Unknown session")
+
+    return await _handle_payment_event(payload, session_id, deal_id, tenant_id)
+
+
+async def _handle_payment_event(payload: dict, session_id: str | None, deal_id: str | None, tenant_id: str):
+    """Act on a verified Razorpay event whose tenant is already established."""
+    event = payload.get("event", "")
+    pl_entity = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
 
     if deal_id:
         return await _handle_deal_payment_event(payload, event, deal_id, tenant_id)

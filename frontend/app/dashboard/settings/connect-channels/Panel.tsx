@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { fetchSettings, saveSettings } from "./api";
-import { CHANNELS, META_CHANNELS, buildSettingsUpdates, hasUnsavedChanges, resolveConnectionSource } from "./channels";
+import { fetchSettings, saveSettings, startRazorpayOAuth } from "./api";
+import { CHANNELS, META_CHANNELS, buildSettingsUpdates, hasUnsavedChanges, isChannelConfigured as channelIsConfigured, resolveConnectionSource } from "./channels";
 import type { ActivateResult, ChannelConfig, EmbeddedSignupTarget, SaveState, Setting, SettingsMap, WebhookHealth } from "./channels";
 import { useMetaSignup } from "./useMetaSignup";
 import { useMetaChannelSignup } from "./useMetaChannelSignup";
@@ -37,6 +37,8 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   const [disconnectTarget, setDisconnectTarget] = useState<DisconnectTarget | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+  const [razorpayBusy, setRazorpayBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -120,9 +122,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   // Optional fields must not gate activation. Counting them made the Instagram
   // App Secret mandatory in practice, and the only way to light the button back
   // up was pasting a secret that then broke webhook signature checks.
-  const isChannelConfigured = useCallback((channel: ChannelConfig) => {
-    return channel.fields.every(f => !f.required || settings.find(s => s.key === f.key)?.is_set);
-  }, [settings]);
+  const isChannelConfigured = useCallback((channel: ChannelConfig) => channelIsConfigured(channel, settings), [settings]);
 
   // Check if modal channel has drafts changes
   const isModalDirty = useMemo(
@@ -204,6 +204,19 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
     }
   }
 
+  // Connect with Razorpay is a full-page redirect: Razorpay sends the browser back to
+  // /dashboard/settings/razorpay-callback, which finishes the connection.
+  async function startRazorpayConnect() {
+    setRazorpayBusy(true);
+    setError(null);
+    try {
+      window.location.assign(await startRazorpayOAuth());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start the Razorpay connection");
+      setRazorpayBusy(false);
+    }
+  }
+
   const openChannelModal = (channel: ChannelConfig) => {
     setSelectedChannel(channel);
     setSaveState("idle");
@@ -282,6 +295,8 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
             onRefreshHealth={loadHealth}
             onOpenChannel={openChannelModal}
             onEmbeddedConnect={startEmbedded}
+            razorpayBusy={razorpayBusy}
+            onRazorpayConnect={startRazorpayConnect}
             onDisconnectChannel={openDisconnect}
           />
           <MarketplaceLeadsSection canManage={canManage} />

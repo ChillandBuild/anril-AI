@@ -8,6 +8,12 @@ import pytest
 from app.services import payment_razorpay as pr
 
 
+@pytest.fixture(autouse=True)
+def _not_connected_via_oauth(monkeypatch):
+    """These tests cover the pasted-keys path; OAuth tokens are tests/test_razorpay_oauth*.py."""
+    monkeypatch.setattr(pr.razorpay_oauth, "get_access_token", AsyncMock(return_value=None))
+
+
 def test_get_key_id_raises_when_not_configured():
     with patch.object(pr, "get_setting", return_value=None):
         with pytest.raises(RuntimeError, match="razorpay_key_id"):

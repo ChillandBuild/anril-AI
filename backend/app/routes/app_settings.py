@@ -18,7 +18,7 @@ from app.services.assignment import (
     save_inbox_config, save_telecalling_config,
     _INBOX_CONFIG_DEFAULT, _TELECALLING_CONFIG_DEFAULT,
 )
-from app.services import astro_bridge
+from app.services import astro_bridge, razorpay_oauth
 from app.services.intake import get_intake_config, save_intake_config
 from app.services.numbers_pool import normalize_phone_number
 
@@ -441,6 +441,8 @@ async def update_settings(
         raise HTTPException(status_code=400, detail="Nothing to update")
     if HANDOVER_LINE_KEY in payload.updates:
         raise HTTPException(status_code=400, detail=HANDOVER_LINE_MOVED_MESSAGE)
+    if any(key.startswith(razorpay_oauth.KEY_PREFIX) for key in payload.updates):
+        raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
     description = _checked_owner_description(payload.updates, ctx)
 
     db = get_supabase()
@@ -1145,6 +1147,8 @@ async def disconnect_channel(
     for channel in channels:
         plan = _DISCONNECT_PLAN[channel]
         unsubscribed = await _unsubscribe_channel_webhook(db, tenant_id, channel)
+        if channel == "razorpay":
+            await razorpay_oauth.disconnect(db, tenant_id)
 
         if payload.release_assets:
             for asset_type, source_key in plan["assets"]:
@@ -1204,6 +1208,47 @@ async def disconnect_channel(
         metadata={"channels": channels, "released_assets": len(released_assets)},
     )
     return {"success": True, "results": results, "released_assets": len(released_assets)}
+
+
+class RazorpayOAuthCompleteRequest(BaseModel):
+    code: str
+    state: str
+
+
+@router.post("/razorpay/oauth/start")
+async def start_razorpay_oauth(ctx: dict = Depends(require_settings_manage)):
+    """Begin Connect with Razorpay: returns the consent URL the browser should go to."""
+    try:
+        url = razorpay_oauth.start(get_supabase(), ctx["tenant_id"])
+    except razorpay_oauth.RazorpayOAuthError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    return {"authorize_url": url}
+
+
+@router.post("/razorpay/oauth/complete")
+async def complete_razorpay_oauth(
+    payload: RazorpayOAuthCompleteRequest,
+    ctx: dict = Depends(require_settings_manage),
+    user: dict = Depends(get_current_user),
+):
+    """Finish Connect with Razorpay from the callback page (code + state from the redirect)."""
+    tenant_id = ctx["tenant_id"]
+    db = get_supabase()
+    try:
+        result = await razorpay_oauth.complete(db, tenant_id, payload.code, payload.state)
+    except razorpay_oauth.RazorpayOAuthError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user.get("user_id"),
+        actor_role="tenant_user",
+        action="settings.channel_connected",
+        target_type="channel",
+        target_id="razorpay",
+        metadata={"source": "oauth", "account_id": result["account_id"]},
+    )
+    return {"success": True, **result}
 
 
 def _stamp_meta_ads_connected(db, tenant_id: str, account_id: str) -> None:
