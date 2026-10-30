@@ -1746,7 +1746,249 @@ function dealFilterParams(filters: Omit<DealFilters, "stage">): URLSearchParams 
   return search;
 }
 
+// ---- SMS (Bulk9 reseller) — contract: docs/plans/2026-10-30-sms-api-contract.md ----
+export interface SmsStatus {
+  enabled: boolean;
+  connected: boolean;
+  checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
+  price_per_sms: number | string | null;
+  support_contact: string | null;
+}
+export interface SmsBalance { wallet: number; sms_count: number; price_per_sms: number | string | null }
+export interface SmsSender { sender_id: string; entity_id: string; entity_name: string | null }
+export type SmsTemplateType = "service" | "promotional";
+export interface SmsTemplate {
+  id: string;
+  message_id: string | null;
+  dlt_template_id: string | null;
+  sender_id: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  message: string;
+  var_count: number;
+  template_type: SmsTemplateType;
+  status: "ready" | "submitted";
+  last_synced_at: string | null;
+}
+export interface SmsTemplateList { templates: SmsTemplate[]; last_synced_at: string | null; error: string | null }
+export interface SmsTemplateRequest {
+  id: string;
+  wording: string;
+  template_type: SmsTemplateType;
+  status: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
+export interface SmsPreviewExcluded { lead_id: string; name: string | null; phone: string | null; reason: string }
+export interface SmsPreviewSample { lead_id: string; name: string | null; content: string; segments: number; unicode: boolean }
+export interface SmsPreview {
+  eligible_count: number;
+  excluded: SmsPreviewExcluded[];
+  samples: SmsPreviewSample[];
+  price_per_sms: number | string | null;
+  estimated_total: number;
+  estimated: boolean;
+}
+export type SmsCampaignStatus = "scheduled" | "sending" | "completed" | "cancelled";
+export type SmsMessageStatus =
+  | "queued" | "sending" | "submitted" | "delivered" | "failed" | "unknown" | "skipped" | "cancelled";
+export interface SmsCampaign {
+  id: string;
+  name: string;
+  template_text: string;
+  sender_id: string;
+  template_type: SmsTemplateType;
+  status: SmsCampaignStatus;
+  send_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+  counts: Record<SmsMessageStatus, number>;
+  total: number;
+  charged_total: number;
+}
+export interface SmsMessage {
+  id: string;
+  campaign_id: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  phone: string;
+  content: string;
+  status: SmsMessageStatus;
+  failure_reason: string | null;
+  sms_count: number | null;
+  charged_amount: number | null;
+  submitted_at: string | null;
+  delivered_at: string | null;
+  updated_at: string | null;
+}
+export interface SmsMessageFilters {
+  campaign_id?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+export interface SmsLedgerEntry {
+  id: string;
+  kind: string;
+  sms_count: number | null;
+  price_per_sms: number | string | null;
+  amount: number | null;
+  expiry_date: string | null;
+  note: string | null;
+  created_at: string;
+}
+export interface SmsPack { amount_rupees: number; sms_count: number; price_per_sms: number | string | null }
+export interface SmsPayment {
+  id: string;
+  amount_rupees: number;
+  sms_count: number;
+  status: string;
+  short_url: string | null;
+  created_at: string;
+  credited_at: string | null;
+  error: string | null;
+}
+export interface SmsOk { ok: boolean; message?: string }
+
+async function smsMultipart<T>(path: string, fd: FormData): Promise<T> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", body: fd, headers });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
+    const err = await res.json().catch(() => null);
+    const error = new Error(typeof err?.detail === "string" ? err.detail : "Upload failed") as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
+
+function smsMessageQuery(f: SmsMessageFilters): string {
+  const qs = new URLSearchParams();
+  if (f.campaign_id) qs.set("campaign_id", f.campaign_id);
+  if (f.status) qs.set("status", f.status);
+  if (f.from) qs.set("from", f.from);
+  if (f.to) qs.set("to", f.to);
+  if (f.search) qs.set("search", f.search);
+  if (f.limit != null) qs.set("limit", String(f.limit));
+  if (f.offset != null) qs.set("offset", String(f.offset));
+  return qs.toString();
+}
+
 export const api = {
+  sms: {
+    status: () => apiFetch<SmsStatus>("/api/v1/sms/status"),
+    balance: () => apiFetch<SmsBalance>("/api/v1/sms/balance"),
+    senders: () => apiFetch<{ senders: SmsSender[] }>("/api/v1/sms/senders"),
+    templates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates"),
+    refreshTemplates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates/refresh", { method: "POST" }),
+    setTemplateType: (id: string, template_type: SmsTemplateType) =>
+      apiFetch<SmsTemplate>(`/api/v1/sms/templates/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ template_type }),
+      }),
+    addEntity: (data: { entity_name: string; entity_id: string; files: File[] }) => {
+      const fd = new FormData();
+      fd.append("entity_name", data.entity_name);
+      fd.append("entity_id", data.entity_id);
+      data.files.forEach((f) => fd.append("files", f));
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/entity", fd);
+    },
+    addSender: (data: { entity_id: string; sender_id: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/dlt/sender", { method: "POST", body: JSON.stringify(data) }),
+    addSenderExcel: (data: { entity_id: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("entity_id", data.entity_id);
+      fd.append("file", data.file);
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/sender-excel", fd);
+    },
+    addTemplate: (data: {
+      entity_id: string;
+      sender_ids: string[];
+      dlt_template_id: string;
+      message_text: string;
+      template_type: SmsTemplateType;
+    }) => apiFetch<SmsOk>("/api/v1/sms/dlt/template", { method: "POST", body: JSON.stringify(data) }),
+    addTemplateExcel: (data: { entity_id: string; file: File; template_type: SmsTemplateType }) => {
+      const fd = new FormData();
+      fd.append("entity_id", data.entity_id);
+      fd.append("file", data.file);
+      fd.append("template_type", data.template_type);
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/template-excel", fd);
+    },
+    templateRequests: () => apiFetch<{ requests: SmsTemplateRequest[] }>("/api/v1/sms/template-requests"),
+    requestTemplate: (data: { wording: string; template_type: SmsTemplateType }) =>
+      apiFetch<SmsTemplateRequest>("/api/v1/sms/template-requests", { method: "POST", body: JSON.stringify(data) }),
+    campaignFields: () => apiFetch<{ fields: { key: string; label: string }[] }>("/api/v1/sms/campaigns/fields"),
+    previewCampaign: (data: { template_id: string; variable_map: SmsVarSource[]; lead_ids: string[] }) =>
+      apiFetch<SmsPreview>("/api/v1/sms/campaigns/preview", { method: "POST", body: JSON.stringify(data) }),
+    createCampaign: (data: {
+      name: string;
+      template_id: string;
+      variable_map: SmsVarSource[];
+      lead_ids: string[];
+      send_at: string | null;
+      idempotency_key: string;
+    }) => apiFetch<SmsCampaign>("/api/v1/sms/campaigns", { method: "POST", body: JSON.stringify(data) }),
+    campaigns: (limit = 50, offset = 0) =>
+      apiFetch<{ campaigns: SmsCampaign[] }>(`/api/v1/sms/campaigns?limit=${limit}&offset=${offset}`),
+    campaign: (id: string) => apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}`),
+    cancelCampaign: (id: string) =>
+      apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    messages: (filters: SmsMessageFilters = {}) =>
+      apiFetch<{ messages: SmsMessage[]; total: number }>(`/api/v1/sms/messages?${smsMessageQuery(filters)}`),
+    exportMessagesCsv: async (filters: SmsMessageFilters = {}) => {
+      // The export covers every matching row, so paging fields are dropped.
+      const rest: SmsMessageFilters = { ...filters, limit: undefined, offset: undefined };
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/sms/messages/export.csv?${smsMessageQuery(rest)}`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(typeof err?.detail === "string" ? err.detail : `Export failed: ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sms_messages.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    reportSummary: (from: string, to: string) =>
+      apiFetch<{ anril: Record<string, number>; bulk9: Record<string, unknown> | null; error: string | null }>(
+        `/api/v1/sms/reports/summary?from=${from}&to=${to}`,
+      ),
+    reportLogs: (from: string, to: string, page = 1, limit = 25) =>
+      apiFetch<{ logs: Record<string, unknown>[]; page: number; error: string | null }>(
+        `/api/v1/sms/reports/logs?from=${from}&to=${to}&page=${page}&limit=${limit}`,
+      ),
+    ledger: (limit = 50, offset = 0) =>
+      apiFetch<{ entries: SmsLedgerEntry[] }>(`/api/v1/sms/ledger?limit=${limit}&offset=${offset}`),
+    developerKey: () => apiFetch<{ api_key: string }>("/api/v1/sms/developer/key"),
+    otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number }) =>
+      apiFetch<{ ok: boolean; request_id?: string; message?: string }>("/api/v1/sms/otp/send", {
+        method: "POST",
+        body: JSON.stringify({ otp_length: 6, otp_expiry: 15, ...data }),
+      }),
+    otpVerify: (data: { mobile: string; otp: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
+    otpResend: (data: { mobile: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
+    rechargePacks: () => apiFetch<{ packs: SmsPack[] }>("/api/v1/sms/recharge/packs"),
+    recharge: (amount_rupees: number) =>
+      apiFetch<{ payment_id: string; short_url: string }>("/api/v1/sms/recharge", {
+        method: "POST",
+        body: JSON.stringify({ amount_rupees }),
+      }),
+    rechargePayments: () => apiFetch<{ payments: SmsPayment[] }>("/api/v1/sms/recharge/payments"),
+  },
   scheduledOverview: {
     get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),
     bulk: (body: ScheduledBulkRequest) =>

@@ -15,6 +15,7 @@ import {
   Layers,
   Megaphone,
   Menu,
+  MessageSquareText,
   ShoppingBag,
   Settings,
   ShieldCheck,
@@ -85,6 +86,7 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/auto-messages", icon: Zap, label: "Auto-Messages", section: "engage", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
   { href: "/dashboard/scheduled-templates", icon: CalendarClock, label: "Scheduled templates", section: "engage", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
   { href: "/dashboard/outbound-leads", icon: Upload, label: "Send", section: "reach", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" },
+  { href: "/dashboard/sms", icon: MessageSquareText, label: "SMS", section: "reach", permissionAny: ["sms.view", "sms.manage"], feature: "sms" },
   { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
   {
     href: "/dashboard/catalog",

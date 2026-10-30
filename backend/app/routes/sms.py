@@ -1,0 +1,637 @@
+"""Client SMS API (prefix /api/v1/sms): DLT setup, templates, campaigns, reports, OTP, developer key.
+
+Contract: docs/plans/2026-10-30-sms-api-contract.md. Each tenant sends with its own Bulk9 key
+(app_settings bulk9_api_key). The key is never returned or logged, except GET /developer/key
+(owner only). Recharge routes and the operator routes are not in this file.
+"""
+import csv
+import io
+import json
+import logging
+import mimetypes
+import re
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
+
+from app.config_dynamic import get_setting
+from app.db.supabase import get_supabase
+from app.dependencies.tenant import require_owner, require_permission
+from app.services import bulk9_client, sms_campaigns as camp
+from app.services.bulk9_client import Bulk9Error, Bulk9NotConfigured, Bulk9Timeout
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+BUCKET = "sms-dlt"
+SIGNED_URL_SECONDS = 24 * 3600
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+PROOF_EXTS = {"jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "odt"}
+EXCEL_EXTS = {"xlsx", "csv"}
+NOT_ENABLED = "SMS is not enabled for this account"
+NOT_CONNECTED = "SMS is not connected yet"
+EXPORT_CAP = 50_000
+
+
+# ---------------------------------------------------------------- gates + helpers
+
+def _is_enabled(tenant_id: str) -> bool:
+    rows = (get_supabase().table("tenants").select("enabled_features").eq("id", tenant_id)
+            .limit(1).execute()).data or []
+    return "sms" in ((rows[0].get("enabled_features") if rows else None) or [])
+
+
+def _gate(permission: str, *, need_key: bool = True):
+    """Permission first (403), then the SMS feature (403), then the Bulk9 key (409).
+    The returned context carries `api_key` when need_key is set."""
+    perm = require_permission(permission)
+
+    def dep(ctx: dict = Depends(perm)) -> dict:
+        if not _is_enabled(ctx["tenant_id"]):
+            raise HTTPException(403, NOT_ENABLED)
+        if need_key:
+            key = get_setting("bulk9_api_key", tenant_id=ctx["tenant_id"])
+            if not key:
+                raise HTTPException(409, NOT_CONNECTED)
+            return {**ctx, "api_key": key}
+        return ctx
+
+    return dep
+
+
+view = _gate("sms.view")
+view_no_key = _gate("sms.view", need_key=False)
+manage = _gate("sms.manage")
+manage_no_key = _gate("sms.manage", need_key=False)
+
+
+async def _bulk9(coro):
+    """Await a Bulk9 call and turn its failures into HTTP errors."""
+    try:
+        return await coro
+    except Bulk9Error as e:
+        raise HTTPException(502, str(e))
+    except Bulk9Timeout:
+        raise HTTPException(504, "The SMS provider did not respond in time. Please try again.")
+    except Bulk9NotConfigured:
+        raise HTTPException(409, NOT_CONNECTED)
+    except ValueError as e:  # a wrapper refused bad input before calling Bulk9
+        raise HTTPException(422, str(e))
+
+
+def _sms_error(e: camp.SmsError) -> HTTPException:
+    return HTTPException(e.status, str(e))
+
+
+def _message(body: dict, default: str = "Done") -> str:
+    msg = body.get("message")
+    if isinstance(msg, list):
+        msg = "; ".join(str(m) for m in msg)
+    return str(msg or default)
+
+
+def _safe_filename(name: str | None) -> str:
+    base = (name or "file").replace("\\", "/").split("/")[-1]
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or "file"
+    return base[-80:]
+
+
+async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) -> str:
+    """Validate type + size, store privately under {tenant_id}/, return a 24h signed URL for Bulk9."""
+    safe = _safe_filename(file.filename)
+    ext = safe.rsplit(".", 1)[-1].lower() if "." in safe else ""
+    if ext not in allowed:
+        raise HTTPException(422, f"{safe}: allowed file types are {', '.join(sorted(allowed))}.")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"{safe} is larger than 20 MB.")
+    if not data:
+        raise HTTPException(422, f"{safe} is empty.")
+    path = f"{tenant_id}/{uuid.uuid4().hex[:12]}_{safe}"
+    ctype = mimetypes.guess_type(safe)[0] or "application/octet-stream"
+    try:
+        db.storage.from_(BUCKET).upload(path, data, {"content-type": ctype})
+        signed = db.storage.from_(BUCKET).create_signed_url(path, SIGNED_URL_SECONDS)
+    except Exception:
+        logger.exception("sms: upload to storage failed")
+        raise HTTPException(500, "Could not store the file. Please try again.")
+    url = None
+    if isinstance(signed, dict):
+        url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url") or signed.get("url")
+    else:
+        url = getattr(signed, "signed_url", None) or getattr(signed, "signedURL", None)
+    if not url:
+        raise HTTPException(500, "Could not prepare the file for upload.")
+    return url
+
+
+def _checklist(tenant_id: str) -> dict:
+    try:
+        raw = json.loads(get_setting("sms_checklist", tenant_id=tenant_id) or "{}")
+    except ValueError:
+        raw = {}
+    raw = raw if isinstance(raw, dict) else {}
+    return {k: bool(raw.get(k)) for k in ("dlt", "pe_tm", "sender")}
+
+
+# ---------------------------------------------------------------- status, balance, senders
+
+@router.get("/status")
+async def status(ctx: dict = Depends(require_permission("sms.view"))):
+    tid = ctx["tenant_id"]
+    return {
+        "enabled": _is_enabled(tid),
+        "connected": bool(get_setting("bulk9_api_key", tenant_id=tid)),
+        "checklist": _checklist(tid),
+        "price_per_sms": float(camp.get_price(tid)),
+        "support_contact": get_setting("sms_support_contact", tenant_id=tid) or "",
+    }
+
+
+@router.get("/balance")
+async def balance(ctx: dict = Depends(view)):
+    body = await _bulk9(bulk9_client.wallet(ctx["api_key"]))
+    try:
+        sms_count = int(float(body.get("sms_count") or 0))
+    except (TypeError, ValueError):
+        sms_count = 0
+    return {"wallet": camp._num(body.get("wallet")) or 0.0, "sms_count": sms_count,
+            "price_per_sms": float(camp.get_price(ctx["tenant_id"]))}
+
+
+def _dlt_items(body: dict) -> list[dict]:
+    """The sender / template groups in a DLT Manager answer (its list key isn't documented)."""
+    for key in ("data", "senders", "templates", "result"):
+        if isinstance(body.get(key), list):
+            return [i for i in body[key] if isinstance(i, dict)]
+    return [i for v in body.values() if isinstance(v, list) for i in v if isinstance(i, dict)]
+
+
+@router.get("/senders")
+async def senders(ctx: dict = Depends(view)):
+    body = await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender"))
+    seen, out = set(), []
+    for i in _dlt_items(body):
+        if not i.get("sender_id"):
+            continue
+        key = (i.get("sender_id"), i.get("entity_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"sender_id": i.get("sender_id"), "entity_id": i.get("entity_id"),
+                    "entity_name": i.get("entity_name")})
+    return {"senders": out}
+
+
+# ---------------------------------------------------------------- templates (cache of Bulk9's list)
+
+TEMPLATE_FIELDS = ("id", "message_id", "dlt_template_id", "sender_id", "entity_id", "entity_name", "message",
+                   "var_count", "template_type", "status", "last_synced_at")
+
+
+def _public_template(r: dict) -> dict:
+    return {k: r.get(k) for k in TEMPLATE_FIELDS}
+
+
+def _cached_templates(db, tenant_id: str, error: str | None = None) -> dict:
+    rows = (db.table("sms_templates").select("*").eq("tenant_id", tenant_id)
+            .order("created_at", desc=True).execute()).data or []
+    synced = [r["last_synced_at"] for r in rows if r.get("last_synced_at")]
+    return {"templates": [_public_template(r) for r in rows],
+            "last_synced_at": max(synced) if synced else None, "error": error}
+
+
+@router.get("/templates")
+async def list_templates(ctx: dict = Depends(view_no_key)):
+    return _cached_templates(get_supabase(), ctx["tenant_id"])
+
+
+@router.post("/templates/refresh")
+async def refresh_templates(ctx: dict = Depends(manage)):
+    """Re-read Bulk9's approved templates. On any Bulk9 failure the cached rows stay and `error`
+    says why (HTTP 200), so the page keeps working."""
+    db, tid = get_supabase(), ctx["tenant_id"]
+    try:
+        body = await bulk9_client.list_dlt(ctx["api_key"], "template")
+    except (Bulk9Error, Bulk9Timeout, Bulk9NotConfigured) as e:
+        return _cached_templates(db, tid, error=str(e) or "Could not reach the SMS provider.")
+    now = datetime.now(timezone.utc).isoformat()
+    existing = (db.table("sms_templates").select("*").eq("tenant_id", tid).execute()).data or []
+    by_msg = {str(r["message_id"]): r for r in existing if r.get("message_id")}
+    submitted = [r for r in existing if not r.get("message_id")]
+    for group in _dlt_items(body):
+        for t in group.get("templates") or []:
+            mid, text = t.get("message_id"), t.get("message")
+            if mid is None or not text:
+                continue
+            fields = {"sender_id": group.get("sender_id") or "", "entity_id": group.get("entity_id"),
+                      "entity_name": group.get("entity_name"), "message": text,
+                      "var_count": int(t.get("var_count") or camp.var_count(text)),
+                      "status": "ready", "last_synced_at": now}
+            row = by_msg.get(str(mid))
+            if row:
+                db.table("sms_templates").update(fields).eq("id", row["id"]).eq("tenant_id", tid).execute()
+                continue
+            # An Anril-submitted row for the same wording is now approved: keep its choices, drop the stub.
+            stub = next((s for s in submitted if s["message"].strip() == text.strip()
+                         and s["sender_id"] == fields["sender_id"]), None)
+            if stub:
+                db.table("sms_templates").update({**fields, "message_id": str(mid)}) \
+                    .eq("id", stub["id"]).eq("tenant_id", tid).execute()
+                submitted.remove(stub)
+            else:
+                db.table("sms_templates").insert({"tenant_id": tid, "message_id": str(mid), **fields}).execute()
+    return _cached_templates(db, tid)
+
+
+class TemplateType(BaseModel):
+    template_type: Literal["service", "promotional"]
+
+
+@router.patch("/templates/{template_id}")
+async def set_template_type(template_id: str, body: TemplateType, ctx: dict = Depends(manage_no_key)):
+    rows = (get_supabase().table("sms_templates").update({"template_type": body.template_type})
+            .eq("id", template_id).eq("tenant_id", ctx["tenant_id"]).execute()).data or []
+    if not rows:
+        raise HTTPException(404, "Template not found.")
+    return _public_template(rows[0])
+
+
+# ---------------------------------------------------------------- DLT adds
+
+@router.post("/dlt/entity")
+async def dlt_entity(entity_name: str = Form(..., max_length=200), entity_id: str = Form(..., max_length=40),
+                     files: list[UploadFile] = File(...), ctx: dict = Depends(manage)):
+    if not 1 <= len(files) <= 5:
+        raise HTTPException(422, "Attach 1 to 5 proof files.")
+    db = get_supabase()
+    urls = [await _store_upload(db, ctx["tenant_id"], f, PROOF_EXTS) for f in files]
+    body = await _bulk9(bulk9_client.add_entity(ctx["api_key"], entity_name=entity_name.strip(),
+                                                entity_id=entity_id.strip(), proof_urls=urls))
+    return {"ok": True, "message": _message(body, "Entity submitted for approval.")}
+
+
+class SenderBody(BaseModel):
+    entity_id: str = Field(min_length=1, max_length=40)
+    sender_id: str = Field(min_length=3, max_length=6)
+
+
+@router.post("/dlt/sender")
+async def dlt_sender(body: SenderBody, ctx: dict = Depends(manage)):
+    res = await _bulk9(bulk9_client.add_sender(ctx["api_key"], entity_id=body.entity_id.strip(),
+                                               sender_id=body.sender_id.strip()))
+    return {"ok": True, "message": _message(res, "Sender ID submitted for approval.")}
+
+
+@router.post("/dlt/sender-excel")
+async def dlt_sender_excel(entity_id: str = Form(..., max_length=40), file: UploadFile = File(...),
+                           ctx: dict = Depends(manage)):
+    url = await _store_upload(get_supabase(), ctx["tenant_id"], file, EXCEL_EXTS)
+    res = await _bulk9(bulk9_client.add_sender_excel(ctx["api_key"], entity_id=entity_id.strip(), file_url=url))
+    return {"ok": True, "message": _message(res, "Sender IDs uploaded.")}
+
+
+class DltTemplateBody(BaseModel):
+    entity_id: str = Field(min_length=1, max_length=40)
+    sender_ids: list[str] = Field(min_length=1, max_length=20)
+    dlt_template_id: str = Field(min_length=1, max_length=40)
+    message_text: str = Field(min_length=1, max_length=1600)
+    template_type: Literal["service", "promotional"]
+
+
+@router.post("/dlt/template")
+async def dlt_template(body: DltTemplateBody, ctx: dict = Depends(manage)):
+    res = await _bulk9(bulk9_client.add_template(
+        ctx["api_key"], entity_id=body.entity_id.strip(), sender_ids=[s.strip() for s in body.sender_ids],
+        template_id=body.dlt_template_id.strip(), message_text=body.message_text,
+        promotional=body.template_type == "promotional"))
+    # Bulk9 lists the template only once approved; show it meanwhile as "submitted".
+    db = get_supabase()
+    names = (db.table("sms_templates").select("entity_name").eq("tenant_id", ctx["tenant_id"])
+             .eq("entity_id", body.entity_id.strip()).limit(1).execute()).data or []
+    db.table("sms_templates").insert({
+        "tenant_id": ctx["tenant_id"], "dlt_template_id": body.dlt_template_id.strip(),
+        "sender_id": body.sender_ids[0].strip(), "entity_id": body.entity_id.strip(),
+        "entity_name": names[0]["entity_name"] if names else None, "message": body.message_text,
+        "var_count": camp.var_count(body.message_text), "template_type": body.template_type,
+        "status": "submitted",
+    }).execute()
+    return {"ok": True, "message": _message(res, "Template submitted for approval.")}
+
+
+@router.post("/dlt/template-excel")
+async def dlt_template_excel(entity_id: str = Form(..., max_length=40),
+                             template_type: Literal["service", "promotional"] = Form(...),
+                             file: UploadFile = File(...), ctx: dict = Depends(manage)):
+    url = await _store_upload(get_supabase(), ctx["tenant_id"], file, EXCEL_EXTS)
+    res = await _bulk9(bulk9_client.add_template_excel(
+        ctx["api_key"], entity_id=entity_id.strip(), file_url=url, promotional=template_type == "promotional"))
+    return {"ok": True, "message": _message(res, "Templates uploaded.")}
+
+
+# ---------------------------------------------------------------- template requests
+
+REQUEST_FIELDS = ("id", "wording", "template_type", "status", "reason", "created_at", "updated_at")
+
+
+@router.get("/template-requests")
+async def list_template_requests(ctx: dict = Depends(view_no_key)):
+    rows = (get_supabase().table("sms_template_requests").select("*").eq("tenant_id", ctx["tenant_id"])
+            .order("created_at", desc=True).limit(200).execute()).data or []
+    return {"requests": [{k: r.get(k) for k in REQUEST_FIELDS} for r in rows]}
+
+
+class TemplateRequestBody(BaseModel):
+    wording: str = Field(min_length=5, max_length=1600)
+    template_type: Literal["service", "promotional"]
+
+
+@router.post("/template-requests")
+async def create_template_request(body: TemplateRequestBody, ctx: dict = Depends(manage_no_key)):
+    row = get_supabase().table("sms_template_requests").insert({
+        "tenant_id": ctx["tenant_id"], "wording": body.wording.strip(),
+        "template_type": body.template_type, "created_by": ctx.get("user_id"),
+    }).execute().data[0]
+    return {k: row.get(k) for k in REQUEST_FIELDS}
+
+
+# ---------------------------------------------------------------- campaigns
+
+@router.get("/campaigns/fields")
+async def campaign_fields(ctx: dict = Depends(view_no_key)):
+    return {"fields": camp.FIELDS}
+
+
+class VarSource(BaseModel):
+    source: Literal["field", "text"]
+    value: str = Field(max_length=200)
+
+
+class PreviewBody(BaseModel):
+    template_id: str
+    variable_map: list[VarSource] = Field(default_factory=list, max_length=20)
+    lead_ids: list[str] = Field(max_length=camp.MAX_LEADS)
+
+
+class CampaignBody(PreviewBody):
+    name: str = Field(min_length=1, max_length=120)
+    send_at: Optional[datetime] = None
+    idempotency_key: str = Field(min_length=8, max_length=100)
+
+
+def _vmap(body: PreviewBody) -> list[dict]:
+    return [v.model_dump() for v in body.variable_map]
+
+
+@router.post("/campaigns/preview")
+async def preview_campaign(body: PreviewBody, ctx: dict = Depends(view_no_key)):
+    db = get_supabase()
+    try:
+        template = camp.get_template(db, ctx["tenant_id"], body.template_id)
+        return camp.preview(db, ctx["tenant_id"], template, _vmap(body), body.lead_ids)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+
+
+@router.post("/campaigns")
+async def create_campaign(body: CampaignBody, ctx: dict = Depends(manage)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    try:
+        template = camp.get_template(db, tid, body.template_id)
+        row, created = camp.create_campaign(
+            db, tid, ctx.get("user_id"), name=body.name, template=template, variable_map=_vmap(body),
+            lead_ids=body.lead_ids, send_at=body.send_at, idempotency_key=body.idempotency_key)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+    return JSONResponse(camp.public_campaigns(db, tid, [row])[0], status_code=201 if created else 200)
+
+
+@router.get("/campaigns")
+async def list_campaigns(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+                         ctx: dict = Depends(view_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    rows = (db.table("sms_campaigns").select("*").eq("tenant_id", tid).order("created_at", desc=True)
+            .range(offset, offset + limit - 1).execute()).data or []
+    return {"campaigns": camp.public_campaigns(db, tid, rows)}
+
+
+@router.get("/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: str, ctx: dict = Depends(view_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    row = camp.get_campaign_row(db, tid, campaign_id)
+    if not row:
+        raise HTTPException(404, "Campaign not found.")
+    return camp.public_campaigns(db, tid, [row])[0]
+
+
+@router.post("/campaigns/{campaign_id}/cancel")
+async def cancel_campaign(campaign_id: str, ctx: dict = Depends(manage_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    try:
+        row = camp.cancel_campaign(db, tid, campaign_id)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+    return camp.public_campaigns(db, tid, [row])[0]
+
+
+# ---------------------------------------------------------------- messages
+
+def _day_bounds(d_from: Optional[date], d_to: Optional[date]) -> tuple[str | None, str | None]:
+    lo = datetime(d_from.year, d_from.month, d_from.day, tzinfo=timezone.utc).isoformat() if d_from else None
+    hi = (datetime(d_to.year, d_to.month, d_to.day, tzinfo=timezone.utc) + timedelta(days=1)
+          - timedelta(microseconds=1)).isoformat() if d_to else None
+    return lo, hi
+
+
+def _messages_query(db, tid: str, campaign_id, status_, d_from, d_to, search):
+    q = db.table("sms_messages").select("*", count="exact").eq("tenant_id", tid)
+    if campaign_id:
+        q = q.eq("campaign_id", campaign_id)
+    if status_:
+        if status_ not in camp.STATUSES:
+            raise HTTPException(422, "Unknown status.")
+        q = q.eq("status", status_)
+    lo, hi = _day_bounds(d_from, d_to)
+    if lo:
+        q = q.gte("created_at", lo)
+    if hi:
+        q = q.lte("created_at", hi)
+    if search:
+        term = re.sub(r"[,()%*\\]", " ", search).strip()[:50]
+        if term:
+            q = q.or_(f"phone.ilike.%{term}%,content.ilike.%{term}%")
+    return q.order("created_at", desc=True)
+
+
+@router.get("/messages")
+async def list_messages(campaign_id: Optional[str] = None, status: Optional[str] = None,
+                        from_: Optional[date] = Query(None, alias="from"), to: Optional[date] = None,
+                        search: Optional[str] = None, limit: int = Query(50, ge=1, le=200),
+                        offset: int = Query(0, ge=0), ctx: dict = Depends(view_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    res = _messages_query(db, tid, campaign_id, status, from_, to, search) \
+        .range(offset, offset + limit - 1).execute()
+    return {"messages": camp.public_messages(db, tid, res.data or []), "total": res.count or 0}
+
+
+@router.get("/messages/export.csv")
+async def export_messages(campaign_id: Optional[str] = None, status: Optional[str] = None,
+                          from_: Optional[date] = Query(None, alias="from"), to: Optional[date] = None,
+                          search: Optional[str] = None, ctx: dict = Depends(view_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Name", "Phone", "Message", "Status", "Reason", "SMS count", "Charged (INR)",
+                "Sent at", "Delivered at"])
+
+    def cell(v):
+        s = "" if v is None else str(v)
+        # A spreadsheet runs a cell starting with these as a formula; lead names are user data.
+        return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+    start = 0
+    while start < EXPORT_CAP:
+        rows = _messages_query(db, tid, campaign_id, status, from_, to, search) \
+            .range(start, start + 999).execute().data or []
+        for m in camp.public_messages(db, tid, rows):
+            w.writerow([cell(m["lead_name"]), cell(m["phone"]), cell(m["content"]), m["status"],
+                        cell(m["failure_reason"]), m["sms_count"] if m["sms_count"] is not None else "",
+                        m["charged_amount"] if m["charged_amount"] is not None else "",
+                        m["submitted_at"] or "", m["delivered_at"] or ""])
+        if len(rows) < 1000:
+            break
+        start += 1000
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="sms-messages.csv"'})
+
+
+# ---------------------------------------------------------------- reports, ledger
+
+def _window(d_from: Optional[date], d_to: Optional[date], max_days: int) -> tuple[date, date]:
+    d_to = d_to or date.today()
+    d_from = d_from or d_to - timedelta(days=min(max_days, 7) - 1)
+    if d_from > d_to:
+        raise HTTPException(422, "'from' must be on or before 'to'.")
+    if (d_to - d_from).days + 1 > max_days:
+        raise HTTPException(422, f"Pick a range of at most {max_days} days.")
+    return d_from, d_to
+
+
+@router.get("/reports/summary")
+async def reports_summary(from_: Optional[date] = Query(None, alias="from"), to: Optional[date] = None,
+                          ctx: dict = Depends(view)):
+    d_from, d_to = _window(from_, to, 30)
+    db, tid = get_supabase(), ctx["tenant_id"]
+    lo, hi = _day_bounds(d_from, d_to)
+    counts = {s: 0 for s in camp.STATUSES}
+    start = 0
+    while True:
+        rows = (db.table("sms_messages").select("status").eq("tenant_id", tid).gte("created_at", lo)
+                .lte("created_at", hi).order("id").range(start, start + 999).execute()).data or []
+        for r in rows:
+            if r["status"] in counts:
+                counts[r["status"]] += 1
+        if len(rows) < 1000:
+            break
+        start += 1000
+    out = {"anril": counts, "bulk9": None, "error": None}
+    try:
+        out["bulk9"] = await bulk9_client.sms_summary(ctx["api_key"], date_from=d_from.isoformat(),
+                                                      date_to=d_to.isoformat())
+    except (Bulk9Error, Bulk9Timeout) as e:
+        out["error"] = str(e) or "Could not reach the SMS provider."
+    return out
+
+
+@router.get("/reports/logs")
+async def reports_logs(from_: Optional[date] = Query(None, alias="from"), to: Optional[date] = None,
+                       page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=1000),
+                       ctx: dict = Depends(view)):
+    d_from, d_to = _window(from_, to, 3)
+    try:
+        body = await bulk9_client.sms_logs(ctx["api_key"], date_from=d_from.isoformat(),
+                                           date_to=d_to.isoformat(), page=page, limit=limit)
+    except (Bulk9Error, Bulk9Timeout) as e:
+        return {"logs": [], "page": page, "error": str(e) or "Could not reach the SMS provider."}
+    logs = next((body[k] for k in ("data", "logs", "sms_logs") if isinstance(body.get(k), list)), [])
+    return {"logs": logs, "page": page, "error": None}
+
+
+LEDGER_FIELDS = ("id", "kind", "sms_count", "price_per_sms", "amount", "expiry_date", "note", "created_at")
+
+
+@router.get("/ledger")
+async def ledger(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+                 ctx: dict = Depends(view_no_key)):
+    rows = (get_supabase().table("sms_ledger").select("*").eq("tenant_id", ctx["tenant_id"])
+            .order("created_at", desc=True).range(offset, offset + limit - 1).execute()).data or []
+    # buy_rate is Anril's own cost and is never sent to the client.
+    return {"entries": [{k: r.get(k) for k in LEDGER_FIELDS} for r in rows]}
+
+
+# ---------------------------------------------------------------- developer key + OTP
+
+def _owner_gate(ctx: dict = Depends(require_owner)) -> dict:
+    if not _is_enabled(ctx["tenant_id"]):
+        raise HTTPException(403, NOT_ENABLED)
+    key = get_setting("bulk9_api_key", tenant_id=ctx["tenant_id"])
+    if not key:
+        raise HTTPException(409, NOT_CONNECTED)
+    return {**ctx, "api_key": key}
+
+
+@router.get("/developer/key")
+async def developer_key(ctx: dict = Depends(_owner_gate)):
+    return {"api_key": ctx["api_key"]}
+
+
+def _mobile(raw: str) -> str:
+    m = camp.normalize_indian_mobile(raw)
+    if not m:
+        raise HTTPException(422, "Enter a valid 10-digit Indian mobile number.")
+    return m
+
+
+class OtpSendBody(BaseModel):
+    mobile: str
+    otp_id: str = Field(min_length=1, max_length=40)
+    otp_length: int = Field(6, ge=4, le=10)
+    otp_expiry: int = Field(15, ge=1, le=10080)
+
+
+class OtpVerifyBody(BaseModel):
+    mobile: str
+    otp: str = Field(min_length=1, max_length=12)
+
+
+class OtpResendBody(BaseModel):
+    mobile: str
+
+
+@router.post("/otp/send")
+async def otp_send(body: OtpSendBody, ctx: dict = Depends(manage)):
+    res = await _bulk9(bulk9_client.otp_send(ctx["api_key"], mobile=_mobile(body.mobile), otp_id=body.otp_id,
+                                            otp_length=body.otp_length, otp_expiry=body.otp_expiry))
+    return {"ok": True, "request_id": res.get("request_id"), "message": _message(res, "OTP sent.")}
+
+
+@router.post("/otp/verify")
+async def otp_verify(body: OtpVerifyBody, ctx: dict = Depends(manage)):
+    try:
+        res = await bulk9_client.otp_verify(ctx["api_key"], mobile=_mobile(body.mobile), otp=body.otp.strip())
+    except Bulk9Error as e:
+        # A wrong or expired code is an answer, not a provider outage.
+        return {"ok": False, "message": str(e)}
+    except Bulk9Timeout:
+        raise HTTPException(504, "The SMS provider did not respond in time. Please try again.")
+    return {"ok": True, "message": _message(res, "OTP verified.")}
+
+
+@router.post("/otp/resend")
+async def otp_resend(body: OtpResendBody, ctx: dict = Depends(manage)):
+    res = await _bulk9(bulk9_client.otp_resend(ctx["api_key"], mobile=_mobile(body.mobile)))
+    return {"ok": True, "message": _message(res, "OTP sent again.")}

@@ -35,6 +35,17 @@ class SettingsUpdate(BaseModel):
     updates: dict[str, str | None]
 
 
+# SMS reselling keys (price per SMS, buy rate, Bulk9 username/key/webhook secret) are set by
+# Prem in the operator console. A tenant writing them could price its own SMS at ₹0.0001,
+# redirect credit to another Bulk9 account, or forge delivery callbacks; reading them shows
+# Anril's margin. See routes/operator_sms.py.
+OPERATOR_ONLY_PREFIXES = ("sms_", "bulk9_")
+
+
+def _operator_only(key: str) -> bool:
+    return key.startswith(OPERATOR_ONLY_PREFIXES)
+
+
 # The handover wording is the 8th Description section now (owner-only, edited through
 # PUT /api/v1/ai-tune/profile). The old setting is only a read fallback until the data
 # step moves it, so this route must not write it: a write would be silently ignored.
@@ -374,6 +385,8 @@ async def list_settings(ctx: dict = Depends(require_settings_read)):
     rows = result.data or []
     settings = []
     for row in rows:
+        if _operator_only(row["key"]):
+            continue
         db_value = row["value"]
         effective_value = db_value
         is_set = effective_value is not None
@@ -443,6 +456,8 @@ async def update_settings(
         raise HTTPException(status_code=400, detail=HANDOVER_LINE_MOVED_MESSAGE)
     if any(key.startswith(razorpay_oauth.KEY_PREFIX) for key in payload.updates):
         raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
+    if any(_operator_only(k) for k in payload.updates):
+        raise HTTPException(status_code=403, detail="SMS settings are managed by Anril")
     description = _checked_owner_description(payload.updates, ctx)
 
     db = get_supabase()

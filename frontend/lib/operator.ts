@@ -115,3 +115,114 @@ export function capUsagePercent(used: number, cap: number | null): number {
   if (cap === null || cap <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((used / cap) * 100)));
 }
+
+/* ------------------------------------------------------------------ *
+ * SMS (operator side) -- contract: docs/plans/2026-10-30-sms-api-contract.md
+ * ------------------------------------------------------------------ */
+
+export type OperatorSmsChecklist = { dlt: boolean; pe_tm: boolean; sender: boolean };
+export type OperatorSmsLedgerEntry = {
+  id: string;
+  kind: string;
+  sms_count: number;
+  price_per_sms: number | null;
+  buy_rate: number | null;
+  amount: number | null;
+  expiry_date: string | null;
+  note: string | null;
+  created_at: string;
+};
+export type OperatorSmsTemplateRequest = {
+  id: string;
+  wording: string;
+  template_type: string;
+  status: "pending" | "in_progress" | "ready" | "rejected" | string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+export type OperatorSmsPayment = {
+  id: string;
+  amount_rupees: number;
+  sms_count: number;
+  status: "created" | "paid" | "credited" | "credit_failed" | "amount_mismatch" | "expired" | "cancelled" | string;
+  error: string | null;
+  created_at: string;
+  paid_at: string | null;
+  credited_at: string | null;
+};
+export type OperatorSms = {
+  enabled: boolean;
+  connected: boolean;
+  key_masked: string | null;
+  bulk9_username: string | null;
+  webhook_registered: boolean;
+  price_per_sms: number | null;
+  buy_rate: number | null;
+  checklist: OperatorSmsChecklist;
+  support_contact: string | null;
+  balance: { wallet: number; sms_count: number } | null;
+  balance_error: string | null;
+  ledger: OperatorSmsLedgerEntry[];
+  template_requests: OperatorSmsTemplateRequest[];
+  payments: OperatorSmsPayment[];
+  profit: { sms_sold: number; revenue: number; cost: number; profit: number };
+};
+export type OperatorSmsStock = {
+  sms_count: number | null;
+  sms_balance: number | null;
+  threshold: number;
+  low: boolean;
+  error: string | null;
+};
+export type OperatorSmsSettingsPatch = {
+  bulk9_username?: string;
+  price_per_sms?: number;
+  buy_rate?: number;
+  checklist?: OperatorSmsChecklist;
+  support_contact?: string;
+};
+
+const smsPath = (tenantId: string) => `/api/v1/operator/clients/${tenantId}/sms`;
+const smsPost = (tenantId: string, sub: string, body?: unknown) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/${sub}`, {
+    method: "POST",
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+
+export const getOperatorSms = (tenantId: string) => operatorFetch<OperatorSms>(smsPath(tenantId));
+export const createOperatorSmsAccount = (
+  tenantId: string,
+  body: { username: string; name: string; email?: string; mobile?: string },
+) => smsPost(tenantId, "account", body);
+export const putOperatorSmsKey = (tenantId: string, api_key: string) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/key`, { method: "PUT", body: JSON.stringify({ api_key }) });
+export const patchOperatorSmsSettings = (tenantId: string, body: OperatorSmsSettingsPatch) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/settings`, { method: "PATCH", body: JSON.stringify(body) });
+export const enableOperatorSms = (tenantId: string) => smsPost(tenantId, "enable");
+export const disableOperatorSms = (tenantId: string) => smsPost(tenantId, "disable");
+export const registerOperatorSmsWebhook = (tenantId: string) => smsPost(tenantId, "webhook");
+export const creditOperatorSms = (
+  tenantId: string,
+  body: { kind: "manual_credit" | "bonus"; sms_count: number; price_per_sms?: number; expiry_date?: string; note?: string },
+) => smsPost(tenantId, "credit", body);
+export const debitOperatorSms = (tenantId: string, body: { sms_count: number; note?: string }) =>
+  smsPost(tenantId, "debit", body);
+export const updateOperatorSmsTemplateRequest = (
+  tenantId: string,
+  id: string,
+  body: { status: "in_progress" | "ready" | "rejected"; reason?: string },
+) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/template-requests/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+export const retryOperatorSmsCredit = (tenantId: string, paymentId: string) =>
+  smsPost(tenantId, `payments/${paymentId}/retry-credit`);
+export const getOperatorSmsStock = () => operatorFetch<OperatorSmsStock>("/api/v1/operator/sms/stock");
+
+/** ₹ with 2 decimals (prices pass 4 for sub-paisa rates). */
+export function rupees(n: number | null | undefined, decimals = 2): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}

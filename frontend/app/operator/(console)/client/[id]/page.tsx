@@ -20,6 +20,7 @@ import { AuditLogsView } from "./views/audit-logs";
 import { DeleteClientView } from "./views/delete-client";
 import { EntitlementsView } from "./views/entitlements";
 import { PrivateSendView } from "./views/private-send";
+import { SmsView } from "./views/sms";
 import { TokenUsageCard } from "./views/TokenUsageCard";
 
 import type { OverviewData } from "./types";
@@ -28,7 +29,7 @@ const VALID_SECTIONS: SectionType[] = [
   "overview", "conversations", "segments", "inbound", "outbound",
   "templates", "numbers", "knowledge", "analytics", "team", "roles",
   "tc-upload", "tc-dialer", "tc-scheduled", "tc-notes",
-  "brain", "config", "entitlements", "private-send", "token-usage", "health", "management", "data-ops", "audit-logs", "delete-client",
+  "brain", "config", "entitlements", "private-send", "sms", "token-usage", "health", "management", "data-ops", "audit-logs", "delete-client",
 ];
 
 export default function ClientDetailPage() {
@@ -147,6 +148,7 @@ export default function ClientDetailPage() {
     config: { title: "Configuration", desc: "Credential status and key settings." },
     entitlements: { title: "Entitlements & Usage", desc: "Current purchased items, subscription status, and usage this cycle (read-only)." },
     "private-send": { title: "Private Send", desc: "Client-side sending: license keys, plan cap, reply routing and usage." },
+    sms: { title: "SMS", desc: "Bulk9 SMS: account, key, pricing, credit, profit and template requests." },
     "token-usage": { title: "Token Consumption", desc: "AI provider token usage and estimated cost, on this client's own API keys." },
     health: { title: "Health", desc: "Channel health, delivery stats, and incidents." },
     management: { title: "Management", desc: "Owner management and account actions." },
@@ -260,6 +262,8 @@ function SectionContent({ section, tenantId, overview, onReload, setError, onOpe
           featureUpdating={featureUpdating}
         />
       );
+    case "sms":
+      return <SmsView tenantId={tenantId} />;
     case "token-usage":
       return <TokenUsageCard tenantId={tenantId} />;
     case "health":
