@@ -2813,6 +2813,8 @@ export const api = {
       apiFetch<{ data: CallbackBoardItem[] }>(`/api/v1/follow-ups/callbacks/board`),
   },
   settings: {
+    getAiAutoReply: () =>
+      apiFetch<{ enabled: boolean }>(`/api/v1/settings/ai-auto-reply`),
     getTelecallingConfig: () =>
       apiFetch<TelecallingConfig>(`/api/v1/settings/telecalling-config`),
   },

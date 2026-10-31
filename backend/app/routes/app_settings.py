@@ -2021,6 +2021,14 @@ async def patch_inbox_config(payload: InboxConfigUpdate, ctx: dict = Depends(req
     return merged
 
 
+@router.get("/ai-auto-reply")
+async def get_ai_auto_reply_state(tenant_id: str = Depends(get_tenant_id)):
+    """Master AI switch, readable by any signed-in teammate (chat screens grey out their
+    per-lead toggle when it is off). Same rule as the reply gate: only the literal "false" is off."""
+    from app.config_dynamic import get_setting
+    return {"enabled": get_setting("ai_auto_reply_enabled", fallback="true", tenant_id=tenant_id) != "false"}
+
+
 @router.get("/telecalling-config")
 async def get_telecalling_config_route(ctx: dict = Depends(require_settings_read)):
     tenant_id = ctx["tenant_id"]

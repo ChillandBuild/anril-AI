@@ -29,7 +29,7 @@ export default function AutoReplySettingsPage() {
         icon={Sparkles}
         accent="violet"
         title="AI Auto-Reply"
-        description="Turn on automatic AI replies for inbound WhatsApp messages. Voice delivery is controlled by your operator plan settings."
+        description="Turn on automatic AI replies for inbound messages on WhatsApp, Instagram, Facebook and Telegram. Turning it off also pauses AI follow-ups. Voice delivery is controlled by your operator plan settings."
         status={{ label: enabled ? "On" : "Off", tone: enabled ? "on" : "off" }}
         dirty={dirty}
       >
@@ -37,7 +37,7 @@ export default function AutoReplySettingsPage() {
           <div className="min-w-0">
             <p className="font-body text-sm font-semibold text-ink">Reply automatically with AI</p>
             <p className="mt-0.5 font-body text-xs text-ink-muted">
-              When off, inbound messages sit in the inbox until a teammate answers them.
+              When off, inbound messages on every channel sit in the inbox until a teammate answers them, and each lead&apos;s AI switch is greyed out.
             </p>
           </div>
           <SwitchPill

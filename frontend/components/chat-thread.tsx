@@ -10,6 +10,7 @@ import { ScheduledBubbles } from "@/components/schedule/scheduled-messages";
 import { ChannelAvatar, getChannel, CHANNEL_LABEL } from "./channel-avatar";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { SwitchPill } from "@/components/ui/controls";
+import { useMasterAiEnabled } from "@/lib/useMasterAiEnabled";
 import { ShareProductMenu } from "@/components/chat/ShareProductMenu";
 import { NewDealDialog } from "@/components/deals/NewDealDialog";
 import { fetchHandovers, resolveHandover } from "@/lib/escalations";
@@ -224,6 +225,7 @@ export function ChatThread({
   onToggleDetails?: () => void;
 }) {
   const { role, permissions } = useAuthRole();
+  const masterAiEnabled = useMasterAiEnabled();
   const canReplyToConversations = role === "owner" || permissions.includes("conversations.reply");
   const canManageDeals = role === "owner" || permissions.includes("deals.manage");
   const [paymentDealOpen, setPaymentDealOpen] = useState(false);
@@ -521,7 +523,7 @@ export function ChatThread({
   const isTelegram = current.source === "telegram";
   const isFacebook = current.source === "facebook";
   const isWhatsApp = !isInstagram && !isTelegram && !isFacebook;
-  const canSendMedia = canReplyToConversations && !aiEnabled && isWhatsApp;
+  const canSendMedia = canReplyToConversations && (!aiEnabled || !masterAiEnabled) && isWhatsApp;
 
   const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
   const hoursSinceInbound = lastInbound
@@ -613,10 +615,13 @@ export function ChatThread({
         {/* Right side controls */}
         <div className="ml-auto flex items-center gap-2">
           {/* AI replies switch */}
-          <div className="rounded-xl border border-[#e2e8f0] px-3 py-1.5 flex items-center gap-2">
+          <div
+            className={`rounded-xl border border-[#e2e8f0] px-3 py-1.5 flex items-center gap-2${masterAiEnabled ? "" : " opacity-50"}`}
+            title={masterAiEnabled ? undefined : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
+          >
             <span className="text-[12px] font-semibold text-[#0A1528]">AI replies</span>
-            <SwitchPill on={aiEnabled} onChange={() => toggleAI()} size="sm" aria-label="AI replies" />
-            <span className="text-[11px] text-[#64748b]">{aiEnabled ? "On" : "Off"}</span>
+            <SwitchPill on={masterAiEnabled && aiEnabled} disabled={!masterAiEnabled} onChange={() => toggleAI()} size="sm" aria-label="AI replies" />
+            <span className="text-[11px] text-[#64748b]">{!masterAiEnabled ? "Off (account)" : aiEnabled ? "On" : "Off"}</span>
           </div>
 
           {/* Mark resolved button - only show if escalated */}
