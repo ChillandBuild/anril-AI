@@ -436,6 +436,24 @@ _scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 60, "coalesce"
 # When this process's scheduler started: the "not running" alert measures from here for a
 # job that has no successful run yet (operator._build_scheduler_jobs).
 _scheduler_started_at: datetime | None = None
+# The Procrastinate worker (SCHEDULER_BACKEND=procrastinate, SPEC.md): a task on this event loop.
+_queue_worker: asyncio.Task | None = None
+
+
+async def _run_queue_worker() -> None:
+    """Run the queue worker inside the web process. Never blocks startup: a failed connection
+    is logged and retried every 30 s, so the site stays up while the queue is unreachable."""
+    from app.queue.app import queue_app
+    import app.queue.tasks  # noqa: F401  (registers the periodic tasks)
+
+    while True:
+        try:
+            async with queue_app.open_async():
+                # Render sends SIGTERM 30 s before SIGKILL; the rescue task covers anything cut off.
+                await queue_app.run_worker_async(install_signal_handlers=False, shutdown_graceful_timeout=20)
+        except Exception as e:
+            logger.error(f"Queue worker stopped: {e}; retrying in 30 s")
+            await asyncio.sleep(30)
 
 
 # Each job's last successful run ({"ran_at", "lateness_ms"}), kept in memory: a
@@ -618,10 +636,18 @@ async def lifespan(app: FastAPI):
         _record_scheduler_event,
         EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED,
     )
-    global _scheduler_started_at
+    use_queue = settings.scheduler_backend == "procrastinate"
+    if use_queue and not settings.database_url:
+        logger.error("SCHEDULER_BACKEND=procrastinate but DATABASE_URL is not set: running the jobs on APScheduler")
+        use_queue = False
+    global _scheduler_started_at, _queue_worker
     _scheduler_started_at = datetime.now(timezone.utc)
-    _scheduler.start(paused=not settings.scheduler_enabled)
-    if settings.scheduler_enabled:
+    # On the queue backend APScheduler keeps the 24 jobs registered but never runs them.
+    _scheduler.start(paused=not settings.scheduler_enabled or use_queue)
+    if settings.scheduler_enabled and use_queue:
+        _queue_worker = asyncio.create_task(_run_queue_worker())
+        logger.info("Schedulers started (procrastinate): 24 queue tasks + rescue-stalled(1m) + queue-cleanup(03:45 IST) on queues messages, calls, maintenance")
+    elif settings.scheduler_enabled:
         logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + scheduler-runs-prune(03:15 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
     else:
         logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — %s jobs registered but PAUSED; nothing will run", len(_scheduler.get_jobs()))
@@ -631,6 +657,13 @@ async def lifespan(app: FastAPI):
     yield
 
     lag_watchdog.cancel()
+    if _queue_worker:
+        _queue_worker.cancel()
+        try:
+            await _queue_worker
+        except asyncio.CancelledError:
+            pass
+        _queue_worker = None
     _scheduler.shutdown(wait=False)
     logger.info("Anril AI backend shutting down.")
 
