@@ -16,6 +16,8 @@ python-pptx>=1.0.0
 pandas>=2.2.0
 openpyxl>=3.1.0
 apscheduler>=3.10.0
+procrastinate==3.10.0
+psycopg[binary,pool]==3.3.6
 psutil>=5.9.0
 lameenc>=1.7.0
 slowapi>=0.1.9
