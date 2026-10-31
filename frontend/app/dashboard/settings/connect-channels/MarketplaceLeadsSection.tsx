@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FlaskConical, RefreshCw } from "lucide-react";
+import { FlaskConical, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, MarketplaceStatus, WabaTemplate, api, getAuthHeaders } from "@/lib/api";
+import { SettingsSection } from "../SettingsSection";
 import { CopyButton, timeAgo } from "./ui";
 
 type ProviderId = "indiamart" | "justdial";
@@ -264,28 +265,31 @@ export default function MarketplaceLeadsSection({ canManage = true }: { canManag
     loadStatus();
   }, [loadStatus]);
 
+  const connectedCount = status ? PROVIDERS.filter((p) => status[p.id]?.connected).length : 0;
+
   return (
-    <div className="space-y-4 rounded-[28px] border border-border-subtle bg-white p-6">
-      <div>
-        <p className="font-display text-base font-bold text-ink">IndiaMART &amp; JustDial</p>
-        <p className="mt-0.5 font-body text-xs text-ink-secondary">
-          Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a
-          lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call
-          list.
-        </p>
+    <SettingsSection
+      id="marketplace-leads"
+      icon={Store}
+      accent="sky"
+      title="IndiaMART & JustDial"
+      description="Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call list."
+      status={status ? { label: connectedCount ? `${connectedCount} connected` : "Not connected", tone: connectedCount ? "on" : "warn" } : undefined}
+    >
+      <div className="space-y-4">
+        <WelcomeTemplatePicker canManage={canManage} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {PROVIDERS.map((p) => (
+            <ProviderCard
+              key={p.id}
+              {...p}
+              canManage={canManage}
+              status={status?.[p.id] ?? null}
+              onChanged={loadStatus}
+            />
+          ))}
+        </div>
       </div>
-      <WelcomeTemplatePicker canManage={canManage} />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {PROVIDERS.map((p) => (
-          <ProviderCard
-            key={p.id}
-            {...p}
-            canManage={canManage}
-            status={status?.[p.id] ?? null}
-            onChanged={loadStatus}
-          />
-        ))}
-      </div>
-    </div>
+    </SettingsSection>
   );
 }

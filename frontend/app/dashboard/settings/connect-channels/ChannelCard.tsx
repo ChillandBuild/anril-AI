@@ -74,7 +74,7 @@ export default function ChannelCard({
         <span>{configured ? metadata : "Not configured yet"}</span>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 [&_button]:whitespace-nowrap">
         {channel.id === "meta_ads" ? (
           <span className="font-body text-[10px] font-medium text-primary-600">Click-to-WhatsApp only</span>
         ) : (

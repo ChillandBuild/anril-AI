@@ -46,9 +46,12 @@ const Ctx = createContext<AccordionCtx | null>(null);
 export function SettingsAccordion({
   children,
   defaultOpenId,
+  startClosed = false,
 }: {
   children: React.ReactNode;
   defaultOpenId?: string | string[];
+  /** Keep every section collapsed even when there is only one. */
+  startClosed?: boolean;
 }) {
   const [openIds, setOpenIds] = useState<Set<string>>(() => {
     if (!defaultOpenId) return new Set();
@@ -80,11 +83,11 @@ export function SettingsAccordion({
     if (defaultOpenId) {
       const list = Array.isArray(defaultOpenId) ? defaultOpenId : [defaultOpenId];
       setOpenIds(new Set(list));
-    } else if (ids.length === 1) {
+    } else if (ids.length === 1 && !startClosed) {
       // Lone section opens; two or more stay closed until the user picks one.
       setOpenIds(new Set(ids));
     }
-  }, [ids, defaultOpenId]);
+  }, [ids, defaultOpenId, startClosed]);
 
   const toggle = useCallback((id: string) => {
     setOpenIds((prev) => {

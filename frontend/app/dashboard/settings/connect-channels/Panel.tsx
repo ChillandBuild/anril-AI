@@ -11,7 +11,6 @@ import { buildDisconnectTarget, disconnectChannel } from "./disconnect";
 import type { DisconnectTarget } from "./disconnect";
 import EmbeddedSection from "./EmbeddedSection";
 import ManualSection from "./ManualSection";
-import MarketplaceLeadsSection from "./MarketplaceLeadsSection";
 import ChannelConfigModal from "./ChannelConfigModal";
 import MetaAssetPickerModal from "./MetaAssetPickerModal";
 import MetaChannelPickerModal from "./MetaChannelPickerModal";
@@ -299,7 +298,6 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
             onRazorpayConnect={startRazorpayConnect}
             onDisconnectChannel={openDisconnect}
           />
-          <MarketplaceLeadsSection canManage={canManage} />
         </div>
       )}
 
