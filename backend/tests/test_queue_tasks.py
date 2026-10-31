@@ -76,8 +76,14 @@ async def apscheduler_jobs() -> dict[str, dict]:
     return {kw["id"]: kw for _, _, kw in scheduler.calls["add_job"]}
 
 
+# The queue's own upkeep tasks (app/queue/safety.py), not APScheduler jobs.
+SAFETY_TASKS = {"rescue-stalled", "queue-cleanup"}
+
+
 def _periodic() -> dict[str, object]:
-    return {pid: pt for (_, pid), pt in queue_app.periodic_registry.periodic_tasks.items()}
+    return {
+        pid: pt for (_, pid), pt in queue_app.periodic_registry.periodic_tasks.items() if pid not in SAFETY_TASKS
+    }
 
 
 def _call_task(name: str):
@@ -86,7 +92,8 @@ def _call_task(name: str):
 
 
 def test_every_apscheduler_job_has_a_periodic_task(apscheduler_jobs):
-    assert set(_periodic()) == set(apscheduler_jobs)
+    every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
+    assert every == set(apscheduler_jobs) | SAFETY_TASKS
     assert len(_periodic()) == 24
 
 

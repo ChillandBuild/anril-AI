@@ -212,3 +212,17 @@ def brain_weekly_digest(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.brain_digest import send_weekly_digests
     send_weekly_digests(get_supabase())
+
+
+@queue_app.periodic(cron="* * * * *", periodic_id="rescue-stalled")
+@queue_app.task(name="rescue-stalled", queue="maintenance", pass_context=True)
+async def rescue_stalled(context, timestamp: int) -> None:
+    from app.queue import safety
+    await safety.rescue_stalled(context.app)
+
+
+@queue_app.periodic(cron="15 22 * * *", periodic_id="queue-cleanup")  # 03:45 IST
+@queue_app.task(name="queue-cleanup", queue="maintenance", pass_context=True)
+async def queue_cleanup(context, timestamp: int) -> None:
+    from app.queue import safety
+    await safety.cleanup(context.app)

@@ -3,6 +3,7 @@ the worker opens it, so importing this is safe on laptops and in tests."""
 import procrastinate
 
 from app.config import settings
+from app.queue.safety import guard
 
 
 async def _set_search_path(conn) -> None:
@@ -20,5 +21,5 @@ queue_app = procrastinate.App(
         configure=_set_search_path,
     ),
     periodic_defaults={"max_delay": 6 * 3600},
-    worker_defaults={"concurrency": 4},
+    worker_defaults={"concurrency": 4, "worker_middleware": [guard]},
 )
