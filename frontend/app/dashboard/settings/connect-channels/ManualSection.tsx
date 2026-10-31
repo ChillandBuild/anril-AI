@@ -14,8 +14,6 @@ export default function ManualSection({
   onRefreshHealth,
   onOpenChannel,
   onEmbeddedConnect,
-  razorpayBusy,
-  onRazorpayConnect,
   onDisconnectChannel,
 }: {
   settings: Setting[];
@@ -26,8 +24,6 @@ export default function ManualSection({
   onRefreshHealth: () => void;
   onOpenChannel: (channel: ChannelConfig) => void;
   onEmbeddedConnect: (target: EmbeddedSignupTarget) => void;
-  razorpayBusy: boolean;
-  onRazorpayConnect: () => void;
   onDisconnectChannel: (channelId: string) => void;
 }) {
   return (
@@ -101,13 +97,12 @@ export default function ManualSection({
               metadata={metadata}
               healthLoading={healthLoading}
               canManage={canManage}
-              embeddedBusy={channel.id === "razorpay" ? razorpayBusy : Boolean(embeddedTarget) && busyTarget === embeddedTarget}
+              embeddedBusy={Boolean(embeddedTarget) && busyTarget === embeddedTarget}
               onRefreshHealth={onRefreshHealth}
               onOpen={() => onOpenChannel(channel)}
               onEmbeddedConnect={
-                channel.id === "razorpay" ? onRazorpayConnect : embeddedTarget ? () => onEmbeddedConnect(embeddedTarget) : undefined
+                channel.id === "razorpay" ? undefined : embeddedTarget ? () => onEmbeddedConnect(embeddedTarget) : undefined
               }
-              connectLabel={channel.id === "razorpay" ? "Connect with Razorpay" : undefined}
               connectedLabel={razorpayAccount ? "Connected via Razorpay" : undefined}
               onDisconnect={() => onDisconnectChannel(channel.id)}
             />

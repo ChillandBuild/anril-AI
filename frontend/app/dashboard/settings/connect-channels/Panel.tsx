@@ -284,6 +284,9 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
             onRefreshHealth={loadHealth}
             onManageChannel={openChannelModal}
             onDisconnect={openDisconnect}
+            razorpayConnected={CHANNELS.some(c => c.id === "razorpay" && isChannelConfigured(c))}
+            razorpayBusy={razorpayBusy}
+            onRazorpayConnect={startRazorpayConnect}
           />
           <ManualSection
             settings={settings}
@@ -294,8 +297,6 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
             onRefreshHealth={loadHealth}
             onOpenChannel={openChannelModal}
             onEmbeddedConnect={startEmbedded}
-            razorpayBusy={razorpayBusy}
-            onRazorpayConnect={startRazorpayConnect}
             onDisconnectChannel={openDisconnect}
           />
         </div>

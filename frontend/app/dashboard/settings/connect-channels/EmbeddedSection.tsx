@@ -59,6 +59,9 @@ export default function EmbeddedSection({
   onRefreshHealth,
   onManageChannel,
   onDisconnect,
+  razorpayConnected,
+  razorpayBusy,
+  onRazorpayConnect,
 }: {
   settings: Setting[];
   webhookHealth: WebhookHealth | null;
@@ -75,7 +78,32 @@ export default function EmbeddedSection({
   onRefreshHealth: () => void;
   onManageChannel: (channel: ChannelConfig) => void;
   onDisconnect: (channelId: string) => void;
+  razorpayConnected: boolean;
+  razorpayBusy: boolean;
+  onRazorpayConnect: () => void;
 }) {
+  // Razorpay sits beside the Meta actions so both payments and messaging connect from one place.
+  const razorpayAction = razorpayConnected ? (
+    <button
+      type="button"
+      onClick={() => onDisconnect("razorpay")}
+      disabled={!canManage}
+      className="font-label text-xs font-bold text-red-600 underline decoration-red-300 underline-offset-4 transition-colors hover:text-red-700 hover:decoration-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      Disconnect Razorpay
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={onRazorpayConnect}
+      disabled={!canManage || razorpayBusy}
+      className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-white px-3.5 py-2 font-label text-xs font-bold text-ink shadow-sm transition-all hover:-translate-y-px hover:border-primary/40 hover:text-primary hover:shadow-[0_4px_12px_-5px_rgba(var(--primary-800-rgb),0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {razorpayBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={13} className="text-ink-secondary" />}
+      Connect with Razorpay
+    </button>
+  );
+
   /** A settings value, or null when the row is missing or never set. */
   function val(key: string): string | null {
     const row = settings.find(s => s.key === key);
@@ -235,6 +263,7 @@ export default function EmbeddedSection({
               >
                 Disconnect Meta
               </button>
+              {razorpayAction}
             </div>
           ) : (
             <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -258,6 +287,7 @@ export default function EmbeddedSection({
                 <Smartphone size={13} className="text-ink-secondary" />
                 WhatsApp Coexistence
               </button>
+              {razorpayAction}
             </div>
           )}
         </div>
