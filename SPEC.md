@@ -178,6 +178,7 @@ the same response shapes, plus tests for pause and run-now.
 | Async jobs still block the event loop (sync Supabase client), as today | Unchanged behavior; follow-up task to move them to threads |
 | Supavisor session pool limits on the Free plan | Pool max 4; watch connections during M5 step 2 |
 | Teammate (keerthi-sarav) edits main.py jobs during the build | git log check before /plan and before each commit |
+| First start catches up each task's latest slot within 6 h (max_delay), which APScheduler already ran: a flip at 11:00 IST resends the 09:00 call-alert summary | Flip (and re-flip after a rollback) only between 15:00 and 08:30 IST |
 
 ## 9. Out of scope
 
