@@ -81,23 +81,28 @@ async def _process_scheduled_broadcasts() -> None:
     """APScheduler job: fire scheduled_broadcasts rows whose fire_at has passed."""
     _heartbeats["scheduled-broadcasts"] = datetime.now(timezone.utc)
     try:
-        from app.db.supabase import get_supabase
-        from app.services.broadcast_executor import execute_broadcast
-        db = get_supabase()
-        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-        rows = (
-            db.table("scheduled_broadcasts")
-            .select("*")
-            .eq("status", "pending")
-            .lte("fire_at", now)
-            .limit(10)
-            .execute()
-        )
-        for row in (rows.data or []):
-            logger.info(f"Scheduled broadcast firing: id={row['id']} tenant={row['tenant_id']}")
-            await execute_broadcast(row)
+        await _process_scheduled_broadcasts_body()
     except Exception as e:
         logger.error(f"Scheduled broadcast executor error: {e}")
+
+
+async def _process_scheduled_broadcasts_body() -> None:
+    """The broadcast sweep itself; raises on failure. Shared by the APScheduler wrapper and the queue task."""
+    from app.db.supabase import get_supabase
+    from app.services.broadcast_executor import execute_broadcast
+    db = get_supabase()
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    rows = (
+        db.table("scheduled_broadcasts")
+        .select("*")
+        .eq("status", "pending")
+        .lte("fire_at", now)
+        .limit(10)
+        .execute()
+    )
+    for row in (rows.data or []):
+        logger.info(f"Scheduled broadcast firing: id={row['id']} tenant={row['tenant_id']}")
+        await execute_broadcast(row)
 
 
 async def _check_token_health() -> None:
@@ -267,12 +272,17 @@ async def _prune_scheduler_runs() -> None:
     """APScheduler job at 03:15 IST: drop scheduler_runs rows older than 7 days. The
     Scheduler Health view reads the latest failure and the last 24h of errors."""
     try:
-        from datetime import timedelta
-        from app.db.supabase import get_supabase
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        get_supabase().table("scheduler_runs").delete().lt("ran_at", cutoff).execute()
+        await _prune_scheduler_runs_body()
     except Exception as e:
         logger.error(f"Scheduler-runs prune error: {e}")
+
+
+async def _prune_scheduler_runs_body() -> None:
+    """The prune itself; raises on failure. Shared by the APScheduler wrapper and the queue task."""
+    from datetime import timedelta
+    from app.db.supabase import get_supabase
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    get_supabase().table("scheduler_runs").delete().lt("ran_at", cutoff).execute()
 
 
 async def _sync_ad_insights() -> None:
