@@ -34,6 +34,8 @@ _MEDIA_ACK_TEXT = (
     "இந்த சாட்டில் படங்கள்/கோப்புகளை படிக்க முடியாது — தயவுசெய்து உங்கள் பதிலை தட்டச்சு செய்யவும்."
 )
 _MEDIA_ACK_DEDUPE_HOURS = 6
+# Phones per leads lookup when a coexistence contact sync arrives (keeps the URL short).
+_CONTACT_SYNC_CHUNK = 200
 
 
 def _is_opt_out(body: str) -> bool:
@@ -728,6 +730,7 @@ async def whatsapp_webhook(
                         f"tenant {tenant_id}, not the signed tenant {tenant_for_sig} — dropping"
                     )
                     continue
+                names_by_phone: dict[str, str] = {}
                 for entry_row in value.get("state_sync", []):
                     if entry_row.get("type") != "contact" or entry_row.get("action") == "remove":
                         continue
@@ -735,18 +738,26 @@ async def whatsapp_webhook(
                     wa_id = contact.get("phone_number", "")
                     full_name = (contact.get("full_name") or "").strip()
                     phone = f"+{wa_id}" if wa_id and not wa_id.startswith("+") else wa_id
-                    if not phone or not full_name:
-                        continue
+                    if phone and full_name:
+                        names_by_phone.setdefault(phone, full_name)
 
-                    lead = db.table("leads").select("id,name").eq("phone", phone).eq("tenant_id", tenant_id).limit(1).execute()
-                    if not lead.data:
-                        continue
-                    lead_row = lead.data[0]
-                    if lead_row.get("name"):
-                        continue
-
-                    db.table("leads").update({"name": full_name}).eq("id", lead_row["id"]).eq("tenant_id", tenant_id).execute()
-                    logger.info(f"smb_app_state_sync: enriched name for lead {lead_row['id']}")
+                # Meta re-sends the whole contact list every ~27 min: one lookup per contact
+                # was ~16k leads requests a day (2026-10-31), so look them up in chunks.
+                phones = list(names_by_phone)
+                enriched: set[str] = set()
+                for i in range(0, len(phones), _CONTACT_SYNC_CHUNK):
+                    leads = (
+                        db.table("leads").select("id,name,phone")
+                        .in_("phone", phones[i:i + _CONTACT_SYNC_CHUNK])
+                        .eq("tenant_id", tenant_id).execute()
+                    )
+                    for lead_row in leads.data or []:
+                        phone = lead_row.get("phone")
+                        if lead_row.get("name") or phone in enriched or phone not in names_by_phone:
+                            continue
+                        enriched.add(phone)
+                        db.table("leads").update({"name": names_by_phone[phone]}).eq("id", lead_row["id"]).eq("tenant_id", tenant_id).execute()
+                        logger.info(f"smb_app_state_sync: enriched name for lead {lead_row['id']}")
 
             elif field == "smb_message_echoes":
                 meta_phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
