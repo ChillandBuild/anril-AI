@@ -297,6 +297,7 @@ export function Sidebar(_props: SidebarProps) {
     messagingOn,
     inboundOn,
     outboundOn,
+    smsOn: enabledFeatures.includes("sms"),
     canServices,
     canSettings,
     brainGate,

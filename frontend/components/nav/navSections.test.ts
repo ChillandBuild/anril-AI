@@ -17,6 +17,7 @@ const allAccess: NavAccess = {
   messagingOn: true,
   inboundOn: true,
   outboundOn: true,
+  smsOn: true,
   canServices: true,
   canSettings: true,
   brainGate: true,
@@ -31,6 +32,7 @@ const noAccess: NavAccess = {
   messagingOn: false,
   inboundOn: false,
   outboundOn: false,
+  smsOn: false,
   canServices: false,
   canSettings: false,
   brainGate: false,
@@ -50,6 +52,7 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Auto-Messages", href: "/dashboard/auto-messages" },
   { label: "Scheduled templates", href: "/dashboard/scheduled-templates" },
   { label: "Outbound Leads", href: "/dashboard/outbound-leads" },
+  { label: "SMS", href: "/dashboard/sms" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
@@ -82,7 +85,7 @@ describe("navSections tab coverage", () => {
     expect(matches, label).toHaveLength(1);
   });
 
-  it("holds the 17 leaf tabs plus the Telecalling and Settings groups", () => {
+  it("holds all leaf tabs plus the Telecalling and Settings groups", () => {
     expect(allLeaves()).toHaveLength(OLD_TABS.length);
     expect(allEntries().filter((e) => e.kind === "group")).toHaveLength(2);
   });
@@ -149,5 +152,42 @@ describe("section open state", () => {
     expect(catalogue.isActive("/dashboard/catalog")).toBe(true);
     expect(catalogue.isActive("/dashboard/services")).toBe(true);
     expect(catalogue.isActive("/dashboard/deals")).toBe(false);
+  });
+});
+
+describe("SMS sidebar access", () => {
+  const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
+  const smsLinks = (access: NavAccess) => visibleEntries(reach, access).filter((entry) => entry.key === "sms");
+
+  it.each(["sms.view", "sms.manage"])("shows SMS with %s when SMS is enabled, independently of WhatsApp features", (permission) => {
+    const access: NavAccess = {
+      ...noAccess,
+      isSubscribed: true,
+      smsOn: true,
+      can: (value) => value === permission,
+      canAny: (values) => values.includes(permission),
+    };
+    expect(smsLinks(access)).toHaveLength(1);
+  });
+
+  it("hides SMS when the tenant feature is off", () => {
+    expect(smsLinks({ ...allAccess, smsOn: false })).toHaveLength(0);
+  });
+
+  it("hides SMS without SMS permission", () => {
+    expect(smsLinks({ ...allAccess, can: () => false, canAny: () => false })).toHaveLength(0);
+  });
+
+  it("hides SMS without an active subscription", () => {
+    expect(smsLinks({ ...allAccess, isSubscribed: false })).toHaveLength(0);
+  });
+
+  it("opens ANRIL REACH and marks SMS active on its page", () => {
+    expect(sectionContainsPage(reach, "/dashboard/sms")).toBe(true);
+    const sms = smsLinks(allAccess)[0] as NavLeaf;
+    expect(sms.href).toBe("/dashboard/sms");
+    expect(sms.isActive("/dashboard/sms")).toBe(true);
+    expect(sms.isActive("/dashboard/sms-other")).toBe(false);
+    expect(resolveSectionOpen(undefined, reach.defaultOpen, true)).toBe(true);
   });
 });

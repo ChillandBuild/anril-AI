@@ -1,6 +1,6 @@
 import {
   BarChart2, BookOpen, Brain, Calendar, CalendarClock, CreditCard, FileCheck, HandCoins, Layers,
-  Megaphone, MessageSquare, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
+  Megaphone, MessageSquare, MessageSquareText, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
   StickyNote, Upload, Users, Zap, type LucideIcon,
 } from "lucide-react";
 import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
@@ -15,6 +15,7 @@ export interface NavAccess {
   messagingOn: boolean;
   inboundOn: boolean;
   outboundOn: boolean;
+  smsOn: boolean;
   canServices: boolean;
   canSettings: boolean;
   brainGate: boolean;
@@ -188,6 +189,16 @@ const OUTBOUND_LEADS: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/outbound-leads"),
 };
 
+const SMS: NavLeaf = {
+  kind: "link",
+  key: "sms",
+  href: "/dashboard/sms",
+  label: "SMS",
+  icon: MessageSquareText,
+  visible: (a) => a.isSubscribed && a.smsOn && a.canAny(["sms.view", "sms.manage"]),
+  isActive: (p) => p === "/dashboard/sms" || p.startsWith("/dashboard/sms/"),
+};
+
 const DEALS: NavLeaf = {
   kind: "link",
   key: "deals",
@@ -308,7 +319,7 @@ const SETTINGS_GROUP: NavGroup = {
 export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "inbox", title: "INBOX & LEADS", defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
   { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
-  { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS] },
+  { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS, SMS] },
   { key: "commerce", title: "SALES · ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
   { key: "callIq", title: "ANRIL CALL IQ", defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
   { key: "aiSetup", title: "AI SETUP", defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
