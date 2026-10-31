@@ -263,6 +263,18 @@ async def _prune_send_log() -> None:
         logger.error(f"Send-log prune error: {e}")
 
 
+async def _prune_scheduler_runs() -> None:
+    """APScheduler job at 03:15 IST: drop scheduler_runs rows older than 7 days. The
+    Scheduler Health view reads the latest failure and the last 24h of errors."""
+    try:
+        from datetime import timedelta
+        from app.db.supabase import get_supabase
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        get_supabase().table("scheduler_runs").delete().lt("ran_at", cutoff).execute()
+    except Exception as e:
+        logger.error(f"Scheduler-runs prune error: {e}")
+
+
 async def _sync_ad_insights() -> None:
     """APScheduler job: pull Meta Ads Insights per tenant and store daily
     clicks/spend for the Ad Performance tab."""
@@ -416,20 +428,28 @@ _scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 60, "coalesce"
 _scheduler_started_at: datetime | None = None
 
 
+# Each job's last successful run ({"ran_at", "lateness_ms"}), kept in memory: a
+# scheduler_runs row for every success grew the table to 307 MB of a 353 MB database and
+# ~12k API writes a day (2026-10-31). Read by operator._build_scheduler_jobs.
+_last_success: dict[str, dict] = {}
+
+
 def _record_scheduler_event(event) -> None:
-    """Persist every job run to scheduler_runs for the operator Scheduler Health
-    view. Best-effort: must never raise into the scheduler."""
+    """Record a job run for the operator Scheduler Health view: a success in
+    _last_success, an error or miss as a scheduler_runs row. Best-effort: must
+    never raise into the scheduler."""
     try:
+        scheduled = getattr(event, "scheduled_run_time", None)
+        ran_at = datetime.now(timezone.utc)
+        lateness_ms = int((ran_at - scheduled).total_seconds() * 1000) if scheduled else None
         if event.code == EVENT_JOB_ERROR:
             status = "error"
             error = str(getattr(event, "exception", "") or "")[:2000]
         elif event.code == EVENT_JOB_MISSED:
             status, error = "missed", None
         else:
-            status, error = "success", None
-        scheduled = getattr(event, "scheduled_run_time", None)
-        ran_at = datetime.now(timezone.utc)
-        lateness_ms = int((ran_at - scheduled).total_seconds() * 1000) if scheduled else None
+            _last_success[event.job_id] = {"ran_at": ran_at.isoformat(), "lateness_ms": lateness_ms}
+            return
         from app.db.supabase import get_supabase
         get_supabase().table("scheduler_runs").insert({
             "job_id": event.job_id,
@@ -574,6 +594,8 @@ async def lifespan(app: FastAPI):
                        timezone="Asia/Kolkata", id="numbers-pool-sync", replace_existing=True)
     _scheduler.add_job(_prune_send_log, trigger="cron", hour=3, minute=0,
                        timezone="Asia/Kolkata", id="send-log-prune", replace_existing=True)
+    _scheduler.add_job(_prune_scheduler_runs, trigger="cron", hour=3, minute=15,
+                       timezone="Asia/Kolkata", id="scheduler-runs-prune", replace_existing=True)
     _scheduler.add_job(_reconcile_private_send_meta, trigger="cron", hour=3, minute=30,
                        timezone="Asia/Kolkata", id="private-send-meta-reconcile", replace_existing=True)
     _scheduler.add_job(_sweep_crm_cutoff, trigger="interval", minutes=10, id="crm-cutoff-sweep",
@@ -590,7 +612,7 @@ async def lifespan(app: FastAPI):
     _scheduler_started_at = datetime.now(timezone.utc)
     _scheduler.start(paused=not settings.scheduler_enabled)
     if settings.scheduler_enabled:
-        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
+        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + scheduler-runs-prune(03:15 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
     else:
         logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — %s jobs registered but PAUSED; nothing will run", len(_scheduler.get_jobs()))
 

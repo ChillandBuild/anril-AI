@@ -1,8 +1,8 @@
+import json
 import logging
 from datetime import datetime, timezone, timedelta
 
 from app.db.supabase import get_supabase
-from app.services.assignment import get_telecalling_config
 from app.services.notification_config import get_notification_config
 from app.services.notify import notify_user, notify_callback_claimable
 
@@ -33,7 +33,7 @@ def process_callback_notifications() -> dict:
 
     try:
         tenants = (
-            db.table("app_settings").select("tenant_id").eq("key", "telecalling_config").execute()
+            db.table("app_settings").select("tenant_id,value").eq("key", "telecalling_config").execute()
         )
     except Exception as e:
         logger.error(f"callback notifications: tenant scan failed: {e}")
@@ -46,7 +46,9 @@ def process_callback_notifications() -> dict:
             continue
         seen.add(tid)
         try:
-            if not get_telecalling_config(tid).get("enabled"):
+            # Read "enabled" from the scan's own row: a get_telecalling_config call per
+            # tenant every minute was ~13k app_settings requests a day (2026-10-31).
+            if not json.loads(row.get("value") or "{}").get("enabled"):
                 continue
             ncfg = get_notification_config(tid, db=db)
             threshold = int(ncfg.get("claimable_threshold_minutes", 15) or 15)

@@ -2187,12 +2187,14 @@ def _build_scheduler_jobs(db, now) -> list[dict]:
     running the queries twice.
     """
     from datetime import timedelta
-    from app.main import _scheduler, _scheduler_started_at
+    from app.main import _scheduler, _scheduler_started_at, _last_success
 
     day_ago = (now - timedelta(hours=24)).isoformat()
 
     jobs_out = []
     for job in _scheduler.get_jobs():
+        # scheduler_runs holds failures (successes before 2026-10-31 age out in 7 days);
+        # this process's last success is in memory. The newer of the two is the last run.
         last = (
             db.table("scheduler_runs")
             .select("status, ran_at, lateness_ms, error")
@@ -2202,16 +2204,10 @@ def _build_scheduler_jobs(db, now) -> list[dict]:
             .execute()
         )
         last_row = (last.data or [None])[0]
-        last_ok = (
-            db.table("scheduler_runs")
-            .select("ran_at")
-            .eq("job_id", job.id)
-            .eq("status", "success")
-            .order("ran_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        last_success = ((last_ok.data or [None])[0] or {}).get("ran_at")
+        ok = _last_success.get(job.id)
+        last_success = ok["ran_at"] if ok else None
+        if ok and (not last_row or _parse_ts(ok["ran_at"]) > _parse_ts(last_row["ran_at"])):
+            last_row = {"status": "success", "ran_at": ok["ran_at"], "lateness_ms": ok["lateness_ms"], "error": None}
         interval = getattr(job.trigger, "interval", None)  # cron jobs have none
         errs = (
             db.table("scheduler_runs")
