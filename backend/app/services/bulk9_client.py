@@ -9,11 +9,13 @@ Docs: https://docs.bulk9.com (review: docs/bulk9-api-review.md). Rules that appl
   methods to bulk9.com on a laptop, so a GET send would slip past it.
 
 Bulk9 answers HTTP 200 with {"return": false, ...} for many failures, so every response goes
-through _parse, which raises Bulk9Error unless return is true.
+through _parse, which distinguishes explicit refusal from an unconfirmed response.
 """
 from __future__ import annotations
 
 import logging
+from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
 
 import httpx
@@ -51,14 +53,17 @@ def get_api_key(tenant_id: str) -> str:
 
 
 def _parse(resp: httpx.Response) -> dict[str, Any]:
+    if resp.status_code >= 500:
+        raise Bulk9Timeout(f"Bulk9 returned HTTP {resp.status_code}; acceptance is unconfirmed")
     try:
         body = resp.json()
     except ValueError:
-        raise Bulk9Error(f"Bulk9 returned a non-JSON response (HTTP {resp.status_code})",
-                         http_status=resp.status_code)
+        raise Bulk9Timeout(f"Bulk9 returned a non-JSON response (HTTP {resp.status_code})")
     if not isinstance(body, dict):
-        raise Bulk9Error("Bulk9 returned an unexpected response", http_status=resp.status_code)
-    if resp.status_code >= 400 or body.get("return") is False:
+        raise Bulk9Timeout("Bulk9 returned an unexpected response")
+    refused = any(value is False or isinstance(value, str) and value.strip().lower() == "false"
+                  for value in (body.get("return"), body.get("success")))
+    if resp.status_code >= 400 or refused:
         msg = body.get("message")
         if isinstance(msg, list):
             msg = "; ".join(str(m) for m in msg)
@@ -83,11 +88,18 @@ async def _request(api_key: str, method: str, path: str, *, json: dict | None = 
     return _parse(resp)
 
 
-# ---------------------------------------------------------------- wallet
+# ---------------------------------------------------------------- SMS credits
 
 async def wallet(api_key: str) -> dict[str, Any]:
-    """{"wallet": "123.45", "sms_count": 600} — the client's balance."""
-    return await _request(api_key, "POST", "/dev/wallet")
+    """Remaining SMS count for this connection."""
+    body = await _request(api_key, "POST", "/dev/wallet")
+    try:
+        count = Decimal(str(body.get("sms_count")))
+    except InvalidOperation:
+        raise Bulk9Error("Bulk9 returned an invalid SMS count")
+    if not count.is_finite() or count < 0 or count != count.to_integral_value():
+        raise Bulk9Error("Bulk9 returned an invalid SMS count")
+    return {"sms_count": int(count)}
 
 
 # ---------------------------------------------------------------- sending
@@ -97,7 +109,7 @@ async def send_dlt(api_key: str, *, sender_id: str, message_id: str, numbers: li
                    udf1: str | None = None) -> dict[str, Any]:
     """One request with an approved Bulk9 template (route=dlt). Variables are joined with '|'
     as the docs require; a '|' inside a value would shift every later variable, so it's refused.
-    Returns the body, including request_id and (sms_details=1) charge details."""
+    Returns the provider request ID and SMS details."""
     for v in variables:
         if "|" in v:
             raise ValueError("A variable value cannot contain '|'")
@@ -114,13 +126,12 @@ async def send_dlt(api_key: str, *, sender_id: str, message_id: str, numbers: li
         payload["schedule_time"] = schedule_time
     if udf1:
         payload["udf1"] = udf1
-    return await _request(api_key, "POST", "/dev/bulkV2", json=payload)
+    return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
 
 
 async def send_dlt_manual(api_key: str, *, sender_id: str, entity_id: str, template_id: str,
                           message: str, numbers: list[str], udf1: str | None = None) -> dict[str, Any]:
-    """Send full approved wording with DLT ids (route=dlt_manual). Bulk9 does not check the text
-    against DLT before charging: wrong wording fails at the operator and is not refunded."""
+    """Send full approved wording with DLT IDs (route=dlt_manual)."""
     payload: dict[str, Any] = {
         "route": "dlt_manual", "sender_id": sender_id, "entity_id": entity_id,
         "template_id": template_id, "message": message, "numbers": ",".join(numbers),
@@ -128,7 +139,7 @@ async def send_dlt_manual(api_key: str, *, sender_id: str, entity_id: str, templ
     }
     if udf1:
         payload["udf1"] = udf1
-    return await _request(api_key, "POST", "/dev/bulkV2", json=payload)
+    return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
 
 
 # ---------------------------------------------------------------- DLT manager
@@ -177,18 +188,18 @@ async def add_template_excel(api_key: str, *, entity_id: str, file_url: str, pro
 
 async def delivery_report(api_key: str, request_id: str) -> dict[str, Any]:
     """Per-request report, last 7 days. A 404 means 'no report' — not a failed delivery."""
-    return await _request(api_key, "GET", f"/dev/dlr/{request_id}")
+    return scrub_financial(await _request(api_key, "GET", f"/dev/dlr/{request_id}"))
 
 
 async def sms_logs(api_key: str, *, date_from: str, date_to: str, page: int = 1, limit: int = 100) -> dict:
     """At most a 3-day window (YYYY-MM-DD)."""
-    return await _request(api_key, "GET", "/dev/sms_logs",
-                          params={"from": date_from, "to": date_to, "page": page, "limit": limit})
+    return scrub_financial(await _request(api_key, "GET", "/dev/sms_logs",
+                          params={"from": date_from, "to": date_to, "page": page, "limit": limit}))
 
 
 async def sms_summary(api_key: str, *, date_from: str, date_to: str) -> dict:
     """At most a 30-day window (YYYY-MM-DD)."""
-    return await _request(api_key, "GET", "/dev/sms_summary", params={"from": date_from, "to": date_to})
+    return scrub_financial(await _request(api_key, "GET", "/dev/sms_summary", params={"from": date_from, "to": date_to}))
 
 
 # ---------------------------------------------------------------- OTP
@@ -235,3 +246,62 @@ async def create_sms_webhook(api_key: str, *, url: str, secret: str) -> dict:
         "payload_transform": "standard",
         "headers": {"X-Anril-Webhook-Secret": secret},
     })
+
+
+_FINANCIAL_KEY = re.compile(r"(?:^|_)(?:amount|price|cost|charg\w*|debit\w*|credit\w*|wallet|balance|profit|payment|recharge|stock|rate)(?:_|$)", re.I)
+
+
+def scrub_financial(value: Any) -> Any:
+    """Remove financial fields recursively before returning or storing provider data."""
+    if isinstance(value, dict):
+        return {key: scrub_financial(item) for key, item in value.items()
+                if not _FINANCIAL_KEY.search(re.sub(r"([a-z])([A-Z])", r"\1_\2", str(key)))}
+    if isinstance(value, list):
+        return [scrub_financial(item) for item in value]
+    return value
+
+
+def report_groups(body: dict) -> list[dict]:
+    data = next((body[key] for key in ("data", "logs", "sms_logs", "reports") if isinstance(body.get(key), (list, dict))), [])
+    if isinstance(data, dict):
+        data = data.get("data") or data.get("reports") or [data]
+    return [row for row in data if isinstance(row, dict)]
+
+
+def report_rows(body: dict) -> list[dict]:
+    """Flatten documented data[].delivery_status[] while preserving parent correlation."""
+    rows = []
+    for group in report_groups(body):
+        children = group.get("delivery_status")
+        if isinstance(children, list):
+            parent = {key: value for key, value in group.items() if key != "delivery_status"}
+            rows.extend({**parent, **child} for child in children if isinstance(child, dict))
+        else:
+            rows.append(group)
+    return rows
+
+
+def has_more_logs(body: dict, page: int, limit: int) -> bool:
+    pagination = body.get("pagination") or {}
+    if isinstance(pagination, dict):
+        total = pagination.get("total_pages") or pagination.get("last_page")
+        if total is not None:
+            try:
+                return page < int(total)
+            except (ValueError, TypeError):
+                pass
+        if isinstance(pagination.get("has_more"), bool):
+            return pagination["has_more"]
+    return len(report_groups(body)) >= limit
+
+
+async def update_sms_webhook(api_key: str, webhook_id: str, *, url: str, secret: str) -> dict:
+    return await _request(api_key, "PUT", f"/dev/webhook/v2/sms/{webhook_id}", json={
+        "name": "Anril delivery updates", "url": url, "method": "POST", "content_type": "application/json",
+        "status": "active", "event": "all", "payload_type": "SIMPLIFIED", "template": "custom",
+        "payload_transform": "standard", "headers": {"X-Anril-Webhook-Secret": secret},
+    })
+
+
+async def delete_sms_webhook(api_key: str, webhook_id: str) -> dict:
+    return await _request(api_key, "DELETE", f"/dev/webhook/v2/sms/{webhook_id}")

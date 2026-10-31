@@ -37,12 +37,6 @@ def _msg(db, **kw):
     return db.add("sms_messages", **row)
 
 
-@pytest.fixture(autouse=True)
-def _buy_rate():
-    with patch.object(sms_delivery, "get_setting", return_value="0.14"):
-        yield
-
-
 @pytest.mark.parametrize("raw,want", [("Delivered", "delivered"), ("DELIVRD", "delivered"),
                                       ("Failed", "failed"), ("DND", "failed"), ("Sent", "submitted"),
                                       ("weird", None), (None, None)])
@@ -50,7 +44,7 @@ def test_classify(raw, want):
     assert sms_delivery.classify(raw) == want
 
 
-def test_delivered_callback_matched_by_udf1_and_costed():
+def test_delivered_callback_matched_by_udf1_without_financial_persistence():
     db = UniqueEventsDb()
     m = _msg(db)
     out = sms_delivery.handle_callback(db, T, {"request_id": "other", "udf1": m["id"], "mobile": "9876543210",
@@ -58,7 +52,9 @@ def test_delivered_callback_matched_by_udf1_and_costed():
     assert out == {"status": "ok"}
     row = db.rows("sms_messages")[0]
     assert row["status"] == "delivered" and row["delivered_at"]
-    assert row["sms_count"] == 2 and row["cost_amount"] == "0.28" and row["charged_amount"] == "0.50"
+    assert row["sms_count"] == 2
+    assert "cost_amount" not in row and "charged_amount" not in row
+    assert "amount_debited" not in db.rows("sms_delivery_events")[0]["payload"]
     assert db.rows("sms_delivery_events")[0]["matched"] is True
 
 
@@ -118,7 +114,7 @@ async def test_unknown_found_in_logs_is_applied():
 
 
 @pytest.mark.asyncio
-async def test_unknown_missing_after_30_minutes_fails_without_resend():
+async def test_unknown_missing_after_30_minutes_stays_unknown_without_resend():
     db = UniqueEventsDb()
     now = datetime.now(timezone.utc)
     _msg(db, status="unknown", request_id=None, claimed_at=(now - timedelta(minutes=45)).isoformat(),
@@ -129,7 +125,7 @@ async def test_unknown_missing_after_30_minutes_fails_without_resend():
          patch.object(sms_delivery.bulk9_client, "send_dlt", send):
         await sms_delivery.reconcile(db, now=now)
     row = db.rows("sms_messages")[0]
-    assert row["status"] == "failed" and "not sent" in row["failure_reason"]
+    assert row["status"] == "unknown"
     send.assert_not_called()
 
 
@@ -143,3 +139,60 @@ async def test_unknown_missing_but_recent_stays_unknown():
          patch.object(sms_delivery.bulk9_client, "sms_logs", AsyncMock(return_value={"return": True, "data": []})):
         await sms_delivery.reconcile(db, now=now)
     assert db.rows("sms_messages")[0]["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_nested_delivery_report_uses_recipient_status():
+    db = UniqueEventsDb()
+    now = datetime.now(timezone.utc)
+    _msg(db, updated_at=(now - timedelta(minutes=20)).isoformat())
+    report = {"return": True, "data": [{"request_id": "req-1", "debit": "0.5",
+              "delivery_status": [{"mobile": "9876543210", "status": "Delivered", "sms_count": 2}]}]}
+    with patch.object(sms_delivery.bulk9_client, "get_api_key", return_value="k"), \
+         patch.object(sms_delivery.bulk9_client, "delivery_report", AsyncMock(return_value=report)):
+        await sms_delivery.reconcile(db, now=now)
+    assert db.rows("sms_messages")[0]["status"] == "delivered"
+    assert db.rows("sms_messages")[0]["sms_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_unknown_log_search_pages_and_keeps_parent_request_id():
+    db = UniqueEventsDb()
+    now = datetime.now(timezone.utc)
+    m = _msg(db, status="unknown", request_id=None, updated_at=(now - timedelta(minutes=45)).isoformat())
+    first = {"return": True, "data": [{"request_id": "other"}], "pagination": {"total_pages": 2}}
+    second = {"return": True, "data": [{"request_id": "parent-req", "udf1": m["id"],
+              "delivery_status": [{"mobile": "9876543210", "status": "Delivered"}]}],
+              "pagination": {"total_pages": 2}}
+    logs = AsyncMock(side_effect=[first, second])
+    with patch.object(sms_delivery.bulk9_client, "get_api_key", return_value="k"), \
+         patch.object(sms_delivery.bulk9_client, "sms_logs", logs):
+        await sms_delivery.reconcile(db, now=now)
+    assert logs.await_count == 2
+    assert logs.await_args_list[1].kwargs["page"] == 2
+    assert db.rows("sms_messages")[0]["request_id"] == "parent-req"
+    assert db.rows("sms_messages")[0]["status"] == "delivered"
+
+
+def test_callback_scrubs_nested_financial_fields():
+    db = UniqueEventsDb()
+    _msg(db)
+    sms_delivery.handle_callback(db, T, {"request_id": "req-1", "mobile": "9876543210", "status": "Delivered",
+        "details": {"cost_amount": 1, "charged_amount": 2, "price_per_sms": 3, "wallet": 4,
+                    "sms_count": 1}})
+    assert db.rows("sms_delivery_events")[0]["payload"]["details"] == {"sms_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_reconcile_attempts_rotate_past_unresolved_rows():
+    db = UniqueEventsDb()
+    now = datetime.now(timezone.utc)
+    first = _msg(db, id="00000000-0000-0000-0000-000000000001", request_id="old", updated_at=(now-timedelta(minutes=30)).isoformat())
+    second = _msg(db, id="00000000-0000-0000-0000-000000000002", request_id="new", updated_at=(now-timedelta(minutes=20)).isoformat())
+    report = AsyncMock(side_effect=sms_delivery.Bulk9Error("not found", http_status=404))
+    with patch.object(sms_delivery.bulk9_client, "get_api_key", return_value="k"), \
+         patch.object(sms_delivery.bulk9_client, "delivery_report", report):
+        await sms_delivery.reconcile(db, now=now, limit=1)
+        await sms_delivery.reconcile(db, now=now+timedelta(minutes=15), limit=1)
+    assert [call.args[1] for call in report.await_args_list] == [first["request_id"], second["request_id"]]
+    assert all(row.get("last_reconciled_at") for row in db.rows("sms_messages"))

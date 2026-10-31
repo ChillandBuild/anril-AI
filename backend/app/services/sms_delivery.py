@@ -15,10 +15,8 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.config_dynamic import get_setting
 from app.services import bulk9_client
 from app.services.bulk9_client import Bulk9Error, Bulk9NotConfigured, Bulk9Timeout
 
@@ -49,23 +47,11 @@ def last10(phone: Any) -> str:
     return digits[-10:]
 
 
-def _decimal(v: Any) -> Decimal | None:
-    try:
-        d = Decimal(str(v))
-    except (InvalidOperation, ValueError, TypeError):
-        return None
-    return d if d >= 0 else None
-
-
 def _int(v: Any) -> int | None:
     try:
         return int(float(v))
     except (TypeError, ValueError):
         return None
-
-
-def _buy_rate(tenant_id: str) -> Decimal | None:
-    return _decimal(get_setting("sms_buy_rate", tenant_id=tenant_id))
 
 
 def _is_uuid(v: Any) -> bool:
@@ -94,7 +80,7 @@ def _find_message(db, tenant_id: str, *, udf1: Any, request_id: Any, phone: Any)
 
 
 def apply_update(db, tenant_id: str, msg: dict, *, status: str, reason: str | None = None,
-                 sms_count: Any = None, amount: Any = None, request_id: Any = None,
+                 sms_count: Any = None, request_id: Any = None,
                  at: datetime | None = None) -> bool:
     """Apply one delivery result to a message row. Returns True if the row changed."""
     current = msg.get("status")
@@ -116,12 +102,6 @@ def apply_update(db, tenant_id: str, msg: dict, *, status: str, reason: str | No
     count = _int(sms_count)
     if count is not None and count > 0:
         update["sms_count"] = count
-        rate = _buy_rate(tenant_id)
-        if rate is not None:
-            update["cost_amount"] = str(rate * count)
-    charged = _decimal(amount)
-    if charged is not None:
-        update["charged_amount"] = str(charged)
     # Conditional on the status we read, so a concurrent final update isn't overwritten.
     res = (db.table("sms_messages").update(update).eq("id", msg["id"]).eq("tenant_id", tenant_id)
            .eq("status", current).execute())
@@ -137,6 +117,7 @@ def _dedupe_key(p: dict) -> str:
 def handle_callback(db, tenant_id: str, payload: dict) -> dict:
     """One Bulk9 SMS callback (already authenticated). Stored first (dedupe + audit), then
     applied. A callback for a message we can't find yet stays unmatched for the reconcile job."""
+    payload = bulk9_client.scrub_financial(payload)
     key = _dedupe_key(payload)
     try:
         ins = db.table("sms_delivery_events").insert({
@@ -169,7 +150,7 @@ def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
             at = datetime.fromtimestamp(ts, tz=timezone.utc)
         apply_update(db, tenant_id, msg, status=status,
                      reason=p.get("status_description") or p.get("description") or p.get("failure_reason"),
-                     sms_count=p.get("sms_count"), amount=p.get("amount_debited"),
+                     sms_count=p.get("sms_count"),
                      request_id=p.get("request_id"), at=at)
     else:
         logger.warning("Bulk9 callback with unrecognised status %r (tenant %s)", p.get("status"), tenant_id)
@@ -180,19 +161,11 @@ def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
 
 # ---------------------------------------------------------------- reconcile job
 
-def _report_rows(body: dict) -> list[dict]:
-    data = body.get("data")
-    if isinstance(data, dict):
-        data = data.get("data") or data.get("reports") or [data]
-    return [r for r in (data or []) if isinstance(r, dict)]
-
-
 async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dict:
     """Every 15 minutes:
     1. callbacks that arrived before their message was recorded → match again;
     2. submitted rows with no final status after 10 minutes → Bulk9 delivery report (7-day window);
-    3. unknown rows (send timed out) → Bulk9 logs by udf1 (3-day window). Not there after 30
-       minutes means Bulk9 never accepted it → failed; still nothing is re-sent."""
+    3. unknown rows → paginated Bulk9 logs by udf1. Missing evidence stays unknown; never re-sent."""
     now = now or datetime.now(timezone.utc)
     stats = {"events": 0, "reports": 0, "unknown_resolved": 0, "errors": 0}
 
@@ -205,7 +178,7 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
     rows = (db.table("sms_messages").select("*").in_("status", ["submitted", "unknown"])
             .gte("updated_at", (now - timedelta(days=7)).isoformat())
             .lte("updated_at", (now - timedelta(minutes=10)).isoformat())
-            .limit(limit).execute().data or [])
+            .order("last_reconciled_at", nullsfirst=True).order("id").limit(limit).execute().data or [])
     keys: dict[str, str | None] = {}
     for m in rows:
         tid = m["tenant_id"]
@@ -216,17 +189,19 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
                 keys[tid] = None
         key = keys[tid]
         if not key:
+            db.table("sms_messages").update({"last_reconciled_at": now.isoformat()}) \
+                .eq("tenant_id", tid).eq("id", m["id"]).execute()
             continue
         rid = m.get("request_id") or ""
         try:
             if m["status"] == "submitted" and rid and not rid.startswith("dry-run"):
                 body = await bulk9_client.delivery_report(key, rid)
-                for r in _report_rows(body):
+                for r in bulk9_client.report_rows(body):
                     if last10(r.get("mobile") or r.get("number")) in ("", last10(m["phone"])):
                         st = classify(r.get("status"))
                         if st and st != "submitted":
                             apply_update(db, tid, m, status=st, reason=r.get("status_description") or r.get("description"),
-                                         sms_count=r.get("sms_count"), amount=r.get("amount_debited") or r.get("debit"))
+                                         sms_count=r.get("sms_count"))
                             stats["reports"] += 1
                         break
             elif m["status"] == "unknown":
@@ -234,23 +209,26 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
         except (Bulk9Error, Bulk9Timeout) as exc:
             stats["errors"] += 1
             logger.info("SMS reconcile: %s for message %s", exc, m["id"])
+        finally:
+            db.table("sms_messages").update({"last_reconciled_at": now.isoformat()}) \
+                .eq("tenant_id", tid).eq("id", m["id"]).execute()
     return stats
 
 
 async def _resolve_unknown(db, key: str, m: dict, now: datetime, stats: dict) -> None:
     sent = datetime.fromisoformat(str(m.get("claimed_at") or m["updated_at"]).replace("Z", "+00:00"))
     day = sent.date()
-    body = await bulk9_client.sms_logs(key, date_from=(day - timedelta(days=1)).isoformat(),
-                                       date_to=min(day + timedelta(days=1), now.date()).isoformat(), limit=1000)
-    for r in _report_rows(body) or [x for x in (body.get("logs") or []) if isinstance(x, dict)]:
-        if str(r.get("udf1") or "") == str(m["id"]):
-            st = classify(r.get("status")) or "submitted"
-            apply_update(db, m["tenant_id"], m, status=st, request_id=r.get("request_id"),
-                         reason=r.get("status_description") or r.get("description"),
-                         sms_count=r.get("sms_count"), amount=r.get("amount_debited") or r.get("debit"))
-            stats["unknown_resolved"] += 1
+    page, limit = 1, 1000
+    while True:
+        body = await bulk9_client.sms_logs(key, date_from=(day - timedelta(days=1)).isoformat(),
+            date_to=min(day + timedelta(days=1), now.date()).isoformat(), page=page, limit=limit)
+        for r in bulk9_client.report_rows(body):
+            if str(r.get("udf1") or "") == str(m["id"]) and last10(r.get("mobile") or r.get("number")) in ("", last10(m["phone"])):
+                st = classify(r.get("status")) or "submitted"
+                apply_update(db, m["tenant_id"], m, status=st, request_id=r.get("request_id"),
+                             reason=r.get("status_description") or r.get("description"), sms_count=r.get("sms_count"))
+                stats["unknown_resolved"] += 1
+                return
+        if not bulk9_client.has_more_logs(body, page, limit):
             return
-    if now - sent > timedelta(minutes=30):
-        apply_update(db, m["tenant_id"], m, status="failed",
-                     reason="Bulk9 has no record of this SMS — it was not sent")
-        stats["unknown_resolved"] += 1
+        page += 1

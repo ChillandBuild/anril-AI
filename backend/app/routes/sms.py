@@ -147,7 +147,6 @@ async def status(ctx: dict = Depends(require_permission("sms.view"))):
         "enabled": _is_enabled(tid),
         "connected": bool(get_setting("bulk9_api_key", tenant_id=tid)),
         "checklist": _checklist(tid),
-        "price_per_sms": float(camp.get_price(tid)),
         "support_contact": get_setting("sms_support_contact", tenant_id=tid) or "",
     }
 
@@ -159,8 +158,7 @@ async def balance(ctx: dict = Depends(view)):
         sms_count = int(float(body.get("sms_count") or 0))
     except (TypeError, ValueError):
         sms_count = 0
-    return {"wallet": camp._num(body.get("wallet")) or 0.0, "sms_count": sms_count,
-            "price_per_sms": float(camp.get_price(ctx["tenant_id"]))}
+    return {"sms_count": sms_count}
 
 
 def _dlt_items(body: dict) -> list[dict]:
@@ -244,7 +242,8 @@ async def refresh_templates(ctx: dict = Depends(manage)):
                     .eq("id", stub["id"]).eq("tenant_id", tid).execute()
                 submitted.remove(stub)
             else:
-                db.table("sms_templates").insert({"tenant_id": tid, "message_id": str(mid), **fields}).execute()
+                db.table("sms_templates").insert({"tenant_id": tid, "message_id": str(mid),
+                    "template_type": "unclassified", **fields}).execute()
     return _cached_templates(db, tid)
 
 
@@ -485,7 +484,7 @@ async def export_messages(campaign_id: Optional[str] = None, status: Optional[st
     db, tid = get_supabase(), ctx["tenant_id"]
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Name", "Phone", "Message", "Status", "Reason", "SMS count", "Charged (INR)",
+    w.writerow(["Name", "Phone", "Message", "Status", "Reason", "SMS count",
                 "Sent at", "Delivered at"])
 
     def cell(v):
@@ -500,7 +499,6 @@ async def export_messages(campaign_id: Optional[str] = None, status: Optional[st
         for m in camp.public_messages(db, tid, rows):
             w.writerow([cell(m["lead_name"]), cell(m["phone"]), cell(m["content"]), m["status"],
                         cell(m["failure_reason"]), m["sms_count"] if m["sms_count"] is not None else "",
-                        m["charged_amount"] if m["charged_amount"] is not None else "",
                         m["submitted_at"] or "", m["delivered_at"] or ""])
         if len(rows) < 1000:
             break
@@ -509,7 +507,7 @@ async def export_messages(campaign_id: Optional[str] = None, status: Optional[st
                     headers={"Content-Disposition": 'attachment; filename="sms-messages.csv"'})
 
 
-# ---------------------------------------------------------------- reports, ledger
+# ---------------------------------------------------------------- reports
 
 def _window(d_from: Optional[date], d_to: Optional[date], max_days: int) -> tuple[date, date]:
     d_to = d_to or date.today()
@@ -540,8 +538,8 @@ async def reports_summary(from_: Optional[date] = Query(None, alias="from"), to:
         start += 1000
     out = {"anril": counts, "bulk9": None, "error": None}
     try:
-        out["bulk9"] = await bulk9_client.sms_summary(ctx["api_key"], date_from=d_from.isoformat(),
-                                                      date_to=d_to.isoformat())
+        out["bulk9"] = bulk9_client.scrub_financial(await bulk9_client.sms_summary(ctx["api_key"], date_from=d_from.isoformat(),
+                                                      date_to=d_to.isoformat()))
     except (Bulk9Error, Bulk9Timeout) as e:
         out["error"] = str(e) or "Could not reach the SMS provider."
     return out
@@ -557,20 +555,8 @@ async def reports_logs(from_: Optional[date] = Query(None, alias="from"), to: Op
                                            date_to=d_to.isoformat(), page=page, limit=limit)
     except (Bulk9Error, Bulk9Timeout) as e:
         return {"logs": [], "page": page, "error": str(e) or "Could not reach the SMS provider."}
-    logs = next((body[k] for k in ("data", "logs", "sms_logs") if isinstance(body.get(k), list)), [])
+    logs = bulk9_client.scrub_financial(bulk9_client.report_rows(body))
     return {"logs": logs, "page": page, "error": None}
-
-
-LEDGER_FIELDS = ("id", "kind", "sms_count", "price_per_sms", "amount", "expiry_date", "note", "created_at")
-
-
-@router.get("/ledger")
-async def ledger(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-                 ctx: dict = Depends(view_no_key)):
-    rows = (get_supabase().table("sms_ledger").select("*").eq("tenant_id", ctx["tenant_id"])
-            .order("created_at", desc=True).range(offset, offset + limit - 1).execute()).data or []
-    # buy_rate is Anril's own cost and is never sent to the client.
-    return {"entries": [{k: r.get(k) for k in LEDGER_FIELDS} for r in rows]}
 
 
 # ---------------------------------------------------------------- developer key + OTP

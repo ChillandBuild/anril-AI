@@ -10,10 +10,10 @@ import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/compone
 import {
   MESSAGE_STATUSES,
   campaignStatusLabel,
+  campaignNeedsUpdates,
   campaignStatusTone,
   formatCount,
   formatIst,
-  formatRupees,
   friendlyError,
   statusLabel,
 } from "./helpers";
@@ -31,9 +31,9 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
   const [cancelling, setCancelling] = useState(false);
 
   const campaign = useSWR(["sms:campaign", id], () => api.sms.campaign(id), {
-    refreshInterval: (c) => (c && (c.status === "sending" || c.status === "scheduled") ? 10_000 : 0),
+    refreshInterval: (c) => (campaignNeedsUpdates(c) ? 10_000 : 0),
   });
-  const live = campaign.data?.status === "sending" || campaign.data?.status === "scheduled";
+  const live = campaignNeedsUpdates(campaign.data);
   const messages = useSWR(
     ["sms:campaign-messages", id, status, offset],
     () => api.sms.messages({ campaign_id: id, status: status || undefined, limit: PAGE, offset }),
@@ -99,7 +99,6 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
               <Stat label="Delivered" value={formatCount(c.counts.delivered)} tone="text-[#15803d]" />
               <Stat label="Sent to operator" value={formatCount(c.counts.submitted)} />
               <Stat label="Failed" value={formatCount(c.counts.failed)} tone="text-[#be123c]" />
-              <Stat label="Charged" value={formatRupees(c.charged_total)} />
               <Stat label="Waiting" value={formatCount(c.counts.queued + c.counts.sending)} />
               <Stat label="Checking…" value={formatCount(c.counts.unknown)} />
               <Stat label="Not sent" value={formatCount(c.counts.skipped)} />
@@ -153,7 +152,6 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                       <th className={thCls}>Number</th>
                       <th className={thCls}>Status</th>
                       <th className={thCls}>SMS</th>
-                      <th className={thCls}>Charged</th>
                       <th className={thCls}>Time (IST)</th>
                     </tr>
                   </thead>
@@ -166,7 +164,6 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                           <MessageStatus m={m} />
                         </td>
                         <td className={tdCls}>{m.sms_count ?? "—"}</td>
-                        <td className={tdCls}>{m.charged_amount != null ? formatRupees(m.charged_amount) : "—"}</td>
                         <td className={`${tdCls} whitespace-nowrap`}>{messageTime(m)}</td>
                       </tr>
                     ))}
@@ -186,7 +183,6 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                   </div>
                   <MobileRecordGrid>
                     <MobileRecordField label="SMS" value={m.sms_count ?? "—"} />
-                    <MobileRecordField label="Charged" value={m.charged_amount != null ? formatRupees(m.charged_amount) : "—"} />
                     <MobileRecordField className="col-span-2" label="Time (IST)" value={messageTime(m)} />
                   </MobileRecordGrid>
                 </MobileRecordCard>

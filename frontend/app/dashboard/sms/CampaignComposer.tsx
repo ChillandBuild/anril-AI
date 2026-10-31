@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { api, type SmsCampaign, type SmsPreview, type SmsTemplate, type SmsVarSource } from "@/lib/api";
+import { api, type SmsCampaign, type SmsTemplate, type SmsVarSource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { dateBounds, defaultWhen, formatSendTime, resolveWhen, untilSend, type WhenValue } from "@/lib/schedule-time";
 import { LeadPicker } from "./LeadPicker";
@@ -13,11 +13,11 @@ import {
   countVars,
   errorStatus,
   formatCount,
-  formatRupees,
   friendlyError,
   groupExcluded,
   isVariableMapComplete,
   splitTemplate,
+  previewKey,
 } from "./helpers";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, inputCls } from "./ui";
 
@@ -56,26 +56,33 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
   const [name, setName] = useState(defaultName);
   const [when, setWhen] = useState<WhenValue>(() => ({ ...defaultWhen(new Date()), mode: "now" }));
-  const [preview, setPreview] = useState<SmsPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   // One key per composer open: a double click or a retry after a lost reply cannot create a second campaign.
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const submittingRef = useRef(false);
-  const previewSeq = useRef(0);
 
   const templates = useSWR("sms:templates", () => api.sms.templates(), { revalidateOnFocus: false });
   const fields = useSWR("sms:campaign-fields", () => api.sms.campaignFields(), { revalidateOnFocus: false });
 
-  const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready"), [templates.data]);
+  const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready" && t.template_type !== "unclassified"), [templates.data]);
   const template: SmsTemplate | null = ready.find((t) => t.id === templateId) ?? null;
   const varCount = template ? Math.max(template.var_count ?? 0, countVars(template.message)) : 0;
   const fieldList = fields.data?.fields ?? [];
 
-  const now = useMemo(() => new Date(), []);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const inputKey = previewKey(template, varMap, selected);
+  const { data: preview, error: previewFailure, isLoading: previewLoading, mutate: reloadPreview } = useSWR(
+    step === 4 && template && selected.size > 0 && isVariableMapComplete(varMap, varCount) ? ["sms:preview", inputKey] : null,
+    () => api.sms.previewCampaign({ template_id: template!.id, variable_map: varMap.slice(0, varCount) as SmsVarSource[], lead_ids: Array.from(selected) }),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
+  );
+  const previewError = previewFailure ? friendlyError(previewFailure, "Couldn't build the preview.") : null;
   const resolved = resolveWhen(when, now);
   const bounds = dateBounds(now);
 
@@ -83,7 +90,6 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
     setTemplateId(t.id);
     const n = Math.max(t.var_count ?? 0, countVars(t.message));
     setVarMap(Array.from({ length: n }, () => null));
-    setPreview(null);
   }
 
   function setVar(i: number, value: SmsVarSource | null) {
@@ -92,44 +98,14 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
       next[i] = value;
       return next;
     });
-    setPreview(null);
   }
 
   const canNext1 = selected.size > 0;
   const canNext2 = !!template;
   const canNext3 = !!template && isVariableMapComplete(varMap, varCount);
 
-  async function loadPreview() {
-    if (!template) return;
-    const seq = ++previewSeq.current;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    setPreview(null);
-    try {
-      const res = await api.sms.previewCampaign({
-        template_id: template.id,
-        variable_map: varMap.slice(0, varCount).map((v) => v as SmsVarSource),
-        lead_ids: Array.from(selected),
-      });
-      if (seq === previewSeq.current) setPreview(res);
-    } catch (err) {
-      if (seq === previewSeq.current) setPreviewError(friendlyError(err, "Couldn't build the preview."));
-    } finally {
-      if (seq === previewSeq.current) setPreviewLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (step === 4 && !preview && !previewLoading && !previewError) void loadPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
   function goNext() {
-    if (step === 3) {
-      setPreview(null);
-      setPreviewError(null);
-    }
-    setStep((s) => Math.min(4, s + 1));
+    setStep((current) => Math.min(4, current + 1));
   }
 
   const scheduleBad = when.mode === "later" && !!resolved.error;
@@ -137,6 +113,16 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
 
   async function submit() {
     if (!template || submittingRef.current) return;
+    const freshSchedule = resolveWhen(when, new Date());
+    if (freshSchedule.error) {
+      setSubmitError(freshSchedule.error);
+      setConfirming(false);
+      return;
+    }
+    if (!canSend) {
+      setConfirming(false);
+      return;
+    }
     submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
@@ -146,7 +132,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
         template_id: template.id,
         variable_map: varMap.slice(0, varCount).map((v) => v as SmsVarSource),
         lead_ids: Array.from(selected),
-        send_at: when.mode === "later" && resolved.at ? resolved.at.toISOString() : null,
+        send_at: when.mode === "later" && freshSchedule.at ? freshSchedule.at.toISOString() : null,
         idempotency_key: idempotencyKey,
       });
       toast.success(when.mode === "later" ? "Campaign scheduled." : "Campaign is sending.");
@@ -207,7 +193,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
 
       {step === 2 && (
         <Card>
-          <CardHeader title="Pick a template" hint="Only Ready templates can be sent. Wording is fixed by your DLT approval." />
+          <CardHeader title="Pick a template" hint="Ready templates need a Service or Promotional type chosen in Templates before sending. Wording is fixed by your DLT approval." />
           <div className="space-y-3 p-4 sm:p-5">
             {templates.isLoading ? (
               <div className="h-32 animate-pulse rounded-xl bg-border-subtle" />
@@ -313,7 +299,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
               {previewError && (
                 <div className="space-y-3">
                   <Notice tone="danger">{previewError}</Notice>
-                  <Btn variant="outline" onClick={() => void loadPreview()}>
+                  <Btn variant="outline" onClick={() => void reloadPreview()}>
                     Try again
                   </Btn>
                 </div>
@@ -329,15 +315,11 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                       <p className="font-display text-2xl font-bold text-[#b45309]">{formatCount(preview.excluded.length)}</p>
                       <p className="text-xs font-semibold text-[#b45309]">left out</p>
                     </div>
-                    <div className="rounded-xl bg-[#f8fafc] p-3.5">
-                      <p className="font-display text-2xl font-bold text-[#0A1528]">{formatRupees(preview.estimated_total)}</p>
-                      <p className="text-xs font-semibold text-[#64748b]">estimated cost</p>
+                    <div className="rounded-xl bg-surface-low p-3.5">
+                      <p className="font-display text-2xl font-bold text-ink">{formatCount(preview.total_segments)}</p>
+                      <p className="text-xs font-semibold text-ink-muted">estimated SMS credits</p>
                     </div>
                   </div>
-                  <p className="text-xs text-[#64748b]">
-                    Estimated cost {formatRupees(preview.estimated_total)} (estimate — the real charge shows after sending)
-                    {preview.price_per_sms != null && <> · {formatRupees(preview.price_per_sms)} per SMS</>}
-                  </p>
 
                   {preview.samples.length > 0 && (
                     <div>
@@ -354,7 +336,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                       </ul>
                       {anyUnicode && (
                         <p className="mt-2 text-xs text-[#b45309]">
-                          Some text isn&apos;t plain English letters (Unicode). These messages are shorter per SMS, so they can use more than one SMS each and cost more.
+                          Some text isn&apos;t plain English letters (Unicode). These messages are shorter per SMS, so they can use more than one SMS each and use more credits.
                         </p>
                       )}
                     </div>
@@ -443,7 +425,13 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
             Next
           </Btn>
         ) : (
-          <Btn busy={submitting} disabled={!canSend} onClick={() => setConfirming(true)}>
+          <Btn busy={submitting} disabled={!canSend} onClick={() => {
+            const current = new Date();
+            setNow(current);
+            const schedule = resolveWhen(when, current);
+            if (schedule.error) setSubmitError(schedule.error);
+            else setConfirming(true);
+          }}>
             {when.mode === "later" ? "Schedule campaign" : "Send now"}
           </Btn>
         )}
@@ -456,7 +444,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
         title={when.mode === "later" ? "Schedule this campaign?" : "Send this campaign now?"}
         description={
           preview
-            ? `${formatCount(preview.eligible_count)} people will get this SMS. Estimated cost ${formatRupees(preview.estimated_total)}. ${
+            ? `${formatCount(preview.eligible_count)} people will get this SMS. ${
                 when.mode === "later" && resolved.at ? `It goes out ${formatSendTime(resolved.at)} IST.` : "Sending can't be undone once it starts."
               }`
             : ""

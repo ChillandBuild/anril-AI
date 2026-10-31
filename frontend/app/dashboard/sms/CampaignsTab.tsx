@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { CampaignComposer } from "./CampaignComposer";
 import { CampaignDetail } from "./CampaignDetail";
-import { campaignStatusLabel, campaignStatusTone, formatCount, formatIst, formatRupees, friendlyError } from "./helpers";
+import { campaignNeedsUpdates, campaignStatusLabel, campaignStatusTone, formatCount, formatIst, friendlyError } from "./helpers";
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Skeleton } from "./ui";
 import { usePerm } from "./usePerm";
 
@@ -15,8 +15,9 @@ type View = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: string };
 export function CampaignsTab({ onBalanceChanged }: { onBalanceChanged: () => void }) {
   const { canManage } = usePerm();
   const [view, setView] = useState<View>({ kind: "list" });
-  const campaigns = useSWR("sms:campaigns", () => api.sms.campaigns(50, 0), {
-    refreshInterval: (d) => (d?.campaigns.some((c) => c.status === "sending" || c.status === "scheduled") ? 15_000 : 0),
+  const [offset, setOffset] = useState(0);
+  const campaigns = useSWR(["sms:campaigns", offset], () => api.sms.campaigns(51, offset), {
+    refreshInterval: (d) => (d?.campaigns.some(campaignNeedsUpdates) ? 15_000 : 0),
   });
 
   if (view.kind === "new") {
@@ -45,7 +46,8 @@ export function CampaignsTab({ onBalanceChanged }: { onBalanceChanged: () => voi
     );
   }
 
-  const list = campaigns.data?.campaigns ?? [];
+  const fetched = campaigns.data?.campaigns ?? [];
+  const list = fetched.slice(0, 50);
 
   return (
     <Card>
@@ -92,13 +94,19 @@ export function CampaignsTab({ onBalanceChanged }: { onBalanceChanged: () => voi
                   <span className="text-[#15803d]">{formatCount(c.counts.delivered)} delivered</span>
                   <span className="text-[#be123c]">{formatCount(c.counts.failed)} failed</span>
                   {c.counts.unknown > 0 && <span className="text-[#b45309]">{formatCount(c.counts.unknown)} checking…</span>}
-                  <span className="font-semibold">Charged {formatRupees(c.charged_total)}</span>
                 </div>
               </button>
             </li>
           ))}
         </ul>
       )}
+      {(offset > 0 || fetched.length > 50) && <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-ink-muted">
+        <span>Page {Math.floor(offset / 50) + 1}</span>
+        <div className="flex gap-2">
+          <Btn variant="outline" disabled={offset === 0} onClick={() => setOffset((current) => Math.max(0, current - 50))}>Previous</Btn>
+          <Btn variant="outline" disabled={fetched.length <= 50} onClick={() => setOffset((current) => current + 50)}>Next</Btn>
+        </div>
+      </div>}
     </Card>
   );
 }

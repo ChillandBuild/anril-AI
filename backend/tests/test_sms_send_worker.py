@@ -51,7 +51,8 @@ async def test_sends_once_and_records_submission():
     assert kw["numbers"] == ["+919876543210"] and kw["variables"] == ["Prem"] and kw["udf1"] == _row(db)["id"]
     r = _row(db)
     assert r["status"] == "submitted" and r["request_id"] == "req-1"
-    assert r["sms_count"] == 1 and r["charged_amount"] == 0.25 and r["cost_amount"] == 0.14
+    assert r["sms_count"] == 1
+    assert "charged_amount" not in r and "cost_amount" not in r
     assert db.rows("sms_campaigns")[0]["status"] == "completed"
 
 
@@ -143,3 +144,15 @@ async def test_dry_run_body_gets_a_visibly_fake_request_id():
     with patch.object(sms_campaigns.bulk9_client, "send_dlt", AsyncMock(return_value={"dry_run": True})):
         await sms_campaigns.process_due_sms(db, now=NOW)
     assert _row(db)["request_id"].startswith("dry-run-")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", [Bulk9Error("Upstream unavailable", http_status=503), {"return": True}])
+async def test_ambiguous_send_stays_unknown_and_is_not_resent(outcome):
+    db = _db()
+    send = AsyncMock(side_effect=outcome) if isinstance(outcome, Exception) else AsyncMock(return_value=outcome)
+    with patch.object(sms_campaigns.bulk9_client, "send_dlt", send):
+        await sms_campaigns.process_due_sms(db, now=NOW)
+        await sms_campaigns.process_due_sms(db, now=NOW + timedelta(hours=1))
+    assert _row(db)["status"] == "unknown"
+    send.assert_awaited_once()

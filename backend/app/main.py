@@ -30,7 +30,7 @@ from app.routes import brain_sandbox
 from app.routes import operator_brain
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
-from app.routes import sms, sms_recharge, sms_webhooks, operator_sms
+from app.routes import sms, sms_webhooks, operator_sms
 from app.routes import auto_messages
 from app.routes import private_send, private_send_keys
 
@@ -73,7 +73,6 @@ _heartbeats = {
     "scheduled-templates": None,
     "sms-send": None,
     "sms-reconcile": None,
-    "sms-stock-check": None,
     "private-send-meta-reconcile": None,
 }
 
@@ -365,16 +364,6 @@ async def _reconcile_sms() -> None:
         logger.error(f"SMS reconcile scheduler error: {e}")
 
 
-async def _check_sms_stock() -> None:
-    """APScheduler job: log an error when Prem's Bulk9 reseller SMS stock is low."""
-    _heartbeats["sms-stock-check"] = datetime.now(timezone.utc)
-    try:
-        from app.routes.operator_sms import low_stock_check
-        await low_stock_check()
-    except Exception as e:
-        logger.error(f"SMS stock check error: {e}")
-
-
 async def _reconcile_private_send_meta() -> None:
     """APScheduler job: store Meta's message count for yesterday per Private Send tenant."""
     _heartbeats["private-send-meta-reconcile"] = datetime.now(timezone.utc)
@@ -579,8 +568,6 @@ async def lifespan(app: FastAPI):
                        replace_existing=True, max_instances=1, coalesce=True)
     _scheduler.add_job(_reconcile_sms, trigger="interval", minutes=15, id="sms-reconcile",
                        replace_existing=True, max_instances=1, coalesce=True)
-    _scheduler.add_job(_check_sms_stock, trigger="cron", hour=10, minute=0,
-                       timezone="Asia/Kolkata", id="sms-stock-check", replace_existing=True)
     # Fixed clock times, not interval=12h: Render recycles the process every ~5h,
     # so an interval of 5h+ never fires (subsystem-notes.md, 2026-09-19).
     _scheduler.add_job(_sync_numbers_pool, trigger="cron", hour="6,18", minute=0,
@@ -603,9 +590,9 @@ async def lifespan(app: FastAPI):
     _scheduler_started_at = datetime.now(timezone.utc)
     _scheduler.start(paused=not settings.scheduler_enabled)
     if settings.scheduler_enabled:
-        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + sms-stock-check(10:00 IST) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
+        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
     else:
-        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — 24 jobs registered but PAUSED; nothing will run")
+        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — %s jobs registered but PAUSED; nothing will run", len(_scheduler.get_jobs()))
 
     lag_watchdog = asyncio.create_task(_watch_event_loop_lag())
 
@@ -823,7 +810,6 @@ app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"]
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])
 app.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"], dependencies=_auth)
-app.include_router(sms_recharge.router, prefix="/api/v1/sms", tags=["sms"], dependencies=_auth)
 app.include_router(sms_webhooks.router, tags=["sms-webhook"])
 app.include_router(brain_sandbox.operator_router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(chat_handovers.router, prefix="/api/v1/chat-handovers", tags=["chat-handovers"], dependencies=_auth)

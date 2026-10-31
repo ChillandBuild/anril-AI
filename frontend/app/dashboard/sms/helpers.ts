@@ -40,14 +40,6 @@ export function statusTone(status: string): Tone {
   }
 }
 
-/** Whole rupees or paise, never more than 4 decimals: 0.25 -> ₹0.25, 12 -> ₹12.00, 0.0625 -> ₹0.0625. */
-export function formatRupees(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "—";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-}
-
 export function formatCount(n: number | null | undefined): string {
   return (n ?? 0).toLocaleString("en-IN");
 }
@@ -207,12 +199,6 @@ export function campaignStatusTone(status: string): Tone {
   return "neutral";
 }
 
-/** Pack label: "₹500 → 2,000 SMS". */
-export function packLabel(amountRupees: number, smsCount: number): string {
-  return `₹${amountRupees.toLocaleString("en-IN")} → ${smsCount.toLocaleString("en-IN")} SMS`;
-}
-
-/** Short, readable "Name" for a ledger kind coming from the server (snake_case). */
 export function humanizeKind(kind: string): string {
   const s = kind.replace(/_/g, " ");
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -241,4 +227,13 @@ export function logColumns(rows: Record<string, unknown>[], max = 8): string[] {
     }
   }
   return keys;
+}
+
+export function campaignNeedsUpdates(campaign: { status: string; counts: Partial<Record<SmsMessageStatus, number>> } | null | undefined): boolean {
+  return !!campaign && (campaign.status === "scheduled" || campaign.status === "sending" ||
+    ["queued", "sending", "submitted", "unknown"].some((status) => (campaign.counts[status as SmsMessageStatus] ?? 0) > 0));
+}
+
+export function previewKey(template: { id: string; message: string; template_type: string } | null, map: (SmsVarSource | null)[], selected: Set<string>): string {
+  return JSON.stringify([template, map, Array.from(selected).sort()]);
 }

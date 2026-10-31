@@ -1746,15 +1746,14 @@ function dealFilterParams(filters: Omit<DealFilters, "stage">): URLSearchParams 
   return search;
 }
 
-// ---- SMS (Bulk9 reseller) — contract: docs/plans/2026-10-30-sms-api-contract.md ----
+// ---- SMS (Bulk9 client) — contract: docs/plans/2026-10-30-sms-api-contract.md ----
 export interface SmsStatus {
   enabled: boolean;
   connected: boolean;
   checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
-  price_per_sms: number | string | null;
   support_contact: string | null;
 }
-export interface SmsBalance { wallet: number; sms_count: number; price_per_sms: number | string | null }
+export interface SmsBalance { sms_count: number }
 export interface SmsSender { sender_id: string; entity_id: string; entity_name: string | null }
 export type SmsTemplateType = "service" | "promotional";
 export interface SmsTemplate {
@@ -1766,7 +1765,7 @@ export interface SmsTemplate {
   entity_name: string | null;
   message: string;
   var_count: number;
-  template_type: SmsTemplateType;
+  template_type: SmsTemplateType | "unclassified";
   status: "ready" | "submitted";
   last_synced_at: string | null;
 }
@@ -1784,11 +1783,10 @@ export type SmsVarSource = { source: "field"; value: string } | { source: "text"
 export interface SmsPreviewExcluded { lead_id: string; name: string | null; phone: string | null; reason: string }
 export interface SmsPreviewSample { lead_id: string; name: string | null; content: string; segments: number; unicode: boolean }
 export interface SmsPreview {
+  total_segments: number;
   eligible_count: number;
   excluded: SmsPreviewExcluded[];
   samples: SmsPreviewSample[];
-  price_per_sms: number | string | null;
-  estimated_total: number;
   estimated: boolean;
 }
 export type SmsCampaignStatus = "scheduled" | "sending" | "completed" | "cancelled";
@@ -1806,7 +1804,6 @@ export interface SmsCampaign {
   completed_at: string | null;
   counts: Record<SmsMessageStatus, number>;
   total: number;
-  charged_total: number;
 }
 export interface SmsMessage {
   id: string;
@@ -1818,7 +1815,6 @@ export interface SmsMessage {
   status: SmsMessageStatus;
   failure_reason: string | null;
   sms_count: number | null;
-  charged_amount: number | null;
   submitted_at: string | null;
   delivered_at: string | null;
   updated_at: string | null;
@@ -1831,27 +1827,6 @@ export interface SmsMessageFilters {
   search?: string;
   limit?: number;
   offset?: number;
-}
-export interface SmsLedgerEntry {
-  id: string;
-  kind: string;
-  sms_count: number | null;
-  price_per_sms: number | string | null;
-  amount: number | null;
-  expiry_date: string | null;
-  note: string | null;
-  created_at: string;
-}
-export interface SmsPack { amount_rupees: number; sms_count: number; price_per_sms: number | string | null }
-export interface SmsPayment {
-  id: string;
-  amount_rupees: number;
-  sms_count: number;
-  status: string;
-  short_url: string | null;
-  created_at: string;
-  credited_at: string | null;
-  error: string | null;
 }
 export interface SmsOk { ok: boolean; message?: string }
 
@@ -1969,8 +1944,6 @@ export const api = {
       apiFetch<{ logs: Record<string, unknown>[]; page: number; error: string | null }>(
         `/api/v1/sms/reports/logs?from=${from}&to=${to}&page=${page}&limit=${limit}`,
       ),
-    ledger: (limit = 50, offset = 0) =>
-      apiFetch<{ entries: SmsLedgerEntry[] }>(`/api/v1/sms/ledger?limit=${limit}&offset=${offset}`),
     developerKey: () => apiFetch<{ api_key: string }>("/api/v1/sms/developer/key"),
     otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number }) =>
       apiFetch<{ ok: boolean; request_id?: string; message?: string }>("/api/v1/sms/otp/send", {
@@ -1981,13 +1954,6 @@ export const api = {
       apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
     otpResend: (data: { mobile: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
-    rechargePacks: () => apiFetch<{ packs: SmsPack[] }>("/api/v1/sms/recharge/packs"),
-    recharge: (amount_rupees: number) =>
-      apiFetch<{ payment_id: string; short_url: string }>("/api/v1/sms/recharge", {
-        method: "POST",
-        body: JSON.stringify({ amount_rupees }),
-      }),
-    rechargePayments: () => apiFetch<{ payments: SmsPayment[] }>("/api/v1/sms/recharge/payments"),
   },
   scheduledOverview: {
     get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),

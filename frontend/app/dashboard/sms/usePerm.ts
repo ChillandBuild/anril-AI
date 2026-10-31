@@ -13,6 +13,5 @@ export function usePerm() {
     can,
     canView: can("sms.view") || can("sms.manage"),
     canManage: can("sms.manage"),
-    canRecharge: can("sms.recharge"),
   };
 }

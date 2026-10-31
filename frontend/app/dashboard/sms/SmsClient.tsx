@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { BalanceTab } from "./BalanceTab";
 import { CampaignsTab } from "./CampaignsTab";
 import { DeveloperTab } from "./DeveloperTab";
-import { errorStatus, formatCount, formatRupees, friendlyError } from "./helpers";
+import { errorStatus, formatCount, friendlyError } from "./helpers";
 import { ReportsTab } from "./ReportsTab";
 import { TemplatesTab } from "./TemplatesTab";
 import { Card, Empty, LoadError, Notice, Skeleton } from "./ui";
@@ -20,7 +20,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "campaigns", label: "Campaigns" },
   { key: "templates", label: "Templates" },
   { key: "reports", label: "Reports" },
-  { key: "balance", label: "Balance & Recharge" },
+  { key: "balance", label: "Balance" },
   { key: "developer", label: "OTP & Developer" },
 ];
 
@@ -116,12 +116,12 @@ export function SmsClient() {
           type="button"
           onClick={() => setTab("balance")}
           className="flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-white px-3.5 py-1.5 text-sm shadow-sm hover:border-primary/40"
-          aria-label="Open balance and recharge"
+          aria-label="Open SMS balance"
         >
           <Wallet size={15} className="text-primary" />
           {bal ? (
             <span className="font-bold text-[#0A1528]">
-              {formatCount(bal.sms_count)} SMS <span className="font-normal text-[#64748b]">· {formatRupees(bal.wallet)}</span>
+              {formatCount(bal.sms_count)} SMS
             </span>
           ) : balance.error ? (
             <span className="text-[#64748b]">{balErr === 409 ? "Not connected" : "Balance unavailable"}</span>

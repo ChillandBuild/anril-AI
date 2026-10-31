@@ -101,11 +101,12 @@ export function TemplateList() {
                         disabled={savingId === t.id}
                         onChange={(e) => void changeType(t, e.target.value as SmsTemplateType)}
                       >
+                        <option value="unclassified" disabled>Choose type</option>
                         <option value="service">Service</option>
                         <option value="promotional">Promotional</option>
                       </select>
                     ) : (
-                      <Badge>{t.template_type === "promotional" ? "Promotional" : "Service"}</Badge>
+                      <Badge>{t.template_type === "unclassified" ? "Choose type" : t.template_type === "promotional" ? "Promotional" : "Service"}</Badge>
                     )}
                   </div>
                 </div>

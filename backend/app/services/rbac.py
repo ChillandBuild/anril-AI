@@ -51,7 +51,6 @@ PERMISSION_CATALOG: list[dict] = [
     {"key": "telecalling.notes", "label": "Call notes", "group": "Telecalling"},
     {"key": "sms.view", "label": "View SMS campaigns and reports", "group": "SMS"},
     {"key": "sms.manage", "label": "Send SMS and manage SMS templates", "group": "SMS"},
-    {"key": "sms.recharge", "label": "Recharge SMS balance", "group": "SMS"},
 ]
 
 ALL_PERMISSION_KEYS = [p["key"] for p in PERMISSION_CATALOG]

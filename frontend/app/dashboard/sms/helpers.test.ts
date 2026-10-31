@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   campaignStatusLabel,
+  campaignNeedsUpdates,
+  previewKey,
   clampRange,
   countVars,
   defaultRange,
   formatIst,
-  formatRupees,
   groupExcluded,
   isVariableMapComplete,
   maxToFor,
-  packLabel,
   splitTemplate,
   statusLabel,
   statusTone,
@@ -32,22 +32,6 @@ describe("statusLabel", () => {
   });
   it("labels campaign statuses", () => {
     expect(campaignStatusLabel("scheduled")).toBe("Scheduled");
-  });
-});
-
-describe("formatRupees", () => {
-  it("keeps 2 to 4 decimals", () => {
-    expect(formatRupees(0.25)).toBe("₹0.25");
-    expect(formatRupees(12)).toBe("₹12.00");
-    expect(formatRupees("0.0625")).toBe("₹0.0625");
-    expect(formatRupees(1500)).toBe("₹1,500.00");
-  });
-  it("shows a dash for missing values", () => {
-    expect(formatRupees(null)).toBe("—");
-    expect(formatRupees("abc")).toBe("—");
-  });
-  it("labels packs", () => {
-    expect(packLabel(500, 2000)).toBe("₹500 → 2,000 SMS");
   });
 });
 
@@ -121,5 +105,29 @@ describe("groupExcluded", () => {
       ["Duplicate number", 2],
       ["Opted out", 1],
     ]);
+  });
+});
+
+describe("delivery updates", () => {
+  it("keeps checking completed campaigns with submitted or unknown messages", () => {
+    expect(campaignNeedsUpdates({ status: "completed", counts: { submitted: 2 } })).toBe(true);
+    expect(campaignNeedsUpdates({ status: "completed", counts: { unknown: 1 } })).toBe(true);
+    expect(campaignNeedsUpdates({ status: "completed", counts: { delivered: 2 } })).toBe(false);
+    expect(campaignNeedsUpdates({ status: "scheduled", counts: {} })).toBe(true);
+  });
+});
+
+describe("preview snapshot", () => {
+  const template = { id: "t", message: "Hi {#var#}", template_type: "service" };
+  const map = [{ source: "text" as const, value: "Sam" }];
+  it("invalidates when recipients, wording, type or mapped values change", () => {
+    const key = previewKey(template, map, new Set(["a"]));
+    expect(previewKey(template, map, new Set(["b"]))).not.toBe(key);
+    expect(previewKey({ ...template, message: "Hello" }, map, new Set(["a"]))).not.toBe(key);
+    expect(previewKey({ ...template, template_type: "promotional" }, map, new Set(["a"]))).not.toBe(key);
+    expect(previewKey(template, [{ source: "text", value: "Lee" }], new Set(["a"]))).not.toBe(key);
+  });
+  it("treats recipient order as the same snapshot", () => {
+    expect(previewKey(template, map, new Set(["a", "b"]))).toBe(previewKey(template, map, new Set(["b", "a"])));
   });
 });

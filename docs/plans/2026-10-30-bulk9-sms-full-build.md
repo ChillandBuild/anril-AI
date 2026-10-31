@@ -1,4 +1,6 @@
-# Bulk9 SMS — full build plan (all features, one release)
+# Bulk9 SMS — superseded full-build plan
+
+> Superseded by [approved client-only scope](2026-10-30-sms-client-only.md) on30 October2026. Historical financial/reseller decisions below are not current implementation requirements.
 
 Date: 30 October 2026. Status: awaiting Prem's approval. Replaces the v1 scope in
 `2026-10-29-bulk9-sms-integration.md` (its safety rules still apply: consent, no blind resend,

@@ -35,10 +35,8 @@ class SettingsUpdate(BaseModel):
     updates: dict[str, str | None]
 
 
-# SMS reselling keys (price per SMS, buy rate, Bulk9 username/key/webhook secret) are set by
-# Prem in the operator console. A tenant writing them could price its own SMS at ₹0.0001,
-# redirect credit to another Bulk9 account, or forge delivery callbacks; reading them shows
-# Anril's margin. See routes/operator_sms.py.
+# SMS connection settings are operator-managed; tenants cannot replace provider keys or
+# callback secrets through the general settings API. See routes/operator_sms.py.
 OPERATOR_ONLY_PREFIXES = ("sms_", "bulk9_")
 
 

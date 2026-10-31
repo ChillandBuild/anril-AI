@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
@@ -12,7 +13,6 @@ import {
   clampRange,
   defaultRange,
   formatCount,
-  formatRupees,
   friendlyError,
   istDateString,
   logColumns,
@@ -111,7 +111,13 @@ function Summary() {
 }
 
 function Messages() {
-  const campaigns = useSWR("sms:campaigns", () => api.sms.campaigns(50, 0), { revalidateOnFocus: false });
+  const campaigns = useSWRInfinite(
+    (index, previous) => previous && previous.campaigns.length < PAGE ? null : ["sms:report-campaigns", index],
+    ([, index]) => api.sms.campaigns(PAGE, index * PAGE),
+    { revalidateOnFocus: false },
+  );
+  const campaignChoices = campaigns.data?.flatMap((page) => page.campaigns) ?? [];
+  const moreCampaigns = !campaigns.data || campaigns.data[campaigns.data.length - 1]?.campaigns.length === PAGE;
   const [draft, setDraft] = useState<SmsMessageFilters>({});
   const [filters, setFilters] = useState<SmsMessageFilters>({});
   const [offset, setOffset] = useState(0);
@@ -120,6 +126,7 @@ function Messages() {
   const { data, error, isLoading, mutate } = useSWR(["sms:messages", filters, offset], () => api.sms.messages({ ...filters, limit: PAGE, offset }), {
     keepPreviousData: true,
     revalidateOnFocus: false,
+    refreshInterval: (current) => current?.messages.some((message) => ["queued", "sending", "submitted", "unknown"].includes(message.status)) ? 10_000 : 0,
   });
   const rows = data?.messages ?? [];
 
@@ -160,12 +167,14 @@ function Messages() {
         <Field label="Campaign">
           <select className={inputCls} value={draft.campaign_id ?? ""} onChange={(e) => setDraft((d) => ({ ...d, campaign_id: e.target.value || undefined }))}>
             <option value="">All campaigns</option>
-            {(campaigns.data?.campaigns ?? []).map((c) => (
+            {campaignChoices.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
+          {moreCampaigns && <Btn variant="link" busy={campaigns.isValidating} onClick={() => void campaigns.setSize(campaigns.size + 1)}>Load more campaigns</Btn>}
+          {campaigns.error && <p className="text-xs text-danger">Couldn&apos;t load campaign choices. <button type="button" className="underline" onClick={() => void campaigns.mutate()}>Retry</button></p>}
         </Field>
         <Field label="Status">
           <select className={inputCls} value={draft.status ?? ""} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value || undefined }))}>
@@ -186,7 +195,7 @@ function Messages() {
         <Field label="Search">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
-            <input className={`${inputCls} pl-9`} placeholder="Name or number" value={draft.search ?? ""} onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))} />
+            <input className={`${inputCls} pl-9`} placeholder="Number or message" value={draft.search ?? ""} onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))} />
           </div>
         </Field>
         <div className="sm:col-span-2 lg:col-span-5">
@@ -211,7 +220,6 @@ function Messages() {
                     <th className={thCls}>Number</th>
                     <th className={thCls}>Status</th>
                     <th className={thCls}>SMS</th>
-                    <th className={thCls}>Charged</th>
                     <th className={thCls}>Time (IST)</th>
                   </tr>
                 </thead>
@@ -224,7 +232,6 @@ function Messages() {
                         <MessageStatus m={m} />
                       </td>
                       <td className={tdCls}>{m.sms_count ?? "—"}</td>
-                      <td className={tdCls}>{m.charged_amount != null ? formatRupees(m.charged_amount) : "—"}</td>
                       <td className={`${tdCls} whitespace-nowrap`}>{messageTime(m)}</td>
                     </tr>
                   ))}
@@ -244,7 +251,6 @@ function Messages() {
                 </div>
                 <MobileRecordGrid>
                   <MobileRecordField label="SMS" value={m.sms_count ?? "—"} />
-                  <MobileRecordField label="Charged" value={m.charged_amount != null ? formatRupees(m.charged_amount) : "—"} />
                   <MobileRecordField className="col-span-2" label="Time (IST)" value={messageTime(m)} />
                 </MobileRecordGrid>
               </MobileRecordCard>

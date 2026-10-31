@@ -36,6 +36,9 @@ class FakeScheduler:
     def start(self, **kwargs):
         self.calls['start'].append(('start', kwargs))
 
+    def get_jobs(self):
+        return self.calls['add_job']
+
     def shutdown(self, **kwargs):
         self.calls['shutdown'].append(('shutdown', kwargs))
 

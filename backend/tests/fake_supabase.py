@@ -64,6 +64,7 @@ class _Query:
         self.op, self.payload = "select", None
         self.filters: list = []
         self._order: list[tuple[str, bool]] = []
+        self._nullsfirst: dict[str, bool] = {}
         self._limit: int | None = None
         self._offset = 0
         self._single = False
@@ -202,8 +203,10 @@ class _Query:
         self.filters.append(predicate)
         return self
 
-    def order(self, column, desc: bool = False):
-        self._order.append((column, desc))  # chained orders = primary key first, like PostgREST
+    def order(self, column, desc: bool = False, nullsfirst: bool | None = None):
+        self._order.append((column, desc))
+        if nullsfirst is not None:
+            self._nullsfirst[column] = nullsfirst
         return self
 
     def limit(self, n: int):
@@ -266,7 +269,9 @@ class _Query:
 
         rows = [dict(r) for r in matched]
         for column, desc in reversed(self._order):  # stable sorts, last key first
-            rows.sort(key=lambda r, c=column: (r.get(c) is None, r.get(c) or ""), reverse=desc)
+            nullsfirst = self._nullsfirst.get(column, desc)
+            rows.sort(key=lambda r, c=column, n=nullsfirst, d=desc: (
+                (r.get(c) is not None) if n != d else (r.get(c) is None), r.get(c) or ""), reverse=desc)
         total = len(rows)  # like PostgREST count=exact: the total before limit / range
         rows = rows[self._offset:]
         if self._limit is not None:

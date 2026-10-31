@@ -1,7 +1,7 @@
 -- 237_sms_bulk9.sql
 -- SMS through Bulk9 (Fast2SMS white-label). Clients send DLT SMS campaigns to their leads from
 -- /dashboard/sms; Anril's server calls Bulk9 with the client's own key (app_settings
--- bulk9_api_key). Plan: docs/plans/2026-10-30-bulk9-sms-full-build.md. Additive only.
+-- bulk9_api_key). Plan: docs/plans/2026-10-30-sms-client-only.md. Not applied by this task.
 --
 -- sms_messages.status: queued -> sending -> submitted -> delivered | failed, or
 -- queued -> skipped | cancelled. `sending` is the claim (conditional queued -> sending update, so
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS sms_templates (
   entity_name     text,
   message         text NOT NULL,
   var_count       int NOT NULL DEFAULT 0,
-  template_type   text NOT NULL DEFAULT 'service' CHECK (template_type IN ('service', 'promotional')),
+  template_type   text NOT NULL DEFAULT 'unclassified' CHECK (template_type IN ('unclassified', 'service', 'promotional')),
   status          text NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'submitted')),
   last_synced_at  timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
@@ -97,64 +97,19 @@ CREATE TABLE IF NOT EXISTS sms_messages (
   provider_status  text,
   failure_reason   text,
   sms_count        int,
-  -- estimated before sending; charged = what Bulk9 debited the client (sms_details);
-  -- cost = sms_count x Prem's buy rate at send time (profit = charged - cost).
-  estimated_amount numeric(12, 4),
-  charged_amount   numeric(12, 4),
-  cost_amount      numeric(12, 4),
   claimed_at       timestamptz,
   submitted_at     timestamptz,
   delivered_at     timestamptz,
+  last_reconciled_at timestamptz,
   updated_at       timestamptz NOT NULL DEFAULT now(),
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sms_messages_due_idx ON sms_messages (send_at) WHERE status = 'queued';
 CREATE INDEX IF NOT EXISTS sms_messages_unresolved_idx
-  ON sms_messages (submitted_at) WHERE status IN ('submitted', 'unknown');
+  ON sms_messages (last_reconciled_at NULLS FIRST, id) WHERE status IN ('submitted', 'unknown');
 CREATE INDEX IF NOT EXISTS sms_messages_request_idx ON sms_messages (tenant_id, request_id);
 CREATE INDEX IF NOT EXISTS sms_messages_campaign_idx ON sms_messages (campaign_id, status);
 CREATE INDEX IF NOT EXISTS sms_messages_tenant_idx ON sms_messages (tenant_id, created_at DESC);
-
--- ---------------------------------------------------------------- credit ledger
--- Every SMS credit added to or taken from a client's Bulk9 wallet, with both prices.
-CREATE TABLE IF NOT EXISTS sms_ledger (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  kind          text NOT NULL CHECK (kind IN ('recharge', 'manual_credit', 'bonus', 'debit')),
-  sms_count     int NOT NULL,
-  price_per_sms numeric(10, 4) NOT NULL,
-  buy_rate      numeric(10, 4),
-  amount        numeric(12, 2) NOT NULL,
-  expiry_date   date,
-  reference     text,
-  note          text,
-  created_by    uuid,
-  created_at    timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS sms_ledger_tenant_idx ON sms_ledger (tenant_id, created_at DESC);
-
--- ---------------------------------------------------------------- Razorpay recharges
--- Paid into Anril's own Razorpay account. status: created -> paid -> credited | credit_failed,
--- or created -> expired | cancelled. One payment id credits once (unique index).
-CREATE TABLE IF NOT EXISTS sms_payments (
-  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  amount_paise        int NOT NULL CHECK (amount_paise > 0),
-  sms_count           int NOT NULL CHECK (sms_count > 0),
-  price_per_sms       numeric(10, 4) NOT NULL,
-  razorpay_link_id    text UNIQUE,
-  razorpay_payment_id text UNIQUE,
-  short_url           text,
-  status              text NOT NULL DEFAULT 'created'
-                      CHECK (status IN ('created', 'paid', 'credited', 'credit_failed', 'amount_mismatch',
-                                        'expired', 'cancelled')),
-  error               text,
-  created_by          uuid,
-  created_at          timestamptz NOT NULL DEFAULT now(),
-  paid_at             timestamptz,
-  credited_at         timestamptz
-);
-CREATE INDEX IF NOT EXISTS sms_payments_tenant_idx ON sms_payments (tenant_id, created_at DESC);
 
 -- ---------------------------------------------------------------- delivery callbacks
 -- Every Bulk9 callback, kept for dedupe and for ones that arrive before their send is recorded.
@@ -178,9 +133,13 @@ ALTER TABLE sms_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_template_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sms_ledger ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sms_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sms_delivery_events ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON sms_templates, sms_template_requests, sms_campaigns,
+  sms_messages, sms_delivery_events FROM anon, authenticated;
+GRANT SELECT ON sms_templates, sms_template_requests, sms_campaigns TO authenticated;
+GRANT ALL ON sms_templates, sms_template_requests, sms_campaigns,
+  sms_messages, sms_delivery_events TO service_role;
 
 DO $$
 DECLARE t text;
@@ -191,9 +150,27 @@ BEGIN
                    t || '_tenant_member_select', t);
   END LOOP;
 END $$;
--- Backend only (no member policy), read through the API which picks safe columns:
--- sms_messages (cost_amount) and sms_ledger (buy_rate) carry Anril's margin, sms_payments.error
--- can carry reseller stock text, sms_delivery_events holds raw provider payloads.
+-- Delivery records and provider payloads are backend-only; clients use scoped API responses.
+
+-- The API guards these prefixes too; restrictive policies also protect direct Data API access.
+REVOKE TRUNCATE ON public.app_settings FROM anon, authenticated;
+DROP POLICY IF EXISTS app_settings_sms_operator_read ON public.app_settings;
+CREATE POLICY app_settings_sms_operator_read ON public.app_settings
+  AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (left(key, 4) <> 'sms_' AND left(key, 6) <> 'bulk9_');
+DROP POLICY IF EXISTS app_settings_sms_operator_insert ON public.app_settings;
+CREATE POLICY app_settings_sms_operator_insert ON public.app_settings
+  AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK (left(key, 4) <> 'sms_' AND left(key, 6) <> 'bulk9_');
+DROP POLICY IF EXISTS app_settings_sms_operator_update ON public.app_settings;
+CREATE POLICY app_settings_sms_operator_update ON public.app_settings
+  AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (left(key, 4) <> 'sms_' AND left(key, 6) <> 'bulk9_')
+  WITH CHECK (left(key, 4) <> 'sms_' AND left(key, 6) <> 'bulk9_');
+DROP POLICY IF EXISTS app_settings_sms_operator_delete ON public.app_settings;
+CREATE POLICY app_settings_sms_operator_delete ON public.app_settings
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (left(key, 4) <> 'sms_' AND left(key, 6) <> 'bulk9_');
 
 -- ---------------------------------------------------------------- DLT upload bucket
 -- Proof files and DLT Excel exports. Private: Bulk9 fetches each through a short-lived signed

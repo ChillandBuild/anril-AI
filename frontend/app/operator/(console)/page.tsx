@@ -7,7 +7,6 @@ import { fleetWaitingByTenant, waitingColumnText, type FleetWaitingResponse } fr
 import { OnboardingWizard } from "./components/onboarding-wizard";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
-import { SmsStockCard } from "./components/sms-stock-card";
 
 type Client = {
   id: string;
@@ -296,7 +295,6 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div className="mb-6 max-w-md"><SmsStockCard /></div>
 
       {/* Error alert */}
       {error && (

@@ -9,7 +9,6 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.config_dynamic import get_setting
@@ -22,7 +21,6 @@ STUCK_AFTER = timedelta(minutes=15)
 BATCH_SIZE = 50
 MAX_LEADS = 5000
 INSERT_CHUNK = 500
-DEFAULT_PRICE = Decimal("0.25")
 
 # Exact exclusion strings from the API contract.
 R_OPTED_OUT = "Opted out"
@@ -162,7 +160,7 @@ def eligibility(leads: list[dict], template_type: str, variable_map: list[dict])
         if lead.get("opted_out"):
             out(lead, R_OPTED_OUT)
             continue
-        if template_type == "promotional" and not lead.get("sms_consent_at"):
+        if template_type == "promotional" and not (lead.get("sms_consent_at") and str(lead.get("sms_consent_source") or "").strip()):
             out(lead, R_NO_CONSENT)
             continue
         phone = normalize_indian_mobile(lead.get("phone"))
@@ -187,14 +185,6 @@ def eligibility(leads: list[dict], template_type: str, variable_map: list[dict])
     return eligible, excluded
 
 
-def get_price(tenant_id: str) -> Decimal:
-    try:
-        price = Decimal(str(get_setting("sms_price_per_sms", "0.25", tenant_id=tenant_id) or "0.25"))
-    except InvalidOperation:
-        return DEFAULT_PRICE
-    return price if price > 0 else DEFAULT_PRICE
-
-
 def _num(v: Any) -> float | None:
     if v is None:
         return None
@@ -214,7 +204,7 @@ def load_leads(db, tenant_id: str, lead_ids: list[str]) -> list[dict]:
     found: dict[str, dict] = {}
     for i in range(0, len(ids), 200):
         rows = (
-            db.table("leads").select("id,name,phone,opted_out,sms_consent_at")
+            db.table("leads").select("id,name,phone,opted_out,sms_consent_at,sms_consent_source")
             .eq("tenant_id", tenant_id).is_("deleted_at", "null").in_("id", ids[i:i + 200]).execute()
         ).data or []
         for r in rows:
@@ -232,6 +222,8 @@ def get_template(db, tenant_id: str, template_id: str) -> dict:
     t = rows[0]
     if t.get("status") != "ready" or not t.get("message_id"):
         raise SmsError("This template is not approved yet, so it can't be sent.", 409)
+    if t.get("template_type") not in ("service", "promotional"):
+        raise SmsError("Choose a service or promotional classification before sending this template.", 409)
     return t
 
 
@@ -241,7 +233,6 @@ def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_i
     vmap = validate_variable_map(variable_map, template["message"])
     leads = load_leads(db, tenant_id, lead_ids)
     eligible, excluded = eligibility(leads, template["template_type"], vmap)
-    price = get_price(tenant_id)
     total_parts = 0
     samples = []
     for item in eligible:
@@ -253,7 +244,7 @@ def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_i
                             "content": content, "segments": parts, "unicode": uni})
     return {
         "eligible_count": len(eligible), "excluded": excluded, "samples": samples,
-        "price_per_sms": float(price), "estimated_total": float(round(price * total_parts, 4)),
+        "total_segments": total_parts,
         "estimated": True,
     }
 
@@ -278,13 +269,14 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
         if send_at.tzinfo is None:
             raise SmsError("Pick a date and time.")
         send_at = send_at.astimezone(timezone.utc)
+        if send_at <= now:
+            raise SmsError("Pick a future date and time.")
     send_at = send_at or now
     vmap = validate_variable_map(variable_map, template["message"])
     leads = load_leads(db, tenant_id, lead_ids)
     eligible, _excluded = eligibility(leads, template["template_type"], vmap)
     if not eligible:
         raise SmsError("None of the selected leads can receive this SMS.")
-    price = get_price(tenant_id)
     try:
         campaign = db.table("sms_campaigns").insert({
             "tenant_id": tenant_id, "name": name.strip()[:120], "template_id": template["id"],
@@ -302,12 +294,10 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
     rows = []
     for item in eligible:
         content = render(template["message"], item["values"])
-        parts, _uni = segments(content)
         rows.append({
             "tenant_id": tenant_id, "campaign_id": campaign["id"], "lead_id": item["lead"]["id"],
             "phone": item["phone"], "variables": item["values"], "content": content,
             "send_at": send_at.isoformat(), "status": "queued",
-            "estimated_amount": float(round(price * parts, 4)),
         })
     try:
         for i in range(0, len(rows), INSERT_CHUNK):
@@ -353,14 +343,14 @@ def get_campaign_row(db, tenant_id: str, campaign_id: str) -> dict | None:
 
 
 def _counts_for(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, dict]:
-    """Per-campaign status counts + charged total. Pages of 1000 (the API's row cap)."""
-    out = {cid: {"counts": {s: 0 for s in STATUSES}, "total": 0, "charged": 0.0} for cid in campaign_ids}
+    """Per-campaign status counts. Pages of 1000 (the API's row cap)."""
+    out = {cid: {"counts": {s: 0 for s in STATUSES}, "total": 0} for cid in campaign_ids}
     if not campaign_ids:
         return out
     start = 0
     while True:
         rows = (
-            db.table("sms_messages").select("campaign_id,status,charged_amount")
+            db.table("sms_messages").select("campaign_id,status")
             .eq("tenant_id", tenant_id).in_("campaign_id", campaign_ids).order("id")
             .range(start, start + 999).execute()
         ).data or []
@@ -371,7 +361,6 @@ def _counts_for(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, dict]:
             if r["status"] in c["counts"]:
                 c["counts"][r["status"]] += 1
             c["total"] += 1
-            c["charged"] += _num(r.get("charged_amount")) or 0.0
         if len(rows) < 1000:
             return out
         start += 1000
@@ -387,13 +376,12 @@ def public_campaigns(db, tenant_id: str, rows: list[dict]) -> list[dict]:
             "sender_id": r["sender_id"], "template_type": r["template_type"], "status": r["status"],
             "send_at": r.get("send_at"), "created_at": r.get("created_at"),
             "completed_at": r.get("completed_at"), "counts": s["counts"], "total": s["total"],
-            "charged_total": round(s["charged"], 4),
         })
     return result
 
 
 def public_messages(db, tenant_id: str, rows: list[dict]) -> list[dict]:
-    """Message shape from the contract. Never includes cost_amount (Prem's buy cost)."""
+    """Client message shape."""
     lead_ids = list({r["lead_id"] for r in rows if r.get("lead_id")})
     names: dict[str, str | None] = {}
     for i in range(0, len(lead_ids), 200):
@@ -404,7 +392,7 @@ def public_messages(db, tenant_id: str, rows: list[dict]) -> list[dict]:
         "id": r["id"], "campaign_id": r.get("campaign_id"), "lead_id": r.get("lead_id"),
         "lead_name": names.get(r.get("lead_id")), "phone": r["phone"], "content": r["content"],
         "status": r["status"], "failure_reason": r.get("failure_reason"), "sms_count": r.get("sms_count"),
-        "charged_amount": _num(r.get("charged_amount")), "submitted_at": r.get("submitted_at"),
+        "submitted_at": r.get("submitted_at"),
         "delivered_at": r.get("delivered_at"), "updated_at": r.get("updated_at"),
     } for r in rows]
 
@@ -431,26 +419,23 @@ def _find_number(obj: Any, names: tuple[str, ...]) -> float | None:
 
 
 def parse_send_result(body: dict, row_id: str) -> dict:
-    """request_id, sms_count and charged amount from a send response."""
+    """Request ID and SMS count from a send response."""
     request_id = body.get("request_id")
     if not request_id and body.get("dry_run"):
         # The local outbound guard answers with a fake body: record a visibly fake id.
         request_id = f"dry-run-{row_id}"
     count = _find_number(body, ("sms_count", "sms_used", "total_sms"))
-    charged = _find_number(body, ("amount_debited", "total_charge", "charged", "debit", "charge"))
     return {"request_id": str(request_id) if request_id else None,
-            "sms_count": int(count) if count is not None else None, "charged": charged}
+            "sms_count": int(count) if count is not None else None}
 
 
 def _tenant_ctx(db, tenant_id: str, cache: dict) -> dict:
     if tenant_id not in cache:
         t = (db.table("tenants").select("enabled_features").eq("id", tenant_id).limit(1).execute()).data or []
         features = (t[0].get("enabled_features") if t else None) or []
-        buy = get_setting("sms_buy_rate", tenant_id=tenant_id)
         cache[tenant_id] = {
             "enabled": "sms" in features,
             "key": get_setting("bulk9_api_key", tenant_id=tenant_id),
-            "buy_rate": _num(buy),
         }
     return cache[tenant_id]
 
@@ -489,12 +474,14 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
         else:
             lead = None
             if row.get("lead_id"):
-                lead = ((db.table("leads").select("id,opted_out,deleted_at").eq("tenant_id", row["tenant_id"])
+                lead = ((db.table("leads").select("id,opted_out,deleted_at,sms_consent_at,sms_consent_source").eq("tenant_id", row["tenant_id"])
                          .eq("id", row["lead_id"]).limit(1).execute()).data or [None])[0]
             if not lead or lead.get("deleted_at"):
                 skip = "The lead was removed."
             elif lead.get("opted_out"):
                 skip = "The customer opted out."
+            elif campaign.get("template_type") == "promotional" and not (lead.get("sms_consent_at") and str(lead.get("sms_consent_source") or "").strip()):
+                skip = R_NO_CONSENT
     if skip:
         _finish(db, rid, {"status": status, "failure_reason": skip})
         return
@@ -508,7 +495,8 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
                           "failure_reason": "No answer from the SMS provider; checking the delivery report."})
         return
     except Bulk9Error as e:
-        _finish(db, rid, {"status": "failed", "failure_reason": str(e)[:300]})
+        _finish(db, rid, {"status": "unknown" if e.http_status and e.http_status >= 500 else "failed",
+                          "failure_reason": str(e)[:300]})
         return
     except ValueError as e:  # refused before anything was sent
         _finish(db, rid, {"status": "failed", "failure_reason": str(e)[:300]})
@@ -519,14 +507,13 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
         _finish(db, rid, {"status": "unknown", "failure_reason": "Something went wrong while sending."})
         return
     res = parse_send_result(body if isinstance(body, dict) else {}, rid)
+    if not res["request_id"]:
+        _finish(db, rid, {"status": "unknown", "failure_reason": "No request ID from the SMS provider; checking delivery logs."})
+        return
     patch: dict = {"status": "submitted", "request_id": res["request_id"],
                    "submitted_at": utcnow().isoformat()}
     if res["sms_count"] is not None:
         patch["sms_count"] = res["sms_count"]
-        if tctx["buy_rate"] is not None:
-            patch["cost_amount"] = round(res["sms_count"] * tctx["buy_rate"], 4)
-    if res["charged"] is not None:
-        patch["charged_amount"] = round(res["charged"], 4)
     _finish(db, rid, patch)
 
 

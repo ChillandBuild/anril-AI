@@ -1,8 +1,5 @@
-"""Public SMS webhooks: Bulk9 callbacks need the tenant's own header secret (Bulk9 signs
-nothing), and the recharge webhook needs a valid Razorpay signature."""
-import hashlib
-import hmac
-from unittest.mock import AsyncMock, patch
+"""Bulk9 callbacks require the tenant secret and a bounded request body."""
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -56,21 +53,27 @@ def test_bulk9_oversized_body_is_413():
     assert r.status_code == 413
 
 
-def test_razorpay_sms_bad_signature_is_400(monkeypatch):
-    monkeypatch.setenv("SMS_RAZORPAY_WEBHOOK_SECRET", "whsec_sms")
-    with patch.object(sms_webhooks.sms_billing, "handle_razorpay_event", AsyncMock()) as handle:
-        r = client.post("/webhook/razorpay-sms", content=b"{}", headers={"X-Razorpay-Signature": "bad"})
-    assert r.status_code == 400
-    handle.assert_not_called()
+def test_sms_recharge_webhook_is_removed():
+    assert client.post("/webhook/razorpay-sms", json={}).status_code == 404
 
 
-def test_razorpay_sms_good_signature_is_handled(monkeypatch):
-    monkeypatch.setenv("SMS_RAZORPAY_WEBHOOK_SECRET", "whsec_sms")
-    body = b'{"event":"payment_link.paid"}'
-    sig = hmac.new(b"whsec_sms", body, hashlib.sha256).hexdigest()
-    with patch.object(sms_webhooks, "get_supabase"), \
-         patch.object(sms_webhooks.sms_billing, "handle_razorpay_event", AsyncMock(return_value={"status": "ok"})) as h:
-        r = client.post("/webhook/razorpay-sms", content=body,
-                        headers={"X-Razorpay-Signature": sig, "content-type": "application/json"})
-    assert r.status_code == 200 and r.json() == {"status": "ok"}
-    h.assert_awaited_once()
+def test_bulk9_rejects_oversized_stream_without_content_length():
+    from starlette.requests import Request
+    import asyncio
+    chunks = iter([b"x" * 40000, b"x" * 40000, b"x" * 40000])
+    read = []
+
+    async def receive():
+        chunk = next(chunks)
+        read.append(chunk)
+        return {"type": "http.request", "body": chunk, "more_body": True}
+
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": [
+        (b"x-anril-webhook-secret", b"s3cret")], "query_string": b""}, receive)
+    with patch.object(sms_webhooks, "get_setting", side_effect=_secret):
+        from fastapi import HTTPException
+        import pytest
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(sms_webhooks.bulk9_delivery_webhook(T, request))
+    assert error.value.status_code == 413
+    assert len(read) == 2
