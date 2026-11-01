@@ -5,8 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware
@@ -16,7 +14,6 @@ from app.dependencies.auth import get_current_user
 import os
 from app.config import settings
 from app.db.supabase import current_route
-from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
 from app.routes import webhook, leads, messages, analytics, upload, segments, calls, callers, ai_tune, knowledge, system, follow_ups, numbers, incidents, lead_notes, voice_numbers, app_settings, templates, onboarding, team, media, todos, conversations, operator, chat_handovers, telegram, instagram, facebook, tags, inbound_leads, reengagement, notifications, assignment_log, call_scripts, telecalling_upload, push, subscriptions, catalog, rbac, feedback, ask, consistency
 from app.routes.calls import public_router as calls_public_router
 from app.routes.intake import public_router as intake_public_router
@@ -56,38 +53,12 @@ install_outbound_guard()
 
 from datetime import datetime, timezone
 _startup_time = datetime.now(timezone.utc)
-_heartbeats = {
-    "scheduled-broadcasts": None,
-    "callback-notifications": None,
-    "number-quality-sync": None,
-    "numbers-pool-sync": None,
-    "send-log-prune": None,
-    "call-ai-sweep": None,
-    "ad-insights-sync": None,
-    "astro-push-reconcile": None,
-    "intake-staleness-sweep": None,
-    "crm-cutoff-sweep": None,
-    "call-alert-summary": None,
-    "brain-weekly-digest": None,
-    "auto-messages": None,
-    "scheduled-templates": None,
-    "sms-send": None,
-    "sms-reconcile": None,
-    "private-send-meta-reconcile": None,
-}
+# /ready reads the scheduled-broadcasts heartbeat; the queue task sets it each run.
+_heartbeats = {"scheduled-broadcasts": None}
 
 
 async def _process_scheduled_broadcasts() -> None:
-    """APScheduler job: fire scheduled_broadcasts rows whose fire_at has passed."""
-    _heartbeats["scheduled-broadcasts"] = datetime.now(timezone.utc)
-    try:
-        await _process_scheduled_broadcasts_body()
-    except Exception as e:
-        logger.error(f"Scheduled broadcast executor error: {e}")
-
-
-async def _process_scheduled_broadcasts_body() -> None:
-    """The broadcast sweep itself; raises on failure. Shared by the APScheduler wrapper and the queue task."""
+    """Fire scheduled_broadcasts rows whose fire_at has passed (queue task scheduled-broadcasts)."""
     from app.db.supabase import get_supabase
     from app.services.broadcast_executor import execute_broadcast
     db = get_supabase()
@@ -106,7 +77,7 @@ async def _process_scheduled_broadcasts_body() -> None:
 
 
 async def _check_token_health() -> None:
-    """APScheduler daily job: validate Meta tokens for all tenants, create incidents if invalid."""
+    """Validate Meta tokens for all tenants, create incidents if invalid (queue task token-health-check)."""
     import httpx
     from app.db.supabase import get_supabase
     from app.services.incidents import create_token_incident as _create_token_incident, is_token_auth_failure
@@ -181,262 +152,18 @@ async def _check_token_health() -> None:
     logger.info(f"Token health check complete for {len(tenant_cfg)} tenant(s)")
 
 
-async def _process_reengagement_rules() -> None:
-    """APScheduler job: process due automated re-engagement steps."""
-    try:
-        from app.services.reengagement_service import process_due_reengagements
-        count = await process_due_reengagements()
-        if count:
-            logger.info(f"Re-engagement scheduler: processed {count} re-engagement message(s)")
-    except Exception as e:
-        logger.error(f"Re-engagement scheduler error: {e}")
-
-
-async def _process_silence_nudges() -> None:
-    """APScheduler job: send due silence nudges."""
-    try:
-        from app.services.silence_nudge import drain_due_nudges
-        count = await drain_due_nudges()
-        if count:
-            logger.info(f"Silence nudge scheduler: sent {count} nudge(s)")
-    except Exception as e:
-        logger.error(f"Silence nudge scheduler error: {e}")
-
-
-async def _sweep_unassigned_leads() -> None:
-    """APScheduler job: state-based safety net that assigns any unassigned lead
-    whose current segment qualifies under the tenant's telecalling_config."""
-    try:
-        from app.services.assignment import sweep_unassigned_leads
-        sweep_unassigned_leads()
-    except Exception as e:
-        logger.error(f"Assignment sweep scheduler error: {e}")
-
-
-async def _recycle_contacts() -> None:
-    """APScheduler job: re-queue leads nobody has reached yet, within calling hours."""
-    try:
-        from app.services.contact_recycler import recycle_all_tenants
-        count = recycle_all_tenants()
-        if count:
-            logger.info(f"Contact recycler: recycled {count} lead(s)")
-    except Exception as e:
-        logger.error(f"Contact recycler error: {e}")
-
-
-async def _process_callback_notifications() -> None:
-    """APScheduler job: callback 'due' reminders and 'claimable' broadcasts."""
-    _heartbeats["callback-notifications"] = datetime.now(timezone.utc)
-    try:
-        from app.services.callback_notifications import process_callback_notifications
-        result = process_callback_notifications()
-        if result.get("due") or result.get("claimable"):
-            logger.info(f"Callback notifications: {result['due']} due, {result['claimable']} claimable")
-    except Exception as e:
-        logger.error(f"Callback notifications error: {e}")
-
-
-async def _sync_all_number_quality() -> None:
-    """APScheduler 4-hourly job: refresh every number from Meta so a Red primary
-    fails over within hours. See number_sync.sync_all_number_quality."""
-    _heartbeats["number-quality-sync"] = datetime.now(timezone.utc)
-    try:
-        from app.services.number_sync import sync_all_number_quality
-        await sync_all_number_quality()
-    except Exception as e:
-        logger.error(f"Number quality sync error: {e}")
-
-
-async def _sync_numbers_pool() -> None:
-    """APScheduler job at 06:00 and 18:00 IST: full numbers-pool sync from Meta for every
-    tenant -- new numbers, verification, limits, warm-up, recovery."""
-    _heartbeats["numbers-pool-sync"] = datetime.now(timezone.utc)
-    try:
-        from app.services.number_sync import sync_all_tenants_pool
-        await sync_all_tenants_pool()
-    except Exception as e:
-        logger.error(f"Numbers pool sync error: {e}")
-
-
-async def _prune_send_log() -> None:
-    """APScheduler job at 03:00 IST: drop template_send_log rows too old to count."""
-    _heartbeats["send-log-prune"] = datetime.now(timezone.utc)
-    try:
-        from app.services.outbound_router import prune_send_log
-        await prune_send_log()
-    except Exception as e:
-        logger.error(f"Send-log prune error: {e}")
-
-
 async def _prune_scheduler_runs() -> None:
-    """APScheduler job at 03:15 IST: drop scheduler_runs rows older than 7 days. The
-    Scheduler Health view reads the latest failure and the last 24h of errors."""
-    try:
-        await _prune_scheduler_runs_body()
-    except Exception as e:
-        logger.error(f"Scheduler-runs prune error: {e}")
-
-
-async def _prune_scheduler_runs_body() -> None:
-    """The prune itself; raises on failure. Shared by the APScheduler wrapper and the queue task."""
+    """Drop scheduler_runs (failure) rows older than 7 days (queue task scheduler-runs-prune)."""
     from datetime import timedelta
     from app.db.supabase import get_supabase
     cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     get_supabase().table("scheduler_runs").delete().lt("ran_at", cutoff).execute()
 
 
-async def _sync_ad_insights() -> None:
-    """APScheduler job: pull Meta Ads Insights per tenant and store daily
-    clicks/spend for the Ad Performance tab."""
-    _heartbeats["ad-insights-sync"] = datetime.now(timezone.utc)
-    try:
-        import asyncio
-        from app.services.meta_ads_insights_sync import sync_all_tenants_ad_insights
-        await asyncio.to_thread(sync_all_tenants_ad_insights)
-    except Exception as e:
-        logger.error(f"Ad insights scheduler error: {e}")
-
-
-async def _sweep_call_ai() -> None:
-    """APScheduler job: resume call recordings a restart interrupted and retry failures."""
-    _heartbeats["call-ai-sweep"] = datetime.now(timezone.utc)
-    try:
-        from app.services.call_ai_pipeline import sweep_call_ai
-        await sweep_call_ai()
-    except Exception as e:
-        logger.error(f"Call AI sweep error: {e}")
-
-
-async def _process_pending_whatsapp_alerts() -> None:
-    """APScheduler job: process due pending WhatsApp alerts."""
-    try:
-        from app.services.whatsapp_notify import process_due_whatsapp_alerts
-        await process_due_whatsapp_alerts()
-    except Exception as e:
-        logger.error(f"Pending WhatsApp alerts scheduler error: {e}")
-
-
-async def _reconcile_astro_pushes() -> None:
-    """APScheduler job: re-drive AstroTamil consultation pushes that failed at
-    payment-confirm time (paid sessions with astro_question_id still NULL)."""
-    _heartbeats["astro-push-reconcile"] = datetime.now(timezone.utc)
-    try:
-        from app.services.intake import reconcile_pending_astro_pushes
-        await reconcile_pending_astro_pushes()
-    except Exception as e:
-        logger.error(f"Astro push reconcile scheduler error: {e}")
-
-
-async def _sweep_stale_intake_sessions() -> None:
-    """APScheduler job: cancel unfinished deals idle past the tenant's deal_idle_close_days.
-    See intake.sweep_stale_intake_sessions."""
-    _heartbeats["intake-staleness-sweep"] = datetime.now(timezone.utc)
-    try:
-        from app.services.intake import sweep_stale_intake_sessions
-        await sweep_stale_intake_sessions()
-    except Exception as e:
-        logger.error(f"Intake staleness sweep scheduler error: {e}")
-
-
-async def _process_auto_messages() -> None:
-    """APScheduler job: send Auto-Messages whose delay is up. See services/auto_messages.py."""
-    _heartbeats["auto-messages"] = datetime.now(timezone.utc)
-    try:
-        from app.services.auto_messages import process_due_sends
-        count = await process_due_sends()
-        if count:
-            logger.info(f"Auto-messages scheduler: sent {count} message(s)")
-    except Exception as e:
-        logger.error(f"Auto-messages scheduler error: {e}")
-
-
-async def _process_scheduled_templates() -> None:
-    """APScheduler job: send scheduled templates whose time has come. See services/scheduled_templates.py."""
-    _heartbeats["scheduled-templates"] = datetime.now(timezone.utc)
-    try:
-        from app.services.scheduled_templates import process_due
-        count = await process_due()
-        if count:
-            logger.info(f"Scheduled-templates scheduler: sent {count} message(s)")
-    except Exception as e:
-        logger.error(f"Scheduled-templates scheduler error: {e}")
-
-
-async def _process_due_sms() -> None:
-    """APScheduler job: send queued SMS whose time has come. See services/sms_campaigns.py."""
-    _heartbeats["sms-send"] = datetime.now(timezone.utc)
-    try:
-        from app.db.supabase import get_supabase
-        from app.services.sms_campaigns import process_due_sms
-        await process_due_sms(get_supabase())
-    except Exception as e:
-        logger.error(f"SMS send scheduler error: {e}")
-
-
-async def _reconcile_sms() -> None:
-    """APScheduler job: fill SMS delivery gaps from Bulk9 reports. See services/sms_delivery.py."""
-    _heartbeats["sms-reconcile"] = datetime.now(timezone.utc)
-    try:
-        from app.db.supabase import get_supabase
-        from app.services.sms_delivery import reconcile
-        stats = await reconcile(get_supabase())
-        if any(stats.values()):
-            logger.info(f"SMS reconcile: {stats}")
-    except Exception as e:
-        logger.error(f"SMS reconcile scheduler error: {e}")
-
-
-async def _reconcile_private_send_meta() -> None:
-    """APScheduler job: store Meta's message count for yesterday per Private Send tenant."""
-    _heartbeats["private-send-meta-reconcile"] = datetime.now(timezone.utc)
-    try:
-        from app.services.private_send import process_meta_reconcile
-        count = await process_meta_reconcile()
-        if count:
-            logger.info(f"Private Send reconcile: {count} tenant(s)")
-    except Exception as e:
-        logger.error(f"Private Send reconcile error: {e}")
-
-
-async def _sweep_crm_cutoff() -> None:
-    _heartbeats["crm-cutoff-sweep"] = datetime.now(timezone.utc)
-    try:
-        from app.services.call_ai_pipeline import sweep_crm_cutoff
-        await sweep_crm_cutoff()
-    except Exception as e:
-        logger.error(f"CRM cut-off sweep error: {e}")
-
-
-async def _send_call_alert_summaries() -> None:
-    _heartbeats["call-alert-summary"] = datetime.now(timezone.utc)
-    try:
-        from app.db.supabase import get_supabase
-        from app.services.call_alerts import send_morning_summaries
-        send_morning_summaries(get_supabase())
-    except Exception as e:
-        logger.error(f"Call alert summary error: {e}")
-
-
-async def _send_brain_weekly_digest() -> None:
-    _heartbeats["brain-weekly-digest"] = datetime.now(timezone.utc)
-    try:
-        from app.db.supabase import get_supabase
-        import asyncio
-        from app.services.brain_digest import send_weekly_digests
-        await asyncio.to_thread(send_weekly_digests, get_supabase())
-    except Exception as e:
-        logger.error(f"Brain weekly digest error: {e}")
-
-
-# APScheduler's default misfire_grace_time is 1s: a run that starts more than 1s late is
-# dropped as "missed". Ours start 1.3-2s late (many jobs share a second and block on sync DB
-# calls), so for 30 days most runs of most jobs were silently skipped -- the intake sweep ran
-# 6 times out of 8,520 (scheduler_runs, 2026-09-30). coalesce folds a backlog into one run.
-_scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 60, "coalesce": True, "max_instances": 1})
-# When this process's scheduler started: the "not running" alert measures from here for a
+# When this process started the queue worker: the "not running" alert measures from here for a
 # job that has no successful run yet (operator._build_scheduler_jobs).
 _scheduler_started_at: datetime | None = None
-# The Procrastinate worker (SCHEDULER_BACKEND=procrastinate, SPEC.md): a task on this event loop.
+# The Procrastinate worker (SPEC.md): a task on this event loop.
 _queue_worker: asyncio.Task | None = None
 
 
@@ -454,41 +181,6 @@ async def _run_queue_worker() -> None:
         except Exception as e:
             logger.error(f"Queue worker stopped: {e}; retrying in 30 s")
             await asyncio.sleep(30)
-
-
-# Each job's last successful run ({"ran_at", "lateness_ms"}), kept in memory: a
-# scheduler_runs row for every success grew the table to 307 MB of a 353 MB database and
-# ~12k API writes a day (2026-10-31). Read by operator._build_scheduler_jobs.
-_last_success: dict[str, dict] = {}
-
-
-def _record_scheduler_event(event) -> None:
-    """Record a job run for the operator Scheduler Health view: a success in
-    _last_success, an error or miss as a scheduler_runs row. Best-effort: must
-    never raise into the scheduler."""
-    try:
-        scheduled = getattr(event, "scheduled_run_time", None)
-        ran_at = datetime.now(timezone.utc)
-        lateness_ms = int((ran_at - scheduled).total_seconds() * 1000) if scheduled else None
-        if event.code == EVENT_JOB_ERROR:
-            status = "error"
-            error = str(getattr(event, "exception", "") or "")[:2000]
-        elif event.code == EVENT_JOB_MISSED:
-            status, error = "missed", None
-        else:
-            _last_success[event.job_id] = {"ran_at": ran_at.isoformat(), "lateness_ms": lateness_ms}
-            return
-        from app.db.supabase import get_supabase
-        get_supabase().table("scheduler_runs").insert({
-            "job_id": event.job_id,
-            "status": status,
-            "scheduled_at": scheduled.isoformat() if scheduled else None,
-            "ran_at": ran_at.isoformat(),
-            "lateness_ms": lateness_ms,
-            "error": error,
-        }).execute()
-    except Exception as e:
-        logger.warning(f"scheduler_runs record failed (non-fatal): {e}")
 
 
 # Any sync call left on the event loop (a Supabase query not sent to a thread)
@@ -515,142 +207,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Supabase: {settings.supabase_url}")
     logger.info("Voice: TeleCMI")
 
-    _scheduler.add_job(
-        _process_scheduled_broadcasts,
-        trigger="interval",
-        minutes=1,
-        id="scheduled-broadcasts",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _check_token_health,
-        trigger="interval",
-        hours=4,
-        id="token-health-check",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _process_reengagement_rules,
-        trigger="interval",
-        minutes=1,
-        id="reengagement-rules",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _process_silence_nudges,
-        trigger="interval",
-        minutes=1,
-        id="silence-nudge",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _sweep_unassigned_leads,
-        trigger="interval",
-        minutes=2,
-        id="assignment-sweep",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _recycle_contacts,
-        trigger="interval",
-        minutes=30,
-        id="recycle-contacts",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _process_callback_notifications,
-        trigger="interval",
-        minutes=1,
-        id="callback-notifications",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _sync_all_number_quality,
-        trigger="interval",
-        hours=4,
-        id="number-quality-sync",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _sync_ad_insights,
-        trigger="interval",
-        hours=1,
-        id="ad-insights-sync",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _sweep_call_ai,
-        trigger="interval",
-        minutes=3,
-        id="call-ai-sweep",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    _scheduler.add_job(
-        _process_pending_whatsapp_alerts,
-        trigger="interval",
-        minutes=1,
-        id="pending-whatsapp-alerts",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _reconcile_astro_pushes,
-        trigger="interval",
-        minutes=5,
-        id="astro-push-reconcile",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _sweep_stale_intake_sessions,
-        trigger="interval",
-        minutes=5,
-        id="intake-staleness-sweep",
-        replace_existing=True,
-    )
-    _scheduler.add_job(_process_auto_messages, trigger="interval", minutes=1, id="auto-messages",
-                       replace_existing=True)
-    _scheduler.add_job(_process_scheduled_templates, trigger="interval", minutes=1, id="scheduled-templates",
-                       replace_existing=True)
-    _scheduler.add_job(_process_due_sms, trigger="interval", minutes=1, id="sms-send",
-                       replace_existing=True, max_instances=1, coalesce=True)
-    _scheduler.add_job(_reconcile_sms, trigger="interval", minutes=15, id="sms-reconcile",
-                       replace_existing=True, max_instances=1, coalesce=True)
-    # Fixed clock times, not interval=12h: Render recycles the process every ~5h,
-    # so an interval of 5h+ never fires (subsystem-notes.md, 2026-09-19).
-    _scheduler.add_job(_sync_numbers_pool, trigger="cron", hour="6,18", minute=0,
-                       timezone="Asia/Kolkata", id="numbers-pool-sync", replace_existing=True)
-    _scheduler.add_job(_prune_send_log, trigger="cron", hour=3, minute=0,
-                       timezone="Asia/Kolkata", id="send-log-prune", replace_existing=True)
-    _scheduler.add_job(_prune_scheduler_runs, trigger="cron", hour=3, minute=15,
-                       timezone="Asia/Kolkata", id="scheduler-runs-prune", replace_existing=True)
-    _scheduler.add_job(_reconcile_private_send_meta, trigger="cron", hour=3, minute=30,
-                       timezone="Asia/Kolkata", id="private-send-meta-reconcile", replace_existing=True)
-    _scheduler.add_job(_sweep_crm_cutoff, trigger="interval", minutes=10, id="crm-cutoff-sweep",
-                       replace_existing=True, max_instances=1, coalesce=True)
-    _scheduler.add_job(_send_call_alert_summaries, trigger="cron", hour=MORNING_SUMMARY_HOUR_IST, minute=0,
-                       timezone="Asia/Kolkata", id="call-alert-summary", replace_existing=True)
-    _scheduler.add_job(_send_brain_weekly_digest, trigger="cron", day_of_week="mon", hour=9, minute=0,
-                       timezone="Asia/Kolkata", id="brain-weekly-digest", replace_existing=True)
-    _scheduler.add_listener(
-        _record_scheduler_event,
-        EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED,
-    )
-    use_queue = settings.scheduler_backend == "procrastinate"
-    if use_queue and not settings.database_url:
-        logger.error("SCHEDULER_BACKEND=procrastinate but DATABASE_URL is not set: running the jobs on APScheduler")
-        use_queue = False
     global _scheduler_started_at, _queue_worker
-    _scheduler_started_at = datetime.now(timezone.utc)
-    # On the queue backend APScheduler keeps the 24 jobs registered but never runs them.
-    _scheduler.start(paused=not settings.scheduler_enabled or use_queue)
-    if settings.scheduler_enabled and use_queue:
+    if not settings.scheduler_enabled:
+        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — queue worker not started; no scheduled job will run")
+    elif not settings.database_url:
+        logger.error("DATABASE_URL is not set: queue worker not started; no scheduled job will run")
+    else:
+        _scheduler_started_at = datetime.now(timezone.utc)
         _queue_worker = asyncio.create_task(_run_queue_worker())
         logger.info("Schedulers started (procrastinate): 24 queue tasks + rescue-stalled(1m) + queue-cleanup(03:45 IST) on queues messages, calls, maintenance")
-    elif settings.scheduler_enabled:
-        logger.info("Schedulers started: broadcasts(1m) + token-health(4h) + reengagement(1m) + assignment-sweep(2m) + recycle-contacts(30m) + callback-notify(1m) + quality-sync(4h) + numbers-pool-sync(06:00+18:00 IST) + send-log-prune(03:00 IST) + scheduler-runs-prune(03:15 IST) + call-ai-sweep(3m) + pending-whatsapp-alerts(1m) + astro-push-reconcile(5m) + intake-staleness-sweep(5m) + silence-nudge(1m) + crm-cutoff-sweep(10m) + auto-messages(1m) + scheduled-templates(1m) + sms-send(1m) + sms-reconcile(15m) + private-send-meta-reconcile(03:30 IST) + call-alert-summary(09:00 IST) + brain-weekly-digest(Mon 09:00 IST)")
-    else:
-        logger.warning("LOCAL MODE: SCHEDULER_ENABLED=false — %s jobs registered but PAUSED; nothing will run", len(_scheduler.get_jobs()))
 
     lag_watchdog = asyncio.create_task(_watch_event_loop_lag())
 
@@ -664,7 +229,6 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         _queue_worker = None
-    _scheduler.shutdown(wait=False)
     logger.info("Anril AI backend shutting down.")
 
 

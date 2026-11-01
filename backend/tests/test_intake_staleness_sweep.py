@@ -193,22 +193,8 @@ async def test_no_stale_rows_is_a_clean_no_op(days):
     assert await sweep_stale_intake_sessions(db=db) == {"cancelled": 0}
 
 
-def test_scheduler_tolerates_late_starts():
-    """Live 2026-09-30: APScheduler's default misfire_grace_time is 1s and jobs start
-    1.3-2s late, so 8,514 of 8,520 intake-sweep runs in 30 days were skipped as missed."""
-    import app.main as main
-
-    defaults = main._scheduler._job_defaults
-    assert defaults["misfire_grace_time"] >= 60
-    assert defaults["coalesce"] is True
-    assert defaults["max_instances"] == 1
-
-
 def test_sweep_job_is_registered_in_the_scheduler():
-    import inspect
+    import app.queue.tasks  # noqa: F401  (registers the periodic tasks)
+    from app.queue.app import queue_app
 
-    import app.main as main
-
-    src = inspect.getsource(main)
-    assert "intake-staleness-sweep" in src
-    assert "_sweep_stale_intake_sessions" in src
+    assert "intake-staleness-sweep" in queue_app.tasks

@@ -10,7 +10,7 @@
 | WhatsApp | Meta Cloud API Direct | — |
 | Voice | TeleCMI click-to-call + recording | services/telecmi_client.py |
 | Payments | Razorpay Payment Links API | services/payment_razorpay.py |
-| Scheduler | APScheduler (AsyncIO) | app/main.py |
+| Scheduler | Procrastinate 3.10 task queue (Postgres schema `procrastinate`, worker inside the web process) | app/queue/ (tasks.py, safety.py, status.py), app/main.py lifespan |
 | Cache | In-process prompt cache (60s TTL) | ai_reply.py:_prompt_cache |
 
 ## Provider Decisions (Locked)

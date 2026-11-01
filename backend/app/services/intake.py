@@ -2049,7 +2049,7 @@ async def _close_idle_for_tenant(db, tenant_id: str, now: datetime) -> int:
 
 
 async def sweep_stale_intake_sessions(db=None) -> dict:
-    """APScheduler job (every 5 min).
+    """Queue task intake-staleness-sweep (every 5 min).
 
     - Unfinished deals (every status before paid, offer_pending included) with no lead
       message and no real progress for the tenant's deal_idle_close_days

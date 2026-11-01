@@ -60,8 +60,8 @@ def interval_seconds(cron: str, now: datetime) -> float | None:
 
 
 async def build_jobs(app, now: datetime, runs_failures, started_at: datetime | None) -> list[dict]:
-    """Same dicts as the APScheduler branch of operator._build_scheduler_jobs. `started_at` is
-    when this process started its scheduler: a task with no success since boot is judged from it.
+    """The Scheduler page rows (operator._build_scheduler_jobs). `started_at` is
+    when this process started its queue worker: a task with no success since boot is judged from it.
     `runs_failures(task_name)` -> (last_failure_row | None, errors_24h): the scheduler_runs
     lookups, which stay in operator.py (sync Supabase calls, sent to a thread there)."""
     conn = app.connector

@@ -1,22 +1,19 @@
-"""M2: the 24 APScheduler jobs as Procrastinate periodic tasks (SPEC.md section 5).
+"""M2: the 24 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
 
 Run with:
     cd backend && python -m pytest tests/test_queue_tasks.py -q -p no:cacheprovider
 """
 import inspect
-import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
-from apscheduler.triggers.cron import CronTrigger
 from croniter import croniter
 
 import app.main
 from app.queue import tasks as queue_tasks
 from app.queue.app import queue_app
-from test_scheduler_local_mode import FakeScheduler
+from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
 
 START = datetime(2026, 11, 2, 0, 0, tzinfo=timezone.utc)  # a Monday
 FIRES = 30
@@ -39,7 +36,7 @@ SYNC_JOBS = {
 
 # id -> (patch target, is the callee async, receives the Supabase client)
 CALLEES = {
-    "scheduled-broadcasts": ("app.main._process_scheduled_broadcasts_body", True, False),
+    "scheduled-broadcasts": ("app.main._process_scheduled_broadcasts", True, False),
     "token-health-check": ("app.main._check_token_health", True, False),
     "reengagement-rules": ("app.services.reengagement_service.process_due_reengagements", True, False),
     "silence-nudge": ("app.services.silence_nudge.drain_due_nudges", True, False),
@@ -58,7 +55,7 @@ CALLEES = {
     "sms-reconcile": ("app.services.sms_delivery.reconcile", True, True),
     "numbers-pool-sync": ("app.services.number_sync.sync_all_tenants_pool", True, False),
     "send-log-prune": ("app.services.outbound_router.prune_send_log", True, False),
-    "scheduler-runs-prune": ("app.main._prune_scheduler_runs_body", True, False),
+    "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
     "private-send-meta-reconcile": ("app.services.private_send.process_meta_reconcile", True, False),
     "crm-cutoff-sweep": ("app.services.call_ai_pipeline.sweep_crm_cutoff", True, False),
     "call-alert-summary": ("app.services.call_alerts.send_morning_summaries", False, True),
@@ -66,17 +63,30 @@ CALLEES = {
 }
 
 
-@pytest_asyncio.fixture
-async def apscheduler_jobs() -> dict[str, dict]:
-    """Every add_job call the lifespan makes, keyed by job id."""
-    scheduler = FakeScheduler()
-    with patch("app.main._scheduler", scheduler), patch("app.main.settings.scheduler_enabled", False):
-        async with app.main.lifespan(app.main.app):
-            pass
-    return {kw["id"]: kw for _, _, kw in scheduler.calls["add_job"]}
+IST = timezone(timedelta(hours=5, minutes=30))
+MONDAY = 0
+
+# The intended schedule, as people say it. Interval jobs: seconds between runs, aligned to the
+# clock. Daily jobs: IST wall-clock times, optionally on one weekday only.
+EVERY = {
+    "scheduled-broadcasts": 60, "reengagement-rules": 60, "silence-nudge": 60,
+    "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
+    "scheduled-templates": 60, "sms-send": 60, "assignment-sweep": 120, "call-ai-sweep": 180,
+    "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
+    "sms-reconcile": 900, "recycle-contacts": 1800, "ad-insights-sync": 3600,
+    "token-health-check": 4 * 3600, "number-quality-sync": 4 * 3600,
+}
+AT_IST = {
+    "numbers-pool-sync": (["06:00", "18:00"], None),
+    "send-log-prune": (["03:00"], None),
+    "scheduler-runs-prune": (["03:15"], None),
+    "private-send-meta-reconcile": (["03:30"], None),
+    "call-alert-summary": ([f"{MORNING_SUMMARY_HOUR_IST:02d}:00"], None),
+    "brain-weekly-digest": (["09:00"], MONDAY),
+}
 
 
-# The queue's own upkeep tasks (app/queue/safety.py), not APScheduler jobs.
+# The queue's own upkeep tasks (app/queue/safety.py), not business jobs.
 SAFETY_TASKS = {"rescue-stalled", "queue-cleanup"}
 
 
@@ -91,9 +101,9 @@ def _call_task(name: str):
     return func(timestamp=0)
 
 
-def test_every_apscheduler_job_has_a_periodic_task(apscheduler_jobs):
+def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
-    assert every == set(apscheduler_jobs) | SAFETY_TASKS
+    assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
     assert len(_periodic()) == 24
 
 
@@ -102,15 +112,17 @@ def test_task_name_matches_periodic_id():
         assert task_name == periodic_id == pt.task.name
 
 
-def _apscheduler_fires(kw: dict) -> list[datetime]:
-    fields = {k: kw[k] for k in ("day_of_week", "hour", "minute") if k in kw}
-    trigger = CronTrigger(timezone=kw["timezone"], **fields)
-    fires, prev, now = [], None, START
-    for _ in range(FIRES):
-        prev = trigger.get_next_fire_time(prev, now)
-        fires.append(prev)
-        now = prev
-    return fires
+def _ist_fires(times: list[str], weekday: int | None) -> list[datetime]:
+    fires, day = [], START.astimezone(IST).date()
+    while len(fires) < FIRES:
+        if weekday is None or day.weekday() == weekday:
+            for t in times:
+                h, m = map(int, t.split(":"))
+                at = datetime(day.year, day.month, day.day, h, m, tzinfo=IST).astimezone(timezone.utc)
+                if at > START:
+                    fires.append(at)
+        day += timedelta(days=1)
+    return sorted(fires)[:FIRES]
 
 
 def _croniter_fires(cron: str) -> list[datetime]:
@@ -118,28 +130,17 @@ def _croniter_fires(cron: str) -> list[datetime]:
     return [it.get_next(datetime) for _ in range(FIRES)]
 
 
-def test_cron_jobs_fire_at_the_same_instants(apscheduler_jobs):
-    cron_ids = [i for i, kw in apscheduler_jobs.items() if kw["trigger"] == "cron"]
-    assert len(cron_ids) == 6
-    for job_id in cron_ids:
-        expected = _apscheduler_fires(apscheduler_jobs[job_id])
-        assert _croniter_fires(_periodic()[job_id].cron) == expected, job_id
+def test_daily_jobs_fire_at_their_ist_times():
+    for job_id, (times, weekday) in AT_IST.items():
+        assert _croniter_fires(_periodic()[job_id].cron) == _ist_fires(times, weekday), job_id
 
 
-def test_interval_jobs_keep_their_period_aligned_to_the_clock(apscheduler_jobs):
-    interval_ids = [i for i, kw in apscheduler_jobs.items() if kw["trigger"] == "interval"]
-    assert len(interval_ids) == 18
-    for job_id in interval_ids:
-        kw = apscheduler_jobs[job_id]
-        seconds = kw.get("minutes", 0) * 60 + kw.get("hours", 0) * 3600
+def test_interval_jobs_keep_their_period_aligned_to_the_clock():
+    for job_id, seconds in EVERY.items():
         fires = _croniter_fires(_periodic()[job_id].cron)
         gaps = {(b - a).total_seconds() for a, b in zip(fires, fires[1:])}
         assert gaps == {seconds}, job_id
-
-
-def test_call_alert_summary_follows_the_morning_summary_hour(apscheduler_jobs):
-    expected = _apscheduler_fires(apscheduler_jobs["call-alert-summary"])
-    assert _croniter_fires(_periodic()["call-alert-summary"].cron) == expected
+        assert all(f.timestamp() % seconds == 0 for f in fires), job_id
 
 
 def test_queues():
@@ -203,27 +204,7 @@ async def test_a_service_error_propagates_so_the_job_is_marked_failed(job_id):
 @pytest.mark.asyncio
 async def test_scheduled_broadcasts_sets_the_heartbeat_for_the_ready_check():
     app.main._heartbeats["scheduled-broadcasts"] = None
-    with patch("app.main._process_scheduled_broadcasts_body", AsyncMock()):
+    with patch("app.main._process_scheduled_broadcasts", AsyncMock()):
         await _run("scheduled-broadcasts")
     assert isinstance(app.main._heartbeats["scheduled-broadcasts"], datetime)
 
-
-@pytest.mark.parametrize("wrapper,body", [
-    ("_process_scheduled_broadcasts", "_process_scheduled_broadcasts_body"),
-    ("_prune_scheduler_runs", "_prune_scheduler_runs_body"),
-])
-@pytest.mark.asyncio
-async def test_the_apscheduler_wrapper_still_swallows_and_logs(wrapper, body, caplog):
-    caplog.set_level(logging.ERROR, logger="app.main")
-    with patch(f"app.main.{body}", AsyncMock(side_effect=RuntimeError("boom"))) as mock:
-        await getattr(app.main, wrapper)()
-    mock.assert_awaited_once()
-    assert any("boom" in r.message for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_the_broadcast_wrapper_still_stamps_its_heartbeat():
-    app.main._heartbeats["scheduled-broadcasts"] = None
-    with patch("app.main._process_scheduled_broadcasts_body", AsyncMock()):
-        await app.main._process_scheduled_broadcasts()
-    assert isinstance(app.main._heartbeats["scheduled-broadcasts"], datetime)

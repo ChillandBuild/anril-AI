@@ -151,7 +151,7 @@ host=github.com
 - **Security & Multi-Tenancy**: RLS launch blocker (Migration 114) + performance checks (Migration 115).
 - **Shift Time Overrides**: Multi-tenant shift hour schedules per caller (Migration 112) + ShiftTimeline ranges.
 - **Call Scripts Cockpit integration**: Segment-based routing, branch outcomes, and scripts cockpit panel (Migration 111).
-- **Contact Recycling Engine**: Automatic APScheduler recycling job to re-queue unreachable voice leads (Migration 111).
+- **Contact Recycling Engine**: Automatic scheduled recycling job to re-queue unreachable voice leads (Migration 111).
 
 ## Tooling Follow-ups
 - **No DESIGN.md (found 2026-10-07; a stray Linear-copy DESIGN.md was deleted 2026-10-25, gap still open), Auto Messages v2 design review)**: every page re-derives buttons, pills and colours from `tailwind.config.ts` and whatever components it happens to find, so new pages drift (a different "Sent" green, new button shapes). Write one DESIGN.md naming the tokens and the shared components (SwitchPill, CopyButton, primaryBtn/ghostBtn, inputCls, STATUS_STYLE). Not blocking: the Auto Messages v2 plan lists its own components (section 2.4a).

@@ -139,6 +139,11 @@ the same response shapes, plus tests for pause and run-now.
 
 **Done when:** step 2 runs 24 h with every task green or explained, and step 3 was tried once.
 
+**Status (2026-11-01): DONE.** Flipped 2026-10-31 ~18:57 UTC; the first night every daily task ran
+exactly once on time, 0 failures. Step 4 was done early at the user's request: APScheduler code, the
+flag and the dependency are gone. scheduler_runs was kept (the queue writes failures there) and
+its old history was emptied.
+
 ## 6. Testing strategy
 
 - **Unit (pytest, no DB):** task registry (24 ids, cron, queue, class), each task calls its service,

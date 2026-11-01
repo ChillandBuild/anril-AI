@@ -1,6 +1,5 @@
-"""The 24 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls the same
-service function the APScheduler wrapper in main.py calls, minus its try/except, so a failure
-marks the job failed. Cron is UTC; IST is UTC+5:30."""
+"""The 24 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
 
@@ -46,7 +45,7 @@ async def scheduled_broadcasts(timestamp: int) -> None:
     from datetime import datetime, timezone
     from app import main
     main._heartbeats["scheduled-broadcasts"] = datetime.now(timezone.utc)
-    await main._process_scheduled_broadcasts_body()
+    await main._process_scheduled_broadcasts()
 
 
 @queue_app.periodic(cron="0 */4 * * *", periodic_id="token-health-check")
@@ -181,7 +180,7 @@ async def send_log_prune(timestamp: int) -> None:
 @queue_app.task(name="scheduler-runs-prune", queue="maintenance")
 async def scheduler_runs_prune(timestamp: int) -> None:
     from app import main
-    await main._prune_scheduler_runs_body()
+    await main._prune_scheduler_runs()
 
 
 @queue_app.periodic(cron="0 22 * * *", periodic_id="private-send-meta-reconcile")  # 03:30 IST

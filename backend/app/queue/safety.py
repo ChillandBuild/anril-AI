@@ -15,7 +15,7 @@ STALLED_AFTER_SECONDS = 120
 
 
 async def _record_failure(connector, task_name: str, slot: int | None, error: str, started: float | None) -> None:
-    """One scheduler_runs row per failure, as the APScheduler listener writes. Best-effort."""
+    """One scheduler_runs row per failure: the error text the Scheduler page shows. Best-effort."""
     try:
         scheduled = datetime.fromtimestamp(slot, timezone.utc) if slot is not None else None
         lateness_ms = int((started - slot) * 1000) if slot is not None and started is not None else None

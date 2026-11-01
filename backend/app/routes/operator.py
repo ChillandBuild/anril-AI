@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.config import settings
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user
 from app.dependencies.system_admin import get_system_admin
@@ -2182,69 +2181,10 @@ def _parse_ts(value) -> datetime | None:
 _NOT_RUNNING_INTERVALS = 3
 
 
-def _build_scheduler_jobs(db, now) -> list[dict]:
-    """Fetch each global APScheduler job's last-run status and 24h error count.
-
-    Shared by `GET /scheduler-health` (the Scheduler page) and `GET /alerts`
-    (the operator alert center), so both read the same signals instead of
-    running the queries twice.
-    """
-    from datetime import timedelta
-    from app.main import _scheduler, _scheduler_started_at, _last_success
-
-    day_ago = (now - timedelta(hours=24)).isoformat()
-
-    jobs_out = []
-    for job in _scheduler.get_jobs():
-        # scheduler_runs holds failures (successes before 2026-10-31 age out in 7 days);
-        # this process's last success is in memory. The newer of the two is the last run.
-        last = (
-            db.table("scheduler_runs")
-            .select("status, ran_at, lateness_ms, error")
-            .eq("job_id", job.id)
-            .order("ran_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        last_row = (last.data or [None])[0]
-        ok = _last_success.get(job.id)
-        last_success = ok["ran_at"] if ok else None
-        if ok and (not last_row or _parse_ts(ok["ran_at"]) > _parse_ts(last_row["ran_at"])):
-            last_row = {"status": "success", "ran_at": ok["ran_at"], "lateness_ms": ok["lateness_ms"], "error": None}
-        interval = getattr(job.trigger, "interval", None)  # cron jobs have none
-        errs = (
-            db.table("scheduler_runs")
-            .select("id", count="exact")
-            .eq("job_id", job.id)
-            .eq("status", "error")
-            .gte("ran_at", day_ago)
-            .execute()
-        )
-        jobs_out.append({
-            "id": job.id,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-            "paused": job.next_run_time is None,
-            "last_status": last_row["status"] if last_row else None,
-            "last_run": last_row["ran_at"] if last_row else None,
-            "last_lateness_ms": last_row["lateness_ms"] if last_row else None,
-            "last_error": last_row["error"] if last_row else None,
-            "errors_24h": errs.count or 0,
-            "last_success": last_success,
-            "interval_seconds": interval.total_seconds() if interval else None,
-            # The newer of the last success and this process's start: a job with no success
-            # since boot is judged from boot, never from a success in a previous deploy.
-            "watch_from": max(
-                (t for t in (_parse_ts(last_success), _scheduler_started_at) if t), default=None,
-            ),
-        })
-
-    return jobs_out
-
-
 @contextlib.contextmanager
 def _queue_connected():
-    """The queue app is opened by the lifespan only when SCHEDULER_BACKEND=procrastinate and the
-    scheduler is on; anywhere else (or if Postgres is down) the console answers 503, not a crash."""
+    """The queue app is opened by the lifespan only when the scheduler is on and DATABASE_URL is
+    set; anywhere else (or if Postgres is down) the console answers 503, not a crash."""
     import procrastinate.exceptions
     import psycopg
     import psycopg_pool
@@ -2256,10 +2196,12 @@ def _queue_connected():
         raise HTTPException(status_code=503, detail="Task queue not connected")
 
 
-async def _build_queue_scheduler_jobs(db, now) -> list[dict]:
-    """Procrastinate branch of `_build_scheduler_jobs`: same dicts. Run state comes from the
-    queue tables in one query; failures (last_error, errors_24h) still come from scheduler_runs,
-    which the queue's safety middleware writes exactly as the APScheduler listener does."""
+async def _build_scheduler_jobs(db, now) -> list[dict]:
+    """Each queue task's next run, pause state, last run and 24h error count.
+
+    Shared by `GET /scheduler-health` (the Scheduler page) and `GET /alerts` (the operator
+    alert center). Run state comes from the queue tables in one query; failures (last_error,
+    errors_24h) come from scheduler_runs, which the queue's safety middleware writes."""
     from app.queue.status import build_jobs
 
     day_ago = (now - timedelta(hours=24)).isoformat()
@@ -2290,26 +2232,9 @@ def _queue_app():
     return queue_app
 
 
-async def _run_queue_job(job_id: str, _admin: dict) -> dict:
-    """Procrastinate branch of `POST /scheduler/{job_id}/run`: defer the task for right now.
-    A paused task is rejected, as under APScheduler."""
-    from app.queue import status as queue_status
-
-    queue_app = _queue_app()
-    if job_id not in queue_status.registered_tasks(queue_app):
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-    now = datetime.now(timezone.utc)
-    with _queue_connected():
-        if await queue_status.is_paused(queue_app, job_id):
-            raise HTTPException(status_code=409, detail="Job is paused — resume it before running")
-        pt = await queue_status.run_now(queue_app, job_id, now)
-    logger.warning("Manual scheduler run triggered job_id=%s admin_id=%s", job_id, _admin.get("user_id"))
-    return {"id": job_id, "triggered": True, "next_run": queue_status.next_run(pt.cron, now).isoformat()}
-
-
 @router.get("/scheduler-health")
 async def scheduler_health(_admin: dict = Depends(get_system_admin)):
-    """System-wide APScheduler health: each global job's next run, last run
+    """System-wide scheduler health: each queue task's next run, last run
     status/lag, recent error count, plus recent failures. Operator-only —
     the jobs are platform-level (not per tenant)."""
     from datetime import datetime, timezone
@@ -2317,11 +2242,7 @@ async def scheduler_health(_admin: dict = Depends(get_system_admin)):
     db = get_supabase()
     now = datetime.now(timezone.utc)
 
-    # Sync Supabase calls go to a thread: on the event loop one stalled query freezes the server.
-    if settings.scheduler_backend == "procrastinate":
-        jobs_out = await _build_queue_scheduler_jobs(db, now)
-    else:
-        jobs_out = await asyncio.to_thread(_build_scheduler_jobs, db, now)
+    jobs_out = await _build_scheduler_jobs(db, now)
 
     recent_failures = await asyncio.to_thread(
         lambda: db.table("scheduler_runs")
@@ -2341,82 +2262,33 @@ async def scheduler_health(_admin: dict = Depends(get_system_admin)):
 @router.post("/scheduler/{job_id}/toggle")
 async def toggle_scheduler_job(job_id: str, _admin: dict = Depends(get_system_admin)):
     """Pause a running job or resume a paused one. Operator-only."""
-    if settings.scheduler_backend == "procrastinate":
-        from app.queue import status as queue_status
-        queue_app = _queue_app()
-        if job_id not in queue_status.registered_tasks(queue_app):
-            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-        with _queue_connected():
-            return await queue_status.toggle(queue_app, job_id, datetime.now(timezone.utc))
+    from app.queue import status as queue_status
 
-    from app.main import _scheduler
-
-    job = _scheduler.get_job(job_id)
-    if not job:
+    queue_app = _queue_app()
+    if job_id not in queue_status.registered_tasks(queue_app):
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-
-    if job.next_run_time is None:
-        _scheduler.resume_job(job_id)
-        job = _scheduler.get_job(job_id)
-        return {"id": job_id, "paused": False, "next_run": job.next_run_time.isoformat() if job.next_run_time else None}
-    else:
-        _scheduler.pause_job(job_id)
-        return {"id": job_id, "paused": True, "next_run": None}
-
-
-def _resolve_scheduler_run(job_id: str, job) -> dict:
-    """Pure decision logic for `POST /scheduler/{job_id}/run`.
-
-    Given the job_id requested and the APScheduler `Job` looked up for it
-    (or `None` if unknown), decide whether the run can proceed. Raises the
-    same `HTTPException`s the route returns so this can be unit-tested
-    without a live scheduler. Does NOT mutate the job — the caller applies
-    `job.modify(next_run_time=...)` only after this returns cleanly.
-    """
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-    if job.next_run_time is None:
-        raise HTTPException(status_code=409, detail="Job is paused — resume it before running")
-    return {"id": job_id}
+    with _queue_connected():
+        return await queue_status.toggle(queue_app, job_id, datetime.now(timezone.utc))
 
 
 @router.post("/scheduler/{job_id}/run")
 async def run_scheduler_job(job_id: str, _admin: dict = Depends(get_system_admin)):
-    """Trigger an immediate run of a scheduled job without disturbing its
-    regular schedule. Operator-only.
+    """Queue one run of a scheduled task now, without touching its regular schedule.
+    Operator-only. A paused task is rejected rather than silently resumed."""
+    from app.queue import status as queue_status
 
-    Implementation note: this does NOT call the job function synchronously
-    in the request thread. It nudges APScheduler's `next_run_time` to now,
-    so the job runs ASAP on the scheduler's own executor; APScheduler then
-    recomputes the next scheduled run from the job's trigger as usual.
-    Paused jobs (`next_run_time is None`) are rejected rather than silently
-    resumed, to keep Task 2's pause semantics intact.
-    """
-    if settings.scheduler_backend == "procrastinate":
-        return await _run_queue_job(job_id, _admin)
-
-    from app.main import _scheduler
-
-    job = _scheduler.get_job(job_id)
-    _resolve_scheduler_run(job_id, job)
-
-    job.modify(next_run_time=datetime.now(timezone.utc))
-    job = _scheduler.get_job(job_id)
-
-    logger.warning(
-        "Manual scheduler run triggered job_id=%s admin_id=%s",
-        job_id,
-        _admin.get("user_id"),
-    )
-    # Scheduler jobs are platform-wide (no tenant_id), so this is skipped
-    # rather than forcing a tenant scope onto record_audit_event; the
-    # warning log above is the audit trail for this action.
-
-    return {
-        "id": job_id,
-        "triggered": True,
-        "next_run": job.next_run_time.isoformat() if job and job.next_run_time else None,
-    }
+    queue_app = _queue_app()
+    if job_id not in queue_status.registered_tasks(queue_app):
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    now = datetime.now(timezone.utc)
+    with _queue_connected():
+        if await queue_status.is_paused(queue_app, job_id):
+            raise HTTPException(status_code=409, detail="Job is paused — resume it before running")
+        pt = await queue_status.run_now(queue_app, job_id, now)
+    # Scheduler jobs are platform-wide (no tenant_id), so record_audit_event is skipped;
+    # this warning is the audit trail.
+    logger.warning("Manual scheduler run triggered job_id=%s admin_id=%s", job_id, _admin.get("user_id"))
+    return {"id": job_id, "triggered": True, "next_run": queue_status.next_run(pt.cron, now).isoformat()}
 
 
 @router.get("/system-health")
@@ -2631,13 +2503,15 @@ async def operator_alerts(_admin: dict = Depends(get_system_admin)):
     now = datetime.now(timezone.utc)
 
     try:
-        if settings.scheduler_backend == "procrastinate":
-            # Awaited here: the queue connector is async. The rest is sync Supabase, so it runs
-            # in a thread, where it must not touch the event loop.
-            queue_jobs = await _build_queue_scheduler_jobs(db, now)
-            alerts = await asyncio.to_thread(_compute_operator_alerts, db, now, queue_jobs)
-        else:
-            alerts = await asyncio.to_thread(_compute_operator_alerts, db, now, None)
+        # Awaited here: the queue connector is async. The rest is sync Supabase, so it runs
+        # in a thread, where it must not touch the event loop. With the queue down (or off on a
+        # laptop) the other alerts still show.
+        try:
+            scheduler_jobs = await _build_scheduler_jobs(db, now)
+        except Exception as e:
+            logger.warning("Operator alerts: scheduler jobs unavailable: %s", e)
+            scheduler_jobs = []
+        alerts = await asyncio.to_thread(_compute_operator_alerts, db, now, scheduler_jobs)
     except Exception as e:
         logger.warning("Operator alerts lookup failed: %s", e)
         alerts = []
@@ -2646,8 +2520,6 @@ async def operator_alerts(_admin: dict = Depends(get_system_admin)):
 
 def _compute_operator_alerts(db, now, scheduler_jobs) -> list[dict]:
     fleet_rows = _build_fleet_rows(db)
-    if scheduler_jobs is None:
-        scheduler_jobs = _build_scheduler_jobs(db, now)
 
     tenant_names = {row["id"]: row["name"] for row in fleet_rows}
     alert_incident_cutoff = (now - timedelta(hours=48)).isoformat()

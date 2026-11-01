@@ -14,15 +14,6 @@ def _settings(**kw):
     return Settings(supabase_url="http://x", supabase_service_key="k", **kw)
 
 
-def test_scheduler_backend_defaults_to_apscheduler():
-    assert _settings().scheduler_backend == "apscheduler"
-
-
-def test_an_unknown_scheduler_backend_is_rejected():
-    with pytest.raises(ValueError, match="SCHEDULER_BACKEND"):
-        _settings(scheduler_backend="celery")
-
-
 def test_the_queue_pool_is_small_and_pins_the_search_path():
     from app.queue.app import queue_app, _set_search_path
 

@@ -48,9 +48,8 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     outbound_mode: str = "live"  # "live" | "dry_run"
     outbound_allow_to: str = ""  # comma-separated recipients that still get REAL sends in dry_run
-    # Scheduled jobs run on APScheduler (in-process) or Procrastinate (Postgres queue, SPEC.md).
-    # DATABASE_URL is the Supabase session pooler string (port 5432); only the queue uses it.
-    scheduler_backend: str = "apscheduler"  # "apscheduler" | "procrastinate"
+    # Scheduled jobs run on Procrastinate (Postgres queue, SPEC.md). DATABASE_URL is the Supabase
+    # session pooler string (port 5432); without it no scheduled job runs.
     database_url: str | None = None
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
@@ -59,14 +58,6 @@ class Settings(BaseSettings):
     def _check_outbound_mode(self) -> "Settings":
         if self.outbound_mode not in ("live", "dry_run"):
             raise ValueError(f"OUTBOUND_MODE must be 'live' or 'dry_run', got {self.outbound_mode!r}")
-        return self
-
-    @model_validator(mode="after")
-    def _check_scheduler_backend(self) -> "Settings":
-        if self.scheduler_backend not in ("apscheduler", "procrastinate"):
-            raise ValueError(
-                f"SCHEDULER_BACKEND must be 'apscheduler' or 'procrastinate', got {self.scheduler_backend!r}"
-            )
         return self
 
     @model_validator(mode="after")

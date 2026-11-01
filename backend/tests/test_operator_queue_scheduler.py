@@ -1,5 +1,5 @@
-"""Operator scheduler console on the Procrastinate backend (SPEC.md M4): same response shapes as
-the APScheduler branch, read from procrastinate_jobs/events and task_controls.
+"""Operator scheduler console (SPEC.md M4): the Scheduler page rows, pause and run-now, read from
+procrastinate_jobs/events and task_controls.
 
 Needs a throwaway Postgres: set QUEUE_TEST_DSN (never the live database)."""
 import asyncio
@@ -16,7 +16,7 @@ needs_pg = pytest.mark.skipif(not DSN, reason="QUEUE_TEST_DSN not set (throwaway
 
 NOW = datetime(2026, 10, 31, 12, 0, 30, tzinfo=timezone.utc)
 BOOT = NOW - timedelta(hours=1)  # this process started an hour ago
-APSCHEDULER_KEYS = {
+PAGE_KEYS = {
     "id", "next_run", "paused", "last_status", "last_run", "last_lateness_ms", "last_error",
     "errors_24h", "last_success", "interval_seconds", "watch_from",
 }
@@ -94,22 +94,21 @@ def build(dsn, db=None):
 
     async def go():
         async with open_queue(dsn):
-            return await operator._build_queue_scheduler_jobs(db or failures_db(), NOW)
+            return await operator._build_scheduler_jobs(db or failures_db(), NOW)
 
-    with patch("app.routes.operator.settings") as s, patch("app.main._scheduler_started_at", BOOT):
-        s.scheduler_backend = "procrastinate"
+    with patch("app.main._scheduler_started_at", BOOT):
         return {j["id"]: j for j in asyncio.run(go())}
 
 
 @needs_pg
-def test_every_registered_task_is_listed_with_exactly_the_apscheduler_keys(fresh_db):
+def test_every_registered_task_is_listed_with_exactly_the_page_keys(fresh_db):
     import app.queue.tasks  # noqa: F401  (registers the periodic tasks)
     from app.queue.app import queue_app
 
     jobs = build(fresh_db)
     assert len(jobs) == len(queue_app.periodic_registry.periodic_tasks) >= 24
     assert list(jobs) == sorted(jobs)
-    assert all(set(j) == APSCHEDULER_KEYS for j in jobs.values())
+    assert all(set(j) == PAGE_KEYS for j in jobs.values())
     quiet = jobs["token-health-check"]
     assert quiet["last_status"] is None and quiet["last_run"] is None and quiet["last_success"] is None
     assert quiet["errors_24h"] == 0 and quiet["paused"] is False
@@ -170,16 +169,14 @@ def test_a_paused_task_reports_paused_and_no_next_run(fresh_db):
     assert jobs["sms-reconcile"]["paused"] is False and jobs["sms-reconcile"]["next_run"]
 
 
-def call(dsn, coro_fn, backend="procrastinate"):
+def call(dsn, coro_fn):
     from app.routes import operator
 
     async def go():
         async with open_queue(dsn):
             return await coro_fn(operator)
 
-    with patch("app.routes.operator.settings") as s:
-        s.scheduler_backend = backend
-        return asyncio.run(go())
+    return asyncio.run(go())
 
 
 @needs_pg
@@ -232,7 +229,7 @@ def test_a_closed_queue_app_answers_503_on_every_scheduler_route():
     async def attempts():
         out = []
         for fn in (
-            lambda: operator._build_queue_scheduler_jobs(MagicMock(), NOW),
+            lambda: operator._build_scheduler_jobs(MagicMock(), NOW),
             lambda: operator.toggle_scheduler_job("sms-send", _admin={}),
             lambda: operator.run_scheduler_job("sms-send", _admin={}),
             lambda: operator.scheduler_health(_admin={}),
@@ -242,8 +239,7 @@ def test_a_closed_queue_app_answers_503_on_every_scheduler_route():
             out.append((e.value.status_code, e.value.detail))
         return out
 
-    with patch("app.routes.operator.settings") as s, patch("app.routes.operator.get_supabase"):
-        s.scheduler_backend = "procrastinate"
+    with patch("app.routes.operator.get_supabase"):
         # queue_app is never opened in this test: AppNotOpen -> 503
         result = asyncio.run(attempts())
     assert result == [(503, "Task queue not connected")] * 4
@@ -252,21 +248,18 @@ def test_a_closed_queue_app_answers_503_on_every_scheduler_route():
 def test_alerts_do_not_crash_when_the_queue_is_closed():
     from app.routes import operator
 
-    with patch("app.routes.operator.settings") as s, patch("app.routes.operator.get_supabase"), \
+    with patch("app.routes.operator.get_supabase"), \
             patch("app.routes.operator._build_fleet_rows", return_value=[]):
-        s.scheduler_backend = "procrastinate"
         assert asyncio.run(operator.operator_alerts(_admin={})) == {"data": []}
 
 
-def test_apscheduler_backend_never_touches_the_queue():
-    from app.routes import operator
-    from app.queue.app import queue_app
 
-    sched = MagicMock()
-    sched.get_job.return_value = None
-    with patch("app.routes.operator.settings") as s, patch("app.main._scheduler", sched), \
-            patch.object(queue_app.connector, "execute_query_one_async", side_effect=AssertionError("queue touched")):
-        s.scheduler_backend = "apscheduler"
-        with pytest.raises(HTTPException) as e:
-            asyncio.run(operator.toggle_scheduler_job("x", _admin={}))
-    assert e.value.status_code == 404
+def test_other_alerts_still_show_when_the_queue_is_closed():
+    from app.routes import operator
+
+    incident = {"id": "inc-1", "severity": "critical", "title": "Meta token expired"}
+    compute = MagicMock(return_value=[incident])
+    with patch("app.routes.operator.get_supabase"), \
+            patch("app.routes.operator._compute_operator_alerts", compute):
+        assert asyncio.run(operator.operator_alerts(_admin={})) == {"data": [incident]}
+    assert compute.call_args.args[2] == []

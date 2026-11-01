@@ -1,6 +1,6 @@
-"""Lifespan wiring for SCHEDULER_BACKEND (SPEC.md M5): on the queue backend APScheduler keeps the
-24 jobs registered but paused and a Procrastinate worker runs as a background task; a laptop
-(SCHEDULER_ENABLED=false) never opens a queue connection."""
+"""Lifespan wiring (SPEC.md M5): the Procrastinate worker runs as a background task of the web
+process. A laptop (SCHEDULER_ENABLED=false, scripts/dev-backend.sh) or a missing DATABASE_URL never
+starts it, so nothing scheduled runs and no queue connection is opened."""
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -9,53 +9,40 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import app.main
-from tests.test_scheduler_local_mode import FakeScheduler
 
 
-async def _lifespan(backend, enabled, database_url="postgresql://x"):
-    fake = FakeScheduler()
+async def _lifespan(enabled, database_url="postgresql://x"):
     worker = AsyncMock()
-    with patch("app.main._scheduler", fake), \
-            patch("app.main._run_queue_worker", worker), \
-            patch("app.main.settings.scheduler_backend", backend), \
+    with patch("app.main._run_queue_worker", worker), \
             patch("app.main.settings.scheduler_enabled", enabled), \
             patch("app.main.settings.database_url", database_url):
         async with app.main.lifespan(app.main.app):
             await asyncio.sleep(0)
-    return fake, worker
+    return worker
 
 
 @pytest.mark.asyncio
-async def test_queue_backend_pauses_apscheduler_and_starts_the_worker(caplog):
+async def test_production_starts_the_queue_worker(caplog):
     caplog.set_level(logging.INFO, logger="app.main")
-    fake, worker = await _lifespan("procrastinate", True)
-    assert fake.calls["start"][0][1]["paused"] is True
-    assert len(fake.calls["add_job"]) == 24
+    worker = await _lifespan(True)
     worker.assert_awaited_once()
     assert "Schedulers started (procrastinate)" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_a_laptop_on_the_queue_backend_opens_no_connection(caplog):
-    fake, worker = await _lifespan("procrastinate", False)
-    assert fake.calls["start"][0][1]["paused"] is True
+async def test_a_laptop_starts_no_worker_and_says_so(caplog):
+    worker = await _lifespan(False)
     worker.assert_not_called()
-    assert "SCHEDULER_ENABLED=false" in caplog.text
+    assert any(
+        "SCHEDULER_ENABLED=false" in r.message and r.levelname == "WARNING" for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
-async def test_apscheduler_backend_is_unchanged():
-    fake, worker = await _lifespan("apscheduler", True)
-    assert fake.calls["start"][0][1]["paused"] is False
+async def test_without_database_url_no_job_runs_and_it_is_logged(caplog):
+    worker = await _lifespan(True, database_url=None)
     worker.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_queue_backend_without_database_url_falls_back_to_apscheduler(caplog):
-    fake, worker = await _lifespan("procrastinate", True, database_url=None)
-    assert fake.calls["start"][0][1]["paused"] is False
-    worker.assert_not_called()
-    assert "DATABASE_URL is not set" in caplog.text
+    assert any("DATABASE_URL is not set" in r.message and r.levelname == "ERROR" for r in caplog.records)
 
 
 @pytest.mark.asyncio
