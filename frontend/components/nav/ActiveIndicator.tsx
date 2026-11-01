@@ -36,9 +36,14 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
     const box = square?.parentElement;
     if (!square || !box) return;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const aside = box.closest("aside");
 
     const place = (navigated: boolean) => {
-      const row = box.querySelector<HTMLElement>('[aria-current="page"]');
+      const current = box.querySelector<HTMLElement>('[aria-current="page"]');
+      // On the folded strip only the group icons show: mark the group holding the page.
+      const row = aside?.matches("[data-rail]:not([data-peek])")
+        ? (current?.closest("section")?.querySelector<HTMLElement>(":scope > button") ?? current)
+        : current;
       if (!row) {
         square.style.opacity = "0";
         last.current = null;
@@ -97,6 +102,8 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
     };
     const mutations = new MutationObserver(follow);
     mutations.observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-expanded"] });
+    // Folding or peeking the sidebar moves the square between a group and its row.
+    if (aside) mutations.observe(aside, { attributes: true, attributeFilter: ["data-rail", "data-peek"] });
     const resize = new ResizeObserver(() => place(false));
     resize.observe(box);
     return () => {

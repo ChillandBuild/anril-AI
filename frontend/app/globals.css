@@ -409,6 +409,40 @@ canvas {
 
 :root { --sidebar-width: 256px; }
 
+/* Sidebar fold (components/nav/useSidebarRail.ts). Wide pages fold it to a
+   64px icon strip; data-sidebar-rail on <html> narrows --sidebar-width for
+   the layout, header and inbox together. Registered so the change can
+   animate; data-sidebar-anim turns the animation on after the first frame. */
+@property --sidebar-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 256px;
+}
+:root[data-sidebar-rail] { --sidebar-width: 64px; }
+:root[data-sidebar-anim] { transition: --sidebar-width 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* The sidebar sizes itself: a peek widens it over the page while the page
+   stays put at 64px. It drops back under the header only after shrinking. */
+.sidebar-shell {
+  width: 256px;
+  transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s 0.32s;
+}
+.sidebar-shell[data-rail]:not([data-peek]) { width: 64px; }
+.sidebar-shell[data-peek] {
+  z-index: 50;
+  box-shadow: 12px 0 40px rgba(10, 21, 40, 0.35);
+  transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s;
+}
+.nav-lbl, .nav-ws, .nav-badge { white-space: nowrap; transition: opacity 0.2s; }
+.sidebar-shell[data-rail]:not([data-peek]) :is(.nav-lbl, .nav-ws, .nav-badge, .nav-chevron, .nav-held-dot) { opacity: 0; }
+.sidebar-shell[data-rail]:not([data-peek]) .nav-chevron { transition: opacity 0.2s; }
+.sidebar-shell[data-rail]:not([data-peek]) .nav-expander { grid-template-rows: 0fr; }
+/* Folded, the logo shows as the 2x2 mark and skips the page-change wave. */
+.sidebar-shell[data-rail]:not([data-peek]) .anril-mark rect { transform: var(--fold); animation: none; }
+.nav-fold-icon { transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+.sidebar-shell[data-rail] .nav-fold-icon,
+.sidebar-shell[data-rail] .group:hover > .nav-fold-icon { transform: rotate(180deg); }
+
 /* Sidebar, to the v2 study. The active row's tint wipes in left to right just
    as the hopping teal square (components/nav/ActiveIndicator.tsx) lands. */
 .nav-active::before {
@@ -492,19 +526,20 @@ canvas {
 
 /* The logo's four squares in a row fold into the 2x2 brand mark (teal
    top-right) with a quarter turn: they unfold on first show and fold back on
-   hover. The grid shares the row's centre and spills 10.5px above and below
-   into the sidebar's empty padding, so nothing beneath moves. Moves are in
-   the mark's SVG units (components/logo.tsx: 133 = one square plus a gap).
+   hover. The grid is spaced like the favicon (public/icons/anril-favicon.svg:
+   95-unit squares on a 105-unit step), shares the row's centre and spills
+   about 8px above and below into the sidebar's empty padding, so nothing
+   beneath moves. Moves are in the mark's SVG units (components/logo.tsx).
    On every page change the squares wave instead. */
 .anril-mark rect {
   transform-box: fill-box;
   transform-origin: center;
   transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) var(--fold-delay);
 }
-.anril-mark rect:nth-of-type(1) { --fold: translate(133px, -66.5px) rotate(90deg); --fold-delay: 0ms; }
-.anril-mark rect:nth-of-type(2) { --fold: translate(0, 66.5px) rotate(90deg); --fold-delay: 40ms; }
-.anril-mark rect:nth-of-type(3) { --fold: translate(0, 66.5px) rotate(90deg); --fold-delay: 80ms; }
-.anril-mark rect:nth-of-type(4) { --fold: translate(-133px, -66.5px) rotate(90deg); --fold-delay: 120ms; }
+.anril-mark rect:nth-of-type(1) { --fold: translate(147px, -52.5px) rotate(90deg); --fold-delay: 0ms; }
+.anril-mark rect:nth-of-type(2) { --fold: translate(14px, 52.5px) rotate(90deg); --fold-delay: 40ms; }
+.anril-mark rect:nth-of-type(3) { --fold: translate(-14px, 52.5px) rotate(90deg); --fold-delay: 80ms; }
+.anril-mark rect:nth-of-type(4) { --fold: translate(-147px, -52.5px) rotate(90deg); --fold-delay: 120ms; }
 .anril-mark:hover rect, .anril-mark:focus-visible rect { transform: var(--fold); }
 .anril-mark-in rect { animation: anril-unfold 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) calc(350ms + var(--fold-delay)) backwards; }
 @keyframes anril-unfold {
@@ -519,4 +554,5 @@ canvas {
 @media (prefers-reduced-motion: reduce) {
   .nav-active::before, .nav-expander.open > div > * > *, .anril-mark rect { animation: none; }
   .nav-hop-square, .nav-icon, .nav-chevron, .nav-held-dot, .nav-expander, .anril-mark rect { transition: none; }
+  :root[data-sidebar-anim], .sidebar-shell, .nav-lbl, .nav-ws, .nav-badge, .nav-fold-icon { transition: none; }
 }

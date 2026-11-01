@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { ChevronRight, ChevronLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { ChevronRight, ChevronLeft, ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
+import { useSidebarRail } from "@/components/nav/useSidebarRail";
 import {
   ANALYTICS_LINK, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
   dashboardEntry, resolveSectionOpen, sectionContainsPage, visibleEntries,
@@ -34,7 +35,7 @@ const ROW_TOP = "min-h-10 p-2.5 text-[13px]";
 const ROW_NESTED = "min-h-[35px] py-2.5 pr-2.5 text-[12px]";
 const nestedPad = (active: boolean) => (active ? "pl-[26px]" : "pl-5");
 const ICON = "nav-icon shrink-0 text-[#d5f4f4]";
-const BADGE = "flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center";
+const BADGE = "nav-badge flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center";
 
 function MainNavItem({
   href,
@@ -68,7 +69,7 @@ function MainNavItem({
       )}
     >
       {!nested && Icon && <Icon size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />}
-      <span className="min-w-0 flex-1 whitespace-normal leading-5">{label}</span>
+      <span className="nav-lbl min-w-0 flex-1 truncate leading-5">{label}</span>
       {badge}
     </Link>
   );
@@ -103,7 +104,7 @@ function TelecallingGroup({
         aria-expanded={open}
         className={cn(ROW, ROW_NESTED, "pl-5 font-semibold")}
       >
-        <span className="min-w-0 flex-1">{group.label}</span>
+        <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
         <span className={cn("nav-held-dot", !open && active && "is-on")} aria-hidden="true" />
         <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
       </button>
@@ -136,8 +137,8 @@ function TelecallingGroup({
 function SettingsGroupButton({ group, onOpen }: { group: NavGroup; onOpen: () => void }) {
   return (
     <button type="button" onClick={onOpen} className={cn(ROW, ROW_NESTED, "pl-5")}>
-      <span className="min-w-0 flex-1">{group.label}</span>
-      <ChevronRight size={13} strokeWidth={1.6} className="shrink-0" aria-hidden="true" />
+      <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
+      <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
     </button>
   );
 }
@@ -160,6 +161,7 @@ export function Sidebar(_props: SidebarProps) {
   const { status: subStatus, purchasedFeatures } = useSubscription();
   // The logo's squares drop in on first show, then wave on each page change.
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
+  const fold = useSidebarRail(pathname);
 
   // Nested group open state (Telecalling, Settings), unchanged from before.
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -286,7 +288,7 @@ export function Sidebar(_props: SidebarProps) {
       ) : undefined;
     }
     if (key === "brain") {
-      return brainCount ? <BrainNavBadge count={brainCount} variant="row" /> : undefined;
+      return brainCount ? <span className="nav-badge"><BrainNavBadge count={brainCount} variant="row" /></span> : undefined;
     }
     return undefined;
   };
@@ -340,7 +342,15 @@ export function Sidebar(_props: SidebarProps) {
         icon={section.icon}
         open={open}
         holdsActive={holdsActive}
-        onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
+        onToggle={() => {
+          // On the folded strip a group icon peeks the menu with that group open.
+          if (fold.folded) {
+            fold.openPeek();
+            setSectionChoice((prev) => ({ ...prev, [section.key]: true }));
+            return;
+          }
+          setSectionChoice((prev) => ({ ...prev, [section.key]: !open }));
+        }}
       >
         {entries.map(renderEntry)}
       </SidebarSection>
@@ -352,14 +362,20 @@ export function Sidebar(_props: SidebarProps) {
   }
 
   return (
-    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] [--nav-label:#fff] [color-scheme:dark] flex flex-col z-20 select-none w-[var(--sidebar-width)] pt-[22px] pb-[18px] text-white">
-      <div className="shrink-0 px-3.5">
+    <aside
+      data-rail={fold.rail || undefined}
+      data-peek={fold.peek || undefined}
+      {...fold.handlers}
+      className="swiss-sidebar sidebar-shell fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] [--nav-label:#fff] [color-scheme:dark] flex flex-col z-20 select-none pt-[22px] pb-[18px] text-white"
+    >
+      {/* Flex centring keeps the logo centred even on the 64px strip, where it is wider than the space. */}
+      <div className="flex shrink-0 justify-center px-3.5">
         {/* Keyed on the page so the squares replay their wave on every navigation. */}
         <Link
           key={pathname}
           href={dashboard.href}
           aria-label="anril AI home"
-          className={cn("anril-mark mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
+          className={cn("anril-mark mx-auto mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
         >
           <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-white" />
         </Link>
@@ -376,7 +392,7 @@ export function Sidebar(_props: SidebarProps) {
             className={cn(ROW, ROW_TOP, "mb-2 font-semibold")}
           >
             <ChevronLeft size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />
-            <span>Settings</span>
+            <span className="nav-lbl truncate">Settings</span>
           </button>
 
           {SETTINGS_GROUP_ORDER.map((group) => {
@@ -384,7 +400,7 @@ export function Sidebar(_props: SidebarProps) {
             if (groupItems.length === 0) return null;
             return (
               <div key={group} className="pt-3 first:pt-0">
-                <div className="mb-2 px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
+                <div className="nav-ws mb-2 truncate px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
                   {group}
                 </div>
                 {groupItems.map((item) => {
@@ -410,7 +426,7 @@ export function Sidebar(_props: SidebarProps) {
         </div>
       ) : (
         <>
-          <div className="mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
+          <div className="nav-ws mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
           <nav aria-label="Main" className="relative min-h-0 flex-grow overflow-y-auto px-3.5 scrollbar-thin">
             <MainNavItem
               href={dashboard.href}
@@ -426,18 +442,27 @@ export function Sidebar(_props: SidebarProps) {
         </>
       )}
 
-      {/* Pinned footer: Developer. Stays out of the scrolling list, as before. */}
-      {isSubscribed && canSettings && (
-        <div className="relative mx-3.5 mt-auto shrink-0 border-t border-[var(--navy-800)] pt-3.5">
+      {/* Pinned footer: Developer, and the button that folds the sidebar. Stays out of the scrolling list. */}
+      <div className="relative mx-3.5 mt-auto shrink-0 border-t border-[var(--navy-800)] pt-3.5">
+        {isSubscribed && canSettings && (
           <MainNavItem
             href="/dashboard/developer"
             active={pathname.startsWith("/dashboard/developer")}
             icon={Code2}
             label="Developer"
           />
-          <ActiveIndicator pathname={pathname} />
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={fold.toggle}
+          aria-label={fold.rail ? "Expand sidebar" : "Collapse sidebar"}
+          className={cn(ROW, ROW_TOP)}
+        >
+          <ChevronsLeft size={17} strokeWidth={1.6} className={cn(ICON, "nav-fold-icon")} aria-hidden="true" />
+          <span className="nav-lbl min-w-0 flex-1 truncate">{fold.rail ? "Expand" : "Collapse"}</span>
+        </button>
+        <ActiveIndicator pathname={pathname} />
+      </div>
     </aside>
   );
 }

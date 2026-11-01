@@ -347,3 +347,10 @@ export function resolveSectionOpen(
 export function sectionContainsPage(section: NavSection, pathname: string): boolean {
   return section.entries.some((entry) => entry.isActive(pathname));
 }
+
+/** Wide pages that fold the desktop sidebar to its icon strip when opened. */
+const FOLDS_SIDEBAR: readonly NavEntry[] = [CONVERSATIONS, SEGMENTS, INBOUND_LEADS, OUTBOUND_LEADS, DEALS, TELECALLING_GROUP];
+
+export function sidebarFoldsOn(pathname: string): boolean {
+  return FOLDS_SIDEBAR.some((entry) => entry.isActive(pathname));
+}

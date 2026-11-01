@@ -6,6 +6,7 @@ import {
   dashboardEntry,
   resolveSectionOpen,
   sectionContainsPage,
+  sidebarFoldsOn,
   visibleEntries,
   type NavAccess,
   type NavEntry,
@@ -190,4 +191,26 @@ describe("SMS sidebar access", () => {
     expect(sms.isActive("/dashboard/sms-other")).toBe(false);
     expect(resolveSectionOpen(undefined, reach.defaultOpen, true)).toBe(true);
   });
+});
+
+describe("sidebarFoldsOn", () => {
+  it.each([
+    "/dashboard/conversations",
+    "/dashboard/conversations/abc",
+    "/dashboard/leads",
+    "/dashboard/inbound-leads",
+    "/dashboard/outbound-leads",
+    "/dashboard/deals",
+    "/dashboard/telecalling",
+    "/dashboard/telecalling/scheduled",
+  ])("folds the sidebar on the wide page %s", (path) => {
+    expect(sidebarFoldsOn(path)).toBe(true);
+  });
+
+  it.each(["/dashboard", "/dashboard/analytics", "/dashboard/brain", "/dashboard/settings/account", "/dashboard/developer"])(
+    "keeps the sidebar open on %s",
+    (path) => {
+      expect(sidebarFoldsOn(path)).toBe(false);
+    },
+  );
 });

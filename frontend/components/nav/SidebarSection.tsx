@@ -37,7 +37,7 @@ export function SidebarSection({ title, icon: Icon, open, holdsActive = false, o
           className={cn("nav-icon shrink-0", open ? "text-[#78d6d8]" : "text-[#d5f4f4]")}
           aria-hidden="true"
         />
-        <span className="min-w-0 flex-1">{title}</span>
+        <span className="nav-lbl min-w-0 flex-1 truncate">{title}</span>
         <span className={cn("nav-held-dot", !open && holdsActive && "is-on")} aria-hidden="true" />
         <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
       </button>
