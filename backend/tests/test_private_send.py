@@ -808,9 +808,18 @@ def test_usage_row_above_the_daily_plausibility_cap_is_422(env, signing, field):
     assert _post_usage(env, key, {"rows": [_usage_row(**{field: ps.MAX_DAILY_PER_TEMPLATE})]}).status_code == 200
 
 
-def test_reconciled_day_uses_meta_volume_not_the_inflated_report(env, signing):
+class _Oct15(datetime):
+    """The service's clock pinned mid-month: a real "yesterday" falls in last month on the 1st."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 10, 15, 12, tzinfo=tz)
+
+
+def test_reconciled_day_uses_meta_volume_not_the_inflated_report(env, signing, monkeypatch):
+    monkeypatch.setattr(ps, "datetime", _Oct15)
     env.settings[(TENANT, ps.CAP_KEY)] = "100"
-    y = _today(1)
+    y = "2026-10-14"
     env.db.rows("private_send_usage").append({"tenant_id": TENANT, "day": y, "event": "purchased",
                                               "template_id": TPL_A, "reported_sent": 99_000})
     env.db.rows("private_send_meta_daily").append({"tenant_id": TENANT, "day": y, "volume": 40, "aira_sent": 10})
