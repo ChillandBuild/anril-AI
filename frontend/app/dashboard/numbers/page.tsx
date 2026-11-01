@@ -10,6 +10,7 @@ import {
   Search, ArrowRightLeft, ExternalLink, ShieldAlert, Hourglass, Sunrise
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { AiraLoader } from "@/components/AiraLoader";
 import { usePolling } from "@/hooks/usePolling";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
@@ -828,18 +829,18 @@ function NumbersPageContent() {
                   <Smartphone size={20} />
                 </div>
                 <span className="font-label text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary-100/70 text-primary">
-                  {totalPoolUsed >= totalPoolLimit ? "Quota Full" : `${totalPoolLimit - totalPoolUsed} slots free`}
+                  {loading ? "—" : totalPoolUsed >= totalPoolLimit ? "Quota Full" : `${totalPoolLimit - totalPoolUsed} slots free`}
                 </span>
               </div>
               <div>
                 <p className="font-display text-2xl font-bold text-on-surface">
-                  {totalPoolUsed} <span className="text-sm font-semibold text-on-surface-muted">/ {totalPoolLimit} Used</span>
+                  {loading ? "—" : totalPoolUsed} <span className="text-sm font-semibold text-on-surface-muted">/ {loading ? "—" : totalPoolLimit} Used</span>
                 </p>
                 <p className="font-label text-xs text-on-surface-muted mt-0.5">Active Pool Capacity</p>
               </div>
               <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
-                <span>{visible.length} connected</span>
-                {totalPoolUsed >= totalPoolLimit && (
+                <span>{loading ? "—" : visible.length} connected</span>
+                {!loading && totalPoolUsed >= totalPoolLimit && (
                   <a href="/dashboard/subscriptions" className="font-label text-primary font-bold hover:underline inline-flex items-center gap-0.5">
                     Upgrade <ExternalLink size={10} />
                   </a>
@@ -854,12 +855,12 @@ function NumbersPageContent() {
                   <Activity size={20} />
                 </div>
                 <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                  {Math.round(totalSendPct)}% used
+                  {loading ? "—" : `${Math.round(totalSendPct)}% used`}
                 </span>
               </div>
               <div>
                 <p className="font-display text-2xl font-bold text-on-surface">
-                  {totalDailySends.toLocaleString()} <span className="text-sm font-semibold text-on-surface-muted">/ {formatLimit(totalDailyCapacity)}</span>
+                  {loading ? "—" : totalDailySends.toLocaleString()} <span className="text-sm font-semibold text-on-surface-muted">/ {loading ? "—" : formatLimit(totalDailyCapacity)}</span>
                 </p>
                 <p className="font-label text-xs text-on-surface-muted mt-0.5" title="People sent a template outside their 24-hour chat window, over the last 24 hours. This is what Meta counts toward your limit. Broadcasts stop at 90% of it, leaving room for messages sent outside Anril; app messages never stop.">Used of Meta&apos;s limit (Anril&apos;s count)</p>
               </div>
@@ -870,7 +871,7 @@ function NumbersPageContent() {
                       "h-full rounded-full transition-all duration-500",
                       totalSendPct > 85 ? "bg-red-500" : totalSendPct > 50 ? "bg-amber-500" : "bg-emerald-500"
                     )}
-                    style={{ width: `${Math.max(totalSendPct, 3)}%` }}
+                    style={{ width: `${loading ? 0 : Math.max(totalSendPct, 3)}%` }}
                   />
                 </div>
               </div>
@@ -882,26 +883,30 @@ function NumbersPageContent() {
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                   <ShieldCheck size={20} />
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label text-[11px] font-bold border ${QUALITY_BG[overallQuality]}`}>
-                  <span className={`w-2 h-2 rounded-full animate-pulse ${QUALITY_COLOR[overallQuality]}`} />
-                  {QUALITY_LABEL[overallQuality]} Quality
-                </span>
+                {loading ? (
+                  <span className="font-label text-[11px] font-bold text-on-surface-muted">—</span>
+                ) : (
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label text-[11px] font-bold border ${QUALITY_BG[overallQuality]}`}>
+                    <span className={`w-2 h-2 rounded-full animate-pulse ${QUALITY_COLOR[overallQuality]}`} />
+                    {QUALITY_LABEL[overallQuality]} Quality
+                  </span>
+                )}
               </div>
               <div>
                 <p className="font-display text-2xl font-bold text-on-surface">
-                  {healthyCount} <span className="text-sm font-semibold text-on-surface-muted">Healthy</span>
+                  {loading ? "—" : healthyCount} <span className="text-sm font-semibold text-on-surface-muted">Healthy</span>
                 </p>
                 <p className="font-label text-xs text-on-surface-muted mt-0.5">Portfolio Health Status</p>
               </div>
               <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
                 <span>
-                  {pausedCount > 0
+                  {loading ? "—" : pausedCount > 0
                     ? `${pausedCount} paused line${pausedCount > 1 ? "s" : ""}`
                     : activeLineCount === visible.length
                     ? "All lines active"
                     : `${activeLineCount} of ${visible.length} lines active`}
                 </span>
-                <span className="text-emerald-700 font-semibold">Meta synced</span>
+                {!loading && <span className="text-emerald-700 font-semibold">Meta synced</span>}
               </div>
             </div>
 
@@ -917,15 +922,15 @@ function NumbersPageContent() {
               </div>
               <div>
                 <p className="font-display text-lg font-bold text-on-surface truncate">
-                  {primaryNumber ? primaryNumber.display_name : "None Set"}
+                  {loading ? "—" : primaryNumber ? primaryNumber.display_name : "None Set"}
                 </p>
                 <p className="font-mono text-xs text-on-surface-muted mt-0.5 truncate">
-                  {primaryNumber ? primaryNumber.number : "No primary selected"}
+                  {loading ? "—" : primaryNumber ? primaryNumber.number : "No primary selected"}
                 </p>
               </div>
               <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
-                <span>{standbyCount} standby failover{standbyCount === 1 ? "" : "s"}</span>
-                {broadcastsPaused ? (
+                <span>{loading ? "—" : `${standbyCount} standby failover${standbyCount === 1 ? "" : "s"}`}</span>
+                {loading ? null : broadcastsPaused ? (
                   <span className="text-amber-700 font-semibold">Broadcasts paused</span>
                 ) : (
                   <span className="text-primary font-semibold">Broadcasting</span>
@@ -1029,10 +1034,7 @@ function NumbersPageContent() {
 
             {/* List / Cards */}
             {loading ? (
-              <div className="py-16 text-center space-y-3">
-                <Loader2 size={24} className="animate-spin text-primary mx-auto" />
-                <p className="font-body text-sm text-on-surface-muted">Loading sender numbers from Meta Cloud…</p>
-              </div>
+              <AiraLoader inline className="min-h-[200px]" />
             ) : visible.length === 0 ? (
               <div className="py-16 text-center max-w-md mx-auto space-y-4">
                 <div className="w-14 h-14 rounded-2xl bg-primary-50 text-primary border border-primary-100 flex items-center justify-center mx-auto">

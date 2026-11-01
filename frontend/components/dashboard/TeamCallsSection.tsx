@@ -1,16 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
+import { AiraLoader } from "@/components/AiraLoader";
 import { api, TelecallingAnalytics } from "@/lib/api";
 
 export function TeamCallsSection() {
   const [data, setData] = useState<TelecallingAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    api.analytics.telecalling().then(res => { if (active) setData(res); }).catch(() => {});
+    api.analytics.telecalling().then(res => { if (active) setData(res); }).catch(() => {}).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
+  // Hold the slot while the first answer is in flight so the cards below don't jump.
+  if (loading) return <AiraLoader inline className="min-h-[120px]" />;
   if (!data) return null;
 
   return (

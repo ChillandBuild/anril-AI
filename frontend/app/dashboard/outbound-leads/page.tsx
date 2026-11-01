@@ -736,6 +736,10 @@ export default function OutboundLeadsPage() {
   const [templatesFetched, setTemplatesFetched] = useState(false);
   const [stepTagsFetched, setStepTagsFetched] = useState(false);
 
+  // The fetch effects below run one render after step 4 / the history tab opens, so
+  // "not fetched yet" must read as loading too or the empty hints flash first.
+  const templatesPending = templatesLoading || !templatesFetched;
+
   const activeTemplateForVars = templates.find(t => t.name === templateName);
   const varCount = templateVarCount(activeTemplateForVars?.body_text);
 
@@ -755,6 +759,7 @@ export default function OutboundLeadsPage() {
 
   const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const stepTagsPending = tagsLoading || !stepTagsFetched;
   const [selectedTag, setSelectedTag] = useState("");
 
   const [poolNumbers, setPoolNumbers] = useState<SenderRow[] | null>(null);
@@ -796,7 +801,7 @@ export default function OutboundLeadsPage() {
   const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
 
   const [broadcastHistory, setBroadcastHistory] = useState<BroadcastHistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true); // fetched on mount
   const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "failures" | "clean">("all");
@@ -1795,7 +1800,7 @@ export default function OutboundLeadsPage() {
                 <div className="bg-surface-low border border-surface-mid rounded-xl p-4 flex items-center justify-between">
                   <div>
                     <p className="font-label text-[10px] text-on-surface-muted uppercase tracking-wider mb-1 font-bold">Sender Number</p>
-                    {primaryNumberLoading ? (
+                    {primaryNumberLoading || poolNumbers === null ? (
                       <p className="font-body text-xs text-on-surface-muted">Loading primary number...</p>
                     ) : sender ? (
                       <>
@@ -1834,15 +1839,15 @@ export default function OutboundLeadsPage() {
                       </option>
                     ))}
                   </select>
-                  {templatesLoading && (
+                  {templatesPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading templates…</p>
                   )}
-                  {!templatesLoading && templatesError && (
+                  {!templatesPending && templatesError && (
                     <p className="font-label text-xs text-red-600 mt-2 font-semibold">
                       Failed to load templates. <button onClick={() => { setTemplatesError(false); setTemplatesFetched(false); }} className="underline">Retry</button>
                     </p>
                   )}
-                  {!templatesLoading && !templatesError && templates.length === 0 && (
+                  {!templatesPending && !templatesError && templates.length === 0 && (
                     <p className="font-label text-xs text-amber-600 mt-2 font-semibold">
                       No approved templates yet. <Link href="/dashboard/templates" className="underline">Create one →</Link>
                     </p>
@@ -1867,10 +1872,10 @@ export default function OutboundLeadsPage() {
                       </option>
                     ))}
                   </select>
-                  {tagsLoading && (
+                  {stepTagsPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading tags…</p>
                   )}
-                  {!tagsLoading && tags.length === 0 && (
+                  {!stepTagsPending && tags.length === 0 && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">
                       No tags yet. <button onClick={() => setActiveTab("tags")} className="underline text-primary-600">Create one →</button>
                     </p>
@@ -2767,7 +2772,7 @@ export default function OutboundLeadsPage() {
           )}
 
           {/* Body Section */}
-          {tagsListLoading ? (
+          {tagsListLoading || !tagsLoaded ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3">
               <div className="w-7 h-7 border-2 border-[var(--primary-600)] border-t-transparent rounded-full animate-spin" />
               <p className="font-label text-xs font-medium text-gray-500">Loading tags...</p>
@@ -2964,7 +2969,7 @@ export default function OutboundLeadsPage() {
             </div>
           </div>
 
-          {optedOutLoading ? (
+          {optedOutLoading || !optedOutLoaded ? (
             <div className="py-12 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
             </div>

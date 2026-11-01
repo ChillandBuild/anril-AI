@@ -20,7 +20,7 @@ export default function ShiftTimeline({ callerId, statsFrom, shiftStartHour, shi
   const END_HOUR = shiftEndHour;
   const TOTAL_SECONDS = (END_HOUR - START_HOUR) * 3600;
   const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!callerId); // first fetch runs on mount
   const [date, setDate] = useState(statsFrom);
 
   useEffect(() => {

@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, MessageSquare, Phone, CreditCard } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, getHomeHref, isActive } from "@/lib/utils";
-import { API_URL, getAuthHeaders } from "@/lib/api";
 
 type NavTab = {
   href: string;
@@ -17,28 +16,7 @@ type NavTab = {
 export function MobileDashboardNav() {
   const pathname = usePathname() || "/dashboard";
   const { role } = useAuthRole();
-  const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (res.ok && active) {
-          const data = await res.json();
-          setSubStatus(data.status);
-        } else if (active) {
-          setSubStatus("active");
-        }
-      } catch {
-        if (active) setSubStatus("active");
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  if (subStatus === "loading") return null;
+  const { status: subStatus } = useSubscription();
 
   const isSubscribed = subStatus === "active";
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AnalyticsOverview } from "@/lib/api";
 import { useOverview } from "@/hooks/useApi";
@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthRole } from "./contexts/AuthRoleContext";
+import { useSubscription } from "./contexts/SubscriptionContext";
 import { AiraLoader } from "@/components/AiraLoader";
-import { API_URL, getAuthHeaders } from "@/lib/api";
 import { PipelinePulse } from "@/components/dashboard/PipelinePulse";
 import { AiWorkloadSection } from "@/components/dashboard/AiWorkloadSection";
 import { LeadSourceSection } from "@/components/dashboard/LeadSourceSection";
@@ -99,26 +99,7 @@ function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D",
 export function DashboardClient({ fallbackOverview }: { fallbackOverview: AnalyticsOverview | null }) {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
   const router = useRouter();
-  const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (res.ok && active) {
-          const data = await res.json();
-          setSubStatus(data.status);
-        } else if (active) {
-          setSubStatus("active");
-        }
-      } catch {
-        if (active) setSubStatus("active");
-      }
-    })();
-    return () => { active = false; };
-  }, []);
+  const { status: subStatus } = useSubscription();
 
   // Seeded from the server for owners (instant paint); callers get null and are
   // redirected below. Enable the SWR key when role confirms owner OR we already
@@ -135,7 +116,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     }
   }, [permissions, role, roleLoading, router]);
 
-  if (roleLoading || subStatus === "loading") {
+  if (roleLoading) {
     return <AiraLoader />;
   }
 

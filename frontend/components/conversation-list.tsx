@@ -5,6 +5,7 @@ import { formatConvoTime, formatPhone, cn } from "@/lib/utils";
 import { Trash2, MoreVertical, MoreHorizontal, Search, X, SearchX, Pin, RefreshCw, Archive, Ban, Flag, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { CheckTick } from "@/components/ui/controls";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type ConversationLead = Lead & { last_reply_at?: string };
 
@@ -32,12 +33,14 @@ interface Props {
   total?: number;
   hasMore?: boolean;
   loadingMore?: boolean;
+  /** True until the first answer for this folder arrives, so the empty state is not shown too early. */
+  loading?: boolean;
   onLoadMore?: () => void;
   escalationPanelContent?: React.ReactNode;
 }
 
 export function ConversationList(props: Props) {
-  const { leads, selectedId, onSelect, onDeleted, platform, onPlatformChange, searchQuery, onSearchChange, onPin, onRefresh, onArchive, canArchive = false, onBlock, folder = "chats", onFolderChange, escalationCount = 0, total = 0, hasMore = false, loadingMore = false, onLoadMore, escalationPanelContent } = props;
+  const { leads, selectedId, onSelect, onDeleted, platform, onPlatformChange, searchQuery, onSearchChange, onPin, onRefresh, onArchive, canArchive = false, onBlock, folder = "chats", onFolderChange, escalationCount = 0, total = 0, hasMore = false, loadingMore = false, loading = false, onLoadMore, escalationPanelContent } = props;
   const [filterMode, setFilterMode] = useState<"all" | "needs" | "A" | "B" | "C">("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -302,7 +305,7 @@ export function ConversationList(props: Props) {
       <div className="mx-4 mt-2.5 flex flex-wrap gap-1">
         {[
           { id: "all" as const, label: "All" },
-          { id: "needs" as const, label: `Needs reply · ${needsReplyCount}` },
+          { id: "needs" as const, label: `Needs reply · ${loading ? "—" : needsReplyCount}` },
           { id: "A" as const, label: "🔥 Hot", color: "orange" },
           { id: "B" as const, label: "Warm", color: "amber" },
           { id: "C" as const, label: "Cold", color: "blue" },
@@ -368,7 +371,9 @@ export function ConversationList(props: Props) {
 
       {/* ── Conversation list ── */}
       <div className="flex-1 overflow-y-auto">
-        {visible.length === 0 ? (
+        {loading ? (
+          <AiraLoader inline className="min-h-[200px] h-full" />
+        ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-10 text-slate-500 space-y-3 animate-in fade-in duration-300">
             <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center shadow-sm">
               <SearchX size={24} className="text-slate-400 opacity-60" />

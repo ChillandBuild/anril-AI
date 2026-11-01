@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   BarChart2,
   BookOpen,
@@ -27,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { API_URL, getAuthHeaders } from "@/lib/api";
+import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
@@ -129,7 +129,7 @@ export function MoreMenu() {
   const pathname = usePathname() || "/dashboard";
   const { role, enabledFeatures, permissions } = useAuthRole();
   const [isOpen, setIsOpen] = useState(false);
-  const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
+  const { purchasedFeatures } = useSubscription();
 
   const items = MORE_ITEMS.filter((item) => isVisible(item, role, enabledFeatures, permissions));
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
@@ -137,23 +137,6 @@ export function MoreMenu() {
   const canSettings = role === "owner" || permissions.includes("settings.view") || permissions.includes("settings.manage");
   const settingsItems = getVisibleSettingsItems(purchasedFeatures);
   const settingsActive = pathname.startsWith("/dashboard/settings");
-
-  useEffect(() => {
-    if (!canSettings) return;
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (!active) return;
-        if (res.ok) {
-          const data = await res.json();
-          setPurchasedFeatures((data.items ?? []).map((item: { feature_key: string }) => item.feature_key));
-        }
-      } catch { /* fail open — see getVisibleSettingsItems */ }
-    })();
-    return () => { active = false; };
-  }, [canSettings]);
 
   return (
     <div className="relative lg:hidden">

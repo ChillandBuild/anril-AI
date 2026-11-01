@@ -56,6 +56,7 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
   /** Last value known to be on the server — the baseline for dirty checks. */
   const [saved, setSaved] = useState<NotificationConfig | null>(null);
   const [callers, setCallers] = useState<Caller[]>([]);
+  const [callersLoaded, setCallersLoaded] = useState(false);
   const [templates, setTemplates] = useState<WabaTemplate[]>([]);
   const [states, setStates] = useState<Record<SectionKey, SaveState>>({
     push: "idle",
@@ -71,7 +72,7 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         setSaved(c);
       })
       .catch(() => {});
-    api.callers.list().then((res) => setCallers((res.data || []).filter((c) => c.active))).catch(() => {});
+    api.callers.list().then((res) => setCallers((res.data || []).filter((c) => c.active))).catch(() => {}).finally(() => setCallersLoaded(true));
     api.templates.list().then(setTemplates).catch(() => {});
   }, []);
 
@@ -198,7 +199,9 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
 
               {cfg.claimable_audience === "specific" && (
                 <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto rounded-xl border border-border bg-white p-2">
-                  {callers.length === 0 ? (
+                  {!callersLoaded ? (
+                    <p className="px-1 py-2 font-body text-xs text-ink-muted">—</p>
+                  ) : callers.length === 0 ? (
                     <p className="px-1 py-2 font-body text-xs text-ink-muted">No telecallers found.</p>
                   ) : (
                     callers.map((c) => {

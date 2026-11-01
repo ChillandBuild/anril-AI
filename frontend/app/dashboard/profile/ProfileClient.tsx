@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import type { CallerStats, CallLog } from "@/lib/api";
 import { toast } from "sonner";
+import { AiraLoader } from "@/components/AiraLoader";
 import { useMyStats, useMyPerformance, useCallerLogs } from "@/hooks/useApi";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AttendanceMini from "../team/AttendanceMini";
@@ -42,11 +43,12 @@ export function ProfileClient({
   const isAdmin = role === "owner";
 
   const { data: stats, mutate: mutateStats } = useMyStats(!isAdmin, fallbackStats ?? undefined);
-  const { data: performanceData } = useMyPerformance(!isAdmin, fallbackPerformance ?? undefined);
-  const { data: logsData } = useCallerLogs(stats?.caller_id ?? null, !isAdmin, fallbackLogs ?? undefined);
+  const { data: performanceData, isLoading: performanceLoading } = useMyPerformance(!isAdmin, fallbackPerformance ?? undefined);
+  const { data: logsData, isLoading: logsLoading } = useCallerLogs(stats?.caller_id ?? null, !isAdmin, fallbackLogs ?? undefined);
 
   const [togglingStatus, setTogglingStatus] = useState(false);
 
+  // Until the first answer arrives, show "—" / a loader instead of the made-up 0 / 50 and an empty log.
   const performance = performanceData ?? { target: 50, achieved: 0 };
   const logs = logsData ?? [];
 
@@ -331,12 +333,14 @@ export function ProfileClient({
                   </span>
                 </div>
                 <p className="font-display text-lg font-extrabold text-on-surface mt-1">
-                  {performance.achieved} / {performance.target} Calls
+                  {performanceLoading ? "—" : `${performance.achieved} / ${performance.target} Calls`}
                 </p>
               </div>
               
               <div className="flex items-center gap-2 mt-2 pt-2 border-t border-surface-low">
-                {performance.achieved >= performance.target ? (
+                {performanceLoading ? (
+                  <span className="text-[10px] text-on-surface-muted font-semibold px-2.5 py-0.5">—</span>
+                ) : performance.achieved >= performance.target ? (
                   <span className="text-[10px] text-green-600 font-bold bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full animate-pulse">
                     🎉 Target Met!
                   </span>
@@ -364,7 +368,7 @@ export function ProfileClient({
                   fill="transparent"
                   strokeWidth="8"
                   strokeDasharray="238.76"
-                  strokeDashoffset={238.76 - (Math.min(100, performance.target > 0 ? (performance.achieved / performance.target) * 100 : 0) / 100) * 238.76}
+                  strokeDashoffset={238.76 - (Math.min(100, !performanceLoading && performance.target > 0 ? (performance.achieved / performance.target) * 100 : 0) / 100) * 238.76}
                   strokeLinecap="round"
                   r="38"
                   cx="48"
@@ -380,7 +384,7 @@ export function ProfileClient({
               </svg>
               <div className="absolute flex flex-col items-center justify-center">
                 <span className="font-display text-sm font-black text-on-surface">
-                  {performance.target > 0 ? Math.round((performance.achieved / performance.target) * 100) : 0}%
+                  {performanceLoading ? "—" : performance.target > 0 ? Math.round((performance.achieved / performance.target) * 100) : 0}%
                 </span>
                 <span className="font-label text-[8px] text-on-surface-muted uppercase tracking-wider font-bold">
                   done
@@ -402,7 +406,9 @@ export function ProfileClient({
           <Phone size={16} className="text-secondary" /> Recent Call History
         </h2>
 
-        {logs.length === 0 ? (
+        {logsLoading ? (
+          <AiraLoader inline className="min-h-[200px]" />
+        ) : logs.length === 0 ? (
           <p className="font-body text-sm text-on-surface-muted py-8 text-center">
             No calls yet. Start calling your assigned leads!
           </p>

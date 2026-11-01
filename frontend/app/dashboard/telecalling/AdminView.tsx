@@ -15,6 +15,7 @@ import { useCallingCockpit } from "./lib/useCallingCockpit";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { SegmentBadge } from "@/components/segment-badge";
+import { AiraLoader } from "@/components/AiraLoader";
 
 export default function AdminView({ fallbackData, readOnly = false }: { fallbackData?: AdminDashboardData; readOnly?: boolean }) {
   const searchParams = useSearchParams();
@@ -44,7 +45,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const { data: queueLeadsData, mutate: refreshQueueLeads } = useLeads({
+  const { data: queueLeadsData, isLoading: queueLoading, mutate: refreshQueueLeads } = useLeads({
     segment: queueSegment !== "all" ? queueSegment : undefined,
     assigned_to: (queueAssignedTo !== "all" && queueAssignedTo !== "unassigned") ? queueAssignedTo : undefined,
     search: searchTerm || undefined,
@@ -172,7 +173,9 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
                 </div>
 
                 {/* Lead cards */}
-                {filteredQueueLeads.length === 0 ? (
+                {queueLoading ? (
+                  <AiraLoader inline className="min-h-[200px] flex-1" />
+                ) : filteredQueueLeads.length === 0 ? (
                   <div className="text-center py-12 flex-1 flex flex-col justify-center items-center">
                     <div className="w-12 h-12 bg-[#f8fafc] rounded-full flex items-center justify-center text-[#94a3b8] border border-[#f1f5f9] mb-3">
                       <Inbox size={18} />

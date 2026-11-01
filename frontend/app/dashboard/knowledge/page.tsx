@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { api, API_URL, getAuthHeaders, KnowledgeDocContent } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AiraLoader } from "@/components/AiraLoader";
+import { SectionLoadGate } from "../settings/SettingsSection";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -357,6 +359,9 @@ export default function KnowledgePage() {
   // Description + rubric drive the upload gate on the Documents tab, so they are
   // fetched on mount rather than lazily when the Description tab opens.
   const [setupLoaded, setSetupLoaded] = useState(false);
+  // The rubric box must not open empty after a failed load: saving it would
+  // blank the tenant's real rubric.
+  const [rubricLoadFailed, setRubricLoadFailed] = useState(false);
 
   // Document Viewer Modal
   const [viewingDoc, setViewingDoc] = useState<KnowledgeDocContent | null>(null);
@@ -546,10 +551,14 @@ export default function KnowledgePage() {
   }
 
   async function loadAiTuneSettings() {
+    setRubricLoadFailed(false);
     try {
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/settings/`, { headers: auth });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setRubricLoadFailed(true);
+        return;
+      }
       const data = await res.json();
       const settings: { key: string; display_value: string }[] = data.settings ?? [];
       const rubric = settings.find((s) => s.key === "scoring_rubric");
@@ -560,7 +569,9 @@ export default function KnowledgePage() {
       }
       const auto = settings.find((s) => s.key === "rubric_auto_update");
       setRubricAutoUpdate(auto?.display_value === "true");
-    } catch {}
+    } catch {
+      setRubricLoadFailed(true);
+    }
   }
 
   // ─── Upload Handlers ───────────────────────────────────────────────────────
@@ -897,7 +908,7 @@ export default function KnowledgePage() {
                   Total Documents
                 </p>
                 <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {stats.total.toLocaleString()}
+                  {loading ? "—" : stats.total.toLocaleString()}
                 </p>
                 <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
                   Across all formats
@@ -915,9 +926,9 @@ export default function KnowledgePage() {
                 </p>
                 <div className="flex items-center gap-2 mt-1">
                   <p className="font-display text-2xl font-black text-emerald-700">
-                    {stats.indexed.toLocaleString()}
+                    {loading ? "—" : stats.indexed.toLocaleString()}
                   </p>
-                  {stats.processing > 0 && (
+                  {!loading && stats.processing > 0 && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
                       <Loader2 size={10} className="animate-spin" />
                       {stats.processing} sorting
@@ -927,10 +938,12 @@ export default function KnowledgePage() {
                 <p
                   className={cn(
                     "font-body text-[11px] font-semibold mt-0.5",
-                    stats.notSearchable > 0 ? "text-amber-700" : "text-emerald-700"
+                    !loading && stats.notSearchable > 0 ? "text-amber-700" : "text-emerald-700"
                   )}
                 >
-                  {stats.notSearchable > 0
+                  {loading
+                    ? "—"
+                    : stats.notSearchable > 0
                     ? `${stats.notSearchable} not searchable`
                     : "Ready for AI RAG retrieval"}
                 </p>
@@ -946,7 +959,7 @@ export default function KnowledgePage() {
                   Storage Footprint
                 </p>
                 <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {formatBytes(stats.totalBytes)}
+                  {loading ? "—" : formatBytes(stats.totalBytes)}
                 </p>
                 <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
                   Indexed vector data
@@ -963,10 +976,10 @@ export default function KnowledgePage() {
                   Campaign Scopes
                 </p>
                 <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {stats.scopedCount > 0 ? `${stats.scopedCount} Scoped` : "All Shared"}
+                  {loading ? "—" : stats.scopedCount > 0 ? `${stats.scopedCount} Scoped` : "All Shared"}
                 </p>
                 <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                  {campaignTags.length} campaigns available
+                  {loading ? "—" : campaignTags.length} campaigns available
                 </p>
               </div>
               <div className="w-11 h-11 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 shrink-0">
@@ -1353,10 +1366,7 @@ export default function KnowledgePage() {
           {/* ── Document List / Grid Section ──────────────────────────────── */}
           <div className="bg-surface rounded-2xl border border-surface-mid shadow-sm overflow-hidden">
             {loading ? (
-              <div className="py-20 text-center text-on-surface-muted">
-                <Loader2 size={28} className="mx-auto mb-2.5 animate-spin text-primary" />
-                <p className="font-body text-sm font-semibold">Loading knowledge documents…</p>
-              </div>
+              <AiraLoader inline className="min-h-[200px]" />
             ) : filteredDocs.length === 0 ? (
               <div className="py-16 px-4 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-surface-low border border-surface-mid flex items-center justify-center mx-auto mb-3 text-on-surface-muted">
@@ -1702,34 +1712,42 @@ export default function KnowledgePage() {
                   on={rubricAutoUpdate}
                   onChange={toggleRubricAutoUpdate}
                   loading={rubricToggleSaving}
-                  disabled={!canManageKnowledge}
+                  disabled={!canManageKnowledge || !setupLoaded || rubricLoadFailed}
                   aria-label="Auto-generate rubric from product description"
                 />
               </div>
             </div>
 
-            <AutoGrowTextarea
-              value={scoringRubric}
-              onChange={(e) => setScoringRubric(e.target.value)}
-              minRows={5}
-              spellCheck={false}
-              placeholder={
-                "- Hot: Asked for pricing, booking slot, or callback; ready to proceed\n" +
-                "- Warm: Clear interest, detailed questions, comparing options, providing info\n" +
-                "- Cold: General inquiry, first contact, vague replies, no follow-up"
-              }
-              className="w-full px-4 py-3.5 rounded-xl bg-surface-low border border-surface-mid font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-colors"
-            />
+            {!setupLoaded ? (
+              <AiraLoader inline className="min-h-[200px]" />
+            ) : rubricLoadFailed ? (
+              <SectionLoadGate state="error" onRetry={() => { setSetupLoaded(false); void loadAiTuneSettings().finally(() => setSetupLoaded(true)); }}>{null}</SectionLoadGate>
+            ) : (
+              <>
+                <AutoGrowTextarea
+                  value={scoringRubric}
+                  onChange={(e) => setScoringRubric(e.target.value)}
+                  minRows={5}
+                  spellCheck={false}
+                  placeholder={
+                    "- Hot: Asked for pricing, booking slot, or callback; ready to proceed\n" +
+                    "- Warm: Clear interest, detailed questions, comparing options, providing info\n" +
+                    "- Cold: General inquiry, first contact, vague replies, no follow-up"
+                  }
+                  className="w-full px-4 py-3.5 rounded-xl bg-surface-low border border-surface-mid font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-colors"
+                />
 
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={saveRubric}
-                disabled={rubricSaving || scoringRubric === savedRubric || !canManageKnowledge}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs"
-              >
-                <Save size={14} /> {rubricSaving ? "Saving…" : "Save Rubric"}
-              </button>
-            </div>
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={saveRubric}
+                    disabled={rubricSaving || scoringRubric === savedRubric || !canManageKnowledge}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs"
+                  >
+                    <Save size={14} /> {rubricSaving ? "Saving…" : "Save Rubric"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

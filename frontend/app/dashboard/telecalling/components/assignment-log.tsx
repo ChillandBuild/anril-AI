@@ -93,7 +93,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
                     <span className="font-semibold text-on-surface">{row.count}</span>
                   </div>
                 ))
-              : <span className="font-body text-sm text-on-surface-muted">No assignments yet</span>}
+              : <span className="font-body text-sm text-on-surface-muted">{summary ? "No assignments yet" : "—"}</span>}
           </div>
         </div>
         <div className="bg-surface rounded-card p-5 shadow-card ring-1 ring-[#c4c7c7]/15">
@@ -105,7 +105,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
                     {SEGMENT_LABEL[seg] || seg}: {n}
                   </span>
                 ))
-              : <span className="font-body text-sm text-on-surface-muted">No assignments yet</span>}
+              : <span className="font-body text-sm text-on-surface-muted">{summary ? "No assignments yet" : "—"}</span>}
           </div>
         </div>
       </div>

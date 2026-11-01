@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { NewDealDialog } from "@/components/deals/NewDealDialog";
 import { DealDetailDrawer } from "@/components/deals/DealDetailDrawer";
@@ -24,6 +25,7 @@ export default function DealsPage() {
   const { role, permissions, loading: roleLoading } = useAuthRole();
   const rawTab = searchParams.get("tab");
   const [intakeEnabled, setIntakeEnabled] = useState(false);
+  const [intakeLoaded, setIntakeLoaded] = useState(false);
   const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -32,6 +34,9 @@ export default function DealsPage() {
 
   const visibleTabs = TABS.filter((t) => t.id !== "forms" || intakeEnabled);
   const tab = (visibleTabs.some((t) => t.id === rawTab) ? rawTab : "deals") as PageTab;
+  // A ?tab=forms link can't be honoured until the intake config says forms exist;
+  // wait for it rather than mounting the Deals tab and swapping.
+  const tabPending = rawTab === "forms" && !intakeLoaded;
 
   const showNewDeal = canManage && searchParams.get("new") === "1";
 
@@ -65,6 +70,8 @@ export default function DealsPage() {
         }
       } catch {
         setIntakeEnabled(false);
+      } finally {
+        setIntakeLoaded(true);
       }
     })();
   }, []);
@@ -120,9 +127,10 @@ export default function DealsPage() {
         )}
       </div>
 
-      {tab === "deals" && <DealsTab onOpenDeal={setOpenDealId} reloadToken={reloadToken} />}
-      {tab === "insights" && <InsightsTab />}
-      {tab === "forms" && intakeEnabled && <FormAnswersTab />}
+      {tabPending && <AiraLoader inline className="min-h-[200px]" />}
+      {!tabPending && tab === "deals" && <DealsTab onOpenDeal={setOpenDealId} reloadToken={reloadToken} />}
+      {!tabPending && tab === "insights" && <InsightsTab />}
+      {!tabPending && tab === "forms" && intakeEnabled && <FormAnswersTab />}
 
       {showNewDeal && (
         <NewDealDialog

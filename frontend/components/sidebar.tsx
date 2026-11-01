@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { ChevronRight, ChevronLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -156,30 +157,9 @@ export function Sidebar(_props: SidebarProps) {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
   const [inboxCount, setInboxCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
-  const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
-  const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
+  const { status: subStatus, purchasedFeatures } = useSubscription();
   // The logo's squares drop in on first show, then wave on each page change.
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (res.ok && active) {
-          const data = await res.json();
-          setSubStatus(data.status);
-          setPurchasedFeatures((data.items ?? []).map((item: { feature_key: string }) => item.feature_key));
-        } else if (active) {
-          setSubStatus("active");
-        }
-      } catch {
-        if (active) setSubStatus("active");
-      }
-    })();
-    return () => { active = false; };
-  }, []);
 
   // Nested group open state (Telecalling, Settings), unchanged from before.
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -251,7 +231,7 @@ export function Sidebar(_props: SidebarProps) {
     };
   }, [waEnabled, fetchCount]);
 
-  if (roleLoading || subStatus === "loading") {
+  if (roleLoading) {
     return (
       <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
     );
@@ -379,7 +359,7 @@ export function Sidebar(_props: SidebarProps) {
           key={pathname}
           href={dashboard.href}
           aria-label="anril AI home"
-          className={cn("anril-mark mx-auto mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
+          className={cn("anril-mark mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
         >
           <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-white" />
         </Link>
