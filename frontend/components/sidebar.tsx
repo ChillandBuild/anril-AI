@@ -379,7 +379,7 @@ export function Sidebar(_props: SidebarProps) {
           key={pathname}
           href={dashboard.href}
           aria-label="anril AI home"
-          className={cn("anril-mark mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
+          className={cn("anril-mark mx-auto mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
         >
           <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-white" />
         </Link>

@@ -490,27 +490,30 @@ canvas {
   from { opacity: 0; transform: translateX(-8px); }
 }
 
-/* The logo's squares drop in on first show and wave on every page change.
-   Fill is "backwards" so the hover tilt below still applies once they settle. */
-.anril-mark rect { transform-box: fill-box; transform-origin: center; }
-.anril-mark-in rect { animation: anril-sq-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
-.anril-mark-in rect:nth-of-type(2) { animation-delay: 70ms; }
-.anril-mark-in rect:nth-of-type(3) { animation-delay: 140ms; }
-.anril-mark-in rect:nth-of-type(4) { animation-delay: 280ms; }
-@keyframes anril-sq-in {
-  from { transform: translateY(-93%) scale(0.4); opacity: 0; }
+/* The logo's four squares in a row fold into the 2x2 brand mark (teal
+   top-right) with a quarter turn: they unfold on first show and fold back on
+   hover. The grid shares the row's centre and spills 10.5px above and below
+   into the sidebar's empty padding, so nothing beneath moves. Moves are in
+   the mark's SVG units (components/logo.tsx: 133 = one square plus a gap).
+   On every page change the squares wave instead. */
+.anril-mark rect {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) var(--fold-delay);
 }
-.anril-mark-wave rect { animation: anril-sq-wave 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
-.anril-mark-wave rect:nth-of-type(2) { animation-delay: 50ms; }
-.anril-mark-wave rect:nth-of-type(3) { animation-delay: 100ms; }
-.anril-mark-wave rect:nth-of-type(4) { animation-delay: 150ms; }
+.anril-mark rect:nth-of-type(1) { --fold: translate(133px, -66.5px) rotate(90deg); --fold-delay: 0ms; }
+.anril-mark rect:nth-of-type(2) { --fold: translate(0, 66.5px) rotate(90deg); --fold-delay: 40ms; }
+.anril-mark rect:nth-of-type(3) { --fold: translate(0, 66.5px) rotate(90deg); --fold-delay: 80ms; }
+.anril-mark rect:nth-of-type(4) { --fold: translate(-133px, -66.5px) rotate(90deg); --fold-delay: 120ms; }
+.anril-mark:hover rect, .anril-mark:focus-visible rect { transform: var(--fold); }
+.anril-mark-in rect { animation: anril-unfold 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) calc(350ms + var(--fold-delay)) backwards; }
+@keyframes anril-unfold {
+  from { transform: var(--fold); }
+}
+.anril-mark-wave rect { animation: anril-sq-wave 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) var(--fold-delay) backwards; }
 @keyframes anril-sq-wave {
   0%, 100% { transform: none; }
   40% { transform: translateY(-33%) scale(1.08); }
-}
-.anril-mark:hover rect:nth-of-type(4) {
-  transform: rotate(45deg) scale(0.9);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
