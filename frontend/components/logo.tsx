@@ -84,21 +84,22 @@ export function AnrilWordmark({ height = 20, ...rest }: LogoProps) {
 
 /**
  * The mark's four squares laid in one row: three plain (currentColor) and the
- * teal one last. Each square is a <rect> so CSS can animate them one by one.
+ * teal one last, with gaps 0.4 of a square wide (15px squares, 6px gaps at
+ * height 15). Each square is a <rect> so CSS can animate them one by one.
  */
 export function AnrilMarkRow({ height = 18, accent = TEAL, ...rest }: LogoProps & { accent?: string }) {
   return (
     <svg
       height={height}
-      viewBox="0 0 410 95"
+      viewBox="0 0 494 95"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
       aria-label="Anril AI"
       {...rest}
     >
-      {[0, 105, 210, 315].map((x) => (
-        <rect key={x} x={x} width="95" height="95" rx="26" fill={x === 315 ? accent : "currentColor"} />
+      {[0, 133, 266, 399].map((x) => (
+        <rect key={x} x={x} width="95" height="95" rx="25" fill={x === 399 ? accent : "currentColor"} />
       ))}
     </svg>
   );

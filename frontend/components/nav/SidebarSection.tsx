@@ -1,10 +1,11 @@
 "use client";
-import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { ChevronRight, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface SidebarSectionProps {
   title: string;
-  icon?: LucideIcon;
+  icon: LucideIcon;
   open: boolean;
   /** The current page lives in this section: a closed section shows a small teal square. */
   holdsActive?: boolean;
@@ -12,30 +13,39 @@ interface SidebarSectionProps {
   children: ReactNode;
 }
 
-/** A product heading that folds its items open and shut. The parent renders it only when it has visible items. */
+/** React 18 has no `inert` prop; an empty-string attribute turns it on. */
+export const inertWhen = (on: boolean) => (on ? ({ inert: "" } as Record<string, string>) : {});
+
+/**
+ * A product row that folds its items open and shut. The items stay mounted and
+ * the box animates its height (.nav-expander in globals.css); a closed box is
+ * inert so its links leave the tab order. The parent renders it only when it
+ * has visible items.
+ */
 export function SidebarSection({ title, icon: Icon, open, holdsActive = false, onToggle, children }: SidebarSectionProps) {
-  // Slide the items in only when the user opens the section, not on page load.
-  const [kidsIn, setKidsIn] = useState(false);
   return (
-    <div className="">
+    <section>
       <button
         type="button"
-        onClick={() => { setKidsIn(!open); onToggle(); }}
+        onClick={onToggle}
         aria-expanded={open}
-        className="group flex min-h-12 items-center gap-4 w-full px-4 py-3 rounded-md text-left font-label text-[11px] font-bold uppercase tracking-wider text-slate-300 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]"
+        className="group relative z-[2] flex min-h-[42px] w-full items-center gap-3 rounded-lg p-2.5 text-left text-[12px] font-semibold text-[var(--nav-label)] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]"
       >
-        {Icon && (
-          <Icon
-            size={16}
-            className="shrink-0 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover:translate-x-0.5 motion-reduce:transition-none"
-            aria-hidden="true"
-          />
-        )}
+        <Icon
+          size={17}
+          strokeWidth={1.6}
+          className={cn("nav-icon shrink-0", open ? "text-[#78d6d8]" : "text-[#d5f4f4]")}
+          aria-hidden="true"
+        />
         <span className="min-w-0 flex-1">{title}</span>
-        {!open && holdsActive && <span className="size-1.5 shrink-0 rounded-[2px] bg-[var(--primary-400)]" aria-hidden="true" />}
-        {open ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+        <span className={cn("nav-held-dot", !open && holdsActive && "is-on")} aria-hidden="true" />
+        <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
       </button>
-      {open && <div className={kidsIn ? "nav-kids-in space-y-1" : "space-y-1"}>{children}</div>}
-    </div>
+      <div className={cn("nav-expander", open && "open")} {...inertWhen(!open)}>
+        <div>
+          <div className="nav-children">{children}</div>
+        </div>
+      </div>
+    </section>
   );
 }

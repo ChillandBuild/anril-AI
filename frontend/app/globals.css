@@ -407,19 +407,18 @@ canvas {
 .dashboard-swiss, .dashboard-swiss .font-display, .dashboard-swiss .font-label,
 .swiss-sidebar, .swiss-sidebar .font-label { font-family: var(--font-swiss), sans-serif; }
 
-:root { --sidebar-width: 380px; }
+:root { --sidebar-width: 256px; }
 
-/* Sidebar motion. The active row's tint wipes in left to right just as the
-   hopping teal square (components/nav/ActiveIndicator.tsx) lands on it. */
+/* Sidebar, to the v2 study. The active row's tint wipes in left to right just
+   as the hopping teal square (components/nav/ActiveIndicator.tsx) lands. */
 .nav-active::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(var(--primary-400-rgb), 0.2), rgba(var(--primary-400-rgb), 0.07));
-  box-shadow: inset 0 0 0 1px rgba(var(--primary-400-rgb), 0.26);
-  animation: nav-wipe 0.42s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+  background: linear-gradient(90deg, rgba(63, 188, 191, 0.22), rgba(63, 188, 191, 0.04));
+  animation: nav-wipe 0.192s cubic-bezier(0.16, 1, 0.3, 1) 0.448s both;
 }
 @keyframes nav-wipe {
   from { clip-path: inset(0 100% 0 0); }
@@ -431,40 +430,90 @@ canvas {
   left: 0;
   top: 0;
   z-index: 10;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--primary-400);
-  box-shadow: 0 0 10px rgba(var(--primary-400-rgb), 0.7);
+  width: 8px;
+  height: 8px;
+  border-radius: 2.5px;
+  background: #3fbcbf;
+  box-shadow: 0 0 12px rgba(63, 188, 191, 0.7);
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.2s;
 }
 
-/* Items of a menu the user just opened slide in one after another. */
-.nav-kids-in > * { animation: nav-kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.nav-kids-in > :nth-child(2) { animation-delay: 35ms; }
-.nav-kids-in > :nth-child(3) { animation-delay: 70ms; }
-.nav-kids-in > :nth-child(4) { animation-delay: 105ms; }
-.nav-kids-in > :nth-child(5) { animation-delay: 140ms; }
-.nav-kids-in > :nth-child(n + 6) { animation-delay: 175ms; }
+/* Row icons nudge right on hover with a small spring. */
+.nav-icon { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.group:hover > .nav-icon { transform: translateX(2px); }
+
+/* The menu arrow turns as the menu opens. */
+.nav-chevron { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+[aria-expanded="true"] > .nav-chevron { transform: rotate(90deg); }
+
+/* Small teal square on a closed menu that holds the current page. */
+.nav-held-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: #3fbcbf;
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.nav-held-dot.is-on { opacity: 1; transform: none; }
+
+/* A menu animates its height open and shut; its items sit in a filled box. */
+.nav-expander {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-expander.open { grid-template-rows: 1fr; }
+.nav-expander > div { min-height: 0; overflow: hidden; }
+.nav-children {
+  margin: 2px 2px 12px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--navy-800);
+}
+
+/* Items of an open menu slide in one after another. */
+.nav-expander.open > div > .nav-children > *,
+.nav-expander.open > div > .nav-children-flat > * {
+  animation: nav-kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+}
+.nav-expander.open > div > * > :nth-child(2) { animation-delay: 75ms; }
+.nav-expander.open > div > * > :nth-child(3) { animation-delay: 110ms; }
+.nav-expander.open > div > * > :nth-child(4) { animation-delay: 145ms; }
+.nav-expander.open > div > * > :nth-child(5) { animation-delay: 180ms; }
+.nav-expander.open > div > * > :nth-child(n + 6) { animation-delay: 215ms; }
 @keyframes nav-kid-in {
   from { opacity: 0; transform: translateX(-8px); }
 }
 
-/* The sidebar's four-square mark ripples on every page change. */
-.anril-mark-wave rect {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: anril-sq-wave 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+/* The logo's squares drop in on first show and wave on every page change.
+   Fill is "backwards" so the hover tilt below still applies once they settle. */
+.anril-mark rect { transform-box: fill-box; transform-origin: center; }
+.anril-mark-in rect { animation: anril-sq-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+.anril-mark-in rect:nth-of-type(2) { animation-delay: 70ms; }
+.anril-mark-in rect:nth-of-type(3) { animation-delay: 140ms; }
+.anril-mark-in rect:nth-of-type(4) { animation-delay: 280ms; }
+@keyframes anril-sq-in {
+  from { transform: translateY(-93%) scale(0.4); opacity: 0; }
 }
+.anril-mark-wave rect { animation: anril-sq-wave 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
 .anril-mark-wave rect:nth-of-type(2) { animation-delay: 50ms; }
 .anril-mark-wave rect:nth-of-type(3) { animation-delay: 100ms; }
 .anril-mark-wave rect:nth-of-type(4) { animation-delay: 150ms; }
 @keyframes anril-sq-wave {
   0%, 100% { transform: none; }
-  40% { transform: translateY(-22%) scale(1.08); }
+  40% { transform: translateY(-33%) scale(1.08); }
+}
+.anril-mark:hover rect:nth-of-type(4) {
+  transform: rotate(45deg) scale(0.9);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nav-active::before, .nav-kids-in > *, .anril-mark-wave rect { animation: none; }
+  .nav-active::before, .nav-expander.open > div > * > *, .anril-mark rect { animation: none; }
+  .nav-hop-square, .nav-icon, .nav-chevron, .nav-held-dot, .nav-expander, .anril-mark rect { transition: none; }
 }

@@ -1,5 +1,5 @@
 import {
-  BarChart2, BookOpen, Brain, Calendar, CalendarClock, CreditCard, FileCheck, HandCoins, Layers,
+  BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins, Inbox, Layers,
   Megaphone, MessageSquare, MessageSquareText, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
   StickyNote, Upload, Users, Zap, type LucideIcon,
 } from "lucide-react";
@@ -63,6 +63,8 @@ export type NavEntry = NavLeaf | NavGroup;
 export interface NavSection {
   key: SectionKey;
   title: string;
+  /** Icon on the section's row in the sidebar. */
+  icon: LucideIcon;
   defaultOpen: boolean;
   entries: NavEntry[];
 }
@@ -317,14 +319,14 @@ const SETTINGS_GROUP: NavGroup = {
 
 /** Sections render top to bottom in this order. Dashboard and Analytics sit above them. */
 export const NAV_SECTIONS: readonly NavSection[] = [
-  { key: "inbox", title: "INBOX & LEADS", defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
-  { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
-  { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS, SMS] },
-  { key: "commerce", title: "SALES · ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
-  { key: "callIq", title: "ANRIL CALL IQ", defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
-  { key: "aiSetup", title: "AI SETUP", defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
-  { key: "whatsappSetup", title: "WHATSAPP SETUP", defaultOpen: false, entries: [TEMPLATES, NUMBERS_POOL] },
-  { key: "account", title: "ACCOUNT", defaultOpen: false, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
+  { key: "inbox", title: "Inbox & Leads", icon: Inbox, defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
+  { key: "engage", title: "Anril Engage", icon: RadioTower, defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
+  { key: "reach", title: "Anril Reach", icon: Upload, defaultOpen: false, entries: [OUTBOUND_LEADS, SMS] },
+  { key: "commerce", title: "Anril Commerce", icon: Coins, defaultOpen: false, entries: [DEALS, CATALOGUE] },
+  { key: "callIq", title: "Anril Call IQ", icon: Phone, defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
+  { key: "aiSetup", title: "Anril Setup", icon: Brain, defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
+  { key: "whatsappSetup", title: "WhatsApp Setup", icon: FileCheck, defaultOpen: false, entries: [TEMPLATES, NUMBERS_POOL] },
+  { key: "account", title: "Account", icon: ShieldCheck, defaultOpen: false, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
 ];
 
 /** Visible entries only, in render order. Empty means the section heading is hidden. */

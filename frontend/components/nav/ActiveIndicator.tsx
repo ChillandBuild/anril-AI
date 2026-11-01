@@ -1,7 +1,9 @@
 "use client";
 import { useLayoutEffect, useRef } from "react";
 
-const SIZE = 7;
+const SIZE = 8;
+// How long to keep re-placing the square while a menu animates open or shut.
+const FOLLOW_MS = 520;
 
 // Position of `el` inside `box`, from offsetLeft/offsetTop so CSS transforms
 // (the slide-in on freshly opened sections) don't skew the measurement.
@@ -43,12 +45,16 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
         return;
       }
       const at = offsetWithin(row, box);
-      const x = at.x - 4;
+      // Top-level rows: the square sits just left of the row. Rows inside an
+      // open menu's box: just inside the row's left edge.
+      const nested = row.closest(".nav-children, .nav-children-flat") !== null;
+      const x = at.x + (nested ? 12 : -11);
       const y = at.y + row.offsetHeight / 2 - SIZE / 2;
+      // A closed menu still holds its rows; hide the square there.
+      square.style.opacity = row.closest(".nav-expander:not(.open)") ? "0" : "1";
       const from = last.current;
       if (from && from.x === x && from.y === y) return;
       square.style.transform = `translate(${x}px, ${y}px)`;
-      square.style.opacity = "1";
       last.current = { x, y };
       if (still) return;
       if (navigated && from) {
@@ -64,12 +70,12 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
             { ...t(x, y, "rotate(180deg) scale(1.5, 0.6)"), offset: 0.82 },
             t(x, y, "rotate(180deg)"),
           ],
-          { duration: 420 + Math.min(240, Math.abs(y - from.y) * 0.4), easing: "ease-in-out" },
+          { duration: 460, easing: "ease-in-out" },
         );
-      } else if (!from) {
-        square.animate(
-          [{ opacity: 0, transform: `translate(${x}px, ${y}px) scale(0)` }, { opacity: 1, transform: `translate(${x}px, ${y}px)` }],
-          { duration: 320, delay: 120, easing: "cubic-bezier(.34,1.56,.64,1)", fill: "backwards" },
+        // The row gives a small nudge as the square lands.
+        row.animate(
+          [{ transform: "none" }, { transform: "none", offset: 0.75 }, { transform: "translateX(3px)", offset: 0.88 }, { transform: "none" }],
+          { duration: 560 },
         );
       }
     };
@@ -77,13 +83,24 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
     place(lastPath.current !== null && lastPath.current !== pathname);
     lastPath.current = pathname;
 
-    // Sections opening/closing and badges arriving move rows without a navigation.
-    const sync = () => place(false);
-    const mutations = new MutationObserver(sync);
-    mutations.observe(box, { childList: true, subtree: true });
-    const resize = new ResizeObserver(sync);
+    // Menus opening/closing and badges arriving move rows without a navigation.
+    // A menu animates its height, so follow the row frame by frame for a moment.
+    let frame = 0;
+    const follow = () => {
+      cancelAnimationFrame(frame);
+      const t0 = performance.now();
+      const step = (t: number) => {
+        place(false);
+        if (t - t0 < FOLLOW_MS) frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    };
+    const mutations = new MutationObserver(follow);
+    mutations.observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-expanded"] });
+    const resize = new ResizeObserver(() => place(false));
     resize.observe(box);
     return () => {
+      cancelAnimationFrame(frame);
       mutations.disconnect();
       resize.disconnect();
     };

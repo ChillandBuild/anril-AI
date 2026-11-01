@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { ChevronDown, ChevronRight, ChevronLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { ChevronRight, ChevronLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
@@ -12,7 +12,7 @@ import { AnrilMarkRow } from "@/components/logo";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
-import { SidebarSection } from "@/components/nav/SidebarSection";
+import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import {
   ANALYTICS_LINK, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
@@ -22,20 +22,18 @@ import {
 
 type NavItem = { href: string; label: string };
 
-// The sidebar sits on navy (--navy, #0A1528): idle rows are soft white. The
-// active row's teal tint wipes in (.nav-active in globals.css) as the shared
-// teal square (ActiveIndicator) lands on it.
-const ACTIVE_LABEL = "text-white font-semibold tracking-tight";
-const ROW_ACTIVE = "nav-active border-transparent";
-const ROW_IDLE = "border-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white";
-const ICON_ACTIVE = "text-[var(--primary-300)]";
-const ICON_IDLE = "text-slate-300 group-hover:text-white";
-// Icons nudge right on hover with a small spring.
-const ICON_NUDGE = "transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover:translate-x-0.5 motion-reduce:transition-none";
-// Small teal square on a closed menu that holds the current page.
-const HELD_DOT = "size-1.5 shrink-0 rounded-[2px] bg-[var(--primary-400)]";
-const GROUP_BUTTON =
-  "flex items-center gap-2.5 px-2 py-2.5 w-full rounded-xl text-[13px] font-semibold text-left transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]";
+// Styled to the v2 sidebar study: navy (--navy, #0A1528) with white labels
+// (--nav-label) and pale-teal icons. The active row's teal tint wipes in
+// (.nav-active in globals.css) as the shared teal square (ActiveIndicator)
+// lands on it. Rows inside an open section's box (.nav-children) are smaller,
+// have no icon, and step right when active.
+const ROW =
+  "group relative isolate z-[2] flex w-full items-center gap-3 rounded-lg text-left text-[var(--nav-label)] transition-[padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]";
+const ROW_TOP = "min-h-10 p-2.5 text-[13px]";
+const ROW_NESTED = "min-h-[35px] py-2.5 pr-2.5 text-[12px]";
+const nestedPad = (active: boolean) => (active ? "pl-[26px]" : "pl-5");
+const ICON = "nav-icon shrink-0 text-[#d5f4f4]";
+const BADGE = "flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center";
 
 function MainNavItem({
   href,
@@ -43,12 +41,17 @@ function MainNavItem({
   icon: Icon,
   label,
   badge,
+  nested = false,
+  pad,
 }: {
   href: string;
   active: boolean;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   label: string;
   badge?: React.ReactNode;
+  nested?: boolean;
+  /** Left padding override for rows nested one level deeper (Telecalling pages). */
+  pad?: string;
 }) {
   const router = useRouter();
   return (
@@ -58,17 +61,13 @@ function MainNavItem({
       aria-current={active ? "page" : undefined}
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
-        "relative isolate flex min-h-10 items-center gap-3 px-4 py-2 rounded-[10px] text-sm transition-all duration-150 border group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
-        active
-          ? ROW_ACTIVE
-          : ROW_IDLE
+        ROW,
+        nested ? cn(ROW_NESTED, pad ?? nestedPad(active)) : ROW_TOP,
+        active && "nav-active font-semibold",
       )}
     >
-      <Icon
-        size={16}
-        className={cn("flex-shrink-0", ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)}
-      />
-      <span className={cn("min-w-0 flex-grow whitespace-normal leading-5", active ? ACTIVE_LABEL : "font-medium")}>{label}</span>
+      {!nested && Icon && <Icon size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />}
+      <span className="min-w-0 flex-1 whitespace-normal leading-5">{label}</span>
       {badge}
     </Link>
   );
@@ -89,73 +88,55 @@ function TelecallingGroup({
   onToggle: () => void;
   pathname: string;
 }) {
-  const router = useRouter();
-  const Icon = group.icon;
   const active = group.isActive(pathname);
-  // Slide the items in only when the user opens the group, not on page load.
-  const [kidsIn, setKidsIn] = useState(false);
   // Most specific (longest href) match wins, so Dialer at /dashboard/telecalling
   // does not also light up on /dashboard/telecalling/scheduled.
   const bestHref = items
     .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
     .reduce<string | null>((best, i) => (!best || i.href.length > best.length ? i.href : best), null);
   return (
-    <div className="space-y-0.5">
+    <div>
       <button
         type="button"
-        onClick={() => { setKidsIn(!open); onToggle(); }}
+        onClick={onToggle}
         aria-expanded={open}
-        className={cn(GROUP_BUTTON, active ? "text-[var(--primary-300)]" : "text-slate-300 hover:bg-white/[0.06] hover:text-white")}
+        className={cn(ROW, ROW_NESTED, "pl-5 font-semibold")}
       >
-        <Icon size={16} className={cn(ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)} />
-        <span className="flex-1">{group.label}</span>
-        {!open && active && <span className={HELD_DOT} />}
-        {open ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+        <span className="min-w-0 flex-1">{group.label}</span>
+        <span className={cn("nav-held-dot", !open && active && "is-on")} aria-hidden="true" />
+        <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
       </button>
-      {open && (
-        <div className={cn("space-y-0.5", kidsIn && "nav-kids-in")}>
-          {items.map((item, idx) => {
-            const isActive = bestHref === item.href;
-            const isLast = idx === items.length - 1;
-            return (
-              <div key={item.href} className="relative pl-4 flex min-h-9 items-center">
-                <div className={cn("absolute left-3 w-px bg-white/15", isLast ? "top-0 h-[18px]" : "-top-1 bottom-0")} />
-                <div className="absolute left-3 top-1/2 -translate-y-1 w-3.5 h-3.5 border-l border-b border-white/15 rounded-bl-lg" />
-                <Link
+      <div className={cn("nav-expander", open && "open")} {...inertWhen(!open)}>
+        <div>
+          <div className="nav-children-flat">
+            {items.map((item) => {
+              const isActive = bestHref === item.href;
+              return (
+                <MainNavItem
+                  key={item.href}
+                  nested
+                  pad={isActive ? "pl-[38px]" : "pl-8"}
                   href={item.href}
-                  prefetch={true}
-                  aria-current={isActive ? "page" : undefined}
-                  onMouseEnter={() => router.prefetch(item.href)}
-                  className={cn(
-                    "relative isolate flex min-w-0 flex-1 items-center gap-2 ml-1 px-2 py-1.5 rounded-xl text-xs transition-all duration-150 group border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
-                    isActive
-                      ? ROW_ACTIVE
-                      : ROW_IDLE
-                  )}
-                >
-                  <span className={cn("min-w-0 flex-1 whitespace-normal leading-5", isActive ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
-                  {item.href === "/dashboard/telecalling" && alertCount > 0 && (
-                    <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center">
-                      {alertCount > 9 ? "9+" : alertCount}
-                    </span>
-                  )}
-                </Link>
-              </div>
-            );
-          })}
+                  active={isActive}
+                  label={item.label}
+                  badge={item.href === "/dashboard/telecalling" && alertCount > 0 ? (
+                    <span className={BADGE}>{alertCount > 9 ? "9+" : alertCount}</span>
+                  ) : undefined}
+                />
+              );
+            })}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function SettingsGroupButton({ group, active, onOpen }: { group: NavGroup; active: boolean; onOpen: () => void }) {
-  const Icon = group.icon;
+function SettingsGroupButton({ group, onOpen }: { group: NavGroup; onOpen: () => void }) {
   return (
-    <button type="button" onClick={onOpen} className={cn(GROUP_BUTTON, active ? "text-[var(--primary-300)]" : "text-slate-300 hover:bg-white/[0.06] hover:text-white")}>
-      <Icon size={16} className={cn(ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)} />
-      <span className="flex-1">{group.label}</span>
-      <ChevronRight size={14} className="text-slate-400" />
+    <button type="button" onClick={onOpen} className={cn(ROW, ROW_NESTED, "pl-5")}>
+      <span className="min-w-0 flex-1">{group.label}</span>
+      <ChevronRight size={13} strokeWidth={1.6} className="shrink-0" aria-hidden="true" />
     </button>
   );
 }
@@ -177,6 +158,8 @@ export function Sidebar(_props: SidebarProps) {
   const [alertCount, setAlertCount] = useState(0);
   const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
   const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
+  // The logo's squares drop in on first show, then wave on each page change.
+  const markAnim = useRef<{ path: string; cls: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -270,7 +253,7 @@ export function Sidebar(_props: SidebarProps) {
 
   if (roleLoading || subStatus === "loading") {
     return (
-      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[44px] bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
+      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
     );
   }
 
@@ -317,7 +300,7 @@ export function Sidebar(_props: SidebarProps) {
   const renderBadge = (key: NavBadgeKey | undefined) => {
     if (key === "conversations") {
       return inboxCount > 0 ? (
-        <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center">
+        <span className={BADGE}>
           {inboxCount}
         </span>
       ) : undefined;
@@ -328,9 +311,10 @@ export function Sidebar(_props: SidebarProps) {
     return undefined;
   };
 
-  const renderLeaf = (leaf: NavLeaf) => (
+  const renderLeaf = (leaf: NavLeaf, nested = false) => (
     <MainNavItem
       key={leaf.key}
+      nested={nested}
       href={leaf.href}
       active={leaf.isActive(pathname)}
       icon={leaf.icon}
@@ -357,58 +341,61 @@ export function Sidebar(_props: SidebarProps) {
       <SettingsGroupButton
         key={group.key}
         group={group}
-        active={isSettingsActive}
         onOpen={() => toggleGroup("Settings")}
       />
     );
   };
 
-  const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry) : renderGroup(entry));
+  const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry, true) : renderGroup(entry));
 
-  const renderSection = (section: (typeof NAV_SECTIONS)[number], standalone: boolean) => {
+  const renderSection = (section: (typeof NAV_SECTIONS)[number]) => {
     const entries = visibleEntries(section, access);
     if (entries.length === 0) return null;
-    const open = resolveSectionOpen(
-      sectionChoice[section.key], section.defaultOpen, sectionContainsPage(section, pathname),
-    );
+    const holdsActive = sectionContainsPage(section, pathname);
+    const open = resolveSectionOpen(sectionChoice[section.key], section.defaultOpen, holdsActive);
     return (
-      <div key={section.key} className={cn(
-        "[&>div>div]:mb-4 [&>div>div]:mr-[18px] [&>div>div]:ml-[26px] [&>div>div]:border-l [&>div>div]:border-white/15 [&>div>div]:pl-1.5",
-        standalone && "rounded-2xl bg-navy-800 [&>div>button]:min-h-10 [&>div>button]:py-2.5",
-        section.key === "engage" && "[&>div>div]:mb-10",
-        section.key === "inbox" && "[&>div>div]:ml-0 [&>div>div]:mr-2 [&>div>div]:border-0 [&>div>div]:pl-0 [&>div>div]:mb-0 [&>div>div]:space-y-0 [&_a]:min-h-9 [&_a]:py-1.5",
-      )}>
-        <SidebarSection
-          title={section.title}
-          icon={standalone ? undefined : entries[0].icon}
-          open={open}
-          holdsActive={sectionContainsPage(section, pathname)}
-          onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
-        >
-          {entries.map(renderEntry)}
-        </SidebarSection>
-      </div>
+      <SidebarSection
+        key={section.key}
+        title={section.title}
+        icon={section.icon}
+        open={open}
+        holdsActive={holdsActive}
+        onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
+      >
+        {entries.map(renderEntry)}
+      </SidebarSection>
     );
   };
 
+  if (markAnim.current?.path !== pathname) {
+    markAnim.current = { path: pathname, cls: markAnim.current ? "anril-mark-wave" : "anril-mark-in" };
+  }
+
   return (
-    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[44px] bg-[var(--navy)] [color-scheme:dark] flex flex-col z-20 select-none w-[var(--sidebar-width)]">
-      <div className="h-[78px] mx-[26px] shrink-0 flex items-center justify-center border-b border-navy-800">
+    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] [--nav-label:#fff] [color-scheme:dark] flex flex-col z-20 select-none w-[var(--sidebar-width)] pt-[22px] pb-[18px] text-white">
+      <div className="shrink-0 px-3.5">
         {/* Keyed on the page so the squares replay their wave on every navigation. */}
-        <AnrilMarkRow key={pathname} height={18} accent="var(--primary-400)" className="anril-mark-wave w-auto overflow-visible text-white" />
+        <Link
+          key={pathname}
+          href={dashboard.href}
+          aria-label="anril AI home"
+          className={cn("anril-mark mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
+        >
+          <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-white" />
+        </Link>
       </div>
 
       {showSettings ? (
-        <div className="relative flex-grow overflow-y-auto px-3 py-4 space-y-1 scrollbar-thin">
+        <div className="relative min-h-0 flex-grow overflow-y-auto px-3.5 scrollbar-thin">
           <button
             type="button"
             onClick={() => {
               setExpandedGroups((prev) => ({ ...prev, Settings: false }));
               router.push("/dashboard");
             }}
-            className="flex items-center gap-2 px-2 py-2 mb-2 w-full rounded-xl text-left text-sm font-bold text-white transition-all hover:bg-white/[0.06]"
+            className={cn(ROW, ROW_TOP, "mb-2 font-semibold")}
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />
             <span>Settings</span>
           </button>
 
@@ -416,8 +403,8 @@ export function Sidebar(_props: SidebarProps) {
             const groupItems = visibleSettingsItems.filter((i) => i.group === group);
             if (groupItems.length === 0) return null;
             return (
-              <div key={group} className="pt-2 first:pt-0">
-                <div className="px-3 pb-1 font-label text-[10px] font-bold uppercase tracking-wider text-slate-300">
+              <div key={group} className="pt-3 first:pt-0">
+                <div className="mb-2 px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
                   {group}
                 </div>
                 {groupItems.map((item) => {
@@ -427,24 +414,13 @@ export function Sidebar(_props: SidebarProps) {
                   const bestMatch = matches.reduce<NavItem | null>(
                     (best, i) => (!best || i.href.length > best.href.length ? i : best), null
                   );
-                  const active = bestMatch?.href === item.href;
-
                   return (
-                    <Link
+                    <MainNavItem
                       key={item.href}
                       href={item.href}
-                      prefetch={true}
-                      aria-current={active ? "page" : undefined}
-                      onMouseEnter={() => router.prefetch(item.href)}
-                      className={cn(
-                        "relative isolate flex items-center px-3 py-1.5 rounded-xl text-sm transition-all duration-150 border",
-                        active
-                          ? ROW_ACTIVE
-                          : ROW_IDLE
-                      )}
-                    >
-                      <span className={cn("truncate", active ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
-                    </Link>
+                      active={bestMatch?.href === item.href}
+                      label={item.label}
+                    />
                   );
                 })}
               </div>
@@ -453,8 +429,9 @@ export function Sidebar(_props: SidebarProps) {
           <ActiveIndicator pathname={pathname} />
         </div>
       ) : (
-        <div className="relative flex-grow min-h-0 overflow-y-auto px-[18px] py-4 space-y-3 scrollbar-thin">
-          <div className="rounded-2xl bg-navy-800 p-2 [&_a]:px-2.5">
+        <>
+          <div className="mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
+          <nav aria-label="Main" className="relative min-h-0 flex-grow overflow-y-auto px-3.5 scrollbar-thin">
             <MainNavItem
               href={dashboard.href}
               active={pathname === dashboard.href}
@@ -462,27 +439,23 @@ export function Sidebar(_props: SidebarProps) {
               label={dashboard.label}
             />
             {renderLeaf(ANALYTICS_LINK)}
-          </div>
-
-          {NAV_SECTIONS.slice(0, 2).map((section) => renderSection(section, true))}
-          {NAV_SECTIONS.slice(2).some((section) => visibleEntries(section, access).length > 0) && (
-            <div className="rounded-2xl bg-navy-800 py-2">
-              {NAV_SECTIONS.slice(2).map((section) => renderSection(section, false))}
-            </div>
-          )}
-          <ActiveIndicator pathname={pathname} />
-        </div>
+            <div className="mx-2 my-3.5 h-px bg-[var(--navy-800)]" />
+            {NAV_SECTIONS.map((section) => renderSection(section))}
+            <ActiveIndicator pathname={pathname} />
+          </nav>
+        </>
       )}
 
       {/* Pinned footer: Developer. Stays out of the scrolling list, as before. */}
       {isSubscribed && canSettings && (
-        <div className="shrink-0 mx-[26px] border-t border-navy-800 py-2 [&_a]:px-2">
+        <div className="relative mx-3.5 mt-auto shrink-0 border-t border-[var(--navy-800)] pt-3.5">
           <MainNavItem
             href="/dashboard/developer"
             active={pathname.startsWith("/dashboard/developer")}
             icon={Code2}
             label="Developer"
           />
+          <ActiveIndicator pathname={pathname} />
         </div>
       )}
     </aside>
