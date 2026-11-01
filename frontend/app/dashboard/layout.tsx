@@ -1,7 +1,15 @@
+import localFont from "next/font/local";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { serverFetchJson } from "@/lib/serverApi";
 import { ClientLayout } from "./ClientLayout";
+
+const inter = localFont({
+  src: "../fonts/inter-variable.ttf",
+  variable: "--font-swiss",
+  display: "swap",
+  weight: "100 900",
+});
 
 interface OnboardingStatus {
   has_tenant: boolean;
@@ -32,8 +40,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <ClientLayout>
-      {children}
-    </ClientLayout>
+    <div className={inter.variable}>
+      <ClientLayout>
+        {children}
+      </ClientLayout>
+    </div>
   );
 }

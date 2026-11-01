@@ -69,9 +69,9 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
   { key: "inbox", title: "INBOX & LEADS" },
   { key: "engage", title: "ANRIL ENGAGE" },
   { key: "reach", title: "ANRIL REACH" },
-  { key: "commerce", title: "SALES · ANRIL COMMERCE" },
+  { key: "commerce", title: "ANRIL COMMERCE" },
   { key: "callIq", title: "ANRIL CALL IQ" },
-  { key: "aiSetup", title: "AI SETUP" },
+  { key: "aiSetup", title: "ANRIL SETUP" },
   { key: "whatsappSetup", title: "WHATSAPP SETUP" },
   { key: "account", title: "ACCOUNT" },
 ];

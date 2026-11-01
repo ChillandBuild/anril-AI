@@ -386,3 +386,23 @@ canvas {
 @media (prefers-reduced-motion: reduce) {
   .animate-popover-in { animation: none; }
 }
+
+.dashboard-swiss .card {
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(10,21,40,.02);
+}
+.dashboard-swiss h2 { font-size: .875rem; font-weight: 600; }
+.dashboard-swiss .swiss-workload > div { min-width: 0; }
+@media (min-width: 1024px) {
+  .dashboard-swiss .swiss-workload > div + div {
+    border-left: 1px solid var(--border);
+    padding-left: 1.5rem;
+  }
+}
+@media (min-width: 768px) {
+  .dashboard-swiss .card { padding: 1.75rem; }
+}
+
+.dashboard-swiss, .dashboard-swiss .font-display, .dashboard-swiss .font-label,
+.swiss-sidebar, .swiss-sidebar .font-label { font-family: var(--font-swiss), sans-serif; }

@@ -27,7 +27,7 @@ export function LeadSourceSection({ overview }: { overview: AnalyticsOverview })
 
   if (total === 0) {
     return (
-      <div className="card rounded-[32px] p-8">
+      <div className="card rounded-xl p-6 md:p-7">
         <h2 className="font-display font-bold text-ink mb-2 text-[18px]">Where did today&apos;s leads come from?</h2>
         <p className="text-sm text-ink-muted">No leads yet today.</p>
       </div>
@@ -35,7 +35,7 @@ export function LeadSourceSection({ overview }: { overview: AnalyticsOverview })
   }
 
   return (
-    <div className="card rounded-[32px] p-8">
+    <div className="card rounded-xl p-6 md:p-7">
       <h2 className="font-display font-bold text-ink mb-6 text-[18px]">Where did today&apos;s leads come from?</h2>
       <div className="space-y-3">
         {entries.map(([channel, count]) => {

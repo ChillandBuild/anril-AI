@@ -36,7 +36,7 @@ function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D",
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="card rounded-[32px] p-8">
+    <div className="card rounded-xl p-6 md:p-7">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="font-display font-bold text-ink text-[18px]">
@@ -143,7 +143,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     const isPending = subStatus === "pending_approval";
     return (
       <div className="animate-slide-up space-y-6 max-w-4xl">
-        <div className="card rounded-[32px] p-8 border border-border bg-gradient-to-br from-primary-light to-white shadow-sm">
+        <div className="card rounded-xl p-6 md:p-7 border border-border bg-gradient-to-br from-primary-light to-white shadow-sm">
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Sparkles size={24} />
           </div>
@@ -209,7 +209,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
   }
 
   return (
-    <div className="animate-slide-up space-y-6 select-none">
+    <div className="dashboard-swiss space-y-8">
       <PipelinePulse overview={overview} />
 
       <AiWorkloadSection overview={overview} />

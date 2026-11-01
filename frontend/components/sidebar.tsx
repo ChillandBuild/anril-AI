@@ -31,7 +31,7 @@ const ROW_IDLE = "border-transparent text-slate-300 hover:bg-white/[0.06] hover:
 const ICON_ACTIVE = "text-[var(--primary-300)]";
 const ICON_IDLE = "text-slate-300 group-hover:text-white";
 const GROUP_BUTTON =
-  "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm font-semibold text-left transition-all group";
+  "flex items-center gap-2.5 px-2 py-2.5 w-full rounded-xl text-[13px] font-semibold text-left transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]";
 
 function MainNavItem({
   href,
@@ -51,9 +51,10 @@ function MainNavItem({
     <Link
       href={href}
       prefetch={true}
+      aria-current={active ? "page" : undefined}
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
-        "flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-sm transition-all duration-150 border group",
+        "flex min-h-10 items-center gap-2 px-2 py-2 rounded-xl text-[13px] transition-all duration-150 border group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
         active
           ? ROW_ACTIVE
           : ROW_IDLE
@@ -64,7 +65,7 @@ function MainNavItem({
         size={16}
         className={cn("flex-shrink-0", active ? ICON_ACTIVE : ICON_IDLE)}
       />
-      <span className={cn("truncate flex-grow", active ? ACTIVE_LABEL : "font-medium")}>{label}</span>
+      <span className={cn("min-w-0 flex-grow whitespace-normal leading-5", active ? ACTIVE_LABEL : "font-medium")}>{label}</span>
       {badge}
     </Link>
   );
@@ -111,7 +112,7 @@ function TelecallingGroup({
             const isActive = bestHref === item.href;
             const isLast = idx === items.length - 1;
             return (
-              <div key={item.href} className="relative pl-6 flex items-center h-9">
+              <div key={item.href} className="relative pl-4 flex min-h-9 items-center">
                 <div className={cn("absolute left-3 w-px bg-white/15", isLast ? "top-0 h-[18px]" : "-top-1 bottom-0")} />
                 <div className="absolute left-3 top-1/2 -translate-y-1 w-3.5 h-3.5 border-l border-b border-white/15 rounded-bl-lg" />
                 <Link
@@ -119,14 +120,14 @@ function TelecallingGroup({
                   prefetch={true}
                   onMouseEnter={() => router.prefetch(item.href)}
                   className={cn(
-                    "flex items-center gap-2 ml-3.5 px-3 py-1.5 w-[145px] rounded-xl text-[13px] transition-all duration-150 group border",
+                    "flex min-w-0 flex-1 items-center gap-2 ml-1 px-2 py-1.5 rounded-xl text-xs transition-all duration-150 group border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
                     isActive
                       ? ROW_ACTIVE
                       : ROW_IDLE
                   )}
                 >
                   {isActive && <span className="w-1 h-3 rounded-full bg-[var(--primary-400)] mr-1 flex-shrink-0 shadow-[0_0_8px_rgba(var(--primary-400-rgb),0.6)]" />}
-                  <span className={cn("truncate flex-1", isActive ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
+                  <span className={cn("min-w-0 flex-1 whitespace-normal leading-5", isActive ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
                   {item.href === "/dashboard/telecalling" && alertCount > 0 && (
                     <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center">
                       {alertCount > 9 ? "9+" : alertCount}
@@ -263,7 +264,7 @@ export function Sidebar(_props: SidebarProps) {
 
   if (roleLoading || subStatus === "loading") {
     return (
-      <aside className="fixed left-0 top-0 h-full bg-[var(--navy)] border-r border-white/[0.06] z-20 w-[220px]" />
+      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[28px] bg-[var(--navy)] border-r border-white/[0.06] z-20 w-[220px]" />
     );
   }
 
@@ -359,7 +360,7 @@ export function Sidebar(_props: SidebarProps) {
   const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry) : renderGroup(entry));
 
   return (
-    <aside className="fixed left-0 top-0 h-full bg-[var(--navy)] border-r border-white/[0.06] [color-scheme:dark] flex flex-col z-20 select-none w-[220px]">
+    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[28px] bg-[var(--navy)] border-r border-white/[0.06] [color-scheme:dark] flex flex-col z-20 select-none w-[220px]">
       {/* Brand: h-16 matches the header so the divider lines up. shrink-0 keeps it from compressing. */}
       <div className="h-16 shrink-0 flex items-center border-b border-white/[0.08] px-5">
         <AnrilLogo className="h-6 w-auto text-white" />
@@ -421,14 +422,16 @@ export function Sidebar(_props: SidebarProps) {
           })}
         </div>
       ) : (
-        <div className="flex-grow overflow-y-auto px-3 py-4 space-y-1.5 scrollbar-thin">
-          <MainNavItem
-            href={dashboard.href}
-            active={pathname === dashboard.href}
-            icon={LayoutDashboard}
-            label={dashboard.label}
-          />
-          {renderLeaf(ANALYTICS_LINK)}
+        <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-3 scrollbar-thin">
+          <div className="rounded-2xl bg-navy-800 p-1.5 space-y-1">
+            <MainNavItem
+              href={dashboard.href}
+              active={pathname === dashboard.href}
+              icon={LayoutDashboard}
+              label={dashboard.label}
+            />
+            {renderLeaf(ANALYTICS_LINK)}
+          </div>
 
           {NAV_SECTIONS.map((section) => {
             const entries = visibleEntries(section, access);
@@ -439,14 +442,15 @@ export function Sidebar(_props: SidebarProps) {
               sectionContainsPage(section, pathname),
             );
             return (
-              <SidebarSection
-                key={section.key}
-                title={section.title}
-                open={open}
-                onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
-              >
-                {entries.map(renderEntry)}
-              </SidebarSection>
+              <div key={section.key} className="rounded-2xl bg-navy-800 p-1.5 [&>div]:pt-0 [&>div>button]:py-3 [&>div>button]:px-2 [&>div>button]:gap-2 [&>div>button]:focus-visible:outline [&>div>button]:focus-visible:outline-2 [&>div>button]:focus-visible:outline-[var(--primary-400)] [&>div>button>span]:whitespace-normal [&>div>button>span]:leading-4 [&>div>button>svg]:shrink-0 [&>div>div]:ml-2 [&>div>div]:border-l [&>div>div]:border-white/15 [&>div>div]:pl-1 [&>div>div]:pb-1">
+                <SidebarSection
+                  title={section.title}
+                  open={open}
+                  onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
+                >
+                  {entries.map(renderEntry)}
+                </SidebarSection>
+              </div>
             );
           })}
         </div>

@@ -320,9 +320,9 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "inbox", title: "INBOX & LEADS", defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
   { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
   { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS, SMS] },
-  { key: "commerce", title: "SALES · ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
+  { key: "commerce", title: "ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
   { key: "callIq", title: "ANRIL CALL IQ", defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
-  { key: "aiSetup", title: "AI SETUP", defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
+  { key: "aiSetup", title: "ANRIL SETUP", defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
   { key: "whatsappSetup", title: "WHATSAPP SETUP", defaultOpen: false, entries: [TEMPLATES, NUMBERS_POOL] },
   { key: "account", title: "ACCOUNT", defaultOpen: false, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
 ];

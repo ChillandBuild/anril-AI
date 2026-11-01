@@ -10,7 +10,7 @@ export function TrendBadge({ pct, label }: TrendBadgeProps) {
   const arrow = pct > 0 ? "↑" : pct < 0 ? "↓" : "→";
 
   return (
-    <div className="mt-8 flex items-center">
+    <div className="mt-2 flex flex-wrap items-center gap-y-1">
       <span className={`badge ${badgeClass} font-semibold`}>
         {arrow} {Math.abs(pct)}%
       </span>

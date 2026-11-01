@@ -5,8 +5,7 @@ import { HeroSparkline } from "./HeroSparkline";
 
 interface HeroCardProps {
   icon: React.ReactNode;
-  iconGradient: string;
-  glowColor: string;
+  iconTone: string;
   label: string;
   value: number;
   sparklineData: { day: string; count: number }[];
@@ -15,33 +14,30 @@ interface HeroCardProps {
   trendPct: number | null;
   trendLabel: string;
   sub?: string;
-  tone?: string;
 }
 
 function HeroCard({
-  icon, iconGradient, glowColor, label, value,
+  icon, iconTone, label, value,
   sparklineData, sparklineColor, gradientId, trendPct, trendLabel, sub,
-  tone = "border-t-primary-500",
 }: HeroCardProps) {
   return (
-    <div className={`group relative overflow-hidden rounded-[32px] border border-border border-t-4 bg-white p-8 flex flex-col justify-between hover:-translate-y-1 hover:shadow-md transition-all duration-300 ${tone}`}>
-      <div className={`absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 rounded-full ${glowColor} blur-2xl transition-all duration-300`} />
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div className={`w-11 h-11 rounded-full ${iconGradient} text-white flex items-center justify-center shadow-md`}>
-            {icon}
-          </div>
-          <HeroSparkline data={sparklineData} color={sparklineColor} gradientId={gradientId} />
+    <div className="flex min-h-48 flex-col justify-between rounded-xl border border-border bg-white p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-secondary">{label}</div>
+          <div className="mt-2 text-4xl font-semibold tracking-tight tabular-nums text-ink">{value}</div>
         </div>
-        <div className="text-xs font-semibold text-ink-muted uppercase tracking-wider">{label}</div>
-        <div className="font-mono font-bold text-[40px] text-ink tracking-tight leading-none mt-2">
-          {value}
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${iconTone}`}>
+          {icon}
         </div>
-        {sub && (
-          <div className="font-label text-xs font-medium text-ink-muted mt-2">{sub}</div>
-        )}
       </div>
-      <TrendBadge pct={trendPct} label={trendLabel} />
+      <div className="mt-6 flex min-h-10 flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
+        <div className="min-w-0">
+          {sub && <div className="font-mono text-xs text-ink-secondary">{sub}</div>}
+          <TrendBadge pct={trendPct} label={trendLabel} />
+        </div>
+        {sparklineData.length > 1 && <HeroSparkline data={sparklineData} color={sparklineColor} gradientId={gradientId} />}
+      </div>
     </div>
   );
 }
@@ -78,11 +74,14 @@ export function PipelinePulse({ overview }: { overview: AnalyticsOverview }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-mono text-xs font-medium uppercase tracking-wider text-ink-secondary">Today’s leads</h2>
+        <p className="font-mono text-xs text-ink-secondary">{overview.total_leads.toLocaleString()} total leads all-time</p>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <HeroCard
           icon={<MessageSquare size={18} />}
-          iconGradient="bg-gradient-to-br from-emerald-800 to-emerald-500"
-          glowColor="bg-emerald-500/5 group-hover:bg-emerald-500/10"
+          iconTone="border-segment-a-border bg-segment-a-bg text-segment-a-text"
           label="New Leads Today"
           value={newLeadsToday}
           sub={`Fresh ${freshLeadsToday} · Returned ${returningLeadsToday}`}
@@ -91,12 +90,10 @@ export function PipelinePulse({ overview }: { overview: AnalyticsOverview }) {
           gradientId="totalLeadsGrad"
           trendPct={pctVsYesterday(combinedDailyLeads)}
           trendLabel="vs yesterday"
-          tone="border-t-emerald-400"
         />
         <HeroCard
           icon={<TrendingUp size={18} />}
-          iconGradient="bg-gradient-to-br from-amber-800 to-orange-500"
-          glowColor="bg-amber-500/5 group-hover:bg-amber-500/10"
+          iconTone="border-segment-b-border bg-segment-b-bg text-segment-b-text"
           label="New Hot Leads Today"
           value={newHotLeadsToday}
           sparklineData={overview.new_hot_leads_daily}
@@ -104,12 +101,10 @@ export function PipelinePulse({ overview }: { overview: AnalyticsOverview }) {
           gradientId="hotLeadsGrad"
           trendPct={pctVsYesterday(overview.new_hot_leads_daily)}
           trendLabel="vs yesterday"
-          tone="border-t-amber-400"
         />
         <HeroCard
           icon={<CheckCircle2 size={18} />}
-          iconGradient="bg-gradient-to-br from-[var(--primary-950)] to-primary"
-          glowColor="bg-primary-500/5 group-hover:bg-primary-500/10"
+          iconTone="border-primary-100 bg-primary-50 text-primary"
           label="Conversions Today"
           value={overview.converted_today}
           sparklineData={[]}
@@ -117,12 +112,8 @@ export function PipelinePulse({ overview }: { overview: AnalyticsOverview }) {
           gradientId="conversionsGrad"
           trendPct={null}
           trendLabel=""
-          tone="border-t-primary-500"
         />
       </div>
-      <p className="pl-1 font-label text-xs font-medium text-ink-muted">
-        {overview.total_leads.toLocaleString()} total leads all-time
-      </p>
     </div>
   );
 }
