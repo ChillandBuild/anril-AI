@@ -260,7 +260,7 @@ export default function ConversationsPage() {
 
   if (folder === "escalations") {
     return (
-      <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background md:h-screen md:pl-[220px]">
+      <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--sidebar-width)]">
         {/* Escalations take the whole page width, with the Conversations tabs above. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ConversationList
@@ -300,7 +300,7 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background md:h-screen md:pl-[220px]">
+    <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--sidebar-width)]">
       {/* ── Conversation list ── */}
       <div className={`relative w-full flex-shrink-0 md:block md:w-[380px] md:max-w-[38vw] ${selected ? "hidden" : "block"}`}>
         <ConversationList

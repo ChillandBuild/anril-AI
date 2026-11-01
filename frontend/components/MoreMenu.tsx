@@ -69,9 +69,9 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
   { key: "inbox", title: "INBOX & LEADS" },
   { key: "engage", title: "ANRIL ENGAGE" },
   { key: "reach", title: "ANRIL REACH" },
-  { key: "commerce", title: "ANRIL COMMERCE" },
+  { key: "commerce", title: "SALES · ANRIL COMMERCE" },
   { key: "callIq", title: "ANRIL CALL IQ" },
-  { key: "aiSetup", title: "ANRIL SETUP" },
+  { key: "aiSetup", title: "AI SETUP" },
   { key: "whatsappSetup", title: "WHATSAPP SETUP" },
   { key: "account", title: "ACCOUNT" },
 ];
@@ -156,7 +156,7 @@ export function MoreMenu() {
   }, [canSettings]);
 
   return (
-    <div className="relative md:hidden">
+    <div className="relative lg:hidden">
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -168,7 +168,7 @@ export function MoreMenu() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[70] md:hidden">
+        <div className="fixed inset-0 z-[70] lg:hidden">
           <button
             type="button"
             aria-label="Close navigation"

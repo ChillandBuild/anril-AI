@@ -63,6 +63,47 @@ export function AnrilLogo({ width, height = 36, ...rest }: LogoProps) {
   );
 }
 
+/** The "anril AI" letters alone (no mark), for light surfaces such as the app header. */
+export function AnrilWordmark({ height = 20, ...rest }: LogoProps) {
+  return (
+    <svg
+      height={height}
+      viewBox="0 -726 3192 736"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="Anril AI"
+      {...rest}
+    >
+      <path d={LETTERS} fill="currentColor" />
+      <path d={I_DOT} fill={TEAL} />
+      <path d={AI} fill={TEAL} />
+    </svg>
+  );
+}
+
+/**
+ * The mark's four squares laid in one row: three plain (currentColor) and the
+ * teal one last. Each square is a <rect> so CSS can animate them one by one.
+ */
+export function AnrilMarkRow({ height = 18, accent = TEAL, ...rest }: LogoProps & { accent?: string }) {
+  return (
+    <svg
+      height={height}
+      viewBox="0 0 410 95"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="Anril AI"
+      {...rest}
+    >
+      {[0, 105, 210, 315].map((x) => (
+        <rect key={x} x={x} width="95" height="95" rx="26" fill={x === 315 ? accent : "currentColor"} />
+      ))}
+    </svg>
+  );
+}
+
 /** The four-square mark alone, for tight spots such as the collapsed sidebar. */
 export function AnrilMark({ width = 32, height = 32, ...rest }: LogoProps) {
   return (

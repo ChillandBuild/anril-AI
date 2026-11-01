@@ -54,7 +54,7 @@ export function MobileDashboardNav() {
       ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav h-[calc(4.75rem+env(safe-area-inset-bottom))] border-t border-border bg-white/95 px-3 pt-2 shadow-[0_-10px_30px_rgba(28,25,23,0.08)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav h-[calc(4.75rem+env(safe-area-inset-bottom))] border-t border-border bg-white/95 px-3 pt-2 shadow-[0_-10px_30px_rgba(28,25,23,0.08)] backdrop-blur lg:hidden">
       <div className={cn(
         "mx-auto grid h-14 max-w-lg gap-0.5 pb-0",
         isSubscribed ? "grid-cols-3" : "grid-cols-2"

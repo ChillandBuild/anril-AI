@@ -406,3 +406,65 @@ canvas {
 
 .dashboard-swiss, .dashboard-swiss .font-display, .dashboard-swiss .font-label,
 .swiss-sidebar, .swiss-sidebar .font-label { font-family: var(--font-swiss), sans-serif; }
+
+:root { --sidebar-width: 380px; }
+
+/* Sidebar motion. The active row's tint wipes in left to right just as the
+   hopping teal square (components/nav/ActiveIndicator.tsx) lands on it. */
+.nav-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(var(--primary-400-rgb), 0.2), rgba(var(--primary-400-rgb), 0.07));
+  box-shadow: inset 0 0 0 1px rgba(var(--primary-400-rgb), 0.26);
+  animation: nav-wipe 0.42s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+@keyframes nav-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.nav-hop-square {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--primary-400);
+  box-shadow: 0 0 10px rgba(var(--primary-400-rgb), 0.7);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Items of a menu the user just opened slide in one after another. */
+.nav-kids-in > * { animation: nav-kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nav-kids-in > :nth-child(2) { animation-delay: 35ms; }
+.nav-kids-in > :nth-child(3) { animation-delay: 70ms; }
+.nav-kids-in > :nth-child(4) { animation-delay: 105ms; }
+.nav-kids-in > :nth-child(5) { animation-delay: 140ms; }
+.nav-kids-in > :nth-child(n + 6) { animation-delay: 175ms; }
+@keyframes nav-kid-in {
+  from { opacity: 0; transform: translateX(-8px); }
+}
+
+/* The sidebar's four-square mark ripples on every page change. */
+.anril-mark-wave rect {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: anril-sq-wave 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.anril-mark-wave rect:nth-of-type(2) { animation-delay: 50ms; }
+.anril-mark-wave rect:nth-of-type(3) { animation-delay: 100ms; }
+.anril-mark-wave rect:nth-of-type(4) { animation-delay: 150ms; }
+@keyframes anril-sq-wave {
+  0%, 100% { transform: none; }
+  40% { transform: translateY(-22%) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-active::before, .nav-kids-in > *, .anril-mark-wave rect { animation: none; }
+}

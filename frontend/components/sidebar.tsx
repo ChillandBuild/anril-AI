@@ -8,11 +8,12 @@ import { ChevronDown, ChevronRight, ChevronLeft, Code2, LayoutDashboard, type Lu
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
-import { AnrilLogo } from "@/components/logo";
+import { AnrilMarkRow } from "@/components/logo";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { SidebarSection } from "@/components/nav/SidebarSection";
+import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import {
   ANALYTICS_LINK, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
   dashboardEntry, resolveSectionOpen, sectionContainsPage, visibleEntries,
@@ -21,15 +22,18 @@ import {
 
 type NavItem = { href: string; label: string };
 
-// The sidebar sits on navy (--navy, #0A1528): idle rows are soft white, the
-// active row is a teal tint with a bright teal bar so it reads on dark.
-const ACTIVE_BAR =
-  "w-1 h-3.5 rounded-full bg-[var(--primary-400)] -ml-0.5 mr-0.5 flex-shrink-0 shadow-[0_0_8px_rgba(var(--primary-400-rgb),0.6)]";
+// The sidebar sits on navy (--navy, #0A1528): idle rows are soft white. The
+// active row's teal tint wipes in (.nav-active in globals.css) as the shared
+// teal square (ActiveIndicator) lands on it.
 const ACTIVE_LABEL = "text-white font-semibold tracking-tight";
-const ROW_ACTIVE = "bg-[rgba(var(--primary-400-rgb),0.14)] border-[rgba(var(--primary-400-rgb),0.28)]";
+const ROW_ACTIVE = "nav-active border-transparent";
 const ROW_IDLE = "border-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white";
 const ICON_ACTIVE = "text-[var(--primary-300)]";
 const ICON_IDLE = "text-slate-300 group-hover:text-white";
+// Icons nudge right on hover with a small spring.
+const ICON_NUDGE = "transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover:translate-x-0.5 motion-reduce:transition-none";
+// Small teal square on a closed menu that holds the current page.
+const HELD_DOT = "size-1.5 shrink-0 rounded-[2px] bg-[var(--primary-400)]";
 const GROUP_BUTTON =
   "flex items-center gap-2.5 px-2 py-2.5 w-full rounded-xl text-[13px] font-semibold text-left transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]";
 
@@ -54,16 +58,15 @@ function MainNavItem({
       aria-current={active ? "page" : undefined}
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
-        "flex min-h-10 items-center gap-2 px-2 py-2 rounded-xl text-[13px] transition-all duration-150 border group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
+        "relative isolate flex min-h-10 items-center gap-3 px-4 py-2 rounded-[10px] text-sm transition-all duration-150 border group focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
         active
           ? ROW_ACTIVE
           : ROW_IDLE
       )}
     >
-      {active && <span className={ACTIVE_BAR} />}
       <Icon
         size={16}
-        className={cn("flex-shrink-0", active ? ICON_ACTIVE : ICON_IDLE)}
+        className={cn("flex-shrink-0", ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)}
       />
       <span className={cn("min-w-0 flex-grow whitespace-normal leading-5", active ? ACTIVE_LABEL : "font-medium")}>{label}</span>
       {badge}
@@ -89,6 +92,8 @@ function TelecallingGroup({
   const router = useRouter();
   const Icon = group.icon;
   const active = group.isActive(pathname);
+  // Slide the items in only when the user opens the group, not on page load.
+  const [kidsIn, setKidsIn] = useState(false);
   // Most specific (longest href) match wins, so Dialer at /dashboard/telecalling
   // does not also light up on /dashboard/telecalling/scheduled.
   const bestHref = items
@@ -98,16 +103,17 @@ function TelecallingGroup({
     <div className="space-y-0.5">
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => { setKidsIn(!open); onToggle(); }}
         aria-expanded={open}
         className={cn(GROUP_BUTTON, active ? "text-[var(--primary-300)]" : "text-slate-300 hover:bg-white/[0.06] hover:text-white")}
       >
-        <Icon size={16} className={active ? ICON_ACTIVE : ICON_IDLE} />
+        <Icon size={16} className={cn(ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)} />
         <span className="flex-1">{group.label}</span>
+        {!open && active && <span className={HELD_DOT} />}
         {open ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
       </button>
       {open && (
-        <div className="space-y-0.5">
+        <div className={cn("space-y-0.5", kidsIn && "nav-kids-in")}>
           {items.map((item, idx) => {
             const isActive = bestHref === item.href;
             const isLast = idx === items.length - 1;
@@ -118,15 +124,15 @@ function TelecallingGroup({
                 <Link
                   href={item.href}
                   prefetch={true}
+                  aria-current={isActive ? "page" : undefined}
                   onMouseEnter={() => router.prefetch(item.href)}
                   className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2 ml-1 px-2 py-1.5 rounded-xl text-xs transition-all duration-150 group border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
+                    "relative isolate flex min-w-0 flex-1 items-center gap-2 ml-1 px-2 py-1.5 rounded-xl text-xs transition-all duration-150 group border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary-400)]",
                     isActive
                       ? ROW_ACTIVE
                       : ROW_IDLE
                   )}
                 >
-                  {isActive && <span className="w-1 h-3 rounded-full bg-[var(--primary-400)] mr-1 flex-shrink-0 shadow-[0_0_8px_rgba(var(--primary-400-rgb),0.6)]" />}
                   <span className={cn("min-w-0 flex-1 whitespace-normal leading-5", isActive ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
                   {item.href === "/dashboard/telecalling" && alertCount > 0 && (
                     <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center">
@@ -147,7 +153,7 @@ function SettingsGroupButton({ group, active, onOpen }: { group: NavGroup; activ
   const Icon = group.icon;
   return (
     <button type="button" onClick={onOpen} className={cn(GROUP_BUTTON, active ? "text-[var(--primary-300)]" : "text-slate-300 hover:bg-white/[0.06] hover:text-white")}>
-      <Icon size={16} className={active ? ICON_ACTIVE : ICON_IDLE} />
+      <Icon size={16} className={cn(ICON_NUDGE, active ? ICON_ACTIVE : ICON_IDLE)} />
       <span className="flex-1">{group.label}</span>
       <ChevronRight size={14} className="text-slate-400" />
     </button>
@@ -155,7 +161,7 @@ function SettingsGroupButton({ group, active, onOpen }: { group: NavGroup; activ
 }
 
 interface SidebarProps {
-  /** Accepted so existing callers compile. The sidebar always renders the full 220px layout. */
+  /** Accepted so existing callers compile. The sidebar always renders the full desktop layout. */
   collapsed?: boolean;
   /** Accepted so existing callers compile. The logo always renders. */
   hideLogo?: boolean;
@@ -264,7 +270,7 @@ export function Sidebar(_props: SidebarProps) {
 
   if (roleLoading || subStatus === "loading") {
     return (
-      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[28px] bg-[var(--navy)] border-r border-white/[0.06] z-20 w-[220px]" />
+      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[44px] bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
     );
   }
 
@@ -359,15 +365,41 @@ export function Sidebar(_props: SidebarProps) {
 
   const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry) : renderGroup(entry));
 
+  const renderSection = (section: (typeof NAV_SECTIONS)[number], standalone: boolean) => {
+    const entries = visibleEntries(section, access);
+    if (entries.length === 0) return null;
+    const open = resolveSectionOpen(
+      sectionChoice[section.key], section.defaultOpen, sectionContainsPage(section, pathname),
+    );
+    return (
+      <div key={section.key} className={cn(
+        "[&>div>div]:mb-4 [&>div>div]:mr-[18px] [&>div>div]:ml-[26px] [&>div>div]:border-l [&>div>div]:border-white/15 [&>div>div]:pl-1.5",
+        standalone && "rounded-2xl bg-navy-800 [&>div>button]:min-h-10 [&>div>button]:py-2.5",
+        section.key === "engage" && "[&>div>div]:mb-10",
+        section.key === "inbox" && "[&>div>div]:ml-0 [&>div>div]:mr-2 [&>div>div]:border-0 [&>div>div]:pl-0 [&>div>div]:mb-0 [&>div>div]:space-y-0 [&_a]:min-h-9 [&_a]:py-1.5",
+      )}>
+        <SidebarSection
+          title={section.title}
+          icon={standalone ? undefined : entries[0].icon}
+          open={open}
+          holdsActive={sectionContainsPage(section, pathname)}
+          onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
+        >
+          {entries.map(renderEntry)}
+        </SidebarSection>
+      </div>
+    );
+  };
+
   return (
-    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[28px] bg-[var(--navy)] border-r border-white/[0.06] [color-scheme:dark] flex flex-col z-20 select-none w-[220px]">
-      {/* Brand: h-16 matches the header so the divider lines up. shrink-0 keeps it from compressing. */}
-      <div className="h-16 shrink-0 flex items-center border-b border-white/[0.08] px-5">
-        <AnrilLogo className="h-6 w-auto text-white" />
+    <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-[44px] bg-[var(--navy)] [color-scheme:dark] flex flex-col z-20 select-none w-[var(--sidebar-width)]">
+      <div className="h-[78px] mx-[26px] shrink-0 flex items-center justify-center border-b border-navy-800">
+        {/* Keyed on the page so the squares replay their wave on every navigation. */}
+        <AnrilMarkRow key={pathname} height={18} accent="var(--primary-400)" className="anril-mark-wave w-auto overflow-visible text-white" />
       </div>
 
       {showSettings ? (
-        <div className="flex-grow overflow-y-auto px-3 py-4 space-y-1 scrollbar-thin">
+        <div className="relative flex-grow overflow-y-auto px-3 py-4 space-y-1 scrollbar-thin">
           <button
             type="button"
             onClick={() => {
@@ -402,17 +434,15 @@ export function Sidebar(_props: SidebarProps) {
                       key={item.href}
                       href={item.href}
                       prefetch={true}
+                      aria-current={active ? "page" : undefined}
                       onMouseEnter={() => router.prefetch(item.href)}
                       className={cn(
-                        "flex items-center px-3 py-1.5 rounded-xl text-sm transition-all duration-150 border",
+                        "relative isolate flex items-center px-3 py-1.5 rounded-xl text-sm transition-all duration-150 border",
                         active
                           ? ROW_ACTIVE
                           : ROW_IDLE
                       )}
                     >
-                      {active && (
-                        <span className="w-1 h-3.5 rounded-full bg-[var(--primary-400)] mr-2 flex-shrink-0 shadow-[0_0_8px_rgba(var(--primary-400-rgb),0.6)]" />
-                      )}
                       <span className={cn("truncate", active ? ACTIVE_LABEL : "font-medium")}>{item.label}</span>
                     </Link>
                   );
@@ -420,10 +450,11 @@ export function Sidebar(_props: SidebarProps) {
               </div>
             );
           })}
+          <ActiveIndicator pathname={pathname} />
         </div>
       ) : (
-        <div className="flex-grow min-h-0 overflow-y-auto px-3 py-4 space-y-3 scrollbar-thin">
-          <div className="rounded-2xl bg-navy-800 p-1.5 space-y-1">
+        <div className="relative flex-grow min-h-0 overflow-y-auto px-[18px] py-4 space-y-3 scrollbar-thin">
+          <div className="rounded-2xl bg-navy-800 p-2 [&_a]:px-2.5">
             <MainNavItem
               href={dashboard.href}
               active={pathname === dashboard.href}
@@ -433,32 +464,19 @@ export function Sidebar(_props: SidebarProps) {
             {renderLeaf(ANALYTICS_LINK)}
           </div>
 
-          {NAV_SECTIONS.map((section) => {
-            const entries = visibleEntries(section, access);
-            if (entries.length === 0) return null;
-            const open = resolveSectionOpen(
-              sectionChoice[section.key],
-              section.defaultOpen,
-              sectionContainsPage(section, pathname),
-            );
-            return (
-              <div key={section.key} className="rounded-2xl bg-navy-800 p-1.5 [&>div]:pt-0 [&>div>button]:py-3 [&>div>button]:px-2 [&>div>button]:gap-2 [&>div>button]:focus-visible:outline [&>div>button]:focus-visible:outline-2 [&>div>button]:focus-visible:outline-[var(--primary-400)] [&>div>button>span]:whitespace-normal [&>div>button>span]:leading-4 [&>div>button>svg]:shrink-0 [&>div>div]:ml-2 [&>div>div]:border-l [&>div>div]:border-white/15 [&>div>div]:pl-1 [&>div>div]:pb-1">
-                <SidebarSection
-                  title={section.title}
-                  open={open}
-                  onToggle={() => setSectionChoice((prev) => ({ ...prev, [section.key]: !open }))}
-                >
-                  {entries.map(renderEntry)}
-                </SidebarSection>
-              </div>
-            );
-          })}
+          {NAV_SECTIONS.slice(0, 2).map((section) => renderSection(section, true))}
+          {NAV_SECTIONS.slice(2).some((section) => visibleEntries(section, access).length > 0) && (
+            <div className="rounded-2xl bg-navy-800 py-2">
+              {NAV_SECTIONS.slice(2).map((section) => renderSection(section, false))}
+            </div>
+          )}
+          <ActiveIndicator pathname={pathname} />
         </div>
       )}
 
       {/* Pinned footer: Developer. Stays out of the scrolling list, as before. */}
       {isSubscribed && canSettings && (
-        <div className="shrink-0 border-t border-white/[0.08] px-3 py-2">
+        <div className="shrink-0 mx-[26px] border-t border-navy-800 py-2 [&_a]:px-2">
           <MainNavItem
             href="/dashboard/developer"
             active={pathname.startsWith("/dashboard/developer")}

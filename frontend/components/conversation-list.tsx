@@ -150,7 +150,7 @@ export function ConversationList(props: Props) {
     return (
       <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
         {/* ── Header ── */}
-        <div className="px-4 pt-4 pb-2">
+        <div className="pr-4 pl-16 pt-4 pb-2 lg:pl-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
           </div>
@@ -209,7 +209,7 @@ export function ConversationList(props: Props) {
   return (
     <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
       {/* ── Header ── */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="pr-4 pl-16 pt-4 pb-2 lg:pl-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
           <div className="relative" ref={menuRef}>

@@ -120,11 +120,11 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <DashboardAuthGuard>
               <div className="h-screen bg-background overflow-hidden relative">
                 {/* Collapsed Dashboard Rail (md+) */}
-                <div className="hidden md:block">
+                <div className="hidden lg:block">
                   <Sidebar />
                 </div>
                 {children}
-                <div className="fixed top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[65] md:hidden">
+                <div className="fixed top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[65] lg:hidden">
                   <MoreMenu />
                 </div>
                 <MobileDashboardNav />
@@ -144,12 +144,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           <SessionTracker />
           <DashboardAuthGuard>
             <div className="flex min-h-screen overflow-x-hidden bg-background">
-              <div className="hidden md:block">
+              <div className="hidden lg:block">
                 <Sidebar />
               </div>
 
-              <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 md:ml-[220px] md:pt-16">
-                <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background md:left-[220px] md:h-16" />}>
+              <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--sidebar-width)] md:pt-16">
+                <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background lg:left-[var(--sidebar-width)] md:h-16" />}>
                   <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
                 </Suspense>
                 <ClaimBanner />
