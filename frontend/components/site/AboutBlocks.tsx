@@ -40,7 +40,7 @@ export function MakerPanel() {
         <div className={s.makerBody}>
           <p>
             A business communication and sales growth platform. Four modules, Reach, Engage, CallIQ and Commerce, take a
-            business from first message to final sale. Our customers are in India and overseas.
+            business from first message to final sale. Built for businesses in India and overseas.
           </p>
           <ul className={s.links}>
             <li>

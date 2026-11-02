@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import ui from "@/components/site/site.module.css";
 import { Motion } from "@/components/site/Motion";
+import { JsonLd, ORGANIZATION } from "@/components/site/schema";
 import "@/components/site/motion.css";
 
 // Serif for the marketing site's headings only, so the app's other pages never load it.
@@ -32,6 +33,7 @@ export default function NewSiteLayout({ children }: Readonly<{ children: React.R
   return (
     <div className={`${newsreader.variable} ${ui.site}`} data-site suppressHydrationWarning>
       <script dangerouslySetInnerHTML={{ __html: MOTION_INIT }} />
+      <JsonLd data={ORGANIZATION} />
       <Motion />
       <a href="#main" className={ui.skip}>
         Skip to content

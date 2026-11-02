@@ -7,16 +7,19 @@ import { FEATURES } from "@/components/site/features";
 import { ProductIntro } from "@/components/site/ProductIntro";
 import { BeforeAfter } from "@/components/site/BeforeAfter";
 import { Frame, Kicker } from "@/components/site/primitives";
+import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: "Products",
+  title: { absolute: "Bulk WhatsApp, AI Chatbot & Telecalling CRM | Anril AI" },
   description:
-    "AI replies on WhatsApp, web chat and phone, lead scoring, telecaller routing and call scoring, in one place.",
+    "Bulk WhatsApp sender, AI chatbot in Tanglish, lead management with Hot/Warm/Cold scoring, payment links and telecaller call tracking in one platform.",
+  alternates: { canonical: "/product" },
 };
 
 export default function ProductPage() {
   return (
     <Frame>
+      <JsonLd data={breadcrumbSchema([["Products", "/product"]])} />
       <ProductIntro />
       {FEATURES.map((f, i) => (
         <FeatureRow key={f.id} feature={f} flip={i % 2 === 1} showPoints linkHref="#demo" linkLabel="See it in a demo" />

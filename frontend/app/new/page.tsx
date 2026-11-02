@@ -5,20 +5,25 @@ import { DemoSection } from "@/components/site/DemoSection";
 import { FeatureRow } from "@/components/site/FeatureRow";
 import { FEATURES } from "@/components/site/features";
 import { HomeHero } from "@/components/site/HomeHero";
-import { ChannelStrip, IndustryList, ProductFacts } from "@/components/site/HomeBlocks";
+import { BuiltOnEnquiries, ChannelStrip, HomeModules, IndustryList, ProductFacts } from "@/components/site/HomeBlocks";
 import { HoursRuler } from "@/components/site/HoursRuler";
-import { Reviews } from "@/components/site/Reviews";
+import { Faq } from "@/components/site/Faq";
+import { HOME_FAQ } from "@/components/site/faqs";
 import { Frame, Kicker } from "@/components/site/primitives";
+import { JsonLd, SOFTWARE, faqSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: { absolute: "Anril AI | Answer every enquiry. Call the right lead first." },
+  title: { absolute: "WhatsApp AI Chatbot & CRM for Business | Anril AI" },
   description:
-    "Anril AI replies to every WhatsApp, Instagram and Facebook enquiry in seconds, in Tamil, English or Tanglish. Scores leads and takes payments. From ₹999/month.",
+    "Anril AI is a WhatsApp chatbot and CRM: replies to every WhatsApp, Instagram and Facebook enquiry in seconds, scores leads, takes payments. From ₹999/month.",
+  alternates: { canonical: "/" },
 };
 
 export default function NewHomePage() {
   return (
     <>
+      <JsonLd data={SOFTWARE} />
+      <JsonLd data={faqSchema(HOME_FAQ)} />
       <HomeHero />
       <Frame>
         <ChannelStrip />
@@ -50,8 +55,14 @@ export default function NewHomePage() {
         </section>
 
         <ProductFacts />
-        <Reviews />
+        <BuiltOnEnquiries />
+        <HomeModules />
         <IndustryList />
+        <section className={ui.band} id="faq" aria-labelledby="faq-h">
+          <Kicker>FAQ</Kicker>
+          <h2 className={ui.secH} id="faq-h">Questions people ask</h2>
+          <Faq items={HOME_FAQ.map((f) => ({ q: f.q, a: f.a }))} />
+        </section>
         <DemoSection />
       </Frame>
     </>

@@ -21,4 +21,7 @@
 .base a { display: inline-flex; align-items: center; min-height: 44px; color: #C3CFDD; text-underline-offset: 3px; text-decoration: underline; }
 .base p { display: flex; align-items: center; gap: 0.3em; min-height: 44px; }
 .base a:hover { color: var(--white); }
+.details { border-top: 0; padding-top: 0; color: #C3CFDD; }
+.details address { font-style: normal; display: flex; align-items: center; min-height: 44px; }
+.social { display: flex; flex-wrap: wrap; gap: 0 20px; list-style: none; margin: 0; padding: 0; }
 @media (prefers-reduced-motion: reduce) { .cta, .cols a { transition: none; } }

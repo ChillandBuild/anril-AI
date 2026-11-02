@@ -1,29 +1,68 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Clock, Mail, MapPin, MessageCircle } from "lucide-react";
 import { LegalPageShell } from "@/components/legal/LegalPageShell";
+import { CONTACT_EMAIL, HOURS, OFFICE_LINE, PHONE, REGISTERED_OFFICE } from "@/components/site/content";
+import { JsonLd, ORGANIZATION, breadcrumbSchema } from "@/components/site/schema";
+
+const MAP_SRC = `https://www.google.com/maps?q=${encodeURIComponent(`${OFFICE_LINE}, India`)}&output=embed`;
 
 export const metadata: Metadata = {
-  title: "Contact",
-  description: "Get in touch with the Anril team at Bloom Matrix.",
+  title: { absolute: "Contact Anril AI – Coimbatore | WhatsApp 90473 70380" },
+  description:
+    "Book a free demo online or at our Coimbatore office. Mon–Sat, 10 AM–6 PM. WhatsApp +91 90473 70380.",
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {
   return (
     <LegalPageShell title="Contact Us" subtitle="Anril — a Bloom Matrix product" effectiveDate="14 June 2026">
+      <JsonLd data={ORGANIZATION} />
+      <JsonLd data={breadcrumbSchema([["Contact", "/contact"]])} />
       <p className="text-sm leading-relaxed text-ink-secondary mb-10">
-        For support, sales, privacy requests, or any other questions about Anril, reach us at the address below.
+        For demos, support, sales, privacy requests, or any other questions about Anril, reach us below.
       </p>
 
-      <div className="mb-10">
+      <div className="mb-6">
         <div className="card">
           <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center mb-4">
             <MapPin size={18} className="text-primary" />
           </div>
-          <p className="text-sm font-semibold text-ink mb-1">Registered Office</p>
-          <p className="text-sm text-ink-secondary leading-relaxed">
-            352-1, Srinivasapuram Street, Avinashi, Tiruppur, Tamil Nadu – 641654, India
-          </p>
+          <p className="text-sm font-semibold text-ink mb-1">Office (demos held here)</p>
+          <address className="text-sm text-ink-secondary leading-relaxed not-italic">{OFFICE_LINE}, India</address>
+          <ul className="mt-4 space-y-2 text-sm text-ink-secondary">
+            <li className="flex items-center gap-2">
+              <MessageCircle size={14} className="text-primary" aria-hidden="true" />
+              WhatsApp:{" "}
+              <a href={PHONE.whatsapp} rel="noopener" className="text-primary hover:underline">
+                {PHONE.display}
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <Mail size={14} className="text-primary" aria-hidden="true" />
+              <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary hover:underline">
+                {CONTACT_EMAIL}
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <Clock size={14} className="text-primary" aria-hidden="true" />
+              {HOURS} (closed on government holidays)
+            </li>
+          </ul>
+          <iframe
+            title="Map showing the Anril AI office in Coimbatore"
+            src={MAP_SRC}
+            className="mt-5 w-full h-64 rounded-lg border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </div>
+      </div>
+
+      <div className="mb-10">
+        <div className="card">
+          <p className="text-sm font-semibold text-ink mb-1">Registered office (Bloom Matrix)</p>
+          <address className="text-sm text-ink-secondary leading-relaxed not-italic">{REGISTERED_OFFICE}</address>
         </div>
       </div>
 

@@ -65,3 +65,11 @@
 .pause:hover { border-color: var(--navy); }
 .pause:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) { .pause { display: none; } }
+
+.mods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
+.mods > li { background: var(--white); padding: clamp(20px, 3vw, 32px); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mods h3 { font: 400 1.5rem var(--serif); line-height: 1.15; color: var(--navy); }
+.mods p { color: var(--body); font-size: 0.95rem; line-height: 1.5; }
+.mods > li:last-child { grid-column: span 2; }
+@media (max-width: 1000px) { .mods { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .mods { grid-template-columns: minmax(0, 1fr); } .mods > li:last-child { grid-column: auto; } }

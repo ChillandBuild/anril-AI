@@ -5,11 +5,13 @@ import { DemoSection } from "@/components/site/DemoSection";
 import { IndustryGrid } from "@/components/site/IndustryGrid";
 import { IndustryIntro } from "@/components/site/IndustryIntro";
 import { Eg, Frame } from "@/components/site/primitives";
+import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: "Industries",
+  title: { absolute: "Real Estate, School & Clinic Lead Management | Anril AI" },
   description:
-    "Anril AI works for any business whose customers ask before they buy: education, real estate, healthcare, automotive, manufacturing, financial services and more.",
+    "Lead management and WhatsApp chatbot for real estate, education, healthcare, D2C brands and any business whose customers ask before they buy.",
+  alternates: { canonical: "/industries" },
 };
 
 // What people ask is a plain description of each trade; the conversation and what
@@ -17,6 +19,7 @@ export const metadata: Metadata = {
 export default function IndustriesPage() {
   return (
     <Frame>
+      <JsonLd data={breadcrumbSchema([["Industries", "/industries"]])} />
       <IndustryIntro lede="Wherever people ask before they buy, Anril AI answers the enquiry, marks the lead hot, warm or cold, and sends the hot ones to your team. Here is how that could look in a few industries.">
         <Eg>The conversations below are examples, not customer data.</Eg>
       </IndustryIntro>

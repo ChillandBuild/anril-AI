@@ -96,7 +96,7 @@ export function IndustryList() {
     <section className={`${ui.band} ${s.ind}`} id="industries" aria-labelledby="ind-h">
       <Kicker>Industries</Kicker>
       <h2 className={ui.secH} id="ind-h">Built for businesses that run on enquiries</h2>
-      <p className={ui.lede}>Businesses in India and overseas use Anril AI to answer every enquiry and call the right lead first.</p>
+      <p className={ui.lede}>Built for businesses in India and overseas that run on enquiries.</p>
       <ul className={s.tiles}>
         {INDUSTRIES.map((i, idx) => {
           const Icon = INDUSTRY_ICON[i.id] ?? Sparkles;
@@ -129,6 +129,47 @@ export function IndustryList() {
           </Link>
         </li>
       </ul>
+    </section>
+  );
+}
+
+// Short descriptions of what each module does, plus the done-for-you service that feeds leads into it.
+const HOME_MODULES = [
+  { name: "Reach", text: "Bulk WhatsApp campaigns with approved templates, contact segments, scheduling and reports." },
+  { name: "Engage", text: "AI replies in Tanglish or any language, Hot/Warm/Cold lead scoring, follow-ups and human handover." },
+  { name: "Commerce", text: "Razorpay payment links, orders from chats, catalogue, stock alerts and dispatch status." },
+  { name: "CallIQ", text: "Understands Tamil calls, records them and shows how each telecaller is performing." },
+  { name: "Anril Attract", text: "A service: we run your Instagram and Facebook posts and Meta and Google ads, and the leads flow into Anril." },
+] as const;
+
+/** What the platform does, module by module, in the words people search for. */
+export function HomeModules() {
+  return (
+    <section className={ui.band} id="modules" aria-labelledby="mod-h">
+      <Kicker>Modules</Kicker>
+      <h2 className={ui.secH} id="mod-h">WhatsApp campaigns, AI chatbot, payments and call tracking in one platform</h2>
+      <p className={ui.lede}>
+        Use one module or all of them. Every enquiry, payment and call lands in the same place.
+      </p>
+      <ul className={s.mods}>
+        {HOME_MODULES.map((m, i) => (
+          <li key={m.name} data-reveal style={{ "--rd": `${i * 60}ms` } as React.CSSProperties}>
+            <h3>{m.name}</h3>
+            <p>{m.text}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Replaces the customer reviews: a plain, checkable fact about our own use. */
+export function BuiltOnEnquiries() {
+  return (
+    <section className={ui.band} id="proof" aria-labelledby="proof-h">
+      <Kicker>In use</Kicker>
+      <h2 className={ui.secH} id="proof-h">Built and tested on real enquiries</h2>
+      <p className={ui.lede}>Our own group business runs on Anril and handles 1,800+ customer enquiries a month.</p>
     </section>
   );
 }

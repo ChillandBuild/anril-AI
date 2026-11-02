@@ -3,6 +3,21 @@
 
 export const SITE_URL = "https://www.anrilaitech.com";
 export const CONTACT_EMAIL = "anrilaitech@gmail.com";
+export const PHONE = { display: "+91 90473 70380", tel: "+919047370380", whatsapp: "https://wa.me/919047370380" } as const;
+export const OFFICE = {
+  street: "2, Sree Narayana Guru Road, Mission Road, Saibaba Koil",
+  city: "Coimbatore", region: "Tamil Nadu", postalCode: "641011", country: "India",
+} as const;
+export const OFFICE_LINE = `${OFFICE.street}, ${OFFICE.city}, ${OFFICE.region} ${OFFICE.postalCode}`;
+/** Bloom Matrix's legal registered address (Anril AI's demos are held at the Coimbatore office above). */
+export const REGISTERED_OFFICE = "352-1, Srinivasapuram Street, Avinashi, Tiruppur, Tamil Nadu – 641654, India";
+export const HOURS = "Monday to Saturday, 10 AM to 6 PM";
+export const STARTING_PRICE = "₹999";
+export const SOCIAL = [
+  { label: "Instagram", href: "https://www.instagram.com/anrilai/" },
+  { label: "Facebook", href: "https://www.facebook.com/profile.php?id=61594983276431" },
+  { label: "LinkedIn", href: "https://www.linkedin.com/company/143972232/" },
+] as const;
 /** Anril AI is a product of Bloom Matrix. */
 export const MAKER = { name: "Bloom Matrix", href: "https://www.bloommatrix.in" } as const;
 export const DEMO_LABEL = "Book a demo";
@@ -122,7 +137,7 @@ export const NAV: readonly NavItem[] = [
     href: "/about",
     children: [
       { label: "About", href: "/about" },
-      { label: "Contact", href: "/about#contact" },
+      { label: "Contact", href: "/contact" },
       { label: DEMO_LABEL, href: "/about#demo" },
     ],
   },
@@ -132,5 +147,5 @@ export const LEGAL_LINKS: readonly NavLink[] = [
   { label: "Privacy policy", href: "/privacy-policy" },
   { label: "Terms and conditions", href: "/terms-and-conditions" },
   { label: "Data deletion", href: "/data-deletion" },
-  { label: "Contact", href: "/about#contact" },
+  { label: "Contact", href: "/contact" },
 ];

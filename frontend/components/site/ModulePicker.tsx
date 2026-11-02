@@ -6,6 +6,13 @@ import m from "./Modules.module.css";
 import s from "./ModulePicker.module.css";
 
 /** Four module cards the visitor can tick. The ticked ones are summed into a quote request by email; no prices are shown. */
+// Starting prices only, never a full table. Commerce has no decided price yet.
+const MODULE_PRICE: Record<string, string> = {
+  reach: "Plans start from ₹999 a month (plus GST)",
+  engage: "Plans start from ₹999 a month (plus GST)",
+  calliq: "From ₹14,999 a year",
+};
+
 export function ModulePicker() {
   const [picked, setPicked] = useState<readonly string[]>([]);
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -44,7 +51,7 @@ export function ModulePicker() {
                 ))}
               </ul>
               <p className={m.flow}>{mod.flow}</p>
-              <p className={m.price}>Contact us for pricing</p>
+              <p className={m.price}>{MODULE_PRICE[mod.id] ?? "Book a demo for pricing"}</p>
             </li>
           );
         })}

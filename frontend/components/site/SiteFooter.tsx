@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AnrilLogo } from "@/components/logo";
-import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, LEGAL_LINKS, MAKER, NAV } from "./content";
+import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, HOURS, LEGAL_LINKS, MAKER, NAV, OFFICE_LINE, PHONE, SOCIAL } from "./content";
 import s from "./SiteFooter.module.css";
 
 const PRODUCT = NAV.find((n) => n.label === "Products")?.children ?? [];
@@ -8,7 +8,7 @@ const COMPANY = [
   { label: "About", href: "/about" },
   { label: "Plans", href: "/pricing" },
   { label: "Industries", href: "/industries" },
-  { label: "Contact", href: "/about#contact" },
+  { label: "Contact", href: "/contact" },
 ];
 const LEGAL = LEGAL_LINKS.filter((l) => l.label !== "Contact");
 
@@ -60,6 +60,25 @@ export function SiteFooter() {
             </a>
           </p>
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </div>
+        <div className={`${s.base} ${s.details}`}>
+          <address>{OFFICE_LINE}, India</address>
+          <p>
+            WhatsApp:{" "}
+            <a href={PHONE.whatsapp} rel="noopener">
+              {PHONE.display}
+            </a>
+          </p>
+          <p>{HOURS}</p>
+          <ul className={s.social}>
+            {SOCIAL.map((l) => (
+              <li key={l.href}>
+                <a href={l.href} rel="noopener">
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </footer>
