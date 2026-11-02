@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, X } from "lucide-react";
 import { AnrilLogo } from "@/components/logo";
 import LoginShowcase from "@/components/auth/LoginShowcase";
 import a from "@/components/auth/auth.module.css";
@@ -52,7 +52,16 @@ export default function LoginPage() {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [peek, setPeek] = useState(false);
   const [wide, setWide] = useState(false);
-  const [scale, setScale] = useState(1);
+  const [size, setSize] = useState({
+    scale: 1,
+    w: 680,
+    h: 600,
+    over: 97,
+    overX: 97,
+  });
+  const [cardH, setCardH] = useState(0);
+  const [signinH, setSigninH] = useState(0);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason");
@@ -68,25 +77,51 @@ export default function LoginPage() {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  // The showcase is drawn at 680x600 and zoomed to the largest size that fits
-  // beside the form: width left after the form, gap and gutters; height with
-  // room for Healy and Tealy poking out above and below.
+  // The card sets the height and the showcase matches it. The reset view keeps
+  // the sign-in view's height so neither box jumps when switching.
   useEffect(() => {
-    if (!wide) return;
+    const el = cardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCardH(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    if (view === "signin" && cardH) setSigninH(cardH);
+  }, [view, cardH]);
+
+  // The showcase fills the width left beside the card (up to 1000px) at the
+  // card's height. It's laid out at about 600 tall and zoomed, so the type and
+  // Healy / Tealy keep their size whatever the width. On short windows Healy
+  // and Tealy tuck further into the corners so they stay on screen; Tealy also
+  // tucks in sideways to stay inside the 64px left gutter.
+  useEffect(() => {
+    if (!wide || !cardH) return;
     const fit = () => {
-      const byWidth = (window.innerWidth - 420 - 48 - 160) / 680;
-      const byHeight = (window.innerHeight - 48) / 740;
-      setScale(Math.min(1.4, Math.max(0.75, Math.min(byWidth, byHeight))));
+      const width = Math.min(1000, window.innerWidth - 420 - 48 - 128);
+      const scale = Math.min(cardH / 600, width / 640);
+      const room = (window.innerHeight - cardH) / 2 - 6;
+      setSize({
+        scale,
+        w: width / scale,
+        h: cardH / scale,
+        over: Math.min(97, Math.max(30, room / scale + 8)),
+        overX: Math.min(97, 64 / scale + 12),
+      });
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [wide]);
+  }, [wide, cardH]);
+
+  function clearMessages() {
+    setError(null);
+    setNotice(null);
+  }
 
   function switchView(next: "signin" | "forgot") {
     setView(next);
-    setError(null);
-    setNotice(null);
+    clearMessages();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -184,18 +219,25 @@ export default function LoginPage() {
         aria-hidden="true"
       />
 
-      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:py-6">
+      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:px-16 xl:py-6">
         <div className="flex w-full max-w-[420px] flex-col gap-5 xl:max-w-none xl:w-auto xl:flex-row xl:items-center xl:gap-12">
           {wide ? (
             <div
               className="hidden xl:block relative shrink-0"
-              style={{ width: 680 * scale, height: 600 * scale }}
+              style={{
+                width: size.w * size.scale,
+                height: size.h * size.scale,
+              }}
             >
               <div
                 className="absolute left-0 top-0 origin-top-left"
-                style={{ transform: `scale(${scale})` }}
+                style={{ transform: `scale(${size.scale})` }}
               >
                 <LoginShowcase
+                  width={size.w}
+                  height={size.h}
+                  over={size.over}
+                  overX={size.overX}
                   peek={peek}
                   flying={loading && view === "signin"}
                 />
@@ -213,8 +255,34 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="xl:w-[420px] xl:shrink-0">
-            <div className={a.card}>
+          <div ref={cardRef} className="xl:w-[420px] xl:shrink-0">
+            <div
+              className={a.card}
+              style={
+                view === "forgot" && signinH
+                  ? { minHeight: signinH }
+                  : undefined
+              }
+            >
+              {/* Messages float over the top of the card instead of pushing the
+                  form down, so the card (and the showcase that matches it)
+                  never changes size. */}
+              {(error || notice) && (
+                <div
+                  role={error ? "alert" : "status"}
+                  className={`${error ? a.error : a.notice} ${a.banner}`}
+                >
+                  <span>{error ?? notice}</span>
+                  <button
+                    type="button"
+                    className={a.bannerClose}
+                    onClick={clearMessages}
+                    aria-label="Dismiss"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               <AnrilLogo height={30} className="text-ink mb-7" />
               {view === "signin" ? (
                 <>
@@ -225,17 +293,6 @@ export default function LoginPage() {
                     Sign in to your workspace
                   </p>
 
-                  {error && (
-                    <div role="alert" className={`${a.error} mb-4`}>
-                      {error}
-                    </div>
-                  )}
-                  {notice && (
-                    <div role="status" className={`${a.notice} mb-4`}>
-                      {notice}
-                    </div>
-                  )}
-
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                       <label htmlFor="email" className={a.label}>
@@ -245,7 +302,10 @@ export default function LoginPage() {
                         id="email"
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearMessages();
+                        }}
                         required
                         inputMode="email"
                         autoCapitalize="none"
@@ -273,7 +333,10 @@ export default function LoginPage() {
                           id="password"
                           type={showPassword ? "text" : "password"}
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            clearMessages();
+                          }}
                           onFocus={() => setPeek(true)}
                           onBlur={() => setPeek(false)}
                           required
@@ -343,17 +406,6 @@ export default function LoginPage() {
                     We&apos;ll email you a link to choose a new one.
                   </p>
 
-                  {error && (
-                    <div role="alert" className={`${a.error} mb-4`}>
-                      {error}
-                    </div>
-                  )}
-                  {notice && (
-                    <div role="status" className={`${a.notice} mb-4`}>
-                      {notice}
-                    </div>
-                  )}
-
                   <form onSubmit={handleReset} className="space-y-4">
                     <div>
                       <label htmlFor="reset-email" className={a.label}>
@@ -363,7 +415,10 @@ export default function LoginPage() {
                         id="reset-email"
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          clearMessages();
+                        }}
                         required
                         inputMode="email"
                         autoCapitalize="none"

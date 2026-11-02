@@ -1,12 +1,11 @@
 /* The login page's left side: one deep teal glass panel with the pitch, a feed of
    messages that answer themselves, and Healy / Tealy perched on opposite corners.
    Healy and Tealy are videos with a transparent background (WebM for most
-   browsers, HEVC .mov for Safari), so they sit on anything. Always 680x600; the
-   page scales the whole thing to fit the window. */
+   browsers, HEVC .mov for Safari), so they sit on anything. The page sets the
+   size (about 600 tall, as wide as there's room for) and zooms it to match the
+   card; everything below is pinned to an edge so it follows. */
 .root {
   position: relative;
-  width: 680px;
-  height: 600px;
   animation: fadeIn 0.4s ease-out both;
 }
 
@@ -38,17 +37,23 @@
   box-sizing: border-box;
   padding: 34px 32px;
   border-radius: 28px;
-  background: linear-gradient(135deg, var(--primary-900) 0%, #036e71 55%, var(--primary-800) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 30px 60px -28px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  color: #fff;
+  /* Tinted glass, about half solid: the teal and copper glows behind show
+     through the blur. Mid-teal fails with white text, so the text is dark. */
+  background: linear-gradient(135deg, rgba(4, 88, 91, 0.55) 0%, rgba(3, 110, 113, 0.5) 55%, rgba(3, 130, 133, 0.45) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 30px 60px -28px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  color: #0a1528;
 }
-/* Light sheen top-left so the panel still reads as glass. */
+/* Light reflection top-left and a faint one bottom-right. */
 .glass::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 55%);
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.24), transparent 55%),
+    radial-gradient(80% 60% at 100% 100%, rgba(255, 255, 255, 0.08), transparent 60%);
   pointer-events: none;
 }
 .copy,
@@ -59,7 +64,7 @@
 
 .copy {
   position: relative;
-  width: 330px;
+  width: min(440px, calc(100% - 38% - 80px));
 }
 .copy h2 {
   margin: 0 0 12px;
@@ -67,13 +72,13 @@
   line-height: 1.15;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: #0a1528;
 }
 .copy p {
   margin: 0 0 16px;
   font-size: 15px;
   line-height: 1.5;
-  color: #cdefef;
+  color: #12302f;
 }
 .chips {
   display: flex;
@@ -83,25 +88,27 @@
 .chip {
   font-size: 12.5px;
   font-weight: 700;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #0a1528;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   padding: 5px 11px;
   border-radius: 99px;
 }
 .by {
   position: absolute;
-  left: 112px;
+  /* clear of Tealy, who tucks in on narrow screens */
+  left: calc(214px - var(--over-x));
   bottom: 28px;
-  width: 270px;
+  /* and short of the message feed on narrow screens */
+  width: min(270px, calc(100% - clamp(262px, 38%, 340px) - 248px + var(--over-x)));
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1px solid rgba(10, 21, 40, 0.15);
   font-size: 12.5px;
   font-weight: 600;
-  color: #cdefef;
+  color: #12302f;
 }
 .by b {
-  color: #fff;
+  color: #0a1528;
   font-weight: 800;
 }
 
@@ -110,8 +117,8 @@
   position: absolute;
   right: 18px;
   top: 84px;
-  width: 262px;
-  height: 500px;
+  bottom: 16px;
+  width: clamp(262px, 38%, 340px);
   overflow: hidden;
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 80%, transparent 100%);
   mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 80%, transparent 100%);
@@ -120,7 +127,7 @@
   position: absolute;
   left: 6px;
   top: 0;
-  width: 250px;
+  width: calc(100% - 12px);
   box-sizing: border-box;
   padding: 12px 14px;
   border-radius: 14px 14px 14px 4px;
@@ -210,11 +217,11 @@
 }
 .pingReply {
   left: 410px;
-  top: 470px;
+  bottom: 130px;
   animation: ping 4s ease-out 0.8s infinite;
 }
 .pingLead {
-  left: 622px;
+  right: 58px;
   top: 336px;
   border-color: #e8a77e;
   animation: ping 16s ease-out 2.88s infinite;
@@ -230,12 +237,13 @@
   transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 .healy {
-  left: 583px;
-  top: -97px;
+  /* only the tail crosses the gap; the card would cover anything further */
+  right: -52px;
+  top: calc(var(--over) * -1);
 }
 .tealy {
-  left: -97px;
-  top: 503px;
+  left: calc(var(--over-x) * -1);
+  bottom: calc(var(--over) * -1);
 }
 .media {
   position: relative;
@@ -285,7 +293,7 @@
 }
 @keyframes rise {
   0% {
-    transform: translateY(500px);
+    transform: translateY(var(--rise));
     opacity: 0;
   }
   8% {

@@ -138,18 +138,63 @@
   color: var(--primary-900);
 }
 
-/* Compact deep teal header shown above the form below 1280px, where the full
-   showcase doesn't fit. Same look as the desktop panel. */
+/* Login: errors and notices float over the top of the card. */
+.banner {
+  position: absolute;
+  z-index: 3;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-shadow: 0 12px 28px -14px rgba(10, 21, 40, 0.35);
+  animation: bannerIn 0.25s ease-out both;
+}
+.bannerClose {
+  flex: none;
+  margin: 1px -4px 0 auto;
+  padding: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.bannerClose:hover {
+  opacity: 1;
+}
+.bannerClose:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+@keyframes bannerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .banner {
+    animation: none;
+  }
+}
+
+/* Compact deep teal glass header shown above the form below 1280px, where the
+   full showcase doesn't fit. Same look as the desktop panel. */
 .glassHeader {
   position: relative;
   z-index: 2;
   overflow: hidden;
   padding: 22px 24px;
   border-radius: 22px;
-  background: linear-gradient(135deg, var(--primary-900) 0%, #036e71 55%, var(--primary-800) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 24px 50px -26px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: linear-gradient(135deg, rgba(4, 88, 91, 0.55) 0%, rgba(3, 110, 113, 0.5) 55%, rgba(3, 130, 133, 0.45) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 24px 50px -26px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  color: #0a1528;
 }
 .glassHeader h2 {
   margin: 0 0 6px;
@@ -162,5 +207,5 @@
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #cdefef;
+  color: #12302f;
 }

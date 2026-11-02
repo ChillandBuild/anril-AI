@@ -42,10 +42,20 @@ function isSafari() {
 // side), so phones never download the videos.
 //   peek:   Healy shuts its eyes (password field focused)
 //   flying: Tealy flies off with the message (signing in)
+//   width / height: layout size in px, before the page zooms it
+//   over / overX: how far Healy and Tealy stick out past the corners
 export default function LoginShowcase({
+  width,
+  height,
+  over,
+  overX,
   peek,
   flying,
 }: {
+  width: number;
+  height: number;
+  over: number;
+  overX: number;
   peek: boolean;
   flying: boolean;
 }) {
@@ -98,7 +108,18 @@ export default function LoginShowcase({
   const healyLean = `translate(${lean.x * 10}px, ${lean.y * 8}px) rotate(${lean.x * 4}deg)`;
 
   return (
-    <div className={s.root}>
+    <div
+      className={s.root}
+      style={
+        {
+          width,
+          height,
+          "--over": `${over}px`,
+          "--over-x": `${overX}px`,
+          "--rise": `${height - 100}px`,
+        } as React.CSSProperties
+      }
+    >
       <div className={`${s.blob} ${s.blobTeal}`} aria-hidden="true" />
       <div className={`${s.blob} ${s.blobCopper}`} aria-hidden="true" />
 
