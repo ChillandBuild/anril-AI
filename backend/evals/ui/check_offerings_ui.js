@@ -1,4 +1,4 @@
-// "What Aira sells" (Services page) check on the LIVE site (https://www.bloommatrix.in/aira), logged in
+// "What Aira sells" (Services page) check on the LIVE site (https://www.anrilaitech.com), logged in
 // as the "Aira UI Test (Claude)" test owner. Read-only: it never clicks Save.
 //   node backend/evals/ui/check_offerings_ui.js   -> screenshots in backend/evals/ui/screenshots/
 // Also checks the old Intake Config URL redirects here. Credentials: backend/evals/ui/.test-account.json
@@ -9,7 +9,7 @@ const fs = require("fs");
 const SP = path.join(__dirname, "screenshots");
 fs.mkdirSync(SP, { recursive: true });
 const acct = JSON.parse(fs.readFileSync(path.join(__dirname, ".test-account.json"), "utf8"));
-const BASE = "https://www.bloommatrix.in/aira";
+const BASE = "https://www.anrilaitech.com";
 (async () => {
   const b = await chromium.launch();
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]]) {

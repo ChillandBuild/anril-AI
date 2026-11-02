@@ -8,7 +8,7 @@ const fs = require("fs");
 const SP = path.join(__dirname, "screenshots");
 fs.mkdirSync(SP, { recursive: true });
 const acct = JSON.parse(fs.readFileSync(path.join(__dirname, ".test-account.json"), "utf8"));
-const BASE = "https://www.bloommatrix.in/aira";
+const BASE = "https://www.anrilaitech.com";
 
 const REDIRECTS = [
   ["/dashboard/settings/packages", /\/dashboard\/services/],

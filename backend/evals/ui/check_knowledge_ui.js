@@ -1,4 +1,4 @@
-// Knowledge page UI check on the LIVE site (https://www.bloommatrix.in/aira), logged in as the
+// Knowledge page UI check on the LIVE site (https://www.anrilaitech.com), logged in as the
 // "Aira UI Test (Claude)" test owner. Read-only: it never clicks Save / Apply / Use this line.
 //   node backend/evals/ui/check_knowledge_ui.js   -> screenshots in backend/evals/ui/screenshots/
 // Credentials: backend/evals/ui/.test-account.json (gitignored). See .agents/context/subsystem-notes.md.
@@ -8,7 +8,7 @@ const fs = require("fs");
 const SP = path.join(__dirname, "screenshots");
 fs.mkdirSync(SP, { recursive: true });
 const acct = JSON.parse(fs.readFileSync(path.join(__dirname, ".test-account.json"), "utf8"));
-const BASE = "https://www.bloommatrix.in/aira";
+const BASE = "https://www.anrilaitech.com";
 const go = (p, url) => p.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
 (async () => {
   const b = await chromium.launch();
