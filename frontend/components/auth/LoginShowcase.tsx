@@ -6,23 +6,52 @@ import s from "./LoginShowcase.module.css";
 type Bubble = { channel: string; text: string; done: string; hot?: boolean };
 
 const BUBBLES: Bubble[] = [
-  { channel: "WhatsApp · Priya", text: "Fees evvalavu? Weekend batch irukka?", done: "Replied in 4s · Tanglish" },
+  {
+    channel: "WhatsApp · Priya",
+    text: "Fees evvalavu? Weekend batch irukka?",
+    done: "Replied in 4s · Tanglish",
+  },
   {
     channel: "Instagram · Arjun",
     text: "Is the 2BHK near OMR still available? Can I visit Sunday?",
     done: "Replied in 3s · visit booked",
     hot: true,
   },
-  { channel: "Facebook · Meena", text: "நாளைக்கு appointment கிடைக்குமா?", done: "Replied in 5s · Tamil" },
-  { channel: "WhatsApp · Karthik", text: "Price for 50 pieces, delivery to Madurai?", done: "Replied in 4s · quote sent" },
+  {
+    channel: "Facebook · Meena",
+    text: "நாளைக்கு appointment கிடைக்குமா?",
+    done: "Replied in 5s · Tamil",
+  },
+  {
+    channel: "WhatsApp · Karthik",
+    text: "Price for 50 pieces, delivery to Madurai?",
+    done: "Replied in 4s · quote sent",
+  },
 ];
 
-// The login page's left side. Desktop only (the page mounts it at 1280px+), so
-// phones never download the videos.
+// Transparent video needs a different format per engine: Safari only does alpha
+// in HEVC (.mov), everyone else in VP9 WebM, and Safari plays WebM but drops its
+// alpha, so pick one rather than listing both as <source>s.
+function isSafari() {
+  return /^((?!chrome|chromium|crios|android|edg).)*safari/i.test(
+    navigator.userAgent,
+  );
+}
+
+// The login page's left side. Desktop only (the page mounts it at 1280px+, client
+// side), so phones never download the videos.
 //   peek:   Healy shuts its eyes (password field focused)
 //   flying: Tealy flies off with the message (signing in)
-export default function LoginShowcase({ peek, flying }: { peek: boolean; flying: boolean }) {
+export default function LoginShowcase({
+  peek,
+  flying,
+}: {
+  peek: boolean;
+  flying: boolean;
+}) {
   const [still, setStill] = useState(false);
+  const [ext] = useState(() => (isSafari() ? "mov" : "webm"));
+  const type = ext === "mov" ? 'video/mp4; codecs="hvc1"' : "video/webm";
   const [lean, setLean] = useState({ x: 0, y: 0 });
   const tealyRef = useRef<HTMLVideoElement>(null);
   const healyRef = useRef<HTMLVideoElement>(null);
@@ -70,78 +99,121 @@ export default function LoginShowcase({ peek, flying }: { peek: boolean; flying:
 
   return (
     <div className={s.root}>
-      <div className={s.frame}>
-        <div className={`${s.blob} ${s.blobTeal}`} aria-hidden="true" />
-        <div className={`${s.blob} ${s.blobCopper}`} aria-hidden="true" />
+      <div className={`${s.blob} ${s.blobTeal}`} aria-hidden="true" />
+      <div className={`${s.blob} ${s.blobCopper}`} aria-hidden="true" />
 
-        <div className={s.glass}>
-          <div className={s.copy}>
-            <h2>Every lead, answered in seconds.</h2>
-            <p>From &ldquo;Fees evvalavu?&rdquo; to a booked visit. anril AI handles the chat, you close the deal.</p>
-            <div className={s.chips}>
-              <span className={s.chip}>WhatsApp · Instagram · Facebook</span>
-              <span className={s.chip}>Tamil · Tanglish · English</span>
-              <span className={s.chip}>Hot-lead alerts</span>
-            </div>
+      <div className={s.glass}>
+        <div className={s.copy}>
+          <h2>Every lead, answered in seconds.</h2>
+          <p>
+            From &ldquo;Fees evvalavu?&rdquo; to a booked visit. anril AI
+            handles the chat, you close the deal.
+          </p>
+          <div className={s.chips}>
+            <span className={s.chip}>WhatsApp · Instagram · Facebook</span>
+            <span className={s.chip}>Tamil · Tanglish · English</span>
+            <span className={s.chip}>Hot-lead alerts</span>
           </div>
+        </div>
 
-          <div className={s.feed} aria-hidden="true">
-            {BUBBLES.map((b, i) => (
-              <div key={b.channel} className={s.bub} style={{ "--d": `${-4 * i}s` } as React.CSSProperties}>
-                <div className={s.channel}>{b.channel}</div>
-                <p>{b.text}</p>
-                <div className={s.status}>
-                  <span className={s.typing}>
-                    <span className={s.dots}>
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                    Tealy is replying
+        <div className={s.feed} aria-hidden="true">
+          {BUBBLES.map((b, i) => (
+            <div
+              key={b.channel}
+              className={s.bub}
+              style={{ "--d": `${-4 * i}s` } as React.CSSProperties}
+            >
+              <div className={s.channel}>{b.channel}</div>
+              <p>{b.text}</p>
+              <div className={s.status}>
+                <span className={s.typing}>
+                  <span className={s.dots}>
+                    <i />
+                    <i />
+                    <i />
                   </span>
-                  <span className={s.done}>✓ {b.done}</span>
-                </div>
-                {b.hot && <span className={s.hot}>HOT LEAD</span>}
+                  Tealy is replying
+                </span>
+                <span className={s.done}>✓ {b.done}</span>
               </div>
-            ))}
-          </div>
-
-          <div className={s.by}>
-            A product from <b>Bloom Matrix</b>
-          </div>
+              {b.hot && <span className={s.hot}>HOT LEAD</span>}
+            </div>
+          ))}
         </div>
 
-        <span className={`${s.ping} ${s.pingReply}`} aria-hidden="true" />
-        <span className={`${s.ping} ${s.pingLead}`} aria-hidden="true" />
+        <div className={s.by}>
+          A product from <b>Bloom Matrix</b>
+        </div>
+      </div>
 
-        <div className={`${s.char} ${s.healy}`} style={{ transform: healyLean }} aria-hidden="true">
-          <div className={s.point}>
-            <div className={`${s.media} ${peek ? s.shut : ""}`}>
-              {still ? (
-                <Image src="/login/healy-poster.jpg" alt="" width={480} height={480} priority />
-              ) : (
-                <video ref={healyRef} autoPlay loop muted playsInline poster="/login/healy-poster.jpg">
-                  <source src="/login/healy.webm" type="video/webm" />
-                  <source src="/login/healy.mp4" type="video/mp4" />
-                </video>
-              )}
-              <Image className={s.shutImg} src="/login/healy-shut.png" alt="" width={480} height={480} />
-            </div>
+      <span className={`${s.ping} ${s.pingReply}`} aria-hidden="true" />
+      <span className={`${s.ping} ${s.pingLead}`} aria-hidden="true" />
+
+      <div
+        className={`${s.char} ${s.healy}`}
+        style={{ transform: healyLean }}
+        aria-hidden="true"
+      >
+        <div className={s.point}>
+          <div className={`${s.media} ${peek ? s.shut : ""}`}>
+            {still ? (
+              <Image
+                src="/login/healy-poster.png"
+                alt=""
+                width={480}
+                height={480}
+                priority
+              />
+            ) : (
+              <video
+                ref={healyRef}
+                autoPlay
+                loop
+                muted
+                playsInline
+                poster="/login/healy-poster.png"
+              >
+                <source src={`/login/healy-alpha.${ext}`} type={type} />
+              </video>
+            )}
+            <Image
+              className={s.shutImg}
+              src="/login/healy-shut.png"
+              alt=""
+              width={480}
+              height={480}
+            />
           </div>
         </div>
+      </div>
 
-        <div className={`${s.char} ${s.tealy}`} style={{ transform: tealyLean }} aria-hidden="true">
-          <div className={flying ? s.fly : s.deliver}>
-            <div className={s.media}>
-              {still ? (
-                <Image src="/login/tealy-poster.jpg" alt="" width={480} height={480} priority />
-              ) : (
-                <video ref={tealyRef} autoPlay loop muted playsInline poster="/login/tealy-poster.jpg">
-                  <source src="/login/tealy.webm" type="video/webm" />
-                  <source src="/login/tealy.mp4" type="video/mp4" />
-                </video>
-              )}
-            </div>
+      <div
+        className={`${s.char} ${s.tealy}`}
+        style={{ transform: tealyLean }}
+        aria-hidden="true"
+      >
+        <div className={flying ? s.fly : s.deliver}>
+          <div className={s.media}>
+            {still ? (
+              <Image
+                src="/login/tealy-poster.png"
+                alt=""
+                width={480}
+                height={480}
+                priority
+              />
+            ) : (
+              <video
+                ref={tealyRef}
+                autoPlay
+                loop
+                muted
+                playsInline
+                poster="/login/tealy-poster.png"
+              >
+                <source src={`/login/tealy-alpha.${ext}`} type={type} />
+              </video>
+            )}
           </div>
         </div>
       </div>

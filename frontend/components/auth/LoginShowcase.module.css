@@ -1,39 +1,13 @@
-/* The login page's left side: one teal glass panel with the pitch, a feed of
+/* The login page's left side: one deep teal glass panel with the pitch, a feed of
    messages that answer themselves, and Healy / Tealy perched on opposite corners.
-   Healy and Tealy are videos on a white background; mix-blend-mode: multiply
-   turns that white into whatever is behind them.
-
-   Blending only sees what is inside the nearest isolated group, so the root
-   paints its own sand and reaches 110px past the panel on every side (pulled back
-   with a negative margin). Everything a character can touch, including the
-   fly-off path, stays on that sand. Without it a white square shows. */
+   Healy and Tealy are videos with a transparent background (WebM for most
+   browsers, HEVC .mov for Safari), so they sit on anything. Always 680x600; the
+   page scales the whole thing to fit the window. */
 .root {
-  --pad: 110px;
   position: relative;
-  width: calc(680px + 2 * var(--pad));
-  height: calc(600px + 2 * var(--pad));
-  margin: calc(-1 * var(--pad));
-  background: #f1efe8;
-  isolation: isolate;
-  animation: fadeIn 0.4s ease-out both;
-}
-@media (max-height: 860px) {
-  .root {
-    transform: scale(0.88);
-  }
-}
-@media (max-height: 760px) {
-  .root {
-    transform: scale(0.78);
-  }
-}
-
-.frame {
-  position: absolute;
-  left: var(--pad);
-  top: var(--pad);
   width: 680px;
   height: 600px;
+  animation: fadeIn 0.4s ease-out both;
 }
 
 .blob {
@@ -64,15 +38,27 @@
   box-sizing: border-box;
   padding: 34px 32px;
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(63, 188, 191, 0.26), rgba(3, 130, 133, 0.12));
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 24px 50px -26px rgba(4, 88, 91, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  color: var(--primary-900);
+  background: linear-gradient(135deg, var(--primary-900) 0%, #036e71 55%, var(--primary-800) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 30px 60px -28px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+/* Light sheen top-left so the panel still reads as glass. */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 55%);
+  pointer-events: none;
+}
+.copy,
+.feed,
+.by {
+  z-index: 1;
 }
 
 .copy {
+  position: relative;
   width: 330px;
 }
 .copy h2 {
@@ -81,13 +67,13 @@
   line-height: 1.15;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--primary-900);
+  color: #fff;
 }
 .copy p {
   margin: 0 0 16px;
   font-size: 15px;
   line-height: 1.5;
-  color: #145f62;
+  color: #cdefef;
 }
 .chips {
   display: flex;
@@ -97,9 +83,9 @@
 .chip {
   font-size: 12.5px;
   font-weight: 700;
-  color: var(--primary-900);
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   padding: 5px 11px;
   border-radius: 99px;
 }
@@ -109,13 +95,13 @@
   bottom: 28px;
   width: 270px;
   padding-top: 12px;
-  border-top: 1px solid rgba(4, 88, 91, 0.15);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
   font-size: 12.5px;
   font-weight: 600;
-  color: #145f62;
+  color: #cdefef;
 }
 .by b {
-  color: var(--primary-900);
+  color: #fff;
   font-weight: 800;
 }
 
@@ -139,8 +125,8 @@
   padding: 12px 14px;
   border-radius: 14px 14px 14px 4px;
   background: #fff;
-  border: 1px solid #e4dfd3;
-  box-shadow: 0 1px 2px rgba(10, 21, 40, 0.05);
+  border: 0;
+  box-shadow: 0 10px 24px -12px rgba(2, 40, 42, 0.55);
   animation: rise 16s linear infinite;
   animation-delay: var(--d);
 }
@@ -218,7 +204,7 @@
   height: 44px;
   margin: -22px 0 0 -22px;
   border-radius: 50%;
-  border: 2px solid var(--primary-800);
+  border: 2px solid #7fe0e2;
   opacity: 0;
   pointer-events: none;
 }
@@ -230,17 +216,17 @@
 .pingLead {
   left: 622px;
   top: 336px;
-  border-color: #9a5a3c;
+  border-color: #e8a77e;
   animation: ping 16s ease-out 2.88s infinite;
 }
 
-/* Characters. The outer box carries the blend and the mouse lean; inner boxes
-   carry the swoop / point / fly animations. */
+/* Characters. The outer box carries the mouse lean; inner boxes carry the
+   swoop / point / fly animations. */
 .char {
   position: absolute;
+  z-index: 2;
   width: 194px;
   height: 194px;
-  mix-blend-mode: multiply;
   transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 .healy {
@@ -413,7 +399,6 @@
     transform: none;
   }
 }
-/* Stays inside the root's sand so the video's white never shows. */
 @keyframes flyOff {
   0% {
     transform: none;

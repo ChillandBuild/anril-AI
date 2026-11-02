@@ -52,6 +52,7 @@ export default function LoginPage() {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [peek, setPeek] = useState(false);
   const [wide, setWide] = useState(false);
+  const [scale, setScale] = useState(1);
 
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason");
@@ -66,6 +67,21 @@ export default function LoginPage() {
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  // The showcase is drawn at 680x600 and zoomed to the largest size that fits
+  // beside the form: width left after the form, gap and gutters; height with
+  // room for Healy and Tealy poking out above and below.
+  useEffect(() => {
+    if (!wide) return;
+    const fit = () => {
+      const byWidth = (window.innerWidth - 420 - 48 - 160) / 680;
+      const byHeight = (window.innerHeight - 48) / 740;
+      setScale(Math.min(1.4, Math.max(0.75, Math.min(byWidth, byHeight))));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [wide]);
 
   function switchView(next: "signin" | "forgot") {
     setView(next);
@@ -144,8 +160,6 @@ export default function LoginPage() {
 
   return (
     <div className={`${a.page} flex flex-col`}>
-      <AnrilLogo height={32} className={`${a.logo} text-ink hidden xl:block`} />
-
       {/* Below 1280px: soft colour behind the compact header */}
       <div
         className={`${a.blob} xl:hidden`}
@@ -170,18 +184,25 @@ export default function LoginPage() {
         aria-hidden="true"
       />
 
-      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:py-16">
+      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:py-6">
         <div className="flex w-full max-w-[420px] flex-col gap-5 xl:max-w-none xl:w-auto xl:flex-row xl:items-center xl:gap-12">
           {wide ? (
-            <div className="hidden xl:block relative w-[680px] h-[600px] shrink-0">
-              <LoginShowcase
-                peek={peek}
-                flying={loading && view === "signin"}
-              />
+            <div
+              className="hidden xl:block relative shrink-0"
+              style={{ width: 680 * scale, height: 600 * scale }}
+            >
+              <div
+                className="absolute left-0 top-0 origin-top-left"
+                style={{ transform: `scale(${scale})` }}
+              >
+                <LoginShowcase
+                  peek={peek}
+                  flying={loading && view === "signin"}
+                />
+              </div>
             </div>
           ) : (
-            <div className="xl:hidden flex flex-col gap-5">
-              <AnrilLogo height={30} className="text-ink" />
+            <div className="xl:hidden">
               <div className={a.glassHeader}>
                 <h2>Every lead, answered in seconds.</h2>
                 <p>
@@ -194,6 +215,7 @@ export default function LoginPage() {
 
           <div className="xl:w-[420px] xl:shrink-0">
             <div className={a.card}>
+              <AnrilLogo height={30} className="text-ink mb-7" />
               {view === "signin" ? (
                 <>
                   <h1 className="text-[26px] font-extrabold tracking-tight">
