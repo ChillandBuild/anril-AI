@@ -95,7 +95,8 @@
 .sub { color: var(--white); font-size: clamp(0.95rem, 1.3vw, 1.5rem); line-height: 1.28; max-width: 30em; animation: rise 0.8s var(--ease) 0.55s both; }
 /* Sun streaks behind the copy dip the brightest pixels to about 4.1:1 on tablets; an offset
    shadow keeps every letter edge readable without darkening the photo any further. */
-.title, .sub { text-shadow: 0 1px 3px rgba(24, 12, 6, 0.55); }
+.langs { color: var(--white); font-size: clamp(0.95rem, 1.3vw, 1.5rem); font-weight: 500; letter-spacing: 0.01em; animation: rise 0.8s var(--ease) 0.45s both; }
+.title, .sub, .langs { text-shadow: 0 1px 3px rgba(24, 12, 6, 0.55); }
 .cta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: clamp(2px, 0.5vw, 10px); animation: rise 0.8s var(--ease) 0.7s both; }
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .pill {
@@ -128,6 +129,6 @@
   .sub { font-size: 1rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .zoom, .ln > span, .sub, .cta { animation: none; }
+  .zoom, .ln > span, .langs, .sub, .cta { animation: none; }
   .pill { transition: none; }
 }

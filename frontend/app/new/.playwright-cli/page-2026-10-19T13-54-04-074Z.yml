@@ -1,0 +1,209 @@
+- generic [active] [ref=f5e1]:
+  - generic [ref=f5e2]:
+    - link "Skip to content" [ref=f5e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f5e4]:
+      - generic [ref=f5e5]:
+        - link "Anril AI home" [ref=f5e6] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f5e16]:
+          - navigation "Main" [ref=f5e17]:
+            - list [ref=f5e18]:
+              - listitem [ref=f5e19]:
+                - link "Products" [ref=f5e20] [cursor=pointer]:
+                  - /url: /new/product
+                - button "More Products links" [ref=f5e21] [cursor=pointer]
+              - listitem [ref=f5e24]:
+                - link "Plans" [ref=f5e25] [cursor=pointer]:
+                  - /url: /new/pricing
+              - listitem [ref=f5e26]:
+                - link "Resources" [ref=f5e27] [cursor=pointer]:
+                  - /url: /new/industries
+                - button "More Resources links" [ref=f5e28] [cursor=pointer]
+              - listitem [ref=f5e31]:
+                - link "Company" [ref=f5e32] [cursor=pointer]:
+                  - /url: /new/about
+                - button "More Company links" [ref=f5e33] [cursor=pointer]
+          - generic [ref=f5e36]:
+            - link "Sign in" [ref=f5e37] [cursor=pointer]:
+              - /url: /login
+            - link "Book a demo" [ref=f5e38] [cursor=pointer]:
+              - /url: "#demo"
+    - main [ref=f5e39]:
+      - generic [ref=f5e41]:
+        - region [ref=f5e42]:
+          - heading "Built for any business that runs on enquiries" [level=1] [ref=f5e43]:
+            - generic [aria-hidden] [ref=f5e45]:
+              - text: Built for
+              - generic [ref=f5e46]: any business
+              - text: that runs on enquiries
+          - paragraph [ref=f5e47]: Wherever people ask before they buy, Anril AI answers the enquiry, marks the lead hot, warm or cold, and sends the hot ones to your team. Here is how that could look in a few industries.
+          - generic [ref=f5e48]: The conversations below are examples, not customer data.
+        - list "Industries" [ref=f5e49]:
+          - listitem [ref=f5e50]:
+            - heading "Education" [level=2] [ref=f5e51]
+            - paragraph [ref=f5e52]: People often ask about course fees, batch timings, admission dates and campus visits.
+            - generic [ref=f5e53]:
+              - generic [ref=f5e54]:
+                - text: What are the fees for the weekend batch?
+                - generic [ref=f5e55]: Enquiry
+              - generic [ref=f5e56]:
+                - text: The weekend batch starts next month, on Saturday and Sunday mornings. I can share the fee details and book you a campus visit. Which day suits you?
+                - generic [ref=f5e57]: Anril AI
+            - paragraph [ref=f5e58]: Marked hot after asking to visit, and sent to a counsellor to call.
+            - generic [ref=f5e59]: Example conversation
+          - listitem [ref=f5e60]:
+            - heading "Real estate" [level=2] [ref=f5e61]
+            - paragraph [ref=f5e62]: People often ask about prices, floor plans, site visits and home loans.
+            - generic [ref=f5e63]:
+              - generic [ref=f5e64]:
+                - text: Is the 2 BHK still available? Can I visit on Saturday?
+                - generic [ref=f5e65]: Enquiry
+              - generic [ref=f5e66]:
+                - text: Yes, 2 BHK homes are still available. Site visits on Saturday run from 10 am. Shall I book you a slot?
+                - generic [ref=f5e67]: Anril AI
+            - paragraph [ref=f5e68]: Marked hot after booking a visit, and sent to a sales executive to call.
+            - generic [ref=f5e69]: Example conversation
+          - listitem [ref=f5e70]:
+            - heading "Healthcare" [level=2] [ref=f5e71]
+            - paragraph [ref=f5e72]: People often ask about doctor availability, appointment slots, costs and directions.
+            - generic [ref=f5e73]:
+              - generic [ref=f5e74]:
+                - text: Is the doctor available tomorrow evening?
+                - generic [ref=f5e75]: Enquiry
+              - generic [ref=f5e76]:
+                - text: Yes, the doctor sees patients from 5 pm to 8 pm tomorrow. Would you like me to request a slot?
+                - generic [ref=f5e77]: Anril AI
+            - paragraph [ref=f5e78]: Marked hot after asking for a slot, and passed to the front desk to confirm.
+            - generic [ref=f5e79]: Example conversation
+          - listitem [ref=f5e80]:
+            - heading "Automotive" [level=2] [ref=f5e81]
+            - paragraph [ref=f5e82]: People often ask about test drives, on-road prices, exchange offers and service bookings.
+            - generic [ref=f5e83]:
+              - generic [ref=f5e84]:
+                - text: What is the on-road price for the automatic?
+                - generic [ref=f5e85]: Enquiry
+              - generic [ref=f5e86]:
+                - text: I can share the on-road price for the automatic in your city. Would you also like to book a test drive?
+                - generic [ref=f5e87]: Anril AI
+            - paragraph [ref=f5e88]: Marked hot after asking for a test drive, and sent to a sales executive to call.
+            - generic [ref=f5e89]: Example conversation
+          - listitem [ref=f5e90]:
+            - heading "Manufacturing" [level=2] [ref=f5e91]
+            - paragraph [ref=f5e92]: People often ask about specifications, minimum order quantities, quotes and delivery times.
+            - generic [ref=f5e93]:
+              - generic [ref=f5e94]:
+                - text: Can you quote for 500 units, delivered next month?
+                - generic [ref=f5e95]: Enquiry
+              - generic [ref=f5e96]:
+                - text: Yes, we can quote for 500 units. Please share the specification, and our team will send the quote with a delivery date.
+                - generic [ref=f5e97]: Anril AI
+            - paragraph [ref=f5e98]: Marked hot after asking for a quote, and sent to the sales team to call.
+            - generic [ref=f5e99]: Example conversation
+          - listitem [ref=f5e100]:
+            - heading "Financial services" [level=2] [ref=f5e101]
+            - paragraph [ref=f5e102]: People often ask about eligibility, interest rates, documents and call backs.
+            - generic [ref=f5e103]:
+              - generic [ref=f5e104]:
+                - text: Am I eligible for a business loan? Please call me.
+                - generic [ref=f5e105]: Enquiry
+              - generic [ref=f5e106]:
+                - text: I can help with that. What kind of business do you run, and how long has it been trading? A loan advisor will then call you.
+                - generic [ref=f5e107]: Anril AI
+            - paragraph [ref=f5e108]: Marked hot after asking for a call back, and sent to a loan advisor.
+            - generic [ref=f5e109]: Example conversation
+        - region [ref=f5e110]:
+          - heading "Your business" [level=2] [ref=f5e111]
+          - paragraph [ref=f5e112]: "Retail, travel, events, home services, hospitality: if your customers ask before they buy, Anril AI answers them, marks each lead hot, warm or cold, and sends the hot ones to your team."
+          - paragraph [ref=f5e113]: Tell us how enquiries reach you today, and we will show you how Anril AI would handle them.
+          - link "Book a demo" [ref=f5e114] [cursor=pointer]:
+            - /url: "#demo"
+        - region [ref=f5e115]:
+          - generic [ref=f5e116]:
+            - heading "See it working on your own enquiries" [level=2] [ref=f5e118]
+            - paragraph [ref=f5e119]: Tell us a little about your business and we will set up a demo.
+          - generic [ref=f5e120]:
+            - generic [ref=f5e121]:
+              - textbox "Your name" [ref=f5e122]
+              - generic: Your name
+            - generic [ref=f5e123]:
+              - textbox "Phone number" [ref=f5e124]
+              - generic: Phone number
+            - generic [ref=f5e125]:
+              - textbox "Business name" [ref=f5e126]
+              - generic: Business name
+            - generic [ref=f5e127]:
+              - combobox "Industry" [ref=f5e128]:
+                - option "Choose one" [selected]
+                - option "Education"
+                - option "Real estate"
+                - option "Healthcare"
+                - option "Automotive"
+                - option "Manufacturing"
+                - option "Financial services"
+                - option "Other"
+              - generic: Industry
+            - generic [aria-hidden] [ref=f5e129]:
+              - text: Leave this empty
+              - textbox [ref=f5e130]
+            - button "Book a demo" [ref=f5e131] [cursor=pointer]
+    - contentinfo [ref=f5e132]:
+      - generic [ref=f5e133]:
+        - generic [ref=f5e134]:
+          - generic [ref=f5e135]:
+            - paragraph [ref=f5e136]: Answer every enquiry. Call the right lead first.
+            - link "Book a demo" [ref=f5e137] [cursor=pointer]:
+              - /url: "#demo"
+          - navigation "Footer" [ref=f5e138]:
+            - generic [ref=f5e139]:
+              - heading "Product" [level=2] [ref=f5e140]
+              - list [ref=f5e141]:
+                - listitem [ref=f5e142]:
+                  - link "AI replies" [ref=f5e143] [cursor=pointer]:
+                    - /url: /new/product#replies
+                - listitem [ref=f5e144]:
+                  - link "Lead scoring" [ref=f5e145] [cursor=pointer]:
+                    - /url: /new/product#scoring
+                - listitem [ref=f5e146]:
+                  - link "Telecaller routing" [ref=f5e147] [cursor=pointer]:
+                    - /url: /new/product#routing
+                - listitem [ref=f5e148]:
+                  - link "Call scoring" [ref=f5e149] [cursor=pointer]:
+                    - /url: /new/product#call-scoring
+            - generic [ref=f5e150]:
+              - heading "Company" [level=2] [ref=f5e151]
+              - list [ref=f5e152]:
+                - listitem [ref=f5e153]:
+                  - link "About" [ref=f5e154] [cursor=pointer]:
+                    - /url: /new/about
+                - listitem [ref=f5e155]:
+                  - link "Plans" [ref=f5e156] [cursor=pointer]:
+                    - /url: /new/pricing
+                - listitem [ref=f5e157]:
+                  - link "Industries" [ref=f5e158] [cursor=pointer]:
+                    - /url: /new/industries
+                - listitem [ref=f5e159]:
+                  - link "Contact" [ref=f5e160] [cursor=pointer]:
+                    - /url: /new/about#contact
+            - generic [ref=f5e161]:
+              - heading "Legal" [level=2] [ref=f5e162]
+              - list [ref=f5e163]:
+                - listitem [ref=f5e164]:
+                  - link "Privacy policy" [ref=f5e165] [cursor=pointer]:
+                    - /url: /privacy-policy
+                - listitem [ref=f5e166]:
+                  - link "Terms and conditions" [ref=f5e167] [cursor=pointer]:
+                    - /url: /terms-and-conditions
+                - listitem [ref=f5e168]:
+                  - link "Data deletion" [ref=f5e169] [cursor=pointer]:
+                    - /url: /data-deletion
+        - link "Anril AI home" [ref=f5e170] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f5e180]:
+          - paragraph [ref=f5e181]:
+            - text: A product of
+            - link "Bloom Matrix" [ref=f5e182] [cursor=pointer]:
+              - /url: https://www.bloommatrix.in
+          - link "anrilaitech@gmail.com" [ref=f5e183] [cursor=pointer]:
+            - /url: mailto:anrilaitech@gmail.com
+  - region "Notifications alt+T"

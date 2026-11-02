@@ -13,7 +13,7 @@ import { Frame, Kicker } from "@/components/site/primitives";
 export const metadata: Metadata = {
   title: { absolute: "Anril AI | Answer every enquiry. Call the right lead first." },
   description:
-    "Anril AI answers every enquiry on WhatsApp, web chat and phone, shows you which leads are ready to buy, and gets your telecallers calling them first.",
+    "Anril AI replies to every WhatsApp, Instagram and Facebook enquiry in seconds, in Tamil, English or Tanglish. Scores leads and takes payments. From ₹999/month.",
 };
 
 export default function NewHomePage() {

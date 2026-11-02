@@ -1,0 +1,441 @@
+- generic [active] [ref=f7e1]:
+  - generic [ref=f7e2]:
+    - link "Skip to content" [ref=f7e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f7e4]:
+      - generic [ref=f7e5]:
+        - link "Anril AI home" [ref=f7e6] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f7e16]:
+          - navigation "Main" [ref=f7e17]:
+            - list [ref=f7e18]:
+              - listitem [ref=f7e19]:
+                - link "Products" [ref=f7e20] [cursor=pointer]:
+                  - /url: /new/product
+                - button "More Products links" [ref=f7e21] [cursor=pointer]
+              - listitem [ref=f7e24]:
+                - link "Plans" [ref=f7e25] [cursor=pointer]:
+                  - /url: /new/pricing
+              - listitem [ref=f7e26]:
+                - link "Resources" [ref=f7e27] [cursor=pointer]:
+                  - /url: /new/industries
+                - button "More Resources links" [ref=f7e28] [cursor=pointer]
+              - listitem [ref=f7e31]:
+                - link "Company" [ref=f7e32] [cursor=pointer]:
+                  - /url: /new/about
+                - button "More Company links" [ref=f7e33] [cursor=pointer]
+          - generic [ref=f7e36]:
+            - link "Sign in" [ref=f7e37] [cursor=pointer]:
+              - /url: /login
+            - link "Book a demo" [ref=f7e38] [cursor=pointer]:
+              - /url: "#demo"
+    - main [ref=f7e39]:
+      - region [ref=f7e40]:
+        - generic [ref=f7e42]:
+          - img "A laptop on a sunlit desk showing the Anril AI dashboard, with a hand on the keyboard" [ref=f7e43]
+          - generic [aria-hidden]:
+            - generic:
+              - complementary:
+                - generic: anrilAI
+                - list:
+                  - listitem: Dashboard
+                  - listitem: Analytics
+                  - listitem: Leads & Chats
+                  - listitem:
+                    - text: Conversations
+                    - emphasis: "1"
+                  - listitem: Segments
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Product Overview
+                    - generic: Here's what's happening with your leads.
+                  - generic:
+                    - generic: 4:26 pm
+                    - generic: A
+                    - generic: Your Business
+                - generic:
+                  - generic:
+                    - generic: New leads today
+                    - generic: "11"
+                    - generic: From 11 channels
+                  - generic:
+                    - generic: New hot leads today
+                    - generic: "4"
+                    - generic: Fresh today
+                  - generic:
+                    - generic: Conversions today
+                    - generic: "0"
+                    - generic: Nothing yet
+                - generic:
+                  - generic: Is my AI carrying its weight?
+                  - generic:
+                    - generic:
+                      - generic: AI auto-reply share
+                      - generic: 60%
+                      - generic: 31 AI · 21 Human
+                    - generic:
+                      - generic: Inbound today
+                      - generic: "31"
+                    - generic:
+                      - generic: Outbound today
+                      - generic: "52"
+                    - generic:
+                      - generic: Awaiting response
+                      - generic: "0"
+                    - generic:
+                      - generic: Escalations
+                      - generic: "2"
+                - generic:
+                  - generic: Pipeline Activity
+                  - generic: 11 leads categorised today
+        - generic [ref=f7e44]:
+          - heading "Answer every enquiry. Call the right lead first." [level=1] [ref=f7e45]:
+            - generic [ref=f7e46]: Answer every enquiry.
+            - generic [ref=f7e48]: Call the right lead first.
+          - paragraph [ref=f7e50]: Anril AI answers every enquiry on WhatsApp, web chat and phone, shows you which leads are ready to buy, and gets your telecallers calling them first.
+          - generic [ref=f7e51]:
+            - link "Book a demo" [ref=f7e52] [cursor=pointer]:
+              - /url: "#demo"
+            - link "See how it works" [ref=f7e53] [cursor=pointer]:
+              - /url: "#how"
+      - generic [ref=f7e55]:
+        - region [ref=f7e56]:
+          - heading "Works where your customers already message" [level=2] [ref=f7e57]
+          - generic [ref=f7e58]:
+            - list [ref=f7e59]:
+              - listitem [ref=f7e60]: WhatsApp
+              - listitem [ref=f7e64]: Instagram
+              - listitem [ref=f7e69]: Facebook Messenger
+              - listitem [ref=f7e74]: Telegram
+              - listitem [ref=f7e79]: Web chat
+              - listitem [ref=f7e84]: Phone calls
+            - list [aria-hidden] [ref=f7e88]:
+              - listitem [ref=f7e89]: WhatsApp
+              - listitem [ref=f7e93]: Instagram
+              - listitem [ref=f7e98]: Facebook Messenger
+              - listitem [ref=f7e103]: Telegram
+              - listitem [ref=f7e108]: Web chat
+              - listitem [ref=f7e113]: Phone calls
+        - region [ref=f7e117]:
+          - generic [ref=f7e118]: After hours
+          - heading "Enquiries do not keep office hours" [level=2] [ref=f7e119]
+          - paragraph [ref=f7e120]: People message when it suits them. Anril AI answers each enquiry when it arrives, so the ones that come in at night are not waiting for you in the morning.
+          - generic [ref=f7e121]:
+            - paragraph [aria-hidden] [ref=f7e122]:
+              - generic [ref=f7e123]: "11"
+              - generic [ref=f7e124]: of 19 enquiries came in while the office was closed
+            - 'img "Example day: 19 enquiries arriving across 24 hours, 11 of them outside office hours" [ref=f7e125]':
+              - generic [ref=f7e126]: Office hours
+            - generic [aria-hidden] [ref=f7e147]:
+              - generic [ref=f7e148]: 12 am
+              - generic [ref=f7e149]: 6 am
+              - generic [ref=f7e150]: 12 pm
+              - generic [ref=f7e151]: 6 pm
+              - generic [ref=f7e152]: 12 am
+            - generic [ref=f7e153]:
+              - generic [ref=f7e154]: Enquiry during office hours
+              - generic [ref=f7e156]: Enquiry after hours
+              - generic [ref=f7e158]: Example day, not real data
+        - generic [ref=f7e159]:
+          - region [ref=f7e160]:
+            - generic [ref=f7e161]:
+              - generic [ref=f7e162]: 01 Answer
+              - heading "Every enquiry gets a reply" [level=2] [ref=f7e163]
+              - paragraph [ref=f7e164]: Anril AI answers on WhatsApp, web chat and phone, using what you have told it about your business.
+              - link "See it in a demo" [ref=f7e165] [cursor=pointer]:
+                - /url: "#demo"
+            - generic [ref=f7e167]:
+              - heading "WhatsApp" [level=3] [ref=f7e168]
+              - generic [ref=f7e169]:
+                - text: Is the showroom open on Sunday?
+                - generic [ref=f7e170]: Enquiry
+              - generic [ref=f7e171]:
+                - text: Yes, 10 am to 7 pm. Would you like to book a test drive?
+                - generic [ref=f7e172]: Anril AI
+              - generic [ref=f7e173]:
+                - text: Yes please, around 4.
+                - generic [ref=f7e174]: Enquiry
+              - generic [ref=f7e175]: Example
+          - region [ref=f7e176]:
+            - generic [ref=f7e177]:
+              - generic [ref=f7e178]: 02 Score
+              - heading "Know who to call first" [level=2] [ref=f7e179]
+              - paragraph [ref=f7e180]: Each lead gets a score built from what they asked and how they answered, so your team starts with the people most likely to buy.
+              - link "See it in a demo" [ref=f7e181] [cursor=pointer]:
+                - /url: "#demo"
+            - generic [ref=f7e183]:
+              - heading "Example lead" [level=3] [ref=f7e184]
+              - generic [ref=f7e185]: Asked about fees
+              - generic [ref=f7e186]: Wants a weekend batch
+              - generic [ref=f7e187]: Asked to visit this week
+              - generic [ref=f7e188]:
+                - generic [ref=f7e189]: Lead scored
+                - generic [ref=f7e190]: HOT
+              - generic [ref=f7e191]: Example data
+          - region [ref=f7e192]:
+            - generic [ref=f7e193]:
+              - generic [ref=f7e194]: 03 Route
+              - heading "Hot leads go straight to a telecaller" [level=2] [ref=f7e195]
+              - paragraph [ref=f7e196]: The telecaller sees what the lead asked and what was said, before they pick up the phone.
+              - link "See it in a demo" [ref=f7e197] [cursor=pointer]:
+                - /url: "#demo"
+            - generic [ref=f7e199]:
+              - heading "Assigned just now" [level=3] [ref=f7e200]
+              - generic [ref=f7e201]:
+                - generic [ref=f7e202]:
+                  - generic [aria-hidden] [ref=f7e203]: TC
+                  - generic [ref=f7e204]:
+                    - text: Telecaller
+                    - generic [ref=f7e205]: Next call
+                - generic [ref=f7e206]: HOT
+              - generic [ref=f7e207]:
+                - generic [ref=f7e208]: Asked about
+                - generic [ref=f7e209]: Course fees
+              - generic [ref=f7e210]:
+                - generic [ref=f7e211]: Channel
+                - generic [ref=f7e212]: WhatsApp
+              - generic [ref=f7e213]: Example data
+          - region [ref=f7e214]:
+            - generic [ref=f7e215]:
+              - generic [ref=f7e216]: 04 Measure
+              - heading "Know which calls were good" [level=2] [ref=f7e217]
+              - paragraph [ref=f7e218]: Every telecaller call is scored, so you can see who is closing and who needs help.
+              - link "See it in a demo" [ref=f7e219] [cursor=pointer]:
+                - /url: "#demo"
+            - generic [ref=f7e221]:
+              - heading "Call with telecaller · 4 min 12 s" [level=3] [ref=f7e222]
+              - generic [ref=f7e268]:
+                - generic [ref=f7e269]: Lead and telecaller
+                - generic [ref=f7e270]: 82 / 100
+              - generic [ref=f7e271]: Example call
+        - region [ref=f7e272]:
+          - generic [ref=f7e273]: Channels
+          - heading "Every channel, one list of leads" [level=2] [ref=f7e274]
+          - paragraph [ref=f7e275]: Enquiries from WhatsApp, Instagram, Facebook Messenger, Telegram, web chat and phone arrive in the same place and leave sorted, with the hot ones at the top.
+          - img "WhatsApp, web chat and phone lead into Anril AI, which sorts leads into hot, warm and cold" [ref=f7e277]:
+            - generic [ref=f7e283]:
+              - generic [ref=f7e284]: WhatsApp
+              - generic [ref=f7e287]: Web chat
+              - generic [ref=f7e290]: Phone
+              - generic [ref=f7e299]: Hot · call now
+              - generic [ref=f7e302]: Warm · follow up
+              - generic [ref=f7e305]: Cold · keep in touch
+        - region "Anril AI at a glance" [ref=f7e315]:
+          - paragraph [ref=f7e316]:
+            - generic [ref=f7e317]:
+              - generic [aria-hidden] [ref=f7e318]: "4"
+              - generic [ref=f7e319]: "4"
+            - text: "modules in one platform: Reach, Engage, CallIQ and Commerce."
+          - paragraph [ref=f7e320]:
+            - generic [ref=f7e321]:
+              - generic [ref=f7e323]: 24/7
+              - generic [ref=f7e324]: 24/7
+            - text: AI replies to enquiries, including nights, weekends and holidays.
+          - paragraph [ref=f7e325]:
+            - generic [ref=f7e326]:
+              - generic [aria-hidden] [ref=f7e327]: "3"
+              - generic [ref=f7e328]: "3"
+            - text: lead marks, hot, warm and cold, updated with every new message.
+        - region [ref=f7e329]:
+          - generic [ref=f7e330]:
+            - generic [ref=f7e331]: Customers
+            - heading "What our customers say" [level=2] [ref=f7e332]
+            - paragraph [ref=f7e333]: From businesses in India and overseas. Every one of them rated Anril AI five stars.
+          - generic [ref=f7e334]:
+            - generic [ref=f7e335]:
+              - figure "Ramesh. Business Owner · Customer-facing business" [ref=f7e337]:
+                - img "Rated 5 out of 5" [ref=f7e338]
+                - generic [ref=f7e349]: Enquiry management
+                - heading "Never miss an enquiry again" [level=3] [ref=f7e350]
+                - blockquote [ref=f7e351]:
+                  - paragraph [ref=f7e352]: “Anril AI has made managing customer enquiries significantly easier for our team. Earlier, keeping track of incoming messages and responding on time was a constant challenge. Now, we can handle enquiries more efficiently and ensure potential customers receive timely attention. It has helped us deliver a more consistent and professional customer experience.”
+                - generic [ref=f7e353]:
+                  - generic [ref=f7e354]: Ramesh.
+                  - generic [ref=f7e355]: Business Owner · Customer-facing business
+              - figure "Maria. Founder · Growing business" [ref=f7e357]:
+                - img "Rated 5 out of 5" [ref=f7e358]
+                - generic [ref=f7e369]: Overall business impact
+                - heading "A valuable addition to our sales process" [level=3] [ref=f7e370]
+                - blockquote [ref=f7e371]:
+                  - paragraph [ref=f7e372]: “Anril AI has brought a more systematic approach to how we manage enquiries, follow up with prospects, and evaluate our sales conversations. What stands out is the way it brings multiple parts of the customer engagement process together. For a business looking to improve sales coordination and manage leads more effectively, Anril AI is a solution worth considering.”
+                - generic [ref=f7e373]:
+                  - generic [ref=f7e374]: Maria.
+                  - generic [ref=f7e375]: Founder · Growing business
+            - list [ref=f7e376]:
+              - listitem [ref=f7e377]:
+                - figure "Sneha. Sales Manager · Sales-driven business" [ref=f7e378]:
+                  - img "Rated 5 out of 5" [ref=f7e379]
+                  - generic [ref=f7e390]: AI lead scoring
+                  - heading "A smarter way to prioritise leads" [level=3] [ref=f7e391]
+                  - blockquote [ref=f7e392]:
+                    - paragraph [ref=f7e393]: “What we appreciate most about Anril AI is the clarity it brings to our lead management process. Instead of treating every enquiry the same way, our team can focus on the prospects who need attention first. This has helped us organize follow-ups better, use our time more effectively, and bring greater structure to our sales process.”
+                  - generic [ref=f7e394]:
+                    - generic [ref=f7e395]: Sneha.
+                    - generic [ref=f7e396]: Sales Manager · Sales-driven business
+              - listitem [ref=f7e397]:
+                - figure "Daniel. Operations Manager · Multi-channel business" [ref=f7e398]:
+                  - img "Rated 5 out of 5" [ref=f7e399]
+                  - generic [ref=f7e410]: Omnichannel communication
+                  - heading "All our customer conversations, in one place" [level=3] [ref=f7e411]
+                  - blockquote [ref=f7e412]:
+                    - paragraph [ref=f7e413]: “Managing enquiries across multiple platforms used to make it difficult to maintain a clear view of customer conversations. Anril AI brings greater organization to the process by helping us manage interactions in one place. Our team can follow conversations more easily, coordinate follow-ups, and provide a more seamless experience across customer touchpoints.”
+                  - generic [ref=f7e414]:
+                    - generic [ref=f7e415]: Daniel.
+                    - generic [ref=f7e416]: Operations Manager · Multi-channel business
+              - listitem [ref=f7e417]:
+                - figure "Arjun. Sales Head · Team management" [ref=f7e418]:
+                  - img "Rated 5 out of 5" [ref=f7e419]
+                  - generic [ref=f7e430]: AI call scoring
+                  - heading "Better visibility into team performance" [level=3] [ref=f7e431]
+                  - blockquote [ref=f7e432]:
+                    - paragraph [ref=f7e433]: “Managing call quality becomes much easier with Anril AI. The call scoring feature helps us identify what our team is doing well and where conversations could be improved. Rather than relying entirely on manual call reviews, we have a more structured way to evaluate performance, guide our telecallers, and continuously improve the quality of customer interactions.”
+                  - generic [ref=f7e434]:
+                    - generic [ref=f7e435]: Arjun.
+                    - generic [ref=f7e436]: Sales Head · Team management
+              - listitem [ref=f7e437]:
+                - figure "Kavya. Telecalling Team Lead · Customer acquisition" [ref=f7e438]:
+                  - img "Rated 5 out of 5" [ref=f7e439]
+                  - generic [ref=f7e450]: Telecaller support
+                  - heading "More meaningful customer conversations" [level=3] [ref=f7e451]
+                  - blockquote [ref=f7e452]:
+                    - paragraph [ref=f7e453]: “Anril AI gives our telecalling team better context before they speak with a customer. Having the previous conversation available makes follow-ups feel more informed and relevant, rather than repetitive. Our team can spend less time collecting the same information and more time understanding customer needs and moving conversations forward.”
+                  - generic [ref=f7e454]:
+                    - generic [ref=f7e455]: Kavya.
+                    - generic [ref=f7e456]: Telecalling Team Lead · Customer acquisition
+          - paragraph [ref=f7e457]: Names changed and logos left out at our customers' request.
+        - region [ref=f7e458]:
+          - generic [ref=f7e459]: Industries
+          - heading "Built for businesses that run on enquiries" [level=2] [ref=f7e460]
+          - paragraph [ref=f7e461]: Businesses in India and overseas use Anril AI to answer every enquiry and call the right lead first.
+          - list [ref=f7e462]:
+            - listitem [ref=f7e463]:
+              - link "Education" [ref=f7e464] [cursor=pointer]:
+                - /url: /new/industries#education
+                - generic [ref=f7e469]: What are the fees for the weekend batch?
+                - generic [ref=f7e470]: The weekend batch starts next month, on Saturday and Sunday mornings. I can share the fee details and book you a campus visit. Which day suits you?
+                - generic [ref=f7e471]: Example conversation
+            - listitem [ref=f7e472]:
+              - link "Real estate" [ref=f7e473] [cursor=pointer]:
+                - /url: /new/industries#real-estate
+                - generic [ref=f7e479]: Is the 2 BHK still available? Can I visit on Saturday?
+                - generic [ref=f7e480]: Yes, 2 BHK homes are still available. Site visits on Saturday run from 10 am. Shall I book you a slot?
+                - generic [ref=f7e481]: Example conversation
+            - listitem [ref=f7e482]:
+              - link "Healthcare" [ref=f7e483] [cursor=pointer]:
+                - /url: /new/industries#healthcare
+                - generic [ref=f7e489]: Is the doctor available tomorrow evening?
+                - generic [ref=f7e490]: Yes, the doctor sees patients from 5 pm to 8 pm tomorrow. Would you like me to request a slot?
+                - generic [ref=f7e491]: Example conversation
+            - listitem [ref=f7e492]:
+              - link "Automotive" [ref=f7e493] [cursor=pointer]:
+                - /url: /new/industries#automotive
+                - generic [ref=f7e499]: What is the on-road price for the automatic?
+                - generic [ref=f7e500]: I can share the on-road price for the automatic in your city. Would you also like to book a test drive?
+                - generic [ref=f7e501]: Example conversation
+            - listitem [ref=f7e502]:
+              - link "Manufacturing" [ref=f7e503] [cursor=pointer]:
+                - /url: /new/industries#manufacturing
+                - generic [ref=f7e507]: Can you quote for 500 units, delivered next month?
+                - generic [ref=f7e508]: Yes, we can quote for 500 units. Please share the specification, and our team will send the quote with a delivery date.
+                - generic [ref=f7e509]: Example conversation
+            - listitem [ref=f7e510]:
+              - link "Financial services" [ref=f7e511] [cursor=pointer]:
+                - /url: /new/industries#financial-services
+                - generic [ref=f7e515]: Am I eligible for a business loan? Please call me.
+                - generic [ref=f7e516]: I can help with that. What kind of business do you run, and how long has it been trading? A loan advisor will then call you.
+                - generic [ref=f7e517]: Example conversation
+            - listitem [ref=f7e518]:
+              - link "Any business" [ref=f7e519] [cursor=pointer]:
+                - /url: /new/industries#more
+                - generic [ref=f7e524]: Retail, travel, events, home services, hospitality
+                - generic [ref=f7e525]: If your customers ask before they buy, Anril AI answers them.
+        - region [ref=f7e526]:
+          - generic [ref=f7e527]:
+            - heading "See it working on your own enquiries" [level=2] [ref=f7e529]
+            - paragraph [ref=f7e530]: Tell us a little about your business and we will set up a demo.
+          - generic [ref=f7e531]:
+            - generic [ref=f7e532]:
+              - textbox "Your name" [ref=f7e533]
+              - generic: Your name
+            - generic [ref=f7e534]:
+              - textbox "Phone number" [ref=f7e535]
+              - generic: Phone number
+            - generic [ref=f7e536]:
+              - textbox "Business name" [ref=f7e537]
+              - generic: Business name
+            - generic [ref=f7e538]:
+              - combobox "Industry" [ref=f7e539]:
+                - option "Choose one" [selected]
+                - option "Education"
+                - option "Real estate"
+                - option "Healthcare"
+                - option "Automotive"
+                - option "Manufacturing"
+                - option "Financial services"
+                - option "Other"
+              - generic: Industry
+            - generic [aria-hidden] [ref=f7e540]:
+              - text: Leave this empty
+              - textbox [ref=f7e541]
+            - button "Book a demo" [ref=f7e542] [cursor=pointer]
+    - contentinfo [ref=f7e543]:
+      - generic [ref=f7e544]:
+        - generic [ref=f7e545]:
+          - generic [ref=f7e546]:
+            - paragraph [ref=f7e547]: Answer every enquiry. Call the right lead first.
+            - link "Book a demo" [ref=f7e548] [cursor=pointer]:
+              - /url: "#demo"
+          - navigation "Footer" [ref=f7e549]:
+            - generic [ref=f7e550]:
+              - heading "Product" [level=2] [ref=f7e551]
+              - list [ref=f7e552]:
+                - listitem [ref=f7e553]:
+                  - link "AI replies" [ref=f7e554] [cursor=pointer]:
+                    - /url: /new/product#replies
+                - listitem [ref=f7e555]:
+                  - link "Lead scoring" [ref=f7e556] [cursor=pointer]:
+                    - /url: /new/product#scoring
+                - listitem [ref=f7e557]:
+                  - link "Telecaller routing" [ref=f7e558] [cursor=pointer]:
+                    - /url: /new/product#routing
+                - listitem [ref=f7e559]:
+                  - link "Call scoring" [ref=f7e560] [cursor=pointer]:
+                    - /url: /new/product#call-scoring
+            - generic [ref=f7e561]:
+              - heading "Company" [level=2] [ref=f7e562]
+              - list [ref=f7e563]:
+                - listitem [ref=f7e564]:
+                  - link "About" [ref=f7e565] [cursor=pointer]:
+                    - /url: /new/about
+                - listitem [ref=f7e566]:
+                  - link "Plans" [ref=f7e567] [cursor=pointer]:
+                    - /url: /new/pricing
+                - listitem [ref=f7e568]:
+                  - link "Industries" [ref=f7e569] [cursor=pointer]:
+                    - /url: /new/industries
+                - listitem [ref=f7e570]:
+                  - link "Contact" [ref=f7e571] [cursor=pointer]:
+                    - /url: /new/about#contact
+            - generic [ref=f7e572]:
+              - heading "Legal" [level=2] [ref=f7e573]
+              - list [ref=f7e574]:
+                - listitem [ref=f7e575]:
+                  - link "Privacy policy" [ref=f7e576] [cursor=pointer]:
+                    - /url: /privacy-policy
+                - listitem [ref=f7e577]:
+                  - link "Terms and conditions" [ref=f7e578] [cursor=pointer]:
+                    - /url: /terms-and-conditions
+                - listitem [ref=f7e579]:
+                  - link "Data deletion" [ref=f7e580] [cursor=pointer]:
+                    - /url: /data-deletion
+        - link "Anril AI home" [ref=f7e581] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f7e591]:
+          - paragraph [ref=f7e592]:
+            - text: A product of
+            - link "Bloom Matrix" [ref=f7e593] [cursor=pointer]:
+              - /url: https://www.bloommatrix.in
+          - link "anrilaitech@gmail.com" [ref=f7e594] [cursor=pointer]:
+            - /url: mailto:anrilaitech@gmail.com
+  - region "Notifications alt+T"

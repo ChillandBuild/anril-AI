@@ -1,0 +1,259 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - link "Skip to content" [ref=f4e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - link "Anril AI home" [ref=f4e6] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f4e16]:
+          - navigation "Main" [ref=f4e17]:
+            - list [ref=f4e18]:
+              - listitem [ref=f4e19]:
+                - link "Products" [ref=f4e20] [cursor=pointer]:
+                  - /url: /new/product
+                - button "More Products links" [ref=f4e21] [cursor=pointer]
+              - listitem [ref=f4e24]:
+                - link "Plans" [ref=f4e25] [cursor=pointer]:
+                  - /url: /new/pricing
+              - listitem [ref=f4e26]:
+                - link "Resources" [ref=f4e27] [cursor=pointer]:
+                  - /url: /new/industries
+                - button "More Resources links" [ref=f4e28] [cursor=pointer]
+              - listitem [ref=f4e31]:
+                - link "Company" [ref=f4e32] [cursor=pointer]:
+                  - /url: /new/about
+                - button "More Company links" [ref=f4e33] [cursor=pointer]
+          - generic [ref=f4e36]:
+            - link "Sign in" [ref=f4e37] [cursor=pointer]:
+              - /url: /login
+            - link "Book a demo" [ref=f4e38] [cursor=pointer]:
+              - /url: "#demo"
+    - main [ref=f4e39]:
+      - generic [ref=f4e41]:
+        - region [ref=f4e42]:
+          - heading "Plans" [level=1] [ref=f4e43]
+          - paragraph [ref=f4e44]: Four modules, one connected platform. Choose the ones your business needs, and contact us for pricing.
+          - generic [ref=f4e45]:
+            - link "Contact us for pricing" [ref=f4e46] [cursor=pointer]:
+              - /url: mailto:anrilaitech@gmail.com?subject=Anril%20AI%20pricing
+            - link "Book a demo" [ref=f4e47] [cursor=pointer]:
+              - /url: "#demo"
+        - list "Jump to a module" [ref=f4e48]:
+          - listitem [ref=f4e49]:
+            - link "01 Reach" [ref=f4e50] [cursor=pointer]:
+              - /url: "#reach"
+              - generic [ref=f4e51]: "01"
+              - text: Reach
+          - listitem [ref=f4e52]:
+            - link "02 Engage" [ref=f4e53] [cursor=pointer]:
+              - /url: "#engage"
+              - generic [ref=f4e54]: "02"
+              - text: Engage
+          - listitem [ref=f4e55]:
+            - link "03 CallIQ" [ref=f4e56] [cursor=pointer]:
+              - /url: "#calliq"
+              - generic [ref=f4e57]: "03"
+              - text: CallIQ
+          - listitem [ref=f4e58]:
+            - link "04 Commerce" [ref=f4e59] [cursor=pointer]:
+              - /url: "#commerce"
+              - generic [ref=f4e60]: "04"
+              - text: Commerce
+        - generic [ref=f4e61]:
+          - list "Modules" [ref=f4e62]:
+            - listitem [ref=f4e63]:
+              - generic [ref=f4e64]:
+                - generic [ref=f4e65]: Module 1
+                - button "Add Reach to my quote" [ref=f4e66] [cursor=pointer]: Add to quote
+              - heading "Reach" [level=2] [ref=f4e70]
+              - paragraph [ref=f4e71]: Get customers and bring in new leads.
+              - list [ref=f4e72]:
+                - listitem [ref=f4e73]:
+                  - generic [ref=f4e74]: WhatsApp campaigns
+                  - text: Send offers and updates in bulk.
+                - listitem [ref=f4e75]:
+                  - generic [ref=f4e76]: Audience segmentation
+                  - text: Right message, right customers.
+                - listitem [ref=f4e77]:
+                  - generic [ref=f4e78]: AI conversations
+                  - text: AI replies to your customers.
+              - paragraph [ref=f4e79]: More reach → More enquiries → More leads
+              - paragraph [ref=f4e80]: Contact us for pricing
+            - listitem [ref=f4e81]:
+              - generic [ref=f4e82]:
+                - generic [ref=f4e83]: Module 2
+                - button "Add Engage to my quote" [ref=f4e84] [cursor=pointer]: Add to quote
+              - heading "Engage" [level=2] [ref=f4e88]
+              - paragraph [ref=f4e89]: Start conversations and nurture every lead.
+              - list [ref=f4e90]:
+                - listitem [ref=f4e91]:
+                  - generic [ref=f4e92]: AI conversations
+                  - text: Answer customer queries instantly.
+                - listitem [ref=f4e93]:
+                  - generic [ref=f4e94]: Lead scoring
+                  - text: Spot hot, warm and cold leads.
+                - listitem [ref=f4e95]:
+                  - generic [ref=f4e96]: Automated follow-ups
+                  - text: Never miss a potential sale.
+              - paragraph [ref=f4e97]: Faster replies → Better engagement → More opportunities
+              - paragraph [ref=f4e98]: Contact us for pricing
+            - listitem [ref=f4e99]:
+              - generic [ref=f4e100]:
+                - generic [ref=f4e101]: Module 3
+                - button "Add CallIQ to my quote" [ref=f4e102] [cursor=pointer]: Add to quote
+              - heading "CallIQ" [level=2] [ref=f4e106]
+              - paragraph [ref=f4e107]: Call, understand and follow up.
+              - list [ref=f4e108]:
+                - listitem [ref=f4e109]:
+                  - generic [ref=f4e110]: Chat + call linked
+                  - text: Pick up where the chat ended.
+                - listitem [ref=f4e111]:
+                  - generic [ref=f4e112]: Telecaller tracking
+                  - text: Call timing and productivity.
+                - listitem [ref=f4e113]:
+                  - generic [ref=f4e114]: AI call analysis
+                  - text: Call quality and insights.
+              - paragraph [ref=f4e115]: Chat → Call → Follow-up
+              - paragraph [ref=f4e116]: Contact us for pricing
+            - listitem [ref=f4e117]:
+              - generic [ref=f4e118]:
+                - generic [ref=f4e119]: Module 4
+                - button "Add Commerce to my quote" [ref=f4e120] [cursor=pointer]: Add to quote
+              - heading "Commerce" [level=2] [ref=f4e124]
+              - paragraph [ref=f4e125]: Get paid, place orders and manage the sale.
+              - list [ref=f4e126]:
+                - listitem [ref=f4e127]:
+                  - generic [ref=f4e128]: WhatsApp ordering
+                  - text: Customers order in the chat.
+                - listitem [ref=f4e129]:
+                  - generic [ref=f4e130]: Auto payment links
+                  - text: Sent without any manual work.
+                - listitem [ref=f4e131]:
+                  - generic [ref=f4e132]: Orders and invoices
+                  - text: Order placed, stock updated.
+              - paragraph [ref=f4e133]: Order → Pay → Placed → Invoiced
+              - paragraph [ref=f4e134]: Contact us for pricing
+          - paragraph [ref=f4e136]: Tick the modules you need and your combination appears here.
+        - region [ref=f4e137]:
+          - generic [ref=f4e138]: Pricing
+          - heading "Questions about pricing" [level=2] [ref=f4e139]
+          - generic [ref=f4e140]:
+            - generic [ref=f4e141]:
+              - heading [level=3] [ref=f4e142]:
+                - button "How much does Anril AI cost?" [expanded] [ref=f4e143] [cursor=pointer]
+              - region "How much does Anril AI cost?" [ref=f4e146]:
+                - paragraph [ref=f4e148]:
+                  - text: Pricing depends on the modules you use and the size of your team. Email
+                  - link "anrilaitech@gmail.com" [ref=f4e149] [cursor=pointer]:
+                    - /url: mailto:anrilaitech@gmail.com?subject=Anril%20AI%20pricing
+                  - text: or book a demo, and we will send you a quote.
+            - generic [ref=f4e150]:
+              - heading [level=3] [ref=f4e151]:
+                - button "What will my quote include?" [ref=f4e152] [cursor=pointer]
+              - region "What will my quote include?":
+                - paragraph [ref=f4e155]: The modules we suggest for your business, the price, how billing works, taxes, and how WhatsApp message charges from Meta are handled.
+            - generic [ref=f4e156]:
+              - heading [level=3] [ref=f4e157]:
+                - button "Can I see it working before I decide?" [ref=f4e158] [cursor=pointer]
+              - region "Can I see it working before I decide?":
+                - paragraph [ref=f4e161]: Yes. Book a demo and we will show you Anril AI answering enquiries like the ones your business gets.
+            - generic [ref=f4e162]:
+              - heading [level=3] [ref=f4e163]:
+                - button "Which channels does it work on?" [ref=f4e164] [cursor=pointer]
+              - region "Which channels does it work on?":
+                - paragraph [ref=f4e167]: WhatsApp, Instagram, Facebook Messenger, Telegram and web chat, with phone calls through CallIQ.
+            - generic [ref=f4e168]:
+              - heading [level=3] [ref=f4e169]:
+                - button "How do I get started?" [ref=f4e170] [cursor=pointer]
+              - region "How do I get started?":
+                - paragraph [ref=f4e173]: Tell us how enquiries reach you today and who follows them up. We will suggest the modules that fit and take you through setup.
+        - region [ref=f4e174]:
+          - generic [ref=f4e175]:
+            - heading "See it working on your own enquiries" [level=2] [ref=f4e177]
+            - paragraph [ref=f4e178]: Tell us a little about your business and we will set up a demo.
+          - generic [ref=f4e179]:
+            - generic [ref=f4e180]:
+              - textbox "Your name" [ref=f4e181]
+              - generic: Your name
+            - generic [ref=f4e182]:
+              - textbox "Phone number" [ref=f4e183]
+              - generic: Phone number
+            - generic [ref=f4e184]:
+              - textbox "Business name" [ref=f4e185]
+              - generic: Business name
+            - generic [ref=f4e186]:
+              - combobox "Industry" [ref=f4e187]:
+                - option "Choose one" [selected]
+                - option "Education"
+                - option "Real estate"
+                - option "Healthcare"
+                - option "Automotive"
+                - option "Manufacturing"
+                - option "Financial services"
+                - option "Other"
+              - generic: Industry
+            - generic [aria-hidden] [ref=f4e188]:
+              - text: Leave this empty
+              - textbox [ref=f4e189]
+            - button "Book a demo" [ref=f4e190] [cursor=pointer]
+    - contentinfo [ref=f4e191]:
+      - generic [ref=f4e192]:
+        - generic [ref=f4e193]:
+          - generic [ref=f4e194]:
+            - paragraph [ref=f4e195]: Answer every enquiry. Call the right lead first.
+            - link "Book a demo" [ref=f4e196] [cursor=pointer]:
+              - /url: "#demo"
+          - navigation "Footer" [ref=f4e197]:
+            - generic [ref=f4e198]:
+              - heading "Product" [level=2] [ref=f4e199]
+              - list [ref=f4e200]:
+                - listitem [ref=f4e201]:
+                  - link "AI replies" [ref=f4e202] [cursor=pointer]:
+                    - /url: /new/product#replies
+                - listitem [ref=f4e203]:
+                  - link "Lead scoring" [ref=f4e204] [cursor=pointer]:
+                    - /url: /new/product#scoring
+                - listitem [ref=f4e205]:
+                  - link "Telecaller routing" [ref=f4e206] [cursor=pointer]:
+                    - /url: /new/product#routing
+                - listitem [ref=f4e207]:
+                  - link "Call scoring" [ref=f4e208] [cursor=pointer]:
+                    - /url: /new/product#call-scoring
+            - generic [ref=f4e209]:
+              - heading "Company" [level=2] [ref=f4e210]
+              - list [ref=f4e211]:
+                - listitem [ref=f4e212]:
+                  - link "About" [ref=f4e213] [cursor=pointer]:
+                    - /url: /new/about
+                - listitem [ref=f4e214]:
+                  - link "Plans" [ref=f4e215] [cursor=pointer]:
+                    - /url: /new/pricing
+                - listitem [ref=f4e216]:
+                  - link "Industries" [ref=f4e217] [cursor=pointer]:
+                    - /url: /new/industries
+                - listitem [ref=f4e218]:
+                  - link "Contact" [ref=f4e219] [cursor=pointer]:
+                    - /url: /new/about#contact
+            - generic [ref=f4e220]:
+              - heading "Legal" [level=2] [ref=f4e221]
+              - list [ref=f4e222]:
+                - listitem [ref=f4e223]:
+                  - link "Privacy policy" [ref=f4e224] [cursor=pointer]:
+                    - /url: /privacy-policy
+                - listitem [ref=f4e225]:
+                  - link "Terms and conditions" [ref=f4e226] [cursor=pointer]:
+                    - /url: /terms-and-conditions
+                - listitem [ref=f4e227]:
+                  - link "Data deletion" [ref=f4e228] [cursor=pointer]:
+                    - /url: /data-deletion
+        - link "Anril AI home" [ref=f4e229] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f4e239]:
+          - paragraph [ref=f4e240]:
+            - text: A product of
+            - link "Bloom Matrix" [ref=f4e241] [cursor=pointer]:
+              - /url: https://www.bloommatrix.in
+          - link "anrilaitech@gmail.com" [ref=f4e242] [cursor=pointer]:
+            - /url: mailto:anrilaitech@gmail.com
+  - region "Notifications alt+T"

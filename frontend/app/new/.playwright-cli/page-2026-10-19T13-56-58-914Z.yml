@@ -1,0 +1,165 @@
+- generic [active] [ref=f12e1]:
+  - generic [ref=f12e2]:
+    - link "Skip to content" [ref=f12e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f12e4]:
+      - generic [ref=f12e5]:
+        - link "Anril AI home" [ref=f12e6] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f12e16]:
+          - navigation "Main" [ref=f12e17]:
+            - list [ref=f12e18]:
+              - listitem [ref=f12e19]:
+                - link "Products" [ref=f12e20] [cursor=pointer]:
+                  - /url: /new/product
+                - button "More Products links" [ref=f12e21] [cursor=pointer]
+              - listitem [ref=f12e24]:
+                - link "Plans" [ref=f12e25] [cursor=pointer]:
+                  - /url: /new/pricing
+              - listitem [ref=f12e26]:
+                - link "Resources" [ref=f12e27] [cursor=pointer]:
+                  - /url: /new/industries
+                - button "More Resources links" [ref=f12e28] [cursor=pointer]
+              - listitem [ref=f12e31]:
+                - link "Company" [ref=f12e32] [cursor=pointer]:
+                  - /url: /new/about
+                - button "More Company links" [ref=f12e33] [cursor=pointer]
+          - generic [ref=f12e36]:
+            - link "Sign in" [ref=f12e37] [cursor=pointer]:
+              - /url: /login
+            - link "Book a demo" [ref=f12e38] [cursor=pointer]:
+              - /url: "#demo"
+    - main [ref=f12e39]:
+      - generic [ref=f12e41]:
+        - region [ref=f12e42]:
+          - heading "About Anril AI" [level=1] [ref=f12e43]
+          - paragraph [ref=f12e44]: From first message to final sale. Anril AI answers enquiries, shows you which leads are ready to buy, and helps your team call the right lead first.
+        - region [ref=f12e45]:
+          - generic [ref=f12e46]: How we work
+          - heading "Three things we hold to" [level=2] [ref=f12e47]
+          - list [ref=f12e48]:
+            - listitem [ref=f12e49]:
+              - generic [ref=f12e50]: Answer fast.
+              - paragraph [ref=f12e51]: Every enquiry gets a reply when it arrives, including nights, weekends and holidays.
+            - listitem [ref=f12e52]:
+              - generic [ref=f12e53]: Show the hot lead.
+              - paragraph [ref=f12e54]: Every lead is marked hot, warm or cold, so your team calls the right person first.
+            - listitem [ref=f12e55]:
+              - generic [ref=f12e56]: Be honest about examples.
+              - paragraph [ref=f12e57]: When we show a conversation or a number, we say it is an example. Customer names are changed and logos left out at their request.
+        - region [ref=f12e58]:
+          - generic [ref=f12e59]:
+            - generic [ref=f12e60]:
+              - generic [ref=f12e61]: A product of
+              - heading "Bloom Matrix" [level=2] [ref=f12e62]
+            - generic [ref=f12e63]:
+              - paragraph [ref=f12e64]: A business communication and sales growth platform. Four modules, Reach, Engage, CallIQ and Commerce, take a business from first message to final sale. Our customers are in India and overseas.
+              - list [ref=f12e65]:
+                - listitem [ref=f12e66]:
+                  - link "Visit Bloom Matrix" [ref=f12e67] [cursor=pointer]:
+                    - /url: https://www.bloommatrix.in
+                - listitem [ref=f12e68]:
+                  - link "See the four modules" [ref=f12e69] [cursor=pointer]:
+                    - /url: /new/pricing
+                - listitem [ref=f12e70]:
+                  - link "See examples by industry" [ref=f12e71] [cursor=pointer]:
+                    - /url: /new/industries
+        - region [ref=f12e72]:
+          - generic [ref=f12e73]: Contact
+          - heading "Talk to us" [level=2] [ref=f12e74]
+          - paragraph [ref=f12e75]: Email us, or book a demo below.
+          - generic [ref=f12e76]:
+            - generic [ref=f12e77]:
+              - link "anrilaitech@gmail.com" [ref=f12e78] [cursor=pointer]:
+                - /url: mailto:anrilaitech@gmail.com
+              - button "Copy email" [ref=f12e79] [cursor=pointer]
+            - status [ref=f12e80]
+        - region [ref=f12e81]:
+          - generic [ref=f12e82]:
+            - heading "See it working on your own enquiries" [level=2] [ref=f12e84]
+            - paragraph [ref=f12e85]: Tell us a little about your business and we will set up a demo.
+          - generic [ref=f12e86]:
+            - generic [ref=f12e87]:
+              - textbox "Your name" [ref=f12e88]
+              - generic: Your name
+            - generic [ref=f12e89]:
+              - textbox "Phone number" [ref=f12e90]
+              - generic: Phone number
+            - generic [ref=f12e91]:
+              - textbox "Business name" [ref=f12e92]
+              - generic: Business name
+            - generic [ref=f12e93]:
+              - combobox "Industry" [ref=f12e94]:
+                - option "Choose one" [selected]
+                - option "Education"
+                - option "Real estate"
+                - option "Healthcare"
+                - option "Automotive"
+                - option "Manufacturing"
+                - option "Financial services"
+                - option "Other"
+              - generic: Industry
+            - generic [aria-hidden] [ref=f12e95]:
+              - text: Leave this empty
+              - textbox [ref=f12e96]
+            - button "Book a demo" [ref=f12e97] [cursor=pointer]
+    - contentinfo [ref=f12e98]:
+      - generic [ref=f12e99]:
+        - generic [ref=f12e100]:
+          - generic [ref=f12e101]:
+            - paragraph [ref=f12e102]: Answer every enquiry. Call the right lead first.
+            - link "Book a demo" [ref=f12e103] [cursor=pointer]:
+              - /url: "#demo"
+          - navigation "Footer" [ref=f12e104]:
+            - generic [ref=f12e105]:
+              - heading "Product" [level=2] [ref=f12e106]
+              - list [ref=f12e107]:
+                - listitem [ref=f12e108]:
+                  - link "AI replies" [ref=f12e109] [cursor=pointer]:
+                    - /url: /new/product#replies
+                - listitem [ref=f12e110]:
+                  - link "Lead scoring" [ref=f12e111] [cursor=pointer]:
+                    - /url: /new/product#scoring
+                - listitem [ref=f12e112]:
+                  - link "Telecaller routing" [ref=f12e113] [cursor=pointer]:
+                    - /url: /new/product#routing
+                - listitem [ref=f12e114]:
+                  - link "Call scoring" [ref=f12e115] [cursor=pointer]:
+                    - /url: /new/product#call-scoring
+            - generic [ref=f12e116]:
+              - heading "Company" [level=2] [ref=f12e117]
+              - list [ref=f12e118]:
+                - listitem [ref=f12e119]:
+                  - link "About" [ref=f12e120] [cursor=pointer]:
+                    - /url: /new/about
+                - listitem [ref=f12e121]:
+                  - link "Plans" [ref=f12e122] [cursor=pointer]:
+                    - /url: /new/pricing
+                - listitem [ref=f12e123]:
+                  - link "Industries" [ref=f12e124] [cursor=pointer]:
+                    - /url: /new/industries
+                - listitem [ref=f12e125]:
+                  - link "Contact" [ref=f12e126] [cursor=pointer]:
+                    - /url: /new/about#contact
+            - generic [ref=f12e127]:
+              - heading "Legal" [level=2] [ref=f12e128]
+              - list [ref=f12e129]:
+                - listitem [ref=f12e130]:
+                  - link "Privacy policy" [ref=f12e131] [cursor=pointer]:
+                    - /url: /privacy-policy
+                - listitem [ref=f12e132]:
+                  - link "Terms and conditions" [ref=f12e133] [cursor=pointer]:
+                    - /url: /terms-and-conditions
+                - listitem [ref=f12e134]:
+                  - link "Data deletion" [ref=f12e135] [cursor=pointer]:
+                    - /url: /data-deletion
+        - link "Anril AI home" [ref=f12e136] [cursor=pointer]:
+          - /url: /new
+        - generic [ref=f12e146]:
+          - paragraph [ref=f12e147]:
+            - text: A product of
+            - link "Bloom Matrix" [ref=f12e148] [cursor=pointer]:
+              - /url: https://www.bloommatrix.in
+          - link "anrilaitech@gmail.com" [ref=f12e149] [cursor=pointer]:
+            - /url: mailto:anrilaitech@gmail.com
+  - region "Notifications alt+T"
