@@ -115,22 +115,35 @@ export const CHANNELS = ["WhatsApp", "Instagram", "Facebook Messenger", "Telegra
 export type NavLink = { label: string; href: string };
 export type NavItem = NavLink & { children?: readonly NavLink[] };
 
+/** Industries that have their own page; the rest still live as anchors on /industries. Keep in step with INDUSTRY_PAGES. */
+export const INDUSTRY_PAGE_PATHS: Record<string, string> = {
+  education: "/industries/education",
+  "real-estate": "/industries/real-estate",
+  healthcare: "/industries/healthcare",
+};
+
 export const NAV: readonly NavItem[] = [
   {
     label: "Products",
     href: "/product",
     children: [
-      { label: "AI replies", href: "/product#replies" },
-      { label: "Lead scoring", href: "/product#scoring" },
-      { label: "Telecaller routing", href: "/product#routing" },
-      { label: "Call scoring", href: "/product#call-scoring" },
+      { label: "WhatsApp AI chatbot", href: "/whatsapp-chatbot" },
+      { label: "Bulk WhatsApp sender", href: "/bulk-whatsapp-sender" },
+      { label: "WhatsApp CRM", href: "/whatsapp-crm" },
+      { label: "Telecaller software", href: "/telecaller-software" },
+      { label: "Payments and orders", href: "/whatsapp-payments" },
+      { label: "Social media and ads", href: "/social-media-ads" },
+      { label: "All features", href: "/product" },
     ],
   },
   { label: "Plans", href: "/pricing" },
   {
     label: "Resources",
     href: "/industries",
-    children: INDUSTRIES.map((i) => ({ label: i.name, href: `/industries#${i.id}` })),
+    children: [
+      ...INDUSTRIES.map((i) => ({ label: i.name, href: INDUSTRY_PAGE_PATHS[i.id] ?? `/industries#${i.id}` })),
+      { label: "D2C brands", href: "/industries/d2c" },
+    ],
   },
   {
     label: "Company",

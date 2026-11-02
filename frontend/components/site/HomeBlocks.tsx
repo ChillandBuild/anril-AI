@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Building2, Camera, Car, Factory, Globe, GraduationCap, Landmark, MessageCircle, MessagesSquare, Phone, Send, Sparkles, Stethoscope, type LucideIcon } from "lucide-react";
 import ui from "./site.module.css";
-import { CHANNELS, INDUSTRIES } from "./content";
+import { CHANNELS, INDUSTRIES, INDUSTRY_PAGE_PATHS } from "./content";
 import { CountUp } from "./CountUp";
 import { MarqueePause } from "./MarqueePause";
 import { Kicker } from "./primitives";
@@ -102,7 +102,7 @@ export function IndustryList() {
           const Icon = INDUSTRY_ICON[i.id] ?? Sparkles;
           return (
             <li key={i.id} data-reveal style={{ "--rd": `${idx * 60}ms` } as React.CSSProperties}>
-              <Link prefetch={false} href={`/industries#${i.id}`} className={s.tile}>
+              <Link prefetch={false} href={INDUSTRY_PAGE_PATHS[i.id] ?? `/industries#${i.id}`} className={s.tile}>
                 <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
                 <span className={s.tname}>{i.name}</span>
                 <span className={s.peek} aria-hidden="true">

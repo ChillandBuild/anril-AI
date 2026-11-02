@@ -1,5 +1,7 @@
-import { INDUSTRIES } from "./content";
+import Link from "next/link";
+import { INDUSTRIES, INDUSTRY_PAGE_PATHS } from "./content";
 import card from "./FeatureRow.module.css";
+import ui from "./site.module.css";
 import { Eg } from "./primitives";
 import s from "./IndustryGrid.module.css";
 
@@ -23,6 +25,11 @@ export function IndustryGrid() {
           </div>
           <p>{i.outcome}</p>
           <Eg>Example conversation</Eg>
+          {INDUSTRY_PAGE_PATHS[i.id] && (
+            <Link prefetch={false} className={ui.tlink} href={INDUSTRY_PAGE_PATHS[i.id]}>
+              More about {i.name.toLowerCase()}
+            </Link>
+          )}
         </li>
       ))}
     </ul>

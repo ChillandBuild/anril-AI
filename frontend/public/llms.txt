@@ -26,6 +26,17 @@
 - [Products](https://www.anrilaitech.com/product): features in detail
 - [Plans](https://www.anrilaitech.com/pricing): pricing and pricing FAQ
 - [Industries](https://www.anrilaitech.com/industries): how each industry uses it
+- [WhatsApp AI chatbot](https://www.anrilaitech.com/whatsapp-chatbot): AI replies in Tanglish, lead scoring, human handover
+- [Bulk WhatsApp sender](https://www.anrilaitech.com/bulk-whatsapp-sender): official-API campaigns with approved templates
+- [WhatsApp CRM](https://www.anrilaitech.com/whatsapp-crm): one lead list, Hot/Warm/Cold scoring, follow-ups
+- [Telecaller software](https://www.anrilaitech.com/telecaller-software): CallIQ call recording and Tamil call analysis
+- [WhatsApp payments and orders](https://www.anrilaitech.com/whatsapp-payments): Razorpay payment links, orders, stock
+- [Social media and ads](https://www.anrilaitech.com/social-media-ads): Anril Attract, done-for-you posts and ads
+- [Real estate](https://www.anrilaitech.com/industries/real-estate)
+- [Education](https://www.anrilaitech.com/industries/education)
+- [Healthcare](https://www.anrilaitech.com/industries/healthcare)
+- [D2C brands](https://www.anrilaitech.com/industries/d2c)
+- [Contact](https://www.anrilaitech.com/contact): office, WhatsApp, hours
 - [About](https://www.anrilaitech.com/about): company and contact
 
 ## Social
