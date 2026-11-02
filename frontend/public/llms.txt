@@ -1,0 +1,34 @@
+# Anril AI
+
+> Anril AI is an AI-powered business growth and commerce platform made in Coimbatore, Tamil Nadu, India, by Bloom Matrix. It connects WhatsApp campaigns, AI replies, lead scoring, payments, orders and call intelligence in one platform, so a business can go from first message to paid order in one place. Plans start from ₹999 per month (plus GST). It is built for businesses that get many enquiries, in India and overseas.
+
+## Modules
+- Reach: bulk WhatsApp campaigns with approved templates, contact lists and segments, scheduling, delivery and engagement reports.
+- Engage: AI replies on WhatsApp, Instagram DMs and Facebook Messenger, from the business's own knowledge base. Replies in Tanglish by default, any language possible, understands voice notes. Scores leads Hot, Warm or Cold, follows up, and hands over to a human.
+- Commerce: payment links (Razorpay) with status, orders from enquiries, catalogue, stock and low-stock alerts, dispatch status.
+- CallIQ: call intelligence that understands Tamil calls, with call recording and telecaller performance measures.
+- Anril Attract: a done-for-you social media and Meta/Google ads service whose leads flow into Anril's AI chat.
+
+## Key facts
+- Pricing: from ₹999/month (₹799/month billed yearly), plus GST. WhatsApp message charges from Meta are separate. Overseas plans are priced in US dollars.
+- Free, unlimited demos online or at the Coimbatore office. No free trial.
+- Upgrade, downgrade or cancel anytime. GST invoices.
+- Built for: schools and colleges, study-abroad consultants, hospitals and clinics, real estate, D2C brands, and any business whose customers ask before they buy.
+
+## Contact
+- Address: 2, Sree Narayana Guru Road, Mission Road, Saibaba Koil, Coimbatore, Tamil Nadu 641011, India
+- WhatsApp / phone: +91 90473 70380
+- Email: anrilaitech@gmail.com
+- Hours: Monday to Saturday, 10 AM to 6 PM IST (closed on government holidays)
+
+## Pages
+- [Home](https://www.anrilaitech.com/): what Anril AI does
+- [Products](https://www.anrilaitech.com/product): features in detail
+- [Plans](https://www.anrilaitech.com/pricing): pricing and pricing FAQ
+- [Industries](https://www.anrilaitech.com/industries): how each industry uses it
+- [About](https://www.anrilaitech.com/about): company and contact
+
+## Social
+- [Instagram](https://www.instagram.com/anrilai/)
+- [Facebook](https://www.facebook.com/profile.php?id=61594983276431)
+- [LinkedIn](https://www.linkedin.com/company/143972232/)
