@@ -150,7 +150,7 @@ canvas {
 
   /* Button — teal primary (hover darkens: white on lighter teal fails 4.5:1) */
   .btn-primary {
-    background: linear-gradient(135deg, var(--primary-900), var(--primary-800));
+    background: var(--primary-800);
     color: white;
     font-family: var(--font-manrope), sans-serif;
     font-weight: 600;

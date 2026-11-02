@@ -1,0 +1,166 @@
+/* Shared look for the signed-out pages (login, reset password): warm sand page,
+   white card, warm-grey filled fields. Sand and the warm border come from the
+   landing palette (components/site/site.module.css); teal is the shared brand scale. */
+.page {
+  --sand: #f1efe8;
+  --sand-line: #e4dfd3;
+  --field: #f5f3ee;
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--sand);
+  color: #0a1528;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 36px;
+  border-radius: 24px;
+  background: #fff;
+  border: 1px solid var(--sand-line);
+  box-shadow: 0 24px 60px -28px rgba(10, 21, 40, 0.22);
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--field);
+  font-size: 16px;
+  color: #0a1528;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.field:focus-visible {
+  border-color: var(--primary-800);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(3, 130, 133, 0.15);
+}
+.field::placeholder {
+  color: #7a889b;
+}
+
+.primary {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--primary-800);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.primary:hover {
+  background: var(--primary-900);
+}
+.primary:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.alt {
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--sand-line);
+  border-radius: 14px;
+  background: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0a1528;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.alt:hover {
+  background: var(--field);
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-800);
+  cursor: pointer;
+}
+.link:hover {
+  color: var(--primary-900);
+}
+
+.primary:focus-visible,
+.alt:focus-visible,
+.link:focus-visible {
+  outline: 2px solid var(--primary-800);
+  outline-offset: 2px;
+}
+
+.error,
+.notice {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.error {
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  color: #b91c1c;
+}
+.notice {
+  background: #effbfb;
+  border: 1px solid #cfeded;
+  color: var(--primary-900);
+}
+
+/* Compact deep teal header shown above the form below 1280px, where the full
+   showcase doesn't fit. Same look as the desktop panel. */
+.glassHeader {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  padding: 22px 24px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--primary-900) 0%, #036e71 55%, var(--primary-800) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 24px 50px -26px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.glassHeader h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.glassHeader p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cdefef;
+}

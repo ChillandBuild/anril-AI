@@ -1,0 +1,452 @@
+/* The login page's left side: one deep teal glass panel with the pitch, a feed of
+   messages that answer themselves, and Healy / Tealy perched on opposite corners.
+   Healy and Tealy are videos with a transparent background (WebM for most
+   browsers, HEVC .mov for Safari), so they sit on anything. Always 680x600; the
+   page scales the whole thing to fit the window. */
+.root {
+  position: relative;
+  width: 680px;
+  height: 600px;
+  animation: fadeIn 0.4s ease-out both;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+}
+.blobTeal {
+  left: -40px;
+  top: 380px;
+  width: 320px;
+  height: 260px;
+  background: rgba(63, 188, 191, 0.45);
+}
+.blobCopper {
+  left: 420px;
+  top: -40px;
+  width: 300px;
+  height: 240px;
+  background: rgba(217, 150, 107, 0.32);
+}
+
+.glass {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 34px 32px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, var(--primary-900) 0%, #036e71 55%, var(--primary-800) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 30px 60px -28px rgba(4, 88, 91, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+/* Light sheen top-left so the panel still reads as glass. */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.16), transparent 55%);
+  pointer-events: none;
+}
+.copy,
+.feed,
+.by {
+  z-index: 1;
+}
+
+.copy {
+  position: relative;
+  width: 330px;
+}
+.copy h2 {
+  margin: 0 0 12px;
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.copy p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #cdefef;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 5px 11px;
+  border-radius: 99px;
+}
+.by {
+  position: absolute;
+  left: 112px;
+  bottom: 28px;
+  width: 270px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #cdefef;
+}
+.by b {
+  color: #fff;
+  font-weight: 800;
+}
+
+/* Message feed */
+.feed {
+  position: absolute;
+  right: 18px;
+  top: 84px;
+  width: 262px;
+  height: 500px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 80%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 80%, transparent 100%);
+}
+.bub {
+  position: absolute;
+  left: 6px;
+  top: 0;
+  width: 250px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 14px 14px 14px 4px;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 10px 24px -12px rgba(2, 40, 42, 0.55);
+  animation: rise 16s linear infinite;
+  animation-delay: var(--d);
+}
+.bub p {
+  margin: 4px 0 8px;
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: #0a1528;
+}
+.channel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #566579;
+}
+.status {
+  position: relative;
+  height: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.typing,
+.done {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.typing {
+  color: #566579;
+  animation: typing 16s linear infinite;
+  animation-delay: var(--d);
+}
+.done {
+  color: var(--primary-900);
+  animation: done 16s linear infinite;
+  animation-delay: var(--d);
+}
+.dots i {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #8a97a8;
+  margin-right: 3px;
+  animation: blinkDot 1s infinite;
+}
+.dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.hot {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #9a5a3c;
+  padding: 3px 8px;
+  border-radius: 99px;
+  animation: hot 16s linear infinite;
+  animation-delay: var(--d);
+}
+
+.ping {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  border: 2px solid #7fe0e2;
+  opacity: 0;
+  pointer-events: none;
+}
+.pingReply {
+  left: 410px;
+  top: 470px;
+  animation: ping 4s ease-out 0.8s infinite;
+}
+.pingLead {
+  left: 622px;
+  top: 336px;
+  border-color: #e8a77e;
+  animation: ping 16s ease-out 2.88s infinite;
+}
+
+/* Characters. The outer box carries the mouse lean; inner boxes carry the
+   swoop / point / fly animations. */
+.char {
+  position: absolute;
+  z-index: 2;
+  width: 194px;
+  height: 194px;
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.healy {
+  left: 583px;
+  top: -97px;
+}
+.tealy {
+  left: -97px;
+  top: 503px;
+}
+.media {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.media video,
+.media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.media video {
+  transition: opacity 0.25s;
+}
+.shutImg {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.shut video {
+  opacity: 0;
+}
+.shut .shutImg {
+  opacity: 1;
+}
+.point {
+  width: 100%;
+  height: 100%;
+  animation: point 16s ease-in-out infinite;
+}
+.deliver {
+  width: 100%;
+  height: 100%;
+  animation: deliver 4s cubic-bezier(0.45, 0.05, 0.35, 1) -1.2s infinite;
+}
+.fly {
+  animation: flyOff 2.2s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise {
+  0% {
+    transform: translateY(500px);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  84% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px);
+    opacity: 0;
+  }
+}
+@keyframes typing {
+  0%,
+  7% {
+    opacity: 0;
+  }
+  10%,
+  26% {
+    opacity: 1;
+  }
+  29%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes done {
+  0%,
+  28% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  31%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hot {
+  0%,
+  40% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  43% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  46%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ping {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.3);
+  }
+  30%,
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+@keyframes blinkDot {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes point {
+  0%,
+  10% {
+    transform: none;
+  }
+  16%,
+  26% {
+    transform: translate(-16px, 30px) rotate(-8deg);
+  }
+  34%,
+  100% {
+    transform: none;
+  }
+}
+@keyframes deliver {
+  0%,
+  10% {
+    transform: none;
+  }
+  36% {
+    transform: translate(120px, -60px) rotate(8deg);
+  }
+  50% {
+    transform: translate(240px, -120px) rotate(4deg) scale(1.06, 0.92);
+  }
+  56% {
+    transform: translate(236px, -116px) scale(0.97, 1.04);
+  }
+  64% {
+    transform: translate(230px, -112px);
+  }
+  86% {
+    transform: translate(20px, -10px) rotate(-4deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes flyOff {
+  0% {
+    transform: none;
+  }
+  22% {
+    transform: translate(-24px, 30px) scale(0.94, 1.06);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(560px, -520px) rotate(18deg) scale(0.55);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root,
+  .bub,
+  .typing,
+  .done,
+  .hot,
+  .ping,
+  .point,
+  .deliver,
+  .fly,
+  .dots i {
+    animation: none;
+  }
+  .char {
+    transition: none;
+  }
+  .bub {
+    opacity: 1;
+  }
+  .typing {
+    display: none;
+  }
+  .bub:nth-child(1) {
+    transform: translateY(66px);
+  }
+  .bub:nth-child(2) {
+    transform: translateY(196px);
+  }
+  .bub:nth-child(3) {
+    transform: translateY(326px);
+  }
+  .bub:nth-child(4) {
+    display: none;
+  }
+}
