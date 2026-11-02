@@ -145,6 +145,7 @@ export const NAV: readonly NavItem[] = [
       { label: "D2C brands", href: "/industries/d2c" },
     ],
   },
+  { label: "Blog", href: "/blog" },
   {
     label: "Company",
     href: "/about",

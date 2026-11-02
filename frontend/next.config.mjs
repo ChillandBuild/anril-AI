@@ -31,6 +31,8 @@ const nextConfig = {
         { source: "/industries", destination: "/new/industries" },
         { source: "/about", destination: "/new/about" },
         { source: "/industries/:slug", destination: "/new/industries/:slug" },
+        { source: "/blog", destination: "/new/blog" },
+        { source: "/blog/:slug", destination: "/new/blog/:slug" },
         // The six product pages (app/new/[slug]); keep in step with PRODUCT_PAGES in landing-content.ts.
         ...["whatsapp-chatbot", "bulk-whatsapp-sender", "whatsapp-crm", "telecaller-software", "whatsapp-payments", "social-media-ads"].map(
           (slug) => ({ source: `/${slug}`, destination: `/new/${slug}` }),

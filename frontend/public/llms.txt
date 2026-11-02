@@ -36,6 +36,7 @@
 - [Education](https://www.anrilaitech.com/industries/education)
 - [Healthcare](https://www.anrilaitech.com/industries/healthcare)
 - [D2C brands](https://www.anrilaitech.com/industries/d2c)
+- [Blog](https://www.anrilaitech.com/blog): guides on WhatsApp chatbots, bulk messaging, lead scoring and telecalling
 - [Contact](https://www.anrilaitech.com/contact): office, WhatsApp, hours
 - [About](https://www.anrilaitech.com/about): company and contact
 
