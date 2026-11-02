@@ -99,12 +99,12 @@ export function NotificationBell() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative flex items-center justify-center w-[34px] h-[34px] rounded-full transition-transform hover:scale-105 group"
-        style={{ background: "linear-gradient(135deg, var(--primary-950), var(--primary-800))" }}
+        style={{ background: "var(--primary-400)" }}
         title="Notification Center"
       >
-        <Bell size={16} className="text-white" />
+        <Bell size={16} className="text-[#0A1528]" />
         {totalUnread > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 bg-gradient-to-r from-rose-500 to-pink-600 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-4 ring-white shadow-sm animate-bounce-short">
+          <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 bg-[#f0643f] text-white text-[10px] font-black rounded-full flex items-center justify-center ring-4 ring-white shadow-sm animate-bounce-short">
             {totalUnread > 99 ? "99+" : totalUnread}
           </span>
         )}

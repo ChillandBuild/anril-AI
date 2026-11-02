@@ -65,7 +65,6 @@ export interface NavSection {
   title: string;
   /** Icon on the section's row in the sidebar. */
   icon: LucideIcon;
-  defaultOpen: boolean;
   entries: NavEntry[];
 }
 
@@ -319,14 +318,14 @@ const SETTINGS_GROUP: NavGroup = {
 
 /** Sections render top to bottom in this order. Dashboard and Analytics sit above them. */
 export const NAV_SECTIONS: readonly NavSection[] = [
-  { key: "inbox", title: "Inbox & Leads", icon: Inbox, defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
-  { key: "engage", title: "Anril Engage", icon: RadioTower, defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
-  { key: "reach", title: "Anril Reach", icon: Upload, defaultOpen: false, entries: [OUTBOUND_LEADS, SMS] },
-  { key: "commerce", title: "Anril Commerce", icon: Coins, defaultOpen: false, entries: [DEALS, CATALOGUE] },
-  { key: "callIq", title: "Anril Call IQ", icon: Phone, defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
-  { key: "aiSetup", title: "Anril Setup", icon: Brain, defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
-  { key: "whatsappSetup", title: "WhatsApp Setup", icon: FileCheck, defaultOpen: false, entries: [TEMPLATES, NUMBERS_POOL] },
-  { key: "account", title: "Account", icon: ShieldCheck, defaultOpen: false, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
+  { key: "inbox", title: "Inbox & Leads", icon: Inbox, entries: [CONVERSATIONS, SEGMENTS] },
+  { key: "engage", title: "Anril Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
+  { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS, SMS] },
+  { key: "commerce", title: "Anril Commerce", icon: Coins, entries: [DEALS, CATALOGUE] },
+  { key: "callIq", title: "Anril Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
+  { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
+  { key: "whatsappSetup", title: "WhatsApp Setup", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] },
+  { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
 ];
 
 /** Visible entries only, in render order. Empty means the section heading is hidden. */
@@ -337,7 +336,7 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
 /**
  * The one open section (an accordion, so the menu never grows past the
  * screen). A click wins (null = all shut); otherwise the section holding the
- * current page, else the first default-open one.
+ * current page. Pages outside every section (Dashboard, Analytics) shut all.
  */
 export function resolveOpenSection(
   choice: string | null | undefined,
@@ -345,8 +344,7 @@ export function resolveOpenSection(
   pathname: string,
 ): string | null {
   if (choice !== undefined) return choice;
-  const holder = sections.find((s) => sectionContainsPage(s, pathname)) ?? sections.find((s) => s.defaultOpen);
-  return holder?.key ?? null;
+  return sections.find((s) => sectionContainsPage(s, pathname))?.key ?? null;
 }
 
 export function sectionContainsPage(section: NavSection, pathname: string): boolean {

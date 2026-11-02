@@ -40,8 +40,9 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
 
     const place = (navigated: boolean) => {
       const current = box.querySelector<HTMLElement>('[aria-current="page"]');
+      const folded = aside?.matches("[data-rail]:not([data-peek])") ?? false;
       // On the folded strip only the group icons show: mark the group holding the page.
-      const row = aside?.matches("[data-rail]:not([data-peek])")
+      const row = folded
         ? (current?.closest("section")?.querySelector<HTMLElement>(":scope > button") ?? current)
         : current;
       if (!row) {
@@ -50,11 +51,10 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
         return;
       }
       const at = offsetWithin(row, box);
-      // Top-level rows: the square sits just left of the row. Rows inside an
-      // open menu's box: just inside the row's right edge, in space the row
-      // keeps free, so nothing in the row moves.
-      const nested = row.closest(".nav-children, .nav-children-flat") !== null;
-      const x = nested ? at.x + row.offsetWidth - 12 - SIZE : at.x - 11;
+      // Just inside the row's right edge, in space the row keeps free, so
+      // nothing in the row moves. The folded strip's rows are only as wide as
+      // their icon, so there it sits just left of the row.
+      const x = folded ? at.x - 11 : at.x + row.offsetWidth - 12 - SIZE;
       const y = at.y + row.offsetHeight / 2 - SIZE / 2;
       // A closed menu still holds its rows; hide the square there.
       square.style.opacity = row.closest(".nav-expander:not(.open)") ? "0" : "1";

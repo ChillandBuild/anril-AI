@@ -5,10 +5,20 @@ import { sidebarFoldsOn } from "@/components/nav/navSections";
 // Pause before a hover over the folded strip opens the full menu, so a
 // pointer passing over it on the way somewhere else doesn't pop it open.
 const PEEK_DELAY_MS = 150;
+// How long a wide page waits before folding, so the square's hop to the new
+// row plays out first, and the grace after the pointer leaves the sidebar.
+const FOLD_DELAY_MS = 3000;
+const LEAVE_DELAY_MS = 400;
+
+// The fold last shown, kept outside React: the inbox and the other pages
+// mount separate sidebars, and the new one must start where the old one was
+// so it can fold after the delay instead of appearing folded.
+let lastShownRail: boolean | null = null;
 
 /**
  * Desktop sidebar fold state. Wide pages (sidebarFoldsOn) fold it to the
- * 64px icon strip; every other page opens it. The collapse button overrides
+ * 64px icon strip, FOLD_DELAY_MS after arriving (never while the pointer is
+ * on the sidebar); every other page opens it at once. The collapse button overrides
  * that for the current page only: the next page follows the rule again.
  * While folded, hovering or keyboard focus "peeks" the full menu over the
  * page without moving it.
@@ -19,7 +29,13 @@ const PEEK_DELAY_MS = 150;
 export function useSidebarRail(pathname: string) {
   const [override, setOverride] = useState<{ path: string; rail: boolean } | null>(null);
   const [peek, setPeek] = useState(false);
-  const rail = override?.path === pathname ? override.rail : sidebarFoldsOn(pathname);
+  const pinned = override?.path === pathname;
+  const target = pinned ? override.rail : sidebarFoldsOn(pathname);
+  const [rail, setRail] = useState(() => lastShownRail ?? target);
+  const hovering = useRef(false);
+  // The fold came due while the pointer was on the sidebar: fold on leave.
+  const due = useRef(false);
+  const foldTimer = useRef<number | undefined>(undefined);
   const timer = useRef<number | undefined>(undefined);
   // When the sidebar folds under the pointer, hover must not peek again
   // until the pointer has left, or it would spring straight back open.
@@ -27,6 +43,23 @@ export function useSidebarRail(pathname: string) {
   const lastRail = useRef(rail);
 
   useLayoutEffect(() => {
+    window.clearTimeout(foldTimer.current);
+    due.current = false;
+    if (target === rail) return;
+    // Opening, or the collapse button: no wait.
+    if (!target || pinned) {
+      setRail(target);
+      return;
+    }
+    foldTimer.current = window.setTimeout(() => {
+      if (hovering.current) due.current = true;
+      else setRail(true);
+    }, FOLD_DELAY_MS);
+    return () => window.clearTimeout(foldTimer.current);
+  }, [target, rail, pinned]);
+
+  useLayoutEffect(() => {
+    lastShownRail = rail;
     const root = document.documentElement;
     root.toggleAttribute("data-sidebar-rail", rail);
     if (lastRail.current !== rail) {
@@ -54,17 +87,27 @@ export function useSidebarRail(pathname: string) {
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(timer.current);
+      window.clearTimeout(foldTimer.current);
       root.removeAttribute("data-sidebar-anim");
     };
   }, []);
 
   const handlers = {
     onMouseEnter: () => {
+      hovering.current = true;
       if (!rail || !armed.current) return;
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setPeek(true), PEEK_DELAY_MS);
     },
     onMouseLeave: () => {
+      hovering.current = false;
+      if (due.current) {
+        due.current = false;
+        foldTimer.current = window.setTimeout(() => {
+          if (hovering.current) due.current = true;
+          else setRail(true);
+        }, LEAVE_DELAY_MS);
+      }
       armed.current = true;
       window.clearTimeout(timer.current);
       setPeek(false);

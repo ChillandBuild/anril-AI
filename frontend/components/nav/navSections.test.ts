@@ -113,11 +113,6 @@ describe("navSections tab coverage", () => {
 });
 
 describe("navSections defaults and gating", () => {
-  it("only the INBOX & LEADS section is open by default", () => {
-    const open = NAV_SECTIONS.filter((s) => s.defaultOpen).map((s) => s.key);
-    expect(open).toEqual(["inbox"]);
-  });
-
   it("a section with no visible items is empty, so the sidebar hides its heading", () => {
     const inbox = NAV_SECTIONS.find((s) => s.key === "inbox");
     expect(inbox).toBeDefined();
@@ -137,14 +132,15 @@ describe("section open state", () => {
     expect(resolveOpenSection(null, NAV_SECTIONS, "/dashboard/conversations")).toBeNull();
   });
 
-  it("opens only the section holding the current page, not the default too", () => {
+  it("opens only the section holding the current page", () => {
     const aiSetup = NAV_SECTIONS.find((s) => s.key === "aiSetup")!;
     expect(sectionContainsPage(aiSetup, "/dashboard/brain/rules")).toBe(true);
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/brain/rules")).toBe("aiSetup");
   });
 
-  it("falls back to the default-open section on pages outside every section", () => {
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBe("inbox");
+  it("shuts every section on pages outside them (Dashboard, Analytics)", () => {
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBeNull();
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/analytics")).toBeNull();
   });
 
   it("the Catalogue entry is active on both catalog and services pages", () => {
