@@ -168,7 +168,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                     ? "w-full min-w-0 max-w-none"
                     : isMetaAds
                     ? "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
-                    : "w-full min-w-0 max-w-[1400px] overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:p-7"}>
+                    : "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:p-7"}>
                     {children}
                   </div>
                 </main>
