@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { canLoadComparison, ComparisonSelection, isCompleteSelection } from "@/components/analytics/periodSelection";
 import { buildFunnel, buildOverviewCards, buildTrend, FunnelStep, PerformanceCard } from "./overviewPresentation";
+import { AiraLoader } from "@/components/AiraLoader";
 
 const CURRENT_COLOR = "var(--primary-800)";
 const PREVIOUS_COLOR = "#94a3b8";
@@ -502,12 +503,7 @@ export function CompareTab({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
           <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
             {!data ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-5 h-24 animate-pulse border-t-4 border-t-surface-mid">
-                  <div className="h-3 w-1/2 bg-surface-mid/60 rounded" />
-                  <div className="h-6 w-3/4 bg-surface-mid/60 rounded mt-2" />
-                </div>
-              ))
+              <AiraLoader inline className="col-span-full min-h-24" />
             ) : (
               buildOverviewCards({ current: data.current, previous: data.previous }).map((card) => (
                 <PerformanceKpi key={card.label} card={card} />

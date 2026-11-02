@@ -51,9 +51,10 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
       }
       const at = offsetWithin(row, box);
       // Top-level rows: the square sits just left of the row. Rows inside an
-      // open menu's box: just inside the row's left edge.
+      // open menu's box: just inside the row's right edge, in space the row
+      // keeps free, so nothing in the row moves.
       const nested = row.closest(".nav-children, .nav-children-flat") !== null;
-      const x = at.x + (nested ? 12 : -11);
+      const x = nested ? at.x + row.offsetWidth - 12 - SIZE : at.x - 11;
       const y = at.y + row.offsetHeight / 2 - SIZE / 2;
       // A closed menu still holds its rows; hide the square there.
       square.style.opacity = row.closest(".nav-expander:not(.open)") ? "0" : "1";

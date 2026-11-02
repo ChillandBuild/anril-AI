@@ -4,6 +4,7 @@ import { AlertTriangle, CreditCard, Activity, ArrowRight } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { CartBuilder, SubscriptionItem } from "../subscriptions/CartBuilder";
 import { useAuthRole } from "../contexts/AuthRoleContext";
+import { AiraLoader } from "@/components/AiraLoader";
 
 interface CatalogRow { feature_key: string; display_name: string }
 interface UsageMetric { metric: string; used: number; included: number; hard_cap: number | null }
@@ -84,12 +85,7 @@ export default function SubscriptionPage() {
   useEffect(() => { load(); }, []);
 
   if (loading || !me) {
-    return (
-      <div className="flex items-center justify-center gap-2 p-16 text-ink-muted">
-        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        Loading subscription…
-      </div>
-    );
+    return <AiraLoader inline />;
   }
 
   const catalogByKey = new Map(catalog.map((c) => [c.feature_key, c]));

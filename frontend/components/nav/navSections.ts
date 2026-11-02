@@ -1,7 +1,7 @@
 import {
-  BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins, Inbox, Layers,
-  Megaphone, MessageSquare, MessageSquareText, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
-  StickyNote, Upload, Users, Zap, type LucideIcon,
+  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
+  Inbox, Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
+  ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
 } from "lucide-react";
 import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
 
@@ -143,7 +143,7 @@ const INBOUND_LEADS: NavLeaf = {
   key: "inbound-leads",
   href: "/dashboard/inbound-leads",
   label: "Inbound Leads",
-  icon: RadioTower,
+  icon: ArrowDownToLine,
   visible: (a) => a.isSubscribed && a.can("inbound_leads.view") && a.inboundOn,
   isActive: (p) => p.startsWith("/dashboard/inbound-leads"),
 };
@@ -186,7 +186,7 @@ const OUTBOUND_LEADS: NavLeaf = {
   key: "outbound-leads",
   href: "/dashboard/outbound-leads",
   label: "Outbound Leads",
-  icon: Upload,
+  icon: Send,
   visible: (a) => a.isSubscribed && a.canAny(["outbound_leads.view", "outbound_leads.manage"]) && a.outboundOn,
   isActive: (p) => p.startsWith("/dashboard/outbound-leads"),
 };
@@ -232,7 +232,7 @@ const TELECALLING_GROUP: NavGroup = {
   kind: "group",
   key: "telecalling",
   label: "Telecalling",
-  icon: Phone,
+  icon: PhoneCall,
   visible: (a) => a.telecallingVisible,
   isActive: (p) => startsWithAny(p, ["/dashboard/telecalling", "/dashboard/notes"]),
 };
@@ -242,7 +242,7 @@ const TEAM_PERFORMANCE: NavLeaf = {
   key: "team-performance",
   href: "/dashboard/team",
   label: "Team Performance",
-  icon: Users,
+  icon: Trophy,
   visible: (a) => a.isSubscribed && a.can("team.view"),
   isActive: (p) => p.startsWith("/dashboard/team"),
 };
@@ -334,14 +334,19 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
   return section.entries.filter((entry) => entry.visible(access));
 }
 
-/** Explicit user click wins. Otherwise open if it is a default-open section or holds the current page. */
-export function resolveSectionOpen(
-  explicit: boolean | undefined,
-  defaultOpen: boolean,
-  containsActivePage: boolean,
-): boolean {
-  if (explicit !== undefined) return explicit;
-  return defaultOpen || containsActivePage;
+/**
+ * The one open section (an accordion, so the menu never grows past the
+ * screen). A click wins (null = all shut); otherwise the section holding the
+ * current page, else the first default-open one.
+ */
+export function resolveOpenSection(
+  choice: string | null | undefined,
+  sections: readonly NavSection[],
+  pathname: string,
+): string | null {
+  if (choice !== undefined) return choice;
+  const holder = sections.find((s) => sectionContainsPage(s, pathname)) ?? sections.find((s) => s.defaultOpen);
+  return holder?.key ?? null;
 }
 
 export function sectionContainsPage(section: NavSection, pathname: string): boolean {

@@ -4,7 +4,7 @@ import {
   NAV_SECTIONS,
   TELECALLING_ITEMS,
   dashboardEntry,
-  resolveSectionOpen,
+  resolveOpenSection,
   sectionContainsPage,
   sidebarFoldsOn,
   visibleEntries,
@@ -132,20 +132,19 @@ describe("navSections defaults and gating", () => {
 });
 
 describe("section open state", () => {
-  it("uses the explicit user choice when one is set", () => {
-    expect(resolveSectionOpen(false, true, true)).toBe(false);
-    expect(resolveSectionOpen(true, false, false)).toBe(true);
+  it("uses the click when one is set, including all shut", () => {
+    expect(resolveOpenSection("reach", NAV_SECTIONS, "/dashboard/conversations")).toBe("reach");
+    expect(resolveOpenSection(null, NAV_SECTIONS, "/dashboard/conversations")).toBeNull();
   });
 
-  it("falls back to the default when the user has not chosen", () => {
-    expect(resolveSectionOpen(undefined, true, false)).toBe(true);
-    expect(resolveSectionOpen(undefined, false, false)).toBe(false);
-  });
-
-  it("auto-opens a section that holds the current page when not chosen", () => {
+  it("opens only the section holding the current page, not the default too", () => {
     const aiSetup = NAV_SECTIONS.find((s) => s.key === "aiSetup")!;
     expect(sectionContainsPage(aiSetup, "/dashboard/brain/rules")).toBe(true);
-    expect(resolveSectionOpen(undefined, aiSetup.defaultOpen, true)).toBe(true);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/brain/rules")).toBe("aiSetup");
+  });
+
+  it("falls back to the default-open section on pages outside every section", () => {
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBe("inbox");
   });
 
   it("the Catalogue entry is active on both catalog and services pages", () => {
@@ -189,7 +188,7 @@ describe("SMS sidebar access", () => {
     expect(sms.href).toBe("/dashboard/sms");
     expect(sms.isActive("/dashboard/sms")).toBe(true);
     expect(sms.isActive("/dashboard/sms-other")).toBe(false);
-    expect(resolveSectionOpen(undefined, reach.defaultOpen, true)).toBe(true);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("reach");
   });
 });
 

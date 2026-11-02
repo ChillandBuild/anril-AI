@@ -39,6 +39,7 @@ import {
   canLoadComparison,
   ComparisonSelection,
 } from "@/components/analytics/periodSelection";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type Tab = "overview" | "channels" | "templates" | "inbound";
 
@@ -311,12 +312,7 @@ function ChannelsTab({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
           <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
             {!data ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-5 h-24 animate-pulse">
-                  <div className="h-3 w-1/2 bg-surface-mid/60 rounded" />
-                  <div className="h-6 w-3/4 bg-surface-mid/60 rounded mt-2" />
-                </div>
-              ))
+              <AiraLoader inline className="col-span-full min-h-24" />
             ) : (
               <>
                 <KpiCard label="Sent Today" value={data.sent_today.toLocaleString()} tone="border-t-sky-400" />
@@ -452,12 +448,7 @@ function TemplatesTab({ range, setRange }: { range: RangeValue; setRange: (r: Ra
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
         <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
           {!rows ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-5 h-24 animate-pulse">
-                <div className="h-3 w-1/2 bg-surface-mid/60 rounded" />
-                <div className="h-6 w-3/4 bg-surface-mid/60 rounded mt-2" />
-              </div>
-            ))
+            <AiraLoader inline className="col-span-full min-h-24" />
           ) : (
             <>
               <KpiCard label="Total Sent" value={totals.sent.toLocaleString()} tone="border-t-sky-400" />
@@ -597,12 +588,7 @@ function InboundTab({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
           <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-3 gap-4">
             {!data ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-5 h-24 animate-pulse">
-                  <div className="h-3 w-1/2 bg-surface-mid/60 rounded" />
-                  <div className="h-6 w-3/4 bg-surface-mid/60 rounded mt-2" />
-                </div>
-              ))
+              <AiraLoader inline className="col-span-full min-h-24" />
             ) : (
               <>
                 <KpiCard label="New Inbound Leads Today" value={data.kpis.today.total.toLocaleString()} sub={`Organic ${data.kpis.today.organic} · Ad ${data.kpis.today.ad}`} tone="border-t-sky-400" />

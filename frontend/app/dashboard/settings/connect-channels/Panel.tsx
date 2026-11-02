@@ -15,6 +15,7 @@ import ChannelConfigModal from "./ChannelConfigModal";
 import MetaAssetPickerModal from "./MetaAssetPickerModal";
 import MetaChannelPickerModal from "./MetaChannelPickerModal";
 import DisconnectDialog from "./DisconnectDialog";
+import { AiraLoader } from "@/components/AiraLoader";
 
 export default function ConnectChannelsPanel({ canManage = true }: { canManage?: boolean }) {
   const [settings, setSettings] = useState<Setting[]>([]);
@@ -262,10 +263,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
       )}
 
       {loading ? (
-        <div className="space-y-6">
-          <div className="h-[420px] animate-pulse rounded-[28px] bg-border-subtle" />
-          <div className="h-[380px] animate-pulse rounded-[28px] bg-border-subtle" />
-        </div>
+        <AiraLoader inline />
       ) : (
         <div className="space-y-6">
           <EmbeddedSection

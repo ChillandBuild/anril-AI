@@ -32,6 +32,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type Tab = "roles" | "users" | "audit";
 type CallingProvider = "telecmi" | "sim_basic";
@@ -559,7 +560,7 @@ export default function RolesPage() {
   }
 
   if (roleLoading || loading) {
-    return <div className="flex min-h-[400px] items-center justify-center"><Loader2 size={24} className="animate-spin text-primary" /></div>;
+    return <AiraLoader inline />;
   }
 
   if (!canView) {

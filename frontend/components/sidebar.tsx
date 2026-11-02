@@ -12,37 +12,37 @@ import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
-import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
+import { NavCount, navCountLabel } from "@/components/nav/NavCount";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import { useSidebarRail } from "@/components/nav/useSidebarRail";
 import {
   ANALYTICS_LINK, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
-  dashboardEntry, resolveSectionOpen, sectionContainsPage, visibleEntries,
+  dashboardEntry, resolveOpenSection, sectionContainsPage, visibleEntries,
   type NavAccess, type NavBadgeKey, type NavEntry, type NavGroup, type NavLeaf,
 } from "@/components/nav/navSections";
 
-type NavItem = { href: string; label: string };
+type NavItem = { href: string; label: string; icon?: LucideIcon };
 
 // Styled to the v2 sidebar study: navy (--navy, #0A1528) with white labels
 // (--nav-label) and pale-teal icons. The active row's teal tint wipes in
 // (.nav-active in globals.css) as the shared teal square (ActiveIndicator)
 // lands on it. Rows inside an open section's box (.nav-children) are smaller,
-// have no icon, and step right when active.
+// their icons look carved into the box (.nav-carved) and light up teal on the
+// open page; the square lands in space kept free at the row's right end.
 const ROW =
-  "group relative isolate z-[2] flex w-full items-center gap-3 rounded-lg text-left text-[var(--nav-label)] transition-[padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]";
+  "group relative isolate z-[2] flex w-full items-center gap-3 rounded-lg text-left text-[var(--nav-label)] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]";
 const ROW_TOP = "min-h-10 p-2.5 text-[13px]";
-const ROW_NESTED = "min-h-[35px] py-2.5 pr-2.5 text-[12px]";
-const nestedPad = (active: boolean) => (active ? "pl-[26px]" : "pl-5");
+const ROW_NESTED = "min-h-[35px] gap-2.5 py-2.5 pr-2.5 text-[12px]";
 const ICON = "nav-icon shrink-0 text-[#d5f4f4]";
-const BADGE = "nav-badge flex-shrink-0 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-bold text-[9px] min-w-[16px] text-center";
+const CARVED = "nav-carved shrink-0";
 
 function MainNavItem({
   href,
   active,
   icon: Icon,
   label,
-  badge,
+  count = 0,
   nested = false,
   pad,
 }: {
@@ -50,7 +50,8 @@ function MainNavItem({
   active: boolean;
   icon?: LucideIcon;
   label: string;
-  badge?: React.ReactNode;
+  /** Waiting items (unanswered chats, call alerts), drawn on the icon's corner. */
+  count?: number;
   nested?: boolean;
   /** Left padding override for rows nested one level deeper (Telecalling pages). */
   pad?: string;
@@ -64,13 +65,20 @@ function MainNavItem({
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
         ROW,
-        nested ? cn(ROW_NESTED, pad ?? nestedPad(active)) : ROW_TOP,
+        nested ? cn(ROW_NESTED, "pr-7", pad ?? "pl-4") : ROW_TOP,
         active && "nav-active font-semibold",
       )}
     >
-      {!nested && Icon && <Icon size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />}
-      <span className="nav-lbl min-w-0 flex-1 truncate leading-5">{label}</span>
-      {badge}
+      {Icon && (
+        <span className="relative flex shrink-0">
+          <Icon size={nested ? 15 : 17} strokeWidth={1.6} className={nested ? CARVED : ICON} aria-hidden="true" />
+          <NavCount count={count} />
+        </span>
+      )}
+      <span className="nav-lbl min-w-0 flex-1 truncate leading-5">
+        {label}
+        <span className="sr-only">{navCountLabel(count)}</span>
+      </span>
     </Link>
   );
 }
@@ -102,8 +110,12 @@ function TelecallingGroup({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={cn(ROW, ROW_NESTED, "pl-5 font-semibold")}
+        className={cn(ROW, ROW_NESTED, "pl-4 font-semibold")}
       >
+        <span className="relative flex shrink-0">
+          <group.icon size={15} strokeWidth={1.6} className={CARVED} aria-hidden="true" />
+          <NavCount count={alertCount} group shown={!open} />
+        </span>
         <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
         <span className={cn("nav-held-dot", !open && active && "is-on")} aria-hidden="true" />
         <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
@@ -117,13 +129,12 @@ function TelecallingGroup({
                 <MainNavItem
                   key={item.href}
                   nested
-                  pad={isActive ? "pl-[38px]" : "pl-8"}
+                  pad="pl-[34px]"
                   href={item.href}
                   active={isActive}
+                  icon={item.icon}
                   label={item.label}
-                  badge={item.href === "/dashboard/telecalling" && alertCount > 0 ? (
-                    <span className={BADGE}>{alertCount > 9 ? "9+" : alertCount}</span>
-                  ) : undefined}
+                  count={item.href === "/dashboard/telecalling" ? alertCount : 0}
                 />
               );
             })}
@@ -136,7 +147,8 @@ function TelecallingGroup({
 
 function SettingsGroupButton({ group, onOpen }: { group: NavGroup; onOpen: () => void }) {
   return (
-    <button type="button" onClick={onOpen} className={cn(ROW, ROW_NESTED, "pl-5")}>
+    <button type="button" onClick={onOpen} className={cn(ROW, ROW_NESTED, "pl-4")}>
+      <group.icon size={15} strokeWidth={1.6} className={CARVED} aria-hidden="true" />
       <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
       <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
     </button>
@@ -168,8 +180,14 @@ export function Sidebar(_props: SidebarProps) {
     Telecalling: false,
     Settings: false,
   });
-  // Per-section explicit choice. undefined = not set, so the default or active page decides.
-  const [sectionChoice, setSectionChoice] = useState<Record<string, boolean | undefined>>({});
+  // The section the user clicked open (null = all shut), for this page only:
+  // a new page reopens the section that holds it. One open at a time.
+  const [sectionChoice, setSectionChoice] = useState<{ path: string; key: string | null } | null>(null);
+  const openSection = resolveOpenSection(
+    sectionChoice?.path === pathname ? sectionChoice.key : undefined,
+    NAV_SECTIONS,
+    pathname,
+  );
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
@@ -279,19 +297,11 @@ export function Sidebar(_props: SidebarProps) {
   };
   const dashboard = dashboardEntry(access);
 
-  const renderBadge = (key: NavBadgeKey | undefined) => {
-    if (key === "conversations") {
-      return inboxCount > 0 ? (
-        <span className={BADGE}>
-          {inboxCount}
-        </span>
-      ) : undefined;
-    }
-    if (key === "brain") {
-      return brainCount ? <span className="nav-badge"><BrainNavBadge count={brainCount} variant="row" /></span> : undefined;
-    }
-    return undefined;
-  };
+  const badgeCount = (key: NavBadgeKey | undefined) =>
+    key === "conversations" ? inboxCount : key === "brain" ? (brainCount ?? 0) : 0;
+  // What a menu heading shows on its icon while its rows are hidden.
+  const entryCount = (entry: NavEntry) =>
+    entry.kind === "link" ? badgeCount(entry.badge) : entry.key === "telecalling" ? alertCount : 0;
 
   const renderLeaf = (leaf: NavLeaf, nested = false) => (
     <MainNavItem
@@ -301,7 +311,7 @@ export function Sidebar(_props: SidebarProps) {
       active={leaf.isActive(pathname)}
       icon={leaf.icon}
       label={leaf.label}
-      badge={renderBadge(leaf.badge)}
+      count={badgeCount(leaf.badge)}
     />
   );
 
@@ -334,7 +344,7 @@ export function Sidebar(_props: SidebarProps) {
     const entries = visibleEntries(section, access);
     if (entries.length === 0) return null;
     const holdsActive = sectionContainsPage(section, pathname);
-    const open = resolveSectionOpen(sectionChoice[section.key], section.defaultOpen, holdsActive);
+    const open = openSection === section.key;
     return (
       <SidebarSection
         key={section.key}
@@ -342,14 +352,15 @@ export function Sidebar(_props: SidebarProps) {
         icon={section.icon}
         open={open}
         holdsActive={holdsActive}
+        count={entries.reduce((sum, entry) => sum + entryCount(entry), 0)}
         onToggle={() => {
           // On the folded strip a group icon peeks the menu with that group open.
           if (fold.folded) {
             fold.openPeek();
-            setSectionChoice((prev) => ({ ...prev, [section.key]: true }));
+            setSectionChoice({ path: pathname, key: section.key });
             return;
           }
-          setSectionChoice((prev) => ({ ...prev, [section.key]: !open }));
+          setSectionChoice({ path: pathname, key: open ? null : section.key });
         }}
       >
         {entries.map(renderEntry)}
@@ -375,14 +386,14 @@ export function Sidebar(_props: SidebarProps) {
           key={pathname}
           href={dashboard.href}
           aria-label="anril AI home"
-          className={cn("anril-mark mx-auto mb-[26px] block w-max px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
+          className={cn("anril-mark mx-auto mb-[26px] block w-max shrink-0 px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]", markAnim.current.cls)}
         >
           <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-white" />
         </Link>
       </div>
 
       {showSettings ? (
-        <div className="relative min-h-0 flex-grow overflow-y-auto px-3.5 scrollbar-thin">
+        <div className="relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden px-3.5 scrollbar-thin">
           <button
             type="button"
             onClick={() => {
@@ -427,7 +438,7 @@ export function Sidebar(_props: SidebarProps) {
       ) : (
         <>
           <div className="nav-ws mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
-          <nav aria-label="Main" className="relative min-h-0 flex-grow overflow-y-auto px-3.5 scrollbar-thin">
+          <nav aria-label="Main" className="relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden px-3.5 scrollbar-thin">
             <MainNavItem
               href={dashboard.href}
               active={pathname === dashboard.href}

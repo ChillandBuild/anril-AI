@@ -27,13 +27,18 @@ export function useSidebarRail(pathname: string) {
   const lastRail = useRef(rail);
 
   useLayoutEffect(() => {
-    document.documentElement.toggleAttribute("data-sidebar-rail", rail);
+    const root = document.documentElement;
+    root.toggleAttribute("data-sidebar-rail", rail);
     if (lastRail.current !== rail) {
       lastRail.current = rail;
       armed.current = false;
       window.clearTimeout(timer.current);
       setPeek(false);
     }
+    // Cleared here, not in the passive cleanup below: the inbox and the other
+    // pages mount separate sidebars, and a passive cleanup would run after the
+    // new sidebar had set the attribute, leaving the page at 256px.
+    return () => root.removeAttribute("data-sidebar-rail");
   }, [rail]);
 
   // Touch screens never send mouseleave, so close a peek on navigation there.
@@ -50,7 +55,6 @@ export function useSidebarRail(pathname: string) {
       cancelAnimationFrame(frame);
       window.clearTimeout(timer.current);
       root.removeAttribute("data-sidebar-anim");
-      root.removeAttribute("data-sidebar-rail");
     };
   }, []);
 
