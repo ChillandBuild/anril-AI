@@ -1487,7 +1487,7 @@ export default function OutboundLeadsPage() {
   const inputCls = "w-full px-4 py-3 bg-surface-low rounded-xl font-body text-sm text-on-surface border-0 focus:ring-2 focus:ring-primary outline-none";
 
   return (
-    <div className="min-w-0 max-w-7xl">
+    <div className="min-w-0">
       {/* Upload Wizard */}
       {activeTab === "upload" && (
         <div className="flex min-h-[600px] flex-col rounded-2xl bg-surface p-4 shadow-lg ring-1 ring-[#c4c7c7]/20 md:rounded-[2rem] md:p-8">

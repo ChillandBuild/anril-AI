@@ -340,7 +340,7 @@ export default function TelecallingUploadPage() {
 
 
   return (
-    <div className="max-w-7xl">
+    <div>
       {activeTab === "upload" && <UploadTab />}
       {activeTab === "history" && <HistoryTab />}
       {activeTab === "scripts" && <ScriptsTab />}
