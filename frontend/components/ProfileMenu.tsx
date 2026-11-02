@@ -51,7 +51,7 @@ export function ProfileMenu() {
           {initials}
         </span>
         {tenantName && (
-          <span className="hidden max-w-[150px] truncate font-body text-sm font-semibold text-[#0A1528] sm:block">
+          <span className="hidden max-w-[150px] truncate font-body text-sm font-semibold text-[#0A1528] xl:block">
             {tenantName}
           </span>
         )}

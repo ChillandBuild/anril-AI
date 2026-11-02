@@ -122,8 +122,9 @@ export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
       <div 
         ref={panelRef}
         className={cn(
-          "fixed right-0 top-0 h-full w-[400px] bg-white/90 backdrop-blur-xl border-l border-white/20 shadow-2xl z-[70] transition-transform duration-500 ease-out flex flex-col",
-          isOpen ? "translate-x-0" : "translate-x-full"
+          "fixed right-0 top-0 h-full w-[400px] bg-white/90 backdrop-blur-xl border-l border-white/20 z-[70] transition-[transform,visibility] duration-500 ease-out flex flex-col",
+          // Closed: hidden, not just parked off-screen, or its shadow bleeds onto the page's right edge.
+          isOpen ? "translate-x-0 shadow-2xl" : "invisible translate-x-full"
         )}
       >
         {/* Header */}

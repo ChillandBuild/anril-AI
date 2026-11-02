@@ -465,7 +465,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
                   router.replace(`/dashboard/analytics${query ? `?${query}` : ""}`, { scroll: false });
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
+                  "px-2.5 py-1.5 rounded-xl font-label text-xs font-bold transition-all xl:px-3",
                   (tab === t || (t === "overview" && !tab))
                     ? "bg-white text-primary shadow-sm"
                     : "text-[#475569] hover:text-[#13284A]"
