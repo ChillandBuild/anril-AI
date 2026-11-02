@@ -143,7 +143,7 @@ function getInitialColor(leadId: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | null; initialTab?: typeof SEGMENTS[number] }) {
+export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS[number] }) {
   const { role, permissions } = useAuthRole();
   const canManageLeads = role === "owner" || permissions.includes("leads.manage");
   // Sending a chat message needs the same right as replying in Conversations.
@@ -616,6 +616,7 @@ export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | nul
       {sendMessageModalOpen && (
         <SendMessageModal
           selectedLeads={sendMessageLeads}
+          batchLabel={`${SEGMENT_LABELS[tab]} leads`}
           onClose={closeSendMessageModal}
           onAfterSend={() => {
             mutateList();
@@ -1098,7 +1099,6 @@ export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | nul
                     {leads.map((lead) => {
                       const avatar = getAvatarInitials(lead);
                       const channelDot = getChannelDot(lead);
-                      const status = getReplyWindowStatus(lead);
                       return (
                         <tr
                           key={lead.id}
@@ -1181,27 +1181,15 @@ export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | nul
                             {timeAgo(lead.created_at)}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {status.isOpen ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/dashboard/conversations?lead=${lead.id}`);
-                                }}
-                                className="rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-white hover:bg-primary/90"
-                              >
-                                Reply
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSendTemplateLeadId(lead.id);
-                                }}
-                                className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
-                              >
-                                Send template
-                              </button>
-                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSendTemplateLeadId(lead.id);
+                              }}
+                              className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                            >
+                              Send template
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1259,21 +1247,12 @@ export function LeadsClient({ initialTab = "A" }: { fallbackLeads?: Lead[] | nul
                         )}
                       </div>
                       <div>
-                        {getReplyWindowStatus(lead).isOpen ? (
-                          <button
-                            onClick={() => router.push(`/dashboard/conversations?lead=${lead.id}`)}
-                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90"
-                          >
-                            Reply
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setSendTemplateLeadId(lead.id)}
-                            className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
-                          >
-                            Send template
-                          </button>
-                        )}
+                        <button
+                          onClick={() => setSendTemplateLeadId(lead.id)}
+                          className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                        >
+                          Send template
+                        </button>
                       </div>
                     </div>
                   </MobileRecordCard>

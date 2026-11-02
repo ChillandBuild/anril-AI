@@ -32,6 +32,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type Tab = "roles" | "users" | "audit";
 type CallingProvider = "telecmi" | "sim_basic";
@@ -206,7 +207,7 @@ export default function RolesPage() {
   const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditPage, setAuditPage] = useState(1);
-  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(true); // the audit tab fetches as soon as it opens
 
   useEffect(() => {
     setTab(urlTab);
@@ -559,7 +560,7 @@ export default function RolesPage() {
   }
 
   if (roleLoading || loading) {
-    return <div className="flex min-h-[400px] items-center justify-center"><Loader2 size={24} className="animate-spin text-primary" /></div>;
+    return <AiraLoader inline />;
   }
 
   if (!canView) {
@@ -1075,7 +1076,7 @@ export default function RolesPage() {
         <div className="card rounded-3xl overflow-hidden">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-base font-bold text-ink">Audit Log</h2>
-            <span className="rounded-full bg-surface-subtle px-2.5 py-1 font-label text-[10px] font-bold text-ink-muted">{auditTotal} total</span>
+            <span className="rounded-full bg-surface-subtle px-2.5 py-1 font-label text-[10px] font-bold text-ink-muted">{auditLoading ? "—" : auditTotal} total</span>
           </div>
           {auditLoading ? (
             <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-primary" /></div>

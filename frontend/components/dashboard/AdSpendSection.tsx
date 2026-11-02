@@ -14,7 +14,7 @@ export function AdSpendSection() {
   if (!data || data.campaigns.length === 0) return null;
 
   return (
-    <div className="card rounded-[32px] p-8">
+    <div className="card rounded-xl p-6 md:p-7">
       <h2 className="font-display font-bold text-ink mb-6 text-[18px]">Ad Spend</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 divide-x divide-[#f1f5f9]">
         <div>

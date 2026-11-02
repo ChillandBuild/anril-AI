@@ -4,8 +4,9 @@ import {
   NAV_SECTIONS,
   TELECALLING_ITEMS,
   dashboardEntry,
-  resolveSectionOpen,
+  resolveOpenSection,
   sectionContainsPage,
+  sidebarFoldsOn,
   visibleEntries,
   type NavAccess,
   type NavEntry,
@@ -17,6 +18,7 @@ const allAccess: NavAccess = {
   messagingOn: true,
   inboundOn: true,
   outboundOn: true,
+  smsOn: true,
   canServices: true,
   canSettings: true,
   brainGate: true,
@@ -31,6 +33,7 @@ const noAccess: NavAccess = {
   messagingOn: false,
   inboundOn: false,
   outboundOn: false,
+  smsOn: false,
   canServices: false,
   canSettings: false,
   brainGate: false,
@@ -48,7 +51,9 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Inbound Leads", href: "/dashboard/inbound-leads" },
   { label: "Meta Ads", href: "/dashboard/meta-ads" },
   { label: "Auto-Messages", href: "/dashboard/auto-messages" },
+  { label: "Scheduled templates", href: "/dashboard/scheduled-templates" },
   { label: "Outbound Leads", href: "/dashboard/outbound-leads" },
+  { label: "SMS", href: "/dashboard/sms" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
@@ -81,7 +86,7 @@ describe("navSections tab coverage", () => {
     expect(matches, label).toHaveLength(1);
   });
 
-  it("holds the 16 leaf tabs plus the Telecalling and Settings groups", () => {
+  it("holds all leaf tabs plus the Telecalling and Settings groups", () => {
     expect(allLeaves()).toHaveLength(OLD_TABS.length);
     expect(allEntries().filter((e) => e.kind === "group")).toHaveLength(2);
   });
@@ -108,11 +113,6 @@ describe("navSections tab coverage", () => {
 });
 
 describe("navSections defaults and gating", () => {
-  it("only the INBOX & LEADS section is open by default", () => {
-    const open = NAV_SECTIONS.filter((s) => s.defaultOpen).map((s) => s.key);
-    expect(open).toEqual(["inbox"]);
-  });
-
   it("a section with no visible items is empty, so the sidebar hides its heading", () => {
     const inbox = NAV_SECTIONS.find((s) => s.key === "inbox");
     expect(inbox).toBeDefined();
@@ -127,20 +127,20 @@ describe("navSections defaults and gating", () => {
 });
 
 describe("section open state", () => {
-  it("uses the explicit user choice when one is set", () => {
-    expect(resolveSectionOpen(false, true, true)).toBe(false);
-    expect(resolveSectionOpen(true, false, false)).toBe(true);
+  it("uses the click when one is set, including all shut", () => {
+    expect(resolveOpenSection("reach", NAV_SECTIONS, "/dashboard/conversations")).toBe("reach");
+    expect(resolveOpenSection(null, NAV_SECTIONS, "/dashboard/conversations")).toBeNull();
   });
 
-  it("falls back to the default when the user has not chosen", () => {
-    expect(resolveSectionOpen(undefined, true, false)).toBe(true);
-    expect(resolveSectionOpen(undefined, false, false)).toBe(false);
-  });
-
-  it("auto-opens a section that holds the current page when not chosen", () => {
+  it("opens only the section holding the current page", () => {
     const aiSetup = NAV_SECTIONS.find((s) => s.key === "aiSetup")!;
     expect(sectionContainsPage(aiSetup, "/dashboard/brain/rules")).toBe(true);
-    expect(resolveSectionOpen(undefined, aiSetup.defaultOpen, true)).toBe(true);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/brain/rules")).toBe("aiSetup");
+  });
+
+  it("shuts every section on pages outside them (Dashboard, Analytics)", () => {
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBeNull();
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/analytics")).toBeNull();
   });
 
   it("the Catalogue entry is active on both catalog and services pages", () => {
@@ -149,4 +149,63 @@ describe("section open state", () => {
     expect(catalogue.isActive("/dashboard/services")).toBe(true);
     expect(catalogue.isActive("/dashboard/deals")).toBe(false);
   });
+});
+
+describe("SMS sidebar access", () => {
+  const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
+  const smsLinks = (access: NavAccess) => visibleEntries(reach, access).filter((entry) => entry.key === "sms");
+
+  it.each(["sms.view", "sms.manage"])("shows SMS with %s when SMS is enabled, independently of WhatsApp features", (permission) => {
+    const access: NavAccess = {
+      ...noAccess,
+      isSubscribed: true,
+      smsOn: true,
+      can: (value) => value === permission,
+      canAny: (values) => values.includes(permission),
+    };
+    expect(smsLinks(access)).toHaveLength(1);
+  });
+
+  it("hides SMS when the tenant feature is off", () => {
+    expect(smsLinks({ ...allAccess, smsOn: false })).toHaveLength(0);
+  });
+
+  it("hides SMS without SMS permission", () => {
+    expect(smsLinks({ ...allAccess, can: () => false, canAny: () => false })).toHaveLength(0);
+  });
+
+  it("hides SMS without an active subscription", () => {
+    expect(smsLinks({ ...allAccess, isSubscribed: false })).toHaveLength(0);
+  });
+
+  it("opens ANRIL REACH and marks SMS active on its page", () => {
+    expect(sectionContainsPage(reach, "/dashboard/sms")).toBe(true);
+    const sms = smsLinks(allAccess)[0] as NavLeaf;
+    expect(sms.href).toBe("/dashboard/sms");
+    expect(sms.isActive("/dashboard/sms")).toBe(true);
+    expect(sms.isActive("/dashboard/sms-other")).toBe(false);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("reach");
+  });
+});
+
+describe("sidebarFoldsOn", () => {
+  it.each([
+    "/dashboard/conversations",
+    "/dashboard/conversations/abc",
+    "/dashboard/leads",
+    "/dashboard/inbound-leads",
+    "/dashboard/outbound-leads",
+    "/dashboard/deals",
+    "/dashboard/telecalling",
+    "/dashboard/telecalling/scheduled",
+  ])("folds the sidebar on the wide page %s", (path) => {
+    expect(sidebarFoldsOn(path)).toBe(true);
+  });
+
+  it.each(["/dashboard", "/dashboard/analytics", "/dashboard/brain", "/dashboard/settings/account", "/dashboard/developer"])(
+    "keeps the sidebar open on %s",
+    (path) => {
+      expect(sidebarFoldsOn(path)).toBe(false);
+    },
+  );
 });

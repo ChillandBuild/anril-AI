@@ -295,6 +295,7 @@ export default function OperatorPage() {
         </div>
       </div>
 
+
       {/* Error alert */}
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-danger/20 rounded-lg text-sm text-danger">

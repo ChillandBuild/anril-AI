@@ -6,7 +6,8 @@ import { SwitchPill } from "@/components/ui/controls";
 import { ConflictsLink } from "@/components/brain/ConflictsLink";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { CatalogueTabs } from "../catalog/CatalogueTabs";
-import { SaveButton, SaveStatus } from "../settings/SettingsSection";
+import { SaveButton, SaveStatus, SectionLoadGate } from "../settings/SettingsSection";
+import { AiraLoader } from "@/components/AiraLoader";
 import { slugify } from "../settings/slugify";
 import { PackageEditor, type IntakePackage } from "./PackageEditor";
 import { chargePaise, gstPaise, GST_MAX, GST_MIN, parseGstPercent } from "./gst";
@@ -68,6 +69,7 @@ export default function ServicesPage() {
   const [gstText, setGstText] = useState("0");
 
   const load = useCallback(async () => {
+    setLoadFailed(false);
     try {
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/settings/intake-config`, { headers: auth });
@@ -143,6 +145,21 @@ export default function ServicesPage() {
   }
 
   const summary = sellingSummary(draft);
+
+  // Until the saved config arrives, show the loader rather than the DEFAULT form,
+  // which would read as real settings ("Off", "No packages yet").
+  if (!loaded) {
+    return (
+      <div className="mx-auto w-full max-w-5xl pb-28">
+        <CatalogueTabs />
+        {loadFailed ? (
+          <SectionLoadGate state="error" onRetry={load}>{null}</SectionLoadGate>
+        ) : (
+          <AiraLoader inline className="min-h-[50vh]" />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-5xl pb-28">

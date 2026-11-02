@@ -2,7 +2,7 @@
 import { Check, Loader2, Sparkles, Smartphone, Activity, MessageSquare, Building2, Megaphone, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ZephyrCourier, timeAgo, FacebookIcon } from "./ui";
-import { META_CHANNELS } from "./channels";
+import { CHANNELS, META_CHANNELS, isChannelConfigured, razorpayOAuthAccount } from "./channels";
 import type { ChannelConfig, EmbeddedSignupTarget, Setting, WebhookHealth } from "./channels";
 import type { MetaSignupMode } from "./metaSignupMode";
 
@@ -43,7 +43,10 @@ const RAIL_STYLES: Record<string, string> = {
   instagram: "bg-pink-500",
   facebook: "bg-blue-500",
   meta_ads: "bg-primary-500",
+  razorpay: "bg-indigo-500",
 };
+
+const RAZORPAY_CHANNEL = CHANNELS.find(c => c.id === "razorpay");
 
 export default function EmbeddedSection({
   settings,
@@ -59,6 +62,9 @@ export default function EmbeddedSection({
   onRefreshHealth,
   onManageChannel,
   onDisconnect,
+  razorpayConnected,
+  razorpayBusy,
+  onRazorpayConnect,
 }: {
   settings: Setting[];
   webhookHealth: WebhookHealth | null;
@@ -75,7 +81,32 @@ export default function EmbeddedSection({
   onRefreshHealth: () => void;
   onManageChannel: (channel: ChannelConfig) => void;
   onDisconnect: (channelId: string) => void;
+  razorpayConnected: boolean;
+  razorpayBusy: boolean;
+  onRazorpayConnect: () => void;
 }) {
+  // Razorpay sits beside the Meta actions so both payments and messaging connect from one place.
+  const razorpayAction = razorpayConnected ? (
+    <button
+      type="button"
+      onClick={() => onDisconnect("razorpay")}
+      disabled={!canManage}
+      className="font-label text-xs font-bold text-red-600 underline decoration-red-300 underline-offset-4 transition-colors hover:text-red-700 hover:decoration-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      Disconnect Razorpay
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={onRazorpayConnect}
+      disabled={!canManage || razorpayBusy}
+      className="relative inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] px-3.5 py-2 font-label text-xs font-bold text-white shadow-[0_0_16px_-3px_rgba(var(--primary-600-rgb),0.45),0_2px_4px_rgba(var(--primary-950-rgb),0.2)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_0_24px_rgba(var(--primary-600-rgb),0.65),0_4px_12px_rgba(var(--primary-950-rgb),0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {razorpayBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={13} />}
+      Connect with Razorpay
+    </button>
+  );
+
   /** A settings value, or null when the row is missing or never set. */
   function val(key: string): string | null {
     const row = settings.find(s => s.key === key);
@@ -94,7 +125,7 @@ export default function EmbeddedSection({
   const connectedAt = val("meta_connected_at");
 
   function isConfigured(channel: ChannelConfig) {
-    return channel.fields.every(f => !f.required || settings.find(s => s.key === f.key)?.is_set);
+    return isChannelConfigured(channel, settings);
   }
 
   /** The Meta asset a channel is bound to — the question the old card never answered. */
@@ -108,6 +139,8 @@ export default function EmbeddedSection({
         return { id: pageName, label: null };
       case "meta_ads":
         return { id: adsId, label: adsName };
+      case "razorpay":
+        return { id: razorpayOAuthAccount(settings) ?? val("razorpay_key_id"), label: null };
       default:
         return { id: null, label: null };
     }
@@ -118,6 +151,10 @@ export default function EmbeddedSection({
 
     if (webhookHealth?.token_alerts?.some(a => a.channel === channel.id)) {
       return { state: "attention", label: "Needs attention", detail: "Token rejected by Meta" };
+    }
+
+    if (channel.id === "razorpay") {
+      return { state: "synced", label: "Connected", detail: "Accepts in-chat payments" };
     }
 
     // Meta Ads is polled on a schedule, so "no events" would read as broken.
@@ -135,7 +172,8 @@ export default function EmbeddedSection({
     return { state: "waiting", label: "Awaiting first", detail: "Connected · nothing received yet" };
   }
 
-  const connectedCount = META_CHANNELS.filter(isConfigured).length;
+  const rowChannels = RAZORPAY_CHANNEL ? [...META_CHANNELS, RAZORPAY_CHANNEL] : META_CHANNELS;
+  const connectedCount = rowChannels.filter(isConfigured).length;
 
   return (
     <section
@@ -235,6 +273,7 @@ export default function EmbeddedSection({
               >
                 Disconnect Meta
               </button>
+              {razorpayAction}
             </div>
           ) : (
             <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -258,6 +297,7 @@ export default function EmbeddedSection({
                 <Smartphone size={13} className="text-ink-secondary" />
                 WhatsApp Coexistence
               </button>
+              {razorpayAction}
             </div>
           )}
         </div>
@@ -370,7 +410,7 @@ export default function EmbeddedSection({
         </div>
 
         <div className="flex flex-col">
-          {META_CHANNELS.map(channel => {
+          {rowChannels.map(channel => {
             const configured = isConfigured(channel);
             const status = statusFor(channel);
             const asset = assetFor(channel);

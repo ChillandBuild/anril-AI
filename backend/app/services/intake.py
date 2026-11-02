@@ -4,6 +4,7 @@ order — see docs/superpowers/specs/2026-08-07-paid-expert-handoff-design.md
 for why), payment happens in-chat via Razorpay, and the AI mutes for that
 lead once paid.
 """
+import asyncio
 import json
 import logging
 import re
@@ -2048,7 +2049,7 @@ async def _close_idle_for_tenant(db, tenant_id: str, now: datetime) -> int:
 
 
 async def sweep_stale_intake_sessions(db=None) -> dict:
-    """APScheduler job (every 5 min).
+    """Queue task intake-staleness-sweep (every 5 min).
 
     - Unfinished deals (every status before paid, offer_pending included) with no lead
       message and no real progress for the tenant's deal_idle_close_days
@@ -2643,7 +2644,10 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
 
     code = str(payload.get("template_code") or "").strip()
     has_event = payload.get("event") not in (None, "")
-    if get_partner_send_mode(db, tenant_id) == "event":
+    # Every query below goes through asyncio.to_thread: the Supabase client is
+    # synchronous, and one stalled call on the event loop froze the whole server
+    # for 35-45 s during AstroTamil's campaigns (24 and 26 Oct 2026).
+    if await asyncio.to_thread(get_partner_send_mode, db, tenant_id) == "event":
         if code:
             return _partner_error(400, WRONG_MODE_CODE, TEMPLATE_REFUSED_MESSAGE)
         if not has_event:
@@ -2659,20 +2663,21 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
         return _partner_error(400, "invalid_request", "template_code is required and variables must be a list")
     variables = [str(v) for v in variables]
 
-    row = (
+    row = await asyncio.to_thread(
         db.table("message_templates")
         .select("id,name,language,status,body_text,header_text,buttons")
         .eq("tenant_id", tenant_id)
         .eq("short_code", code)
         .limit(1)
-        .execute()
+        .execute
     )
     template = (row.data or [None])[0] if row else None
     if not template:
         return _partner_error(404, "template_not_found", f"No template with Anril ID {code}")
     status = str(template.get("status") or "")
     if status != "APPROVED":
-        log_partner_send(
+        await asyncio.to_thread(
+            log_partner_send,
             db, tenant_id, phone=normalize_phone(payload.get("phone")), event=None, template_id=template.get("id"),
             status="failed", reason="template_not_approved", name=_partner_name(payload),
         )
@@ -2711,27 +2716,27 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
             lang_code=lang,
             components=components,
             tenant_id=tenant_id,
-            phone_number_id=_astro_phone_number_id(tenant_id, db, phone),
+            phone_number_id=await asyncio.to_thread(_astro_phone_number_id, tenant_id, db, phone),
         )
     except HTTPException as e:
         logger.error(f"Partner template {code} ({reference}) for tenant {tenant_id} rejected by Meta: {e.detail}")
-        log_partner_send(db, tenant_id, status="failed", reason=str(e.detail), **log)
+        await asyncio.to_thread(log_partner_send, db, tenant_id, status="failed", reason=str(e.detail), **log)
         return _partner_error(502, "meta_error", str(e.detail))
     except Exception as e:
         logger.error(f"Partner template {code} ({reference}) for tenant {tenant_id} failed: {e}")
-        log_partner_send(db, tenant_id, status="failed", reason=str(e), **log)
+        await asyncio.to_thread(log_partner_send, db, tenant_id, status="failed", reason=str(e), **log)
         return _partner_error(502, "meta_error", str(e))
     mid = ((data or {}).get("messages") or [{}])[0].get("id")
     if not mid:
-        log_partner_send(db, tenant_id, status="failed", reason="no message id", **log)
+        await asyncio.to_thread(log_partner_send, db, tenant_id, status="failed", reason="no message id", **log)
         return _partner_error(502, "meta_error", "no message id")
-    log_partner_send(db, tenant_id, status="sent", **log)
+    await asyncio.to_thread(log_partner_send, db, tenant_id, status="sent", **log)
 
     content = VAR_RE.sub(
         lambda m: variables[int(m.group(1)) - 1] if 0 < int(m.group(1)) <= len(variables) else m.group(0),
         body_text,
     )
-    _log_partner_message(db, tenant_id, phone, content, mid)
+    await asyncio.to_thread(_log_partner_message, db, tenant_id, phone, content, mid)
     logger.info(f"Partner template {code} ({reference}) sent for tenant {tenant_id}: {mid}")
     return 200, {"ok": True, "message_id": mid, "template": {"code": code, "name": name, "language": lang}}
 
@@ -2755,7 +2760,8 @@ async def partner_send_text(payload: dict, tenant_id: str, db=None) -> tuple[int
 
     reference = _partner_reference(payload)
     try:
-        mid = await send_whatsapp(phone, text, tenant_id=tenant_id, phone_number_id=_astro_phone_number_id(tenant_id, db, phone))
+        pid = await asyncio.to_thread(_astro_phone_number_id, tenant_id, db, phone)
+        mid = await send_whatsapp(phone, text, tenant_id=tenant_id, phone_number_id=pid)
     except Exception as e:
         logger.error(f"Partner text ({reference}) for tenant {tenant_id} failed: {e}")
         return _partner_error(502, "meta_error", str(e))
@@ -2763,6 +2769,6 @@ async def partner_send_text(payload: dict, tenant_id: str, db=None) -> tuple[int
         # Outside the 24h window Meta refuses free text; its reason is kept by send_whatsapp.
         return _partner_error(502, "meta_error", get_last_send_error() or "no message id")
 
-    _log_partner_message(db, tenant_id, phone, text, mid)
+    await asyncio.to_thread(_log_partner_message, db, tenant_id, phone, text, mid)
     logger.info(f"Partner text ({reference}) sent for tenant {tenant_id}: {mid}")
     return 200, {"ok": True, "message_id": mid}

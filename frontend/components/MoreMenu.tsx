@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   BarChart2,
   BookOpen,
   Brain,
   Calendar,
+  CalendarClock,
   Grid3X3,
   HandCoins,
   Inbox,
   Layers,
   Megaphone,
   Menu,
+  MessageSquareText,
   ShoppingBag,
   Settings,
   ShieldCheck,
@@ -25,7 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { API_URL, getAuthHeaders } from "@/lib/api";
+import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
@@ -82,7 +84,9 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/inbound-leads", icon: Inbox, label: "Inbound Leads", section: "engage", permissionAny: ["inbound_leads.view", "inbound_leads.manage"], feature: "inbound_messaging" },
   { href: "/dashboard/meta-ads", icon: Megaphone, label: "Meta Ads", section: "engage", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" },
   { href: "/dashboard/auto-messages", icon: Zap, label: "Auto-Messages", section: "engage", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
+  { href: "/dashboard/scheduled-templates", icon: CalendarClock, label: "Scheduled templates", section: "engage", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
   { href: "/dashboard/outbound-leads", icon: Upload, label: "Send", section: "reach", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" },
+  { href: "/dashboard/sms", icon: MessageSquareText, label: "SMS", section: "reach", permissionAny: ["sms.view", "sms.manage"], feature: "sms" },
   { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
   {
     href: "/dashboard/catalog",
@@ -125,7 +129,7 @@ export function MoreMenu() {
   const pathname = usePathname() || "/dashboard";
   const { role, enabledFeatures, permissions } = useAuthRole();
   const [isOpen, setIsOpen] = useState(false);
-  const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
+  const { purchasedFeatures } = useSubscription();
 
   const items = MORE_ITEMS.filter((item) => isVisible(item, role, enabledFeatures, permissions));
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
@@ -134,25 +138,8 @@ export function MoreMenu() {
   const settingsItems = getVisibleSettingsItems(purchasedFeatures);
   const settingsActive = pathname.startsWith("/dashboard/settings");
 
-  useEffect(() => {
-    if (!canSettings) return;
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (!active) return;
-        if (res.ok) {
-          const data = await res.json();
-          setPurchasedFeatures((data.items ?? []).map((item: { feature_key: string }) => item.feature_key));
-        }
-      } catch { /* fail open — see getVisibleSettingsItems */ }
-    })();
-    return () => { active = false; };
-  }, [canSettings]);
-
   return (
-    <div className="relative md:hidden">
+    <div className="relative lg:hidden">
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -164,7 +151,7 @@ export function MoreMenu() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[70] md:hidden">
+        <div className="fixed inset-0 z-[70] lg:hidden">
           <button
             type="button"
             aria-label="Close navigation"

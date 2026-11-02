@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -33,6 +34,8 @@ _MEDIA_ACK_TEXT = (
     "இந்த சாட்டில் படங்கள்/கோப்புகளை படிக்க முடியாது — தயவுசெய்து உங்கள் பதிலை தட்டச்சு செய்யவும்."
 )
 _MEDIA_ACK_DEDUPE_HOURS = 6
+# Phones per leads lookup when a coexistence contact sync arrives (keeps the URL short).
+_CONTACT_SYNC_CHUNK = 200
 
 
 def _is_opt_out(body: str) -> bool:
@@ -470,6 +473,122 @@ async def _process_inbound_message_background(
         logger.error(f"Background inbound message processing failed for lead {lead_id}: {err}")
 
 
+def _apply_status_updates(db, tenant_id: str, statuses: list) -> None:
+    """Meta delivery receipts (delivered, read, failed). Sync Supabase calls, run in
+    a worker thread: every campaign send comes back as several of these, and one
+    stalled query on the event loop froze the whole server for 35-45 s (24 and 26
+    Oct 2026)."""
+    for status_update in statuses:
+        message_id = status_update.get("id")
+        status = status_update.get("status")
+
+        if message_id and status == "failed":
+            # Meta's limit counts delivered messages only, so a template
+            # that failed no longer counts against it.
+            try:
+                db.table("template_send_log").delete()                                 .eq("meta_message_id", message_id).eq("tenant_id", tenant_id).execute()
+            except Exception as e:
+                logger.warning(f"Un-counting failed template {message_id} failed: {e}")
+
+        if message_id and status in ("delivered", "read", "failed"):
+            try:
+                update_payload: dict = {"delivery_status": status}
+                err_code = None
+                err_detail = ""
+                # Capture Meta error code + title on failed status — surfaced in failed CSV
+                if status == "failed":
+                    errs = status_update.get("errors") or []
+                    if errs:
+                        first = errs[0] or {}
+                        err_code = first.get("code")
+                        err_title = first.get("title") or first.get("message")
+                        err_detail = _delivery_fail_detail(first)
+                        if err_code is not None:
+                            update_payload["delivery_error_code"] = err_code
+                        if err_title:
+                            update_payload["delivery_error_title"] = err_title[:200]
+                        logger.warning(
+                            f"Meta delivery failure msg={message_id} code={err_code} "
+                            f"title={err_title!r} detail={err_detail!r}"
+                        )
+                try:
+                    updated = db.table("messages") \
+                        .update(update_payload) \
+                        .eq("meta_message_id", message_id) \
+                        .eq("tenant_id", tenant_id) \
+                        .execute()
+                except Exception as col_err:
+                    # Migration 061 may not be applied yet — retry without error columns
+                    if "delivery_error_code" in str(col_err) or "delivery_error_title" in str(col_err):
+                        logger.warning(f"Migration 061 not applied — saving status only: {col_err}")
+                        updated = db.table("messages") \
+                            .update({"delivery_status": status}) \
+                            .eq("meta_message_id", message_id) \
+                            .eq("tenant_id", tenant_id) \
+                            .execute()
+                    else:
+                        raise
+                logger.info(f"Message {message_id} status updated to {status}")
+                # Mark lead as undeliverable so it's hidden from active views.
+                # Only flag the LEAD for error codes that specifically mean this
+                # recipient's number is the problem (e.g. 131026 wrong number).
+                # Everything else — transient throttles AND account-level failures
+                # like 131031 "Business Account locked" — is not evidence this
+                # number is bad, and must not permanently blacklist the lead.
+                #
+                # broadcast_recipients.send_status is deliberately NOT changed here.
+                # The row stays 'sent'; delivery failures are derived from
+                # messages.delivery_status (failed CSV, tag counts, segment CSV).
+                # Many readers treat send_status='sent' as "this lead was messaged"
+                # (leads list, re-engagement, template_performance), so relabelling
+                # a row would silently drop healthy leads over account-level
+                # failures like 131042 payment issues.
+                if status == "failed" and updated.data:
+                    failed_lead_id = updated.data[0].get("lead_id")
+                    if failed_lead_id:
+                        if _is_recipient_undeliverable_error(err_code):
+                            db.table("leads").update({"whatsapp_undeliverable": True}) \
+                                .eq("id", failed_lead_id).eq("tenant_id", tenant_id).execute()
+                        else:
+                            logger.info(f"Delivery error {err_code} for lead {failed_lead_id} is not recipient-specific — not flagging undeliverable")
+                    # Stamp Meta's own explanation so the failed CSV's fail_detail
+                    # column is populated for webhook failures too, not just
+                    # synchronous send rejections.
+                    if err_detail:
+                        try:
+                            db.table("broadcast_recipients") \
+                                .update({"fail_detail": err_detail}) \
+                                .eq("meta_message_id", message_id) \
+                                .eq("tenant_id", tenant_id) \
+                                .execute()
+                        except Exception as _fd_err:
+                            logger.warning(f"broadcast_recipients fail_detail update failed: {_fd_err}")
+                # Lead proved reachable again — clear any stale undeliverable flag.
+                if status in ("delivered", "read") and updated.data:
+                    reachable_lead_id = updated.data[0].get("lead_id")
+                    if reachable_lead_id:
+                        try:
+                            db.table("leads").update({"whatsapp_undeliverable": False}) \
+                                .eq("id", reachable_lead_id).eq("tenant_id", tenant_id) \
+                                .eq("whatsapp_undeliverable", True).execute()
+                        except Exception as _wu_err:
+                            logger.warning(f"Failed to clear whatsapp_undeliverable for lead {reachable_lead_id}: {_wu_err}")
+                # Bot Flow Builder per-node analytics: bump node delivered_count once
+                if status == "delivered" and updated.data:
+                    step_id = updated.data[0].get("automation_step_id")
+                    if step_id:
+                        try:
+                            db.rpc("bump_automation_step_counter", {
+                                "p_step_id": step_id,
+                                "p_field": "delivered_count",
+                                "p_delta": 1,
+                            }).execute()
+                        except Exception as e:
+                            logger.warning(f"Failed to bump delivered_count for step {step_id}: {e}")
+            except Exception as e:
+                logger.error(f"Failed to update message {message_id} status to {status}: {e}")
+
+
 @router.post("")
 async def whatsapp_webhook(
     request: Request,
@@ -487,11 +606,12 @@ async def whatsapp_webhook(
         logger.warning("WhatsApp webhook: missing signature — dropping")
         return Response(content="OK", status_code=200)
     db_sig = get_supabase()
-    tenant_for_sig = _resolve_tenant_from_payload(payload, db_sig)
+    # Sync Supabase reads, off the event loop (see _apply_status_updates).
+    tenant_for_sig = await asyncio.to_thread(_resolve_tenant_from_payload, payload, db_sig)
     if not tenant_for_sig:
         logger.warning("WhatsApp webhook: no tenant for signed payload — dropping")
         return Response(content="OK", status_code=200)
-    if not verify_meta_signature(raw_body, signature, tenant_for_sig):
+    if not await asyncio.to_thread(verify_meta_signature, raw_body, signature, tenant_for_sig):
         logger.warning(f"WhatsApp webhook: invalid signature for tenant={tenant_for_sig} — dropping")
         return Response(content="OK", status_code=200)
     for entry in payload.get("entry", []):
@@ -610,6 +730,7 @@ async def whatsapp_webhook(
                         f"tenant {tenant_id}, not the signed tenant {tenant_for_sig} — dropping"
                     )
                     continue
+                names_by_phone: dict[str, str] = {}
                 for entry_row in value.get("state_sync", []):
                     if entry_row.get("type") != "contact" or entry_row.get("action") == "remove":
                         continue
@@ -617,18 +738,26 @@ async def whatsapp_webhook(
                     wa_id = contact.get("phone_number", "")
                     full_name = (contact.get("full_name") or "").strip()
                     phone = f"+{wa_id}" if wa_id and not wa_id.startswith("+") else wa_id
-                    if not phone or not full_name:
-                        continue
+                    if phone and full_name:
+                        names_by_phone.setdefault(phone, full_name)
 
-                    lead = db.table("leads").select("id,name").eq("phone", phone).eq("tenant_id", tenant_id).limit(1).execute()
-                    if not lead.data:
-                        continue
-                    lead_row = lead.data[0]
-                    if lead_row.get("name"):
-                        continue
-
-                    db.table("leads").update({"name": full_name}).eq("id", lead_row["id"]).eq("tenant_id", tenant_id).execute()
-                    logger.info(f"smb_app_state_sync: enriched name for lead {lead_row['id']}")
+                # Meta re-sends the whole contact list every ~27 min: one lookup per contact
+                # was ~16k leads requests a day (2026-10-31), so look them up in chunks.
+                phones = list(names_by_phone)
+                enriched: set[str] = set()
+                for i in range(0, len(phones), _CONTACT_SYNC_CHUNK):
+                    leads = (
+                        db.table("leads").select("id,name,phone")
+                        .in_("phone", phones[i:i + _CONTACT_SYNC_CHUNK])
+                        .eq("tenant_id", tenant_id).execute()
+                    )
+                    for lead_row in leads.data or []:
+                        phone = lead_row.get("phone")
+                        if lead_row.get("name") or phone in enriched or phone not in names_by_phone:
+                            continue
+                        enriched.add(phone)
+                        db.table("leads").update({"name": names_by_phone[phone]}).eq("id", lead_row["id"]).eq("tenant_id", tenant_id).execute()
+                        logger.info(f"smb_app_state_sync: enriched name for lead {lead_row['id']}")
 
             elif field == "smb_message_echoes":
                 meta_phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
@@ -679,7 +808,10 @@ async def whatsapp_webhook(
             elif field == "messages":
                 meta_phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
                 db = get_supabase()
-                tenant_id = _get_tenant_id_for_meta_number(meta_phone_number_id, db) if meta_phone_number_id else None
+                tenant_id = (
+                    await asyncio.to_thread(_get_tenant_id_for_meta_number, meta_phone_number_id, db)
+                    if meta_phone_number_id else None
+                )
                 if not tenant_id:
                     logger.warning(f"No tenant for meta phone_number_id={meta_phone_number_id}, dropping WhatsApp payload")
                     continue
@@ -1046,114 +1178,8 @@ async def whatsapp_webhook(
                     )
 
                 # Handle message status updates (delivered, read, failed)
-                for status_update in value.get("statuses", []):
-                    message_id = status_update.get("id")
-                    status = status_update.get("status")
-
-                    if message_id and status == "failed":
-                        # Meta's limit counts delivered messages only, so a template
-                        # that failed no longer counts against it.
-                        try:
-                            db.table("template_send_log").delete()                                 .eq("meta_message_id", message_id).eq("tenant_id", tenant_id).execute()
-                        except Exception as e:
-                            logger.warning(f"Un-counting failed template {message_id} failed: {e}")
-
-                    if message_id and status in ("delivered", "read", "failed"):
-                        try:
-                            update_payload: dict = {"delivery_status": status}
-                            err_code = None
-                            err_detail = ""
-                            # Capture Meta error code + title on failed status — surfaced in failed CSV
-                            if status == "failed":
-                                errs = status_update.get("errors") or []
-                                if errs:
-                                    first = errs[0] or {}
-                                    err_code = first.get("code")
-                                    err_title = first.get("title") or first.get("message")
-                                    err_detail = _delivery_fail_detail(first)
-                                    if err_code is not None:
-                                        update_payload["delivery_error_code"] = err_code
-                                    if err_title:
-                                        update_payload["delivery_error_title"] = err_title[:200]
-                                    logger.warning(
-                                        f"Meta delivery failure msg={message_id} code={err_code} "
-                                        f"title={err_title!r} detail={err_detail!r}"
-                                    )
-                            try:
-                                updated = db.table("messages") \
-                                    .update(update_payload) \
-                                    .eq("meta_message_id", message_id) \
-                                    .eq("tenant_id", tenant_id) \
-                                    .execute()
-                            except Exception as col_err:
-                                # Migration 061 may not be applied yet — retry without error columns
-                                if "delivery_error_code" in str(col_err) or "delivery_error_title" in str(col_err):
-                                    logger.warning(f"Migration 061 not applied — saving status only: {col_err}")
-                                    updated = db.table("messages") \
-                                        .update({"delivery_status": status}) \
-                                        .eq("meta_message_id", message_id) \
-                                        .eq("tenant_id", tenant_id) \
-                                        .execute()
-                                else:
-                                    raise
-                            logger.info(f"Message {message_id} status updated to {status}")
-                            # Mark lead as undeliverable so it's hidden from active views.
-                            # Only flag the LEAD for error codes that specifically mean this
-                            # recipient's number is the problem (e.g. 131026 wrong number).
-                            # Everything else — transient throttles AND account-level failures
-                            # like 131031 "Business Account locked" — is not evidence this
-                            # number is bad, and must not permanently blacklist the lead.
-                            #
-                            # broadcast_recipients.send_status is deliberately NOT changed here.
-                            # The row stays 'sent'; delivery failures are derived from
-                            # messages.delivery_status (failed CSV, tag counts, segment CSV).
-                            # Many readers treat send_status='sent' as "this lead was messaged"
-                            # (leads list, re-engagement, template_performance), so relabelling
-                            # a row would silently drop healthy leads over account-level
-                            # failures like 131042 payment issues.
-                            if status == "failed" and updated.data:
-                                failed_lead_id = updated.data[0].get("lead_id")
-                                if failed_lead_id:
-                                    if _is_recipient_undeliverable_error(err_code):
-                                        db.table("leads").update({"whatsapp_undeliverable": True}) \
-                                            .eq("id", failed_lead_id).eq("tenant_id", tenant_id).execute()
-                                    else:
-                                        logger.info(f"Delivery error {err_code} for lead {failed_lead_id} is not recipient-specific — not flagging undeliverable")
-                                # Stamp Meta's own explanation so the failed CSV's fail_detail
-                                # column is populated for webhook failures too, not just
-                                # synchronous send rejections.
-                                if err_detail:
-                                    try:
-                                        db.table("broadcast_recipients") \
-                                            .update({"fail_detail": err_detail}) \
-                                            .eq("meta_message_id", message_id) \
-                                            .eq("tenant_id", tenant_id) \
-                                            .execute()
-                                    except Exception as _fd_err:
-                                        logger.warning(f"broadcast_recipients fail_detail update failed: {_fd_err}")
-                            # Lead proved reachable again — clear any stale undeliverable flag.
-                            if status in ("delivered", "read") and updated.data:
-                                reachable_lead_id = updated.data[0].get("lead_id")
-                                if reachable_lead_id:
-                                    try:
-                                        db.table("leads").update({"whatsapp_undeliverable": False}) \
-                                            .eq("id", reachable_lead_id).eq("tenant_id", tenant_id) \
-                                            .eq("whatsapp_undeliverable", True).execute()
-                                    except Exception as _wu_err:
-                                        logger.warning(f"Failed to clear whatsapp_undeliverable for lead {reachable_lead_id}: {_wu_err}")
-                            # Bot Flow Builder per-node analytics: bump node delivered_count once
-                            if status == "delivered" and updated.data:
-                                step_id = updated.data[0].get("automation_step_id")
-                                if step_id:
-                                    try:
-                                        db.rpc("bump_automation_step_counter", {
-                                            "p_step_id": step_id,
-                                            "p_field": "delivered_count",
-                                            "p_delta": 1,
-                                        }).execute()
-                                    except Exception as e:
-                                        logger.warning(f"Failed to bump delivered_count for step {step_id}: {e}")
-                        except Exception as e:
-                            logger.error(f"Failed to update message {message_id} status to {status}: {e}")
+                statuses = value.get("statuses") or []
+                if statuses:
+                    await asyncio.to_thread(_apply_status_updates, db, tenant_id, statuses)
 
     return {"status": "ok"}

@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, MessageSquare, Phone, CreditCard } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, getHomeHref, isActive } from "@/lib/utils";
-import { API_URL, getAuthHeaders } from "@/lib/api";
 
 type NavTab = {
   href: string;
@@ -17,28 +16,7 @@ type NavTab = {
 export function MobileDashboardNav() {
   const pathname = usePathname() || "/dashboard";
   const { role } = useAuthRole();
-  const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (res.ok && active) {
-          const data = await res.json();
-          setSubStatus(data.status);
-        } else if (active) {
-          setSubStatus("active");
-        }
-      } catch {
-        if (active) setSubStatus("active");
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  if (subStatus === "loading") return null;
+  const { status: subStatus } = useSubscription();
 
   const isSubscribed = subStatus === "active";
 
@@ -54,7 +32,7 @@ export function MobileDashboardNav() {
       ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav h-[calc(4.75rem+env(safe-area-inset-bottom))] border-t border-border bg-white/95 px-3 pt-2 shadow-[0_-10px_30px_rgba(28,25,23,0.08)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav h-[calc(4.75rem+env(safe-area-inset-bottom))] border-t border-border bg-white/95 px-3 pt-2 shadow-[0_-10px_30px_rgba(28,25,23,0.08)] backdrop-blur lg:hidden">
       <div className={cn(
         "mx-auto grid h-14 max-w-lg gap-0.5 pb-0",
         isSubscribed ? "grid-cols-3" : "grid-cols-2"

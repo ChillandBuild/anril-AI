@@ -5,6 +5,7 @@ import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List,
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
 import { MoreMenu } from "@/components/MoreMenu";
+import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useHeaderAccordion } from "@/lib/headerAccordion";
@@ -160,6 +161,12 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     return {
       title: "Auto-Messages",
       description: "Send your approved WhatsApp template when something happens: a form fill, a sign-up or a purchase.",
+    };
+  }
+  if (pathname === "/dashboard/scheduled-templates") {
+    return {
+      title: "Scheduled templates",
+      description: "Every template and broadcast waiting to go out, in one place.",
     };
   }
   if (pathname === "/dashboard/templates") {
@@ -324,10 +331,13 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-[#e2e8f0] bg-background px-4 md:left-[220px] md:h-16 md:gap-4 md:px-6">
+    <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-[#e2e8f0] bg-background px-4 lg:left-[var(--sidebar-width)] md:h-16 md:gap-4 md:px-6">
       {/* Left side: menu trigger + title and description */}
       <div className="flex min-w-0 items-center gap-3">
         <MoreMenu />
+        {/* Wordmark lives here, on white, where its navy letters read; the navy sidebar carries the square mark. */}
+        <AnrilWordmark height={20} className="hidden w-auto shrink-0 text-ink md:block" />
+        <span className="hidden h-6 w-px shrink-0 bg-[#e2e8f0] md:block" aria-hidden="true" />
         <div className="flex min-w-0 flex-col justify-center select-none">
           <h1 className="font-display text-sm font-bold leading-tight text-on-surface md:text-base">
             {title}

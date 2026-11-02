@@ -28,6 +28,10 @@ SECRET_SETTING_KEYS = frozenset({
     "telecmi_webhook_secret",
     "razorpay_key_secret",
     "razorpay_webhook_secret",
+    "razorpay_oauth_access_token",
+    "razorpay_oauth_refresh_token",
+    "razorpay_oauth_public_token",
+    "razorpay_oauth_state",
     "telegram_bot_token",
     "telegram_webhook_secret",
     "instagram_access_token",
@@ -39,6 +43,8 @@ SECRET_SETTING_KEYS = frozenset({
     "indiamart_ingest_token",
     "justdial_ingest_token",
     "auto_messages_ingest_token",
+    "bulk9_api_key",
+    "bulk9_webhook_secret",
 })
 
 

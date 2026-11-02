@@ -100,7 +100,8 @@ interface ReengagementBuilderProps {
 
 export default function ReengagementBuilder({ type, broadcastId, templates, canManage = false }: ReengagementBuilderProps) {
   const [steps, setSteps] = useState<ReengagementStep[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true: the first fetch runs on mount, so "No messages yet" mustn't flash first.
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   const fetchSteps = useCallback(async () => {
     if (type === "broadcast" && !broadcastId) {
       setSteps([]);
+      setLoading(false);
       return;
     }
     setLoading(true);

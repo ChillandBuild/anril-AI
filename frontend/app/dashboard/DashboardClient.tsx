@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AnalyticsOverview } from "@/lib/api";
 import { useOverview } from "@/hooks/useApi";
@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthRole } from "./contexts/AuthRoleContext";
+import { useSubscription } from "./contexts/SubscriptionContext";
 import { AiraLoader } from "@/components/AiraLoader";
-import { API_URL, getAuthHeaders } from "@/lib/api";
 import { PipelinePulse } from "@/components/dashboard/PipelinePulse";
 import { AiWorkloadSection } from "@/components/dashboard/AiWorkloadSection";
 import { LeadSourceSection } from "@/components/dashboard/LeadSourceSection";
@@ -36,7 +36,7 @@ function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D",
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="card rounded-[32px] p-8">
+    <div className="card rounded-xl p-6 md:p-7">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="font-display font-bold text-ink text-[18px]">
@@ -99,26 +99,7 @@ function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D",
 export function DashboardClient({ fallbackOverview }: { fallbackOverview: AnalyticsOverview | null }) {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
   const router = useRouter();
-  const [subStatus, setSubStatus] = useState<"loading" | "active" | "none" | "pending_approval">("loading");
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const auth = await getAuthHeaders();
-        const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
-        if (res.ok && active) {
-          const data = await res.json();
-          setSubStatus(data.status);
-        } else if (active) {
-          setSubStatus("active");
-        }
-      } catch {
-        if (active) setSubStatus("active");
-      }
-    })();
-    return () => { active = false; };
-  }, []);
+  const { status: subStatus } = useSubscription();
 
   // Seeded from the server for owners (instant paint); callers get null and are
   // redirected below. Enable the SWR key when role confirms owner OR we already
@@ -135,7 +116,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     }
   }, [permissions, role, roleLoading, router]);
 
-  if (roleLoading || subStatus === "loading") {
+  if (roleLoading) {
     return <AiraLoader />;
   }
 
@@ -143,7 +124,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     const isPending = subStatus === "pending_approval";
     return (
       <div className="animate-slide-up space-y-6 max-w-4xl">
-        <div className="card rounded-[32px] p-8 border border-border bg-gradient-to-br from-primary-light to-white shadow-sm">
+        <div className="card rounded-xl p-6 md:p-7 border border-border bg-gradient-to-br from-primary-light to-white shadow-sm">
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Sparkles size={24} />
           </div>
@@ -209,7 +190,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
   }
 
   return (
-    <div className="animate-slide-up space-y-6 select-none">
+    <div className="dashboard-swiss space-y-8">
       <PipelinePulse overview={overview} />
 
       <AiWorkloadSection overview={overview} />

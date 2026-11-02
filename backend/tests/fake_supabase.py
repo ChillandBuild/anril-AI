@@ -64,6 +64,7 @@ class _Query:
         self.op, self.payload = "select", None
         self.filters: list = []
         self._order: list[tuple[str, bool]] = []
+        self._nullsfirst: dict[str, bool] = {}
         self._limit: int | None = None
         self._offset = 0
         self._single = False
@@ -105,7 +106,7 @@ class _Query:
         self.op, self.payload = "update", payload
         return self
 
-    def upsert(self, payload: dict, on_conflict: str = "id"):
+    def upsert(self, payload: dict | list[dict], on_conflict: str = "id"):
         self.op, self.payload, self._conflict = "upsert", payload, [c.strip() for c in on_conflict.split(",")]
         return self
 
@@ -202,8 +203,10 @@ class _Query:
         self.filters.append(predicate)
         return self
 
-    def order(self, column, desc: bool = False):
-        self._order.append((column, desc))  # chained orders = primary key first, like PostgREST
+    def order(self, column, desc: bool = False, nullsfirst: bool | None = None):
+        self._order.append((column, desc))
+        if nullsfirst is not None:
+            self._nullsfirst[column] = nullsfirst
         return self
 
     def limit(self, n: int):
@@ -231,15 +234,20 @@ class _Query:
             return SimpleNamespace(data=created, count=len(created))
 
         if self.op == "upsert":
-            existing = [r for r in self.db.rows(self.name) if all(r.get(c) == self.payload.get(c) for c in self._conflict)]
-            if existing:
-                existing[0].update(self.payload)
-                return SimpleNamespace(data=[dict(existing[0])], count=1)
-            row = {**_DEFAULTS.get(self.name, {}), **self.payload}
-            row.setdefault("id", str(uuid.uuid4()))
-            row.setdefault("created_at", self.db._stamp())
-            self.db.rows(self.name).append(row)
-            return SimpleNamespace(data=[dict(row)], count=1)
+            payloads = self.payload if isinstance(self.payload, list) else [self.payload]
+            written = []
+            for p in payloads:
+                existing = [r for r in self.db.rows(self.name) if all(r.get(c) == p.get(c) for c in self._conflict)]
+                if existing:
+                    existing[0].update(p)
+                    written.append(dict(existing[0]))
+                    continue
+                row = {**_DEFAULTS.get(self.name, {}), **p}
+                row.setdefault("id", str(uuid.uuid4()))
+                row.setdefault("created_at", self.db._stamp())
+                self.db.rows(self.name).append(row)
+                written.append(dict(row))
+            return SimpleNamespace(data=written, count=len(written))
 
         matched = self._matching()
         if self.op == "update":
@@ -261,7 +269,9 @@ class _Query:
 
         rows = [dict(r) for r in matched]
         for column, desc in reversed(self._order):  # stable sorts, last key first
-            rows.sort(key=lambda r, c=column: (r.get(c) is None, r.get(c) or ""), reverse=desc)
+            nullsfirst = self._nullsfirst.get(column, desc)
+            rows.sort(key=lambda r, c=column, n=nullsfirst, d=desc: (
+                (r.get(c) is not None) if n != d else (r.get(c) is None), r.get(c) or ""), reverse=desc)
         total = len(rows)  # like PostgREST count=exact: the total before limit / range
         rows = rows[self._offset:]
         if self._limit is not None:

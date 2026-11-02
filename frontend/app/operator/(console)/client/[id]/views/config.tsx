@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Image as ImageIcon, Clock, Link2, Loader2, Mic, Plus, Puzzle, RadioTower, Shield, Smartphone, Sparkles, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { SmsConnectionPanel } from "./SmsConnectionPanel";
 import { SkeletonCard } from "../components/skeleton";
 import { OperatorToggle } from "../../../components/operator-toggle";
 
@@ -72,7 +73,7 @@ const REPLY_MODELS: { id: ReplyModelId; label: string; provider: AiProviderKey; 
 const MANAGED_FEATURE_KEYS = new Set([
   "inbound_leads", "outbound_leads",
   "telecalling", "telecalling.upload", "telecalling.dialer", "telecalling.scheduled", "telecalling.notes",
-  "whatsapp", "analytics",
+  "whatsapp", "analytics", "sms",
 ]);
 
 // Ops-entered, not client self-service: astro_bridge_url/api_key are issued by the
@@ -554,6 +555,19 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
     }
   }
 
+  async function toggleSms(enabled: boolean) {
+    setFeatureSaving(true);
+    try {
+      const updated = enabled ? [...enabledFeatures.filter((feature) => feature !== "sms"), "sms"] : enabledFeatures.filter((feature) => feature !== "sms");
+      const data = await apiFetch<{ enabled_features: string[] }>(`/api/v1/operator/clients/${tenantId}/features`, {
+        method: "PATCH", body: JSON.stringify({ features: updated }),
+      });
+      setEnabledFeatures(data.enabled_features);
+      toast.success(enabled ? "SMS enabled." : "SMS disabled.");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't update SMS access."); }
+    finally { setFeatureSaving(false); }
+  }
+
   async function removeCustomFeature(key: string) {
     setFeatureSaving(true);
     try {
@@ -659,6 +673,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="space-y-6">
+      <SmsConnectionPanel tenantId={tenantId} enabled={enabledFeatures.includes("sms")} featureSaving={featureSaving} onToggle={(enabled) => void toggleSms(enabled)} />
       {/* Calling Provider */}
       <div>
         <h3 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">

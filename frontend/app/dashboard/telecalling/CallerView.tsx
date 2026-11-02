@@ -14,12 +14,15 @@ import { getLeadQueueSection, sortLeadsForCallQueue, type LeadQueueSection } fro
 import { useSearchParams } from "next/navigation";
 import { SegmentBadge } from "@/components/segment-badge";
 import { isClosedLeadStatus, isWorkingLeadStatus } from "@/lib/call-wrapup";
+import { AiraLoader } from "@/components/AiraLoader";
 
 export default function CallerView({ callerId, readOnly = false }: { callerId: string | null; readOnly?: boolean }) {
   const searchParams = useSearchParams();
   // caller profile + my assigned queue
   const [myStatus, setMyStatus] = useState<"active" | "break" | "logged_out">("active");
   const [myLeads, setMyLeads] = useState<Lead[]>([]);
+  // True until the first queue fetch settles, so we never show "0 leads" / the empty state early.
+  const [queueLoading, setQueueLoading] = useState(true);
   const [lastCalledMap, setLastCalledMap] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,6 +50,8 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
     } catch (err) {
       console.error("CallerView load error:", err);
       toast.error("Couldn't load your lead queue — check your connection or permissions and try refreshing.");
+    } finally {
+      setQueueLoading(false);
     }
   }, [callerId]);
 
@@ -135,7 +140,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
             <div className="flex items-center justify-between mb-4 shrink-0">
               <div>
                 <h2 className="font-display text-xl font-extrabold text-[#0A1528] tracking-tight">Lead Queue</h2>
-                <p className="font-body text-xs text-[#475569] mt-0.5">{myLeads.length} leads assigned</p>
+                <p className="font-body text-xs text-[#475569] mt-0.5">{queueLoading ? "—" : myLeads.length} leads assigned</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -176,10 +181,10 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
             {/* Sub-tabs */}
             <div className="flex gap-0.5 p-0.5 bg-[#e2e8f0]/60 rounded-2xl shrink-0 mb-4">
               {[
-                { id: "new", label: `To Call (${newLeads.length})` },
-                { id: "callback", label: `Callbacks (${callbackLeads.length})` },
-                { id: "working", label: `In Prog (${workingLeads.length})` },
-                { id: "closed", label: `Closed (${closedLeads.length})` },
+                { id: "new", label: `To Call (${queueLoading ? "—" : newLeads.length})` },
+                { id: "callback", label: `Callbacks (${queueLoading ? "—" : callbackLeads.length})` },
+                { id: "working", label: `In Prog (${queueLoading ? "—" : workingLeads.length})` },
+                { id: "closed", label: `Closed (${queueLoading ? "—" : closedLeads.length})` },
                 { id: "dialer", label: "Manual Dial" },
                 { id: "recent", label: "Recent" },
               ].map((tab) => (
@@ -202,6 +207,8 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
               <div className="flex-1 overflow-y-auto flex flex-col items-center pt-4 pb-2">
                 <NumpadDialer value={cockpit.manualPhone} onChange={cockpit.setManualPhone} onDial={cockpit.manualDialWithGuard} dialing={cockpit.manualDialing} disabled={readOnly} />
               </div>
+            ) : queueLoading ? (
+              <AiraLoader inline className="min-h-[200px] flex-1" />
             ) : myLeads.length === 0 ? (
               <div className="text-center py-12 flex-1 flex flex-col justify-center items-center">
                 <div className="w-12 h-12 bg-[#f8fafc] rounded-full flex items-center justify-center text-[#94a3b8] border border-[#f1f5f9] mb-3">
@@ -326,7 +333,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
                 <div className="grid grid-cols-2 gap-4 mt-8 w-full max-w-xs">
                   <div className="p-4 bg-white border border-[#f1f5f9] border-t-4 border-t-sky-400 rounded-2xl shadow-sm text-left">
                     <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider block">Total Queue</span>
-                    <span className="text-xl font-bold text-[#13284A] mt-1 block">{myLeads.length}</span>
+                    <span className="text-xl font-bold text-[#13284A] mt-1 block">{queueLoading ? "—" : myLeads.length}</span>
                   </div>
                   <div className="p-4 bg-white border border-[#f1f5f9] border-t-4 border-t-amber-400 rounded-2xl shadow-sm text-left">
                     <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider block">Today Callbacks</span>

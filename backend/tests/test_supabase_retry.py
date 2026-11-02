@@ -1,7 +1,10 @@
+import logging
+from unittest.mock import MagicMock
+
 import httpx
 import pytest
 
-from app.db.supabase import _RetryTransport
+from app.db.supabase import _RetryTransport, _wrap_postgrest_session, current_route
 
 
 class _ScriptedTransport(httpx.BaseTransport):
@@ -50,3 +53,28 @@ def test_write_is_never_replayed():
     with pytest.raises(httpx.RemoteProtocolError):
         _request(inner, method="POST")
     assert inner.calls == 1
+
+
+def test_session_gives_up_after_10s_not_the_120s_default():
+    client = MagicMock()
+    client.postgrest.session = httpx.Client(base_url="https://example.test", timeout=120)
+    _wrap_postgrest_session(client)
+    assert client.postgrest.session.timeout.read == 10
+
+
+def test_slow_query_is_logged_with_table_and_route(monkeypatch, caplog):
+    monkeypatch.setattr("app.db.supabase._SLOW_SECONDS", 0)
+    token = current_route.set("POST /api/v1/intake/partner/send-template")
+    try:
+        with caplog.at_level(logging.WARNING, logger="app.db.supabase"):
+            _request(_ScriptedTransport([]))
+    finally:
+        current_route.reset(token)
+    assert "Slow Supabase GET /rest/v1/leads" in caplog.text
+    assert "POST /api/v1/intake/partner/send-template" in caplog.text
+
+
+def test_fast_query_is_not_logged(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.db.supabase"):
+        _request(_ScriptedTransport([]))
+    assert "Slow Supabase" not in caplog.text

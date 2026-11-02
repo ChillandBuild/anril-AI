@@ -232,6 +232,65 @@ export interface ScheduledTemplate {
   created_at: string;
 }
 
+export type ScheduledOverviewStatus = "scheduled" | "sending" | "sent" | "failed" | "skipped" | "cancelled";
+
+/** One template scheduled for one lead, as the Scheduled templates page lists it. */
+export interface ScheduledOverviewTemplate {
+  id: string;
+  lead_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  lead_source: string | null;
+  template_name: string;
+  /** The text as the customer will see it. */
+  content: string;
+  /** UTC ISO time. */
+  send_at: string;
+  status: ScheduledOverviewStatus;
+  reason: string | null;
+  created_by_name: string;
+  /** Messages scheduled together from Segments share one batch. Null for a single message. */
+  batch_id: string | null;
+  batch_label: string | null;
+}
+
+/** A broadcast waiting in Outbound Leads (scheduled once, or a drip). */
+export interface ScheduledOverviewBroadcast {
+  id: string;
+  ids: string[];
+  kind: "scheduled" | "drip";
+  template_name: string;
+  /** UTC ISO time of the first send. */
+  send_at: string;
+  status: "scheduled" | "sending" | "sent" | "failed" | "cancelled";
+  recipients: number;
+  days: number;
+  file_name: string | null;
+  has_file: boolean;
+  created_by_name: string;
+  error: string | null;
+}
+
+export interface ScheduledOverview {
+  templates: ScheduledOverviewTemplate[];
+  broadcasts: ScheduledOverviewBroadcast[];
+  can_change_templates: boolean;
+  can_change_broadcasts: boolean;
+}
+
+export interface ScheduledBulkRequest {
+  action: "cancel" | "restore" | "reschedule";
+  template_ids: string[];
+  broadcast_ids: string[];
+  /** UTC ISO time. Required for "reschedule". */
+  send_at?: string;
+}
+
+export interface ScheduledBulkResult {
+  done: number;
+  failed: { kind: "template" | "broadcast"; id: string; reason: string }[];
+}
+
 export type SendDetailsContext =
   | { available: false }
   | { available: true; window_open: boolean; last_inbound_at: string | null; free_text: string; templates: SendDetailsTemplate[] };
@@ -1687,7 +1746,222 @@ function dealFilterParams(filters: Omit<DealFilters, "stage">): URLSearchParams 
   return search;
 }
 
+// ---- SMS (Bulk9 client) — contract: docs/plans/2026-10-30-sms-api-contract.md ----
+export interface SmsStatus {
+  enabled: boolean;
+  connected: boolean;
+  checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
+  support_contact: string | null;
+}
+export interface SmsBalance { sms_count: number }
+export interface SmsSender { sender_id: string; entity_id: string; entity_name: string | null }
+export type SmsTemplateType = "service" | "promotional";
+export interface SmsTemplate {
+  id: string;
+  message_id: string | null;
+  dlt_template_id: string | null;
+  sender_id: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  message: string;
+  var_count: number;
+  template_type: SmsTemplateType | "unclassified";
+  status: "ready" | "submitted";
+  last_synced_at: string | null;
+}
+export interface SmsTemplateList { templates: SmsTemplate[]; last_synced_at: string | null; error: string | null }
+export interface SmsTemplateRequest {
+  id: string;
+  wording: string;
+  template_type: SmsTemplateType;
+  status: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
+export interface SmsPreviewExcluded { lead_id: string; name: string | null; phone: string | null; reason: string }
+export interface SmsPreviewSample { lead_id: string; name: string | null; content: string; segments: number; unicode: boolean }
+export interface SmsPreview {
+  total_segments: number;
+  eligible_count: number;
+  excluded: SmsPreviewExcluded[];
+  samples: SmsPreviewSample[];
+  estimated: boolean;
+}
+export type SmsCampaignStatus = "scheduled" | "sending" | "completed" | "cancelled";
+export type SmsMessageStatus =
+  | "queued" | "sending" | "submitted" | "delivered" | "failed" | "unknown" | "skipped" | "cancelled";
+export interface SmsCampaign {
+  id: string;
+  name: string;
+  template_text: string;
+  sender_id: string;
+  template_type: SmsTemplateType;
+  status: SmsCampaignStatus;
+  send_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+  counts: Record<SmsMessageStatus, number>;
+  total: number;
+}
+export interface SmsMessage {
+  id: string;
+  campaign_id: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  phone: string;
+  content: string;
+  status: SmsMessageStatus;
+  failure_reason: string | null;
+  sms_count: number | null;
+  submitted_at: string | null;
+  delivered_at: string | null;
+  updated_at: string | null;
+}
+export interface SmsMessageFilters {
+  campaign_id?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+export interface SmsOk { ok: boolean; message?: string }
+
+async function smsMultipart<T>(path: string, fd: FormData): Promise<T> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", body: fd, headers });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
+    const err = await res.json().catch(() => null);
+    const error = new Error(typeof err?.detail === "string" ? err.detail : "Upload failed") as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
+
+function smsMessageQuery(f: SmsMessageFilters): string {
+  const qs = new URLSearchParams();
+  if (f.campaign_id) qs.set("campaign_id", f.campaign_id);
+  if (f.status) qs.set("status", f.status);
+  if (f.from) qs.set("from", f.from);
+  if (f.to) qs.set("to", f.to);
+  if (f.search) qs.set("search", f.search);
+  if (f.limit != null) qs.set("limit", String(f.limit));
+  if (f.offset != null) qs.set("offset", String(f.offset));
+  return qs.toString();
+}
+
 export const api = {
+  sms: {
+    status: () => apiFetch<SmsStatus>("/api/v1/sms/status"),
+    balance: () => apiFetch<SmsBalance>("/api/v1/sms/balance"),
+    senders: () => apiFetch<{ senders: SmsSender[] }>("/api/v1/sms/senders"),
+    templates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates"),
+    refreshTemplates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates/refresh", { method: "POST" }),
+    setTemplateType: (id: string, template_type: SmsTemplateType) =>
+      apiFetch<SmsTemplate>(`/api/v1/sms/templates/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ template_type }),
+      }),
+    addEntity: (data: { entity_name: string; entity_id: string; files: File[] }) => {
+      const fd = new FormData();
+      fd.append("entity_name", data.entity_name);
+      fd.append("entity_id", data.entity_id);
+      data.files.forEach((f) => fd.append("files", f));
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/entity", fd);
+    },
+    addSender: (data: { entity_id: string; sender_id: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/dlt/sender", { method: "POST", body: JSON.stringify(data) }),
+    addSenderExcel: (data: { entity_id: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("entity_id", data.entity_id);
+      fd.append("file", data.file);
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/sender-excel", fd);
+    },
+    addTemplate: (data: {
+      entity_id: string;
+      sender_ids: string[];
+      dlt_template_id: string;
+      message_text: string;
+      template_type: SmsTemplateType;
+    }) => apiFetch<SmsOk>("/api/v1/sms/dlt/template", { method: "POST", body: JSON.stringify(data) }),
+    addTemplateExcel: (data: { entity_id: string; file: File; template_type: SmsTemplateType }) => {
+      const fd = new FormData();
+      fd.append("entity_id", data.entity_id);
+      fd.append("file", data.file);
+      fd.append("template_type", data.template_type);
+      return smsMultipart<SmsOk>("/api/v1/sms/dlt/template-excel", fd);
+    },
+    templateRequests: () => apiFetch<{ requests: SmsTemplateRequest[] }>("/api/v1/sms/template-requests"),
+    requestTemplate: (data: { wording: string; template_type: SmsTemplateType }) =>
+      apiFetch<SmsTemplateRequest>("/api/v1/sms/template-requests", { method: "POST", body: JSON.stringify(data) }),
+    campaignFields: () => apiFetch<{ fields: { key: string; label: string }[] }>("/api/v1/sms/campaigns/fields"),
+    previewCampaign: (data: { template_id: string; variable_map: SmsVarSource[]; lead_ids: string[] }) =>
+      apiFetch<SmsPreview>("/api/v1/sms/campaigns/preview", { method: "POST", body: JSON.stringify(data) }),
+    createCampaign: (data: {
+      name: string;
+      template_id: string;
+      variable_map: SmsVarSource[];
+      lead_ids: string[];
+      send_at: string | null;
+      idempotency_key: string;
+    }) => apiFetch<SmsCampaign>("/api/v1/sms/campaigns", { method: "POST", body: JSON.stringify(data) }),
+    campaigns: (limit = 50, offset = 0) =>
+      apiFetch<{ campaigns: SmsCampaign[] }>(`/api/v1/sms/campaigns?limit=${limit}&offset=${offset}`),
+    campaign: (id: string) => apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}`),
+    cancelCampaign: (id: string) =>
+      apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    messages: (filters: SmsMessageFilters = {}) =>
+      apiFetch<{ messages: SmsMessage[]; total: number }>(`/api/v1/sms/messages?${smsMessageQuery(filters)}`),
+    exportMessagesCsv: async (filters: SmsMessageFilters = {}) => {
+      // The export covers every matching row, so paging fields are dropped.
+      const rest: SmsMessageFilters = { ...filters, limit: undefined, offset: undefined };
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/sms/messages/export.csv?${smsMessageQuery(rest)}`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(typeof err?.detail === "string" ? err.detail : `Export failed: ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sms_messages.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    reportSummary: (from: string, to: string) =>
+      apiFetch<{ anril: Record<string, number>; bulk9: Record<string, unknown> | null; error: string | null }>(
+        `/api/v1/sms/reports/summary?from=${from}&to=${to}`,
+      ),
+    reportLogs: (from: string, to: string, page = 1, limit = 25) =>
+      apiFetch<{ logs: Record<string, unknown>[]; page: number; error: string | null }>(
+        `/api/v1/sms/reports/logs?from=${from}&to=${to}&page=${page}&limit=${limit}`,
+      ),
+    developerKey: () => apiFetch<{ api_key: string }>("/api/v1/sms/developer/key"),
+    otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number }) =>
+      apiFetch<{ ok: boolean; request_id?: string; message?: string }>("/api/v1/sms/otp/send", {
+        method: "POST",
+        body: JSON.stringify({ otp_length: 6, otp_expiry: 15, ...data }),
+      }),
+    otpVerify: (data: { mobile: string; otp: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
+    otpResend: (data: { mobile: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
+  },
+  scheduledOverview: {
+    get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),
+    bulk: (body: ScheduledBulkRequest) =>
+      apiFetch<ScheduledBulkResult>("/api/v1/scheduled-overview/bulk", { method: "POST", body: JSON.stringify(body) }),
+    broadcastFile: (id: string) =>
+      apiFetch<{ url: string; file_name: string }>(`/api/v1/scheduled-overview/broadcasts/${id}/file`),
+  },
   ask: (question: string) =>
     apiFetch<AskAnalyticsResult>("/api/v1/ask", {
       method: "POST",
@@ -1778,7 +2052,10 @@ export const api = {
       }),
     scheduledTemplates: async (leadId: string) =>
       (await apiFetch<{ items: ScheduledTemplate[] }>(`/api/v1/leads/${leadId}/scheduled-templates`)).items ?? [],
-    scheduleTemplate: (leadId: string, body: { template_id: string; variables: string[]; send_at: string }) =>
+    scheduleTemplate: (
+      leadId: string,
+      body: { template_id: string; variables: string[]; send_at: string; batch_id?: string; batch_label?: string },
+    ) =>
       apiFetch<ScheduledTemplate>(`/api/v1/leads/${leadId}/scheduled-templates`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -2536,6 +2813,8 @@ export const api = {
       apiFetch<{ data: CallbackBoardItem[] }>(`/api/v1/follow-ups/callbacks/board`),
   },
   settings: {
+    getAiAutoReply: () =>
+      apiFetch<{ enabled: boolean }>(`/api/v1/settings/ai-auto-reply`),
     getTelecallingConfig: () =>
       apiFetch<TelecallingConfig>(`/api/v1/settings/telecalling-config`),
   },

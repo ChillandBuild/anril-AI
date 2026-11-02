@@ -85,6 +85,10 @@ export default function ConversationsPage() {
   // The Inbox tab's badge: always the Inbox count, whichever tab is open.
   const [inboxTotal, setInboxTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The folder whose first answer has arrived. Differs from `folder` on first
+  // load and right after a folder switch, so the list shows a loader instead of
+  // an empty state (or the previous folder's rows). Search refreshes don't touch it.
+  const [loadedFolder, setLoadedFolder] = useState<InboxFolder | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const leadsCountRef = useRef(0);
@@ -130,6 +134,7 @@ export default function ConversationsPage() {
       .then(({ leads: loaded, total: t }) => {
         setLeads(loaded);
         setTotal(t);
+        setLoadedFolder(folder);
         if (folder === "chats" && !debouncedSearch) setInboxTotal(t);
         setError(false);
       })
@@ -260,7 +265,7 @@ export default function ConversationsPage() {
 
   if (folder === "escalations") {
     return (
-      <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background md:h-screen md:pl-[220px]">
+      <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--sidebar-width)]">
         {/* Escalations take the whole page width, with the Conversations tabs above. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ConversationList
@@ -283,6 +288,7 @@ export default function ConversationsPage() {
             total={inboxTotal}
             hasMore={false}
             loadingMore={false}
+            loading={false}
             onLoadMore={() => {}}
             onDeleted={() => {}}
             escalationPanelContent={
@@ -300,7 +306,7 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background md:h-screen md:pl-[220px]">
+    <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--sidebar-width)]">
       {/* ── Conversation list ── */}
       <div className={`relative w-full flex-shrink-0 md:block md:w-[380px] md:max-w-[38vw] ${selected ? "hidden" : "block"}`}>
         <ConversationList
@@ -323,6 +329,7 @@ export default function ConversationsPage() {
           total={inboxTotal}
           hasMore={leads.length < total}
           loadingMore={loadingMore}
+          loading={loadedFolder !== folder}
           onLoadMore={loadMore}
           onDeleted={(deletedIds) => {
             setLeads((prev) => prev.filter((l) => !deletedIds.includes(l.id)));

@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { CheckCircle2, ChevronDown, Loader2, Save } from "lucide-react";
+import { AiraLoader } from "@/components/AiraLoader";
 import type { LucideIcon } from "lucide-react";
 import { publishHeaderAccordion } from "@/lib/headerAccordion";
 import { cn } from "@/lib/utils";
@@ -46,9 +47,12 @@ const Ctx = createContext<AccordionCtx | null>(null);
 export function SettingsAccordion({
   children,
   defaultOpenId,
+  startClosed = false,
 }: {
   children: React.ReactNode;
   defaultOpenId?: string | string[];
+  /** Keep every section collapsed even when there is only one. */
+  startClosed?: boolean;
 }) {
   const [openIds, setOpenIds] = useState<Set<string>>(() => {
     if (!defaultOpenId) return new Set();
@@ -80,11 +84,11 @@ export function SettingsAccordion({
     if (defaultOpenId) {
       const list = Array.isArray(defaultOpenId) ? defaultOpenId : [defaultOpenId];
       setOpenIds(new Set(list));
-    } else if (ids.length === 1) {
+    } else if (ids.length === 1 && !startClosed) {
       // Lone section opens; two or more stay closed until the user picks one.
       setOpenIds(new Set(ids));
     }
-  }, [ids, defaultOpenId]);
+  }, [ids, defaultOpenId, startClosed]);
 
   const toggle = useCallback((id: string) => {
     setOpenIds((prev) => {
@@ -420,4 +424,34 @@ export function SaveStatus({
     );
   }
   return idleLabel ? <span className="font-body text-[11px] text-ink-muted">{idleLabel}</span> : null;
+}
+
+export type SectionLoadState = "loading" | "ready" | "error";
+
+/**
+ * Holds a section's form back until its saved values have loaded. Rendering the
+ * form on built-in defaults lets an early Save overwrite the real config, so
+ * the form (and its Save button) only appears once the load succeeds.
+ */
+export function SectionLoadGate({
+  state,
+  onRetry,
+  children,
+}: {
+  state: SectionLoadState;
+  onRetry: () => void;
+  children: React.ReactNode;
+}) {
+  if (state === "loading") return <AiraLoader inline className="min-h-[160px]" />;
+  if (state === "error") {
+    return (
+      <div className="flex min-h-[160px] flex-col items-center justify-center gap-3 text-center">
+        <p className="font-body text-sm text-ink-muted">Couldn&apos;t load these settings.</p>
+        <button type="button" onClick={onRetry} className="btn-primary text-sm px-5 py-2">
+          Retry
+        </button>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }

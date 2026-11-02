@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.config_dynamic import get_setting
+from app.services import razorpay_oauth
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,32 @@ def _get_key_secret(tenant_id: str | None = None) -> str:
     if not v:
         raise RuntimeError("razorpay_key_secret not configured in app settings")
     return v
+
+
+async def _auth_kwargs(tenant_id: str | None, *, force_refresh: bool = False) -> dict[str, Any]:
+    """httpx auth for this tenant: the OAuth Bearer token when connected through Connect with
+    Razorpay (it wins over pasted keys), otherwise Basic auth with the pasted key id/secret."""
+    token = await razorpay_oauth.get_access_token(tenant_id, force_refresh=force_refresh)
+    if token:
+        return {"headers": {"Authorization": f"Bearer {token}"}}
+    return {"auth": (_get_key_id(tenant_id), _get_key_secret(tenant_id))}
+
+
+async def _post(tenant_id: str | None, path: str, *, json: dict | None = None,
+                headers: dict[str, str] | None = None) -> httpx.Response:
+    """POST to the Razorpay API as this tenant. A 401 on an OAuth token (revoked early, or
+    expired between our check and the call) gets one forced refresh and one retry; a 401 on
+    pasted keys is final. The retry is safe: Razorpay created nothing on a 401."""
+    auth = await _auth_kwargs(tenant_id)
+    for attempt in range(2):
+        async with httpx.AsyncClient(auth=auth.get("auth"), timeout=15.0) as client:
+            resp = await client.post(
+                f"{_RAZORPAY_BASE}{path}", json=json, headers={**(headers or {}), **auth.get("headers", {})},
+            )
+        if resp.status_code != 401 or "auth" in auth or attempt:
+            return resp
+        auth = await _auth_kwargs(tenant_id, force_refresh=True)
+    return resp
 
 
 def _get_webhook_secret(tenant_id: str | None = None) -> str:
@@ -70,8 +97,6 @@ async def create_payment_link(
       - razorpay_payment_link_id: str
       - payment_link_expires_at: str (ISO-8601 UTC; when Razorpay stops accepting payment)
     """
-    key_id = _get_key_id(tenant_id)
-    key_secret = _get_key_secret(tenant_id)
     expire_by = int(time.time()) + _LINK_EXPIRE_SECONDS
 
     payload = {
@@ -91,12 +116,10 @@ async def create_payment_link(
         "expire_by": expire_by,
     }
 
-    async with httpx.AsyncClient(auth=(key_id, key_secret), timeout=15.0) as client:
-        resp = await client.post(
-            f"{_RAZORPAY_BASE}/payment_links",
-            json=payload,
-            headers={"X-Razorpay-Idempotency-Key": idempotency_key},
-        )
+    resp = await _post(
+        tenant_id, "/payment_links", json=payload,
+        headers={"X-Razorpay-Idempotency-Key": idempotency_key},
+    )
 
     if not resp.is_success:
         raise RuntimeError(
@@ -129,10 +152,7 @@ async def cancel_payment_link(plink_id: str, tenant_id: str) -> bool:
         logger.warning(f"Razorpay cancel of {plink_id} skipped: no tenant_id")
         return False
     try:
-        key_id = _get_key_id(tenant_id)
-        key_secret = _get_key_secret(tenant_id)
-        async with httpx.AsyncClient(auth=(key_id, key_secret), timeout=15.0) as client:
-            resp = await client.post(f"{_RAZORPAY_BASE}/payment_links/{plink_id}/cancel")
+        resp = await _post(tenant_id, f"/payment_links/{plink_id}/cancel")
     except Exception as e:
         logger.warning(f"Razorpay cancel of {plink_id} failed: {type(e).__name__}: {e}")
         return False

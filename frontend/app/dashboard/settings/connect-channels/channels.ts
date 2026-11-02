@@ -209,6 +209,20 @@ export function resolveConnectionSource(channelId: string, settings: Setting[]):
   return settings.find(s => s.key === "meta_business_access_token")?.is_set ? "embedded" : "manual";
 }
 
+/** Written only by the backend's Connect with Razorpay flow (services/razorpay_oauth.py). */
+export const RAZORPAY_OAUTH_ACCOUNT_KEY = "razorpay_oauth_account_id";
+
+/** The Razorpay account connected through OAuth, or null when the tenant uses pasted keys (or nothing). */
+export function razorpayOAuthAccount(settings: Setting[]): string | null {
+  return storedPlainValue(settings, RAZORPAY_OAUTH_ACCOUNT_KEY) || null;
+}
+
+/** Every required field is stored — or, for Razorpay, the OAuth connection stands in for the keys. */
+export function isChannelConfigured(channel: ChannelConfig, settings: Setting[]): boolean {
+  if (channel.id === "razorpay" && razorpayOAuthAccount(settings)) return true;
+  return channel.fields.every(f => !f.required || settings.find(s => s.key === f.key)?.is_set);
+}
+
 function storedPlainValue(settings: Setting[], key: string): string {
   const row = settings.find(s => s.key === key);
   return !row || row.display_value === "Not set" ? "" : row.display_value;

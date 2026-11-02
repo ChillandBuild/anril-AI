@@ -386,3 +386,219 @@ canvas {
 @media (prefers-reduced-motion: reduce) {
   .animate-popover-in { animation: none; }
 }
+
+.dashboard-swiss .card {
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(10,21,40,.02);
+}
+.dashboard-swiss h2 { font-size: .875rem; font-weight: 600; }
+.dashboard-swiss .swiss-workload > div { min-width: 0; }
+@media (min-width: 1024px) {
+  .dashboard-swiss .swiss-workload > div + div {
+    border-left: 1px solid var(--border);
+    padding-left: 1.5rem;
+  }
+}
+@media (min-width: 768px) {
+  .dashboard-swiss .card { padding: 1.75rem; }
+}
+
+.dashboard-swiss, .dashboard-swiss .font-display, .dashboard-swiss .font-label,
+.swiss-sidebar, .swiss-sidebar .font-label { font-family: var(--font-swiss), sans-serif; }
+
+:root { --sidebar-width: 256px; }
+
+/* Sidebar fold (components/nav/useSidebarRail.ts). Wide pages fold it to a
+   64px icon strip; data-sidebar-rail on <html> narrows --sidebar-width for
+   the layout, header and inbox together. Registered so the change can
+   animate; data-sidebar-anim turns the animation on after the first frame. */
+@property --sidebar-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 256px;
+}
+:root[data-sidebar-rail] { --sidebar-width: 64px; }
+:root[data-sidebar-anim] { transition: --sidebar-width 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* The sidebar sizes itself: a peek widens it over the page while the page
+   stays put at 64px. It drops back under the header only after shrinking. */
+.sidebar-shell {
+  width: 256px;
+  transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s 0.32s;
+}
+.sidebar-shell[data-rail]:not([data-peek]) { width: 64px; }
+.sidebar-shell[data-peek] {
+  z-index: 50;
+  box-shadow: 12px 0 40px rgba(10, 21, 40, 0.35);
+  transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s;
+}
+.nav-lbl, .nav-ws { white-space: nowrap; transition: opacity 0.2s; }
+.sidebar-shell[data-rail]:not([data-peek]) :is(.nav-lbl, .nav-ws, .nav-chevron, .nav-held-dot) { opacity: 0; }
+.sidebar-shell[data-rail]:not([data-peek]) .nav-chevron { transition: opacity 0.2s; }
+.sidebar-shell[data-rail]:not([data-peek]) .nav-expander { grid-template-rows: 0fr; }
+/* Folded, the logo shows as the 2x2 mark and skips the page-change wave. */
+.sidebar-shell[data-rail]:not([data-peek]) .anril-mark rect { transform: var(--fold); animation: none; }
+.nav-fold-icon { transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+.sidebar-shell[data-rail] .nav-fold-icon,
+.sidebar-shell[data-rail] .group:hover > .nav-fold-icon { transform: rotate(180deg); }
+
+/* Sidebar, to the v2 study. The active row's tint wipes in left to right just
+   as the hopping teal square (components/nav/ActiveIndicator.tsx) lands. */
+.nav-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(63, 188, 191, 0.22), rgba(63, 188, 191, 0.04));
+  animation: nav-wipe 0.192s cubic-bezier(0.16, 1, 0.3, 1) 0.448s both;
+}
+@keyframes nav-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.nav-hop-square {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  width: 8px;
+  height: 8px;
+  border-radius: 2.5px;
+  background: #3fbcbf;
+  box-shadow: 0 0 12px rgba(63, 188, 191, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+/* Row icons nudge right on hover with a small spring. */
+.nav-icon { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.group:hover .nav-icon { transform: translateX(2px); }
+/* Icons inside an open section's box look cut into it: dark stroke, a dark
+   edge above and a faint teal edge below. The open page's icon lights teal
+   from inside just as the hopping square lands (same delay as .nav-active). */
+.nav-carved {
+  color: #0b1a33;
+  filter: drop-shadow(0 1px 0 rgba(120, 214, 216, 0.28)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.55));
+  transition: color 0.2s;
+}
+.group:hover .nav-carved { color: #1d3a66; }
+.nav-active .nav-carved {
+  color: #78d6d8;
+  filter: drop-shadow(0 0 3px rgba(120, 214, 216, 1)) drop-shadow(0 0 10px rgba(63, 188, 191, 0.85));
+  animation: nav-carve-light 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s backwards;
+}
+/* Waiting counts ride on the icon's corner (components/nav/NavCount.tsx).
+   The ring is the colour behind the icon, so the pip looks cut out of it. */
+.nav-pip {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 14px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #f0643f;
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--navy-800);
+  pointer-events: none;
+  animation: nav-pip-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes nav-pip-pop { from { transform: scale(0.4); } }
+/* On a menu heading: shown only while that menu's rows are hidden. */
+.nav-pip-group { box-shadow: 0 0 0 2px var(--navy); }
+.nav-pip-group:not(.is-on) { opacity: 0; transform: scale(0.5); animation: none; }
+.sidebar-shell[data-rail]:not([data-peek]) .nav-pip-group { opacity: 1; transform: none; }
+@keyframes nav-carve-light {
+  from {
+    color: #0b1a33;
+    filter: drop-shadow(0 1px 0 rgba(120, 214, 216, 0.28)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.55));
+  }
+}
+
+/* The menu arrow turns as the menu opens. */
+.nav-chevron { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+[aria-expanded="true"] > .nav-chevron { transform: rotate(90deg); }
+
+/* Small teal square on a closed menu that holds the current page. */
+.nav-held-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: #3fbcbf;
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.nav-held-dot.is-on { opacity: 1; transform: none; }
+
+/* A menu animates its height open and shut; its items sit in a filled box. */
+.nav-expander {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-expander.open { grid-template-rows: 1fr; }
+.nav-expander > div { min-height: 0; overflow: hidden; }
+.nav-children {
+  margin: 2px 2px 12px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--navy-800);
+}
+
+/* Items of an open menu slide in one after another. */
+.nav-expander.open > div > .nav-children > *,
+.nav-expander.open > div > .nav-children-flat > * {
+  animation: nav-kid-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+}
+.nav-expander.open > div > * > :nth-child(2) { animation-delay: 75ms; }
+.nav-expander.open > div > * > :nth-child(3) { animation-delay: 110ms; }
+.nav-expander.open > div > * > :nth-child(4) { animation-delay: 145ms; }
+.nav-expander.open > div > * > :nth-child(5) { animation-delay: 180ms; }
+.nav-expander.open > div > * > :nth-child(n + 6) { animation-delay: 215ms; }
+@keyframes nav-kid-in {
+  from { opacity: 0; transform: translateX(-8px); }
+}
+
+/* The logo's four squares in a row fold into the 2x2 brand mark (teal
+   top-right) with a quarter turn: they unfold on first show and fold back on
+   hover. The grid is spaced like the favicon (public/icons/anril-favicon.svg:
+   95-unit squares on a 105-unit step), shares the row's centre and spills
+   about 8px above and below into the sidebar's empty padding, so nothing
+   beneath moves. Moves are in the mark's SVG units (components/logo.tsx).
+   On every page change the squares wave instead. */
+.anril-mark rect {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) var(--fold-delay);
+}
+.anril-mark rect:nth-of-type(1) { --fold: translate(147px, -52.5px) rotate(90deg); --fold-delay: 0ms; }
+.anril-mark rect:nth-of-type(2) { --fold: translate(14px, 52.5px) rotate(90deg); --fold-delay: 40ms; }
+.anril-mark rect:nth-of-type(3) { --fold: translate(-14px, 52.5px) rotate(90deg); --fold-delay: 80ms; }
+.anril-mark rect:nth-of-type(4) { --fold: translate(-147px, -52.5px) rotate(90deg); --fold-delay: 120ms; }
+.anril-mark:hover rect, .anril-mark:focus-visible rect { transform: var(--fold); }
+.anril-mark-in rect { animation: anril-unfold 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) calc(350ms + var(--fold-delay)) backwards; }
+@keyframes anril-unfold {
+  from { transform: var(--fold); }
+}
+.anril-mark-wave rect { animation: anril-sq-wave 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) var(--fold-delay) backwards; }
+@keyframes anril-sq-wave {
+  0%, 100% { transform: none; }
+  40% { transform: translateY(-33%) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-active::before, .nav-expander.open > div > * > *, .anril-mark rect, .nav-active .nav-carved, .nav-pip { animation: none; }
+  .nav-hop-square, .nav-icon, .nav-chevron, .nav-held-dot, .nav-expander, .anril-mark rect { transition: none; }
+  :root[data-sidebar-anim], .sidebar-shell, .nav-lbl, .nav-ws, .nav-pip, .nav-fold-icon { transition: none; }
+}

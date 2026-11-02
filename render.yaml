@@ -26,4 +26,6 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-
+      # Scheduled-jobs queue (SPEC.md). DATABASE_URL = Supabase session pooler string (port 5432).
+      - key: DATABASE_URL
+        sync: false

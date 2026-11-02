@@ -26,6 +26,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AiraLoader } from "@/components/AiraLoader";
 import { api, AdPerformanceRow, AdTrackingCodeResponse, TrackedAd } from "@/lib/api";
 import {
   useAdFilters,
@@ -485,7 +486,7 @@ export function AdPerformanceTab() {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   };
-  const { data, isValidating, mutate } = useAdPerformance(params);
+  const { data, isLoading, isValidating, mutate } = useAdPerformance(params);
   const allRows = useMemo(() => data?.data ?? [], [data]);
   const rows = useMemo(
     () => (deliveryStatus ? allRows.filter((row) => matchesDelivery(row, deliveryStatus)) : allRows),
@@ -712,7 +713,7 @@ export function AdPerformanceTab() {
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
               <PerformanceKpiCard
                 label="Chat Clicks"
-                value={count(totals.inline_link_clicks)}
+                value={isLoading ? "—" : count(totals.inline_link_clicks)}
                 description="Clicked the ad and opened a chat"
                 icon={MousePointerClick}
                 gradient="bg-gradient-to-br from-primary-500 to-primary"
@@ -720,7 +721,7 @@ export function AdPerformanceTab() {
               />
               <PerformanceKpiCard
                 label="Messages Sent"
-                value={count(totals.messages)}
+                value={isLoading ? "—" : count(totals.messages)}
                 description="Clicked and sent a message"
                 icon={MessageCircle}
                 gradient="bg-gradient-to-br from-blue-500 to-cyan-600"
@@ -728,7 +729,7 @@ export function AdPerformanceTab() {
               />
               <PerformanceKpiCard
                 label="No Message"
-                value={count(totals.clicked_no_message)}
+                value={isLoading ? "—" : count(totals.clicked_no_message)}
                 description="Clicked but did not send the message"
                 icon={MessageSquareOff}
                 gradient="bg-gradient-to-br from-amber-500 to-orange-500"
@@ -736,7 +737,7 @@ export function AdPerformanceTab() {
               />
               <PerformanceKpiCard
                 label="Message Rate"
-                value={percent(totals.conversation_rate)}
+                value={isLoading ? "—" : percent(totals.conversation_rate)}
                 description="Messages sent out of chat clicks"
                 icon={Percent}
                 gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
@@ -1001,7 +1002,9 @@ export function AdPerformanceTab() {
       )}
 
       <div className="card overflow-hidden rounded-2xl">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <AiraLoader inline className="min-h-[300px]" />
+        ) : rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50">
               <Megaphone size={24} className="text-primary-400" />

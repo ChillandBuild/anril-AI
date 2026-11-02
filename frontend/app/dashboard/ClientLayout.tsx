@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FeedbackLockGate } from "./FeedbackLockGate";
 import { Sidebar } from "@/components/sidebar";
 import { AuthRoleProvider } from "./contexts/AuthRoleContext";
 import { ActiveCallProvider } from "./contexts/ActiveCallContext";
+import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { CalendarPanel } from "@/components/CalendarPanel";
 import { SessionTracker } from "@/components/SessionTracker";
 import { AppHeader } from "@/components/AppHeader";
@@ -63,6 +64,7 @@ function DashboardAuthGuard({ children }: { children: React.ReactNode }) {
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [subStatus, setSubStatus] = useState<"loading" | "none" | "pending_approval" | "active">("loading");
+  const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
   const pathname = usePathname();
   const isMetaAds = pathname?.startsWith("/dashboard/meta-ads") ?? false;
   // Call Review fills the whole pane (its filter bar and KPIs lock to the top); NotesGate pads the telecaller view itself.
@@ -85,6 +87,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         const res = await fetch(`${API_URL}/api/v1/subscriptions/me`, { headers: auth });
         if (res.ok) {
           const data = await res.json();
+          setPurchasedFeatures((data.items ?? []).map((item: { feature_key: string }) => item.feature_key));
           setSubStatus(data.status);
         } else {
           setSubStatus("active"); // fail open — e.g. pre-existing/backfilled tenants if the call errors
@@ -107,71 +110,80 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     }
   }, [subStatus, pathname, router]);
 
+  const subscription = useMemo(
+    () => ({ status: subStatus === "loading" ? "active" as const : subStatus, purchasedFeatures }),
+    [subStatus, purchasedFeatures],
+  );
+
   if (subStatus === "loading") {
     return <AiraLoader />;
   }
 
   if (isInbox) {
     return (
+      <SubscriptionProvider value={subscription}>
+        <AuthRoleProvider>
+          <ActiveCallProvider>
+            <NotificationProvider>
+              <SessionTracker />
+              <DashboardAuthGuard>
+                <div className="h-screen bg-background overflow-hidden relative">
+                  {/* Collapsed Dashboard Rail (md+) */}
+                  <div className="hidden lg:block">
+                    <Sidebar />
+                  </div>
+                  {children}
+                  <div className="fixed top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[65] lg:hidden">
+                    <MoreMenu />
+                  </div>
+                  <MobileDashboardNav />
+                </div>
+                <CalendarPanel isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} />
+              </DashboardAuthGuard>
+            </NotificationProvider>
+          </ActiveCallProvider>
+        </AuthRoleProvider>
+      </SubscriptionProvider>
+    );
+  }
+
+  return (
+    <SubscriptionProvider value={subscription}>
       <AuthRoleProvider>
         <ActiveCallProvider>
           <NotificationProvider>
             <SessionTracker />
             <DashboardAuthGuard>
-              <div className="h-screen bg-background overflow-hidden relative">
-                {/* Collapsed Dashboard Rail (md+) */}
-                <div className="hidden md:block">
+              <div className="flex min-h-screen overflow-x-hidden bg-background">
+                <div className="hidden lg:block">
                   <Sidebar />
                 </div>
-                {children}
-                <div className="fixed top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[65] md:hidden">
-                  <MoreMenu />
-                </div>
+
+                <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--sidebar-width)] md:pt-16">
+                  <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background lg:left-[var(--sidebar-width)] md:h-16" />}>
+                    <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
+                  </Suspense>
+                  <ClaimBanner />
+                  <div className={isCallReviewPage
+                    ? "w-full min-w-0 max-w-none"
+                    : isMetaAds
+                    ? "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
+                    : "w-full min-w-0 max-w-[1400px] overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:p-7"}>
+                    {children}
+                  </div>
+                </main>
+
                 <MobileDashboardNav />
+
+                <CalendarPanel
+                  isOpen={isCalendarOpen}
+                  onClose={() => setIsCalendarOpen(false)}
+                />
               </div>
-              <CalendarPanel isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} />
             </DashboardAuthGuard>
           </NotificationProvider>
         </ActiveCallProvider>
       </AuthRoleProvider>
-    );
-  }
-
-  return (
-    <AuthRoleProvider>
-      <ActiveCallProvider>
-        <NotificationProvider>
-          <SessionTracker />
-          <DashboardAuthGuard>
-            <div className="flex min-h-screen overflow-x-hidden bg-background">
-              <div className="hidden md:block">
-                <Sidebar />
-              </div>
-
-              <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 md:ml-[220px] md:pt-16">
-                <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background md:left-[220px] md:h-16" />}>
-                  <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
-                </Suspense>
-                <ClaimBanner />
-                <div className={isCallReviewPage
-                  ? "w-full min-w-0 max-w-none"
-                  : isMetaAds
-                  ? "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
-                  : "w-full min-w-0 max-w-[1400px] overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:p-7"}>
-                  {children}
-                </div>
-              </main>
-
-              <MobileDashboardNav />
-
-              <CalendarPanel
-                isOpen={isCalendarOpen}
-                onClose={() => setIsCalendarOpen(false)}
-              />
-            </div>
-          </DashboardAuthGuard>
-        </NotificationProvider>
-      </ActiveCallProvider>
-    </AuthRoleProvider>
+    </SubscriptionProvider>
   );
 }

@@ -9,6 +9,7 @@ import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { SaveButton, SaveStatus, SectionFooter, SettingsAccordion, SettingsSection, SwitchPill } from "../SettingsSection";
 import { useSettingsForm } from "../SettingsFormContext";
 import ChangePasswordCard from "../ChangePasswordCard";
+import { AiraLoader } from "@/components/AiraLoader";
 
 const EMPTY: BusinessProfile = {
   legal_name: "",
@@ -156,9 +157,7 @@ export default function AccountSettingsPage() {
           dirty={isDirty}
         >
           {isLoading ? (
-            <div className="flex min-h-[120px] items-center justify-center font-body text-sm text-ink-muted">
-              Loading…
-            </div>
+            <AiraLoader inline className="min-h-[120px]" />
           ) : (
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

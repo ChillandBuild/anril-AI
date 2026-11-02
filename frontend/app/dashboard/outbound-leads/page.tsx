@@ -94,16 +94,6 @@ type OptedOutLead = {
   tag_name: string | null;
 };
 
-type ScheduledBroadcastItem = {
-  id: string;
-  template_name: string;
-  schedule_type: "scheduled" | "drip";
-  fire_at: string;
-  created_at: string;
-  tag_id?: string | null;
-  tag_name?: string | null;
-};
-
 type TagStats = {
   tag_id: string;
   total_sent: number;
@@ -746,6 +736,10 @@ export default function OutboundLeadsPage() {
   const [templatesFetched, setTemplatesFetched] = useState(false);
   const [stepTagsFetched, setStepTagsFetched] = useState(false);
 
+  // The fetch effects below run one render after step 4 / the history tab opens, so
+  // "not fetched yet" must read as loading too or the empty hints flash first.
+  const templatesPending = templatesLoading || !templatesFetched;
+
   const activeTemplateForVars = templates.find(t => t.name === templateName);
   const varCount = templateVarCount(activeTemplateForVars?.body_text);
 
@@ -765,6 +759,7 @@ export default function OutboundLeadsPage() {
 
   const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const stepTagsPending = tagsLoading || !stepTagsFetched;
   const [selectedTag, setSelectedTag] = useState("");
 
   const [poolNumbers, setPoolNumbers] = useState<SenderRow[] | null>(null);
@@ -806,80 +801,10 @@ export default function OutboundLeadsPage() {
   const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
 
   const [broadcastHistory, setBroadcastHistory] = useState<BroadcastHistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true); // fetched on mount
   const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "failures" | "clean">("all");
-
-  const [scheduledList, setScheduledList] = useState<ScheduledBroadcastItem[]>([]);
-  const [scheduledLoading, setScheduledLoading] = useState(false);
-  const [editingScheduledId, setEditingScheduledId] = useState<string | null>(null);
-  const [editTemplateName, setEditTemplateName] = useState("");
-  const [editFireAt, setEditFireAt] = useState("");
-  const [savingScheduledId, setSavingScheduledId] = useState<string | null>(null);
-  const [cancelingScheduledId, setCancelingScheduledId] = useState<string | null>(null);
-
-  const loadScheduled = useCallback(async () => {
-    setScheduledLoading(true);
-    try {
-      const auth = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/upload/scheduled`, { headers: auth });
-      const data: { data: ScheduledBroadcastItem[] } = await res.json();
-      setScheduledList(data.data || []);
-    } catch {
-      // best-effort — history list still works without it
-    } finally {
-      setScheduledLoading(false);
-    }
-  }, []);
-
-  function startEditScheduled(item: ScheduledBroadcastItem) {
-    setEditingScheduledId(item.id);
-    setEditTemplateName(item.template_name);
-    // fire_at is UTC ISO from the API — convert to a local datetime-local value
-    const d = new Date(item.fire_at);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    setEditFireAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-  }
-
-  async function saveEditScheduled(id: string) {
-    setSavingScheduledId(id);
-    try {
-      const auth = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/upload/scheduled/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({
-          template_name: editTemplateName || undefined,
-          fire_at: editFireAt ? new Date(editFireAt).toISOString() : undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      toast.success("Scheduled broadcast updated");
-      setEditingScheduledId(null);
-      await loadScheduled();
-    } catch {
-      toast.error("Failed to update — it may have already fired");
-    } finally {
-      setSavingScheduledId(null);
-    }
-  }
-
-  async function cancelScheduled(id: string) {
-    if (!confirm("Cancel this scheduled broadcast? It will not be sent.")) return;
-    setCancelingScheduledId(id);
-    try {
-      const auth = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/upload/scheduled/${id}/cancel`, { method: "POST", headers: auth });
-      if (!res.ok) throw new Error(await res.text());
-      setScheduledList((prev) => prev.filter((s) => s.id !== id));
-      toast.success("Scheduled broadcast cancelled");
-    } catch {
-      toast.error("Failed to cancel — it may have already fired");
-    } finally {
-      setCancelingScheduledId(null);
-    }
-  }
 
   const [optedOutList, setOptedOutList] = useState<OptedOutLead[]>([]);
   const [optedOutLoading, setOptedOutLoading] = useState(false);
@@ -975,9 +900,8 @@ export default function OutboundLeadsPage() {
   useEffect(() => {
     if (activeTab === "history") {
       refreshHistory();
-      loadScheduled();
     }
-  }, [activeTab, refreshHistory, loadScheduled]);
+  }, [activeTab, refreshHistory]);
 
   // Supabase client for realtime updates
   // Realtime subscription for message status updates
@@ -1524,6 +1448,7 @@ export default function OutboundLeadsPage() {
       setActiveTab("history");
       refreshHistory();
       setSendLoading(false);
+      toast.success("Scheduled. Manage it in Scheduled templates.");
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Send failed");
       setSendLoading(false);
@@ -1875,7 +1800,7 @@ export default function OutboundLeadsPage() {
                 <div className="bg-surface-low border border-surface-mid rounded-xl p-4 flex items-center justify-between">
                   <div>
                     <p className="font-label text-[10px] text-on-surface-muted uppercase tracking-wider mb-1 font-bold">Sender Number</p>
-                    {primaryNumberLoading ? (
+                    {primaryNumberLoading || poolNumbers === null ? (
                       <p className="font-body text-xs text-on-surface-muted">Loading primary number...</p>
                     ) : sender ? (
                       <>
@@ -1914,15 +1839,15 @@ export default function OutboundLeadsPage() {
                       </option>
                     ))}
                   </select>
-                  {templatesLoading && (
+                  {templatesPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading templates…</p>
                   )}
-                  {!templatesLoading && templatesError && (
+                  {!templatesPending && templatesError && (
                     <p className="font-label text-xs text-red-600 mt-2 font-semibold">
                       Failed to load templates. <button onClick={() => { setTemplatesError(false); setTemplatesFetched(false); }} className="underline">Retry</button>
                     </p>
                   )}
-                  {!templatesLoading && !templatesError && templates.length === 0 && (
+                  {!templatesPending && !templatesError && templates.length === 0 && (
                     <p className="font-label text-xs text-amber-600 mt-2 font-semibold">
                       No approved templates yet. <Link href="/dashboard/templates" className="underline">Create one →</Link>
                     </p>
@@ -1947,10 +1872,10 @@ export default function OutboundLeadsPage() {
                       </option>
                     ))}
                   </select>
-                  {tagsLoading && (
+                  {stepTagsPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading tags…</p>
                   )}
-                  {!tagsLoading && tags.length === 0 && (
+                  {!stepTagsPending && tags.length === 0 && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">
                       No tags yet. <button onClick={() => setActiveTab("tags")} className="underline text-primary-600">Create one →</button>
                     </p>
@@ -2603,11 +2528,11 @@ export default function OutboundLeadsPage() {
 
               <div className="flex items-center gap-3 pt-4 border-t border-surface-mid/30">
                 <Link
-                  href="/dashboard/outbound-leads?tab=history"
+                  href="/dashboard/scheduled-templates"
                   className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                 >
                   <Clock size={16} />
-                  View Scheduled Sends
+                  Manage in Scheduled templates
                 </Link>
                 <button
                   onClick={resetAll}
@@ -2847,7 +2772,7 @@ export default function OutboundLeadsPage() {
           )}
 
           {/* Body Section */}
-          {tagsListLoading ? (
+          {tagsListLoading || !tagsLoaded ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3">
               <div className="w-7 h-7 border-2 border-[var(--primary-600)] border-t-transparent rounded-full animate-spin" />
               <p className="font-label text-xs font-medium text-gray-500">Loading tags...</p>
@@ -3044,7 +2969,7 @@ export default function OutboundLeadsPage() {
             </div>
           </div>
 
-          {optedOutLoading ? (
+          {optedOutLoading || !optedOutLoaded ? (
             <div className="py-12 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
             </div>
@@ -3090,103 +3015,6 @@ export default function OutboundLeadsPage() {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {activeTab === "history" && !scheduledLoading && scheduledList.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-lg">
-          <div className="border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-4 py-4 md:px-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
-                <Clock size={18} className="text-amber-600" />
-              </div>
-              <div>
-                <h2 className="font-display text-lg font-bold text-gray-900">Upcoming</h2>
-                <p className="font-body text-xs text-gray-500 mt-0.5">Scheduled &amp; drip broadcasts waiting to fire</p>
-              </div>
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {scheduledList.map((item) => (
-              <div key={item.id} className="p-4 md:px-8 md:py-4">
-                {editingScheduledId === item.id ? (
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="min-w-[180px] flex-1">
-                      <label className="block font-label text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Template</label>
-                      <select
-                        value={editTemplateName}
-                        onChange={(e) => setEditTemplateName(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 font-body text-sm"
-                      >
-                        {templates.map((t) => (
-                          <option key={t.id} value={t.name}>{t.name}</option>
-                        ))}
-                        {!templates.some((t) => t.name === editTemplateName) && (
-                          <option value={editTemplateName}>{editTemplateName}</option>
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-label text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Fire at</label>
-                      <input
-                        type="datetime-local"
-                        value={editFireAt}
-                        onChange={(e) => setEditFireAt(e.target.value)}
-                        className="px-3 py-2 rounded-lg border border-gray-200 font-body text-sm"
-                      />
-                    </div>
-                    <button
-                      onClick={() => saveEditScheduled(item.id)}
-                      disabled={savingScheduledId === item.id}
-                      className="px-4 py-2 bg-primary text-white rounded-lg font-label text-xs font-semibold disabled:opacity-50"
-                    >
-                      {savingScheduledId === item.id ? "Saving…" : "Save"}
-                    </button>
-                    <button
-                      onClick={() => setEditingScheduledId(null)}
-                      className="px-4 py-2 bg-surface-low text-on-surface rounded-lg font-label text-xs font-semibold border border-surface-mid"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-label text-[11px] font-semibold border border-amber-100">
-                      {item.schedule_type === "drip" ? "Drip" : "Scheduled"}
-                    </span>
-                    <span className="font-display text-sm font-semibold text-gray-900">{item.template_name}</span>
-                    {item.tag_name && (
-                      <span className="px-2.5 py-1 rounded-full bg-primary-50 text-primary-700 font-label text-[11px] font-semibold border border-primary-100">
-                        {item.tag_name}
-                      </span>
-                    )}
-                    <span className="font-body text-xs text-gray-500">
-                      {new Date(item.fire_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}
-                    </span>
-                    <div className="ml-auto flex items-center gap-2">
-                      {canManageOutbound && (
-                        <>
-                          <button
-                            onClick={() => startEditScheduled(item)}
-                            className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg font-label text-xs font-semibold border border-gray-200"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => cancelScheduled(item.id)}
-                            disabled={cancelingScheduledId === item.id}
-                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-label text-xs font-semibold border border-red-200 disabled:opacity-50"
-                          >
-                            {cancelingScheduledId === item.id ? "Cancelling…" : "Cancel"}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       )}
 

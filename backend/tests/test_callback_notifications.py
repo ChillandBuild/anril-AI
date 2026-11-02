@@ -1,7 +1,8 @@
+import json
 from unittest.mock import MagicMock, patch
 
 
-def _build_db(due_jobs, claimable_jobs, leads, callers, updates):
+def _build_db(due_jobs, claimable_jobs, leads, callers, updates, enabled=True):
     # Memoize one mock per table name: the real supabase client returns fresh
     # builder objects per .table() call but a stable session/path per table, so
     # the two separate db.table("follow_up_jobs") selects must share one
@@ -11,7 +12,9 @@ def _build_db(due_jobs, claimable_jobs, leads, callers, updates):
     def make_table(name):
         t = MagicMock()
         if name == "app_settings":
-            t.select.return_value.eq.return_value.execute.return_value.data = [{"tenant_id": "t-1"}]
+            t.select.return_value.eq.return_value.execute.return_value.data = [
+                {"tenant_id": "t-1", "value": json.dumps({"enabled": enabled})}
+            ]
         elif name == "follow_up_jobs":
             chain = t.select.return_value.eq.return_value.eq.return_value.eq.return_value.lte.return_value.is_.return_value.limit.return_value
             chain.execute.side_effect = [MagicMock(data=due_jobs), MagicMock(data=claimable_jobs)]
@@ -66,7 +69,6 @@ def test_due_pass_pushes_to_assigned_and_sets_guard():
         {"c1": {"user_id": "u1"}}, updates,
     )
     with patch.object(cn, "get_supabase", return_value=db), \
-         patch.object(cn, "get_telecalling_config", return_value={"enabled": True}), \
          patch.object(cn, "get_notification_config", return_value=_cfg()), \
          patch.object(cn, "notify_user", side_effect=lambda t, u, ty, *a, **k: sent.append((u, ty))), \
          patch.object(cn, "notify_callback_claimable") as claim:
@@ -86,7 +88,6 @@ def test_claimable_pass_broadcasts_regardless_of_shift():
         {"c2": {"user_id": "u2"}}, updates,
     )
     with patch.object(cn, "get_supabase", return_value=db), \
-         patch.object(cn, "get_telecalling_config", return_value={"enabled": True}), \
          patch.object(cn, "get_notification_config", return_value=_cfg(claimable_audience="admin_only")), \
          patch.object(cn, "notify_user"), \
          patch.object(cn, "notify_callback_claimable") as claim:
@@ -101,12 +102,30 @@ def test_claimable_pass_broadcasts_regardless_of_shift():
 def test_disabled_tenant_skipped():
     from app.services import callback_notifications as cn
     updates = []
-    db = _build_db([{"id": "j", "lead_id": "l"}], [], {}, {}, updates)
+    db = _build_db([{"id": "j", "lead_id": "l"}], [], {}, {}, updates, enabled=False)
     with patch.object(cn, "get_supabase", return_value=db), \
-         patch.object(cn, "get_telecalling_config", return_value={"enabled": False}), \
          patch.object(cn, "get_notification_config", return_value=_cfg()), \
          patch.object(cn, "notify_user") as nu, \
          patch.object(cn, "notify_callback_claimable") as claim:
         res = cn.process_callback_notifications()
     assert res == {"due": 0, "claimable": 0}
     nu.assert_not_called(); claim.assert_not_called()
+
+
+def test_tenant_configs_come_from_one_app_settings_read():
+    # Regression (2026-10-31): a get_telecalling_config call per tenant every minute was
+    # ~13k app_settings requests a day. The tenant scan already returns every config.
+    from app.services import callback_notifications as cn
+    db = MagicMock()
+    settings = db.table.return_value
+    settings.select.return_value.eq.return_value.execute.return_value.data = [
+        {"tenant_id": "t-1", "value": json.dumps({"enabled": False})},
+        {"tenant_id": "t-2", "value": json.dumps({"enabled": False})},
+        {"tenant_id": "t-3", "value": "{}"},
+    ]
+    with patch.object(cn, "get_supabase", return_value=db), \
+         patch.object(cn, "get_notification_config") as ncfg:
+        res = cn.process_callback_notifications()
+    assert res == {"due": 0, "claimable": 0}
+    settings.select.assert_called_once_with("tenant_id,value")
+    ncfg.assert_not_called()

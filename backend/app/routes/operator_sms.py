@@ -1,0 +1,179 @@
+"""Operator-only Bulk9 connection and template request management."""
+from __future__ import annotations
+
+import logging
+import secrets
+import uuid
+from datetime import datetime, timezone
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
+
+from app.config import settings as env_settings
+from app.config_dynamic import SECRET_SETTING_KEYS, get_setting, invalidate_cache
+from app.db.supabase import get_supabase
+from app.dependencies.system_admin import get_system_admin
+from app.services import bulk9_client
+from app.services.audit_log import record_audit_event
+from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+_RENDER_BASE_URL = "https://aira-ai-5tfr.onrender.com"
+_REQUEST_FIELDS = "id,tenant_id,wording,template_type,status,reason,created_at,updated_at"
+
+
+def _tenant_id(raw: str) -> str:
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+
+def _tenant(db, tenant_id: str) -> None:
+    rows = db.table("tenants").select("id").eq("id", tenant_id).limit(1).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+
+def _put(db, tenant_id: str, key: str, value: str | None) -> None:
+    db.table("app_settings").upsert(
+        {"key": key, "value": value, "tenant_id": tenant_id, "is_secret": key in SECRET_SETTING_KEYS},
+        on_conflict="key,tenant_id",
+    ).execute()
+    invalidate_cache(key)
+
+
+def _mask(value: str | None) -> str | None:
+    if not value:
+        return None
+    return f"{value[:4]}••••••••{value[-4:]}" if len(value) > 10 else "••••••••"
+
+
+def _audit(db, admin: dict, tenant_id: str, action: str) -> None:
+    record_audit_event(db, tenant_id=tenant_id, actor_user_id=admin.get("user_id"), actor_role="system_admin",
+                       action=action, target_type="tenant", target_id=tenant_id, metadata={})
+
+
+async def _state(db, tenant_id: str) -> dict:
+    _tenant(db, tenant_id)
+    key = get_setting("bulk9_api_key", tenant_id=tenant_id)
+    return {
+        "connected": bool(key),
+        "key_masked": _mask(key),
+        "webhook_registered": bool(key) and get_setting("bulk9_webhook_registered", tenant_id=tenant_id) == "true",
+        "webhook_error": get_setting("bulk9_webhook_error", tenant_id=tenant_id) or None,
+    }
+
+
+def _webhooks(response: dict) -> list[dict]:
+    rows = response.get("data", response.get("webhooks"))
+    if isinstance(rows, dict):
+        rows = rows.get("webhooks")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) or not row.get("url") or row.get("id") is None for row in rows):
+        raise Bulk9Error("Unexpected webhook list response")
+    return rows
+
+
+async def _register_webhook(db, tenant_id: str, api_key: str) -> bool:
+    base = (env_settings.public_base_url or _RENDER_BASE_URL).rstrip("/")
+    url = f"{base}/webhook/bulk9/{tenant_id}"
+    secret = get_setting("bulk9_webhook_secret", tenant_id=tenant_id)
+    if not secret:
+        # Reserve once so a provider-accepted timeout can be recovered without rotating authentication.
+        secret = secrets.token_urlsafe(32)
+        _put(db, tenant_id, "bulk9_webhook_secret", secret)
+    _put(db, tenant_id, "bulk9_webhook_registered", "false")
+    _put(db, tenant_id, "bulk9_webhook_error", "Webhook setup has not been confirmed. Retry setup to check Bulk9.")
+    try:
+        rows = _webhooks(await bulk9_client.list_sms_webhooks(api_key))
+        matches = [row for row in rows if row["url"].rstrip("/") == url]
+        if matches:
+            await bulk9_client.update_sms_webhook(api_key, matches[0]["id"], url=url, secret=secret)
+            for duplicate in matches[1:]:
+                await bulk9_client.delete_sms_webhook(api_key, duplicate["id"])
+        else:
+            await bulk9_client.create_sms_webhook(api_key, url=url, secret=secret)
+    except (Bulk9Error, Bulk9Timeout) as exc:
+        logger.warning("SMS webhook setup failed for %s (%s)", tenant_id, type(exc).__name__)
+        error = ("Bulk9 did not confirm webhook setup. Retry to check the existing callback."
+                 if isinstance(exc, Bulk9Timeout) else "Bulk9 webhook setup failed. Check the connection and retry.")
+        _put(db, tenant_id, "bulk9_webhook_error", error)
+        return False
+    _put(db, tenant_id, "bulk9_webhook_registered", "true")
+    _put(db, tenant_id, "bulk9_webhook_error", None)
+    return True
+
+
+@router.get("/clients/{tenant_id}/sms")
+async def get_sms(tenant_id: str, _admin: dict = Depends(get_system_admin)):
+    return await _state(get_supabase(), _tenant_id(tenant_id))
+
+
+class KeyIn(BaseModel):
+    api_key: str = Field(min_length=10, max_length=200)
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def strip_key(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+@router.put("/clients/{tenant_id}/sms/key")
+async def save_key(tenant_id: str, body: KeyIn, admin: dict = Depends(get_system_admin)):
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    try:
+        await bulk9_client.wallet(body.api_key)
+    except (Bulk9Error, Bulk9Timeout):
+        raise HTTPException(status_code=400, detail="Bulk9 could not validate this key. Check the key and retry.")
+    _put(db, tid, "bulk9_api_key", body.api_key)
+    _audit(db, admin, tid, "operator.sms_key_saved")
+    await _register_webhook(db, tid, body.api_key)
+    return await _state(db, tid)
+
+
+@router.post("/clients/{tenant_id}/sms/webhook")
+async def reregister_webhook(tenant_id: str, admin: dict = Depends(get_system_admin)):
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    key = get_setting("bulk9_api_key", tenant_id=tid)
+    if not key:
+        raise HTTPException(status_code=409, detail="Save the client's Bulk9 key first")
+    if await _register_webhook(db, tid, key):
+        _audit(db, admin, tid, "operator.sms_webhook_registered")
+    return await _state(db, tid)
+
+
+@router.get("/clients/{tenant_id}/sms/template-requests")
+async def list_template_requests(tenant_id: str, page: int = Query(default=1, ge=1),
+                                 limit: int = Query(default=50, ge=1, le=100),
+                                 _admin: dict = Depends(get_system_admin)):
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    result = (db.table("sms_template_requests").select(_REQUEST_FIELDS, count="exact").eq("tenant_id", tid)
+              .order("created_at", desc=True).range((page - 1) * limit, page * limit - 1).execute())
+    return {"items": result.data or [], "total": result.count or 0, "page": page, "limit": limit}
+
+
+class RequestUpdateIn(BaseModel):
+    status: Literal["in_progress", "ready", "rejected"]
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@router.patch("/clients/{tenant_id}/sms/template-requests/{request_id}")
+async def update_template_request(tenant_id: str, request_id: str, body: RequestUpdateIn,
+                                  admin: dict = Depends(get_system_admin)):
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    reason = (body.reason or "").strip() or None
+    if body.status == "rejected" and not reason:
+        raise HTTPException(status_code=400, detail="Give a reason when rejecting")
+    result = (db.table("sms_template_requests")
+              .update({"status": body.status, "reason": reason, "updated_at": datetime.now(timezone.utc).isoformat()})
+              .eq("id", _tenant_id(request_id)).eq("tenant_id", tid).execute())
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    _audit(db, admin, tid, "operator.sms_template_request_updated")
+    return {"item": {key: result.data[0].get(key) for key in _REQUEST_FIELDS.split(",")}}

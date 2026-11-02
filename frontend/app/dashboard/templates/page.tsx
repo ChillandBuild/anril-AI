@@ -22,6 +22,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { AiraLoader } from "@/components/AiraLoader";
 import { LANGUAGES, STATUS_COLORS } from "./types";
 import type { Template } from "./types";
 import TemplateCard from "./components/template-card";
@@ -376,11 +377,11 @@ export default function TemplatesPage() {
             style={{ borderTopColor: s.color, borderTopWidth: "4px", borderTopStyle: "solid" }}
           >
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-subtle bg-white text-lg font-bold sm:h-12 sm:w-12" style={{ color: s.color }}>
-              {s.count}
+              {loading ? "—" : s.count}
             </div>
             <div className="min-w-0">
               <p className="font-body text-xs text-ink-muted uppercase tracking-wider font-bold">{s.label}</p>
-              <p className="font-display font-semibold text-ink text-sm mt-0.5">templates loaded</p>
+              <p className="font-display font-semibold text-ink text-sm mt-0.5">{loading ? "Loading…" : "templates loaded"}</p>
             </div>
           </div>
         ))}
@@ -546,11 +547,7 @@ export default function TemplatesPage() {
       >
         {/* Main Content Area */}
         {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="card h-64 border border-border-subtle rounded-2xl animate-pulse bg-surface-subtle" />
-          ))}
-        </div>
+        <AiraLoader inline className="min-h-[50vh]" />
       ) : filteredTemplates.length === 0 ? (
         <div className="card text-center py-16 rounded-3xl border border-border-subtle bg-white">
           <HelpCircle size={36} className="mx-auto text-ink-muted mb-3" />

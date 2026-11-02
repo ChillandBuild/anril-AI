@@ -45,8 +45,8 @@ export function ProfileMenu() {
         title={tenantName ?? undefined}
       >
         <span
-          className="flex items-center justify-center w-[34px] h-[34px] shrink-0 rounded-full text-white text-[12px] font-bold"
-          style={{ background: "linear-gradient(135deg, var(--primary-950), var(--primary-800))" }}
+          className="flex items-center justify-center w-[34px] h-[34px] shrink-0 rounded-full text-[#0A1528] text-[12px] font-bold"
+          style={{ background: "var(--primary-400)" }}
         >
           {initials}
         </span>

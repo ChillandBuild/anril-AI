@@ -18,7 +18,7 @@ from app.services.assignment import (
     save_inbox_config, save_telecalling_config,
     _INBOX_CONFIG_DEFAULT, _TELECALLING_CONFIG_DEFAULT,
 )
-from app.services import astro_bridge
+from app.services import astro_bridge, razorpay_oauth
 from app.services.intake import get_intake_config, save_intake_config
 from app.services.numbers_pool import normalize_phone_number
 
@@ -33,6 +33,15 @@ require_services_manage = require_any_permission("services.manage", "settings.ma
 
 class SettingsUpdate(BaseModel):
     updates: dict[str, str | None]
+
+
+# SMS connection settings are operator-managed; tenants cannot replace provider keys or
+# callback secrets through the general settings API. See routes/operator_sms.py.
+OPERATOR_ONLY_PREFIXES = ("sms_", "bulk9_")
+
+
+def _operator_only(key: str) -> bool:
+    return key.startswith(OPERATOR_ONLY_PREFIXES)
 
 
 # The handover wording is the 8th Description section now (owner-only, edited through
@@ -374,6 +383,8 @@ async def list_settings(ctx: dict = Depends(require_settings_read)):
     rows = result.data or []
     settings = []
     for row in rows:
+        if _operator_only(row["key"]):
+            continue
         db_value = row["value"]
         effective_value = db_value
         is_set = effective_value is not None
@@ -441,6 +452,10 @@ async def update_settings(
         raise HTTPException(status_code=400, detail="Nothing to update")
     if HANDOVER_LINE_KEY in payload.updates:
         raise HTTPException(status_code=400, detail=HANDOVER_LINE_MOVED_MESSAGE)
+    if any(key.startswith(razorpay_oauth.KEY_PREFIX) for key in payload.updates):
+        raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
+    if any(_operator_only(k) for k in payload.updates):
+        raise HTTPException(status_code=403, detail="SMS settings are managed by Anril")
     description = _checked_owner_description(payload.updates, ctx)
 
     db = get_supabase()
@@ -1145,6 +1160,8 @@ async def disconnect_channel(
     for channel in channels:
         plan = _DISCONNECT_PLAN[channel]
         unsubscribed = await _unsubscribe_channel_webhook(db, tenant_id, channel)
+        if channel == "razorpay":
+            await razorpay_oauth.disconnect(db, tenant_id)
 
         if payload.release_assets:
             for asset_type, source_key in plan["assets"]:
@@ -1204,6 +1221,47 @@ async def disconnect_channel(
         metadata={"channels": channels, "released_assets": len(released_assets)},
     )
     return {"success": True, "results": results, "released_assets": len(released_assets)}
+
+
+class RazorpayOAuthCompleteRequest(BaseModel):
+    code: str
+    state: str
+
+
+@router.post("/razorpay/oauth/start")
+async def start_razorpay_oauth(ctx: dict = Depends(require_settings_manage)):
+    """Begin Connect with Razorpay: returns the consent URL the browser should go to."""
+    try:
+        url = razorpay_oauth.start(get_supabase(), ctx["tenant_id"])
+    except razorpay_oauth.RazorpayOAuthError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    return {"authorize_url": url}
+
+
+@router.post("/razorpay/oauth/complete")
+async def complete_razorpay_oauth(
+    payload: RazorpayOAuthCompleteRequest,
+    ctx: dict = Depends(require_settings_manage),
+    user: dict = Depends(get_current_user),
+):
+    """Finish Connect with Razorpay from the callback page (code + state from the redirect)."""
+    tenant_id = ctx["tenant_id"]
+    db = get_supabase()
+    try:
+        result = await razorpay_oauth.complete(db, tenant_id, payload.code, payload.state)
+    except razorpay_oauth.RazorpayOAuthError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user.get("user_id"),
+        actor_role="tenant_user",
+        action="settings.channel_connected",
+        target_type="channel",
+        target_id="razorpay",
+        metadata={"source": "oauth", "account_id": result["account_id"]},
+    )
+    return {"success": True, **result}
 
 
 def _stamp_meta_ads_connected(db, tenant_id: str, account_id: str) -> None:
@@ -1961,6 +2019,14 @@ async def patch_inbox_config(payload: InboxConfigUpdate, ctx: dict = Depends(req
     merged = {**current, **patch}
     save_inbox_config(tenant_id, merged)
     return merged
+
+
+@router.get("/ai-auto-reply")
+async def get_ai_auto_reply_state(tenant_id: str = Depends(get_tenant_id)):
+    """Master AI switch, readable by any signed-in teammate (chat screens grey out their
+    per-lead toggle when it is off). Same rule as the reply gate: only the literal "false" is off."""
+    from app.config_dynamic import get_setting
+    return {"enabled": get_setting("ai_auto_reply_enabled", fallback="true", tenant_id=tenant_id) != "false"}
 
 
 @router.get("/telecalling-config")

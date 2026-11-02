@@ -15,17 +15,12 @@ import { TestAira } from "@/components/brain/TestAira";
 import { NEEDS_MANAGE_REASON } from "@/components/brain/testAiraLogic";
 import { useBrainData } from "@/components/brain/useBrainData";
 import { WaitingOnYou } from "@/components/brain/WaitingOnYou";
+import { AiraLoader } from "@/components/AiraLoader";
 
 const TEST_AIRA_ENDPOINT = "/api/v1/brain/sandbox";
 
 function LoadingState() {
-  return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading Anril Brain">
-      {[64, 48, 160, 200].map((height) => (
-        <div key={height} className="animate-pulse rounded-2xl bg-border-subtle" style={{ height }} aria-hidden />
-      ))}
-    </div>
-  );
+  return <AiraLoader inline />;
 }
 
 function ErrorState({ message, isRetrying, onRetry }: { message: string; isRetrying: boolean; onRetry: () => void }) {

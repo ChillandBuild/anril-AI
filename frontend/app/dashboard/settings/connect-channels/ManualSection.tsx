@@ -2,7 +2,7 @@
 import { Sliders } from "lucide-react";
 import { ZephyrCourier, timeAgo } from "./ui";
 import ChannelCard from "./ChannelCard";
-import { CHANNELS, EMBEDDED_SIGNUP_TARGETS, resolveConnectionSource } from "./channels";
+import { CHANNELS, EMBEDDED_SIGNUP_TARGETS, isChannelConfigured, razorpayOAuthAccount, resolveConnectionSource } from "./channels";
 import type { ChannelConfig, EmbeddedSignupTarget, Setting, WebhookHealth } from "./channels";
 
 export default function ManualSection({
@@ -62,7 +62,8 @@ export default function ManualSection({
 
       <div className="grid grid-cols-1 gap-5 p-5 sm:p-7 md:grid-cols-2 lg:grid-cols-3">
         {CHANNELS.map(channel => {
-          const configured = channel.fields.every(f => !f.required || settings.find(s => s.key === f.key)?.is_set);
+          const configured = isChannelConfigured(channel, settings);
+          const razorpayAccount = channel.id === "razorpay" ? razorpayOAuthAccount(settings) : null;
           const health = webhookHealth?.health?.[channel.id];
           const alert = webhookHealth?.token_alerts?.find(a => a.channel === channel.id);
           const source = resolveConnectionSource(channel.id, settings);
@@ -72,14 +73,16 @@ export default function ManualSection({
           const adsLastSync = settings.find(s => s.key === "meta_ads_last_sync_at")?.display_value;
 
           const metadata =
-            channel.id === "meta_ads"
-              ? [
-                  adsAccountName && adsAccountName !== "Not set" ? adsAccountName : "Ads account connected",
-                  adsLastSync && adsLastSync !== "Not set" ? `Synced ${timeAgo(adsLastSync)}` : null,
-                ].filter(Boolean).join(" · ")
-              : health?.last_event
-                ? `Active event: ${timeAgo(health.last_event)}`
-                : "No events received yet";
+            razorpayAccount
+              ? `Razorpay account ${razorpayAccount}`
+              : channel.id === "meta_ads"
+                ? [
+                    adsAccountName && adsAccountName !== "Not set" ? adsAccountName : "Ads account connected",
+                    adsLastSync && adsLastSync !== "Not set" ? `Synced ${timeAgo(adsLastSync)}` : null,
+                  ].filter(Boolean).join(" · ")
+                : health?.last_event
+                  ? `Active event: ${timeAgo(health.last_event)}`
+                  : "No events received yet";
 
           const embeddedTarget = EMBEDDED_SIGNUP_TARGETS[channel.id];
 
@@ -97,7 +100,10 @@ export default function ManualSection({
               embeddedBusy={Boolean(embeddedTarget) && busyTarget === embeddedTarget}
               onRefreshHealth={onRefreshHealth}
               onOpen={() => onOpenChannel(channel)}
-              onEmbeddedConnect={embeddedTarget ? () => onEmbeddedConnect(embeddedTarget) : undefined}
+              onEmbeddedConnect={
+                channel.id === "razorpay" ? undefined : embeddedTarget ? () => onEmbeddedConnect(embeddedTarget) : undefined
+              }
+              connectedLabel={razorpayAccount ? "Connected via Razorpay" : undefined}
               onDisconnect={() => onDisconnectChannel(channel.id)}
             />
           );

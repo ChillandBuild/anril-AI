@@ -9,6 +9,7 @@ import { describeScoreEvent, type ScoreEventLike } from "./scoreHistory";
 import { NewDealDialog } from "./deals/NewDealDialog";
 import { StageBadge } from "./deals/StageBadge";
 import { formatRupees } from "./deals/money";
+import { useMasterAiEnabled } from "@/lib/useMasterAiEnabled";
 
 // ─── Channel icons ─────────────────────────────────────────────────────────────
 function IgIcon({ size = 11 }: { size?: number }) {
@@ -212,6 +213,7 @@ export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetails
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const masterAiEnabled = useMasterAiEnabled();
   const [converting, setConverting] = useState(false);
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [deals, setDeals] = useState<DealSummary[]>([]);
@@ -406,22 +408,24 @@ export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetails
         {activeTab === "actions" && (
           <div className="px-4 py-5 space-y-4">
             {/* AI toggle */}
-            <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3">
+            <div className={cn("rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3", !masterAiEnabled && "opacity-60")}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-label text-xs font-semibold text-on-surface">AI Auto-Reply</p>
                   <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                    {lead.ai_enabled !== false ? "Bot is handling replies" : "You are handling replies"}
+                    {!masterAiEnabled
+                      ? "AI is off for your whole account — turn it on in Settings → Auto-Reply"
+                      : lead.ai_enabled !== false ? "Bot is handling replies" : "You are handling replies"}
                   </p>
                 </div>
                 <span className={cn(
                   "w-2.5 h-2.5 rounded-full shrink-0",
-                  lead.ai_enabled !== false ? "bg-emerald-500" : "bg-amber-500"
+                  masterAiEnabled && lead.ai_enabled !== false ? "bg-emerald-500" : "bg-amber-500"
                 )} />
               </div>
               <button
                 onClick={handleToggleAI}
-                disabled={toggling}
+                disabled={toggling || !masterAiEnabled}
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-2 rounded-lg font-label text-xs font-semibold transition-colors disabled:opacity-40",
                   lead.ai_enabled !== false

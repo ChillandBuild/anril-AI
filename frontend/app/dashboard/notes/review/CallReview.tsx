@@ -13,6 +13,7 @@ import { SplitAudio, type SplitAudioHandle } from "@/components/SplitAudio";
 import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type Preset = "today" | "7" | "30" | "custom";
 type Tab = "all" | "called" | "notes" | "uncalled" | "review";
@@ -427,9 +428,7 @@ export default function CallReview() {
           </div>
           <div className="overflow-y-auto p-1.5 max-h-[420px] lg:max-h-none lg:flex-1 lg:min-h-0">
             {loading ? (
-              <div className="py-12 flex justify-center">
-                <Loader2 size={18} className="animate-spin text-primary" />
-              </div>
+              <AiraLoader inline className="min-h-[200px]" />
             ) : error ? (
               <p className="py-10 px-4 text-center font-body text-xs text-rose-700">{error}. Refresh the page to try again.</p>
             ) : visible.length === 0 ? (

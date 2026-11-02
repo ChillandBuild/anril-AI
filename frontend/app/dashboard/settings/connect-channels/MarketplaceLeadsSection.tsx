@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FlaskConical, RefreshCw } from "lucide-react";
+import { FlaskConical, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, MarketplaceStatus, WabaTemplate, api, getAuthHeaders } from "@/lib/api";
+import { SettingsSection } from "../SettingsSection";
 import { CopyButton, timeAgo } from "./ui";
 
 type ProviderId = "indiamart" | "justdial";
@@ -197,6 +198,7 @@ function ProviderCard({
 
 function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
   const [templates, setTemplates] = useState<WabaTemplate[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
@@ -206,7 +208,8 @@ function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
         setTemplates(all.filter((t) => (t.status || "").toUpperCase() === "APPROVED"));
         setSelected(current.template_id ?? "");
       })
-      .catch(() => toast.error("Couldn't load your WhatsApp templates"));
+      .catch(() => toast.error("Couldn't load your WhatsApp templates"))
+      .finally(() => setLoaded(true));
   }, []);
 
   async function save(templateId: string) {
@@ -234,7 +237,7 @@ function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
       </p>
       <select
         value={selected}
-        disabled={!canManage || saving}
+        disabled={!canManage || saving || !loaded}
         onChange={(e) => save(e.target.value)}
         className="w-full rounded-xl border border-border bg-white px-3 py-2 font-body text-sm text-ink disabled:opacity-60"
       >
@@ -246,7 +249,7 @@ function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
         ))}
       </select>
       {preview && <p className="rounded-xl bg-white p-3 font-body text-xs text-ink-secondary">{preview}</p>}
-      {templates.length === 0 && (
+      {loaded && templates.length === 0 && (
         <p className="font-body text-[11px] text-ink-muted">No approved templates yet — create one under Templates.</p>
       )}
     </div>
@@ -264,28 +267,31 @@ export default function MarketplaceLeadsSection({ canManage = true }: { canManag
     loadStatus();
   }, [loadStatus]);
 
+  const connectedCount = status ? PROVIDERS.filter((p) => status[p.id]?.connected).length : 0;
+
   return (
-    <div className="space-y-4 rounded-[28px] border border-border-subtle bg-white p-6">
-      <div>
-        <p className="font-display text-base font-bold text-ink">IndiaMART &amp; JustDial</p>
-        <p className="mt-0.5 font-body text-xs text-ink-secondary">
-          Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a
-          lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call
-          list.
-        </p>
+    <SettingsSection
+      id="marketplace-leads"
+      icon={Store}
+      accent="sky"
+      title="IndiaMART & JustDial"
+      description="Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call list."
+      status={status ? { label: connectedCount ? `${connectedCount} connected` : "Not connected", tone: connectedCount ? "on" : "warn" } : undefined}
+    >
+      <div className="space-y-4">
+        <WelcomeTemplatePicker canManage={canManage} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {PROVIDERS.map((p) => (
+            <ProviderCard
+              key={p.id}
+              {...p}
+              canManage={canManage}
+              status={status?.[p.id] ?? null}
+              onChanged={loadStatus}
+            />
+          ))}
+        </div>
       </div>
-      <WelcomeTemplatePicker canManage={canManage} />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {PROVIDERS.map((p) => (
-          <ProviderCard
-            key={p.id}
-            {...p}
-            canManage={canManage}
-            status={status?.[p.id] ?? null}
-            onChanged={loadStatus}
-          />
-        ))}
-      </div>
-    </div>
+    </SettingsSection>
   );
 }

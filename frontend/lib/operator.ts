@@ -115,3 +115,38 @@ export function capUsagePercent(used: number, cap: number | null): number {
   if (cap === null || cap <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((used / cap) * 100)));
 }
+
+// SMS connection and template requests in client Configuration.
+export type OperatorSmsTemplateRequest = {
+  id: string;
+  wording: string;
+  template_type: string;
+  status: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+export type OperatorSms = {
+  connected: boolean;
+  key_masked: string | null;
+  webhook_registered: boolean;
+  webhook_error: string | null;
+  sms_count?: number | null;
+};
+const smsPath = (tenantId: string) => `/api/v1/operator/clients/${encodeURIComponent(tenantId)}/sms`;
+export const getOperatorSms = (tenantId: string) => operatorFetch<OperatorSms>(smsPath(tenantId));
+export const putOperatorSmsKey = (tenantId: string, api_key: string) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/key`, { method: "PUT", body: JSON.stringify({ api_key }) });
+export const registerOperatorSmsWebhook = (tenantId: string) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/webhook`, { method: "POST" });
+export const getOperatorSmsTemplateRequests = (tenantId: string, page = 1, limit = 10) =>
+  operatorFetch<{ items: OperatorSmsTemplateRequest[]; total: number; page: number; limit: number }>(
+    `${smsPath(tenantId)}/template-requests?page=${page}&limit=${limit}`,
+  );
+export const updateOperatorSmsTemplateRequest = (
+  tenantId: string,
+  id: string,
+  body: { status: "in_progress" | "ready" | "rejected"; reason?: string },
+) => operatorFetch<{ item: OperatorSmsTemplateRequest }>(`${smsPath(tenantId)}/template-requests/${encodeURIComponent(id)}`, {
+  method: "PATCH", body: JSON.stringify(body),
+});

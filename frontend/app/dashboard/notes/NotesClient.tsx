@@ -17,6 +17,7 @@ import {
 } from "./components/shared";
 import { useLeadsWithActivity, useNotes, useAllNotes } from "@/hooks/useApi";
 import { TickMark } from "@/components/ui/controls";
+import { AiraLoader } from "@/components/AiraLoader";
 import { SegmentBadge } from "@/components/segment-badge";
 
 type PageMode = "by_lead" | "all_notes";
@@ -60,7 +61,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
   }, [viewMode]);
 
   // by-lead state
-  const { data: leadsData, mutate: mutateLeads } = useLeadsWithActivity(true, fallbackLeads || undefined);
+  const { data: leadsData, isLoading: leadsLoading, mutate: mutateLeads } = useLeadsWithActivity(true, fallbackLeads || undefined);
   const leads = useMemo(() => (leadsData?.data || []) as Lead[], [leadsData?.data]);
   const [search, setSearch] = useState("");
   const [lastCalledMap, setLastCalledMap] = useState<Record<string, string>>({});
@@ -323,7 +324,8 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
               />
             </div>
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {sortedLeads.length === 0 && (
+              {leadsLoading && <AiraLoader inline className="min-h-[200px]" />}
+              {!leadsLoading && sortedLeads.length === 0 && (
                 <p className="font-body text-sm text-[#94a3b8] px-2">No leads found.</p>
               )}
               {sortedLeads.map((lead) => (

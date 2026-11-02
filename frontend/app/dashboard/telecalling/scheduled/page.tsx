@@ -30,6 +30,7 @@ import type { Note } from "../types";
 import { usePolling } from "@/hooks/usePolling";
 import { useActiveCall } from "../../contexts/ActiveCallContext";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
+import { AiraLoader } from "@/components/AiraLoader";
 
 type GroupedCallbacks = {
   overdue: CallbackBoardItem[];
@@ -265,9 +266,7 @@ export default function ScheduledCallsPage() {
 
 
       {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <RefreshCw size={32} className="animate-spin text-primary" />
-        </div>
+        <AiraLoader inline />
       ) : callbacks.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-3xl border border-[#e2e8f0]/60 shadow-sm">
           <div className="w-14 h-14 bg-[#f8fafc] rounded-full flex items-center justify-center text-[#94a3b8] border border-[#f1f5f9] mx-auto mb-4">

@@ -220,10 +220,7 @@ async def test_reconcile_survives_a_failing_session_and_continues():
 
 
 def test_reconcile_job_is_registered_in_the_scheduler():
-    import inspect
+    import app.queue.tasks  # noqa: F401  (registers the periodic tasks)
+    from app.queue.app import queue_app
 
-    import app.main as main
-
-    src = inspect.getsource(main)
-    assert "astro-push-reconcile" in src
-    assert "_reconcile_astro_pushes" in src
+    assert "astro-push-reconcile" in queue_app.tasks

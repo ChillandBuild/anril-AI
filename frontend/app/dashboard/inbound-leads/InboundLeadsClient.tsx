@@ -10,6 +10,7 @@ import {
 import { cn, formatPhone } from "@/lib/utils";
 import { SegmentBadge } from "@/components/segment-badge";
 import { toast } from "sonner";
+import { AiraLoader } from "@/components/AiraLoader";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -485,10 +486,10 @@ export function InboundLeadsClient({
       {/* ── Stats & Actions ────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
         <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Total Inbound Leads" value={total} icon={RadioTower} gradient="bg-gradient-to-br from-primary-500 to-primary" tone="border-t-primary-500" />
-          <StatCard label="Showing Now" value={leads.length} icon={Users} gradient="bg-gradient-to-br from-blue-500 to-cyan-600" tone="border-t-sky-400" />
-          <StatCard label="Unique Keywords" value={uniqueKeywords} icon={MessageSquare} gradient="bg-gradient-to-br from-amber-500 to-orange-500" tone="border-t-amber-400" />
-          <StatCard label="Active Campaigns" value={uniqueCampaigns} icon={Megaphone} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" tone="border-t-emerald-400" />
+          <StatCard label="Total Inbound Leads" value={loading ? "—" : total} icon={RadioTower} gradient="bg-gradient-to-br from-primary-500 to-primary" tone="border-t-primary-500" />
+          <StatCard label="Showing Now" value={loading ? "—" : leads.length} icon={Users} gradient="bg-gradient-to-br from-blue-500 to-cyan-600" tone="border-t-sky-400" />
+          <StatCard label="Unique Keywords" value={loading ? "—" : uniqueKeywords} icon={MessageSquare} gradient="bg-gradient-to-br from-amber-500 to-orange-500" tone="border-t-amber-400" />
+          <StatCard label="Active Campaigns" value={loading ? "—" : uniqueCampaigns} icon={Megaphone} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" tone="border-t-emerald-400" />
         </div>
         <div className="flex flex-col justify-between gap-2 p-1">
           <div className="flex gap-2">
@@ -552,10 +553,7 @@ export function InboundLeadsClient({
       {/* ── Table ──────────────────────────────────────────────── */}
       <div className="card rounded-2xl overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-3 text-on-surface-muted">
-            <RefreshCw size={17} className="animate-spin" />
-            <span className="font-body text-sm">Loading inbound leads…</span>
-          </div>
+          <AiraLoader inline className="min-h-[300px]" />
         ) : leads.length === 0 ? (
           <EmptyState />
         ) : (

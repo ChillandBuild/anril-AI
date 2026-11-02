@@ -4,7 +4,7 @@ import { Phone, Eye, EyeOff } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { useSettingsForm, CLEAR_SECRET } from "./SettingsFormContext";
 import {
-  SaveButton, SaveStatus, SectionFooter, SettingsAccordion, SettingsSection,
+  SaveButton, SaveStatus, SectionFooter, SettingsSection,
 } from "./SettingsSection";
 
 // TeleCMI credentials for click-to-call telecalling. Lives inside Connect
@@ -141,8 +141,7 @@ export function CallingCredentialsSection() {
   const secretMap = Object.fromEntries(VOICE_SECTION.fields.map(f => [f.key, f.secret]));
 
   return (
-    <SettingsAccordion>
-      <SettingsSection
+    <SettingsSection
         id="voice-credentials"
         icon={VOICE_SECTION.icon}
         accent="amber"
@@ -219,7 +218,6 @@ export function CallingCredentialsSection() {
             onClick={() => handleSave("voice", VOICE_SECTION.fields.map(f => f.key), secretMap)}
           />
         </SectionFooter>
-      </SettingsSection>
-    </SettingsAccordion>
+    </SettingsSection>
   );
 }

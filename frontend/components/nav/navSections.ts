@@ -1,7 +1,7 @@
 import {
-  BarChart2, BookOpen, Brain, Calendar, CreditCard, FileCheck, HandCoins, Layers,
-  Megaphone, MessageSquare, Phone, RadioTower, Settings, ShieldCheck, ShoppingBag,
-  StickyNote, Upload, Users, Zap, type LucideIcon,
+  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
+  Inbox, Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
+  ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
 } from "lucide-react";
 import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
 
@@ -15,6 +15,7 @@ export interface NavAccess {
   messagingOn: boolean;
   inboundOn: boolean;
   outboundOn: boolean;
+  smsOn: boolean;
   canServices: boolean;
   canSettings: boolean;
   brainGate: boolean;
@@ -62,7 +63,8 @@ export type NavEntry = NavLeaf | NavGroup;
 export interface NavSection {
   key: SectionKey;
   title: string;
-  defaultOpen: boolean;
+  /** Icon on the section's row in the sidebar. */
+  icon: LucideIcon;
   entries: NavEntry[];
 }
 
@@ -140,7 +142,7 @@ const INBOUND_LEADS: NavLeaf = {
   key: "inbound-leads",
   href: "/dashboard/inbound-leads",
   label: "Inbound Leads",
-  icon: RadioTower,
+  icon: ArrowDownToLine,
   visible: (a) => a.isSubscribed && a.can("inbound_leads.view") && a.inboundOn,
   isActive: (p) => p.startsWith("/dashboard/inbound-leads"),
 };
@@ -165,14 +167,37 @@ const AUTO_MESSAGES: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/auto-messages"),
 };
 
+const SCHEDULED_TEMPLATES: NavLeaf = {
+  kind: "link",
+  key: "scheduled-templates",
+  href: "/dashboard/scheduled-templates",
+  label: "Scheduled templates",
+  icon: CalendarClock,
+  visible: (a) =>
+    a.isSubscribed &&
+    a.canAny(["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"]) &&
+    (a.outboundOn || a.messagingOn),
+  isActive: (p) => p.startsWith("/dashboard/scheduled-templates"),
+};
+
 const OUTBOUND_LEADS: NavLeaf = {
   kind: "link",
   key: "outbound-leads",
   href: "/dashboard/outbound-leads",
   label: "Outbound Leads",
-  icon: Upload,
+  icon: Send,
   visible: (a) => a.isSubscribed && a.canAny(["outbound_leads.view", "outbound_leads.manage"]) && a.outboundOn,
   isActive: (p) => p.startsWith("/dashboard/outbound-leads"),
+};
+
+const SMS: NavLeaf = {
+  kind: "link",
+  key: "sms",
+  href: "/dashboard/sms",
+  label: "SMS",
+  icon: MessageSquareText,
+  visible: (a) => a.isSubscribed && a.smsOn && a.canAny(["sms.view", "sms.manage"]),
+  isActive: (p) => p === "/dashboard/sms" || p.startsWith("/dashboard/sms/"),
 };
 
 const DEALS: NavLeaf = {
@@ -206,7 +231,7 @@ const TELECALLING_GROUP: NavGroup = {
   kind: "group",
   key: "telecalling",
   label: "Telecalling",
-  icon: Phone,
+  icon: PhoneCall,
   visible: (a) => a.telecallingVisible,
   isActive: (p) => startsWithAny(p, ["/dashboard/telecalling", "/dashboard/notes"]),
 };
@@ -216,7 +241,7 @@ const TEAM_PERFORMANCE: NavLeaf = {
   key: "team-performance",
   href: "/dashboard/team",
   label: "Team Performance",
-  icon: Users,
+  icon: Trophy,
   visible: (a) => a.isSubscribed && a.can("team.view"),
   isActive: (p) => p.startsWith("/dashboard/team"),
 };
@@ -293,14 +318,14 @@ const SETTINGS_GROUP: NavGroup = {
 
 /** Sections render top to bottom in this order. Dashboard and Analytics sit above them. */
 export const NAV_SECTIONS: readonly NavSection[] = [
-  { key: "inbox", title: "INBOX & LEADS", defaultOpen: true, entries: [CONVERSATIONS, SEGMENTS] },
-  { key: "engage", title: "ANRIL ENGAGE", defaultOpen: false, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] },
-  { key: "reach", title: "ANRIL REACH", defaultOpen: false, entries: [OUTBOUND_LEADS] },
-  { key: "commerce", title: "SALES · ANRIL COMMERCE", defaultOpen: false, entries: [DEALS, CATALOGUE] },
-  { key: "callIq", title: "ANRIL CALL IQ", defaultOpen: false, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
-  { key: "aiSetup", title: "AI SETUP", defaultOpen: false, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
-  { key: "whatsappSetup", title: "WHATSAPP SETUP", defaultOpen: false, entries: [TEMPLATES, NUMBERS_POOL] },
-  { key: "account", title: "ACCOUNT", defaultOpen: false, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
+  { key: "inbox", title: "Inbox & Leads", icon: Inbox, entries: [CONVERSATIONS, SEGMENTS] },
+  { key: "engage", title: "Anril Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
+  { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS, SMS] },
+  { key: "commerce", title: "Anril Commerce", icon: Coins, entries: [DEALS, CATALOGUE] },
+  { key: "callIq", title: "Anril Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
+  { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
+  { key: "whatsappSetup", title: "WhatsApp Setup", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] },
+  { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
 ];
 
 /** Visible entries only, in render order. Empty means the section heading is hidden. */
@@ -308,16 +333,27 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
   return section.entries.filter((entry) => entry.visible(access));
 }
 
-/** Explicit user click wins. Otherwise open if it is a default-open section or holds the current page. */
-export function resolveSectionOpen(
-  explicit: boolean | undefined,
-  defaultOpen: boolean,
-  containsActivePage: boolean,
-): boolean {
-  if (explicit !== undefined) return explicit;
-  return defaultOpen || containsActivePage;
+/**
+ * The one open section (an accordion, so the menu never grows past the
+ * screen). A click wins (null = all shut); otherwise the section holding the
+ * current page. Pages outside every section (Dashboard, Analytics) shut all.
+ */
+export function resolveOpenSection(
+  choice: string | null | undefined,
+  sections: readonly NavSection[],
+  pathname: string,
+): string | null {
+  if (choice !== undefined) return choice;
+  return sections.find((s) => sectionContainsPage(s, pathname))?.key ?? null;
 }
 
 export function sectionContainsPage(section: NavSection, pathname: string): boolean {
   return section.entries.some((entry) => entry.isActive(pathname));
+}
+
+/** Wide pages that fold the desktop sidebar to its icon strip when opened. */
+const FOLDS_SIDEBAR: readonly NavEntry[] = [CONVERSATIONS, SEGMENTS, INBOUND_LEADS, OUTBOUND_LEADS, DEALS, TELECALLING_GROUP];
+
+export function sidebarFoldsOn(pathname: string): boolean {
+  return FOLDS_SIDEBAR.some((entry) => entry.isActive(pathname));
 }
