@@ -35,6 +35,7 @@ const plusJakarta = localFont({
 const dancingScript = localFont({
   src: "./fonts/dancing-script-latin-var.woff2",
   variable: "--font-script",
+  preload: false, // only the old landing styles use it; preloading it cost every page 42 KB
   display: "swap",
   weight: "400 700",
 });
