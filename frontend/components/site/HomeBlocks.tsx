@@ -102,7 +102,7 @@ export function IndustryList() {
           const Icon = INDUSTRY_ICON[i.id] ?? Sparkles;
           return (
             <li key={i.id} data-reveal style={{ "--rd": `${idx * 60}ms` } as React.CSSProperties}>
-              <Link prefetch={false} href={`/new/industries#${i.id}`} className={s.tile}>
+              <Link prefetch={false} href={`/industries#${i.id}`} className={s.tile}>
                 <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
                 <span className={s.tname}>{i.name}</span>
                 <span className={s.peek} aria-hidden="true">
@@ -117,7 +117,7 @@ export function IndustryList() {
           );
         })}
         <li data-reveal style={{ "--rd": `${INDUSTRIES.length * 60}ms` } as React.CSSProperties}>
-          <Link prefetch={false} href="/new/industries#more" className={`${s.tile} ${s.more}`}>
+          <Link prefetch={false} href="/industries#more" className={`${s.tile} ${s.more}`}>
             <Sparkles size={22} strokeWidth={1.6} aria-hidden="true" />
             <span className={s.tname}>Any business</span>
             <span className={s.peek} aria-hidden="true">

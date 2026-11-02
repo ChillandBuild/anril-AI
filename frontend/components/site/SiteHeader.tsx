@@ -28,8 +28,8 @@ export function SiteHeader() {
     menuButtonRef.current?.focus();
   }, []);
 
-  // The home page is served at "/" (rewritten from /new), so both addresses count as home.
-  const isHome = pathname === "/" || pathname === "/new";
+  // The home page is served at "/" (rewritten from /new).
+  const isHome = pathname === "/";
   const solid = !isHome || scrolled;
   const cls = [s.hdr, mounted && s.live, solid && s.solid].filter(Boolean).join(" ");
 

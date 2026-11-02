@@ -47,10 +47,10 @@ export function MakerPanel() {
               <a href={MAKER.href} rel="noopener">Visit {MAKER.name}</a>
             </li>
             <li>
-              <Link prefetch={false} href="/new/pricing">See the four modules</Link>
+              <Link prefetch={false} href="/pricing">See the four modules</Link>
             </li>
             <li>
-              <Link prefetch={false} href="/new/industries">See examples by industry</Link>
+              <Link prefetch={false} href="/industries">See examples by industry</Link>
             </li>
           </ul>
         </div>

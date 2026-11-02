@@ -13,13 +13,27 @@ const nextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
-  // The marketing site built under /new is the homepage: "/" serves it in place (the address bar stays "/"),
-  // and the old /new address redirects to "/". The previous homepage file (app/page.tsx) is no longer reached.
+  // The marketing site lives in app/new but is served at clean addresses: "/", "/product", "/pricing",
+  // "/industries" and "/about" rewrite to it in place (the address bar stays clean). Any old /new address
+  // redirects to the clean one; the #hash is kept by the browser. app/page.tsx is no longer reached.
   async redirects() {
-    return [{ source: "/new", destination: "/", permanent: true }];
+    return [
+      { source: "/new", destination: "/", permanent: true },
+      { source: "/new/:path*", destination: "/:path*", permanent: true },
+    ];
   },
   async rewrites() {
-    return { beforeFiles: [{ source: "/", destination: "/new" }], afterFiles: [], fallback: [] };
+    return {
+      beforeFiles: [
+        { source: "/", destination: "/new" },
+        { source: "/product", destination: "/new/product" },
+        { source: "/pricing", destination: "/new/pricing" },
+        { source: "/industries", destination: "/new/industries" },
+        { source: "/about", destination: "/new/about" },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
   },
 };
 

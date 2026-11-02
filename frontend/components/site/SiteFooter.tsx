@@ -5,10 +5,10 @@ import s from "./SiteFooter.module.css";
 
 const PRODUCT = NAV.find((n) => n.label === "Products")?.children ?? [];
 const COMPANY = [
-  { label: "About", href: "/new/about" },
-  { label: "Plans", href: "/new/pricing" },
-  { label: "Industries", href: "/new/industries" },
-  { label: "Contact", href: "/new/about#contact" },
+  { label: "About", href: "/about" },
+  { label: "Plans", href: "/pricing" },
+  { label: "Industries", href: "/industries" },
+  { label: "Contact", href: "/about#contact" },
 ];
 const LEGAL = LEGAL_LINKS.filter((l) => l.label !== "Contact");
 

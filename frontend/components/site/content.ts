@@ -103,27 +103,27 @@ export type NavItem = NavLink & { children?: readonly NavLink[] };
 export const NAV: readonly NavItem[] = [
   {
     label: "Products",
-    href: "/new/product",
+    href: "/product",
     children: [
-      { label: "AI replies", href: "/new/product#replies" },
-      { label: "Lead scoring", href: "/new/product#scoring" },
-      { label: "Telecaller routing", href: "/new/product#routing" },
-      { label: "Call scoring", href: "/new/product#call-scoring" },
+      { label: "AI replies", href: "/product#replies" },
+      { label: "Lead scoring", href: "/product#scoring" },
+      { label: "Telecaller routing", href: "/product#routing" },
+      { label: "Call scoring", href: "/product#call-scoring" },
     ],
   },
-  { label: "Plans", href: "/new/pricing" },
+  { label: "Plans", href: "/pricing" },
   {
     label: "Resources",
-    href: "/new/industries",
-    children: INDUSTRIES.map((i) => ({ label: i.name, href: `/new/industries#${i.id}` })),
+    href: "/industries",
+    children: INDUSTRIES.map((i) => ({ label: i.name, href: `/industries#${i.id}` })),
   },
   {
     label: "Company",
-    href: "/new/about",
+    href: "/about",
     children: [
-      { label: "About", href: "/new/about" },
-      { label: "Contact", href: "/new/about#contact" },
-      { label: DEMO_LABEL, href: "/new/about#demo" },
+      { label: "About", href: "/about" },
+      { label: "Contact", href: "/about#contact" },
+      { label: DEMO_LABEL, href: "/about#demo" },
     ],
   },
 ];
@@ -132,5 +132,5 @@ export const LEGAL_LINKS: readonly NavLink[] = [
   { label: "Privacy policy", href: "/privacy-policy" },
   { label: "Terms and conditions", href: "/terms-and-conditions" },
   { label: "Data deletion", href: "/data-deletion" },
-  { label: "Contact", href: "/new/about#contact" },
+  { label: "Contact", href: "/about#contact" },
 ];
