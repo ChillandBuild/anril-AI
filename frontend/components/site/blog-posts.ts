@@ -1,8 +1,8 @@
 import type { FaqEntry } from "./schema";
 
 // Blog articles. Facts about Anril AI come from the SEO brief and the product; the rest is general guidance
-// that does not depend on a number or a competitor. Articles that need live prices (WhatsApp API pricing,
-// competitor comparison) are NOT here: they must be written on the day of publishing with prices checked.
+// that does not depend on a number or a competitor. The WhatsApp API pricing article quotes Meta rates only as
+// approximate figures: re-check them against Meta's rate card. The competitor comparison is NOT here: it needs prices checked on the day.
 
 export type Block = { type: "h2"; text: string } | { type: "p"; text: string } | { type: "ul"; items: readonly string[] };
 
@@ -168,6 +168,68 @@ export const POSTS: readonly Post[] = [
       { q: "Who scores the leads in Anril?", a: "Anril's AI scores each lead from what they asked and how they answered, and updates the score with every new message." },
       { q: "Can I define what counts as a hot lead?", a: "Yes. You describe what a buying step looks like in your business, and the scoring follows that." },
       { q: "How much does it cost?", a: "Plans start from ₹999 a month (plus GST)." },
+    ],
+  },
+  {
+    slug: "whatsapp-business-api-pricing-india",
+    title: "WhatsApp Business API pricing in India (2026): what you actually pay",
+    description:
+      "How WhatsApp Business API pricing works in India: Meta charges per delivered message by category, plus your provider's plan. What is free, what is not, and an example.",
+    published: "2026-11-02",
+    updated: "2026-11-02",
+    author: BLOG_AUTHOR,
+    link: { href: "/pricing", label: "Anril plans from ₹999 a month" },
+    body: [
+      { type: "p", text: "WhatsApp Business API pricing in India has two parts: Meta's charge for each message delivered, and your provider's monthly plan. Meta charges per delivered message, and the rate depends on the message category and the country of the person you message. The provider's plan, for example Anril's from ₹999 a month (plus GST), is separate." },
+      { type: "h2", text: "Part 1: what Meta charges" },
+      { type: "p", text: "Meta charges for each business message that is delivered. If a message is not delivered, you are not charged. Messages that customers send to you are free. The rate depends on the message category:" },
+      { type: "ul", items: ["Marketing: offers, promotions and announcements. This is the most expensive category.", "Utility: messages about something the customer did, such as an order update or a booking confirmation.", "Authentication: one-time passwords and login codes.", "Service: replies to a customer who messaged you first, sent inside the 24-hour customer service window."] },
+      { type: "p", text: "Marketing, utility and authentication messages are sent as approved templates and can be sent at any time. Service messages are not templates and can only be sent inside the 24-hour window that opens when the customer messages you." },
+      { type: "h2", text: "What is free" },
+      { type: "ul", items: ["Messages that customers send to your business.", "Each business phone number gets 1,000 free service messages a month. They do not roll over.", "When a customer messages you by tapping a Click to WhatsApp ad, a free entry point window opens (Meta says up to 7 days), and your messages in that window are free."] },
+      { type: "p", text: "Meta has changed these rules several times, and one change took effect on 1 October 2026: utility templates sent inside an open customer service window used to be free and are now charged, except inside a free entry point window. Always check Meta's current rules before you budget." },
+      { type: "h2", text: "Approximate rates in India" },
+      { type: "p", text: "Meta publishes its rates in a rate card, and providers report them in rupees. As reported by providers in 2026, marketing messages in India cost roughly ₹0.86 each after Meta's increase on 1 January 2026, and utility and authentication messages roughly ₹0.115 each. Treat these as a guide only: they exclude GST, a provider may add its own markup, and Meta can change them. Confirm the current figure on Meta's rate card or with your provider before you plan." },
+      { type: "p", text: "Meta also now bills Indian businesses in rupees. Eligible accounts must move to INR billing by 31 December 2026." },
+      { type: "h2", text: "Part 2: your provider's plan" },
+      { type: "p", text: "A provider connects you to the API and gives you the tools to use it: campaigns, a shared inbox, chatbot and reports. Plans vary in what they include and how they count usage. Anril plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. Only AI replies are counted, not customer messages, and WhatsApp message charges from Meta are billed separately." },
+      { type: "h2", text: "A worked example" },
+      { type: "p", text: "Say you send a marketing campaign to 5,000 contacts and 4,800 messages are delivered. Your Meta cost is 4,800 multiplied by the current marketing rate. Customers who reply start a 24-hour window, and your answers inside that window are service messages, which count towards the 1,000 free service messages a month. Your provider's plan is added on top, plus GST." },
+      { type: "h2", text: "How to keep WhatsApp costs down" },
+      { type: "ul", items: ["Send marketing messages only to people who want them, since you pay for every delivered message.", "Segment your list so each message is relevant and gets replies.", "Use Click to WhatsApp ads, because the free entry point window makes the first conversation free.", "Answer replies inside the 24-hour window with service messages instead of sending new templates."] },
+    ],
+    faqs: [
+      { q: "Is WhatsApp Business API free?", a: "No. Meta charges for delivered business messages, by category, and a provider charges for its plan. Messages customers send you are free, and each number gets 1,000 free service messages a month." },
+      { q: "Does Anril's price include WhatsApp message charges?", a: "No. WhatsApp message charges from Meta are billed separately from the Anril plan." },
+      { q: "How much does Anril cost?", a: "Plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan." },
+    ],
+  },
+  {
+    slug: "instagram-auto-dm-reply-automatically",
+    title: "Instagram auto DM: how to reply to every Instagram message automatically",
+    description:
+      "Instagram auto DM replies answer customer messages in seconds, even at night. Learn what automation can do, what to avoid, and how to hand over to a person.",
+    published: "2026-11-02",
+    updated: "2026-11-02",
+    author: BLOG_AUTHOR,
+    link: { href: "/whatsapp-chatbot", label: "Anril's AI chatbot for WhatsApp, Instagram and Facebook" },
+    body: [
+      { type: "p", text: "An Instagram auto DM replies to customer messages automatically, so a person who messages your business gets an answer in seconds instead of hours. The best setups go beyond a fixed greeting: an AI assistant answers real questions from your business information, finds out what the customer wants, and passes serious buyers to your team." },
+      { type: "h2", text: "Why replying fast matters on Instagram" },
+      { type: "p", text: "People who message a business on Instagram are usually browsing several options at once. A reply that arrives the next morning often arrives after they have chosen someone else. Many messages also come in the evening and at weekends, when your team is offline." },
+      { type: "h2", text: "Three kinds of Instagram auto-reply" },
+      { type: "ul", items: ["Away message: a fixed note such as \"we will reply soon\". It is better than silence but answers nothing.", "Menu or keyword replies: the customer picks an option, or types a word, and gets a fixed answer. Good for a short list of questions, and frustrating for anything else.", "AI replies: an assistant reads the customer's real message and answers from the information you gave it. This is what Anril does for Instagram DMs."] },
+      { type: "h2", text: "What a good AI reply setup does" },
+      { type: "ul", items: ["Answers questions about your products, prices, timings and location in seconds, at any hour.", "Replies in the customer's language. Anril replies in Tanglish by default and can use any language.", "Scores each lead Hot, Warm or Cold, so you can see who is ready to buy.", "Hands the chat to a person, with everything said so far, when the customer needs one.", "Keeps Instagram, WhatsApp and Facebook enquiries in one list."] },
+      { type: "h2", text: "Mistakes to avoid" },
+      { type: "ul", items: ["Pretending the assistant is a person. If a customer asks, Anril says it is an AI assistant.", "Setting up automation and never checking it. Review the conversations regularly and update the information the assistant uses.", "Having no handover. Customers who want a person should reach one easily.", "Treating Instagram as separate from your other channels, so leads get lost."] },
+      { type: "h2", text: "How to set it up with Anril" },
+      { type: "p", text: "Connect your Instagram business account to Anril, add your business information to the knowledge base, and the AI starts replying to DMs. You can edit the information at any time, and the change works instantly. Book a free demo and we will set it up with questions like the ones your customers really ask." },
+    ],
+    faqs: [
+      { q: "Can I auto-reply to Instagram DMs for free?", a: "Instagram offers basic saved replies and away messages for business accounts. For AI replies that answer real questions and score leads, you need a tool such as Anril, with plans from ₹999 a month (plus GST)." },
+      { q: "Does Anril work on Instagram?", a: "Yes. Anril replies to enquiries on WhatsApp, Instagram DMs and Facebook Messenger." },
+      { q: "Will customers know it is an AI?", a: "If a customer asks, Anril's chatbot says it is an AI assistant." },
     ],
   },
 ];
