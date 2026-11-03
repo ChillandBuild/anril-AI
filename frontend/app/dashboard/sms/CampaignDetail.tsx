@@ -57,13 +57,13 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
     setCancelling(true);
     try {
       await api.sms.cancelCampaign(id);
-      toast.success("Campaign cancelled. Waiting messages will not be sent.");
+      toast.success("Send cancelled. Waiting messages will not be sent.");
       setConfirmCancel(false);
       await campaign.mutate();
       await messages.mutate();
       onChanged();
     } catch (err) {
-      toast.error(friendlyError(err, "Couldn't cancel the campaign"));
+      toast.error(friendlyError(err, "Couldn't cancel this send"));
       setConfirmCancel(false);
       void campaign.mutate();
     } finally {
@@ -81,12 +81,12 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
     setMoveError(null);
     try {
       await api.sms.rescheduleCampaign(id, sendAt);
-      toast.success("Campaign rescheduled.");
+      toast.success("Send rescheduled.");
       setMoving(false);
       await campaign.mutate();
       onChanged();
     } catch (err) {
-      setMoveError(errorText(err, "Couldn't reschedule the campaign"));
+      setMoveError(errorText(err, "Couldn't reschedule this send"));
       void campaign.mutate();
     } finally {
       setMoveBusy(false);
@@ -97,12 +97,12 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
     setDeleting(true);
     try {
       await api.sms.deleteCampaign(id);
-      toast.success("Campaign deleted.");
+      toast.success("Send deleted.");
       setConfirmDelete(false);
       onChanged();
       onBack();
     } catch (err) {
-      toast.error(errorText(err, "Couldn't delete the campaign"));
+      toast.error(errorText(err, "Couldn't delete this send"));
       setConfirmDelete(false);
       void campaign.mutate();
     } finally {
@@ -117,7 +117,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
   return (
     <div className="w-full space-y-4">
       <button type="button" onClick={onBack} className="flex items-center gap-1 text-sm font-bold text-primary hover:underline">
-        <ArrowLeft size={15} /> Campaigns
+        <ArrowLeft size={15} /> All reports
       </button>
 
       {campaign.isLoading && !c ? (
@@ -154,7 +154,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                     </Btn>
                   )}
                   <Btn variant="danger" onClick={() => setConfirmCancel(true)}>
-                    Cancel campaign
+                    Cancel this send
                   </Btn>
                 </div>
               )}
@@ -288,10 +288,10 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
         open={confirmCancel}
         onClose={() => !cancelling && setConfirmCancel(false)}
         onConfirm={() => void cancel()}
-        title="Cancel this campaign?"
+        title="Cancel this send?"
         description="Nothing has been sent yet. Cancelling stops every waiting message."
         tone="danger"
-        confirmLabel="Cancel campaign"
+        confirmLabel="Cancel this send"
         cancelLabel="Keep it"
         loading={cancelling}
         loadingLabel="Cancelling…"
@@ -301,8 +301,8 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
         open={confirmDelete}
         onClose={() => !deleting && setConfirmDelete(false)}
         onConfirm={() => void remove()}
-        title="Delete this campaign?"
-        description="It disappears from your Campaigns list. The messages it sent and what they cost stay in Reports and Balance history."
+        title="Delete this send?"
+        description="It disappears from Your sends. The messages it sent and what they cost stay in Reports and Balance history."
         tone="danger"
         confirmLabel="Delete"
         cancelLabel="Keep it"

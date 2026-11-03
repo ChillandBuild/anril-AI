@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { Pager } from "./CampaignDetail";
 import { AddContactPanel, PastePanel, UploadPanel } from "./ContactPanels";
 import { GroupsPanel } from "./GroupsPanel";
-import { formatCount, friendlyError, parseContactsSub } from "./helpers";
+import { SEND_PREFILL_KEY, formatCount, friendlyError, parseContactsSub } from "./helpers";
 import { Badge, Btn, Card, Empty, Field, InlinePanel, LoadError, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
@@ -59,12 +59,15 @@ export function ContactsTab() {
 type GroupAction = "add" | "remove";
 
 function ContactsPanel() {
+  const router = useRouter();
   const { canManage } = usePerm();
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [groupId, setGroupId] = useState("");
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Number of every contact ever ticked, so "Send SMS" works across pages.
+  const [phones, setPhones] = useState<Map<string, string>>(new Map());
   // One add form open at a time, in place under the buttons.
   const [panel, setPanel] = useState<"add" | "paste" | "upload" | null>(null);
   const [groupAction, setGroupAction] = useState<GroupAction | null>(null);
@@ -90,7 +93,29 @@ function ContactsPanel() {
     void groups.mutate();
   }
 
+  function remember(list: { id: string; phone: string }[]) {
+    setPhones((m) => {
+      const next = new Map(m);
+      for (const c of list) next.set(c.id, c.phone);
+      return next;
+    });
+  }
+
+  function sendToSelected() {
+    const numbers = Array.from(selected)
+      .map((id) => phones.get(id))
+      .filter((p): p is string => !!p);
+    try {
+      window.sessionStorage.setItem(SEND_PREFILL_KEY, numbers.join("\n"));
+    } catch {
+      toast.error("Your browser blocked the hand-off. Copy the numbers into Send SMS instead.");
+      return;
+    }
+    router.push("/dashboard/sms/send?numbers=1");
+  }
+
   function togglePage(on: boolean) {
+    if (on) remember(rows);
     const next = new Set(selected);
     for (const c of rows) {
       if (on) next.add(c.id);
@@ -183,6 +208,9 @@ function ContactsPanel() {
       {canManage && selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2.5 sm:px-5">
           <span className="text-sm font-bold text-[#0A1528]">{formatCount(selected.size)} selected</span>
+          <Btn className="h-8 text-xs" onClick={sendToSelected}>
+            Send SMS
+          </Btn>
           <Btn variant="outline" className="h-8 text-xs" onClick={() => setGroupAction("add")}>
             Add contacts in group
           </Btn>
@@ -245,7 +273,10 @@ function ContactsPanel() {
                   <tr key={c.id} className="border-b border-[#f1f5f9] last:border-0">
                     {canManage && (
                       <td className={tdCls}>
-                        <CheckTick checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Select ${c.name || c.phone}`} />
+                        <CheckTick checked={selected.has(c.id)} onChange={() => {
+                            remember([c]);
+                            toggle(c.id);
+                          }} aria-label={`Select ${c.name || c.phone}`} />
                       </td>
                     )}
                     <td className={`${tdCls} whitespace-nowrap font-semibold text-[#0A1528]`}>{c.phone}</td>

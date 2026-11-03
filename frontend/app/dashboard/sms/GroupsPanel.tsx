@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Download, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Download, MessageSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { formatCount, formatIst, friendlyError } from "./helpers";
@@ -134,7 +135,16 @@ export function GroupsPanel() {
                     </p>
                   </div>
                   {canManage && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {g.contacts > 0 && (
+                        <Link
+                          href={`/dashboard/sms/send?groups=${g.id}`}
+                          aria-label={`Send SMS to ${g.name}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-bold text-white hover:bg-primary-dark"
+                        >
+                          <MessageSquare size={14} /> Send SMS
+                        </Link>
+                      )}
                       <Btn
                         variant="outline"
                         className="h-9"

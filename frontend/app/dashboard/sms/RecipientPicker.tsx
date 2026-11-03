@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { FileSpreadsheet } from "lucide-react";
 import { CheckTick } from "@/components/ui/controls";
@@ -20,7 +21,7 @@ import {
   type NumbersMode,
   type NumbersState,
 } from "./helpers";
-import { Btn, ConsentCheck, Empty, Field, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
+import { Btn, ConsentCheck, Field, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
 
 /** Whether this client has any Anril leads (the Leads mode is hidden when they have none). */
 export function useHasLeads(): boolean {
@@ -92,14 +93,28 @@ function GroupPicker({ selected, onChange }: { selected: Set<string>; onChange: 
 
   if (groups.isLoading && !groups.data) return <Skeleton className="h-32" />;
   if (groups.error && !groups.data) return <LoadError message={friendlyError(groups.error, "Check your connection.")} onRetry={() => void groups.mutate()} />;
-  if (list.length === 0) return <Empty title="No contact groups yet." hint="Add contacts in the Address Book and put them in a group first." />;
+  if (list.length === 0)
+    return (
+      <div className="rounded-xl border border-dashed border-[#e2e8f0] px-4 py-6 text-center">
+        <p className="text-sm font-semibold text-[#0A1528]">Your Address Book has no groups yet.</p>
+        <p className="mt-1 text-xs text-[#64748b]">Save contacts there and put them in a group, then pick the group here.</p>
+        <Link href="/dashboard/sms/contacts" className="mt-2 inline-block text-sm font-bold text-primary hover:underline">
+          Open Address Book →
+        </Link>
+      </div>
+    );
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
       <p className="text-sm font-bold text-[#0A1528]">
         {formatCount(picked.length)} group{picked.length === 1 ? "" : "s"} picked
         {picked.length > 0 && <span className="font-normal text-[#64748b]"> · up to {formatCount(upTo)} contacts (someone in two groups gets one SMS)</span>}
       </p>
+        <Link href="/dashboard/sms/contacts" className="text-xs font-bold text-primary hover:underline">
+          Manage Address Book →
+        </Link>
+      </div>
       <ul className="divide-y divide-[#f1f5f9] overflow-hidden rounded-xl border border-[#e2e8f0]">
         {list.map((g) => (
           <li key={g.id} className="flex items-center gap-3 px-3 py-2.5">

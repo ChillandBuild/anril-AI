@@ -1,15 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
-import useSWRInfinite from "swr/infinite";
-import { Download, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
-import { api, type SmsMessageFilters } from "@/lib/api";
-import { Pager } from "./CampaignDetail";
+import { api, type SmsCampaign, type SmsMessageFilters } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { CampaignDetail, Pager } from "./CampaignDetail";
+import { summarize } from "./DashboardCards";
 import {
   MESSAGE_STATUSES,
+  REPORT_PERIODS,
+  campaignNeedsUpdates,
+  campaignStatusLabel,
+  campaignStatusTone,
   clampRange,
   defaultRange,
   formatCount,
@@ -19,124 +25,189 @@ import {
   logColumns,
   maxToFor,
   humanizeKind,
+  onTheWayCount,
   otpActionLabel,
   otpDelivery,
-  scalarEntries,
+  sendProgress,
   statusLabel,
 } from "./helpers";
 import { MessageStatus, messageTime } from "./MessageStatus";
+import { useSms } from "./SmsShell";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { usePerm } from "./usePerm";
 
 const PAGE = 50;
-const SUMMARY_DAYS = 30;
 const LOGS_DAYS = 3;
+const heading = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
 
+/**
+ * Delivery Reports, top to bottom: pick a period → four totals → your sends (click one for its
+ * messages) → every message in the period → the operator's raw log, folded away, for SMS your own
+ * app sent with the API key.
+ */
 export function ReportsTab() {
-  return (
-    <div className="space-y-4">
-      <Summary />
-      <Messages />
-      <Logs />
-    </div>
-  );
-}
-
-function DateRange({ range, maxDays, today, onChange }: { range: { from: string; to: string }; maxDays: number; today: string; onChange: (r: { from: string; to: string }) => void }) {
-  return (
-    <div className="flex flex-wrap items-end gap-3">
-      <Field label="From">
-        <input type="date" className={inputCls} value={range.from} max={today} onChange={(e) => e.target.value && onChange(clampRange({ ...range, from: e.target.value }, "from", maxDays, today))} />
-      </Field>
-      <Field label="To">
-        <input
-          type="date"
-          className={inputCls}
-          value={range.to}
-          min={range.from}
-          max={maxToFor(range.from, maxDays, today)}
-          onChange={(e) => e.target.value && onChange(clampRange({ ...range, to: e.target.value }, "to", maxDays, today))}
-        />
-      </Field>
-    </div>
-  );
-}
-
-function Summary() {
+  const { reloadBalance } = useSms();
   const today = useMemo(() => istDateString(new Date()), []);
-  const [range, setRange] = useState(() => defaultRange(today, 7));
+  const [days, setDays] = useState<number>(7);
+  const [openSend, setOpenSend] = useState<string | null>(null);
+  const range = useMemo(() => defaultRange(today, days), [today, days]);
+
+  if (openSend) {
+    return <CampaignDetail id={openSend} onBack={() => setOpenSend(null)} onChanged={reloadBalance} />;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div role="radiogroup" aria-label="Period" className="inline-flex rounded-xl bg-[#f1f5f9] p-1">
+        {REPORT_PERIODS.map((p) => (
+          <button
+            key={p.days}
+            type="button"
+            role="radio"
+            aria-checked={days === p.days}
+            onClick={() => setDays(p.days)}
+            className={cn(
+              "h-9 rounded-lg px-4 text-sm",
+              days === p.days ? "bg-white font-bold text-[#0A1528] shadow-sm" : "font-semibold text-[#64748b] hover:text-[#0A1528]",
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <Totals range={range} />
+      <Sends onOpen={setOpenSend} />
+      <Messages range={range} />
+      <ApiLogs />
+    </div>
+  );
+}
+
+function Totals({ range }: { range: { from: string; to: string } }) {
   const { data, error, isLoading, mutate } = useSWR(["sms:summary", range.from, range.to], () => api.sms.reportSummary(range.from, range.to), {
     keepPreviousData: true,
     revalidateOnFocus: false,
   });
-  const anril = Object.entries(data?.anril ?? {});
-  const bulk9 = scalarEntries(data?.bulk9);
+  if (isLoading && !data) return <Skeleton className="h-24" />;
+  if (error && !data) return <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />;
+  const s = summarize(data?.anril);
+  const tiles: { label: string; value: string; note?: string; tone?: string }[] = [
+    { label: "Sent", value: formatCount(s.sent) },
+    { label: "Delivered", value: formatCount(s.delivered), note: s.pct != null ? `${s.pct}% of sent` : undefined, tone: "text-[#036b6e]" },
+    { label: "Failed", value: formatCount(s.failed), tone: s.failed > 0 ? "text-[#b4232f]" : undefined },
+    { label: "On the way", value: formatCount(onTheWayCount(data?.anril)), note: "Not confirmed yet" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {tiles.map((t) => (
+        <Card key={t.label} className="px-4 py-3.5">
+          <p className="text-xs font-semibold text-[#64748b]">{t.label}</p>
+          <p className={cn("mt-1 font-display text-2xl font-bold text-[#0A1528]", t.tone)}>{t.value}</p>
+          {t.note && <p className="mt-0.5 text-xs text-[#64748b]">{t.note}</p>}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function Sends({ onOpen }: { onOpen: (id: string) => void }) {
+  const { canManage } = usePerm();
+  const [offset, setOffset] = useState(0);
+  const { data, error, isLoading, mutate } = useSWR(["sms:campaigns", offset], () => api.sms.campaigns(51, offset), {
+    refreshInterval: (d) => (d?.campaigns.some(campaignNeedsUpdates) ? 15_000 : 0),
+  });
+  const fetched = data?.campaigns ?? [];
+  const list = fetched.slice(0, 50);
   return (
     <Card>
-      <CardHeader title="Summary" hint={`Pick up to ${SUMMARY_DAYS} days.`} action={<DateRange range={range} maxDays={SUMMARY_DAYS} today={today} onChange={setRange} />} />
-      <div className="space-y-4 p-4 sm:p-5">
-        {isLoading && !data ? (
-          <Skeleton className="h-24" />
-        ) : error && !data ? (
-          <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
-        ) : (
-          <>
-            {anril.length === 0 ? (
-              <Empty title="Nothing sent in this period." />
-            ) : (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {anril.map(([k, v]) => (
-                  <div key={k} className="rounded-xl bg-[#f8fafc] px-3 py-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">{statusLabel(k) === k ? humanizeKind(k) : statusLabel(k)}</p>
-                    <p className="mt-0.5 font-display text-lg font-bold text-[#0A1528]">{formatCount(Number(v))}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {data?.error && <Notice tone="warn">{"Operator numbers aren't available right now."} {data.error}</Notice>}
-            {bulk9.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-[#64748b]">From the operator</h3>
-                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {bulk9.map(([k, v]) => (
-                    <div key={k} className="rounded-xl border border-[#e2e8f0] px-3 py-2">
-                      <dt className="text-[10px] font-bold uppercase tracking-wider text-[#64748b]">{humanizeKind(k)}</dt>
-                      <dd className="mt-0.5 break-words text-sm font-semibold text-[#0A1528]">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-          </>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-4 sm:px-5">
+        <h2 className={heading}>Your sends</h2>
+        <span className="text-xs text-[#64748b]">Click one to see who got it</span>
       </div>
+      {isLoading && !data ? (
+        <Skeleton className="m-4 h-32" />
+      ) : error && !data ? (
+        <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
+      ) : list.length === 0 ? (
+        <div className="px-4 py-10 text-center">
+          <p className="text-sm font-semibold text-[#0A1528]">Nothing sent yet.</p>
+          {canManage && (
+            <Link href="/dashboard/sms/send" className="mt-2 inline-block text-sm font-bold text-primary hover:underline">
+              Send your first SMS →
+            </Link>
+          )}
+        </div>
+      ) : (
+        <ul className="divide-y divide-[#f1f5f9]">
+          {list.map((c) => (
+            <SendRow key={c.id} c={c} onOpen={() => onOpen(c.id)} />
+          ))}
+        </ul>
+      )}
+      {(offset > 0 || fetched.length > 50) && (
+        <div className="flex items-center justify-between gap-2 border-t border-[#f1f5f9] px-4 py-3 text-xs text-[#64748b]">
+          <span>Page {Math.floor(offset / 50) + 1}</span>
+          <div className="flex gap-2">
+            <Btn variant="outline" className="h-8 text-xs" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - 50))}>
+              Previous
+            </Btn>
+            <Btn variant="outline" className="h-8 text-xs" disabled={fetched.length <= 50} onClick={() => setOffset((o) => o + 50)}>
+              Next
+            </Btn>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
 
-function Messages() {
-  const campaigns = useSWRInfinite(
-    (index, previous) => previous && previous.campaigns.length < PAGE ? null : ["sms:report-campaigns", index],
-    ([, index]) => api.sms.campaigns(PAGE, index * PAGE),
-    { revalidateOnFocus: false },
+function SendRow({ c, onOpen }: { c: SmsCampaign; onOpen: () => void }) {
+  const p = sendProgress(c.counts, c.total);
+  const scheduled = c.status === "scheduled";
+  return (
+    <li>
+      <button type="button" onClick={onOpen} className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3.5 text-left hover:bg-[#f8fafc] sm:px-5">
+        <div className="min-w-0 flex-1 basis-56">
+          <p className="truncate text-sm font-bold text-[#0A1528]">{c.name}</p>
+          <p className="mt-0.5 text-xs text-[#64748b]">
+            {scheduled && c.send_at ? `Goes out ${formatIst(c.send_at)}` : formatIst(c.created_at)} · {formatCount(c.total)} number{c.total === 1 ? "" : "s"}
+          </p>
+        </div>
+        {!scheduled && c.total > 0 && (
+          <div className="w-full sm:w-56">
+            <div className="flex justify-between text-xs">
+              <span className="font-semibold text-[#0A1528]">
+                {formatCount(p.delivered)} delivered{p.pct != null && <span className="font-normal text-[#64748b]"> · {p.pct}%</span>}
+              </span>
+              {p.failed > 0 && <span className="font-semibold text-[#b4232f]">{formatCount(p.failed)} failed</span>}
+            </div>
+            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-[#e9edf2]" aria-hidden>
+              <span className="bg-[#038285]" style={{ width: `${(p.delivered / c.total) * 100}%` }} />
+              <span className="bg-[#e11d48]" style={{ width: `${(p.failed / c.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
+        <Badge tone={campaignStatusTone(c.status)}>{campaignStatusLabel(c.status)}</Badge>
+        <ChevronRight size={16} className="hidden shrink-0 text-[#94a3b8] sm:block" />
+      </button>
+    </li>
   );
-  const campaignChoices = campaigns.data?.flatMap((page) => page.campaigns) ?? [];
-  const moreCampaigns = !campaigns.data || campaigns.data[campaigns.data.length - 1]?.campaigns.length === PAGE;
-  const [draft, setDraft] = useState<SmsMessageFilters>({});
-  const [filters, setFilters] = useState<SmsMessageFilters>({});
+}
+
+function Messages({ range }: { range: { from: string; to: string } }) {
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
   const [offset, setOffset] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const filters: SmsMessageFilters = { from: range.from, to: range.to, status: status || undefined, search: query || undefined };
 
   const { data, error, isLoading, mutate } = useSWR(["sms:messages", filters, offset], () => api.sms.messages({ ...filters, limit: PAGE, offset }), {
     keepPreviousData: true,
     revalidateOnFocus: false,
-    refreshInterval: (current) => current?.messages.some((message) => ["queued", "sending", "submitted", "unknown"].includes(message.status)) ? 10_000 : 0,
+    refreshInterval: (current) => (current?.messages.some((m) => ["queued", "sending", "submitted", "unknown"].includes(m.status)) ? 10_000 : 0),
   });
   const rows = data?.messages ?? [];
-
-  function apply() {
-    setOffset(0);
-    setFilters({ ...draft, search: draft.search?.trim() || undefined });
-  }
 
   async function exportCsv() {
     setExporting(true);
@@ -151,67 +222,55 @@ function Messages() {
 
   return (
     <Card>
-      <CardHeader
-        title="Messages"
-        hint="One row per SMS."
-        action={
-          <Btn variant="outline" busy={exporting} onClick={() => void exportCsv()}>
-            <Download size={14} /> Export CSV
-          </Btn>
-        }
-      />
-      <form
-        className="grid gap-3 border-b border-[#f1f5f9] p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          apply();
-        }}
-      >
-        <Field label="Campaign">
-          <select className={inputCls} value={draft.campaign_id ?? ""} onChange={(e) => setDraft((d) => ({ ...d, campaign_id: e.target.value || undefined }))}>
-            <option value="">All campaigns</option>
-            {campaignChoices.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {moreCampaigns && <Btn variant="link" busy={campaigns.isValidating} onClick={() => void campaigns.setSize(campaigns.size + 1)}>Load more campaigns</Btn>}
-          {campaigns.error && <p className="text-xs text-danger">Couldn&apos;t load campaign choices. <button type="button" className="underline" onClick={() => void campaigns.mutate()}>Retry</button></p>}
-        </Field>
-        <Field label="Status">
-          <select className={inputCls} value={draft.status ?? ""} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value || undefined }))}>
-            <option value="">All statuses</option>
-            {MESSAGE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="From">
-          <input type="date" className={inputCls} value={draft.from ?? ""} max={draft.to || undefined} onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value || undefined }))} />
-        </Field>
-        <Field label="To">
-          <input type="date" className={inputCls} value={draft.to ?? ""} min={draft.from || undefined} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value || undefined }))} />
-        </Field>
-        <Field label="Search">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
-            <input className={`${inputCls} pl-9`} placeholder="Number or message" value={draft.search ?? ""} onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))} />
-          </div>
-        </Field>
-        <div className="sm:col-span-2 lg:col-span-5">
-          <Btn type="submit">Apply filters</Btn>
-        </div>
-      </form>
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-5">
+        <h2 className={cn(heading, "mr-auto")}>Every message</h2>
+        <form
+          className="relative"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setOffset(0);
+            setQuery(search.trim());
+          }}
+        >
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
+          <input
+            aria-label="Search by number or message"
+            className={cn(inputCls, "h-9 w-56 pl-9")}
+            placeholder="Number or message, then Enter"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              if (!e.target.value) setQuery("");
+            }}
+          />
+        </form>
+        <select
+          aria-label="Status"
+          className={cn(inputCls, "h-9 w-40")}
+          value={status}
+          onChange={(e) => {
+            setOffset(0);
+            setStatus(e.target.value);
+          }}
+        >
+          <option value="">All statuses</option>
+          {MESSAGE_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {statusLabel(s)}
+            </option>
+          ))}
+        </select>
+        <Btn variant="outline" className="h-9" busy={exporting} onClick={() => void exportCsv()}>
+          <Download size={14} /> Export
+        </Btn>
+      </div>
 
       {isLoading && !data ? (
         <Skeleton className="m-4 h-48" />
       ) : error && !data ? (
         <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
       ) : rows.length === 0 ? (
-        <Empty title="No messages match." />
+        <Empty title={query || status ? "No messages match." : "No messages in this period."} />
       ) : (
         <>
           <div className="hidden md:block">
@@ -219,7 +278,7 @@ function Messages() {
               <table className="w-full min-w-[760px]">
                 <thead>
                   <tr className="border-b border-[#f1f5f9]">
-                    <th className={thCls}>Lead</th>
+                    <th className={thCls}>Name</th>
                     <th className={thCls}>Number</th>
                     <th className={thCls}>Status</th>
                     <th className={thCls}>SMS</th>
@@ -266,7 +325,22 @@ function Messages() {
   );
 }
 
-function Logs() {
+/** SMS your own app sent with the API key never pass through Anril, so only the operator's log has them. */
+function ApiLogs() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-4 py-3.5 text-left sm:px-5">
+        {open ? <ChevronDown size={16} className="text-[#64748b]" /> : <ChevronRight size={16} className="text-[#64748b]" />}
+        <span className="text-sm font-bold text-[#0A1528]">SMS sent from your own app (API)</span>
+        <span className="hidden text-xs text-[#64748b] sm:inline">· the operator&apos;s raw log, {LOGS_DAYS} days at a time</span>
+      </button>
+      {open && <LogsBody />}
+    </Card>
+  );
+}
+
+function LogsBody() {
   const today = useMemo(() => istDateString(new Date()), []);
   const [range, setRange] = useState(() => defaultRange(today, LOGS_DAYS));
   const [page, setPage] = useState(1);
@@ -277,22 +351,36 @@ function Logs() {
   const logs = data?.logs ?? [];
   const cols = logColumns(logs);
   return (
-    <Card>
-      <CardHeader
-        title="Operator SMS logs"
-        hint={`Raw delivery logs from the operator. Up to ${LOGS_DAYS} days at a time.`}
-        action={
-          <DateRange
-            range={range}
-            maxDays={LOGS_DAYS}
-            today={today}
-            onChange={(r) => {
+    <div className="border-t border-[#f1f5f9]">
+      <div className="flex flex-wrap items-end gap-3 px-4 py-3 sm:px-5">
+        <Field label="From">
+          <input
+            type="date"
+            className={inputCls}
+            value={range.from}
+            max={today}
+            onChange={(e) => {
+              if (!e.target.value) return;
               setPage(1);
-              setRange(r);
+              setRange(clampRange({ ...range, from: e.target.value }, "from", LOGS_DAYS, today));
             }}
           />
-        }
-      />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputCls}
+            value={range.to}
+            min={range.from}
+            max={maxToFor(range.from, LOGS_DAYS, today)}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              setPage(1);
+              setRange(clampRange({ ...range, to: e.target.value }, "to", LOGS_DAYS, today));
+            }}
+          />
+        </Field>
+      </div>
       {isLoading && !data ? (
         <Skeleton className="m-4 h-32" />
       ) : error && !data ? (
@@ -301,7 +389,7 @@ function Logs() {
         <>
           {data?.error && <Notice tone="warn" className="m-4">{data.error}</Notice>}
           {logs.length === 0 ? (
-            <Empty title="No logs in this window." />
+            <Empty title="No logs in these days." />
           ) : (
             <TableWrap>
               <table className="w-full min-w-[640px]">
@@ -341,7 +429,7 @@ function Logs() {
           </div>
         </>
       )}
-    </Card>
+    </div>
   );
 }
 

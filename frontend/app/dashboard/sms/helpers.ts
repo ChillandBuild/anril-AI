@@ -310,22 +310,6 @@ export function sendBlock(input: {
   return { blocked: false, reason: null };
 }
 
-export interface SetupStep { key: "connected" | "templates" | "pe_tm" | "balance"; label: string; done: boolean; hint: string | null }
-
-export function setupSteps(input: { templatesReady: boolean; peTm: boolean; smsCount: number | null | undefined }): SetupStep[] {
-  const hasBalance = (input.smsCount ?? 0) > 0;
-  return [
-    { key: "connected", label: "Connected to SMS", done: true, hint: null },
-    { key: "templates", label: "Add your DLT entity, sender and approved templates", done: input.templatesReady, hint: "Templates tab" },
-    { key: "pe_tm", label: "PE–TM binding confirmed", done: input.peTm, hint: "Done by your account manager" },
-    { key: "balance", label: "SMS balance", done: hasBalance, hint: input.smsCount == null ? null : `${formatCount(input.smsCount)} SMS` },
-  ];
-}
-
-export function setupComplete(steps: SetupStep[]): boolean {
-  return steps.every((s) => s.done);
-}
-
 /** "+1,000" for a top-up, "−2,140" (true minus sign) for usage. */
 export function formatSignedSms(n: number): string {
   if (n > 0) return `+${formatCount(n)}`;
@@ -468,7 +452,26 @@ export function parseNumbers(text: string): string[] {
 // ---- The one Send SMS form: numbers, template choice, request body ----
 
 export type NumbersMode = "contact" | "list" | "excel" | "leads";
-export const NUMBERS_MODE_LABELS: Record<NumbersMode, string> = { contact: "Contact", list: "List", excel: "Excel", leads: "Leads" };
+export const NUMBERS_MODE_LABELS: Record<NumbersMode, string> = { contact: "Type numbers", list: "Address Book", excel: "Excel", leads: "Leads" };
+
+/** sessionStorage key the Address Book uses to hand picked contacts' numbers to Send SMS. */
+export const SEND_PREFILL_KEY = "sms:send-prefill";
+
+/**
+ * What Send SMS should start with when opened from the Address Book: ?groups=a,b picks those groups
+ * (Address Book tab); ?numbers=1 puts the numbers the Address Book stored into the Type numbers box.
+ */
+export function sendPrefill(search: string, stored: string | null): Partial<NumbersState> | null {
+  const q = new URLSearchParams(search);
+  const groupIds = (q.get("groups") ?? "")
+    .split(",")
+    .map((g) => g.trim())
+    .filter((g) => /^[0-9a-f-]{36}$/i.test(g))
+    .slice(0, MAX_LIST_GROUPS);
+  if (groupIds.length > 0) return { mode: "list", groupIds };
+  if (q.get("numbers") === "1" && stored?.trim()) return { mode: "contact", numbersText: stored.trim() };
+  return null;
+}
 export const MAX_LIST_GROUPS = 50;
 export const MAX_LIST_CONTACTS = 50_000;
 
@@ -813,4 +816,29 @@ export function sendSummary(input: { preview: SmsPreview | null; parts: number; 
     { label: "Estimated cost", value: p && cost?.known && p.estimated_amount != null ? `≈ ${formatRupees(p.estimated_amount)}` : "—" },
     balance,
   ];
+}
+
+/** Report periods offered as chips on Delivery Reports (days, ending today in IST). */
+export const REPORT_PERIODS = [
+  { days: 1, label: "Today" },
+  { days: 7, label: "Last 7 days" },
+  { days: 30, label: "Last 30 days" },
+] as const;
+
+/**
+ * One send's progress for the Reports list: delivered out of everyone it went to, failed, and still
+ * on its way (waiting, sending, with the operator or being checked). `pct` is null until anyone was counted.
+ */
+export function sendProgress(counts: Partial<Record<SmsMessageStatus, number>>, total: number) {
+  const n = (k: SmsMessageStatus) => Number(counts[k]) || 0;
+  const delivered = n("delivered");
+  const failed = n("failed");
+  const onTheWay = n("queued") + n("sending") + n("submitted") + n("unknown");
+  return { delivered, failed, onTheWay, total, pct: total > 0 ? Math.round((delivered / total) * 100) : null };
+}
+
+/** Messages still on their way in a period's status counts (waiting + sending + with the operator + checking). */
+export function onTheWayCount(anril: Record<string, number> | null | undefined): number {
+  const n = (k: string) => Number(anril?.[k]) || 0;
+  return n("queued") + n("sending") + n("submitted") + n("unknown");
 }

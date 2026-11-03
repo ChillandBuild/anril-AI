@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  sendPrefill,
+  onTheWayCount,
+  sendProgress,
   UNICODE_NOTE,
   creditAmountError,
   sendSummary,
@@ -55,8 +58,6 @@ import {
   formatSignedSms,
   parseOtpSettings,
   sendBlock,
-  setupComplete,
-  setupSteps,
   walletCsv,
 } from "./helpers";
 import type { SmsWalletItem } from "@/lib/api";
@@ -219,19 +220,6 @@ describe("sendBlock", () => {
       "Not enough SMS balance: this campaign needs 2,140 SMS and you have 320. Contact 98400 12345 to top up.",
     );
     expect(sendBlock({ ...base, balance: 5, needed: 6 }).reason).toContain("Contact your Anril account manager to top up.");
-  });
-});
-
-describe("setupSteps", () => {
-  it("is incomplete until templates, PE-TM and balance are all done", () => {
-    const steps = setupSteps({ templatesReady: false, peTm: false, smsCount: 0 });
-    expect(steps.map((x) => x.done)).toEqual([true, false, false, false]);
-    expect(setupComplete(steps)).toBe(false);
-    expect(setupComplete(setupSteps({ templatesReady: true, peTm: true, smsCount: 10 }))).toBe(true);
-  });
-  it("shows the balance as a hint once known", () => {
-    expect(setupSteps({ templatesReady: true, peTm: true, smsCount: 1500 })[3].hint).toBe("1,500 SMS");
-    expect(setupSteps({ templatesReady: true, peTm: true, smsCount: undefined })[3]).toMatchObject({ done: false, hint: null });
   });
 });
 
@@ -671,5 +659,39 @@ describe("sendSummary", () => {
   });
   it("leaves the cost blank when there is no charge history yet", () => {
     expect(sendSummary({ preview: { ...preview, rate_per_sms: null, estimated_amount: null }, parts: 1, balance: null })[3].value).toBe("—");
+  });
+});
+
+describe("sendProgress", () => {
+  it("counts delivered, failed and on-the-way against the total", () => {
+    expect(sendProgress({ delivered: 117, failed: 2, submitted: 1 }, 120)).toEqual({ delivered: 117, failed: 2, onTheWay: 1, total: 120, pct: 98 });
+  });
+  it("has no percentage when nobody was counted", () => {
+    expect(sendProgress({}, 0).pct).toBeNull();
+  });
+});
+
+describe("onTheWayCount", () => {
+  it("adds waiting, sending, with the operator and checking", () => {
+    expect(onTheWayCount({ queued: 3, sending: 2, submitted: 5, unknown: 1, delivered: 9 })).toBe(11);
+    expect(onTheWayCount(null)).toBe(0);
+  });
+});
+
+describe("sendPrefill", () => {
+  const g1 = "6f1c2a3b-1111-4222-8333-944455556666";
+  const g2 = "7a2d3c4e-1111-4222-8333-944455556666";
+  it("picks Address Book groups from ?groups=", () => {
+    expect(sendPrefill(`?groups=${g1},${g2}`, null)).toEqual({ mode: "list", groupIds: [g1, g2] });
+  });
+  it("drops anything that is not a group id", () => {
+    expect(sendPrefill("?groups=abc,<script>", null)).toBeNull();
+  });
+  it("fills Type numbers from the stored list when ?numbers=1", () => {
+    expect(sendPrefill("?numbers=1", "9876543210\n9123456780\n")).toEqual({ mode: "contact", numbersText: "9876543210\n9123456780" });
+  });
+  it("does nothing without a hand-off", () => {
+    expect(sendPrefill("", "9876543210")).toBeNull();
+    expect(sendPrefill("?numbers=1", null)).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import { useSms } from "./SmsShell";
 import {
   EMPTY_NUMBERS,
   EMPTY_OWN,
+  SEND_PREFILL_KEY,
   UNICODE_NOTE,
   buildSendRequest,
   defaultSendName,
@@ -29,6 +30,7 @@ import {
   sendFormProblem,
   sendType,
   smsCounterLine,
+  sendPrefill,
   sendSummary,
   smsSegments,
   templateVarCount,
@@ -97,6 +99,19 @@ export function SendForm() {
     () => api.sms.campaignFields(fieldsSource, numbers.groupIds),
     { revalidateOnFocus: false },
   );
+
+  // Opened from the Address Book ("Send SMS" on a group, or on picked contacts): start with them.
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = window.sessionStorage.getItem(SEND_PREFILL_KEY);
+      window.sessionStorage.removeItem(SEND_PREFILL_KEY);
+    } catch {
+      // Storage blocked: the ?groups= hand-off still works.
+    }
+    const patch = sendPrefill(window.location.search, stored);
+    if (patch) setNumbers((n) => withNumbersChange(n, patch));
+  }, []);
 
   // Leads mode disappears if the client has none; fall back to Contact.
   useEffect(() => {
