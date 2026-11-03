@@ -183,3 +183,12 @@ async def test_otp_history_is_per_tenant_newest_first():
         out = await sms.otp_history(limit=50, offset=0, ctx=CTX)
     assert [i["action"] for i in out["items"]] == ["verify", "send"]
     assert set(out["items"][0]) == {"id", "mobile", "action", "ok", "message", "created_at", "delivery_status", "delivered_at"}
+
+
+# ---------------------------------------------------------------- report dates are Indian days
+
+def test_report_dates_cover_the_indian_day():
+    from datetime import date
+    lo, hi = sms._day_bounds(date(2026, 11, 3), date(2026, 11, 3))
+    assert lo == "2026-11-03T00:00:00+05:30"
+    assert hi == "2026-11-03T23:59:59.999999+05:30"

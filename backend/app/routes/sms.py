@@ -651,9 +651,13 @@ async def delete_campaign(campaign_id: str, ctx: dict = Depends(manage_no_key)):
 
 # ---------------------------------------------------------------- messages
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
 def _day_bounds(d_from: Optional[date], d_to: Optional[date]) -> tuple[str | None, str | None]:
-    lo = datetime(d_from.year, d_from.month, d_from.day, tzinfo=timezone.utc).isoformat() if d_from else None
-    hi = (datetime(d_to.year, d_to.month, d_to.day, tzinfo=timezone.utc) + timedelta(days=1)
+    """A date range as Indian days (clients read "today" in IST, not UTC)."""
+    lo = datetime(d_from.year, d_from.month, d_from.day, tzinfo=IST).isoformat() if d_from else None
+    hi = (datetime(d_to.year, d_to.month, d_to.day, tzinfo=IST) + timedelta(days=1)
           - timedelta(microseconds=1)).isoformat() if d_to else None
     return lo, hi
 
