@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   UNICODE_NOTE,
   creditAmountError,
+  sendSummary,
   requestedOn,
   buildCurl,
   buildPython,
@@ -648,5 +649,27 @@ describe("requestedOn", () => {
   it("shows the IST day and month", () => {
     expect(requestedOn("2026-11-02T20:00:00Z")).toBe("3 Nov");
     expect(requestedOn("not a date")).toBe("");
+  });
+});
+
+describe("sendSummary", () => {
+  const preview = { total_segments: 6, eligible_count: 3, excluded: [], samples: [], estimated: true, rate_per_sms: 0.25, estimated_amount: 1.5 };
+  it("shows dashes until the preview runs", () => {
+    expect(sendSummary({ preview: null, parts: 1, balance: null })).toEqual([
+      { label: "Recipients", value: "—" },
+      { label: "SMS each", value: "1" },
+      { label: "Credits needed", value: "—" },
+      { label: "Estimated cost", value: "—" },
+      { label: "Balance", value: "—" },
+    ]);
+  });
+  it("fills in from the preview and flags a balance that doesn't cover it", () => {
+    const rows = sendSummary({ preview, parts: 2, balance: { sms_count: 5, wallet: 1.25 } });
+    expect(rows.map((r) => r.value)).toEqual(["3", "2", "6", "≈ ₹1.50", "5 SMS · ₹1.25"]);
+    expect(rows[4].bad).toBe(true);
+    expect(sendSummary({ preview, parts: 2, balance: { sms_count: 6, wallet: null } })[4]).toEqual({ label: "Balance", value: "6 SMS" });
+  });
+  it("leaves the cost blank when there is no charge history yet", () => {
+    expect(sendSummary({ preview: { ...preview, rate_per_sms: null, estimated_amount: null }, parts: 1, balance: null })[3].value).toBe("—");
   });
 });

@@ -1,7 +1,9 @@
 /** Pure helpers for the SMS page (kept out of components so they can be unit-tested). */
 import type {
+  SmsBalance,
   SmsCampaignPreviewRequest,
   SmsMessageStatus,
+  SmsPreview,
   SmsPreviewExcluded,
   SmsRecipients,
   SmsRecipientSource,
@@ -791,4 +793,24 @@ export function requestedOn(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+}
+
+export interface SummaryRow { label: string; value: string; bad?: true }
+
+/** The Send SMS side panel: what goes out, what it costs, what you have. Dashes until Preview runs. */
+export function sendSummary(input: { preview: SmsPreview | null; parts: number; balance: SmsBalance | null }): SummaryRow[] {
+  const { preview: p, parts, balance: b } = input;
+  const cost = p ? estimateLine(p) : null;
+  const balance: SummaryRow = {
+    label: "Balance",
+    value: b ? `${formatCount(b.sms_count)} SMS${b.wallet != null ? ` · ${formatRupees(b.wallet)}` : ""}` : "—",
+  };
+  if (p && b && b.sms_count < p.total_segments) balance.bad = true;
+  return [
+    { label: "Recipients", value: p ? formatCount(p.eligible_count) : "—" },
+    { label: "SMS each", value: formatCount(parts) },
+    { label: "Credits needed", value: p ? formatCount(p.total_segments) : "—" },
+    { label: "Estimated cost", value: p && cost?.known && p.estimated_amount != null ? `≈ ${formatRupees(p.estimated_amount)}` : "—" },
+    balance,
+  ];
 }

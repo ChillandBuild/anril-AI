@@ -120,7 +120,7 @@ function NumbersBox({ value, onChange }: { value: string; onChange: (next: strin
   const over = count > MAX_PASTED_NUMBERS;
   return (
     <Field label="Mobile numbers" hint={`One per line (commas work too). Up to ${formatCount(MAX_PASTED_NUMBERS)}.`}>
-      <textarea className={textareaCls} rows={8} value={value} placeholder={"9876543210\n9123456780"} onChange={(e) => onChange(e.target.value)} />
+      <textarea className={cn(textareaCls, "resize-y")} rows={4} value={value} placeholder={"9876543210\n9123456780"} onChange={(e) => onChange(e.target.value)} />
       <span className={cn("mt-1 block text-xs", over ? "font-semibold text-danger" : "text-[#64748b]")}>
         {formatCount(count)} number{count === 1 ? "" : "s"}
         {over ? `, too many. Remove ${formatCount(count - MAX_PASTED_NUMBERS)}.` : ""}
