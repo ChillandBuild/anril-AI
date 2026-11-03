@@ -37,7 +37,6 @@ export function ReportsTab() {
       <Summary />
       <Messages />
       <Logs />
-      <OtpHistory />
     </div>
   );
 }
@@ -346,7 +345,7 @@ function Logs() {
   );
 }
 
-function OtpHistory() {
+export function OtpHistory() {
   const [offset, setOffset] = useState(0);
   const { data, error, isLoading, mutate } = useSWR(["sms:otp-history", offset], () => api.sms.otpHistory(PAGE, offset), {
     keepPreviousData: true,

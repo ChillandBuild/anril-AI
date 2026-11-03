@@ -1753,6 +1753,37 @@ export interface SmsStatus {
   checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
   support_contact: string | null;
   templates_ready: boolean;
+  /** The telemarketer every client binds their entity to (PE-TM Binding tab). */
+  pe_tm_info: { tm_name: string; tm_id: string };
+}
+export type SmsDltStatus = "approved" | "submitted";
+export interface SmsDltEntity { entity_id: string; entity_name: string | null; status: SmsDltStatus; at: string | null }
+export interface SmsDltSender extends SmsSender { status: SmsDltStatus; at: string | null }
+/** DLT Manager. `error` is set (HTTP 200) when Bulk9 couldn't be read; submitted rows still show. */
+export interface SmsDltList { entities: SmsDltEntity[]; senders: SmsDltSender[]; error: string | null }
+export interface SmsPeTm {
+  id: string;
+  entity_id: string;
+  tm_approved_at: string | null;
+  pe_confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type SmsCreditStatus = "open" | "done" | "cancelled";
+export interface SmsCreditRequest {
+  id: string;
+  amount: number;
+  note: string | null;
+  status: SmsCreditStatus;
+  created_at: string;
+  done_at: string | null;
+}
+export interface SmsParsedNumbers {
+  numbers: string[];
+  total: number;
+  skipped: SmsSkippedRow[];
+  skipped_total: number;
+  phone_column: string | null;
 }
 export interface SmsBalance {
   sms_count: number;
@@ -2116,6 +2147,41 @@ export const api = {
       apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
     otpHistory: (limit = 50, offset = 0) =>
       apiFetch<{ items: SmsOtpHistoryItem[]; total: number }>(`/api/v1/sms/otp/history?limit=${limit}&offset=${offset}`),
+    dltList: () => apiFetch<SmsDltList>("/api/v1/sms/dlt/entities"),
+    peTm: () => apiFetch<{ items: SmsPeTm[] }>("/api/v1/sms/pe-tm"),
+    peTmUpload: (entityId: string, file: File) => {
+      const fd = new FormData();
+      fd.append("entity_id", entityId);
+      fd.append("file", file);
+      return smsMultipart<SmsPeTm>("/api/v1/sms/pe-tm", fd);
+    },
+    peTmConfirm: (id: string) =>
+      apiFetch<SmsPeTm>(`/api/v1/sms/pe-tm/${encodeURIComponent(id)}/confirm`, { method: "POST" }),
+    creditRequests: () => apiFetch<{ items: SmsCreditRequest[] }>("/api/v1/sms/credit-requests"),
+    requestCredit: (data: { amount: number; note?: string }) =>
+      apiFetch<SmsCreditRequest>("/api/v1/sms/credit-requests", { method: "POST", body: JSON.stringify(data) }),
+    parseNumbers: (file: File, phoneColumn?: string) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (phoneColumn) fd.append("phone_column", phoneColumn);
+      return smsMultipart<SmsParsedNumbers>("/api/v1/sms/numbers/parse", fd);
+    },
+    exportGroupCsv: async (groupId: string, groupName: string) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/sms/contact-groups/${encodeURIComponent(groupId)}/export.csv`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(typeof err?.detail === "string" ? err.detail : `Export failed: ${res.status}`);
+      }
+      const url = window.URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${groupName.replace(/[^A-Za-z0-9 _-]/g, "").trim() || "group"}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    },
   },
   scheduledOverview: {
     get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),

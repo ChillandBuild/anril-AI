@@ -4,24 +4,11 @@ import { useState } from "react";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { ApiBuilderCard } from "./ApiBuilderCard";
-import { ManualCampaignCard } from "./ManualCampaignCard";
 import { OTP_EXPIRY_RANGE, OTP_EXTRA_MAX, OTP_LENGTH_RANGE, friendlyError, parseOtpSettings } from "./helpers";
 import { Btn, Card, CardHeader, Field, Notice, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-export function DeveloperTab({ onOpenCampaigns }: { onOpenCampaigns?: () => void }) {
-  return (
-    <div className="space-y-4">
-      <ApiKeyCard />
-      <ApiBuilderCard />
-      <OtpConsole />
-      <ManualCampaignCard onOpenCampaigns={onOpenCampaigns} />
-    </div>
-  );
-}
-
-function ApiKeyCard() {
+export function ApiKeyCard() {
   const { isOwner } = usePerm();
   const [key, setKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,7 +68,7 @@ function ApiKeyCard() {
   );
 }
 
-function OtpConsole() {
+export function OtpConsole() {
   const { canManage } = usePerm();
   const [mobile, setMobile] = useState("");
   const [otpId, setOtpId] = useState("");
