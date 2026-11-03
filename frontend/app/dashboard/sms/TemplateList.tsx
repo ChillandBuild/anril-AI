@@ -2,23 +2,29 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { RefreshCw } from "lucide-react";
+import { FileSpreadsheet, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsTemplate, type SmsTemplateType } from "@/lib/api";
 import { countVars, formatIst, friendlyError } from "./helpers";
-import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton, inputCls } from "./ui";
+import { AddTemplateModal, ListToolbar, TEMPLATES_KEY, TemplateExcelModal } from "./DltForms";
+import { matchesQuery } from "./dltSetup";
+import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton } from "./ui";
 import { usePerm } from "./usePerm";
 
 export function TemplateList() {
   const { canManage } = usePerm();
-  const [sender, setSender] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [excelOpen, setExcelOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const { data, error, isLoading, mutate } = useSWR("sms:templates", () => api.sms.templates(), { revalidateOnFocus: false });
+  const { data, error, isLoading, mutate } = useSWR(TEMPLATES_KEY, () => api.sms.templates(), { revalidateOnFocus: false });
 
   const templates = data?.templates ?? [];
-  const senders = Array.from(new Set(templates.map((t) => t.sender_id))).sort();
-  const shown = sender ? templates.filter((t) => t.sender_id === sender) : templates;
+  const shown = templates.filter(
+    (t) => (!status || t.status === status) && matchesQuery([t.message, t.sender_id, t.dlt_template_id, t.entity_name, t.entity_id], query),
+  );
 
   async function refresh() {
     setRefreshing(true);
@@ -54,36 +60,46 @@ export function TemplateList() {
   return (
     <Card>
       <CardHeader
-        title="Your templates"
+        title={`Content Template (${templates.length})`}
         hint={data?.last_synced_at ? `Last refreshed ${formatIst(data.last_synced_at)} IST` : "Not refreshed yet"}
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            {senders.length > 1 && (
-              <select aria-label="Filter by sender" className={`${inputCls} w-auto`} value={sender} onChange={(e) => setSender(e.target.value)}>
-                <option value="">All senders</option>
-                {senders.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            )}
-            {canManage && (
+      />
+      <div className="space-y-3 p-4 sm:p-5">
+        <ListToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Search templates"
+          status={status}
+          onStatus={setStatus}
+          options={[
+            { value: "", label: "All" },
+            { value: "ready", label: "Ready" },
+            { value: "submitted", label: "Submitted" },
+          ]}
+        >
+          {canManage && (
+            <>
               <Btn variant="outline" busy={refreshing} onClick={() => void refresh()}>
                 <RefreshCw size={14} /> Refresh
               </Btn>
-            )}
-          </div>
-        }
-      />
-      <div className="space-y-3 p-4 sm:p-5">
+              <Btn variant="outline" onClick={() => setExcelOpen(true)}>
+                <FileSpreadsheet size={14} /> Import from DLT Excel
+              </Btn>
+              <Btn onClick={() => setAddOpen(true)}>
+                <Plus size={14} /> Add template
+              </Btn>
+            </>
+          )}
+        </ListToolbar>
         {data?.error && <Notice tone="danger">{"Couldn't refresh from the operator, so this is the last saved list."} {data.error}</Notice>}
         {isLoading && !data ? (
           <Skeleton className="h-40" />
         ) : error && !data ? (
           <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
         ) : shown.length === 0 ? (
-          <Empty title="No templates yet." hint="Once a template is approved on your DLT portal, add it below or press Refresh." />
+          <Empty
+            title={templates.length === 0 ? "No templates yet." : "No templates match."}
+            hint={templates.length === 0 ? "Once a template is approved on your DLT portal, add it here or press Refresh." : "Try a different search or status."}
+          />
         ) : (
           <ul className="space-y-3">
             {shown.map((t) => (
@@ -117,6 +133,8 @@ export function TemplateList() {
           </ul>
         )}
       </div>
+      <AddTemplateModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <TemplateExcelModal open={excelOpen} onClose={() => setExcelOpen(false)} />
     </Card>
   );
 }
