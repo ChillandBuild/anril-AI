@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
-from app.services import bulk9_client, sms_campaigns as camp
+from app.services import bulk9_client, sms_campaigns as camp, sms_wallet
 from app.services.bulk9_client import Bulk9Error, Bulk9NotConfigured, Bulk9Timeout
 
 logger = logging.getLogger(__name__)
@@ -140,6 +140,12 @@ def _checklist(tenant_id: str) -> dict:
 
 # ---------------------------------------------------------------- status, balance, senders
 
+def _templates_ready(tenant_id: str) -> bool:
+    rows = (get_supabase().table("sms_templates").select("id").eq("tenant_id", tenant_id).eq("status", "ready")
+            .neq("template_type", "unclassified").limit(1).execute()).data or []
+    return bool(rows)
+
+
 @router.get("/status")
 async def status(ctx: dict = Depends(require_permission("sms.view"))):
     tid = ctx["tenant_id"]
@@ -147,8 +153,27 @@ async def status(ctx: dict = Depends(require_permission("sms.view"))):
         "enabled": _is_enabled(tid),
         "connected": bool(get_setting("bulk9_api_key", tenant_id=tid)),
         "checklist": _checklist(tid),
+        "templates_ready": _templates_ready(tid),
         "support_contact": get_setting("sms_support_contact", tenant_id=tid) or "",
     }
+
+
+PE_TM_PENDING = "Waiting for your account manager to confirm PE–TM binding."
+
+
+async def _require_send_ready(tenant_id: str, api_key: str, needed: int) -> None:
+    """Block a send that would fail anyway: no PE–TM binding (operators block the SMS but it can
+    still be charged) or not enough balance (every message would fail)."""
+    if not _checklist(tenant_id)["pe_tm"]:
+        raise HTTPException(409, PE_TM_PENDING)
+    have = (await _bulk9(bulk9_client.wallet(api_key)))["sms_count"]
+    if have < needed:
+        raise HTTPException(409, f"Not enough SMS balance: this needs {needed:,} SMS and you have {have:,}.")
+
+
+@router.get("/wallet/history")
+async def wallet_history(limit: int = Query(100, ge=1, le=200), ctx: dict = Depends(view_no_key)):
+    return sms_wallet.history(get_supabase(), ctx["tenant_id"], limit)
 
 
 @router.get("/balance")
@@ -358,6 +383,21 @@ async def create_template_request(body: TemplateRequestBody, ctx: dict = Depends
     return {k: row.get(k) for k in REQUEST_FIELDS}
 
 
+@router.delete("/template-requests/{request_id}")
+async def delete_template_request(request_id: str, ctx: dict = Depends(manage_no_key)):
+    """Withdraw a request nobody has started on, or clear away a rejected one."""
+    db, tid = get_supabase(), ctx["tenant_id"]
+    rows = (db.table("sms_template_requests").delete().eq("id", request_id).eq("tenant_id", tid)
+            .in_("status", ["requested", "rejected"]).execute()).data or []
+    if not rows:
+        found = (db.table("sms_template_requests").select("id").eq("id", request_id).eq("tenant_id", tid)
+                 .limit(1).execute()).data
+        if not found:
+            raise HTTPException(404, "Request not found.")
+        raise HTTPException(409, "Your account manager is already working on this request, so it can't be deleted.")
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- campaigns
 
 @router.get("/campaigns/fields")
@@ -401,6 +441,8 @@ async def create_campaign(body: CampaignBody, ctx: dict = Depends(manage)):
     db, tid = get_supabase(), ctx["tenant_id"]
     try:
         template = camp.get_template(db, tid, body.template_id)
+        needed = camp.preview(db, tid, template, _vmap(body), body.lead_ids)["total_segments"]
+        await _require_send_ready(tid, ctx["api_key"], needed)
         row, created = camp.create_campaign(
             db, tid, ctx.get("user_id"), name=body.name, template=template, variable_map=_vmap(body),
             lead_ids=body.lead_ids, send_at=body.send_at, idempotency_key=body.idempotency_key)
@@ -413,8 +455,8 @@ async def create_campaign(body: CampaignBody, ctx: dict = Depends(manage)):
 async def list_campaigns(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                          ctx: dict = Depends(view_no_key)):
     db, tid = get_supabase(), ctx["tenant_id"]
-    rows = (db.table("sms_campaigns").select("*").eq("tenant_id", tid).order("created_at", desc=True)
-            .range(offset, offset + limit - 1).execute()).data or []
+    rows = (db.table("sms_campaigns").select("*").eq("tenant_id", tid).is_("deleted_at", "null")
+            .order("created_at", desc=True).range(offset, offset + limit - 1).execute()).data or []
     return {"campaigns": camp.public_campaigns(db, tid, rows)}
 
 
@@ -435,6 +477,29 @@ async def cancel_campaign(campaign_id: str, ctx: dict = Depends(manage_no_key)):
     except camp.SmsError as e:
         raise _sms_error(e)
     return camp.public_campaigns(db, tid, [row])[0]
+
+
+class RescheduleBody(BaseModel):
+    send_at: datetime
+
+
+@router.post("/campaigns/{campaign_id}/reschedule")
+async def reschedule_campaign(campaign_id: str, body: RescheduleBody, ctx: dict = Depends(manage_no_key)):
+    db, tid = get_supabase(), ctx["tenant_id"]
+    try:
+        row = camp.reschedule_campaign(db, tid, campaign_id, body.send_at)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+    return camp.public_campaigns(db, tid, [row])[0]
+
+
+@router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: str, ctx: dict = Depends(manage_no_key)):
+    try:
+        camp.delete_campaign(get_supabase(), ctx["tenant_id"], campaign_id)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- messages
@@ -587,6 +652,7 @@ class OtpSendBody(BaseModel):
     otp_id: str = Field(min_length=1, max_length=40)
     otp_length: int = Field(6, ge=4, le=10)
     otp_expiry: int = Field(15, ge=1, le=10080)
+    variables_values: Optional[str] = Field(None, max_length=200)
 
 
 class OtpVerifyBody(BaseModel):
@@ -598,26 +664,93 @@ class OtpResendBody(BaseModel):
     mobile: str
 
 
+def _log_otp(ctx: dict, mobile: str, action: str, ok: bool, message: str | None,
+             request_id: str | None = None) -> None:
+    """OTP history row (never the code). Best effort: a failed write must not fail the OTP."""
+    try:
+        get_supabase().table("sms_otp_log").insert({
+            "tenant_id": ctx["tenant_id"], "mobile": mobile, "action": action, "ok": ok,
+            "request_id": request_id, "message": (message or "")[:300] or None,
+            "created_by": ctx.get("user_id"),
+        }).execute()
+    except Exception:
+        logger.exception("sms: OTP history write failed for tenant %s", ctx["tenant_id"])
+
+
+async def _otp_call(ctx: dict, mobile: str, action: str, call, ok_text: str) -> dict:
+    try:
+        res = await _bulk9(call)
+    except HTTPException as e:
+        _log_otp(ctx, mobile, action, False, str(e.detail))
+        raise
+    message = _message(res, ok_text)
+    _log_otp(ctx, mobile, action, True, message, res.get("request_id"))
+    return {"ok": True, "request_id": res.get("request_id"), "message": message}
+
+
 @router.post("/otp/send")
 async def otp_send(body: OtpSendBody, ctx: dict = Depends(manage)):
-    res = await _bulk9(bulk9_client.otp_send(ctx["api_key"], mobile=_mobile(body.mobile), otp_id=body.otp_id,
-                                            otp_length=body.otp_length, otp_expiry=body.otp_expiry))
-    return {"ok": True, "request_id": res.get("request_id"), "message": _message(res, "OTP sent.")}
+    mobile = _mobile(body.mobile)
+    return await _otp_call(ctx, mobile, "send", bulk9_client.otp_send(
+        ctx["api_key"], mobile=mobile, otp_id=body.otp_id, otp_length=body.otp_length,
+        otp_expiry=body.otp_expiry, variables_values=(body.variables_values or "").strip() or None), "OTP sent.")
 
 
 @router.post("/otp/verify")
 async def otp_verify(body: OtpVerifyBody, ctx: dict = Depends(manage)):
+    mobile = _mobile(body.mobile)
     try:
-        res = await bulk9_client.otp_verify(ctx["api_key"], mobile=_mobile(body.mobile), otp=body.otp.strip())
+        res = await bulk9_client.otp_verify(ctx["api_key"], mobile=mobile, otp=body.otp.strip())
     except Bulk9Error as e:
         # A wrong or expired code is an answer, not a provider outage.
+        _log_otp(ctx, mobile, "verify", False, str(e))
         return {"ok": False, "message": str(e)}
     except Bulk9Timeout:
         raise HTTPException(504, "The SMS provider did not respond in time. Please try again.")
-    return {"ok": True, "message": _message(res, "OTP verified.")}
+    message = _message(res, "OTP verified.")
+    _log_otp(ctx, mobile, "verify", True, message)
+    return {"ok": True, "message": message}
 
 
 @router.post("/otp/resend")
 async def otp_resend(body: OtpResendBody, ctx: dict = Depends(manage)):
-    res = await _bulk9(bulk9_client.otp_resend(ctx["api_key"], mobile=_mobile(body.mobile)))
-    return {"ok": True, "message": _message(res, "OTP sent again.")}
+    mobile = _mobile(body.mobile)
+    out = await _otp_call(ctx, mobile, "resend", bulk9_client.otp_resend(ctx["api_key"], mobile=mobile),
+                          "OTP sent again.")
+    return {"ok": True, "message": out["message"]}
+
+
+OTP_LOG_FIELDS = ("id", "mobile", "action", "ok", "message", "created_at")
+
+
+@router.get("/otp/history")
+async def otp_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+                      ctx: dict = Depends(view_no_key)):
+    """OTPs sent, resent and checked from this dashboard. OTPs your own app sends with the API key
+    aren't here: Bulk9 has no OTP-history API."""
+    res = (get_supabase().table("sms_otp_log").select("*", count="exact").eq("tenant_id", ctx["tenant_id"])
+           .order("created_at", desc=True).range(offset, offset + limit - 1).execute())
+    return {"items": [{k: r.get(k) for k in OTP_LOG_FIELDS} for r in res.data or []], "total": res.count or 0}
+
+
+# ---------------------------------------------------------------- manual DLT send
+
+class ManualSendBody(BaseModel):
+    sender_id: str = Field(min_length=3, max_length=6, pattern=r"^[A-Za-z0-9]+$")
+    entity_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    template_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    message: str = Field(min_length=1, max_length=2000)
+    mobile: str
+
+
+@router.post("/manual-send")
+async def manual_send(body: ManualSendBody, ctx: dict = Depends(manage)):
+    """One SMS with raw DLT IDs (route=dlt_manual), for an approved template that isn't in the
+    template list. Wrong wording or IDs fail at the operator and may still be charged."""
+    mobile = _mobile(body.mobile)
+    parts, _ = camp.segments(body.message)
+    await _require_send_ready(ctx["tenant_id"], ctx["api_key"], parts)
+    res = await _bulk9(bulk9_client.send_dlt_manual(
+        ctx["api_key"], sender_id=body.sender_id.upper(), entity_id=body.entity_id,
+        template_id=body.template_id, message=body.message, numbers=[mobile]))
+    return {"ok": True, "request_id": res.get("request_id"), "message": _message(res, "SMS sent.")}

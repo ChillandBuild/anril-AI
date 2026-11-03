@@ -126,17 +126,21 @@ export type OperatorSmsTemplateRequest = {
   created_at: string;
   updated_at: string | null;
 };
+export type OperatorSmsChecklist = { dlt: boolean; pe_tm: boolean; sender: boolean };
 export type OperatorSms = {
   connected: boolean;
   key_masked: string | null;
   webhook_registered: boolean;
   webhook_error: string | null;
   sms_count?: number | null;
+  checklist?: OperatorSmsChecklist;
 };
 const smsPath = (tenantId: string) => `/api/v1/operator/clients/${encodeURIComponent(tenantId)}/sms`;
 export const getOperatorSms = (tenantId: string) => operatorFetch<OperatorSms>(smsPath(tenantId));
 export const putOperatorSmsKey = (tenantId: string, api_key: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/key`, { method: "PUT", body: JSON.stringify({ api_key }) });
+export const putOperatorSmsChecklist = (tenantId: string, body: OperatorSmsChecklist) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/checklist`, { method: "PUT", body: JSON.stringify(body) });
 export const registerOperatorSmsWebhook = (tenantId: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/webhook`, { method: "POST" });
 export const getOperatorSmsTemplateRequests = (tenantId: string, page = 1, limit = 10) =>

@@ -15,6 +15,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.services import bulk9_client
@@ -108,6 +109,24 @@ def apply_update(db, tenant_id: str, msg: dict, *, status: str, reason: str | No
     return bool(res.data)
 
 
+def record_debit(db, tenant_id: str, msg: dict, raw: Any) -> bool:
+    """Store what Bulk9 debited from the client's wallet for this SMS (first value wins; a retried
+    callback carries the same amount). Separate from apply_update because the charge can arrive
+    after the row is already final."""
+    if raw is None or msg.get("amount_debited") is not None:
+        return False
+    text = re.sub(r"[^0-9.\-]", "", str(raw))
+    try:
+        amount = Decimal(text)
+    except InvalidOperation:
+        return False
+    if not amount.is_finite() or amount < 0 or amount > 1000:
+        return False
+    res = (db.table("sms_messages").update({"amount_debited": str(amount)}).eq("id", msg["id"])
+           .eq("tenant_id", tenant_id).is_("amount_debited", "null").execute())
+    return bool(res.data)
+
+
 def _dedupe_key(p: dict) -> str:
     parts = [str(p.get(k) or "") for k in ("request_id", "mobile", "status", "delivery_attempt",
                                              "dlr_attempt", "delivery_timestamp")]
@@ -117,7 +136,7 @@ def _dedupe_key(p: dict) -> str:
 def handle_callback(db, tenant_id: str, payload: dict) -> dict:
     """One Bulk9 SMS callback (already authenticated). Stored first (dedupe + audit), then
     applied. A callback for a message we can't find yet stays unmatched for the reconcile job."""
-    payload = bulk9_client.scrub_financial(payload)
+    payload = bulk9_client.scrub_financial(payload, bulk9_client.CLIENT_DEBIT_KEYS)
     key = _dedupe_key(payload)
     try:
         ins = db.table("sms_delivery_events").insert({
@@ -154,6 +173,7 @@ def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
                      request_id=p.get("request_id"), at=at)
     else:
         logger.warning("Bulk9 callback with unrecognised status %r (tenant %s)", p.get("status"), tenant_id)
+    record_debit(db, tenant_id, msg, p.get("amount_debited"))
     if event_id:
         db.table("sms_delivery_events").update({"matched": True}).eq("id", event_id).execute()
     return {"status": "ok"}
@@ -203,6 +223,7 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
                             apply_update(db, tid, m, status=st, reason=r.get("status_description") or r.get("description"),
                                          sms_count=r.get("sms_count"))
                             stats["reports"] += 1
+                        record_debit(db, tid, m, r.get("amount_debited"))
                         break
             elif m["status"] == "unknown":
                 await _resolve_unknown(db, key, m, now, stats)
@@ -227,6 +248,7 @@ async def _resolve_unknown(db, key: str, m: dict, now: datetime, stats: dict) ->
                 st = classify(r.get("status")) or "submitted"
                 apply_update(db, m["tenant_id"], m, status=st, request_id=r.get("request_id"),
                              reason=r.get("status_description") or r.get("description"), sms_count=r.get("sms_count"))
+                record_debit(db, m["tenant_id"], m, r.get("amount_debited"))
                 stats["unknown_resolved"] += 1
                 return
         if not bulk9_client.has_more_logs(body, page, limit):

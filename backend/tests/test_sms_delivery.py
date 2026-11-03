@@ -44,18 +44,40 @@ def test_classify(raw, want):
     assert sms_delivery.classify(raw) == want
 
 
-def test_delivered_callback_matched_by_udf1_without_financial_persistence():
+def test_delivered_callback_keeps_only_the_clients_own_debit():
     db = UniqueEventsDb()
     m = _msg(db)
     out = sms_delivery.handle_callback(db, T, {"request_id": "other", "udf1": m["id"], "mobile": "9876543210",
-                                               "status": "Delivered", "sms_count": 2, "amount_debited": "0.50"})
+                                               "status": "Delivered", "sms_count": 2, "amount_debited": "0.50",
+                                               "per_sms_cost": "0.11", "reseller_rate": "0.09"})
     assert out == {"status": "ok"}
     row = db.rows("sms_messages")[0]
     assert row["status"] == "delivered" and row["delivered_at"]
     assert row["sms_count"] == 2
+    assert row["amount_debited"] == "0.50"
     assert "cost_amount" not in row and "charged_amount" not in row
-    assert "amount_debited" not in db.rows("sms_delivery_events")[0]["payload"]
+    payload = db.rows("sms_delivery_events")[0]["payload"]
+    assert payload["amount_debited"] == "0.50"
+    assert "per_sms_cost" not in payload and "reseller_rate" not in payload
     assert db.rows("sms_delivery_events")[0]["matched"] is True
+
+
+def test_debit_arriving_after_final_status_is_still_recorded_once():
+    db = UniqueEventsDb()
+    m = _msg(db, status="delivered")
+    sms_delivery.handle_callback(db, T, {"udf1": m["id"], "mobile": "9876543210", "status": "Delivered",
+                                         "amount_debited": "₹ 0.2000", "delivery_attempt": 1})
+    sms_delivery.handle_callback(db, T, {"udf1": m["id"], "mobile": "9876543210", "status": "Delivered",
+                                         "amount_debited": "9.99", "delivery_attempt": 2})
+    assert db.rows("sms_messages")[0]["amount_debited"] == "0.2000"
+
+
+@pytest.mark.parametrize("raw", ["abc", "-1", "5000", None])
+def test_bad_debit_values_are_ignored(raw):
+    db = UniqueEventsDb()
+    m = _msg(db)
+    assert sms_delivery.record_debit(db, T, m, raw) is False
+    assert db.rows("sms_messages")[0].get("amount_debited") is None
 
 
 def test_retried_callback_is_dropped():

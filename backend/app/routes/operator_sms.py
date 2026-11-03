@@ -1,6 +1,7 @@
 """Operator-only Bulk9 connection and template request management."""
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import uuid
@@ -56,14 +57,34 @@ def _audit(db, admin: dict, tenant_id: str, action: str) -> None:
                        action=action, target_type="tenant", target_id=tenant_id, metadata={})
 
 
+CHECKLIST_KEYS = ("dlt", "pe_tm", "sender")
+
+
+def _checklist(tenant_id: str) -> dict:
+    try:
+        raw = json.loads(get_setting("sms_checklist", tenant_id=tenant_id) or "{}")
+    except ValueError:
+        raw = {}
+    raw = raw if isinstance(raw, dict) else {}
+    return {k: bool(raw.get(k)) for k in CHECKLIST_KEYS}
+
+
 async def _state(db, tenant_id: str) -> dict:
     _tenant(db, tenant_id)
     key = get_setting("bulk9_api_key", tenant_id=tenant_id)
+    sms_count = None
+    if key:
+        try:
+            sms_count = (await bulk9_client.wallet(key))["sms_count"]
+        except (Bulk9Error, Bulk9Timeout):
+            pass  # the panel still loads; the count just shows as unknown
     return {
         "connected": bool(key),
         "key_masked": _mask(key),
         "webhook_registered": bool(key) and get_setting("bulk9_webhook_registered", tenant_id=tenant_id) == "true",
         "webhook_error": get_setting("bulk9_webhook_error", tenant_id=tenant_id) or None,
+        "sms_count": sms_count,
+        "checklist": _checklist(tenant_id),
     }
 
 
@@ -131,6 +152,22 @@ async def save_key(tenant_id: str, body: KeyIn, admin: dict = Depends(get_system
     _put(db, tid, "bulk9_api_key", body.api_key)
     _audit(db, admin, tid, "operator.sms_key_saved")
     await _register_webhook(db, tid, body.api_key)
+    return await _state(db, tid)
+
+
+class ChecklistIn(BaseModel):
+    dlt: bool
+    pe_tm: bool
+    sender: bool
+
+
+@router.put("/clients/{tenant_id}/sms/checklist")
+async def save_checklist(tenant_id: str, body: ChecklistIn, admin: dict = Depends(get_system_admin)):
+    """The client's setup steps Bulk9 has no API for. PE–TM gates sending (routes/sms.py)."""
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    _put(db, tid, "sms_checklist", json.dumps(body.model_dump()))
+    _audit(db, admin, tid, "operator.sms_checklist_saved")
     return await _state(db, tid)
 
 

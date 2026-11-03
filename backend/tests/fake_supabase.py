@@ -140,6 +140,17 @@ class _Query:
         self.filters.append(compare)
         return self
 
+    def gt(self, column, value):
+        def compare(r, col=column, v=value):
+            actual = r.get(col)
+            if actual is None:
+                return False
+            if isinstance(actual, (int, float)) and not isinstance(actual, bool) and isinstance(v, (int, float)) and not isinstance(v, bool):
+                return actual > v
+            return str(actual) > str(v)
+        self.filters.append(compare)
+        return self
+
     def gte(self, column, value):
         def compare(r, col=column, v=value):
             actual = r.get(col)

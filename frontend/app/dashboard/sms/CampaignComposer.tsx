@@ -12,10 +12,13 @@ import { LeadPicker } from "./LeadPicker";
 import {
   countVars,
   errorStatus,
+  errorText,
+  estimateLine,
   formatCount,
   friendlyError,
   groupExcluded,
   isVariableMapComplete,
+  sendBlock,
   splitTemplate,
   previewKey,
 } from "./helpers";
@@ -64,6 +67,8 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
   const submittingRef = useRef(false);
 
   const templates = useSWR("sms:templates", () => api.sms.templates(), { revalidateOnFocus: false });
+  const status = useSWR("sms:status", () => api.sms.status(), { revalidateOnFocus: false });
+  const balance = useSWR("sms:balance", () => api.sms.balance(), { revalidateOnFocus: true, shouldRetryOnError: false });
   const fields = useSWR("sms:campaign-fields", () => api.sms.campaignFields(), { revalidateOnFocus: false });
 
   const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready" && t.template_type !== "unclassified"), [templates.data]);
@@ -109,7 +114,14 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
   }
 
   const scheduleBad = when.mode === "later" && !!resolved.error;
-  const canSend = !!preview && preview.eligible_count > 0 && !previewLoading && !scheduleBad && name.trim().length > 0 && !submitting;
+  const block = sendBlock({
+    loading: (status.isLoading && !status.data) || (balance.isLoading && !balance.data),
+    peTm: status.data ? status.data.checklist.pe_tm === true : undefined,
+    balance: balance.data?.sms_count,
+    needed: preview?.total_segments ?? 0,
+    support: status.data?.support_contact || null,
+  });
+  const canSend = !!preview && preview.eligible_count > 0 && !previewLoading && !scheduleBad && name.trim().length > 0 && !submitting && !block.blocked;
 
   async function submit() {
     if (!template || submittingRef.current) return;
@@ -141,7 +153,8 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
       const status = errorStatus(err);
       // A 4xx means nothing was created, so the next attempt may use a fresh key (the inputs may have changed).
       if (status && status >= 400 && status < 500) setIdempotencyKey(crypto.randomUUID());
-      setSubmitError(friendlyError(err, "Couldn't create the campaign."));
+      // A 409 here carries the exact reason (PE–TM not confirmed, not enough balance), so show it as sent.
+      setSubmitError(status === 409 ? errorText(err, "Couldn't create the campaign.") : friendlyError(err, "Couldn't create the campaign."));
       setConfirming(false);
     } finally {
       submittingRef.current = false;
@@ -320,6 +333,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                       <p className="text-xs font-semibold text-ink-muted">estimated SMS credits</p>
                     </div>
                   </div>
+                  <p className={estimateLine(preview).known ? "text-sm font-semibold text-[#0A1528]" : "text-xs text-[#64748b]"}>{estimateLine(preview).text}</p>
 
                   {preview.samples.length > 0 && (
                     <div>
@@ -415,6 +429,8 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
           </Card>
         </div>
       )}
+
+      {step === 4 && preview && block.reason && <Notice tone="warn">{block.reason}</Notice>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Btn variant="outline" onClick={() => (step === 1 ? onClose() : setStep((s) => s - 1))}>

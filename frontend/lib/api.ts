@@ -1752,8 +1752,21 @@ export interface SmsStatus {
   connected: boolean;
   checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
   support_contact: string | null;
+  templates_ready: boolean;
 }
 export interface SmsBalance { sms_count: number }
+export type SmsWalletKind = "topup" | "outside_usage" | "campaign";
+export interface SmsWalletItem {
+  kind: SmsWalletKind;
+  /** Signed: positive for a top-up, negative for usage. */
+  sms: number;
+  amount: number | null;
+  label: string;
+  campaign_id: string | null;
+  at: string;
+  balance_after: number | null;
+}
+export interface SmsWalletHistory { items: SmsWalletItem[]; checked_at: string | null }
 export interface SmsSender { sender_id: string; entity_id: string; entity_name: string | null }
 export type SmsTemplateType = "service" | "promotional";
 export interface SmsTemplate {
@@ -1788,6 +1801,16 @@ export interface SmsPreview {
   excluded: SmsPreviewExcluded[];
   samples: SmsPreviewSample[];
   estimated: boolean;
+  rate_per_sms: number | null;
+  estimated_amount: number | null;
+}
+export interface SmsOtpHistoryItem {
+  id: string;
+  mobile: string;
+  action: "send" | "resend" | "verify";
+  ok: boolean;
+  message: string | null;
+  created_at: string;
 }
 export type SmsCampaignStatus = "scheduled" | "sending" | "completed" | "cancelled";
 export type SmsMessageStatus =
@@ -1804,6 +1827,8 @@ export interface SmsCampaign {
   completed_at: string | null;
   counts: Record<SmsMessageStatus, number>;
   total: number;
+  sms_used: number;
+  amount_debited: number | null;
 }
 export interface SmsMessage {
   id: string;
@@ -1859,6 +1884,7 @@ export const api = {
   sms: {
     status: () => apiFetch<SmsStatus>("/api/v1/sms/status"),
     balance: () => apiFetch<SmsBalance>("/api/v1/sms/balance"),
+    walletHistory: (limit = 100) => apiFetch<SmsWalletHistory>(`/api/v1/sms/wallet/history?limit=${limit}`),
     senders: () => apiFetch<{ senders: SmsSender[] }>("/api/v1/sms/senders"),
     templates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates"),
     refreshTemplates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates/refresh", { method: "POST" }),
@@ -1899,6 +1925,8 @@ export const api = {
     templateRequests: () => apiFetch<{ requests: SmsTemplateRequest[] }>("/api/v1/sms/template-requests"),
     requestTemplate: (data: { wording: string; template_type: SmsTemplateType }) =>
       apiFetch<SmsTemplateRequest>("/api/v1/sms/template-requests", { method: "POST", body: JSON.stringify(data) }),
+    deleteTemplateRequest: (id: string) =>
+      apiFetch<SmsOk>(`/api/v1/sms/template-requests/${encodeURIComponent(id)}`, { method: "DELETE" }),
     campaignFields: () => apiFetch<{ fields: { key: string; label: string }[] }>("/api/v1/sms/campaigns/fields"),
     previewCampaign: (data: { template_id: string; variable_map: SmsVarSource[]; lead_ids: string[] }) =>
       apiFetch<SmsPreview>("/api/v1/sms/campaigns/preview", { method: "POST", body: JSON.stringify(data) }),
@@ -1915,6 +1943,13 @@ export const api = {
     campaign: (id: string) => apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}`),
     cancelCampaign: (id: string) =>
       apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    rescheduleCampaign: (id: string, send_at: string) =>
+      apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}/reschedule`, {
+        method: "POST",
+        body: JSON.stringify({ send_at }),
+      }),
+    deleteCampaign: (id: string) =>
+      apiFetch<SmsOk>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
     messages: (filters: SmsMessageFilters = {}) =>
       apiFetch<{ messages: SmsMessage[]; total: number }>(`/api/v1/sms/messages?${smsMessageQuery(filters)}`),
     exportMessagesCsv: async (filters: SmsMessageFilters = {}) => {
@@ -1945,15 +1980,22 @@ export const api = {
         `/api/v1/sms/reports/logs?from=${from}&to=${to}&page=${page}&limit=${limit}`,
       ),
     developerKey: () => apiFetch<{ api_key: string }>("/api/v1/sms/developer/key"),
-    otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number }) =>
+    otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number; variables_values?: string }) =>
       apiFetch<{ ok: boolean; request_id?: string; message?: string }>("/api/v1/sms/otp/send", {
         method: "POST",
         body: JSON.stringify({ otp_length: 6, otp_expiry: 15, ...data }),
+      }),
+    manualSend: (data: { sender_id: string; entity_id: string; template_id: string; message: string; mobile: string }) =>
+      apiFetch<{ ok: boolean; request_id: string | null; message: string }>("/api/v1/sms/manual-send", {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
     otpVerify: (data: { mobile: string; otp: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
     otpResend: (data: { mobile: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
+    otpHistory: (limit = 50, offset = 0) =>
+      apiFetch<{ items: SmsOtpHistoryItem[]; total: number }>(`/api/v1/sms/otp/history?limit=${limit}&offset=${offset}`),
   },
   scheduledOverview: {
     get: () => apiFetch<ScheduledOverview>("/api/v1/scheduled-overview"),

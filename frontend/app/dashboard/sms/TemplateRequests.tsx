@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { api, type SmsTemplateType } from "@/lib/api";
-import { formatIst, friendlyError, humanizeKind } from "./helpers";
+import { canDeleteTemplateRequest, errorText, formatIst, friendlyError, humanizeKind } from "./helpers";
 import type { Tone } from "./helpers";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Skeleton, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
@@ -21,6 +23,8 @@ export function TemplateRequests() {
   const [wording, setWording] = useState("");
   const [type, setType] = useState<SmsTemplateType>("service");
   const [busy, setBusy] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { data, error, isLoading, mutate } = useSWR("sms:template-requests", () => api.sms.templateRequests(), { revalidateOnFocus: false });
   const requests = data?.requests ?? [];
 
@@ -36,6 +40,23 @@ export function TemplateRequests() {
       toast.error(friendlyError(err, "Couldn't send the request"));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await api.sms.deleteTemplateRequest(deleteId);
+      toast.success("Request deleted.");
+      setDeleteId(null);
+      await mutate();
+    } catch (err) {
+      toast.error(errorText(err, "Couldn't delete the request"));
+      setDeleteId(null);
+      void mutate();
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -77,6 +98,17 @@ export function TemplateRequests() {
                     <Badge tone={requestTone(r.status)}>{humanizeKind(r.status)}</Badge>
                     <Badge>{r.template_type === "promotional" ? "Promotional" : "Service"}</Badge>
                     <span className="text-xs text-[#64748b]">{formatIst(r.created_at)}</span>
+                    {canManage && canDeleteTemplateRequest(r.status) && (
+                      <button
+                        type="button"
+                        aria-label="Delete template request"
+                        title="Delete"
+                        onClick={() => setDeleteId(r.id)}
+                        className="ml-auto rounded-lg p-1.5 text-[#64748b] hover:bg-danger/5 hover:text-danger"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                   <p className="whitespace-pre-wrap break-words text-sm text-[#334155]">{r.wording}</p>
                   {r.reason && <p className="mt-1.5 text-xs font-semibold text-[#be123c]">Reason: {r.reason}</p>}
@@ -86,6 +118,18 @@ export function TemplateRequests() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={deleteId !== null}
+        onClose={() => !deleting && setDeleteId(null)}
+        onConfirm={() => void remove()}
+        title="Delete this template request?"
+        description="It's removed from your list. You can send a new request any time."
+        tone="danger"
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        loading={deleting}
+        loadingLabel="Deleting…"
+      />
     </Card>
   );
 }

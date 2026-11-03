@@ -1,4 +1,4 @@
-"""The 24 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 25 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -23,6 +23,7 @@ RETRY_CLASS: dict[str, str] = {
     "scheduled-templates": "A",
     "sms-send": "A",
     "sms-reconcile": "A",
+    "sms-balance-sync": "A",
     "numbers-pool-sync": "B",
     "send-log-prune": "B",
     "scheduler-runs-prune": "B",
@@ -160,6 +161,14 @@ async def sms_reconcile(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.sms_delivery import reconcile
     await reconcile(get_supabase())
+
+
+@queue_app.periodic(cron="*/15 * * * *", periodic_id="sms-balance-sync")
+@queue_app.task(name="sms-balance-sync", queue="maintenance")
+async def sms_balance_sync(timestamp: int) -> None:
+    from app.db.supabase import get_supabase
+    from app.services.sms_wallet import sync_balances
+    await sync_balances(get_supabase())
 
 
 @queue_app.periodic(cron="30 0,12 * * *", periodic_id="numbers-pool-sync")  # 06:00 and 18:00 IST

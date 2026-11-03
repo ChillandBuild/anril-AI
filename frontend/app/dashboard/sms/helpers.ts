@@ -1,5 +1,5 @@
 /** Pure helpers for the SMS page (kept out of components so they can be unit-tested). */
-import type { SmsMessageStatus, SmsPreviewExcluded, SmsVarSource } from "@/lib/api";
+import type { SmsMessageStatus, SmsPreviewExcluded, SmsVarSource, SmsWalletItem } from "@/lib/api";
 
 export const MAX_LEADS_PER_CAMPAIGN = 5000;
 
@@ -236,4 +236,171 @@ export function campaignNeedsUpdates(campaign: { status: string; counts: Partial
 
 export function previewKey(template: { id: string; message: string; template_type: string } | null, map: (SmsVarSource | null)[], selected: Set<string>): string {
   return JSON.stringify([template, map, Array.from(selected).sort()]);
+}
+
+// Below this many SMS the balance turns amber.
+export const LOW_BALANCE_SMS = 500;
+
+export function balanceLevel(count: number | null | undefined): "empty" | "low" | "ok" {
+  const n = Number(count) || 0;
+  if (n <= 0) return "empty";
+  return n < LOW_BALANCE_SMS ? "low" : "ok";
+}
+
+export const SUPPORT_FALLBACK = "your Anril account manager";
+
+/** "₹1,234.50" (en-IN grouping, always 2 decimals). */
+export function formatRupees(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export interface SendBlock { blocked: boolean; reason: string | null }
+
+/**
+ * Why a campaign can't be sent yet. While status or balance is still loading it blocks without a
+ * message; once loaded, a missing value blocks with a message.
+ */
+export function sendBlock(input: {
+  loading: boolean;
+  peTm: boolean | undefined;
+  balance: number | undefined;
+  needed: number;
+  support: string | null;
+}): SendBlock {
+  if (input.loading) return { blocked: true, reason: null };
+  if (input.peTm === undefined) return { blocked: true, reason: "Couldn't check your SMS setup. Refresh and try again." };
+  if (input.peTm !== true) return { blocked: true, reason: "Waiting for your account manager to confirm PE–TM binding." };
+  if (input.balance === undefined) return { blocked: true, reason: "Couldn't check your SMS balance. Refresh and try again." };
+  if (input.balance < input.needed) {
+    return {
+      blocked: true,
+      reason: `Not enough SMS balance: this campaign needs ${formatCount(input.needed)} SMS and you have ${formatCount(input.balance)}. Contact ${input.support || SUPPORT_FALLBACK} to top up.`,
+    };
+  }
+  return { blocked: false, reason: null };
+}
+
+export interface SetupStep { key: "connected" | "templates" | "pe_tm" | "balance"; label: string; done: boolean; hint: string | null }
+
+export function setupSteps(input: { templatesReady: boolean; peTm: boolean; smsCount: number | null | undefined }): SetupStep[] {
+  const hasBalance = (input.smsCount ?? 0) > 0;
+  return [
+    { key: "connected", label: "Connected to SMS", done: true, hint: null },
+    { key: "templates", label: "Add your DLT entity, sender and approved templates", done: input.templatesReady, hint: "Templates tab" },
+    { key: "pe_tm", label: "PE–TM binding confirmed", done: input.peTm, hint: "Done by your account manager" },
+    { key: "balance", label: "SMS balance", done: hasBalance, hint: input.smsCount == null ? null : `${formatCount(input.smsCount)} SMS` },
+  ];
+}
+
+export function setupComplete(steps: SetupStep[]): boolean {
+  return steps.every((s) => s.done);
+}
+
+/** "+1,000" for a top-up, "−2,140" (true minus sign) for usage. */
+export function formatSignedSms(n: number): string {
+  if (n > 0) return `+${formatCount(n)}`;
+  if (n < 0) return `\u2212${formatCount(-n)}`;
+  return "0";
+}
+
+export const WALLET_KIND_LABELS: Record<SmsWalletItem["kind"], string> = {
+  topup: "Top-up",
+  outside_usage: "Used outside Anril",
+  campaign: "Campaign",
+};
+
+export function walletKindTone(kind: SmsWalletItem["kind"]): Tone {
+  return kind === "topup" ? "success" : kind === "campaign" ? "info" : "neutral";
+}
+
+/** "2026-10-30 14:04" in IST from an ISO-8601 string. */
+function istStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
+function csvCell(value: string, text = false): string {
+  // Text from other people must not run as a spreadsheet formula.
+  const safe = text && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+export function walletCsv(items: SmsWalletItem[]): string {
+  const rows = items.map((i) =>
+    [
+      csvCell(istStamp(i.at)),
+      csvCell(WALLET_KIND_LABELS[i.kind] ?? i.kind, true),
+      csvCell(i.label, true),
+      String(i.sms),
+      i.amount == null ? "" : i.amount.toFixed(2),
+    ].join(","),
+  );
+  return ["Date,Type,Description,SMS,Amount", ...rows].join("\r\n");
+}
+
+export const OTP_LENGTH_RANGE = { min: 4, max: 10 };
+export const OTP_EXPIRY_RANGE = { min: 1, max: 10080 };
+export const OTP_EXTRA_MAX = 200;
+
+/** Checks the OTP form's number boxes; returns a message for the first problem, or the parsed values. */
+export function parseOtpSettings(input: { length: string; expiry: string; extra: string }):
+  | { error: string }
+  | { error: null; length: number; expiry: number; extra: string | undefined } {
+  const length = Number(input.length);
+  if (!Number.isInteger(length) || length < OTP_LENGTH_RANGE.min || length > OTP_LENGTH_RANGE.max) {
+    return { error: `OTP length must be a whole number from ${OTP_LENGTH_RANGE.min} to ${OTP_LENGTH_RANGE.max}.` };
+  }
+  const expiry = Number(input.expiry);
+  if (!Number.isInteger(expiry) || expiry < OTP_EXPIRY_RANGE.min || expiry > OTP_EXPIRY_RANGE.max) {
+    return { error: `Expiry must be a whole number of minutes from ${OTP_EXPIRY_RANGE.min} to ${formatCount(OTP_EXPIRY_RANGE.max)}.` };
+  }
+  const extra = input.extra.trim();
+  if (extra.length > OTP_EXTRA_MAX) return { error: `Extra message values can be at most ${OTP_EXTRA_MAX} characters.` };
+  return { error: null, length, expiry, extra: extra || undefined };
+}
+
+/** The cost line under the credit count; null estimate means no charge has been reported yet. */
+export function estimateLine(preview: { rate_per_sms: number | null; estimated_amount: number | null }): { text: string; known: boolean } {
+  if (preview.estimated_amount == null || preview.rate_per_sms == null) {
+    return { text: "Cost shows after your first SMS is charged", known: false };
+  }
+  return {
+    text: `≈ ${formatRupees(preview.estimated_amount)} (about ${formatRupees(preview.rate_per_sms)} per SMS, based on your recent charges)`,
+    known: true,
+  };
+}
+
+export function canRescheduleCampaign(status: string): boolean {
+  return status === "scheduled";
+}
+
+export function canDeleteCampaign(status: string): boolean {
+  return status === "completed" || status === "cancelled";
+}
+
+export function canDeleteTemplateRequest(status: string): boolean {
+  return status === "requested" || status === "rejected";
+}
+
+/** ISO instant -> value for a datetime-local input (browser-local time, minute precision). */
+export function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** datetime-local value -> ISO string with offset (UTC "Z"); null when empty or invalid. */
+export function fromLocalInput(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+const OTP_ACTION_LABELS: Record<string, string> = { send: "Sent", resend: "Resent", verify: "Checked" };
+
+export function otpActionLabel(action: string): string {
+  return OTP_ACTION_LABELS[action] ?? action;
 }

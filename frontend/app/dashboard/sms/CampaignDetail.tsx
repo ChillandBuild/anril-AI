@@ -12,13 +12,19 @@ import {
   campaignStatusLabel,
   campaignNeedsUpdates,
   campaignStatusTone,
+  canDeleteCampaign,
+  canRescheduleCampaign,
+  errorText,
   formatCount,
   formatIst,
+  formatRupees,
   friendlyError,
+  fromLocalInput,
   statusLabel,
+  toLocalInput,
 } from "./helpers";
 import { MessageStatus, messageTime } from "./MessageStatus";
-import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls, inputCls } from "./ui";
+import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const PAGE = 50;
@@ -29,6 +35,12 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
   const [offset, setOffset] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [moveAt, setMoveAt] = useState("");
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   const campaign = useSWR(["sms:campaign", id], () => api.sms.campaign(id), {
     refreshInterval: (c) => (campaignNeedsUpdates(c) ? 10_000 : 0),
@@ -55,6 +67,45 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
       void campaign.mutate();
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function reschedule() {
+    const sendAt = fromLocalInput(moveAt);
+    if (!sendAt) {
+      setMoveError("Pick a future date and time.");
+      return;
+    }
+    setMoveBusy(true);
+    setMoveError(null);
+    try {
+      await api.sms.rescheduleCampaign(id, sendAt);
+      toast.success("Campaign rescheduled.");
+      setMoving(false);
+      await campaign.mutate();
+      onChanged();
+    } catch (err) {
+      setMoveError(errorText(err, "Couldn't reschedule the campaign"));
+      void campaign.mutate();
+    } finally {
+      setMoveBusy(false);
+    }
+  }
+
+  async function remove() {
+    setDeleting(true);
+    try {
+      await api.sms.deleteCampaign(id);
+      toast.success("Campaign deleted.");
+      setConfirmDelete(false);
+      onChanged();
+      onBack();
+    } catch (err) {
+      toast.error(errorText(err, "Couldn't delete the campaign"));
+      setConfirmDelete(false);
+      void campaign.mutate();
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -87,12 +138,45 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                   {c.status === "scheduled" && c.send_at ? <span>Goes out {formatIst(c.send_at)} IST</span> : <span>Created {formatIst(c.created_at)}</span>}
                 </div>
               </div>
-              {c.status === "scheduled" && canManage && (
-                <Btn variant="danger" onClick={() => setConfirmCancel(true)}>
-                  Cancel campaign
+              {canRescheduleCampaign(c.status) && canManage && (
+                <div className="flex flex-wrap gap-2">
+                  <Btn
+                    variant="outline"
+                    onClick={() => {
+                      setMoveAt(toLocalInput(c.send_at));
+                      setMoveError(null);
+                      setMoving((open) => !open);
+                    }}
+                  >
+                    Reschedule
+                  </Btn>
+                  <Btn variant="danger" onClick={() => setConfirmCancel(true)}>
+                    Cancel campaign
+                  </Btn>
+                </div>
+              )}
+              {canDeleteCampaign(c.status) && canManage && (
+                <Btn variant="danger" onClick={() => setConfirmDelete(true)}>
+                  Delete
                 </Btn>
               )}
             </div>
+            {moving && canRescheduleCampaign(c.status) && canManage && (
+              <div className="space-y-3 rounded-xl border border-[#e2e8f0] p-3">
+                <Field label="New send time (your local time)">
+                  <input type="datetime-local" className={`${inputCls} sm:w-64`} value={moveAt} onChange={(e) => setMoveAt(e.target.value)} />
+                </Field>
+                {moveError && <Notice tone="warn">{moveError}</Notice>}
+                <div className="flex gap-2">
+                  <Btn busy={moveBusy} disabled={!moveAt} onClick={() => void reschedule()}>
+                    Save
+                  </Btn>
+                  <Btn variant="outline" disabled={moveBusy} onClick={() => setMoving(false)}>
+                    Cancel
+                  </Btn>
+                </div>
+              </div>
+            )}
             <p className="whitespace-pre-wrap break-words rounded-xl bg-[#f8fafc] p-3 text-sm text-[#334155]">{c.template_text}</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
               <Stat label="Total" value={formatCount(c.total)} />
@@ -103,6 +187,8 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
               <Stat label="Checking…" value={formatCount(c.counts.unknown)} />
               <Stat label="Not sent" value={formatCount(c.counts.skipped)} />
               <Stat label="Cancelled" value={formatCount(c.counts.cancelled)} />
+              <Stat label="SMS used" value={formatCount(c.sms_used)} />
+              {c.amount_debited != null && <Stat label="Cost" value={formatRupees(c.amount_debited)} />}
             </div>
             {c.counts.unknown > 0 && (
               <Notice tone="info">
@@ -204,6 +290,19 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
         cancelLabel="Keep it"
         loading={cancelling}
         loadingLabel="Cancelling…"
+      />
+
+      <ConfirmModal
+        open={confirmDelete}
+        onClose={() => !deleting && setConfirmDelete(false)}
+        onConfirm={() => void remove()}
+        title="Delete this campaign?"
+        description="It disappears from your Campaigns list. The messages it sent and what they cost stay in Reports and Balance history."
+        tone="danger"
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        loading={deleting}
+        loadingLabel="Deleting…"
       />
     </div>
   );

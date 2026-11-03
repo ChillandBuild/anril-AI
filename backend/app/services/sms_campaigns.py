@@ -9,6 +9,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from app.config_dynamic import get_setting
@@ -242,11 +243,29 @@ def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_i
         if len(samples) < 3:
             samples.append({"lead_id": item["lead"]["id"], "name": item["lead"].get("name"),
                             "content": content, "segments": parts, "unicode": uni})
+    rate = rate_per_sms(db, tenant_id)
     return {
         "eligible_count": len(eligible), "excluded": excluded, "samples": samples,
         "total_segments": total_parts,
         "estimated": True,
+        # ≈ ₹ from what this client was actually charged lately; None until a charge has been reported.
+        "rate_per_sms": float(round(rate, 4)) if rate is not None else None,
+        "estimated_amount": float(round(rate * total_parts, 2)) if rate is not None else None,
     }
+
+
+RATE_SAMPLE = 500  # recent charged messages the ₹ estimate averages over
+
+
+def rate_per_sms(db, tenant_id: str) -> Decimal | None:
+    """The client's own recent charge per SMS part (Bulk9's amount_debited ÷ parts)."""
+    rows = (
+        db.table("sms_messages").select("sms_count,amount_debited").eq("tenant_id", tenant_id)
+        .not_.is_("amount_debited", "null").order("updated_at", desc=True).limit(RATE_SAMPLE).execute()
+    ).data or []
+    parts = sum(int(r.get("sms_count") or 1) for r in rows)
+    amount = sum((Decimal(str(r["amount_debited"])) for r in rows), Decimal(0))
+    return amount / parts if parts and amount > 0 else None
 
 
 def _existing_campaign(db, tenant_id: str, key: str) -> dict | None:
@@ -329,6 +348,46 @@ def cancel_campaign(db, tenant_id: str, campaign_id: str, now: datetime | None =
     return rows[0]
 
 
+RESCHEDULE_CUTOFF = timedelta(minutes=1)  # closer than this, the scheduler may already be claiming it
+
+
+def reschedule_campaign(db, tenant_id: str, campaign_id: str, send_at: datetime,
+                        now: datetime | None = None) -> dict:
+    now = now or utcnow()
+    if send_at.tzinfo is None:
+        raise SmsError("Pick a date and time.")
+    send_at = send_at.astimezone(timezone.utc)
+    if send_at <= now:
+        raise SmsError("Pick a future date and time.")
+    rows = (
+        db.table("sms_campaigns").update({"send_at": send_at.isoformat()})
+        .eq("id", campaign_id).eq("tenant_id", tenant_id).eq("status", "scheduled").is_("deleted_at", "null")
+        .gt("send_at", (now + RESCHEDULE_CUTOFF).isoformat()).execute()
+    ).data or []
+    if not rows:
+        if not get_campaign_row(db, tenant_id, campaign_id):
+            raise SmsError("Campaign not found.", 404)
+        raise SmsError("Only a scheduled campaign that starts more than a minute from now can be moved.", 409)
+    db.table("sms_messages").update({"send_at": send_at.isoformat(), "updated_at": now.isoformat()}) \
+        .eq("campaign_id", campaign_id).eq("tenant_id", tenant_id).eq("status", "queued").execute()
+    return rows[0]
+
+
+def delete_campaign(db, tenant_id: str, campaign_id: str, now: datetime | None = None) -> None:
+    """Hide a finished or cancelled campaign. Its messages stay: they are what was sent and charged
+    (balance history, Reports), and the balance sync would read vanished sends as outside usage."""
+    now = now or utcnow()
+    rows = (
+        db.table("sms_campaigns").update({"deleted_at": now.isoformat()})
+        .eq("id", campaign_id).eq("tenant_id", tenant_id).in_("status", ["completed", "cancelled"])
+        .is_("deleted_at", "null").execute()
+    ).data or []
+    if not rows:
+        if not get_campaign_row(db, tenant_id, campaign_id):
+            raise SmsError("Campaign not found.", 404)
+        raise SmsError("Cancel the campaign first. A campaign that is sending can't be deleted.", 409)
+
+
 # ---------------------------------------------------------------- reading campaigns / messages
 
 STATUSES = ["queued", "sending", "submitted", "delivered", "failed", "unknown", "skipped", "cancelled"]
@@ -337,20 +396,21 @@ STATUSES = ["queued", "sending", "submitted", "delivered", "failed", "unknown", 
 def get_campaign_row(db, tenant_id: str, campaign_id: str) -> dict | None:
     rows = (
         db.table("sms_campaigns").select("*").eq("tenant_id", tenant_id).eq("id", campaign_id)
-        .limit(1).execute()
+        .is_("deleted_at", "null").limit(1).execute()
     ).data or []
     return rows[0] if rows else None
 
 
 def _counts_for(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, dict]:
-    """Per-campaign status counts. Pages of 1000 (the API's row cap)."""
-    out = {cid: {"counts": {s: 0 for s in STATUSES}, "total": 0} for cid in campaign_ids}
+    """Per-campaign status counts, SMS parts used and the client's debit. Pages of 1000 (the API's row cap)."""
+    out = {cid: {"counts": {s: 0 for s in STATUSES}, "total": 0, "sms_used": 0, "amount": None}
+           for cid in campaign_ids}
     if not campaign_ids:
         return out
     start = 0
     while True:
         rows = (
-            db.table("sms_messages").select("campaign_id,status")
+            db.table("sms_messages").select("campaign_id,status,sms_count,amount_debited")
             .eq("tenant_id", tenant_id).in_("campaign_id", campaign_ids).order("id")
             .range(start, start + 999).execute()
         ).data or []
@@ -361,6 +421,9 @@ def _counts_for(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, dict]:
             if r["status"] in c["counts"]:
                 c["counts"][r["status"]] += 1
             c["total"] += 1
+            c["sms_used"] += int(r.get("sms_count") or 0)
+            if r.get("amount_debited") is not None:
+                c["amount"] = (c["amount"] or Decimal(0)) + Decimal(str(r["amount_debited"]))
         if len(rows) < 1000:
             return out
         start += 1000
@@ -376,6 +439,9 @@ def public_campaigns(db, tenant_id: str, rows: list[dict]) -> list[dict]:
             "sender_id": r["sender_id"], "template_type": r["template_type"], "status": r["status"],
             "send_at": r.get("send_at"), "created_at": r.get("created_at"),
             "completed_at": r.get("completed_at"), "counts": s["counts"], "total": s["total"],
+            "sms_used": s["sms_used"],
+            # What Bulk9 debited from the client's own wallet so far; None until a charge is reported.
+            "amount_debited": float(round(s["amount"], 2)) if s["amount"] is not None else None,
         })
     return result
 

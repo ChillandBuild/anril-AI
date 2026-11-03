@@ -13,16 +13,18 @@ import {
   clampRange,
   defaultRange,
   formatCount,
+  formatIst,
   friendlyError,
   istDateString,
   logColumns,
   maxToFor,
   humanizeKind,
+  otpActionLabel,
   scalarEntries,
   statusLabel,
 } from "./helpers";
 import { MessageStatus, messageTime } from "./MessageStatus";
-import { Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 
 const PAGE = 50;
 const SUMMARY_DAYS = 30;
@@ -34,6 +36,7 @@ export function ReportsTab() {
       <Summary />
       <Messages />
       <Logs />
+      <OtpHistory />
     </div>
   );
 }
@@ -336,6 +339,59 @@ function Logs() {
               </Btn>
             </div>
           </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function OtpHistory() {
+  const [offset, setOffset] = useState(0);
+  const { data, error, isLoading, mutate } = useSWR(["sms:otp-history", offset], () => api.sms.otpHistory(PAGE, offset), {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+  });
+  const items = data?.items ?? [];
+  return (
+    <Card>
+      <CardHeader title="OTP history" hint="OTPs sent, resent and checked from this dashboard." />
+      {isLoading && !data ? (
+        <Skeleton className="m-4 h-32" />
+      ) : error && !data ? (
+        <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
+      ) : items.length === 0 ? (
+        <Empty title="No OTPs sent from Anril yet." hint="OTPs your own app sends with your API key don't show here." />
+      ) : (
+        <>
+          <TableWrap>
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="border-b border-[#f1f5f9]">
+                  <th className={thCls}>Time (IST)</th>
+                  <th className={thCls}>Mobile</th>
+                  <th className={thCls}>Action</th>
+                  <th className={thCls}>Result</th>
+                  <th className={thCls}>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((o) => (
+                  <tr key={o.id} className="border-b border-[#f1f5f9] last:border-0">
+                    <td className={`${tdCls} whitespace-nowrap`}>{formatIst(o.created_at)}</td>
+                    <td className={`${tdCls} whitespace-nowrap`}>{o.mobile}</td>
+                    <td className={tdCls}>{otpActionLabel(o.action)}</td>
+                    <td className={tdCls}>
+                      <Badge tone={o.ok ? "success" : "danger"}>{o.ok ? "OK" : "Failed"}</Badge>
+                    </td>
+                    <td className={`${tdCls} max-w-[260px] truncate text-[#64748b]`} title={o.message ?? undefined}>
+                      {o.message || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+          <Pager offset={offset} limit={PAGE} total={data?.total ?? 0} onOffset={setOffset} />
         </>
       )}
     </Card>

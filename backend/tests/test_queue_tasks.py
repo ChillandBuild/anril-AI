@@ -1,4 +1,4 @@
-"""M2: the 24 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
+"""M2: the 25 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
 
 Run with:
     cd backend && python -m pytest tests/test_queue_tasks.py -q -p no:cacheprovider
@@ -53,6 +53,7 @@ CALLEES = {
     "scheduled-templates": ("app.services.scheduled_templates.process_due", True, False),
     "sms-send": ("app.services.sms_campaigns.process_due_sms", True, True),
     "sms-reconcile": ("app.services.sms_delivery.reconcile", True, True),
+    "sms-balance-sync": ("app.services.sms_wallet.sync_balances", True, True),
     "numbers-pool-sync": ("app.services.number_sync.sync_all_tenants_pool", True, False),
     "send-log-prune": ("app.services.outbound_router.prune_send_log", True, False),
     "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
@@ -73,7 +74,7 @@ EVERY = {
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
     "scheduled-templates": 60, "sms-send": 60, "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
-    "sms-reconcile": 900, "recycle-contacts": 1800, "ad-insights-sync": 3600,
+    "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "ad-insights-sync": 3600,
     "token-health-check": 4 * 3600, "number-quality-sync": 4 * 3600,
 }
 AT_IST = {
@@ -104,7 +105,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 24
+    assert len(_periodic()) == 25
 
 
 def test_task_name_matches_periodic_id():
@@ -156,7 +157,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (14, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (15, 4, 6)
 
 
 def test_sync_and_async_split():

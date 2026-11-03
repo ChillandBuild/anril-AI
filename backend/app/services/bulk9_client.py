@@ -188,13 +188,14 @@ async def add_template_excel(api_key: str, *, entity_id: str, file_url: str, pro
 
 async def delivery_report(api_key: str, request_id: str) -> dict[str, Any]:
     """Per-request report, last 7 days. A 404 means 'no report' — not a failed delivery."""
-    return scrub_financial(await _request(api_key, "GET", f"/dev/dlr/{request_id}"))
+    return scrub_financial(await _request(api_key, "GET", f"/dev/dlr/{request_id}"), CLIENT_DEBIT_KEYS)
 
 
 async def sms_logs(api_key: str, *, date_from: str, date_to: str, page: int = 1, limit: int = 100) -> dict:
-    """At most a 3-day window (YYYY-MM-DD)."""
+    """At most a 3-day window (YYYY-MM-DD). Keeps amount_debited; client-facing routes scrub it."""
     return scrub_financial(await _request(api_key, "GET", "/dev/sms_logs",
-                          params={"from": date_from, "to": date_to, "page": page, "limit": limit}))
+                          params={"from": date_from, "to": date_to, "page": page, "limit": limit}),
+                          CLIENT_DEBIT_KEYS)
 
 
 async def sms_summary(api_key: str, *, date_from: str, date_to: str) -> dict:
@@ -251,13 +252,19 @@ async def create_sms_webhook(api_key: str, *, url: str, secret: str) -> dict:
 _FINANCIAL_KEY = re.compile(r"(?:^|_)(?:amount|price|cost|charg\w*|debit\w*|credit\w*|wallet|balance|profit|payment|recharge|stock|rate)(?:_|$)", re.I)
 
 
-def scrub_financial(value: Any) -> Any:
-    """Remove financial fields recursively before returning or storing provider data."""
+# What Bulk9 debited from the client's own wallet for one SMS. Kept for campaign cost and balance
+# history; it is the client's price, never Anril's cost.
+CLIENT_DEBIT_KEYS = frozenset({"amount_debited"})
+
+
+def scrub_financial(value: Any, keep: frozenset[str] = frozenset()) -> Any:
+    """Remove financial fields recursively before returning or storing provider data.
+    Keys in `keep` survive (only CLIENT_DEBIT_KEYS is ever passed)."""
     if isinstance(value, dict):
-        return {key: scrub_financial(item) for key, item in value.items()
-                if not _FINANCIAL_KEY.search(re.sub(r"([a-z])([A-Z])", r"\1_\2", str(key)))}
+        return {key: scrub_financial(item, keep) for key, item in value.items()
+                if key in keep or not _FINANCIAL_KEY.search(re.sub(r"([a-z])([A-Z])", r"\1_\2", str(key)))}
     if isinstance(value, list):
-        return [scrub_financial(item) for item in value]
+        return [scrub_financial(item, keep) for item in value]
     return value
 
 

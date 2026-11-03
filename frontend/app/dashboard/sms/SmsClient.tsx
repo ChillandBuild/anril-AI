@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { BalanceTab } from "./BalanceTab";
 import { CampaignsTab } from "./CampaignsTab";
 import { DeveloperTab } from "./DeveloperTab";
-import { errorStatus, formatCount, friendlyError } from "./helpers";
+import { SUPPORT_FALLBACK, balanceLevel, errorStatus, formatCount, friendlyError } from "./helpers";
 import { ReportsTab } from "./ReportsTab";
 import { TemplatesTab } from "./TemplatesTab";
 import { Card, Empty, LoadError, Notice, Skeleton } from "./ui";
@@ -108,20 +108,52 @@ export function SmsClient() {
   const bal = balance.data;
   const balErr = balance.error ? errorStatus(balance.error) : undefined;
 
+  const level = bal ? balanceLevel(bal.sms_count) : null;
+  const topUpHint = `Contact ${support ?? SUPPORT_FALLBACK} to top up.`;
+
   return (
     <div className="w-full space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-bold text-[#0A1528]">SMS</h1>
+      {/* The page title lives in the app header; the balance chip sits on the tab row. */}
+      <div className="flex items-center gap-3 border-b border-[#e2e8f0]">
+        <div className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1">
+          <div role="tablist" className="flex min-w-max gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                type="button"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors",
+                  tab === t.key ? "border-primary text-primary" : "border-transparent text-[#64748b] hover:text-[#0A1528]",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           type="button"
           onClick={() => setTab("balance")}
-          className="flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-white px-3.5 py-1.5 text-sm shadow-sm hover:border-primary/40"
-          aria-label="Open SMS balance"
+          title={level && level !== "ok" ? topUpHint : undefined}
+          className={cn(
+            "mb-1.5 flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-sm",
+            level === "empty"
+              ? "border-[#fecdd3] bg-[#fff1f2] text-[#be123c]"
+              : level === "low"
+                ? "border-[#fde68a] bg-[#fff7e6] text-[#b45309]"
+                : "border-[#e2e8f0] bg-white hover:border-primary/40",
+          )}
+          aria-label={level && level !== "ok" ? `Open SMS balance. ${topUpHint}` : "Open SMS balance"}
         >
-          <Wallet size={15} className="text-primary" />
+          <Wallet size={15} className={level === "ok" || !level ? "text-primary" : undefined} />
           {bal ? (
-            <span className="font-bold text-[#0A1528]">
+            <span className={cn("font-bold", level === "ok" && "text-[#0A1528]")}>
               {formatCount(bal.sms_count)} SMS
+              {level === "low" && <span className="font-semibold"> · Low</span>}
+              {level === "empty" && <span className="font-semibold"> · Top up needed</span>}
             </span>
           ) : balance.error ? (
             <span className="text-[#64748b]">{balErr === 409 ? "Not connected" : "Balance unavailable"}</span>
@@ -131,37 +163,15 @@ export function SmsClient() {
         </button>
       </div>
 
-      <div className="-mx-1 overflow-x-auto px-1">
-        <div role="tablist" className="flex min-w-max gap-1 border-b border-[#e2e8f0]">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              role="tab"
-              type="button"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                "whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors",
-                tab === t.key ? "border-primary text-primary" : "border-transparent text-[#64748b] hover:text-[#0A1528]",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {balance.error && balErr === 409 && (
         <Notice tone="warn">SMS isn&apos;t connected yet. Some details may be missing until setup finishes.</Notice>
       )}
 
-      {tab === "campaigns" && <CampaignsTab onBalanceChanged={() => void balance.mutate()} />}
+      {tab === "campaigns" && <CampaignsTab onBalanceChanged={() => void balance.mutate()} onOpenTemplates={() => setTab("templates")} />}
       {tab === "templates" && <TemplatesTab />}
       {tab === "reports" && <ReportsTab />}
       {tab === "balance" && <BalanceTab balance={bal ?? null} balanceError={balance.error ? friendlyError(balance.error, "Couldn't load your balance.") : null} onReload={() => void balance.mutate()} />}
       {tab === "developer" && <DeveloperTab />}
-
-      <p className="pt-2 text-xs text-[#64748b]">SMS help: {support ?? "contact your Anril account manager"}</p>
     </div>
   );
 }

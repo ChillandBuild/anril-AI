@@ -199,6 +199,12 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Your calls, attendance and performance at a glance.",
     };
   }
+  if (pathname === "/dashboard/sms") {
+    return {
+      title: "SMS",
+      description: "Send DLT-approved SMS campaigns to your leads and track delivery.",
+    };
+  }
   if (pathname === "/dashboard/deals") {
     return {
       title: "Deals",

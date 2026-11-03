@@ -5,14 +5,20 @@ import useSWR from "swr";
 import { Loader2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getOperatorSms, getOperatorSmsTemplateRequests, putOperatorSmsKey,
+  getOperatorSms, getOperatorSmsTemplateRequests, putOperatorSmsChecklist, putOperatorSmsKey,
   registerOperatorSmsWebhook, updateOperatorSmsTemplateRequest,
-  type OperatorSmsTemplateRequest,
+  type OperatorSmsChecklist, type OperatorSmsTemplateRequest,
 } from "@/lib/operator";
 import { OperatorToggle } from "../../../components/operator-toggle";
 
 const buttonClass = "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold text-ink hover:bg-surface-low disabled:opacity-50";
 const inputClass = "w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink outline-none focus:border-primary disabled:opacity-50";
+
+const CHECKLIST_ITEMS: { key: keyof OperatorSmsChecklist; label: string }[] = [
+  { key: "dlt", label: "DLT registered" },
+  { key: "pe_tm", label: "PE–TM binding" },
+  { key: "sender", label: "Sender ID" },
+];
 
 export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle }: {
   tenantId: string; enabled: boolean; featureSaving: boolean; onToggle: (enabled: boolean) => void;
@@ -21,6 +27,8 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState<"key" | "webhook" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checklistBusy, setChecklistBusy] = useState(false);
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const requests = useSWR(["operator:sms-requests", tenantId, page], () => getOperatorSmsTemplateRequests(tenantId, page, 10));
 
@@ -39,6 +47,21 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
       void connection.mutate();
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function toggleChecklist(item: keyof OperatorSmsChecklist, value: boolean) {
+    const current = connection.data?.checklist ?? { dlt: false, pe_tm: false, sender: false };
+    if (checklistBusy) return;
+    setChecklistBusy(true);
+    setChecklistError(null);
+    try {
+      await connection.mutate(await putOperatorSmsChecklist(tenantId, { ...current, [item]: value }), { revalidate: false });
+    } catch (err) {
+      setChecklistError(err instanceof Error ? err.message : "Couldn't save the setup checklist.");
+      void connection.mutate();
+    } finally {
+      setChecklistBusy(false);
     }
   }
 
@@ -66,6 +89,15 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
           <button className={buttonClass} disabled={!!busy || !data?.connected} onClick={() => void connect("webhook")}>{busy === "webhook" && <Loader2 size={14} className="animate-spin" />}{data?.webhook_registered ? "Retry delivery setup" : "Register delivery updates"}</button>
         </div>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        {data && <div className="space-y-2 border-t border-border pt-3">
+          <h4 className="text-sm font-semibold text-ink">Client setup checklist</h4>
+          {CHECKLIST_ITEMS.map((item) => <div key={item.key} className="flex items-center justify-between gap-3">
+            <span className="text-sm text-ink">{item.label}</span>
+            <OperatorToggle checked={data.checklist?.[item.key] === true} onChange={(next) => void toggleChecklist(item.key, next)} disabled={checklistBusy} aria-label={item.label} size="sm" />
+          </div>)}
+          <p className="text-xs text-ink-muted">PE–TM must be ticked before this client can send SMS.</p>
+          {checklistError && <p role="alert" className="text-sm text-danger">{checklistError}</p>}
+        </div>}
         <details className="border-t border-border pt-3">
           <summary className="cursor-pointer text-sm font-semibold text-ink">Template requests{requests.data ? ` (${requests.data.total})` : ""}</summary>
           <div className="mt-3 space-y-3">
