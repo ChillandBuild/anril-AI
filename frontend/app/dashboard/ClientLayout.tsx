@@ -154,7 +154,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           <NotificationProvider>
             <SessionTracker />
             <DashboardAuthGuard>
-              <div className="flex min-h-screen overflow-x-hidden bg-background">
+              <div className="flex min-h-screen overflow-x-clip bg-background">
                 <div className="hidden lg:block">
                   <Sidebar />
                 </div>
@@ -167,8 +167,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                   <div className={isCallReviewPage
                     ? "w-full min-w-0 max-w-none"
                     : isMetaAds
-                    ? "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
-                    : "w-full min-w-0 max-w-none overflow-x-hidden px-3 py-4 pb-28 sm:px-4 md:p-7"}>
+                    ? "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
+                    : "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:p-7"}>
                     {children}
                   </div>
                 </main>

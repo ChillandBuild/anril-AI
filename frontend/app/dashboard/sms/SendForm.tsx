@@ -41,6 +41,10 @@ import { Badge, Btn, Card, Field, LoadError, Notice, inputCls, textareaCls } fro
 import { usePerm } from "./usePerm";
 
 const OWN = "__own__";
+const SOURCES = [
+  ["template", "Approved template"],
+  ["own", "Type my own"],
+] as const;
 
 /** The one Send SMS form: pick an approved template or Type my own, say who gets it, preview, send or schedule. */
 export function SendForm() {
@@ -219,13 +223,14 @@ export function SendForm() {
   const senderShown = locked ? (template?.sender_id ?? "") : own.sender_id;
   const summary = sendSummary({ preview: freshPreview, parts: sample?.segments ?? length.parts, balance: balance.data ?? null });
   const section = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
+  const ownRoute = route === "own";
 
-  // Layout A: the form on the left, preview + cost + Send on the right. On a laptop the two columns
-  // fill the screen under the app header (64px) and page padding (2 × 28px), so the page itself never
-  // scrolls; a long column scrolls inside its own card. Phones stack the two and scroll normally.
+  // Three numbered steps on the left; the page scrolls normally. On a laptop the preview + cost + Send
+  // card sits on the right and stays pinned under the app header (64px) + page padding (28px) as you
+  // scroll. Phones stack the card under step 3.
   return (
-    <div className="grid gap-4 lg:h-[calc(100dvh-7.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
-      <div className="min-h-0 space-y-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5 lg:overflow-y-auto">
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+      <div className="space-y-5 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm sm:p-6">
         {!smsStatus.checklist.pe_tm && (
           <Notice tone="warn">
             Sending unlocks after PE-TM binding.{" "}
@@ -235,147 +240,160 @@ export function SendForm() {
           </Notice>
         )}
 
-        <section aria-labelledby="sms-send-message" className="space-y-3">
-          <h2 id="sms-send-message" className={section}>
-            Message
-          </h2>
-          <select aria-label="Template" className={inputCls} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
-            <option value="">Choose an approved template…</option>
-            {ready.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
-              </option>
-            ))}
-            <option value={OWN}>Type my own</option>
-          </select>
-          {templates.error && !templates.data && <LoadError message={friendlyError(templates.error, "Couldn't load your templates.")} onRetry={() => void templates.mutate()} />}
-
-          {route === "template" && template && (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748b]">
-              <span className="font-bold text-[#0A1528]">{template.sender_id}</span>
-              <span>· Entity {template.entity_id}</span>
-              <span>· DLT {template.dlt_template_id}</span>
-              <Badge tone={promotional ? "warn" : "neutral"}>{promotional ? "Promotional" : "Service"}</Badge>
-            </p>
-          )}
-
-          {route === "own" && (
-            <>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <Field label="Sender ID">
-                  <select
-                    className={inputCls}
-                    value={own.sender_id}
-                    onChange={(e) => {
-                      const s = senderList.find((x) => x.sender_id === e.target.value);
-                      setOwnField({ sender_id: e.target.value, entity_id: s?.entity_id ?? "" });
+        <div>
+          <Step n={1} id="sms-send-message" title="What to send">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Message source">
+              {SOURCES.map(([key, label]) => {
+                const on = key === "own" ? ownRoute : !ownRoute;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => {
+                      if (key === "own" && !ownRoute) pickTemplate(OWN);
+                      if (key === "template" && ownRoute) pickTemplate("");
                     }}
+                    className={cn(
+                      "flex h-10 items-center gap-2 rounded-full border px-4 text-sm",
+                      on ? "border-primary bg-primary/5 font-bold text-[#0A1528]" : "border-[#e2e8f0] font-semibold text-[#64748b] hover:border-slate-300",
+                    )}
                   >
-                    <option value="">{senders.isLoading ? "Loading…" : "Pick a sender"}</option>
-                    {senderList.map((s) => (
-                      <option key={s.sender_id} value={s.sender_id}>
-                        {s.sender_id}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="DLT entity ID">
-                  <input className={inputCls} value={own.entity_id} onChange={(e) => setOwnField({ entity_id: e.target.value })} />
-                </Field>
-                <Field label="DLT template ID">
-                  <input className={inputCls} value={own.dlt_template_id} onChange={(e) => setOwnField({ dlt_template_id: e.target.value })} />
-                </Field>
-                <Field label="Type">
-                  <select className={inputCls} value={own.template_type} onChange={(e) => setOwnField({ template_type: e.target.value as OwnDlt["template_type"] })}>
-                    <option value="service">Service</option>
-                    <option value="promotional">Promotional</option>
-                  </select>
-                </Field>
-              </div>
-              <Field label="Message" hint="Exact approved wording. No {#var#} here.">
-                <textarea className={textareaCls} rows={3} value={own.message} onChange={(e) => setOwnField({ message: e.target.value })} />
-              </Field>
-            </>
-          )}
+                    <span aria-hidden className={cn("h-3.5 w-3.5 rounded-full border-2", on ? "border-primary bg-primary shadow-[inset_0_0_0_2px_#fff]" : "border-[#cbd5e1]")} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {!ownRoute && (
+              <select aria-label="Template" className={inputCls} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
+                <option value="">Choose an approved template…</option>
+                {ready.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
+                  </option>
+                ))}
+              </select>
+            )}
+            {templates.error && !templates.data && <LoadError message={friendlyError(templates.error, "Couldn't load your templates.")} onRetry={() => void templates.mutate()} />}
 
-          {route === "template" &&
-            template &&
-            varCount > 0 &&
-            (fields.error && !fields.data ? (
-              <LoadError message={friendlyError(fields.error, "Couldn't load the contact fields.")} onRetry={() => void fields.mutate()} />
-            ) : (
-              <VariableMapper varCount={varCount} varMap={varMap} fields={fields.data?.fields ?? []} onSet={setVar} />
-            ))}
-
-          {route !== null && message && (
-            <div>
-              <p className="text-xs font-semibold text-[#334155]" aria-live="polite">
-                {length.unicode ? "Unicode" : "English"} · {smsCounterLine(message)}
-                {varCount > 0 ? " (each variable counted as 1 character; the real length can differ)" : ""}
+            {route === "template" && template && (
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748b]">
+                <span className="font-bold text-[#0A1528]">{template.sender_id}</span>
+                <span>· Entity {template.entity_id}</span>
+                <span>· DLT {template.dlt_template_id}</span>
+                <Badge tone={promotional ? "warn" : "neutral"}>{promotional ? "Promotional" : "Service"}</Badge>
               </p>
-              {length.unicode && <p className="mt-0.5 text-xs text-[#b45309]">{UNICODE_NOTE}</p>}
-            </div>
-          )}
-        </section>
+            )}
 
-        <section aria-labelledby="sms-send-recipients" className="space-y-3 border-t border-[#f1f5f9] pt-4">
-          <h2 id="sms-send-recipients" className={section}>
-            Recipients
-          </h2>
-          <NumbersPicker
-            value={numbers}
-            onChange={(update) => {
-              setCreated(null);
-              setNumbers((prev) => withNumbersChange(prev, update(prev)));
-            }}
-            promotional={promotional}
-            showLeads={hasLeads}
-          />
-        </section>
-
-        <section className="space-y-2 border-t border-[#f1f5f9] pt-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Name" className="min-w-[12rem] flex-1">
-              <input className={inputCls} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-            </Field>
-            <div className="flex gap-2" role="radiogroup" aria-label="When to send">
-              {(["now", "later"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={when.mode === m}
-                  onClick={() => setWhen((w) => ({ ...w, mode: m }))}
-                  className={cn(
-                    "h-10 rounded-xl border px-4 text-sm font-bold",
-                    when.mode === m ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
-                  )}
-                >
-                  {m === "now" ? "Now" : "Later"}
-                </button>
-              ))}
-            </div>
-            {when.mode === "later" && (
+            {route === "own" && (
               <>
-                <Field label="Date (IST)" className="w-40">
-                  <input type="date" className={inputCls} value={when.date} min={bounds.min} max={bounds.max} onChange={(e) => setWhen((w) => ({ ...w, date: e.target.value }))} />
-                </Field>
-                <Field label="Time (IST)" className="w-32">
-                  <input type="time" className={inputCls} value={when.time} onChange={(e) => setWhen((w) => ({ ...w, time: e.target.value }))} />
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                  <Field label="Sender ID">
+                    <select
+                      className={inputCls}
+                      value={own.sender_id}
+                      onChange={(e) => {
+                        const s = senderList.find((x) => x.sender_id === e.target.value);
+                        setOwnField({ sender_id: e.target.value, entity_id: s?.entity_id ?? "" });
+                      }}
+                    >
+                      <option value="">{senders.isLoading ? "Loading…" : "Pick a sender"}</option>
+                      {senderList.map((s) => (
+                        <option key={s.sender_id} value={s.sender_id}>
+                          {s.sender_id}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="DLT entity ID">
+                    <input className={inputCls} value={own.entity_id} onChange={(e) => setOwnField({ entity_id: e.target.value })} />
+                  </Field>
+                  <Field label="DLT template ID">
+                    <input className={inputCls} value={own.dlt_template_id} onChange={(e) => setOwnField({ dlt_template_id: e.target.value })} />
+                  </Field>
+                  <Field label="Type">
+                    <select className={inputCls} value={own.template_type} onChange={(e) => setOwnField({ template_type: e.target.value as OwnDlt["template_type"] })}>
+                      <option value="service">Service</option>
+                      <option value="promotional">Promotional</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Message" hint="Exact approved wording. No {#var#} here.">
+                  <textarea className={textareaCls} rows={3} value={own.message} onChange={(e) => setOwnField({ message: e.target.value })} />
                 </Field>
               </>
             )}
-          </div>
-          {when.mode === "later" &&
-            (resolved.error ? (
-              <p className="text-xs font-semibold text-danger">{resolved.error}</p>
-            ) : (
-              resolved.at && <p className="text-xs text-[#64748b]">Goes out {formatSendTime(resolved.at)} IST ({untilSend(resolved.at, now)}).</p>
-            ))}
-        </section>
+
+            {route === "template" &&
+              template &&
+              varCount > 0 &&
+              (fields.error && !fields.data ? (
+                <LoadError message={friendlyError(fields.error, "Couldn't load the contact fields.")} onRetry={() => void fields.mutate()} />
+              ) : (
+                <VariableMapper varCount={varCount} varMap={varMap} fields={fields.data?.fields ?? []} onSet={setVar} />
+              ))}
+
+            {route !== null && message && (
+              <div>
+                <p className="text-xs font-semibold text-[#334155]" aria-live="polite">
+                  {length.unicode ? "Unicode" : "English"} · {smsCounterLine(message)}
+                  {varCount > 0 ? " (each variable counted as 1 character; the real length can differ)" : ""}
+                </p>
+                {length.unicode && <p className="mt-0.5 text-xs text-[#b45309]">{UNICODE_NOTE}</p>}
+              </div>
+            )}
+          </Step>
+
+          <Step n={2} id="sms-send-recipients" title="Who gets it">
+            <NumbersPicker
+              value={numbers}
+              onChange={(update) => {
+                setCreated(null);
+                setNumbers((prev) => withNumbersChange(prev, update(prev)));
+              }}
+              promotional={promotional}
+              showLeads={hasLeads}
+            />
+          </Step>
+
+          <Step n={3} id="sms-send-when" title="When">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name">
+                <input className={inputCls} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              <Field label="Send">
+                <select className={inputCls} value={when.mode} onChange={(e) => setWhen((w) => ({ ...w, mode: e.target.value as WhenValue["mode"] }))}>
+                  <option value="now">Right now</option>
+                  <option value="later">Later…</option>
+                </select>
+              </Field>
+              {when.mode === "later" && (
+                <>
+                  <Field label="Date (IST)">
+                    <input type="date" className={inputCls} value={when.date} min={bounds.min} max={bounds.max} onChange={(e) => setWhen((w) => ({ ...w, date: e.target.value }))} />
+                  </Field>
+                  <Field label="Time (IST)">
+                    <input type="time" className={inputCls} value={when.time} onChange={(e) => setWhen((w) => ({ ...w, time: e.target.value }))} />
+                  </Field>
+                </>
+              )}
+            </div>
+            {when.mode === "later" &&
+              (resolved.error ? (
+                <p className="text-xs font-semibold text-danger">{resolved.error}</p>
+              ) : (
+                resolved.at && <p className="text-xs text-[#64748b]">Goes out {formatSendTime(resolved.at)} IST ({untilSend(resolved.at, now)}).</p>
+              ))}
+          </Step>
+        </div>
       </div>
 
-      <aside aria-label="Preview and send" className="flex min-h-0 flex-col gap-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5 lg:overflow-y-auto">
+      <aside
+        aria-label="Preview and send"
+        className="flex flex-col gap-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.75rem] lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto"
+      >
         <h2 className={section}>Preview</h2>
         <div className="space-y-2 rounded-xl bg-[#0A1528] p-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#9fb3c8]">{senderShown || "Sender ID"}</p>
@@ -413,7 +431,7 @@ export function SendForm() {
           </Notice>
         )}
 
-        <div className="mt-auto grid gap-2">
+        <div className="grid gap-2">
           <Btn variant="outline" busy={previewing} disabled={!request || scheduleBad} onClick={() => void runPreview()}>
             {freshPreview ? "Preview again" : "Preview"}
           </Btn>
@@ -451,5 +469,22 @@ export function SendForm() {
         loadingLabel="Working…"
       />
     </div>
+  );
+}
+
+/** One numbered step of the Send SMS form: a dark number circle, a title, then the step's fields. */
+function Step({ n, id, title, children }: { n: number; id: string; title: string; children: React.ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="flex gap-4 border-t border-[#e9edf2] py-6 first:border-t-0 first:pt-1 last:pb-1">
+      <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A1528] text-sm font-extrabold text-white">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1 space-y-3">
+        <h2 id={id} className="mt-1 text-base font-extrabold text-[#0A1528]">
+          {title}
+        </h2>
+        {children}
+      </div>
+    </section>
   );
 }

@@ -44,7 +44,7 @@ export function NumbersPicker({
   const modes: NumbersMode[] = showLeads ? ["contact", "list", "excel", "leads"] : ["contact", "list", "excel"];
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Where the numbers come from" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Where the numbers come from" className="flex flex-wrap border-b border-[#e9edf2]">
         {modes.map((m) => (
           <button
             key={m}
@@ -53,8 +53,8 @@ export function NumbersPicker({
             aria-selected={value.mode === m}
             onClick={() => set({ mode: m })}
             className={cn(
-              "h-9 rounded-full border px-4 text-sm font-bold",
-              value.mode === m ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
+              "-mb-px h-10 border-b-2 px-4 text-sm",
+              value.mode === m ? "border-primary font-extrabold text-[#0A1528]" : "border-transparent font-semibold text-[#64748b] hover:text-[#0A1528]",
             )}
           >
             {NUMBERS_MODE_LABELS[m]}
