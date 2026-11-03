@@ -143,6 +143,39 @@ export const putOperatorSmsChecklist = (tenantId: string, body: OperatorSmsCheck
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/checklist`, { method: "PUT", body: JSON.stringify(body) });
 export const registerOperatorSmsWebhook = (tenantId: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/webhook`, { method: "POST" });
+export type OperatorSmsPeTm = {
+  id: string;
+  entity_id: string;
+  tm_approved_at: string | null;
+  pe_confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  /** 10-minute link to the client's binding-request screenshot; null if the file couldn't be read. */
+  proof_url: string | null;
+};
+export const getOperatorSmsPeTm = (tenantId: string) =>
+  operatorFetch<{ items: OperatorSmsPeTm[] }>(`${smsPath(tenantId)}/pe-tm`);
+export const approveOperatorSmsPeTm = (tenantId: string, id: string) =>
+  operatorFetch<{ item: Omit<OperatorSmsPeTm, "proof_url"> }>(`${smsPath(tenantId)}/pe-tm/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+  });
+export type OperatorSmsCreditRequest = {
+  id: string;
+  tenant_id: string;
+  tenant_name: string | null;
+  amount: number;
+  note: string | null;
+  status: "open" | "done" | "cancelled";
+  created_at: string;
+  done_at: string | null;
+};
+export const getOperatorSmsCreditRequests = () =>
+  operatorFetch<{ items: OperatorSmsCreditRequest[] }>("/api/v1/operator/sms/credit-requests?status=open");
+export const finishOperatorSmsCreditRequest = (id: string, status: "done" | "cancelled" = "done") =>
+  operatorFetch<{ item: OperatorSmsCreditRequest }>(`/api/v1/operator/sms/credit-requests/${encodeURIComponent(id)}/done`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
 export const getOperatorSmsTemplateRequests = (tenantId: string, page = 1, limit = 10) =>
   operatorFetch<{ items: OperatorSmsTemplateRequest[]; total: number; page: number; limit: number }>(
     `${smsPath(tenantId)}/template-requests?page=${page}&limit=${limit}`,

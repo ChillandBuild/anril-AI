@@ -5,9 +5,9 @@ import useSWR from "swr";
 import { Loader2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getOperatorSms, getOperatorSmsTemplateRequests, putOperatorSmsChecklist, putOperatorSmsKey,
-  registerOperatorSmsWebhook, updateOperatorSmsTemplateRequest,
-  type OperatorSmsChecklist, type OperatorSmsTemplateRequest,
+  approveOperatorSmsPeTm, getOperatorSms, getOperatorSmsPeTm, getOperatorSmsTemplateRequests, putOperatorSmsChecklist,
+  putOperatorSmsKey, registerOperatorSmsWebhook, updateOperatorSmsTemplateRequest,
+  type OperatorSmsChecklist, type OperatorSmsPeTm, type OperatorSmsTemplateRequest,
 } from "@/lib/operator";
 import { OperatorToggle } from "../../../components/operator-toggle";
 
@@ -31,6 +31,23 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const requests = useSWR(["operator:sms-requests", tenantId, page], () => getOperatorSmsTemplateRequests(tenantId, page, 10));
+
+  const peTm = useSWR(["operator:sms-pe-tm", tenantId], () => getOperatorSmsPeTm(tenantId));
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  async function approveTm(item: OperatorSmsPeTm) {
+    if (approvingId) return;
+    setApprovingId(item.id);
+    try {
+      await approveOperatorSmsPeTm(tenantId, item.id);
+      await peTm.mutate();
+      toast.success("TM approval recorded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't record the TM approval.");
+    } finally {
+      setApprovingId(null);
+    }
+  }
 
   async function connect(action: "key" | "webhook") {
     if (busy) return;
@@ -98,6 +115,21 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
           <p className="text-xs text-ink-muted">PE–TM must be ticked before this client can send SMS.</p>
           {checklistError && <p role="alert" className="text-sm text-danger">{checklistError}</p>}
         </div>}
+        <details className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-semibold text-ink">PE-TM binding{peTm.data ? ` (${peTm.data.items.length})` : ""}</summary>
+          <div className="mt-3">
+            {peTm.error ? <p role="alert" className="text-sm text-danger">Couldn&apos;t load binding requests. <button className="font-semibold underline" onClick={() => void peTm.mutate()}>Retry</button></p> : peTm.isLoading ? <p className="text-xs text-ink-muted">Loading binding requests…</p> : !peTm.data?.items.length ? <p className="text-xs text-ink-muted">No binding requests yet.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+              <thead className="text-ink-muted"><tr><th className="py-1.5 pr-3 font-medium">Entity ID</th><th className="py-1.5 pr-3 font-medium">Proof</th><th className="py-1.5 pr-3 font-medium">TM approval</th><th className="py-1.5 pr-3 font-medium">Final PE confirmation</th><th className="py-1.5 font-medium"><span className="sr-only">Action</span></th></tr></thead>
+              <tbody>{peTm.data.items.map((item) => <tr key={item.id} className="border-t border-border align-top">
+                <td className="break-all py-2 pr-3 font-mono text-ink">{item.entity_id}</td>
+                <td className="py-2 pr-3">{item.proof_url ? <a href={item.proof_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">View</a> : <span className="text-ink-muted">Unavailable</span>}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-ink">{item.tm_approved_at ? `Approved ${new Date(item.tm_approved_at).toLocaleDateString("en-IN")}` : "Pending"}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-ink">{item.pe_confirmed_at ? `Done ${new Date(item.pe_confirmed_at).toLocaleDateString("en-IN")}` : "Pending"}</td>
+                <td className="py-2">{!item.tm_approved_at && <button className={buttonClass} disabled={!!approvingId} onClick={() => void approveTm(item)}>{approvingId === item.id ? "Saving…" : "TM approved"}</button>}</td>
+              </tr>)}</tbody>
+            </table></div>}
+          </div>
+        </details>
         <details className="border-t border-border pt-3">
           <summary className="cursor-pointer text-sm font-semibold text-ink">Template requests{requests.data ? ` (${requests.data.total})` : ""}</summary>
           <div className="mt-3 space-y-3">

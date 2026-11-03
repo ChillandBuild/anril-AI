@@ -5,6 +5,7 @@ import { Plus, RefreshCw, PowerOff, Power, List, LayoutGrid, Copy, Check, Eye, E
 import { operatorFetch } from "@/lib/operator";
 import { fleetWaitingByTenant, waitingColumnText, type FleetWaitingResponse } from "@/components/brain/operatorBrain";
 import { OnboardingWizard } from "./components/onboarding-wizard";
+import { SmsCreditRequestsCard } from "./components/sms-credit-requests-card";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
 
@@ -386,6 +387,8 @@ export default function OperatorPage() {
           </ul>
         </div>
       )}
+
+      <SmsCreditRequestsCard />
 
       {/* Content */}
       {loading && clients.length === 0 ? (
