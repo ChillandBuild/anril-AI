@@ -562,8 +562,16 @@ first review that has already been applied.
 - **gitleaks isn't installed on this machine** — `second-brain-close` only runs 4 fallback credential patterns.
 - **Open design question (2026-10-23, unanswered):** the `impeccable` design hook flags the stats cards on `/dashboard/templates` (Approved/Pending/Rejected row) for `border-accent-on-rounded` — thick colored top border on a `rounded-2xl` card. Pre-existing, already live in production, not touched this session. Asked the user whether to keep it as sanctioned or clean it up; no answer yet. (2026-10-25: impeccable removed from the repo, so nothing flags this anymore — it's a plain style call now.)
 
-## SMS reselling via Fast2SMS white-label "Bulk9" — research only, nothing built (2026-10-22/23)
-_Moved here from personal memory on 2026-10-25. The repo has no SMS code yet._
+## SMS via Bulk9 — open items (module built 2026-10-30 → 11-04; see decisions/log.md + subsystem-notes.md)
+- **Prove the real Bulk9 calls.** Run one real Add Entity (name + ID only, no `screenshot_links`) for a tenant with a key; if Bulk9 refuses, Add Entity needs proof files back. Then a first real send once a template is approved and the account has credit. Only reads (wallet, template/sender lists) are proven live (2026-11-04).
+- **Browser QA not done** for the 2026-11-04 SMS pages (Dashboard, Send SMS steps + pinned preview, Delivery Reports, Address Book Send SMS buttons, inline forms).
+- **Check sticky side effects** of `ClientLayout` `overflow-x-clip`: Call Review header (`sticky top-14`) and Subscriptions cart bar (`sticky bottom-0`) may now actually pin.
+- **No contact-id audience:** Address Book contacts outside any group reach Send SMS only as pasted numbers (no names for {#var#}).
+- `frontend/lib/brand-guard.test.ts` still fails on `LeadsClient.tsx` (`#25D366`).
+
+### Research notes (2026-10-22/23, before the build)
+- _Moved from personal memory 2026-11-04._ Full API review + Fast2SMS support email table: `docs/bulk9-api-review.md` (read it before any new SMS spec instead of redoing the 118-page docs review). Client panel live at sms.anrilaitech.com since 2026-11-03 (GoDaddy CNAME sms → bulk9.com); Prem administers there by hand.
+- Fast2SMS support email (27 Oct 2026) confirmed no API for: client API key retrieval, PE–TM binding, address book, wallet history, low-balance alerts, account settings, webhook replay. `sms_details=1` on a send returns the per-SMS charge. Fast2SMS and Bulk9 keys are not interchangeable. The email's sample `otp_length=1` is invalid (docs: 4–10).
 
 Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2SMS's white-label panel "Bulk9" (explored 2026-10-22; nothing built yet, repo has no SMS code).
 
