@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { formatCount, formatIst, friendlyError } from "./helpers";
@@ -20,8 +20,20 @@ export function GroupsPanel() {
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<SmsContactGroup | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<"group" | "contacts" | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   const list = groups.data?.groups ?? [];
+
+  async function exportCsv(g: SmsContactGroup) {
+    setExportingId(g.id);
+    try {
+      await api.sms.exportGroupCsv(g.id, g.name);
+    } catch (err) {
+      toast.error(friendlyError(err, "Couldn't export the group."));
+    } finally {
+      setExportingId(null);
+    }
+  }
 
   async function create() {
     const name = newName.trim();
@@ -82,7 +94,7 @@ export function GroupsPanel() {
         >
           <input aria-label="New group name" className={`${inputCls} min-w-[200px] flex-1 sm:max-w-xs`} placeholder="New group name" maxLength={80} value={newName} onChange={(e) => setNewName(e.target.value)} />
           <Btn type="submit" busy={creating} disabled={!newName.trim()}>
-            <Plus size={15} /> Create group
+            <Plus size={15} /> Add group
           </Btn>
           {createError && <p className="w-full text-xs font-semibold text-danger">{createError}</p>}
         </form>
@@ -124,6 +136,16 @@ export function GroupsPanel() {
                   </div>
                   {canManage && (
                     <div className="flex gap-2">
+                      <Btn
+                        variant="outline"
+                        className="h-9"
+                        aria-label={`Export ${g.name}`}
+                        busy={exportingId === g.id}
+                        disabled={exportingId !== null}
+                        onClick={() => void exportCsv(g)}
+                      >
+                        {exportingId === g.id ? "Exporting…" : <><Download size={14} /> Export</>}
+                      </Btn>
                       <Btn
                         variant="outline"
                         className="h-9"

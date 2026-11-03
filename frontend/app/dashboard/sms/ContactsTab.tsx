@@ -134,7 +134,7 @@ function ContactsPanel() {
                 <ClipboardPaste size={15} /> Paste numbers
               </Btn>
               <Btn onClick={() => setUploading(true)}>
-                <Upload size={15} /> Upload file
+                <Upload size={15} /> Add multiple contacts
               </Btn>
             </div>
           ) : undefined
@@ -178,7 +178,7 @@ function ContactsPanel() {
         <div className="flex flex-wrap items-center gap-2 border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2.5 sm:px-5">
           <span className="text-sm font-bold text-[#0A1528]">{formatCount(selected.size)} selected</span>
           <Btn variant="outline" className="h-8 text-xs" onClick={() => setGroupAction("add")}>
-            Add to group
+            Add contacts in group
           </Btn>
           <Btn variant="outline" className="h-8 text-xs" onClick={() => setGroupAction("remove")}>
             Remove from group
