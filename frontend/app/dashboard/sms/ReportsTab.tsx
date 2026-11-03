@@ -20,6 +20,7 @@ import {
   maxToFor,
   humanizeKind,
   otpActionLabel,
+  otpDelivery,
   scalarEntries,
   statusLabel,
 } from "./helpers";
@@ -364,13 +365,14 @@ function OtpHistory() {
       ) : (
         <>
           <TableWrap>
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[720px]">
               <thead>
                 <tr className="border-b border-[#f1f5f9]">
                   <th className={thCls}>Time (IST)</th>
                   <th className={thCls}>Mobile</th>
                   <th className={thCls}>Action</th>
                   <th className={thCls}>Result</th>
+                  <th className={thCls}>Delivery</th>
                   <th className={thCls}>Note</th>
                 </tr>
               </thead>
@@ -382,6 +384,12 @@ function OtpHistory() {
                     <td className={tdCls}>{otpActionLabel(o.action)}</td>
                     <td className={tdCls}>
                       <Badge tone={o.ok ? "success" : "danger"}>{o.ok ? "OK" : "Failed"}</Badge>
+                    </td>
+                    <td className={tdCls}>
+                      {(() => {
+                        const d = otpDelivery(o.delivery_status);
+                        return d.tone ? <Badge tone={d.tone}>{d.label}</Badge> : <span className="text-[#94a3b8]">{d.label}</span>;
+                      })()}
                     </td>
                     <td className={`${tdCls} max-w-[260px] truncate text-[#64748b]`} title={o.message ?? undefined}>
                       {o.message || "—"}

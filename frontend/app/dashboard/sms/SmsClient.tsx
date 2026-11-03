@@ -7,17 +7,19 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BalanceTab } from "./BalanceTab";
 import { CampaignsTab } from "./CampaignsTab";
+import { ContactsTab } from "./ContactsTab";
 import { DeveloperTab } from "./DeveloperTab";
-import { SUPPORT_FALLBACK, balanceLevel, errorStatus, formatCount, friendlyError } from "./helpers";
+import { SUPPORT_FALLBACK, balanceLevel, errorStatus, formatCount, formatRupees, friendlyError } from "./helpers";
 import { ReportsTab } from "./ReportsTab";
 import { TemplatesTab } from "./TemplatesTab";
 import { Card, Empty, LoadError, Notice, Skeleton } from "./ui";
 import { usePerm } from "./usePerm";
 
-type TabKey = "campaigns" | "templates" | "reports" | "balance" | "developer";
+type TabKey = "campaigns" | "contacts" | "templates" | "reports" | "balance" | "developer";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "campaigns", label: "Campaigns" },
+  { key: "contacts", label: "Contacts" },
   { key: "templates", label: "Templates" },
   { key: "reports", label: "Reports" },
   { key: "balance", label: "Balance" },
@@ -152,6 +154,7 @@ export function SmsClient() {
           {bal ? (
             <span className={cn("font-bold", level === "ok" && "text-[#0A1528]")}>
               {formatCount(bal.sms_count)} SMS
+              {bal.wallet != null && <span className="font-semibold"> · {formatRupees(bal.wallet)}</span>}
               {level === "low" && <span className="font-semibold"> · Low</span>}
               {level === "empty" && <span className="font-semibold"> · Top up needed</span>}
             </span>
@@ -168,10 +171,11 @@ export function SmsClient() {
       )}
 
       {tab === "campaigns" && <CampaignsTab onBalanceChanged={() => void balance.mutate()} onOpenTemplates={() => setTab("templates")} />}
+      {tab === "contacts" && <ContactsTab />}
       {tab === "templates" && <TemplatesTab />}
       {tab === "reports" && <ReportsTab />}
       {tab === "balance" && <BalanceTab balance={bal ?? null} balanceError={balance.error ? friendlyError(balance.error, "Couldn't load your balance.") : null} onReload={() => void balance.mutate()} />}
-      {tab === "developer" && <DeveloperTab />}
+      {tab === "developer" && <DeveloperTab onOpenCampaigns={() => setTab("campaigns")} />}
     </div>
   );
 }

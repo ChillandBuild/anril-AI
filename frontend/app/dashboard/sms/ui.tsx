@@ -1,9 +1,10 @@
 "use client";
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Info, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
+import { CheckField } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import type { Tone } from "./helpers";
+import { CONSENT_HINT, CONSENT_LABEL, type Tone } from "./helpers";
 
 export const inputCls =
   "h-10 w-full rounded-xl border border-[#e2e8f0] bg-white px-3 text-sm text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-[#f8fafc] disabled:text-[#94a3b8]";
@@ -123,3 +124,38 @@ export function TableWrap({ children }: { children: ReactNode }) {
 
 export const thCls = "whitespace-nowrap px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]";
 export const tdCls = "px-4 py-3 align-top text-sm text-[#334155]";
+
+/** Centered dialog over a dimmed page; the body scrolls on short screens. */
+export function Modal({ open, title, onClose, children, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label={title} className={cn("flex max-h-[90vh] w-full flex-col rounded-2xl bg-white shadow-xl", wide ? "max-w-2xl" : "max-w-md")}>
+        <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] px-5 py-3.5">
+          <h3 className="font-display text-base font-bold text-[#0A1528]">{title}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-[#64748b] hover:text-[#0A1528]">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** The promotional-SMS consent tick (off by default). */
+export function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
+  return <CheckField checked={checked} onChange={onChange} label={CONSENT_LABEL} description={CONSENT_HINT} />;
+}
+
+/** Hand a CSV string to the browser as a file download. */
+export function saveCsv(csv: string, filename: string) {
+  const url = window.URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

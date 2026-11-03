@@ -94,6 +94,13 @@ class _Query:
             lambda r: r.get(column) is not None and wanted <= set(r.get(column)), null_matches_neither=column,
         )
 
+    def ov(self, column, values):
+        """Array column shares at least one of `values` (PostgREST `ov`)."""
+        wanted = set(values)
+        return self._add_filter(
+            lambda r: r.get(column) is not None and bool(wanted & set(r.get(column))), null_matches_neither=column,
+        )
+
     def select(self, _columns: str = "*", count: str | None = None):
         self.op = "select"
         return self

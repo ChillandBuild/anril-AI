@@ -41,9 +41,17 @@ export function BalanceTab({ balance, balanceError, onReload }: { balance: SmsBa
         <CardHeader title="Balance" action={<Btn variant="link" onClick={onReload}>Refresh</Btn>} />
         <div className="space-y-4 p-4 sm:p-5">
           {balance ? (
-            <div className="rounded-xl bg-primary/5 p-4">
-              <p className="font-display text-3xl font-bold text-ink">{formatCount(balance.sms_count)}</p>
-              <p className="text-xs font-semibold text-ink-muted">SMS left</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-primary/5 p-4">
+                <p className="font-display text-3xl font-bold text-ink">{formatCount(balance.sms_count)}</p>
+                <p className="text-xs font-semibold text-ink-muted">SMS left</p>
+              </div>
+              {balance.wallet != null && (
+                <div className="rounded-xl bg-primary/5 p-4">
+                  <p className="font-display text-3xl font-bold text-ink">{formatRupees(balance.wallet)}</p>
+                  <p className="text-xs font-semibold text-ink-muted">Wallet balance</p>
+                </div>
+              )}
             </div>
           ) : balanceError ? <Notice tone="warn">{balanceError}</Notice> : <Skeleton className="h-24" />}
           {level === "empty" && <Notice tone="danger">You have no SMS left. {topUpHint}</Notice>}

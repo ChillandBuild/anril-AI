@@ -32,8 +32,8 @@ def _too_big(request: Request) -> bool:
         return True
 
 
-@router.post("/webhook/bulk9/{tenant_id}")
-async def bulk9_delivery_webhook(tenant_id: str, request: Request):
+async def _authenticated_items(tenant_id: str, request: Request) -> tuple[str, list]:
+    """(tenant_id, payload items) once the tenant's secret matches; HTTP errors otherwise."""
     try:
         tenant_id = str(uuid.UUID(tenant_id))
     except ValueError:
@@ -55,6 +55,21 @@ async def bulk9_delivery_webhook(tenant_id: str, request: Request):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
     items = payload if isinstance(payload, list) else [payload]
+    return tenant_id, [p for p in items[:500] if isinstance(p, dict)]
+
+
+@router.post("/webhook/bulk9/{tenant_id}")
+async def bulk9_delivery_webhook(tenant_id: str, request: Request):
+    tenant_id, items = await _authenticated_items(tenant_id, request)
     db = get_supabase()
-    results = [sms_delivery.handle_callback(db, tenant_id, p) for p in items[:500] if isinstance(p, dict)]
+    results = [sms_delivery.handle_callback(db, tenant_id, p) for p in items]
+    return {"status": "ok", "processed": len(results)}
+
+
+@router.post("/webhook/bulk9/{tenant_id}/otp")
+async def bulk9_otp_webhook(tenant_id: str, request: Request):
+    """OTP delivery reports (same secret and payload as SMS); they fill OTP history."""
+    tenant_id, items = await _authenticated_items(tenant_id, request)
+    db = get_supabase()
+    results = [sms_delivery.handle_otp_callback(db, tenant_id, p) for p in items]
     return {"status": "ok", "processed": len(results)}

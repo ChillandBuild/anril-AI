@@ -1754,7 +1754,11 @@ export interface SmsStatus {
   support_contact: string | null;
   templates_ready: boolean;
 }
-export interface SmsBalance { sms_count: number }
+export interface SmsBalance {
+  sms_count: number;
+  /** The client's own ₹ wallet at the rate their account manager set; null when Bulk9 didn't say. */
+  wallet: number | null;
+}
 export type SmsWalletKind = "topup" | "outside_usage" | "campaign";
 export interface SmsWalletItem {
   kind: SmsWalletKind;
@@ -1793,12 +1797,14 @@ export interface SmsTemplateRequest {
   updated_at: string;
 }
 export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
-export interface SmsPreviewExcluded { lead_id: string; name: string | null; phone: string | null; reason: string }
-export interface SmsPreviewSample { lead_id: string; name: string | null; content: string; segments: number; unicode: boolean }
+export interface SmsPreviewExcluded { lead_id?: string | null; name: string | null; phone: string | null; reason: string }
+export interface SmsPreviewSample { lead_id?: string | null; name: string | null; content: string; segments: number; unicode: boolean }
 export interface SmsPreview {
   total_segments: number;
   eligible_count: number;
   excluded: SmsPreviewExcluded[];
+  /** Full count when `excluded` is capped at its first 1,000. */
+  excluded_total?: number;
   samples: SmsPreviewSample[];
   estimated: boolean;
   rate_per_sms: number | null;
@@ -1811,8 +1817,11 @@ export interface SmsOtpHistoryItem {
   ok: boolean;
   message: string | null;
   created_at: string;
+  /** "delivered" | "failed" once the operator reported; null = no report yet (or a verify row). */
+  delivery_status: "delivered" | "failed" | null;
+  delivered_at: string | null;
 }
-export type SmsCampaignStatus = "scheduled" | "sending" | "completed" | "cancelled";
+export type SmsCampaignStatus = "preparing" | "scheduled" | "sending" | "completed" | "cancelled";
 export type SmsMessageStatus =
   | "queued" | "sending" | "submitted" | "delivered" | "failed" | "unknown" | "skipped" | "cancelled";
 export interface SmsCampaign {
@@ -1822,6 +1831,10 @@ export interface SmsCampaign {
   sender_id: string;
   template_type: SmsTemplateType;
   status: SmsCampaignStatus;
+  kind?: "template" | "manual";
+  source?: SmsRecipientSource;
+  /** Why a contacts campaign could not be built; shown to the client as-is. */
+  build_error?: string | null;
   send_at: string | null;
   created_at: string;
   completed_at: string | null;
@@ -1854,6 +1867,59 @@ export interface SmsMessageFilters {
   offset?: number;
 }
 export interface SmsOk { ok: boolean; message?: string }
+
+export type SmsRecipientSource = "leads" | "contacts" | "numbers";
+export interface SmsContact {
+  id: string;
+  phone: string;
+  name: string | null;
+  fields: Record<string, string>;
+  group_ids: string[];
+  promo_consent: boolean;
+  created_at: string;
+}
+export interface SmsContactGroup { id: string; name: string; contacts: number; created_at: string }
+export interface SmsUploadPreview {
+  columns: string[];
+  phone_column: string | null;
+  name_column: string | null;
+  sample: string[][];
+  row_count: number;
+}
+export interface SmsSkippedRow { row: number; value: string; reason: string }
+export interface SmsUploadResult {
+  inserted: number;
+  updated: number;
+  skipped_count: number;
+  skipped: SmsSkippedRow[];
+  group_id: string | null;
+}
+export interface SmsManualDlt {
+  sender_id: string;
+  entity_id: string;
+  dlt_template_id: string;
+  template_type: SmsTemplateType;
+  message: string;
+}
+/** Who a campaign goes to: exactly one of the three id/number lists matches `source`. */
+export interface SmsRecipients {
+  source: SmsRecipientSource;
+  lead_ids?: string[];
+  group_ids?: string[];
+  numbers?: string[];
+  consent_confirmed?: boolean;
+}
+export type SmsCampaignPreviewRequest = SmsRecipients & {
+  kind?: "template" | "manual";
+  template_id?: string;
+  manual?: SmsManualDlt;
+  variable_map?: SmsVarSource[];
+};
+export type SmsCampaignCreateRequest = SmsCampaignPreviewRequest & {
+  name: string;
+  send_at: string | null;
+  idempotency_key: string;
+};
 
 async function smsMultipart<T>(path: string, fd: FormData): Promise<T> {
   const headers = await getAuthHeaders();
@@ -1927,17 +1993,17 @@ export const api = {
       apiFetch<SmsTemplateRequest>("/api/v1/sms/template-requests", { method: "POST", body: JSON.stringify(data) }),
     deleteTemplateRequest: (id: string) =>
       apiFetch<SmsOk>(`/api/v1/sms/template-requests/${encodeURIComponent(id)}`, { method: "DELETE" }),
-    campaignFields: () => apiFetch<{ fields: { key: string; label: string }[] }>("/api/v1/sms/campaigns/fields"),
-    previewCampaign: (data: { template_id: string; variable_map: SmsVarSource[]; lead_ids: string[] }) =>
+    campaignFields: (source: SmsRecipientSource = "leads", groupIds: string[] = []) => {
+      const qs = new URLSearchParams();
+      if (source !== "leads") qs.set("source", source);
+      if (source === "contacts" && groupIds.length > 0) qs.set("group_ids", groupIds.join(","));
+      const q = qs.toString();
+      return apiFetch<{ fields: { key: string; label: string }[] }>(`/api/v1/sms/campaigns/fields${q ? `?${q}` : ""}`);
+    },
+    previewCampaign: (data: SmsCampaignPreviewRequest) =>
       apiFetch<SmsPreview>("/api/v1/sms/campaigns/preview", { method: "POST", body: JSON.stringify(data) }),
-    createCampaign: (data: {
-      name: string;
-      template_id: string;
-      variable_map: SmsVarSource[];
-      lead_ids: string[];
-      send_at: string | null;
-      idempotency_key: string;
-    }) => apiFetch<SmsCampaign>("/api/v1/sms/campaigns", { method: "POST", body: JSON.stringify(data) }),
+    createCampaign: (data: SmsCampaignCreateRequest) =>
+      apiFetch<SmsCampaign>("/api/v1/sms/campaigns", { method: "POST", body: JSON.stringify(data) }),
     campaigns: (limit = 50, offset = 0) =>
       apiFetch<{ campaigns: SmsCampaign[] }>(`/api/v1/sms/campaigns?limit=${limit}&offset=${offset}`),
     campaign: (id: string) => apiFetch<SmsCampaign>(`/api/v1/sms/campaigns/${encodeURIComponent(id)}`),
@@ -1985,11 +2051,65 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ otp_length: 6, otp_expiry: 15, ...data }),
       }),
-    manualSend: (data: { sender_id: string; entity_id: string; template_id: string; message: string; mobile: string }) =>
-      apiFetch<{ ok: boolean; request_id: string | null; message: string }>("/api/v1/sms/manual-send", {
+    contacts: (params: { search?: string; group_id?: string; limit?: number; offset?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.search) qs.set("search", params.search);
+      if (params.group_id) qs.set("group_id", params.group_id);
+      qs.set("limit", String(params.limit ?? 50));
+      qs.set("offset", String(params.offset ?? 0));
+      return apiFetch<{ items: SmsContact[]; total: number }>(`/api/v1/sms/contacts?${qs}`);
+    },
+    addContact: (data: { phone: string; name?: string; group_id?: string; consent: boolean }) =>
+      apiFetch<SmsContact>("/api/v1/sms/contacts", { method: "POST", body: JSON.stringify(data) }),
+    pasteContacts: (data: { text: string; group_id?: string; consent: boolean }) =>
+      apiFetch<SmsUploadResult>("/api/v1/sms/contacts/paste", { method: "POST", body: JSON.stringify(data) }),
+    previewContactUpload: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return smsMultipart<SmsUploadPreview>("/api/v1/sms/contacts/upload/preview", fd);
+    },
+    uploadContacts: (data: {
+      file: File;
+      group_id?: string;
+      group_name?: string;
+      phone_column?: string;
+      name_column?: string;
+      consent: boolean;
+    }) => {
+      const fd = new FormData();
+      fd.append("file", data.file);
+      if (data.group_id) fd.append("group_id", data.group_id);
+      else if (data.group_name) fd.append("group_name", data.group_name);
+      if (data.phone_column) fd.append("phone_column", data.phone_column);
+      if (data.name_column) fd.append("name_column", data.name_column);
+      fd.append("consent", data.consent ? "true" : "false");
+      return smsMultipart<SmsUploadResult>("/api/v1/sms/contacts/upload", fd);
+    },
+    deleteContacts: (ids: string[]) =>
+      apiFetch<{ deleted: number }>("/api/v1/sms/contacts/delete", { method: "POST", body: JSON.stringify({ ids }) }),
+    addContactsToGroup: (groupId: string, ids: string[]) =>
+      apiFetch<{ changed: number }>(`/api/v1/sms/contacts/groups/${encodeURIComponent(groupId)}/add`, {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ids }),
       }),
+    removeContactsFromGroup: (groupId: string, ids: string[]) =>
+      apiFetch<{ changed: number }>(`/api/v1/sms/contacts/groups/${encodeURIComponent(groupId)}/remove`, {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
+    contactGroups: () => apiFetch<{ groups: SmsContactGroup[] }>("/api/v1/sms/contact-groups"),
+    createContactGroup: (name: string) =>
+      apiFetch<SmsContactGroup>("/api/v1/sms/contact-groups", { method: "POST", body: JSON.stringify({ name }) }),
+    renameContactGroup: (id: string, name: string) =>
+      apiFetch<SmsContactGroup>(`/api/v1/sms/contact-groups/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    deleteContactGroup: (id: string, withContacts: boolean) =>
+      apiFetch<{ deleted_contacts: number }>(
+        `/api/v1/sms/contact-groups/${encodeURIComponent(id)}?with_contacts=${withContacts ? "true" : "false"}`,
+        { method: "DELETE" },
+      ),
     otpVerify: (data: { mobile: string; otp: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
     otpResend: (data: { mobile: string }) =>

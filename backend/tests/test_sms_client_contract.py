@@ -20,9 +20,9 @@ def setup_campaign():
 
 
 @pytest.mark.asyncio
-async def test_balance_contains_sms_count_only():
-    with patch.object(bulk9_client, "wallet", AsyncMock(return_value={"sms_count": 4, "wallet": 55})):
-        assert await sms.balance(CTX) == {"sms_count": 4}
+async def test_balance_is_sms_count_and_the_clients_own_wallet_only():
+    with patch.object(bulk9_client, "wallet", AsyncMock(return_value={"sms_count": 4, "wallet": 55.0, "cost": 9})):
+        assert await sms.balance(CTX) == {"sms_count": 4, "wallet": 55.0}
 
 
 def test_preview_counts_and_campaign_storage_have_no_money():
@@ -97,9 +97,17 @@ def test_ambiguous_provider_response_is_timeout(response):
 
 
 @pytest.mark.asyncio
-async def test_wallet_helper_discards_provider_money_before_returning():
-    with patch.object(bulk9_client, "_request", AsyncMock(return_value={"sms_count": "30", "wallet": "99.5"})):
-        assert await bulk9_client.wallet("key") == {"sms_count": 30}
+async def test_wallet_helper_keeps_only_sms_count_and_the_clients_wallet():
+    with patch.object(bulk9_client, "_request", AsyncMock(return_value={"sms_count": "30", "wallet": "99.5",
+                                                                        "reseller_cost": "40"})):
+        assert await bulk9_client.wallet("key") == {"sms_count": 30, "wallet": 99.5}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [None, "", "abc", "-5", "NaN", "Infinity"])
+async def test_a_missing_or_bad_rupee_wallet_is_none_not_an_error(value):
+    with patch.object(bulk9_client, "_request", AsyncMock(return_value={"sms_count": "30", "wallet": value})):
+        assert await bulk9_client.wallet("key") == {"sms_count": 30, "wallet": None}
 
 
 @pytest.mark.asyncio
@@ -144,4 +152,4 @@ async def test_wallet_rejects_unverified_credit_count(value):
 @pytest.mark.asyncio
 async def test_wallet_accepts_a_verified_zero_balance():
     with patch.object(bulk9_client, "_request", AsyncMock(return_value={"return": "true", "sms_count": "0"})):
-        assert await bulk9_client.wallet("dummy") == {"sms_count": 0}
+        assert await bulk9_client.wallet("dummy") == {"sms_count": 0, "wallet": None}

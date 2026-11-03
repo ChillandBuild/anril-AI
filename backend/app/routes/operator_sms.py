@@ -97,6 +97,18 @@ def _webhooks(response: dict) -> list[dict]:
     return rows
 
 
+async def _upsert_webhook(api_key: str, url: str, secret: str, **service) -> None:
+    """Create the webhook for `url`, or update the existing one and drop duplicates."""
+    rows = _webhooks(await bulk9_client.list_sms_webhooks(api_key, **service))
+    matches = [row for row in rows if row["url"].rstrip("/") == url]
+    if matches:
+        await bulk9_client.update_sms_webhook(api_key, matches[0]["id"], url=url, secret=secret, **service)
+        for duplicate in matches[1:]:
+            await bulk9_client.delete_sms_webhook(api_key, duplicate["id"], **service)
+    else:
+        await bulk9_client.create_sms_webhook(api_key, url=url, secret=secret, **service)
+
+
 async def _register_webhook(db, tenant_id: str, api_key: str) -> bool:
     base = (env_settings.public_base_url or _RENDER_BASE_URL).rstrip("/")
     url = f"{base}/webhook/bulk9/{tenant_id}"
@@ -108,14 +120,9 @@ async def _register_webhook(db, tenant_id: str, api_key: str) -> bool:
     _put(db, tenant_id, "bulk9_webhook_registered", "false")
     _put(db, tenant_id, "bulk9_webhook_error", "Webhook setup has not been confirmed. Retry setup to check Bulk9.")
     try:
-        rows = _webhooks(await bulk9_client.list_sms_webhooks(api_key))
-        matches = [row for row in rows if row["url"].rstrip("/") == url]
-        if matches:
-            await bulk9_client.update_sms_webhook(api_key, matches[0]["id"], url=url, secret=secret)
-            for duplicate in matches[1:]:
-                await bulk9_client.delete_sms_webhook(api_key, duplicate["id"])
-        else:
-            await bulk9_client.create_sms_webhook(api_key, url=url, secret=secret)
+        await _upsert_webhook(api_key, url, secret)
+        # OTP delivery reports (Delivered / Failed in OTP history) come on their own webhook.
+        await _upsert_webhook(api_key, f"{url}/otp", secret, service="otp")
     except (Bulk9Error, Bulk9Timeout) as exc:
         logger.warning("SMS webhook setup failed for %s (%s)", tenant_id, type(exc).__name__)
         error = ("Bulk9 did not confirm webhook setup. Retry to check the existing callback."

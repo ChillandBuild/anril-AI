@@ -12,6 +12,7 @@ import {
   campaignStatusLabel,
   campaignNeedsUpdates,
   campaignStatusTone,
+  canCancelCampaign,
   canDeleteCampaign,
   canRescheduleCampaign,
   errorText,
@@ -138,18 +139,20 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                   {c.status === "scheduled" && c.send_at ? <span>Goes out {formatIst(c.send_at)} IST</span> : <span>Created {formatIst(c.created_at)}</span>}
                 </div>
               </div>
-              {canRescheduleCampaign(c.status) && canManage && (
+              {canCancelCampaign(c.status) && canManage && (
                 <div className="flex flex-wrap gap-2">
-                  <Btn
-                    variant="outline"
-                    onClick={() => {
-                      setMoveAt(toLocalInput(c.send_at));
-                      setMoveError(null);
-                      setMoving((open) => !open);
-                    }}
-                  >
-                    Reschedule
-                  </Btn>
+                  {canRescheduleCampaign(c.status) && (
+                    <Btn
+                      variant="outline"
+                      onClick={() => {
+                        setMoveAt(toLocalInput(c.send_at));
+                        setMoveError(null);
+                        setMoving((open) => !open);
+                      }}
+                    >
+                      Reschedule
+                    </Btn>
+                  )}
                   <Btn variant="danger" onClick={() => setConfirmCancel(true)}>
                     Cancel campaign
                   </Btn>
@@ -177,6 +180,8 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                 </div>
               </div>
             )}
+            {c.build_error && <Notice tone="danger">{c.build_error}</Notice>}
+            {c.status === "preparing" && !c.build_error && <Notice tone="info">We&apos;re building your recipient list. Sending starts when it&apos;s ready.</Notice>}
             <p className="whitespace-pre-wrap break-words rounded-xl bg-[#f8fafc] p-3 text-sm text-[#334155]">{c.template_text}</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
               <Stat label="Total" value={formatCount(c.total)} />

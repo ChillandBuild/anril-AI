@@ -182,4 +182,4 @@ async def test_otp_history_is_per_tenant_newest_first():
     with patch.object(sms, "get_supabase", lambda: db):
         out = await sms.otp_history(limit=50, offset=0, ctx=CTX)
     assert [i["action"] for i in out["items"]] == ["verify", "send"]
-    assert set(out["items"][0]) == {"id", "mobile", "action", "ok", "message", "created_at"}
+    assert set(out["items"][0]) == {"id", "mobile", "action", "ok", "message", "created_at", "delivery_status", "delivered_at"}

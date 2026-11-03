@@ -1,19 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { ApiBuilderCard } from "./ApiBuilderCard";
+import { ManualCampaignCard } from "./ManualCampaignCard";
 import { OTP_EXPIRY_RANGE, OTP_EXTRA_MAX, OTP_LENGTH_RANGE, friendlyError, parseOtpSettings } from "./helpers";
-import { Btn, Card, CardHeader, Field, Notice, inputCls, textareaCls } from "./ui";
+import { Btn, Card, CardHeader, Field, Notice, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-export function DeveloperTab() {
+export function DeveloperTab({ onOpenCampaigns }: { onOpenCampaigns?: () => void }) {
   return (
     <div className="space-y-4">
       <ApiKeyCard />
+      <ApiBuilderCard />
       <OtpConsole />
-      <ManualSendCard />
+      <ManualCampaignCard onOpenCampaigns={onOpenCampaigns} />
     </div>
   );
 }
@@ -48,15 +51,7 @@ function ApiKeyCard() {
 
   return (
     <Card>
-      <CardHeader
-        title="API key"
-        hint="For developers who want to send SMS from their own software."
-        action={
-          <a href="https://docs.bulk9.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm font-bold text-primary hover:underline">
-            API docs <ExternalLink size={13} />
-          </a>
-        }
-      />
+      <CardHeader title="API key" hint="For developers who want to send SMS from their own software." />
       <div className="space-y-3 p-4 sm:p-5">
         {!isOwner ? (
           <Notice tone="info">Only the account owner can see the API key.</Notice>
@@ -168,71 +163,6 @@ function OtpConsole() {
             {result && <Notice tone={result.ok ? "success" : "danger"}>{result.text}</Notice>}
           </>
         )}
-      </div>
-    </Card>
-  );
-}
-
-function ManualSendCard() {
-  const { canManage } = usePerm();
-  const [form, setForm] = useState({ sender_id: "", entity_id: "", template_id: "", message: "", mobile: "" });
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-
-  if (!canManage) return null;
-
-  const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
-  const complete = Object.values(form).every((v) => v.trim());
-
-  async function send() {
-    if (busy || !complete) return;
-    setBusy(true);
-    setResult(null);
-    try {
-      const res = await api.sms.manualSend({
-        sender_id: form.sender_id.trim(),
-        entity_id: form.entity_id.trim(),
-        template_id: form.template_id.trim(),
-        message: form.message,
-        mobile: form.mobile.trim(),
-      });
-      const id = res.request_id ? ` Request ID: ${res.request_id}` : "";
-      setResult({ ok: res.ok, text: `${res.message || (res.ok ? "SMS sent." : "That didn't work.")}${id}` });
-    } catch (err) {
-      setResult({ ok: false, text: friendlyError(err, "That didn't go through.") });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader
-        title="Send one SMS with DLT IDs"
-        hint="For testing an approved template that isn't in your template list. The wording must match DLT exactly or it will fail."
-      />
-      <div className="space-y-3 p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Sender ID">
-            <input className={inputCls} value={form.sender_id} onChange={(e) => set("sender_id")(e.target.value)} />
-          </Field>
-          <Field label="DLT entity ID">
-            <input className={inputCls} value={form.entity_id} onChange={(e) => set("entity_id")(e.target.value)} />
-          </Field>
-          <Field label="DLT template ID">
-            <input className={inputCls} value={form.template_id} onChange={(e) => set("template_id")(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Message" hint="Exact approved wording">
-          <textarea className={textareaCls} rows={3} value={form.message} onChange={(e) => set("message")(e.target.value)} />
-        </Field>
-        <Field label="Mobile number" hint="10 digits, or with +91" className="sm:max-w-xs">
-          <input className={inputCls} inputMode="tel" value={form.mobile} onChange={(e) => set("mobile")(e.target.value)} />
-        </Field>
-        <Btn busy={busy} disabled={!complete} onClick={() => void send()}>
-          Send SMS
-        </Btn>
-        {result && <Notice tone={result.ok ? "success" : "danger"}>{result.text}</Notice>}
       </div>
     </Card>
   );

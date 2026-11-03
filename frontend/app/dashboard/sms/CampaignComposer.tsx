@@ -8,7 +8,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { api, type SmsCampaign, type SmsTemplate, type SmsVarSource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { dateBounds, defaultWhen, formatSendTime, resolveWhen, untilSend, type WhenValue } from "@/lib/schedule-time";
-import { LeadPicker } from "./LeadPicker";
+import { EMPTY_RECIPIENTS, RecipientPicker, recipientRequest, recipientsReadyFor, type RecipientState } from "./RecipientPicker";
 import {
   countVars,
   errorStatus,
@@ -18,13 +18,13 @@ import {
   friendlyError,
   groupExcluded,
   isVariableMapComplete,
+  parseNumbers,
   sendBlock,
   splitTemplate,
-  previewKey,
 } from "./helpers";
-import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, inputCls } from "./ui";
+import { Badge, Btn, Card, CardHeader, ConsentCheck, Empty, Field, LoadError, Notice, inputCls } from "./ui";
 
-const STEPS = ["Pick leads", "Pick template", "Fill variables", "Review & send"];
+const STEPS = ["Pick recipients", "Pick template", "Fill variables", "Review & send"];
 const FIXED = "__fixed__";
 
 function defaultName(): string {
@@ -54,7 +54,7 @@ function Wording({ message, map, fields }: { message: string; map?: (SmsVarSourc
 
 export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; onCreated: (c: SmsCampaign) => void }) {
   const [step, setStep] = useState(1);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [recipients, setRecipients] = useState<RecipientState>(EMPTY_RECIPIENTS);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
   const [name, setName] = useState(defaultName);
@@ -69,7 +69,13 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
   const templates = useSWR("sms:templates", () => api.sms.templates(), { revalidateOnFocus: false });
   const status = useSWR("sms:status", () => api.sms.status(), { revalidateOnFocus: false });
   const balance = useSWR("sms:balance", () => api.sms.balance(), { revalidateOnFocus: true, shouldRetryOnError: false });
-  const fields = useSWR("sms:campaign-fields", () => api.sms.campaignFields(), { revalidateOnFocus: false });
+  const groupIdList = Array.from(recipients.groupIds).sort();
+  const fieldsSource = recipients.tab === "contacts" ? "contacts" : "leads";
+  const fields = useSWR(
+    ["sms:campaign-fields", fieldsSource, fieldsSource === "contacts" ? groupIdList.join(",") : ""],
+    () => api.sms.campaignFields(fieldsSource, groupIdList),
+    { revalidateOnFocus: false },
+  );
 
   const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready" && t.template_type !== "unclassified"), [templates.data]);
   const template: SmsTemplate | null = ready.find((t) => t.id === templateId) ?? null;
@@ -81,10 +87,12 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const inputKey = previewKey(template, varMap, selected);
+  const promotional = template?.template_type === "promotional";
+  const recipientReq = recipientRequest(recipients, promotional);
+  const inputKey = JSON.stringify([template, varMap, recipientReq]);
   const { data: preview, error: previewFailure, isLoading: previewLoading, mutate: reloadPreview } = useSWR(
-    step === 4 && template && selected.size > 0 && isVariableMapComplete(varMap, varCount) ? ["sms:preview", inputKey] : null,
-    () => api.sms.previewCampaign({ template_id: template!.id, variable_map: varMap.slice(0, varCount) as SmsVarSource[], lead_ids: Array.from(selected) }),
+    step === 4 && template && recipientsReadyFor(recipients, promotional) && isVariableMapComplete(varMap, varCount) ? ["sms:preview", inputKey] : null,
+    () => api.sms.previewCampaign({ kind: "template", template_id: template!.id, variable_map: varMap.slice(0, varCount) as SmsVarSource[], ...recipientReq }),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
   const previewError = previewFailure ? friendlyError(previewFailure, "Couldn't build the preview.") : null;
@@ -105,8 +113,9 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
     });
   }
 
-  const canNext1 = selected.size > 0;
-  const canNext2 = !!template;
+  const canNext1 = recipientsReadyFor(recipients, false);
+  // Whether the pasted-numbers consent tick is needed depends on the template, so it is checked here.
+  const canNext2 = !!template && recipientsReadyFor(recipients, promotional);
   const canNext3 = !!template && isVariableMapComplete(varMap, varCount);
 
   function goNext() {
@@ -141,9 +150,10 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
     try {
       const campaign = await api.sms.createCampaign({
         name: name.trim(),
+        kind: "template",
         template_id: template.id,
         variable_map: varMap.slice(0, varCount).map((v) => v as SmsVarSource),
-        lead_ids: Array.from(selected),
+        ...recipientReq,
         send_at: when.mode === "later" && freshSchedule.at ? freshSchedule.at.toISOString() : null,
         idempotency_key: idempotencyKey,
       });
@@ -197,9 +207,9 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
 
       {step === 1 && (
         <Card>
-          <CardHeader title="Who should get it?" hint="Pick up to 5,000 leads. Opted-out and non-Indian numbers are skipped for you on the last step." />
+          <CardHeader title="Who should get it?" hint="Pick saved contact groups, up to 5,000 leads, or paste up to 5,000 numbers. Opted-out and non-Indian numbers are skipped for you on the last step." />
           <div className="p-4 sm:p-5">
-            <LeadPicker selected={selected} onChange={setSelected} />
+            <RecipientPicker value={recipients} onChange={setRecipients} />
           </div>
         </Card>
       )}
@@ -240,13 +250,19 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                 );
               })
             )}
+            {recipients.tab === "numbers" && promotional && (
+              <div className="space-y-2">
+                <Notice tone="warn">This is a promotional template. Pasted numbers need your confirmation before you can continue.</Notice>
+                <ConsentCheck checked={recipients.consent} onChange={(consent) => setRecipients((r) => ({ ...r, consent }))} />
+              </div>
+            )}
           </div>
         </Card>
       )}
 
       {step === 3 && template && (
         <Card>
-          <CardHeader title="Fill the variables" hint="Each {#var#} in the wording takes a lead field (like Name) or the same fixed text for everyone." />
+          <CardHeader title="Fill the variables" hint="Each {#var#} in the wording takes a recipient field (like Name) or the same fixed text for everyone." />
           <div className="space-y-4 p-4 sm:p-5">
             <div className="rounded-xl bg-[#f8fafc] p-3.5">
               <Wording message={template.message} map={varMap} fields={fieldList} />
@@ -254,7 +270,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
             {varCount === 0 ? (
               <p className="text-sm text-[#64748b]">This template has no variables. Continue to the review.</p>
             ) : fields.error && !fields.data ? (
-              <LoadError message={friendlyError(fields.error, "Couldn't load lead fields.")} onRetry={() => void fields.mutate()} />
+              <LoadError message={friendlyError(fields.error, "Couldn't load recipient fields.")} onRetry={() => void fields.mutate()} />
             ) : (
               <div className="space-y-3">
                 {Array.from({ length: varCount }, (_, i) => {
@@ -306,7 +322,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
       {step === 4 && template && (
         <div className="space-y-4">
           <Card>
-            <CardHeader title="Review" hint={`${formatCount(selected.size)} picked · sender ${template.sender_id}`} />
+            <CardHeader title="Review" hint={`${recipients.tab === "contacts" ? `${formatCount(recipients.groupIds.size)} group(s)` : recipients.tab === "leads" ? `${formatCount(recipients.leadIds.size)} lead(s)` : `${formatCount(parseNumbers(recipients.numbersText).length)} number(s)`} picked · sender ${template.sender_id}`} />
             <div className="space-y-4 p-4 sm:p-5">
               {previewLoading && <div className="h-40 animate-pulse rounded-xl bg-border-subtle" />}
               {previewError && (
@@ -339,11 +355,11 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                     <div>
                       <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-[#64748b]">Sample messages</h3>
                       <ul className="space-y-2">
-                        {preview.samples.map((s) => (
-                          <li key={s.lead_id} className="rounded-xl border border-[#e2e8f0] p-3">
+                        {preview.samples.map((s, i) => (
+                          <li key={s.lead_id ?? i} className="rounded-xl border border-[#e2e8f0] p-3">
                             <p className="whitespace-pre-wrap break-words text-sm text-[#0A1528]">{s.content}</p>
                             <p className="mt-1.5 text-xs text-[#64748b]">
-                              To {s.name || "lead"} · {s.segments} SMS{s.segments === 1 ? "" : "s"} each{s.unicode ? " · uses non-English characters" : ""}
+                              To {s.name || "recipient"} · {s.segments} SMS{s.segments === 1 ? "" : "s"} each{s.unicode ? " · uses non-English characters" : ""}
                             </p>
                           </li>
                         ))}
@@ -366,8 +382,8 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                               {g.reason} <span className="font-normal text-[#64748b]">· {formatCount(g.leads.length)}</span>
                             </summary>
                             <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-[#64748b]">
-                              {g.leads.slice(0, 200).map((l) => (
-                                <li key={l.lead_id} className="truncate">
+                              {g.leads.slice(0, 200).map((l, i) => (
+                                <li key={l.lead_id ?? i} className="truncate">
                                   {l.name || "No name"} · {l.phone ?? "no number"}
                                 </li>
                               ))}
@@ -378,7 +394,7 @@ export function CampaignComposer({ onClose, onCreated }: { onClose: () => void; 
                       </div>
                     </div>
                   )}
-                  {preview.eligible_count === 0 && <Notice tone="warn">No one is left to send to. Go back and pick different leads.</Notice>}
+                  {preview.eligible_count === 0 && <Notice tone="warn">No one is left to send to. Go back and pick different recipients.</Notice>}
                 </>
               )}
             </div>

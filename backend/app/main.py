@@ -27,7 +27,7 @@ from app.routes import brain_sandbox
 from app.routes import operator_brain
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
-from app.routes import sms, sms_webhooks, operator_sms
+from app.routes import sms, sms_contacts, sms_webhooks, operator_sms
 from app.routes import auto_messages
 from app.routes import private_send, private_send_keys
 
@@ -439,6 +439,7 @@ app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"]
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])
 app.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"], dependencies=_auth)
+app.include_router(sms_contacts.router, prefix="/api/v1/sms", tags=["sms-contacts"], dependencies=_auth)
 app.include_router(sms_webhooks.router, tags=["sms-webhook"])
 app.include_router(brain_sandbox.operator_router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(chat_handovers.router, prefix="/api/v1/chat-handovers", tags=["chat-handovers"], dependencies=_auth)

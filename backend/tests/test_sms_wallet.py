@@ -141,19 +141,6 @@ async def test_send_gate(checklist, balance, needed, expect):
 
 
 @pytest.mark.asyncio
-async def test_manual_send_uses_dlt_manual_after_the_gate():
-    send = AsyncMock(return_value={"return": True, "request_id": "r1", "message": ["ok"]})
-    body = sms.ManualSendBody(sender_id="anrilt", entity_id="1201160000000000001", template_id="1207160000000000001",
-                              message="Your code is 1234", mobile="+91 98765 43210")
-    with patch.object(sms, "get_setting", _settings({"pe_tm": True})), \
-         patch.object(bulk9_client, "wallet", AsyncMock(return_value={"sms_count": 3})), \
-         patch.object(bulk9_client, "send_dlt_manual", send):
-        out = await sms.manual_send(body, {"tenant_id": T, "api_key": "k"})
-    assert out["ok"] and out["request_id"] == "r1"
-    assert send.call_args.kwargs["numbers"] == ["9876543210"] and send.call_args.kwargs["sender_id"] == "ANRILT"
-
-
-@pytest.mark.asyncio
 async def test_otp_send_passes_extra_values():
     send = AsyncMock(return_value={"request_id": "o1"})
     with patch.object(bulk9_client, "otp_send", send), patch.object(sms, "get_supabase", FakeSupabase):

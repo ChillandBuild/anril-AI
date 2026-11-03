@@ -1,5 +1,5 @@
 /** Pure helpers for the SMS page (kept out of components so they can be unit-tested). */
-import type { SmsMessageStatus, SmsPreviewExcluded, SmsVarSource, SmsWalletItem } from "@/lib/api";
+import type { SmsMessageStatus, SmsPreviewExcluded, SmsRecipients, SmsRecipientSource, SmsSkippedRow, SmsVarSource, SmsWalletItem } from "@/lib/api";
 
 export const MAX_LEADS_PER_CAMPAIGN = 5000;
 
@@ -182,6 +182,7 @@ export function friendlyError(err: unknown, fallback: string): string {
 }
 
 const CAMPAIGN_STATUS_LABELS: Record<string, string> = {
+  preparing: "Preparing…",
   scheduled: "Scheduled",
   sending: "Sending",
   completed: "Completed",
@@ -194,7 +195,7 @@ export function campaignStatusLabel(status: string): string {
 
 export function campaignStatusTone(status: string): Tone {
   if (status === "completed") return "success";
-  if (status === "sending") return "info";
+  if (status === "sending" || status === "preparing") return "info";
   if (status === "scheduled") return "warn";
   return "neutral";
 }
@@ -230,7 +231,7 @@ export function logColumns(rows: Record<string, unknown>[], max = 8): string[] {
 }
 
 export function campaignNeedsUpdates(campaign: { status: string; counts: Partial<Record<SmsMessageStatus, number>> } | null | undefined): boolean {
-  return !!campaign && (campaign.status === "scheduled" || campaign.status === "sending" ||
+  return !!campaign && (campaign.status === "preparing" || campaign.status === "scheduled" || campaign.status === "sending" ||
     ["queued", "sending", "submitted", "unknown"].some((status) => (campaign.counts[status as SmsMessageStatus] ?? 0) > 0));
 }
 
@@ -375,6 +376,11 @@ export function canRescheduleCampaign(status: string): boolean {
   return status === "scheduled";
 }
 
+/** A campaign still being built can be cancelled but not moved to another time. */
+export function canCancelCampaign(status: string): boolean {
+  return status === "scheduled" || status === "preparing";
+}
+
 export function canDeleteCampaign(status: string): boolean {
   return status === "completed" || status === "cancelled";
 }
@@ -403,4 +409,151 @@ const OTP_ACTION_LABELS: Record<string, string> = { send: "Sent", resend: "Resen
 
 export function otpActionLabel(action: string): string {
   return OTP_ACTION_LABELS[action] ?? action;
+}
+
+/** Delivery column of the OTP history: "—" until the operator reports back. */
+export function otpDelivery(status: string | null | undefined): { label: string; tone: Tone | null } {
+  if (status === "delivered") return { label: "Delivered", tone: "success" };
+  if (status === "failed") return { label: "Failed", tone: "danger" };
+  return { label: "—", tone: null };
+}
+
+// ---- Contacts and recipients ----
+
+export const MAX_PASTED_NUMBERS = 5000;
+export const CONSENT_LABEL = "Everyone on this list agreed to get promotional SMS from us";
+export const CONSENT_HINT = "Leave this off and these contacts only get service SMS (like order updates and OTPs), never promotions.";
+
+/** Split pasted text into one entry per number (newlines, commas, semicolons and spaces all separate). */
+export function parseNumbers(text: string): string[] {
+  return text.split(/[\s,;]+/).map((n) => n.trim()).filter(Boolean);
+}
+
+export type RecipientTab = "contacts" | "leads" | "numbers";
+
+export function recipientSource(tab: RecipientTab): SmsRecipientSource {
+  return tab;
+}
+
+/** Whether step 1 of a campaign has what it needs. Promotional + pasted numbers also needs the consent tick. */
+export function recipientsReady(input: {
+  tab: RecipientTab;
+  leadIds: string[];
+  groupIds: string[];
+  numbersText: string;
+  promotional: boolean;
+  consent: boolean;
+}): boolean {
+  if (input.tab === "leads") return input.leadIds.length > 0;
+  if (input.tab === "contacts") return input.groupIds.length > 0;
+  const n = parseNumbers(input.numbersText).length;
+  if (n === 0 || n > MAX_PASTED_NUMBERS) return false;
+  return !input.promotional || input.consent;
+}
+
+/** The recipient fields of a preview/create request, per the API contract. */
+export function buildRecipients(input: {
+  tab: RecipientTab;
+  leadIds: string[];
+  groupIds: string[];
+  numbersText: string;
+  promotional: boolean;
+  consent: boolean;
+}): SmsRecipients {
+  if (input.tab === "leads") return { source: "leads", lead_ids: input.leadIds };
+  if (input.tab === "contacts") return { source: "contacts", group_ids: input.groupIds };
+  const out: SmsRecipients = { source: "numbers", numbers: parseNumbers(input.numbersText) };
+  if (input.promotional) out.consent_confirmed = input.consent;
+  return out;
+}
+
+/** CSV the client can download for rows an upload skipped. */
+export function skippedRowsCsv(rows: SmsSkippedRow[]): string {
+  const lines = rows.map((r) => [String(r.row), csvCell(r.value, true), csvCell(r.reason, true)].join(","));
+  return ["Row,Value,Reason", ...lines].join("\r\n");
+}
+
+// ---- Message length (mirrors segments() in backend/app/services/sms_campaigns.py) ----
+
+const GSM_BASIC = new Set(
+  "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
+    "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà",
+);
+const GSM_EXT = new Set("^{}\\[~]|€\f");
+
+export interface SmsLength { length: number; parts: number; unicode: boolean }
+
+/** GSM-7 text is 160 per SMS (153 per part when split); anything else is Unicode, 70 (67 per part). */
+export function smsSegments(text: string): SmsLength {
+  const t = text ?? "";
+  let gsm = true;
+  let gsmLength = 0;
+  for (const c of t) {
+    if (GSM_EXT.has(c)) gsmLength += 2;
+    else if (GSM_BASIC.has(c)) gsmLength += 1;
+    else {
+      gsm = false;
+      break;
+    }
+  }
+  if (gsm) return { length: gsmLength, parts: gsmLength <= 160 ? 1 : Math.ceil(gsmLength / 153), unicode: false };
+  // JS string length counts UTF-16 units, same as the backend (emoji count twice).
+  const units = t.length;
+  return { length: units, parts: units <= 70 ? 1 : Math.ceil(units / 67), unicode: true };
+}
+
+export const UNICODE_NOTE = "Unicode message (e.g. Tamil or emoji): 70 characters per SMS";
+
+/** "123 characters · 1 SMS" */
+export function smsCounterLine(text: string): string {
+  if (!text) return "0 characters · 0 SMS";
+  const { length, parts } = smsSegments(text);
+  return `${formatCount(length)} character${length === 1 ? "" : "s"} · ${formatCount(parts)} SMS`;
+}
+
+// ---- "Send from your own app" code examples ----
+
+export const DEV_API_URL = "https://sms.anrilaitech.com/dev/bulkV2";
+export const KEY_PLACEHOLDER = "YOUR_API_KEY";
+
+/** First 4 characters, then dots. Short keys show only dots. */
+export function maskKey(key: string): string {
+  return key.length > 4 ? `${key.slice(0, 4)}••••` : "••••";
+}
+
+export interface DevRequestInput {
+  senderId: string;
+  /** The template's message_id (what the API calls "message"). */
+  messageId: string;
+  variables: string[];
+  numbers: string[];
+  apiKey: string;
+}
+
+function devBody(i: DevRequestInput) {
+  const body: Record<string, string> = { route: "dlt", sender_id: i.senderId, message: i.messageId };
+  // A "|" would shift every later variable, so it is dropped.
+  const vars = i.variables.map((v) => v.replace(/\|/g, "").trim());
+  if (vars.length > 0) body.variables_values = vars.join("|");
+  body.numbers = i.numbers.map((n) => n.trim()).filter(Boolean).join(",");
+  return body;
+}
+
+export function buildCurl(i: DevRequestInput): string {
+  const json = JSON.stringify(devBody(i), null, 2).replace(/'/g, "'\\''");
+  return `curl -X POST ${DEV_API_URL} \\\n  -H "authorization: ${i.apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '${json}'`;
+}
+
+export function buildPython(i: DevRequestInput): string {
+  const body = JSON.stringify(devBody(i), null, 4);
+  return [
+    "import requests",
+    "",
+    `url = "${DEV_API_URL}"`,
+    `headers = {"authorization": "${i.apiKey}", "Content-Type": "application/json"}`,
+    `payload = ${body}`,
+    "",
+    "response = requests.post(url, json=payload, headers=headers, timeout=30)",
+    "print(response.status_code, response.text)",
+  ].join("\n");
 }

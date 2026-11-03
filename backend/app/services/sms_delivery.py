@@ -51,7 +51,7 @@ def last10(phone: Any) -> str:
 def _int(v: Any) -> int | None:
     try:
         return int(float(v))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -109,18 +109,31 @@ def apply_update(db, tenant_id: str, msg: dict, *, status: str, reason: str | No
     return bool(res.data)
 
 
+def _amount(raw: Any) -> Decimal | None:
+    """A sane per-SMS rupee debit from Bulk9's text, or None."""
+    if raw is None:
+        return None
+    try:
+        amount = Decimal(re.sub(r"[^0-9.\-]", "", str(raw)))
+    except InvalidOperation:
+        return None
+    return amount if amount.is_finite() and 0 <= amount <= 1000 else None
+
+
+def _at(p: dict) -> datetime | None:
+    ts = _int(p.get("delivery_timestamp"))
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc) if ts else None
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def record_debit(db, tenant_id: str, msg: dict, raw: Any) -> bool:
     """Store what Bulk9 debited from the client's wallet for this SMS (first value wins; a retried
     callback carries the same amount). Separate from apply_update because the charge can arrive
     after the row is already final."""
-    if raw is None or msg.get("amount_debited") is not None:
-        return False
-    text = re.sub(r"[^0-9.\-]", "", str(raw))
-    try:
-        amount = Decimal(text)
-    except InvalidOperation:
-        return False
-    if not amount.is_finite() or amount < 0 or amount > 1000:
+    amount = _amount(raw)
+    if amount is None or msg.get("amount_debited") is not None:
         return False
     res = (db.table("sms_messages").update({"amount_debited": str(amount)}).eq("id", msg["id"])
            .eq("tenant_id", tenant_id).is_("amount_debited", "null").execute())
@@ -163,20 +176,37 @@ def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
     if not msg:
         return {"status": "unmatched"}
     if status:
-        at = None
-        ts = _int(p.get("delivery_timestamp"))
-        if ts:
-            at = datetime.fromtimestamp(ts, tz=timezone.utc)
-        apply_update(db, tenant_id, msg, status=status,
+        apply_update(db, tenant_id, msg, status=status, at=_at(p),
                      reason=p.get("status_description") or p.get("description") or p.get("failure_reason"),
                      sms_count=p.get("sms_count"),
-                     request_id=p.get("request_id"), at=at)
+                     request_id=p.get("request_id"))
     else:
         logger.warning("Bulk9 callback with unrecognised status %r (tenant %s)", p.get("status"), tenant_id)
     record_debit(db, tenant_id, msg, p.get("amount_debited"))
     if event_id:
         db.table("sms_delivery_events").update({"matched": True}).eq("id", event_id).execute()
     return {"status": "ok"}
+
+
+def handle_otp_callback(db, tenant_id: str, payload: dict) -> dict:
+    """One Bulk9 OTP delivery callback (already authenticated): marks the OTP history rows sent
+    with this request ID Delivered or Failed. Only final statuses; Delivered is never undone."""
+    p = bulk9_client.scrub_financial(payload, bulk9_client.CLIENT_DEBIT_KEYS)
+    request_id = str(p.get("request_id") or p.get("server_request_id") or "")
+    if not _REQUEST_ID.fullmatch(request_id):
+        return {"status": "unmatched"}
+    status = classify(p.get("status") or p.get("status_lower"))
+    if status not in FINAL:
+        return {"status": "ignored"}
+    patch: dict = {"delivery_status": status}
+    if status == "delivered" and _at(p):
+        patch["delivered_at"] = _at(p).isoformat()
+    amount = _amount(p.get("amount_debited"))
+    if amount is not None:
+        patch["amount_debited"] = str(amount)
+    rows = (db.table("sms_otp_log").update(patch).eq("tenant_id", tenant_id).eq("request_id", request_id)
+            .or_("delivery_status.is.null,delivery_status.neq.delivered").execute()).data or []
+    return {"status": "ok" if rows else "unmatched"}
 
 
 # ---------------------------------------------------------------- reconcile job

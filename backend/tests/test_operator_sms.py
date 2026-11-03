@@ -29,14 +29,16 @@ def _settings_from(db):
     return get
 
 
-def _patches(db, hooks=None):
+def _patches(db, hooks=None, otp_hooks=None):
     stack = ExitStack()
     for name, value in (("get_supabase", lambda: db), ("get_setting", _settings_from(db)),
                         ("invalidate_cache", lambda *a: None), ("record_audit_event", lambda *a, **k: None)):
         stack.enter_context(patch.object(operator_sms, name, value))
     stack.enter_context(patch.object(operator_sms.env_settings, "public_base_url", "https://anril.example/"))
     stack.enter_context(patch.object(operator_sms.bulk9_client, "wallet", AsyncMock(return_value={"wallet": 900, "sms_count": 50})))
-    stack.enter_context(patch.object(operator_sms.bulk9_client, "list_sms_webhooks", AsyncMock(return_value={"data": hooks or []})))
+    async def list_hooks(_key, service="sms"):
+        return {"data": (otp_hooks if service == "otp" else hooks) or []}
+    stack.enter_context(patch.object(operator_sms.bulk9_client, "list_sms_webhooks", AsyncMock(side_effect=list_hooks)))
     for name in ("create_sms_webhook", "update_sms_webhook", "delete_sms_webhook"):
         stack.enter_context(patch.object(operator_sms.bulk9_client, name, AsyncMock(return_value={"status": "success"}), create=True))
     return stack
@@ -67,11 +69,12 @@ async def test_good_key_uses_trusted_host_and_never_echoes_secrets():
     db = _db()
     with _patches(db):
         out = await operator_sms.save_key(T, operator_sms.KeyIn(api_key=KEY), ADMIN)
-        call = operator_sms.bulk9_client.create_sms_webhook.await_args
+        calls = operator_sms.bulk9_client.create_sms_webhook.await_args_list
     saved = {r["key"]: r for r in db.rows("app_settings")}
     secret = saved["bulk9_webhook_secret"]["value"]
     assert saved["bulk9_api_key"]["is_secret"] and saved["bulk9_webhook_secret"]["is_secret"]
-    assert call.kwargs == {"url": URL, "secret": secret}
+    assert [c.kwargs for c in calls] == [{"url": URL, "secret": secret},
+                                         {"url": f"{URL}/otp", "secret": secret, "service": "otp"}]
     assert KEY not in json.dumps(out) and secret not in json.dumps(out)
     assert out == {"connected": True, "key_masked": "live••••••••mnop", "webhook_registered": True, "webhook_error": None,
                    "sms_count": 50, "checklist": {"dlt": False, "pe_tm": False, "sender": False}}
@@ -83,10 +86,12 @@ async def test_retry_updates_existing_callback_without_secret_rotation_or_duplic
     db.add("app_settings", tenant_id=T, key="bulk9_api_key", value=KEY)
     db.add("app_settings", tenant_id=T, key="bulk9_webhook_secret", value="same-secret")
     hooks = [{"id": 11, "url": URL}, {"id": 12, "url": URL}, {"id": 99, "url": "https://other.example/hook"}]
-    with _patches(db, hooks):
+    with _patches(db, hooks, otp_hooks=[{"id": 21, "url": f"{URL}/otp"}]):
         out = await operator_sms.reregister_webhook(T, ADMIN)
         operator_sms.bulk9_client.create_sms_webhook.assert_not_awaited()
-        operator_sms.bulk9_client.update_sms_webhook.assert_awaited_once_with(KEY, 11, url=URL, secret="same-secret")
+        assert [c.args for c in operator_sms.bulk9_client.update_sms_webhook.await_args_list] == [(KEY, 11), (KEY, 21)]
+        operator_sms.bulk9_client.update_sms_webhook.assert_awaited_with(
+            KEY, 21, url=f"{URL}/otp", secret="same-secret", service="otp")
         operator_sms.bulk9_client.delete_sms_webhook.assert_awaited_once_with(KEY, 12)
     assert out["webhook_registered"]
     assert _settings_from(db)("bulk9_webhook_secret", T) == "same-secret"

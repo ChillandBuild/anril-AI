@@ -91,7 +91,8 @@ async def _request(api_key: str, method: str, path: str, *, json: dict | None = 
 # ---------------------------------------------------------------- SMS credits
 
 async def wallet(api_key: str) -> dict[str, Any]:
-    """Remaining SMS count for this connection."""
+    """Remaining SMS count, plus the client's own ₹ wallet (at the rate Anril set for them, never
+    Anril's cost); wallet is None when Bulk9 leaves it out or sends junk."""
     body = await _request(api_key, "POST", "/dev/wallet")
     try:
         count = Decimal(str(body.get("sms_count")))
@@ -99,7 +100,13 @@ async def wallet(api_key: str) -> dict[str, Any]:
         raise Bulk9Error("Bulk9 returned an invalid SMS count")
     if not count.is_finite() or count < 0 or count != count.to_integral_value():
         raise Bulk9Error("Bulk9 returned an invalid SMS count")
-    return {"sms_count": int(count)}
+    try:
+        rupees = Decimal(str(body.get("wallet")))
+    except InvalidOperation:
+        rupees = None
+    if rupees is not None and (not rupees.is_finite() or rupees < 0):
+        rupees = None
+    return {"sms_count": int(count), "wallet": float(round(rupees, 2)) if rupees is not None else None}
 
 
 # ---------------------------------------------------------------- sending
@@ -228,15 +235,21 @@ async def otp_resend(api_key: str, *, mobile: str) -> dict:
 
 # ---------------------------------------------------------------- delivery webhook config
 
-async def list_sms_webhooks(api_key: str) -> dict:
-    return await _request(api_key, "GET", "/dev/webhook/v2/sms")
+# service: "sms" (campaign delivery reports) or "otp" (OTP delivery reports). Both send the same
+# standard payload (request_id, mobile, status, amount_debited...).
+WEBHOOK_SERVICES = ("sms", "otp")
+_WEBHOOK_NAMES = {"sms": "Anril delivery updates", "otp": "Anril OTP updates"}
 
 
-async def create_sms_webhook(api_key: str, *, url: str, secret: str) -> dict:
-    """Point this client's SMS delivery updates at Anril. The secret rides in a custom header
-    that /webhook/bulk9/{tenant_id} checks; Bulk9 documents no signing of its own."""
-    return await _request(api_key, "POST", "/dev/webhook/v2/sms", json={
-        "name": "Anril delivery updates",
+def _webhook_path(service: str) -> str:
+    if service not in WEBHOOK_SERVICES:
+        raise ValueError(f"unknown webhook service {service!r}")
+    return f"/dev/webhook/v2/{service}"
+
+
+def _webhook_body(service: str, url: str, secret: str) -> dict:
+    return {
+        "name": _WEBHOOK_NAMES[service],
         "url": url,
         "method": "POST",
         "content_type": "application/json",
@@ -246,7 +259,17 @@ async def create_sms_webhook(api_key: str, *, url: str, secret: str) -> dict:
         "template": "custom",
         "payload_transform": "standard",
         "headers": {"X-Anril-Webhook-Secret": secret},
-    })
+    }
+
+
+async def list_sms_webhooks(api_key: str, *, service: str = "sms") -> dict:
+    return await _request(api_key, "GET", _webhook_path(service))
+
+
+async def create_sms_webhook(api_key: str, *, url: str, secret: str, service: str = "sms") -> dict:
+    """Point this client's delivery updates at Anril. The secret rides in a custom header
+    that /webhook/bulk9/{tenant_id} checks; Bulk9 documents no signing of its own."""
+    return await _request(api_key, "POST", _webhook_path(service), json=_webhook_body(service, url, secret))
 
 
 _FINANCIAL_KEY = re.compile(r"(?:^|_)(?:amount|price|cost|charg\w*|debit\w*|credit\w*|wallet|balance|profit|payment|recharge|stock|rate)(?:_|$)", re.I)
@@ -302,13 +325,10 @@ def has_more_logs(body: dict, page: int, limit: int) -> bool:
     return len(report_groups(body)) >= limit
 
 
-async def update_sms_webhook(api_key: str, webhook_id: str, *, url: str, secret: str) -> dict:
-    return await _request(api_key, "PUT", f"/dev/webhook/v2/sms/{webhook_id}", json={
-        "name": "Anril delivery updates", "url": url, "method": "POST", "content_type": "application/json",
-        "status": "active", "event": "all", "payload_type": "SIMPLIFIED", "template": "custom",
-        "payload_transform": "standard", "headers": {"X-Anril-Webhook-Secret": secret},
-    })
+async def update_sms_webhook(api_key: str, webhook_id: str, *, url: str, secret: str, service: str = "sms") -> dict:
+    return await _request(api_key, "PUT", f"{_webhook_path(service)}/{webhook_id}",
+                          json=_webhook_body(service, url, secret))
 
 
-async def delete_sms_webhook(api_key: str, webhook_id: str) -> dict:
-    return await _request(api_key, "DELETE", f"/dev/webhook/v2/sms/{webhook_id}")
+async def delete_sms_webhook(api_key: str, webhook_id: str, *, service: str = "sms") -> dict:
+    return await _request(api_key, "DELETE", f"{_webhook_path(service)}/{webhook_id}")

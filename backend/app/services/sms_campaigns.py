@@ -8,6 +8,7 @@ two scheduler runs never double-send). A timeout may mean Bulk9 did accept the S
 import logging
 import re
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 STUCK_AFTER = timedelta(minutes=15)
 BATCH_SIZE = 50
 MAX_LEADS = 5000
+MAX_CONTACTS = 50_000
+MAX_NUMBERS = 5000
+MAX_GROUPS = 50
 INSERT_CHUNK = 500
 
 # Exact exclusion strings from the API contract.
@@ -114,19 +118,25 @@ def _clean_value(v: Any) -> str:
     return re.sub(r"\s+", " ", str(v or "").replace("|", "")).strip()
 
 
-def _field_value(lead: dict, key: str) -> str:
-    name = _clean_value(lead.get("name"))
+COL_PREFIX = "col:"  # a variable filled from an extra upload column of an SMS contact
+
+
+def _field_value(person: dict, key: str) -> str:
+    name = _clean_value(person.get("name"))
     if key == "first_name":
         return name.split(" ")[0] if name else ""
     if key == "name":
         return name
     if key == "phone":
-        return normalize_indian_mobile(lead.get("phone")) or _clean_value(lead.get("phone"))
+        return normalize_indian_mobile(person.get("phone")) or _clean_value(person.get("phone"))
+    if key.startswith(COL_PREFIX):
+        return _clean_value((person.get("fields") or {}).get(key[len(COL_PREFIX):]))
     return ""
 
 
-def validate_variable_map(variable_map: list[dict], template_text: str) -> list[dict]:
-    """One VarSource per {#var#}, in order; field sources must be known lead fields."""
+def validate_variable_map(variable_map: list[dict], template_text: str, allow_cols: bool = False) -> list[dict]:
+    """One VarSource per {#var#}, in order; field sources must be known fields (extra contact
+    columns only when the recipients are SMS contacts)."""
     n = var_count(template_text)
     if len(variable_map or []) != n:
         raise SmsError(f"This template has {n} variable(s); {len(variable_map or [])} given.")
@@ -134,56 +144,76 @@ def validate_variable_map(variable_map: list[dict], template_text: str) -> list[
     for v in variable_map:
         source, value = v.get("source"), v.get("value")
         if source == "field":
-            if value not in _FIELD_KEYS:
-                raise SmsError(f"Unknown lead field: {value}")
+            is_col = allow_cols and isinstance(value, str) and value.startswith(COL_PREFIX) \
+                and len(value) > len(COL_PREFIX)
+            if value not in _FIELD_KEYS and not is_col:
+                raise SmsError(f"Unknown field: {value}")
         elif source == "text":
             value = _clean_value(value)
             if not value:
                 raise SmsError("A fixed-text variable cannot be empty.")
         else:
-            raise SmsError("Each variable must be a lead field or fixed text.")
+            raise SmsError("Each variable must be a field or fixed text.")
         clean.append({"source": source, "value": value})
     return clean
 
 
-def eligibility(leads: list[dict], template_type: str, variable_map: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Split leads into (eligible, excluded). eligible items: {lead, phone, values}.
-    excluded items: {lead_id, name, phone, reason}. Order of checks follows the contract list."""
+# A recipient ("person") whatever the source: {lead_id?, contact_id?, name, phone, fields,
+# opted_out, consent}. consent = may get promotional SMS.
+
+def _lead_person(lead: dict) -> dict:
+    return {"lead_id": lead.get("id"), "name": lead.get("name"), "phone": lead.get("phone"),
+            "opted_out": bool(lead.get("opted_out")),
+            "consent": bool(lead.get("sms_consent_at") and str(lead.get("sms_consent_source") or "").strip())}
+
+
+def _contact_person(c: dict) -> dict:
+    return {"contact_id": c.get("id"), "name": c.get("name"), "phone": c.get("phone"),
+            "fields": c.get("fields") or {}, "opted_out": False, "consent": bool(c.get("promo_consent_at"))}
+
+
+def split_people(people: list[dict], template_type: str, variable_map: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split recipients into (eligible, excluded). eligible items: {person, phone, values}.
+    excluded items: {lead_id, contact_id, name, phone, reason}. Order of checks follows the contract list."""
     eligible: list[dict] = []
     excluded: list[dict] = []
     seen: set[str] = set()
 
-    def out(lead: dict, reason: str) -> None:
-        excluded.append({"lead_id": lead.get("id"), "name": lead.get("name"), "phone": lead.get("phone"),
-                         "reason": reason})
+    def out(p: dict, reason: str) -> None:
+        excluded.append({"lead_id": p.get("lead_id"), "contact_id": p.get("contact_id"), "name": p.get("name"),
+                         "phone": p.get("phone"), "reason": reason})
 
-    for lead in leads:
-        if lead.get("opted_out"):
-            out(lead, R_OPTED_OUT)
+    for p in people:
+        if p.get("opted_out"):
+            out(p, R_OPTED_OUT)
             continue
-        if template_type == "promotional" and not (lead.get("sms_consent_at") and str(lead.get("sms_consent_source") or "").strip()):
-            out(lead, R_NO_CONSENT)
+        if template_type == "promotional" and not p.get("consent"):
+            out(p, R_NO_CONSENT)
             continue
-        phone = normalize_indian_mobile(lead.get("phone"))
+        phone = normalize_indian_mobile(p.get("phone"))
         if not phone:
-            out(lead, R_NOT_INDIAN)
+            out(p, R_NOT_INDIAN)
             continue
         values, missing = [], None
         for src in variable_map:
-            val = _field_value(lead, src["value"]) if src["source"] == "field" else _clean_value(src["value"])
+            val = _field_value(p, src["value"]) if src["source"] == "field" else _clean_value(src["value"])
             if not val:
                 missing = src["value"]
                 break
             values.append(val)
         if missing:
-            out(lead, R_MISSING(missing))
+            out(p, R_MISSING(missing))
             continue
         if phone in seen:
-            out(lead, R_DUPLICATE)
+            out(p, R_DUPLICATE)
             continue
         seen.add(phone)
-        eligible.append({"lead": lead, "phone": phone, "values": values})
+        eligible.append({"person": p, "phone": phone, "values": values})
     return eligible, excluded
+
+
+def eligibility(leads: list[dict], template_type: str, variable_map: list[dict]) -> tuple[list[dict], list[dict]]:
+    return split_people([_lead_person(l) for l in leads], template_type, variable_map)
 
 
 def _num(v: Any) -> float | None:
@@ -195,7 +225,7 @@ def _num(v: Any) -> float | None:
         return None
 
 
-# ---------------------------------------------------------------- lead loading
+# ---------------------------------------------------------------- recipients
 
 def load_leads(db, tenant_id: str, lead_ids: list[str]) -> list[dict]:
     """The tenant's own, not-deleted leads among `lead_ids`, in the order given."""
@@ -213,6 +243,56 @@ def load_leads(db, tenant_id: str, lead_ids: list[str]) -> list[dict]:
     return [found[i] for i in ids if i in found]
 
 
+def load_contacts(db, tenant_id: str, group_ids: list[str]) -> list[dict]:
+    """The tenant's SMS contacts in any of `group_ids` (each contact once). Pages of 1000."""
+    gids = list(dict.fromkeys(str(g) for g in group_ids))
+    if not gids:
+        raise SmsError("Pick at least one group.")
+    if len(gids) > MAX_GROUPS:
+        raise SmsError(f"Pick at most {MAX_GROUPS} groups.")
+    known = (db.table("sms_contact_groups").select("id").eq("tenant_id", tenant_id).in_("id", gids)
+             .execute()).data or []
+    if len(known) != len(gids):
+        raise SmsError("Group not found.", 404)
+    out: list[dict] = []
+    start = 0
+    while True:
+        rows = (
+            db.table("sms_contacts").select("id,name,phone,fields,promo_consent_at")
+            .eq("tenant_id", tenant_id).ov("group_ids", gids).order("id").range(start, start + 999).execute()
+        ).data or []
+        out.extend(rows)
+        if len(out) > MAX_CONTACTS:
+            raise SmsError(f"These groups have more than {MAX_CONTACTS:,} numbers. Pick fewer groups.")
+        if len(rows) < 1000:
+            return out
+        start += 1000
+
+
+def load_people(db, tenant_id: str, audience: "Audience") -> list[dict]:
+    if audience.source == "contacts":
+        return [_contact_person(c) for c in load_contacts(db, tenant_id, audience.group_ids)]
+    if audience.source == "numbers":
+        nums = [str(n).strip() for n in audience.numbers if str(n).strip()]
+        if not nums:
+            raise SmsError("Paste at least one number.")
+        if len(nums) > MAX_NUMBERS:
+            raise SmsError(f"Paste at most {MAX_NUMBERS:,} numbers at a time.")
+        return [{"name": None, "phone": n, "opted_out": False, "consent": audience.consent_confirmed}
+                for n in nums]
+    return [_lead_person(l) for l in load_leads(db, tenant_id, audience.lead_ids)]
+
+
+@dataclass
+class Audience:
+    """Who a campaign goes to. source: leads (lead_ids) | contacts (group_ids) | numbers (pasted)."""
+    source: str = "leads"
+    lead_ids: list[str] = field(default_factory=list)
+    group_ids: list[str] = field(default_factory=list)
+    numbers: list[str] = field(default_factory=list)
+    consent_confirmed: bool = False
+
+
 def get_template(db, tenant_id: str, template_id: str) -> dict:
     rows = (
         db.table("sms_templates").select("*").eq("tenant_id", tenant_id).eq("id", template_id)
@@ -228,12 +308,36 @@ def get_template(db, tenant_id: str, template_id: str) -> dict:
     return t
 
 
+def manual_template(*, sender_id: str, entity_id: str, dlt_template_id: str, template_type: str,
+                    message: str) -> dict:
+    """A template-shaped dict for a raw-DLT-ID send (kind=manual). The message is the exact text."""
+    if template_type not in ("service", "promotional"):
+        raise SmsError("Choose service or promotional.")
+    if var_count(message):
+        raise SmsError("Replace each {#var#} with the exact text to send.")
+    if not message.strip():
+        raise SmsError("Type the message.")
+    return {"id": None, "kind": "manual", "sender_id": sender_id.upper(), "message": message,
+            "template_type": template_type, "message_id": None, "entity_id": entity_id,
+            "dlt_template_id": dlt_template_id}
 # ---------------------------------------------------------------- preview + create
 
-def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_ids: list[str]) -> dict:
-    vmap = validate_variable_map(variable_map, template["message"])
-    leads = load_leads(db, tenant_id, lead_ids)
-    eligible, excluded = eligibility(leads, template["template_type"], vmap)
+EXCLUDED_SHOWN = 1000
+
+
+def _plan(db, tenant_id: str, template: dict, variable_map: list[dict], audience: "Audience"):
+    """(clean variable map, eligible, excluded) for this template + audience."""
+    if template.get("kind") == "manual" and variable_map:
+        raise SmsError("A message sent with DLT IDs has no variables.")
+    vmap = validate_variable_map(variable_map, template["message"], allow_cols=audience.source == "contacts")
+    eligible, excluded = split_people(load_people(db, tenant_id, audience), template["template_type"], vmap)
+    return vmap, eligible, excluded
+
+
+def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_ids: list[str] | None = None,
+            *, audience: "Audience | None" = None) -> dict:
+    audience = audience or Audience(lead_ids=list(lead_ids or []))
+    _vmap, eligible, excluded = _plan(db, tenant_id, template, variable_map, audience)
     total_parts = 0
     samples = []
     for item in eligible:
@@ -241,12 +345,13 @@ def preview(db, tenant_id: str, template: dict, variable_map: list[dict], lead_i
         parts, uni = segments(content)
         total_parts += parts
         if len(samples) < 3:
-            samples.append({"lead_id": item["lead"]["id"], "name": item["lead"].get("name"),
+            p = item["person"]
+            samples.append({"lead_id": p.get("lead_id"), "contact_id": p.get("contact_id"), "name": p.get("name"),
                             "content": content, "segments": parts, "unicode": uni})
     rate = rate_per_sms(db, tenant_id)
     return {
-        "eligible_count": len(eligible), "excluded": excluded, "samples": samples,
-        "total_segments": total_parts,
+        "eligible_count": len(eligible), "excluded": excluded[:EXCLUDED_SHOWN], "excluded_total": len(excluded),
+        "samples": samples, "total_segments": total_parts,
         "estimated": True,
         # ≈ ₹ from what this client was actually charged lately; None until a charge has been reported.
         "rate_per_sms": float(round(rate, 4)) if rate is not None else None,
@@ -276,13 +381,25 @@ def _existing_campaign(db, tenant_id: str, key: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def _message_rows(tenant_id: str, campaign_id: str, template_text: str, eligible: list[dict], send_at: str) -> list[dict]:
+    return [{
+        "tenant_id": tenant_id, "campaign_id": campaign_id, "lead_id": item["person"].get("lead_id"),
+        "contact_id": item["person"].get("contact_id"), "phone": item["phone"], "variables": item["values"],
+        "content": render(template_text, item["values"]), "send_at": send_at, "status": "queued",
+    } for item in eligible]
+
+
 def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, template: dict,
-                    variable_map: list[dict], lead_ids: list[str], send_at: datetime | None,
-                    idempotency_key: str, now: datetime | None = None) -> tuple[dict, bool]:
-    """(campaign row, created). The same idempotency_key again returns the first campaign untouched."""
+                    variable_map: list[dict], lead_ids: list[str] | None = None, send_at: datetime | None,
+                    idempotency_key: str, now: datetime | None = None,
+                    audience: "Audience | None" = None) -> tuple[dict, bool]:
+    """(campaign row, created). The same idempotency_key again returns the first campaign untouched.
+    Leads and pasted numbers (≤5,000) get their messages now; a contacts campaign (≤50,000) is saved
+    as `preparing` and the sms-send job builds its messages (build_preparing)."""
     existing = _existing_campaign(db, tenant_id, idempotency_key)
     if existing:
         return existing, False
+    audience = audience or Audience(lead_ids=list(lead_ids or []))
     now = now or utcnow()
     if send_at is not None:
         if send_at.tzinfo is None:
@@ -291,18 +408,27 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
         if send_at <= now:
             raise SmsError("Pick a future date and time.")
     send_at = send_at or now
-    vmap = validate_variable_map(variable_map, template["message"])
-    leads = load_leads(db, tenant_id, lead_ids)
-    eligible, _excluded = eligibility(leads, template["template_type"], vmap)
+    if audience.source == "numbers" and template["template_type"] == "promotional" and not audience.consent_confirmed:
+        raise SmsError("Confirm that everyone on this list agreed to get promotional SMS.")
+    vmap, eligible, _excluded = _plan(db, tenant_id, template, variable_map, audience)
     if not eligible:
-        raise SmsError("None of the selected leads can receive this SMS.")
+        raise SmsError("None of the selected recipients can receive this SMS.")
+    manual = template.get("kind") == "manual"
+    background = audience.source == "contacts"
     try:
         campaign = db.table("sms_campaigns").insert({
-            "tenant_id": tenant_id, "name": name.strip()[:120], "template_id": template["id"],
-            "sender_id": template["sender_id"], "message_id": str(template["message_id"]),
+            "tenant_id": tenant_id, "name": name.strip()[:120], "template_id": template.get("id"),
+            "sender_id": template["sender_id"],
+            "message_id": None if manual else str(template["message_id"]),
+            "kind": "manual" if manual else "template",
+            "manual_entity_id": template.get("entity_id") if manual else None,
+            "manual_template_id": template.get("dlt_template_id") if manual else None,
             "template_type": template["template_type"], "template_text": template["message"],
-            "variable_map": vmap, "status": "scheduled", "send_at": send_at.isoformat(),
-            "idempotency_key": idempotency_key, "created_by": user_id,
+            "variable_map": vmap, "status": "preparing" if background else "scheduled",
+            "source": audience.source, "group_ids": audience.group_ids or None,
+            "consent_source": f"confirmed by {user_id or 'unknown'} at {now.isoformat()}"
+            if audience.source == "numbers" and audience.consent_confirmed else None,
+            "send_at": send_at.isoformat(), "idempotency_key": idempotency_key, "created_by": user_id,
         }).execute().data[0]
     except Exception:
         # A double click can lose the race on the unique (tenant, key) index: hand back the winner.
@@ -310,14 +436,9 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
         if existing:
             return existing, False
         raise
-    rows = []
-    for item in eligible:
-        content = render(template["message"], item["values"])
-        rows.append({
-            "tenant_id": tenant_id, "campaign_id": campaign["id"], "lead_id": item["lead"]["id"],
-            "phone": item["phone"], "variables": item["values"], "content": content,
-            "send_at": send_at.isoformat(), "status": "queued",
-        })
+    if background:
+        return campaign, True
+    rows = _message_rows(tenant_id, campaign["id"], template["message"], eligible, send_at.isoformat())
     try:
         for i in range(0, len(rows), INSERT_CHUNK):
             db.table("sms_messages").insert(rows[i:i + INSERT_CHUNK]).execute()
@@ -332,11 +453,100 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
     return campaign, True
 
 
+# ---------------------------------------------------------------- building a contacts campaign
+
+# Messages of a campaign still being built wait at this send_at, so the sender never picks them up.
+HOLD = "9999-12-31T00:00:00+00:00"
+BUILD_STALE = timedelta(minutes=10)  # a build claimed this long ago crashed: rebuild it
+BUILD_GIVE_UP = timedelta(hours=1)   # still failing an hour after creation: stop and say so
+
+
+def _campaign_template(c: dict) -> dict:
+    return {"kind": c.get("kind") or "template", "message": c["template_text"], "template_type": c["template_type"]}
+
+
+def _drop_unsent(db, campaign_id: str) -> None:
+    db.table("sms_messages").delete().eq("campaign_id", campaign_id).in_("status", ["queued", "sending"]).execute()
+
+
+def build_one(db, campaign: dict, now: datetime) -> str:
+    """Insert a preparing campaign's messages, then release them. Returns what happened."""
+    cid, tid = campaign["id"], campaign["tenant_id"]
+    # A rebuild after a crash: drop the half-built messages. None was sent: the sender never sends
+    # for a preparing campaign.
+    _drop_unsent(db, cid)
+    try:
+        _vmap, eligible, _ = _plan(db, tid, _campaign_template(campaign), campaign.get("variable_map") or [],
+                                   Audience(source="contacts", group_ids=list(campaign.get("group_ids") or [])))
+    except SmsError as e:
+        eligible, reason = [], str(e)
+    else:
+        reason = "None of the contacts in these groups can receive this SMS."
+    if not eligible:
+        db.table("sms_campaigns").update({"status": "cancelled", "cancelled_at": now.isoformat(),
+                                          "build_error": reason}).eq("id", cid).eq("status", "preparing").execute()
+        return "empty"
+    rows = _message_rows(tid, cid, campaign["template_text"], eligible, HOLD)
+    for i in range(0, len(rows), INSERT_CHUNK):
+        db.table("sms_messages").insert(rows[i:i + INSERT_CHUNK]).execute()
+    # Release the messages first, then the campaign: if this dies in between, the sender puts any
+    # message it claims back on hold (the campaign still says preparing) and the build reruns.
+    db.table("sms_messages").update({"send_at": campaign["send_at"]}) \
+        .eq("campaign_id", cid).eq("status", "queued").eq("send_at", HOLD).execute()
+    done = (db.table("sms_campaigns").update({"status": "scheduled", "build_error": None})
+            .eq("id", cid).eq("status", "preparing").execute()).data or []
+    if not done:  # cancelled while building
+        db.table("sms_messages").update({"status": "cancelled", "updated_at": now.isoformat()}) \
+            .eq("campaign_id", cid).eq("status", "queued").execute()
+        return "cancelled"
+    return "built"
+
+
+def build_preparing(db, now: datetime) -> int:
+    """Build every preparing campaign this run can claim. Returns how many were built."""
+    built = 0
+    waiting = (db.table("sms_campaigns").select("*").eq("status", "preparing").is_("deleted_at", "null")
+               .order("created_at").limit(5).execute()).data or []
+    for c in waiting:
+        created = _parse_ts(c.get("created_at"))
+        if created and now - created > BUILD_GIVE_UP:
+            db.table("sms_campaigns").update({
+                "status": "cancelled", "cancelled_at": now.isoformat(),
+                "build_error": "This campaign couldn't be prepared. Nothing was sent; please create it again.",
+            }).eq("id", c["id"]).eq("status", "preparing").execute()
+            _drop_unsent(db, c["id"])
+            continue
+        claim = (db.table("sms_campaigns").update({"build_started_at": now.isoformat()})
+                 .eq("id", c["id"]).eq("status", "preparing")
+                 .or_(f"build_started_at.is.null,build_started_at.lt.{(now - BUILD_STALE).isoformat()}")
+                 .execute()).data or []
+        if not claim:
+            continue  # another run is building it
+        try:
+            if build_one(db, claim[0], now) == "built":
+                built += 1
+        except Exception:
+            logger.exception("sms_campaigns: building campaign %s failed", c["id"])
+            # Let the next run try again from scratch.
+            db.table("sms_campaigns").update({"build_started_at": None,
+                                              "build_error": "Still preparing: retrying."}) \
+                .eq("id", c["id"]).eq("status", "preparing").execute()
+    return built
+
+
+def _parse_ts(v: Any) -> datetime | None:
+    try:
+        ts = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
 def cancel_campaign(db, tenant_id: str, campaign_id: str, now: datetime | None = None) -> dict:
     now = now or utcnow()
     rows = (
         db.table("sms_campaigns").update({"status": "cancelled", "cancelled_at": now.isoformat()})
-        .eq("id", campaign_id).eq("tenant_id", tenant_id).eq("status", "scheduled").execute()
+        .eq("id", campaign_id).eq("tenant_id", tenant_id).in_("status", ["scheduled", "preparing"]).execute()
     ).data or []
     if not rows:
         found = get_campaign_row(db, tenant_id, campaign_id)
@@ -439,7 +649,8 @@ def public_campaigns(db, tenant_id: str, rows: list[dict]) -> list[dict]:
             "sender_id": r["sender_id"], "template_type": r["template_type"], "status": r["status"],
             "send_at": r.get("send_at"), "created_at": r.get("created_at"),
             "completed_at": r.get("completed_at"), "counts": s["counts"], "total": s["total"],
-            "sms_used": s["sms_used"],
+            "sms_used": s["sms_used"], "kind": r.get("kind") or "template", "source": r.get("source") or "leads",
+            "build_error": r.get("build_error"),
             # What Bulk9 debited from the client's own wallet so far; None until a charge is reported.
             "amount_debited": float(round(s["amount"], 2)) if s["amount"] is not None else None,
         })
@@ -448,15 +659,18 @@ def public_campaigns(db, tenant_id: str, rows: list[dict]) -> list[dict]:
 
 def public_messages(db, tenant_id: str, rows: list[dict]) -> list[dict]:
     """Client message shape."""
-    lead_ids = list({r["lead_id"] for r in rows if r.get("lead_id")})
     names: dict[str, str | None] = {}
-    for i in range(0, len(lead_ids), 200):
-        for l in (db.table("leads").select("id,name").eq("tenant_id", tenant_id)
-                  .in_("id", lead_ids[i:i + 200]).execute()).data or []:
-            names[l["id"]] = l.get("name")
+    for table, col in (("leads", "lead_id"), ("sms_contacts", "contact_id")):
+        ids = list({r[col] for r in rows if r.get(col)})
+        for i in range(0, len(ids), 200):
+            for x in (db.table(table).select("id,name").eq("tenant_id", tenant_id)
+                      .in_("id", ids[i:i + 200]).execute()).data or []:
+                names[x["id"]] = x.get("name")
     return [{
         "id": r["id"], "campaign_id": r.get("campaign_id"), "lead_id": r.get("lead_id"),
-        "lead_name": names.get(r.get("lead_id")), "phone": r["phone"], "content": r["content"],
+        "contact_id": r.get("contact_id"),
+        # The recipient's name, from the lead or the SMS contact.
+        "lead_name": names.get(r.get("lead_id") or r.get("contact_id")), "phone": r["phone"], "content": r["content"],
         "status": r["status"], "failure_reason": r.get("failure_reason"), "sms_count": r.get("sms_count"),
         "submitted_at": r.get("submitted_at"),
         "delivered_at": r.get("delivered_at"), "updated_at": r.get("updated_at"),
@@ -526,9 +740,44 @@ def _complete_if_done(db, campaign_id: str, now: datetime) -> None:
             .eq("id", campaign_id).eq("status", "sending").execute()
 
 
+def _recipient_skip(db, row: dict, campaign: dict) -> str | None:
+    """Why this recipient must not get the SMS any more, or None. Checked at send time because a
+    lead or contact can change after the campaign was created."""
+    source = campaign.get("source") or "leads"
+    promotional = campaign.get("template_type") == "promotional"
+    if source == "numbers":
+        return None  # consent was confirmed for the whole pasted list
+    if source == "contacts":
+        contact = None
+        if row.get("contact_id"):
+            contact = ((db.table("sms_contacts").select("id,promo_consent_at").eq("tenant_id", row["tenant_id"])
+                        .eq("id", row["contact_id"]).limit(1).execute()).data or [None])[0]
+        if not contact:
+            return "The contact was removed."
+        if promotional and not contact.get("promo_consent_at"):
+            return R_NO_CONSENT
+        return None
+    lead = None
+    if row.get("lead_id"):
+        lead = ((db.table("leads").select("id,opted_out,deleted_at,sms_consent_at,sms_consent_source").eq("tenant_id", row["tenant_id"])
+                 .eq("id", row["lead_id"]).limit(1).execute()).data or [None])[0]
+    if not lead or lead.get("deleted_at"):
+        return "The lead was removed."
+    if lead.get("opted_out"):
+        return "The customer opted out."
+    if promotional and not _lead_person(lead)["consent"]:
+        return R_NO_CONSENT
+    return None
+
+
 async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
     rid = row["id"]
     skip = None
+    if campaign is not None and campaign.get("status") == "preparing":
+        # Still being built (a crashed build, or a race with another run): back on hold, unsent.
+        db.table("sms_messages").update({"status": "queued", "claimed_at": None, "send_at": HOLD}) \
+            .eq("id", rid).eq("status", "sending").execute()
+        return
     if campaign is None or campaign.get("status") == "cancelled":
         skip, status = "The campaign was cancelled.", "cancelled"
     else:
@@ -538,24 +787,22 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
         elif not tctx["key"]:
             skip = "SMS is not connected."
         else:
-            lead = None
-            if row.get("lead_id"):
-                lead = ((db.table("leads").select("id,opted_out,deleted_at,sms_consent_at,sms_consent_source").eq("tenant_id", row["tenant_id"])
-                         .eq("id", row["lead_id"]).limit(1).execute()).data or [None])[0]
-            if not lead or lead.get("deleted_at"):
-                skip = "The lead was removed."
-            elif lead.get("opted_out"):
-                skip = "The customer opted out."
-            elif campaign.get("template_type") == "promotional" and not (lead.get("sms_consent_at") and str(lead.get("sms_consent_source") or "").strip()):
-                skip = R_NO_CONSENT
+            skip = _recipient_skip(db, row, campaign)
     if skip:
         _finish(db, rid, {"status": status, "failure_reason": skip})
         return
     try:
-        body = await bulk9_client.send_dlt(
-            tctx["key"], sender_id=campaign["sender_id"], message_id=campaign["message_id"],
-            numbers=[row["phone"]], variables=list(row.get("variables") or []), udf1=rid,
-        )
+        if campaign.get("kind") == "manual":
+            body = await bulk9_client.send_dlt_manual(
+                tctx["key"], sender_id=campaign["sender_id"], entity_id=campaign["manual_entity_id"],
+                template_id=campaign["manual_template_id"], message=row["content"], numbers=[row["phone"]],
+                udf1=rid,
+            )
+        else:
+            body = await bulk9_client.send_dlt(
+                tctx["key"], sender_id=campaign["sender_id"], message_id=campaign["message_id"],
+                numbers=[row["phone"]], variables=list(row.get("variables") or []), udf1=rid,
+            )
     except Bulk9Timeout:
         _finish(db, rid, {"status": "unknown",
                           "failure_reason": "No answer from the SMS provider; checking the delivery report."})
@@ -599,6 +846,12 @@ async def process_due_sms(db=None, now: datetime | None = None, batch_size: int 
         .eq("status", "sending").lt("claimed_at", (now - STUCK_AFTER).isoformat()).execute()
     ).data or []
     touched.update(r["campaign_id"] for r in stuck if r.get("campaign_id"))
+
+    try:
+        build_preparing(db, now)
+    except Exception:
+        # Building must never stop sending.
+        logger.exception("sms_campaigns: building preparing campaigns failed")
 
     claimed_total = 0
     cache: dict = {}

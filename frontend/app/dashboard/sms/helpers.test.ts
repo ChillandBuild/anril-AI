@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  UNICODE_NOTE,
+  buildCurl,
+  buildPython,
+  buildRecipients,
+  canCancelCampaign,
+  maskKey,
+  otpDelivery,
+  parseNumbers,
+  recipientsReady,
+  skippedRowsCsv,
+  smsCounterLine,
+  smsSegments,
   campaignStatusLabel,
   canDeleteCampaign,
   canDeleteTemplateRequest,
@@ -299,5 +311,145 @@ describe("otpActionLabel", () => {
     expect(otpActionLabel("resend")).toBe("Resent");
     expect(otpActionLabel("verify")).toBe("Checked");
     expect(otpActionLabel("other")).toBe("other");
+  });
+});
+
+describe("smsSegments", () => {
+  it("counts plain GSM-7 text as 160 for one part, 153 per part after", () => {
+    expect(smsSegments("a".repeat(160))).toEqual({ length: 160, parts: 1, unicode: false });
+    expect(smsSegments("a".repeat(161))).toEqual({ length: 161, parts: 2, unicode: false });
+    expect(smsSegments("a".repeat(306))).toEqual({ length: 306, parts: 2, unicode: false });
+    expect(smsSegments("a".repeat(307))).toEqual({ length: 307, parts: 3, unicode: false });
+  });
+
+  it("counts GSM extension characters as 2", () => {
+    expect(smsSegments("{}[]")).toEqual({ length: 8, parts: 1, unicode: false });
+    expect(smsSegments("€".repeat(80))).toEqual({ length: 160, parts: 1, unicode: false });
+    expect(smsSegments("€".repeat(81))).toEqual({ length: 162, parts: 2, unicode: false });
+    expect(smsSegments("a\\b|~^").length).toBe(1 + 2 + 1 + 2 + 2 + 2);
+  });
+
+  it("switches to Unicode (70 / 67) for any non-GSM character", () => {
+    expect(smsSegments("வணக்கம்")).toMatchObject({ unicode: true, parts: 1 });
+    expect(smsSegments("a".repeat(70) + "ø".repeat(0) + "é")).toMatchObject({ unicode: false });
+    expect(smsSegments("த" + "a".repeat(69))).toEqual({ length: 70, parts: 1, unicode: true });
+    expect(smsSegments("த" + "a".repeat(70))).toEqual({ length: 71, parts: 2, unicode: true });
+    expect(smsSegments("த" + "a".repeat(133))).toEqual({ length: 134, parts: 2, unicode: true });
+    expect(smsSegments("த" + "a".repeat(134))).toEqual({ length: 135, parts: 3, unicode: true });
+  });
+
+  it("counts an emoji as two characters, like the backend", () => {
+    expect(smsSegments("😀")).toEqual({ length: 2, parts: 1, unicode: true });
+  });
+
+  it("matches the backend for an empty message (one part)", () => {
+    expect(smsSegments("")).toEqual({ length: 0, parts: 1, unicode: false });
+  });
+});
+
+describe("smsCounterLine", () => {
+  it("shows characters and SMS", () => {
+    expect(smsCounterLine("")).toBe("0 characters · 0 SMS");
+    expect(smsCounterLine("a")).toBe("1 character · 1 SMS");
+    expect(smsCounterLine("a".repeat(161))).toBe("161 characters · 2 SMS");
+  });
+  it("has the Unicode note wording", () => {
+    expect(UNICODE_NOTE).toBe("Unicode message (e.g. Tamil or emoji): 70 characters per SMS");
+  });
+});
+
+describe("preparing campaigns", () => {
+  it("labels preparing and keeps polling it", () => {
+    expect(campaignStatusLabel("preparing")).toBe("Preparing…");
+    expect(campaignNeedsUpdates({ status: "preparing", counts: {} })).toBe(true);
+  });
+  it("can be cancelled but not rescheduled or deleted", () => {
+    expect(canCancelCampaign("preparing")).toBe(true);
+    expect(canCancelCampaign("scheduled")).toBe(true);
+    expect(canCancelCampaign("sending")).toBe(false);
+    expect(canRescheduleCampaign("preparing")).toBe(false);
+    expect(canDeleteCampaign("preparing")).toBe(false);
+  });
+});
+
+describe("otpDelivery", () => {
+  it("maps the delivery report", () => {
+    expect(otpDelivery("delivered")).toEqual({ label: "Delivered", tone: "success" });
+    expect(otpDelivery("failed")).toEqual({ label: "Failed", tone: "danger" });
+    expect(otpDelivery(null)).toEqual({ label: "—", tone: null });
+  });
+});
+
+describe("recipients", () => {
+  const base = { leadIds: [], groupIds: [], numbersText: "", promotional: false, consent: false };
+  it("needs a group, a lead or a number depending on the tab", () => {
+    expect(recipientsReady({ ...base, tab: "contacts" })).toBe(false);
+    expect(recipientsReady({ ...base, tab: "contacts", groupIds: ["g1"] })).toBe(true);
+    expect(recipientsReady({ ...base, tab: "leads", leadIds: ["l1"] })).toBe(true);
+    expect(recipientsReady({ ...base, tab: "numbers", numbersText: "9876543210" })).toBe(true);
+  });
+  it("blocks promotional pasted numbers until consent is ticked", () => {
+    const n = { ...base, tab: "numbers" as const, numbersText: "9876543210\n9123456780", promotional: true };
+    expect(recipientsReady(n)).toBe(false);
+    expect(recipientsReady({ ...n, consent: true })).toBe(true);
+  });
+  it("rejects more than 5,000 pasted numbers", () => {
+    const text = Array.from({ length: 5001 }, (_, i) => String(9000000000 + i)).join("\n");
+    expect(recipientsReady({ ...base, tab: "numbers", numbersText: text })).toBe(false);
+  });
+  it("splits pasted numbers on lines, commas and spaces", () => {
+    expect(parseNumbers("9876543210, 9123456780\n\n 9000000000;")).toEqual(["9876543210", "9123456780", "9000000000"]);
+  });
+  it("builds the request fields per source", () => {
+    expect(buildRecipients({ ...base, tab: "contacts", groupIds: ["g1"] })).toEqual({ source: "contacts", group_ids: ["g1"] });
+    expect(buildRecipients({ ...base, tab: "leads", leadIds: ["l1"] })).toEqual({ source: "leads", lead_ids: ["l1"] });
+    expect(buildRecipients({ ...base, tab: "numbers", numbersText: "9876543210", promotional: true, consent: true })).toEqual({
+      source: "numbers",
+      numbers: ["9876543210"],
+      consent_confirmed: true,
+    });
+    expect(buildRecipients({ ...base, tab: "numbers", numbersText: "9876543210" })).toEqual({ source: "numbers", numbers: ["9876543210"] });
+  });
+});
+
+describe("skippedRowsCsv", () => {
+  it("writes a header and quotes awkward values", () => {
+    const csv = skippedRowsCsv([
+      { row: 3, value: "12345", reason: "Not an Indian mobile number" },
+      { row: 4, value: "=SUM(A1)", reason: "Empty row" },
+      { row: 5, value: "a,b", reason: "Duplicate number in this file" },
+    ]);
+    expect(csv.split("\r\n")).toEqual([
+      "Row,Value,Reason",
+      "3,12345,Not an Indian mobile number",
+      "4,'=SUM(A1),Empty row",
+      '5,"a,b",Duplicate number in this file',
+    ]);
+  });
+});
+
+describe("developer request examples", () => {
+  const input = { senderId: "ANRIL", messageId: "tpl123", variables: ["Asha", "5|0"], numbers: ["9876543210", "9123456780"], apiKey: "abcd1234" };
+  it("masks a key to its first 4 characters", () => {
+    expect(maskKey("abcd1234efgh")).toBe("abcd••••");
+    expect(maskKey("ab")).toBe("••••");
+  });
+  it("builds the curl call", () => {
+    const curl = buildCurl(input);
+    expect(curl).toContain("https://sms.anrilaitech.com/dev/bulkV2");
+    expect(curl).toContain('authorization: abcd1234');
+    expect(curl).toContain('"route": "dlt"');
+    expect(curl).toContain('"message": "tpl123"');
+    expect(curl).toContain('"variables_values": "Asha|50"');
+    expect(curl).toContain('"numbers": "9876543210,9123456780"');
+  });
+  it("builds the python call and omits variables when there are none", () => {
+    const py = buildPython({ ...input, variables: [] });
+    expect(py).toContain("import requests");
+    expect(py).toContain("https://sms.anrilaitech.com/dev/bulkV2");
+    expect(py).not.toContain("variables_values");
+  });
+  it("never leaves a bulk9 name in the examples", () => {
+    expect((buildCurl(input) + buildPython(input)).toLowerCase()).not.toContain("bulk9");
   });
 });

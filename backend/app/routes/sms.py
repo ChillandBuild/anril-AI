@@ -183,7 +183,7 @@ async def balance(ctx: dict = Depends(view)):
         sms_count = int(float(body.get("sms_count") or 0))
     except (TypeError, ValueError):
         sms_count = 0
-    return {"sms_count": sms_count}
+    return {"sms_count": sms_count, "wallet": body.get("wallet")}
 
 
 def _dlt_items(body: dict) -> list[dict]:
@@ -401,8 +401,21 @@ async def delete_template_request(request_id: str, ctx: dict = Depends(manage_no
 # ---------------------------------------------------------------- campaigns
 
 @router.get("/campaigns/fields")
-async def campaign_fields(ctx: dict = Depends(view_no_key)):
-    return {"fields": camp.FIELDS}
+async def campaign_fields(source: Literal["leads", "contacts", "numbers"] = "leads",
+                          group_ids: Optional[str] = Query(None, max_length=2000),
+                          ctx: dict = Depends(view_no_key)):
+    """Fields a {#var#} can be filled from. SMS contacts add their extra upload columns as col:<name>."""
+    fields = list(camp.FIELDS)
+    gids = [g for g in (group_ids or "").split(",") if g.strip()][:camp.MAX_GROUPS]
+    if source == "contacts" and gids:
+        try:
+            gids = [str(uuid.UUID(g.strip())) for g in gids]
+        except ValueError:
+            raise HTTPException(422, "Group not found.")
+        keys = (get_supabase().rpc("sms_contact_field_keys", {"p_tenant": ctx["tenant_id"], "p_groups": gids})
+                .execute()).data or []
+        fields += [{"key": f"{camp.COL_PREFIX}{k['key']}", "label": k["key"]} for k in keys]
+    return {"fields": fields}
 
 
 class VarSource(BaseModel):
@@ -410,10 +423,24 @@ class VarSource(BaseModel):
     value: str = Field(max_length=200)
 
 
+class ManualSpec(BaseModel):
+    sender_id: str = Field(min_length=3, max_length=6, pattern=r"^[A-Za-z0-9]+$")
+    entity_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    dlt_template_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    template_type: Literal["service", "promotional"]
+    message: str = Field(min_length=1, max_length=2000)
+
+
 class PreviewBody(BaseModel):
-    template_id: str
+    kind: Literal["template", "manual"] = "template"
+    source: Literal["leads", "contacts", "numbers"] = "leads"
+    template_id: Optional[str] = None
+    manual: Optional[ManualSpec] = None
     variable_map: list[VarSource] = Field(default_factory=list, max_length=20)
-    lead_ids: list[str] = Field(max_length=camp.MAX_LEADS)
+    lead_ids: list[str] = Field(default_factory=list, max_length=camp.MAX_LEADS)
+    group_ids: list[uuid.UUID] = Field(default_factory=list, max_length=camp.MAX_GROUPS)
+    numbers: list[str] = Field(default_factory=list, max_length=camp.MAX_NUMBERS)
+    consent_confirmed: bool = False
 
 
 class CampaignBody(PreviewBody):
@@ -426,12 +453,29 @@ def _vmap(body: PreviewBody) -> list[dict]:
     return [v.model_dump() for v in body.variable_map]
 
 
+def _audience(body: PreviewBody) -> camp.Audience:
+    return camp.Audience(source=body.source, lead_ids=body.lead_ids, group_ids=[str(g) for g in body.group_ids],
+                         numbers=body.numbers, consent_confirmed=body.consent_confirmed)
+
+
+def _body_template(db, tid: str, body: PreviewBody) -> dict:
+    if body.kind == "manual":
+        if not body.manual:
+            raise camp.SmsError("Fill in the sender ID, DLT IDs and message.")
+        m = body.manual
+        return camp.manual_template(sender_id=m.sender_id, entity_id=m.entity_id, dlt_template_id=m.dlt_template_id,
+                                    template_type=m.template_type, message=m.message)
+    if not body.template_id:
+        raise camp.SmsError("Pick a template.")
+    return camp.get_template(db, tid, body.template_id)
+
+
 @router.post("/campaigns/preview")
 async def preview_campaign(body: PreviewBody, ctx: dict = Depends(view_no_key)):
     db = get_supabase()
     try:
-        template = camp.get_template(db, ctx["tenant_id"], body.template_id)
-        return camp.preview(db, ctx["tenant_id"], template, _vmap(body), body.lead_ids)
+        template = _body_template(db, ctx["tenant_id"], body)
+        return camp.preview(db, ctx["tenant_id"], template, _vmap(body), audience=_audience(body))
     except camp.SmsError as e:
         raise _sms_error(e)
 
@@ -440,12 +484,12 @@ async def preview_campaign(body: PreviewBody, ctx: dict = Depends(view_no_key)):
 async def create_campaign(body: CampaignBody, ctx: dict = Depends(manage)):
     db, tid = get_supabase(), ctx["tenant_id"]
     try:
-        template = camp.get_template(db, tid, body.template_id)
-        needed = camp.preview(db, tid, template, _vmap(body), body.lead_ids)["total_segments"]
+        template = _body_template(db, tid, body)
+        needed = camp.preview(db, tid, template, _vmap(body), audience=_audience(body))["total_segments"]
         await _require_send_ready(tid, ctx["api_key"], needed)
         row, created = camp.create_campaign(
             db, tid, ctx.get("user_id"), name=body.name, template=template, variable_map=_vmap(body),
-            lead_ids=body.lead_ids, send_at=body.send_at, idempotency_key=body.idempotency_key)
+            send_at=body.send_at, idempotency_key=body.idempotency_key, audience=_audience(body))
     except camp.SmsError as e:
         raise _sms_error(e)
     return JSONResponse(camp.public_campaigns(db, tid, [row])[0], status_code=201 if created else 200)
@@ -720,7 +764,7 @@ async def otp_resend(body: OtpResendBody, ctx: dict = Depends(manage)):
     return {"ok": True, "message": out["message"]}
 
 
-OTP_LOG_FIELDS = ("id", "mobile", "action", "ok", "message", "created_at")
+OTP_LOG_FIELDS = ("id", "mobile", "action", "ok", "message", "created_at", "delivery_status", "delivered_at")
 
 
 @router.get("/otp/history")
@@ -731,26 +775,3 @@ async def otp_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(
     res = (get_supabase().table("sms_otp_log").select("*", count="exact").eq("tenant_id", ctx["tenant_id"])
            .order("created_at", desc=True).range(offset, offset + limit - 1).execute())
     return {"items": [{k: r.get(k) for k in OTP_LOG_FIELDS} for r in res.data or []], "total": res.count or 0}
-
-
-# ---------------------------------------------------------------- manual DLT send
-
-class ManualSendBody(BaseModel):
-    sender_id: str = Field(min_length=3, max_length=6, pattern=r"^[A-Za-z0-9]+$")
-    entity_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
-    template_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
-    message: str = Field(min_length=1, max_length=2000)
-    mobile: str
-
-
-@router.post("/manual-send")
-async def manual_send(body: ManualSendBody, ctx: dict = Depends(manage)):
-    """One SMS with raw DLT IDs (route=dlt_manual), for an approved template that isn't in the
-    template list. Wrong wording or IDs fail at the operator and may still be charged."""
-    mobile = _mobile(body.mobile)
-    parts, _ = camp.segments(body.message)
-    await _require_send_ready(ctx["tenant_id"], ctx["api_key"], parts)
-    res = await _bulk9(bulk9_client.send_dlt_manual(
-        ctx["api_key"], sender_id=body.sender_id.upper(), entity_id=body.entity_id,
-        template_id=body.template_id, message=body.message, numbers=[mobile]))
-    return {"ok": True, "request_id": res.get("request_id"), "message": _message(res, "SMS sent.")}
