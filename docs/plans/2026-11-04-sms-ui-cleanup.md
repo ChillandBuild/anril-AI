@@ -11,7 +11,7 @@ Decisions from the screenshot review. One commit per task; push only when Prem s
   Dashboard = collapsed checklist + Add credit; DLT Setup = PE-TM; other pages = one short "Setup in progress" card.
   *Accept:* no wallet/Add credit on any page but the Dashboard; credit request works inline; tests for the
   amount check and the setup summary.
-- [ ] **2. Repeated titles off.** Remove card headers #1, #2 (SendForm "Send SMS"), #16 "Contacts", #17 "Groups";
+- [x] **2. Repeated titles off.** Remove card headers #1, #2 (SendForm "Send SMS"), #16 "Contacts", #17 "Groups";
   drop hints that repeat the app header.
 - [ ] **3. PE-TM: "I've sent the binding request" button** in place of the screenshot upload. Backend route rings the
   operator bell (dedup per entity per hour, like today). Remove the upload card.

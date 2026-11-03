@@ -36,7 +36,7 @@ import {
   type OwnDlt,
   type SendFormInput,
 } from "./helpers";
-import { Badge, Btn, Card, CardHeader, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
+import { Badge, Btn, Card, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const OWN = "__own__";
@@ -146,7 +146,6 @@ export function SendForm() {
   if (!canManage) {
     return (
       <Card>
-        <CardHeader title="Send SMS" />
         <div className="p-4 sm:p-5">
           <Notice tone="info">You can view SMS reports, but sending needs the SMS manage permission. Ask the account owner.</Notice>
         </div>
@@ -217,7 +216,6 @@ export function SendForm() {
 
   return (
     <Card>
-      <CardHeader title="Send SMS" hint="Pick an approved template (or type your own DLT details), say who gets it, preview, then send or schedule." />
       <div className="space-y-5 p-4 sm:p-5">
         {!smsStatus.checklist.pe_tm && (
           <Notice tone="warn">

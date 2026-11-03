@@ -13,7 +13,7 @@ import { Pager } from "./CampaignDetail";
 import { AddContactModal, PasteModal, UploadModal } from "./ContactModals";
 import { GroupsPanel } from "./GroupsPanel";
 import { formatCount, friendlyError, parseContactsSub } from "./helpers";
-import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const PAGE = 50;
@@ -127,25 +127,19 @@ function ContactsPanel() {
 
   return (
     <Card>
-      <CardHeader
-        title="Contacts"
-        hint="People you can send SMS to without them being leads."
-        action={
-          canManage ? (
-            <div className="flex flex-wrap gap-2">
-              <Btn variant="outline" onClick={() => setAdding(true)}>
-                <Plus size={15} /> Add contact
-              </Btn>
-              <Btn variant="outline" onClick={() => setPasting(true)}>
-                <ClipboardPaste size={15} /> Paste numbers
-              </Btn>
-              <Btn onClick={() => setUploading(true)}>
-                <Upload size={15} /> Add multiple contacts
-              </Btn>
-            </div>
-          ) : undefined
-        }
-      />
+      {canManage && (
+        <div className="flex flex-wrap justify-end gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
+          <Btn variant="outline" onClick={() => setAdding(true)}>
+            <Plus size={15} /> Add contact
+          </Btn>
+          <Btn variant="outline" onClick={() => setPasting(true)}>
+            <ClipboardPaste size={15} /> Paste numbers
+          </Btn>
+          <Btn onClick={() => setUploading(true)}>
+            <Upload size={15} /> Add multiple contacts
+          </Btn>
+        </div>
+      )}
       <form
         className="flex flex-wrap items-center gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5"
         onSubmit={(e) => {

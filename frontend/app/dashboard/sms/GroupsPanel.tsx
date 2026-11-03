@@ -6,7 +6,7 @@ import { Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { formatCount, formatIst, friendlyError } from "./helpers";
-import { Btn, Card, CardHeader, Empty, LoadError, Modal, Notice, Skeleton, inputCls } from "./ui";
+import { Btn, Card, Empty, LoadError, Modal, Notice, Skeleton, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 export function GroupsPanel() {
@@ -83,7 +83,6 @@ export function GroupsPanel() {
 
   return (
     <Card>
-      <CardHeader title="Groups" hint="Put contacts in groups, then pick a group when you send a campaign." />
       {canManage && (
         <form
           className="flex flex-wrap items-end gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5"
