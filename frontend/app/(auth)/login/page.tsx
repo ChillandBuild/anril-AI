@@ -59,6 +59,7 @@ export default function LoginPage() {
     over: 97,
     overX: 97,
   });
+  const [fitted, setFitted] = useState(false);
   const [cardH, setCardH] = useState(0);
   const [signinH, setSigninH] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -110,6 +111,7 @@ export default function LoginPage() {
       });
     };
     fit();
+    setFitted(true);
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, [wide, cardH]);
@@ -221,14 +223,15 @@ export default function LoginPage() {
 
       <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:px-16 xl:py-6">
         <div className="flex w-full max-w-[420px] flex-col gap-5 xl:max-w-none xl:w-auto xl:flex-row xl:items-center xl:gap-12">
-          {wide ? (
-            <div
-              className="hidden xl:block relative shrink-0"
-              style={{
-                width: size.w * size.scale,
-                height: size.h * size.scale,
-              }}
-            >
+          {/* The showcase slot is in the server HTML and sized by CSS alone
+              (same width rule as fit() above, same height as the card), so the
+              card is already in its final spot on the first frame. Only the
+              contents mount later, and they fade in inside the slot. */}
+          <div
+            className="hidden xl:block relative shrink-0 xl:self-stretch"
+            style={{ width: "min(1000px, calc(100vw - 596px))" }}
+          >
+            {wide && fitted && (
               <div
                 className="absolute left-0 top-0 origin-top-left"
                 style={{ transform: `scale(${size.scale})` }}
@@ -242,18 +245,16 @@ export default function LoginPage() {
                   flying={loading && view === "signin"}
                 />
               </div>
+            )}
+          </div>
+          <div className="xl:hidden">
+            <div className={a.glassHeader}>
+              <h2>Every lead, answered in seconds.</h2>
+              <p>
+                WhatsApp · Instagram · Facebook, in Tamil, Tanglish and English.
+              </p>
             </div>
-          ) : (
-            <div className="xl:hidden">
-              <div className={a.glassHeader}>
-                <h2>Every lead, answered in seconds.</h2>
-                <p>
-                  WhatsApp · Instagram · Facebook, in Tamil, Tanglish and
-                  English.
-                </p>
-              </div>
-            </div>
-          )}
+          </div>
 
           <div ref={cardRef} className="xl:w-[420px] xl:shrink-0">
             <div
