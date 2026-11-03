@@ -414,8 +414,6 @@ async def dlt_template_excel(entity_id: str = Form(..., max_length=40),
 
 # ---------------------------------------------------------------- PE-TM binding + Add credit
 
-PE_TM_PROOF_EXTS = {"jpg", "jpeg", "png", "pdf"}
-
 
 def _setup(fn, *args):
     try:
@@ -437,23 +435,17 @@ async def pe_tm_list(ctx: dict = Depends(view_no_key)):
     return {"items": [sms_setup.public_pe_tm(r) for r in rows]}
 
 
+class PeTmBody(BaseModel):
+    entity_id: str = Field(max_length=40)
+
+
 @router.post("/pe-tm")
-async def pe_tm_upload(entity_id: str = Form(..., max_length=40), file: UploadFile = File(...),
-                       ctx: dict = Depends(manage_no_key)):
-    """The binding-request screenshot for one entity. Your account manager then approves it as TM."""
-    eid = entity_id.strip()
+async def pe_tm_request(body: PeTmBody, ctx: dict = Depends(manage_no_key)):
+    """The client pressed "I've sent the binding request"; the account manager then approves it as TM."""
+    eid = body.entity_id.strip()
     if not ENTITY_ID_RE.fullmatch(eid):
         raise HTTPException(422, "Enter the 19-digit DLT entity ID.")
-    db = get_supabase()
-    _setup(sms_setup.check_pe_tm_open, db, ctx["tenant_id"], eid)  # before storing the file
-    path = await _save_upload(db, ctx["tenant_id"], file, PE_TM_PROOF_EXTS)
-    try:
-        row, replaced = _setup(sms_setup.save_pe_tm_proof, db, ctx["tenant_id"], eid, path)
-    except Exception:
-        remove_upload(db, path)  # nothing points at it
-        raise
-    if replaced:
-        remove_upload(db, replaced)
+    row = _setup(sms_setup.request_pe_tm, get_supabase(), ctx["tenant_id"], eid)
     return sms_setup.public_pe_tm(row)
 
 

@@ -13,7 +13,7 @@ Decisions from the screenshot review. One commit per task; push only when Prem s
   amount check and the setup summary.
 - [x] **2. Repeated titles off.** Remove card headers #1, #2 (SendForm "Send SMS"), #16 "Contacts", #17 "Groups";
   drop hints that repeat the app header.
-- [ ] **3. PE-TM: "I've sent the binding request" button** in place of the screenshot upload. Backend route rings the
+- [x] **3. PE-TM: "I've sent the binding request" button** in place of the screenshot upload. Backend route rings the
   operator bell (dedup per entity per hour, like today). Remove the upload card.
 - [ ] **4. Add Entity without proof files.** Remove the file field; send without screenshot_links; show Bulk9's message
   if it refuses.

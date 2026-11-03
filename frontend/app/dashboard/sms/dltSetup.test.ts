@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPeTmProof, isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState, setupTabFor } from "./dltSetup";
+import { isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState, setupTabFor } from "./dltSetup";
 
 describe("parseSetupTab", () => {
   it("accepts the three tabs and defaults to entity", () => {
@@ -33,16 +33,6 @@ describe("matchesQuery", () => {
     expect(matchesQuery([null, "1101234567890"], "0123")).toBe(true);
     expect(matchesQuery(["abc"], "xyz")).toBe(false);
     expect(matchesQuery(["abc"], "  ")).toBe(true);
-  });
-});
-
-describe("isPeTmProof", () => {
-  it("accepts jpg, jpeg, png, pdf only", () => {
-    expect(isPeTmProof("binding.PNG")).toBe(true);
-    expect(isPeTmProof("a.b.jpeg")).toBe(true);
-    expect(isPeTmProof("scan.pdf")).toBe(true);
-    expect(isPeTmProof("doc.docx")).toBe(false);
-    expect(isPeTmProof("pdf")).toBe(false);
   });
 });
 

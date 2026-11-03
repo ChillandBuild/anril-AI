@@ -248,6 +248,8 @@ async def list_pe_tm(tenant_id: str, _admin: dict = Depends(get_system_admin)):
 
 
 def _proof_url(db, path: str) -> str | None:
+    if not path:  # a button-press request: no screenshot was uploaded
+        return None
     try:
         return signed_url(db, path, PROOF_URL_SECONDS)
     except HTTPException:  # one missing file must not hide the other rows

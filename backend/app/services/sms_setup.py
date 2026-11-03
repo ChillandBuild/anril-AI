@@ -141,21 +141,24 @@ def check_pe_tm_open(db, tenant_id: str, entity_id: str) -> list[dict]:
     return existing
 
 
-def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> tuple[dict, str | None]:
-    """A new or replaced screenshot for one entity. A replaced proof restarts the approval.
-    Returns the row and the replaced file's path (the caller deletes it from storage)."""
+def request_pe_tm(db, tenant_id: str, entity_id: str) -> dict:
+    """The client says they sent the PE-TM binding request in their DLT portal (no screenshot,
+    same as Bulk9). Rings the operator bell, at most once per entity per hour. Asking again never
+    undoes a TM approval, and a done binding is refused."""
     existing = check_pe_tm_open(db, tenant_id, entity_id)
-    patch = {"proof_path": proof_path, "tm_approved_at": None, "tm_approved_by": None, "updated_at": _now()}
+    if existing and existing[0].get("tm_approved_at"):
+        return existing[0]
     if existing:
-        row = (db.table("sms_pe_tm").update(patch).eq("id", existing[0]["id"]).eq("tenant_id", tenant_id)
-               .execute()).data[0]
+        row = (db.table("sms_pe_tm").update({"updated_at": _now()}).eq("id", existing[0]["id"])
+               .eq("tenant_id", tenant_id).execute()).data[0]
     else:
-        row = (db.table("sms_pe_tm").insert({"tenant_id": tenant_id, "entity_id": entity_id, **patch})
-               .execute()).data[0]
+        # proof_path is NOT NULL (migration 242, from the screenshot days); "" means "no file".
+        row = (db.table("sms_pe_tm").insert({"tenant_id": tenant_id, "entity_id": entity_id, "proof_path": "",
+                                             "updated_at": _now()}).execute()).data[0]
     alert(db, tenant_id, "sms_pe_tm_proof",
-          f"{_tenant_name(db, tenant_id)} uploaded PE-TM proof for entity {entity_id}.", dedup_key=entity_id)
-    replaced = existing[0].get("proof_path") if existing else None
-    return row, (replaced if replaced != proof_path else None)
+          f"{_tenant_name(db, tenant_id)} sent the PE-TM binding request for entity {entity_id}. "
+          "Approve it as TM in the reseller panel, then mark it approved here.", dedup_key=entity_id)
+    return row
 
 
 def approve_tm(db, tenant_id: str, row_id: str, admin_id: str | None) -> dict:

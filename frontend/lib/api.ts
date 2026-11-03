@@ -2164,12 +2164,8 @@ export const api = {
       apiFetch<{ items: SmsOtpHistoryItem[]; total: number }>(`/api/v1/sms/otp/history?limit=${limit}&offset=${offset}`),
     dltList: () => apiFetch<SmsDltList>("/api/v1/sms/dlt/entities"),
     peTm: () => apiFetch<{ items: SmsPeTm[] }>("/api/v1/sms/pe-tm"),
-    peTmUpload: (entityId: string, file: File) => {
-      const fd = new FormData();
-      fd.append("entity_id", entityId);
-      fd.append("file", file);
-      return smsMultipart<SmsPeTm>("/api/v1/sms/pe-tm", fd);
-    },
+    peTmRequest: (entityId: string) =>
+      apiFetch<SmsPeTm>("/api/v1/sms/pe-tm", { method: "POST", body: JSON.stringify({ entity_id: entityId }) }),
     peTmConfirm: (id: string) =>
       apiFetch<SmsPeTm>(`/api/v1/sms/pe-tm/${encodeURIComponent(id)}/confirm`, { method: "POST" }),
     creditRequests: () => apiFetch<{ items: SmsCreditRequest[] }>("/api/v1/sms/credit-requests"),

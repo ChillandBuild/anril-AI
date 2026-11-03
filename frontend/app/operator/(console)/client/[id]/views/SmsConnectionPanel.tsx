@@ -122,7 +122,7 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
               <thead className="text-ink-muted"><tr><th className="py-1.5 pr-3 font-medium">Entity ID</th><th className="py-1.5 pr-3 font-medium">Proof</th><th className="py-1.5 pr-3 font-medium">TM approval</th><th className="py-1.5 pr-3 font-medium">Final PE confirmation</th><th className="py-1.5 font-medium"><span className="sr-only">Action</span></th></tr></thead>
               <tbody>{peTm.data.items.map((item) => <tr key={item.id} className="border-t border-border align-top">
                 <td className="break-all py-2 pr-3 font-mono text-ink">{item.entity_id}</td>
-                <td className="py-2 pr-3">{item.proof_url ? <a href={item.proof_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">View</a> : <span className="text-ink-muted">Unavailable</span>}</td>
+                <td className="py-2 pr-3">{item.proof_url ? <a href={item.proof_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary underline">View</a> : <span className="text-ink-muted" title="Sent with the button, no file">—</span>}</td>
                 <td className="whitespace-nowrap py-2 pr-3 text-ink">{item.tm_approved_at ? `Approved ${new Date(item.tm_approved_at).toLocaleDateString("en-IN")}` : "Pending"}</td>
                 <td className="whitespace-nowrap py-2 pr-3 text-ink">{item.pe_confirmed_at ? `Done ${new Date(item.pe_confirmed_at).toLocaleDateString("en-IN")}` : "Pending"}</td>
                 <td className="py-2">{!item.tm_approved_at && <button className={buttonClass} disabled={!!approvingId} onClick={() => void approveTm(item)}>{approvingId === item.id ? "Saving…" : "TM approved"}</button>}</td>

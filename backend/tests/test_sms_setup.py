@@ -133,17 +133,20 @@ async def test_pe_tm_full_flow_turns_sending_on():
     db = _db()
     db.add("app_settings", tenant_id=T, key="sms_checklist", value=json.dumps({"dlt": True, "sender": True}))
     with _patches(db):
-        row = await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        row = await sms.pe_tm_request(sms.PeTmBody(entity_id=f" {ENTITY} "), ctx=CTX)
         assert row["tm_approved_at"] is None and "proof_path" not in row
-        assert db.rows("sms_pe_tm")[0]["proof_path"].startswith(f"{T}/")
-        assert "entity " + ENTITY in _alerts(db, "sms_pe_tm_proof")[0]["detail"]["message"]
+        assert db.rows("sms_pe_tm")[0]["proof_path"] == ""  # no screenshot: the client says they sent it
+        msg = _alerts(db, "sms_pe_tm_proof")[0]["detail"]["message"]
+        assert "sent the PE-TM binding request" in msg and ENTITY in msg
+        db.storage.from_.return_value.upload.assert_not_called()
 
         with pytest.raises(HTTPException) as e:  # the client cannot confirm before the TM approval
             await sms.pe_tm_confirm(row["id"], ctx=CTX)
         assert e.value.status_code == 409
 
         listed = await operator_sms.list_pe_tm(T, ADMIN)
-        assert listed["items"][0]["proof_url"] == "https://signed/x"
+        assert listed["items"][0]["proof_url"] is None  # nothing to sign
+        db.storage.from_.return_value.create_signed_url.assert_not_called()
         await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
         done = await sms.pe_tm_confirm(row["id"], ctx=CTX)
     assert done["pe_confirmed_at"]
@@ -151,17 +154,19 @@ async def test_pe_tm_full_flow_turns_sending_on():
 
 
 @pytest.mark.asyncio
-async def test_new_proof_restarts_the_tm_approval_and_a_done_binding_is_locked():
+async def test_asking_again_keeps_one_row_never_undoes_a_tm_approval_and_a_done_binding_is_locked():
     db = _db()
+    body = sms.PeTmBody(entity_id=ENTITY)
     with _patches(db):
-        row = await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        row = await sms.pe_tm_request(body, ctx=CTX)
+        again = await sms.pe_tm_request(body, ctx=CTX)
+        assert again["id"] == row["id"]
         await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
-        again = await sms.pe_tm_upload(entity_id=ENTITY, file=_file("p2.pdf", PDF), ctx=CTX)
-        assert again["id"] == row["id"] and again["tm_approved_at"] is None
-        await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
+        after = await sms.pe_tm_request(body, ctx=CTX)  # a double click after the approval
+        assert after["tm_approved_at"]
         await sms.pe_tm_confirm(row["id"], ctx=CTX)
         with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+            await sms.pe_tm_request(body, ctx=CTX)
     assert e.value.status_code == 409 and len(db.rows("sms_pe_tm")) == 1
 
 
@@ -178,10 +183,7 @@ async def test_pe_tm_is_tenant_scoped_and_validated():
             await operator_sms.approve_pe_tm(T, other["id"], ADMIN)
         assert e.value.status_code == 404
         with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_upload(entity_id="12ab", file=_file(), ctx=CTX)
-        assert e.value.status_code == 422
-        with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file("x.exe"), ctx=CTX)
+            await sms.pe_tm_request(sms.PeTmBody(entity_id="12ab"), ctx=CTX)
         assert e.value.status_code == 422
         assert (await sms.pe_tm_list(ctx=CTX))["items"] == []
 
@@ -231,24 +233,12 @@ async def test_finishing_a_request_twice_keeps_the_first_outcome():
 async def test_reconfirming_does_not_undo_the_operators_switch_off():
     db = _db()
     with _patches(db):
-        row = await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        row = await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
         await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
         await sms.pe_tm_confirm(row["id"], ctx=CTX)
         db.rows("app_settings")[0]["value"] = json.dumps({"pe_tm": False})  # operator turned sending off
         await sms.pe_tm_confirm(row["id"], ctx=CTX)
     assert json.loads(db.rows("app_settings")[0]["value"]) == {"pe_tm": False}
-
-
-@pytest.mark.asyncio
-async def test_a_done_binding_refuses_the_file_before_storing_it():
-    db = _db()
-    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/a.png",
-           tm_approved_at="2026-11-03T00:00:00+00:00", pe_confirmed_at="2026-11-03T01:00:00+00:00")
-    with _patches(db):
-        with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
-    assert e.value.status_code == 409
-    db.storage.from_.return_value.upload.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -273,7 +263,7 @@ async def test_a_file_must_start_with_the_bytes_its_type_promises(name, data):
     db = _db()
     with _patches(db):
         with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(name, data), ctx=CTX)
+            await sms._save_upload(db, T, _file(name, data), {"png", "jpg", "jpeg", "pdf"})
     assert e.value.status_code == 422 and "isn't a real" in e.value.detail
     db.storage.from_.return_value.upload.assert_not_called()
 
@@ -283,48 +273,32 @@ async def test_real_png_jpg_and_pdf_are_accepted():
     db = _db()
     with _patches(db):
         for name, data in (("a.png", PNG), ("b.jpeg", b"\xff\xd8\xff\xe0rest"), ("c.pdf", PDF)):
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(name, data), ctx=CTX)
+            await sms._save_upload(db, T, _file(name, data), {"png", "jpg", "jpeg", "pdf"})
     assert db.storage.from_.return_value.upload.call_count == 3
 
 
 @pytest.mark.asyncio
-async def test_reuploads_within_an_hour_ring_the_bell_once_per_entity():
+async def test_asking_again_within_an_hour_rings_the_bell_once_per_entity():
     db = _db()
     with _patches(db):
         for _ in range(3):
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
-        await sms.pe_tm_upload(entity_id="1201160000000099999", file=_file(), ctx=CTX)
+            await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
+        await sms.pe_tm_request(sms.PeTmBody(entity_id="1201160000000099999"), ctx=CTX)
         assert len(_alerts(db, "sms_pe_tm_proof")) == 2
-        # An hour later the same entity rings again (a fresh proof the operator hasn't seen).
+        # An hour later the same entity rings again (the client is still waiting).
         for r in _alerts(db, "sms_pe_tm_proof"):
             r["created_at"] = "2026-01-01T00:00:00+00:00"
-        await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
     assert len(_alerts(db, "sms_pe_tm_proof")) == 3
 
 
 @pytest.mark.asyncio
-async def test_a_replaced_proof_deletes_the_old_file():
+async def test_old_screenshot_rows_still_get_a_link_for_the_operator():
     db = _db()
-    bucket = db.storage.from_.return_value
+    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/old.png")
     with _patches(db):
-        await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
-        first = db.rows("sms_pe_tm")[0]["proof_path"]
-        bucket.remove.assert_not_called()
-        await sms.pe_tm_upload(entity_id=ENTITY, file=_file("p2.pdf", PDF), ctx=CTX)
-    bucket.remove.assert_called_once_with([first])
-    assert db.rows("sms_pe_tm")[0]["proof_path"] != first
-
-
-@pytest.mark.asyncio
-async def test_a_failed_save_deletes_the_just_stored_file_and_a_failed_delete_is_harmless():
-    db = _db()
-    bucket = db.storage.from_.return_value
-    bucket.remove.side_effect = RuntimeError("storage down")
-    with _patches(db), patch.object(sms_setup, "save_pe_tm_proof", side_effect=RuntimeError("db down")):
-        with pytest.raises(RuntimeError, match="db down"):
-            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
-    stored = bucket.upload.call_args.args[0]
-    bucket.remove.assert_called_once_with([stored])
+        out = await operator_sms.list_pe_tm(T, ADMIN)
+    assert out["items"][0]["proof_url"] == "https://signed/x"
 
 
 @pytest.mark.asyncio

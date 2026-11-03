@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDltList } from "./DltForms";
-import { isPeTmProof, peTmDate, peTmState } from "./dltSetup";
+import { peTmDate, peTmState } from "./dltSetup";
 import { ENTITY_ID_MESSAGE, errorStatus, errorText, formatIst, friendlyError, isValidEntityId } from "./helpers";
 import { useSms } from "./SmsShell";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
@@ -42,11 +42,8 @@ export function PeTmTab() {
   const dlt = useDltList(status.connected);
   const { data, error, isLoading, mutate } = useSWR(PETM_KEY, () => api.sms.peTm(), { revalidateOnFocus: false });
   const [entityId, setEntityId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [fileKey, setFileKey] = useState(0);
-  const [fileError, setFileError] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const items = data?.items ?? [];
@@ -54,36 +51,25 @@ export function PeTmTab() {
   const unknownEntity = isValidEntityId(entityId) && !!dlt.data && !entities.some((e) => e.entity_id === entityId.trim());
   const nameFor = (id: string) => entities.find((e) => e.entity_id === id)?.entity_name ?? null;
 
-  function onFile(f: File | null) {
-    if (f && !isPeTmProof(f.name)) {
-      setFile(null);
-      return setFileError("Use a jpg, jpeg, png or pdf file.");
-    }
-    setFileError("");
-    setFile(f);
-  }
-
-  async function upload() {
-    if (uploading || !file || !entityId.trim()) return;
+  async function sendRequest() {
+    if (sending || !entityId.trim()) return;
     if (!isValidEntityId(entityId)) {
-      setUploadError(ENTITY_ID_MESSAGE);
+      setSendError(ENTITY_ID_MESSAGE);
       return;
     }
-    setUploading(true);
-    setUploadError("");
+    setSending(true);
+    setSendError("");
     try {
-      await api.sms.peTmUpload(entityId.trim(), file);
-      toast.success("Screenshot sent. We'll check it and approve the TM side.");
+      await api.sms.peTmRequest(entityId.trim());
+      toast.success("Got it. Your account manager will approve the TM side.");
       setEntityId("");
-      setFile(null);
-      setFileKey((k) => k + 1);
       await mutate();
     } catch (err) {
       const code = errorStatus(err);
-      if (code === 409) setUploadError("This entity's PE-TM binding is already done.");
-      else setUploadError(friendlyError(err, "Couldn't upload the screenshot."));
+      if (code === 409) setSendError("This entity's PE-TM binding is already done.");
+      else setSendError(friendlyError(err, "Couldn't send that. Try again."));
     } finally {
-      setUploading(false);
+      setSending(false);
     }
   }
 
@@ -124,43 +110,46 @@ export function PeTmTab() {
           </li>
           <li className="flex gap-3">
             <Step n={3} />
-            <span>Raise the binding request for your entity and take a screenshot.</span>
+            <span>Raise the binding request for your entity there.</span>
           </li>
           <li className="flex gap-3">
             <Step n={4} />
-            <span>Upload the screenshot below. After your account manager approves the TM side, approve it in your DLT portal and press {"“I’ve done the final approval”"}.</span>
+            <div className="min-w-0 flex-1 space-y-2">
+              <p>
+                Tell us you sent it. After your account manager approves the TM side, approve it in your DLT portal and press{" "}
+                {"“I’ve done the final approval”"} below.
+              </p>
+              {canManage && (
+                <>
+                  <form
+                    className="flex flex-wrap items-end gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void sendRequest();
+                    }}
+                  >
+                    <Field label="Entity ID" className="min-w-[14rem] flex-1 sm:max-w-sm">
+                      <input className={inputCls} list="sms-petm-entities" inputMode="numeric" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
+                      <datalist id="sms-petm-entities">
+                        {entities.map((e) => (
+                          <option key={e.entity_id} value={e.entity_id}>
+                            {e.entity_name ?? ""}
+                          </option>
+                        ))}
+                      </datalist>
+                    </Field>
+                    <Btn type="submit" busy={sending} disabled={!entityId.trim()}>
+                      I&apos;ve sent the binding request
+                    </Btn>
+                  </form>
+                  {unknownEntity && <p className="text-xs font-semibold text-[#b45309]">This ID isn&apos;t in your DLT Manager yet — check it&apos;s right.</p>}
+                  {sendError && <Notice tone="danger">{sendError}</Notice>}
+                </>
+              )}
+            </div>
           </li>
         </ol>
       </Card>
-
-      {canManage && (
-        <Card>
-          <CardHeader title="Upload your screenshot" hint="jpg, jpeg, png or pdf." />
-          <div className="space-y-3 p-4 sm:p-5">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Entity ID" hint="Pick one of your entities or type its ID.">
-                <input className={inputCls} list="sms-petm-entities" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
-                <datalist id="sms-petm-entities">
-                  {entities.map((e) => (
-                    <option key={e.entity_id} value={e.entity_id}>
-                      {e.entity_name ?? ""}
-                    </option>
-                  ))}
-                </datalist>
-              </Field>
-              <Field label="Screenshot of the binding request">
-                <input key={fileKey} type="file" accept=".jpg,.jpeg,.png,.pdf" className="block w-full text-sm" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
-              </Field>
-            </div>
-            {fileError && <p className="text-xs font-semibold text-danger">{fileError}</p>}
-            {unknownEntity && <p className="text-xs font-semibold text-[#b45309]">This ID isn&apos;t in your DLT Manager yet — check it&apos;s right.</p>}
-            {uploadError && <Notice tone="danger">{uploadError}</Notice>}
-            <Btn busy={uploading} disabled={!entityId.trim() || !file} onClick={() => void upload()}>
-              Upload screenshot
-            </Btn>
-          </div>
-        </Card>
-      )}
 
       <Card>
         <CardHeader title="Your bindings" />
@@ -171,7 +160,7 @@ export function PeTmTab() {
         ) : error && !data ? (
           <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
         ) : items.length === 0 ? (
-          <Empty title="No bindings yet." hint="Upload your first screenshot above." />
+          <Empty title="No bindings yet." hint="Send your first binding request above." />
         ) : (
           <TableWrap>
             <table className="w-full min-w-[40rem]">

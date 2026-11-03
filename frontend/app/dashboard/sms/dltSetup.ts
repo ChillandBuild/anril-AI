@@ -41,14 +41,6 @@ export function matchesQuery(fields: (string | null | undefined)[], query: strin
   return fields.some((f) => (f ?? "").toLowerCase().includes(q));
 }
 
-export const PROOF_EXTENSIONS = ["jpg", "jpeg", "png", "pdf"];
-
-/** The PE-TM screenshot must be jpg, jpeg, png or pdf. */
-export function isPeTmProof(fileName: string): boolean {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-  return fileName.includes(".") && PROOF_EXTENSIONS.includes(ext);
-}
-
 export interface PeTmState {
   tmApproved: boolean;
   done: boolean;
