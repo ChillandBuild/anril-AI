@@ -773,3 +773,22 @@ export function buildPython(i: DevRequestInput): string {
     "print(response.status_code, response.text)",
   ].join("\n");
 }
+
+export const CREDIT_MIN = 100;
+export const CREDIT_MAX = 1_000_000;
+export const CREDIT_NOTE_MAX = 300;
+
+/** Why an Add credit amount is refused, or null when it is a whole ₹100 to ₹10,00,000. */
+export function creditAmountError(raw: string): string | null {
+  const v = raw.trim();
+  const n = Number(v);
+  if (v && /^\d+$/.test(v) && n >= CREDIT_MIN && n <= CREDIT_MAX) return null;
+  return `Enter a whole amount between ₹${CREDIT_MIN.toLocaleString("en-IN")} and ₹${CREDIT_MAX.toLocaleString("en-IN")}.`;
+}
+
+/** "3 Nov", in IST. Empty for a bad date. */
+export function requestedOn(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+}

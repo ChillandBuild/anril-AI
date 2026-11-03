@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   UNICODE_NOTE,
+  creditAmountError,
+  requestedOn,
   buildCurl,
   buildPython,
   EMPTY_NUMBERS,
@@ -626,5 +628,25 @@ describe("parseContactsSub", () => {
     expect(parseContactsSub("contacts")).toBe("contacts");
     expect(parseContactsSub("x")).toBe("contacts");
     expect(parseContactsSub(null)).toBe("contacts");
+  });
+});
+
+describe("creditAmountError", () => {
+  it("accepts whole rupees from 100 to 10 lakh", () => {
+    expect(creditAmountError("100")).toBeNull();
+    expect(creditAmountError(" 5000 ")).toBeNull();
+    expect(creditAmountError("1000000")).toBeNull();
+  });
+  it("refuses empty, fractions, too small and too big", () => {
+    for (const v of ["", "  ", "99", "1000001", "250.5", "abc", "-500"]) {
+      expect(creditAmountError(v)).toBe("Enter a whole amount between ₹100 and ₹10,00,000.");
+    }
+  });
+});
+
+describe("requestedOn", () => {
+  it("shows the IST day and month", () => {
+    expect(requestedOn("2026-11-02T20:00:00Z")).toBe("3 Nov");
+    expect(requestedOn("not a date")).toBe("");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SmsCampaign, SmsStatus, SmsWalletItem } from "@/lib/api";
-import { checklistRows, monthSpend, recentCampaigns, summarize, upcomingCampaigns } from "./DashboardCards";
+import { checklistRows, monthSpend, setupProgress, recentCampaigns, summarize, upcomingCampaigns } from "./DashboardCards";
 
 const status = (over: Partial<SmsStatus> = {}, checklist = {}): SmsStatus => ({
   enabled: true,
@@ -97,5 +97,15 @@ describe("campaign lists", () => {
   it("recent excludes scheduled, newest first, capped", () => {
     expect(recentCampaigns(list).map((c) => c.id)).toEqual(["d", "c"]);
     expect(recentCampaigns(list, 1)).toHaveLength(1);
+  });
+});
+
+describe("setupProgress", () => {
+  const row = (key: string, done: boolean) => ({ key, label: `Do ${key}`, done, href: null, hint: "" });
+  it("counts done steps and names the first one left", () => {
+    expect(setupProgress([row("a", true), row("b", false), row("c", false)])).toEqual({ done: 1, total: 3, next: "Do b" });
+  });
+  it("has no next step when everything is done", () => {
+    expect(setupProgress([row("a", true)])).toEqual({ done: 1, total: 1, next: null });
   });
 });

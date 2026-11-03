@@ -2,12 +2,9 @@
 
 import useSWR from "swr";
 import { Download } from "lucide-react";
-import { api, type SmsBalance } from "@/lib/api";
+import { api } from "@/lib/api";
 import {
-  SUPPORT_FALLBACK,
   WALLET_KIND_LABELS,
-  balanceLevel,
-  formatCount,
   formatIst,
   formatRupees,
   formatSignedSms,
@@ -15,7 +12,7 @@ import {
   walletCsv,
   walletKindTone,
 } from "./helpers";
-import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, CardHeader, Empty, LoadError, Skeleton, TableWrap, tdCls, thCls } from "./ui";
 
 function downloadCsv(csv: string) {
   const url = window.URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -28,38 +25,13 @@ function downloadCsv(csv: string) {
   window.URL.revokeObjectURL(url);
 }
 
-export function BalanceTab({ balance, balanceError, onReload }: { balance: SmsBalance | null; balanceError: string | null; onReload: () => void }) {
-  const status = useSWR("sms:status", () => api.sms.status(), { revalidateOnFocus: false });
+/** Transactions: the balance history. The balance itself lives on the Dashboard wallet card. */
+export function BalanceTab() {
   const history = useSWR("sms:wallet-history", () => api.sms.walletHistory(100), { revalidateOnFocus: false });
-  const level = balance ? balanceLevel(balance.sms_count) : null;
-  const topUpHint = `Contact ${status.data?.support_contact || SUPPORT_FALLBACK} to top up.`;
   const items = history.data?.items ?? [];
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader title="Balance" action={<Btn variant="link" onClick={onReload}>Refresh</Btn>} />
-        <div className="space-y-4 p-4 sm:p-5">
-          {balance ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-primary/5 p-4">
-                <p className="font-display text-3xl font-bold text-ink">{formatCount(balance.sms_count)}</p>
-                <p className="text-xs font-semibold text-ink-muted">SMS left</p>
-              </div>
-              {balance.wallet != null && (
-                <div className="rounded-xl bg-primary/5 p-4">
-                  <p className="font-display text-3xl font-bold text-ink">{formatRupees(balance.wallet)}</p>
-                  <p className="text-xs font-semibold text-ink-muted">Wallet balance</p>
-                </div>
-              )}
-            </div>
-          ) : balanceError ? <Notice tone="warn">{balanceError}</Notice> : <Skeleton className="h-24" />}
-          {level === "empty" && <Notice tone="danger">You have no SMS left. {topUpHint}</Notice>}
-          {level === "low" && <Notice tone="warn">Your SMS balance is low. {topUpHint}</Notice>}
-          {level !== "empty" && level !== "low" && <p className="text-sm text-ink-muted">{topUpHint}</p>}
-        </div>
-      </Card>
-
       <Card>
         <CardHeader
           title="Balance history"
