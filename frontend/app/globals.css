@@ -481,11 +481,11 @@ canvas {
    edge above and a faint teal edge below. The open page's icon lights teal
    from inside just as the hopping square lands (same delay as .nav-active). */
 .nav-carved {
-  color: #0b1a33;
+  color: #7f98c4;
   filter: drop-shadow(0 1px 0 rgba(120, 214, 216, 0.28)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.55));
   transition: color 0.2s;
 }
-.group:hover .nav-carved { color: #1d3a66; }
+.group:hover .nav-carved { color: #a9bde0; }
 .nav-active .nav-carved {
   color: #78d6d8;
   filter: drop-shadow(0 0 3px rgba(120, 214, 216, 1)) drop-shadow(0 0 10px rgba(63, 188, 191, 0.85));
