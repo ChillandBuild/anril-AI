@@ -2,6 +2,7 @@ import {
   ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
   Inbox, Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
+  BookUser, Code2, KeyRound, LayoutDashboard, ListChecks, ReceiptText,
 } from "lucide-react";
 import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
 
@@ -28,6 +29,7 @@ export type SectionKey =
   | "inbox"
   | "engage"
   | "reach"
+  | "sms"
   | "commerce"
   | "callIq"
   | "aiSetup"
@@ -190,15 +192,30 @@ const OUTBOUND_LEADS: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/outbound-leads"),
 };
 
-const SMS: NavLeaf = {
-  kind: "link",
-  key: "sms",
-  href: "/dashboard/sms",
-  label: "SMS",
-  icon: MessageSquareText,
-  visible: (a) => a.isSubscribed && a.smsOn && a.canAny(["sms.view", "sms.manage"]),
-  isActive: (p) => p === "/dashboard/sms" || p.startsWith("/dashboard/sms/"),
-};
+const smsVisible = (a: NavAccess) => a.isSubscribed && a.smsOn && a.canAny(["sms.view", "sms.manage"]);
+
+/** Anril SMS pages, in the order of the reseller panel clients know. Slug "" is the SMS dashboard. */
+const SMS_PAGES: NavLeaf[] = ([
+  ["", "Dashboard", LayoutDashboard],
+  ["setup", "DLT Setup", ListChecks],
+  ["send", "Send SMS", Send],
+  ["contacts", "Address Book", BookUser],
+  ["reports", "Delivery Reports", BarChart2],
+  ["transactions", "Transactions", ReceiptText],
+  ["developer", "Dev API", Code2],
+  ["otp", "Smart OTP", KeyRound],
+] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
+  const href = slug ? `/dashboard/sms/${slug}` : "/dashboard/sms";
+  return {
+    kind: "link",
+    key: slug ? `sms-${slug}` : "sms",
+    href,
+    label,
+    icon,
+    visible: smsVisible,
+    isActive: (p) => (slug ? p === href || p.startsWith(`${href}/`) : p === href),
+  };
+});
 
 const DEALS: NavLeaf = {
   kind: "link",
@@ -320,7 +337,8 @@ const SETTINGS_GROUP: NavGroup = {
 export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "inbox", title: "Inbox & Leads", icon: Inbox, entries: [CONVERSATIONS, SEGMENTS] },
   { key: "engage", title: "Anril Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
-  { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS, SMS] },
+  { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS] },
+  { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES },
   { key: "commerce", title: "Anril Commerce", icon: Coins, entries: [DEALS, CATALOGUE] },
   { key: "callIq", title: "Anril Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
   { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },

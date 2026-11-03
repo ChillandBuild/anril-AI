@@ -17,6 +17,7 @@ import { AiWorkloadSection } from "@/components/dashboard/AiWorkloadSection";
 import { LeadSourceSection } from "@/components/dashboard/LeadSourceSection";
 import { TeamCallsSection } from "@/components/dashboard/TeamCallsSection";
 import { AdSpendSection } from "@/components/dashboard/AdSpendSection";
+import { isSmsOnly } from "@/lib/utils";
 
 const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; tone: string; bar: string; bg: string; borderTop: string }> = {
   A: { label: "Hot", tone: "text-emerald-700", bar: "bg-emerald-500", bg: "bg-emerald-50", borderTop: "border-t-emerald-500" },
@@ -116,7 +117,16 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     }
   }, [permissions, role, roleLoading, router]);
 
-  if (roleLoading) {
+  // SMS-only clients have nothing on this page; their home is the SMS dashboard.
+  const smsHome =
+    !roleLoading &&
+    isSmsOnly(enabledFeatures) &&
+    (role === "owner" || permissions.includes("sms.view") || permissions.includes("sms.manage"));
+  useEffect(() => {
+    if (smsHome) router.replace("/dashboard/sms");
+  }, [smsHome, router]);
+
+  if (roleLoading || smsHome) {
     return <AiraLoader />;
   }
 

@@ -76,6 +76,13 @@ export function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** SMS is on and no other product is (WhatsApp, messaging, telecalling): such clients land on the SMS dashboard. */
+export function isSmsOnly(enabledFeatures: string[]): boolean {
+  const otherProduct = (f: string) =>
+    f === "whatsapp" || f === "outbound_messaging" || f === "inbound_messaging" || f.startsWith("telecalling");
+  return enabledFeatures.includes("sms") && !enabledFeatures.some(otherProduct);
+}
+
 export function getHomeHref(role: "owner" | "caller" | null): string {
   return role === "caller" ? "/dashboard/profile" : "/dashboard";
 }

@@ -15,7 +15,13 @@ import {
   Layers,
   Megaphone,
   Menu,
-  MessageSquareText,
+  BookUser,
+  Code2,
+  KeyRound,
+  LayoutDashboard,
+  ListChecks,
+  ReceiptText,
+  Send,
   ShoppingBag,
   Settings,
   ShieldCheck,
@@ -46,6 +52,7 @@ type MoreMenuSection =
   | "inbox"
   | "engage"
   | "reach"
+  | "sms"
   | "commerce"
   | "callIq"
   | "aiSetup"
@@ -61,6 +68,8 @@ type MoreMenuItem = MoreMenuGate & {
   alsoVisibleIf?: MoreMenuGate;
   /** Extra paths that also highlight this item as active. */
   activePrefixes?: string[];
+  /** Active on its own path only, not its sub-pages (the SMS dashboard). */
+  exact?: boolean;
 };
 
 /** Render order. `title: null` renders the items with no heading. */
@@ -69,6 +78,7 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
   { key: "inbox", title: "INBOX & LEADS" },
   { key: "engage", title: "ANRIL ENGAGE" },
   { key: "reach", title: "ANRIL REACH" },
+  { key: "sms", title: "ANRIL SMS" },
   { key: "commerce", title: "SALES · ANRIL COMMERCE" },
   { key: "callIq", title: "ANRIL CALL IQ" },
   { key: "aiSetup", title: "AI SETUP" },
@@ -77,6 +87,7 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
 ];
 
 const MESSAGING_FEATURES = ["outbound_messaging", "inbound_messaging"];
+const SMS_PERMS = ["sms.view", "sms.manage"];
 
 const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/analytics", icon: BarChart2, label: "Analytics", section: "top", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES },
@@ -86,7 +97,14 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/auto-messages", icon: Zap, label: "Auto-Messages", section: "engage", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
   { href: "/dashboard/scheduled-templates", icon: CalendarClock, label: "Scheduled templates", section: "engage", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
   { href: "/dashboard/outbound-leads", icon: Upload, label: "Send", section: "reach", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" },
-  { href: "/dashboard/sms", icon: MessageSquareText, label: "SMS", section: "reach", permissionAny: ["sms.view", "sms.manage"], feature: "sms" },
+  { href: "/dashboard/sms", icon: LayoutDashboard, label: "Dashboard", section: "sms", permissionAny: SMS_PERMS, feature: "sms", exact: true },
+  { href: "/dashboard/sms/setup", icon: ListChecks, label: "DLT Setup", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/send", icon: Send, label: "Send SMS", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/contacts", icon: BookUser, label: "Address Book", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/reports", icon: BarChart2, label: "Delivery Reports", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/transactions", icon: ReceiptText, label: "Transactions", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/developer", icon: Code2, label: "Dev API", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/sms/otp", icon: KeyRound, label: "Smart OTP", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
   {
     href: "/dashboard/catalog",
@@ -121,6 +139,7 @@ function isVisible(item: MoreMenuItem, role: string | null, enabledFeatures: str
 }
 
 function isItemActive(item: MoreMenuItem, pathname: string) {
+  if (item.exact) return pathname === item.href;
   if (isActive(pathname, item.href)) return true;
   return (item.activePrefixes ?? []).some((prefix) => pathname.startsWith(prefix));
 }

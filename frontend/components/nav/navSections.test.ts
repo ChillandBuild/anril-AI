@@ -53,7 +53,14 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Auto-Messages", href: "/dashboard/auto-messages" },
   { label: "Scheduled templates", href: "/dashboard/scheduled-templates" },
   { label: "Outbound Leads", href: "/dashboard/outbound-leads" },
-  { label: "SMS", href: "/dashboard/sms" },
+  { label: "SMS Dashboard", href: "/dashboard/sms" },
+  { label: "DLT Setup", href: "/dashboard/sms/setup" },
+  { label: "Send SMS", href: "/dashboard/sms/send" },
+  { label: "Address Book", href: "/dashboard/sms/contacts" },
+  { label: "Delivery Reports", href: "/dashboard/sms/reports" },
+  { label: "Transactions", href: "/dashboard/sms/transactions" },
+  { label: "Dev API", href: "/dashboard/sms/developer" },
+  { label: "Smart OTP", href: "/dashboard/sms/otp" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
@@ -151,11 +158,20 @@ describe("section open state", () => {
   });
 });
 
-describe("SMS sidebar access", () => {
-  const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
-  const smsLinks = (access: NavAccess) => visibleEntries(reach, access).filter((entry) => entry.key === "sms");
+describe("Anril SMS section", () => {
+  const smsSection = NAV_SECTIONS.find((section) => section.key === "sms")!;
+  const smsLinks = (access: NavAccess) => visibleEntries(smsSection, access) as NavLeaf[];
 
-  it.each(["sms.view", "sms.manage"])("shows SMS with %s when SMS is enabled, independently of WhatsApp features", (permission) => {
+  it("is its own main-menu section with the 8 pages in Bulk9's order", () => {
+    expect(smsSection.title).toBe("Anril SMS");
+    expect(smsLinks(allAccess).map((leaf) => leaf.label)).toEqual([
+      "Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API", "Smart OTP",
+    ]);
+    const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
+    expect(reach.entries.some((entry) => entry.key.startsWith("sms"))).toBe(false);
+  });
+
+  it.each(["sms.view", "sms.manage"])("shows the pages with %s when SMS is enabled, independently of WhatsApp features", (permission) => {
     const access: NavAccess = {
       ...noAccess,
       isSubscribed: true,
@@ -163,28 +179,31 @@ describe("SMS sidebar access", () => {
       can: (value) => value === permission,
       canAny: (values) => values.includes(permission),
     };
-    expect(smsLinks(access)).toHaveLength(1);
+    expect(smsLinks(access)).toHaveLength(8);
   });
 
-  it("hides SMS when the tenant feature is off", () => {
+  it("hides the section when the tenant feature is off", () => {
     expect(smsLinks({ ...allAccess, smsOn: false })).toHaveLength(0);
   });
 
-  it("hides SMS without SMS permission", () => {
+  it("hides the section without SMS permission", () => {
     expect(smsLinks({ ...allAccess, can: () => false, canAny: () => false })).toHaveLength(0);
   });
 
-  it("hides SMS without an active subscription", () => {
+  it("hides the section without an active subscription", () => {
     expect(smsLinks({ ...allAccess, isSubscribed: false })).toHaveLength(0);
   });
 
-  it("opens ANRIL REACH and marks SMS active on its page", () => {
-    expect(sectionContainsPage(reach, "/dashboard/sms")).toBe(true);
-    const sms = smsLinks(allAccess)[0] as NavLeaf;
-    expect(sms.href).toBe("/dashboard/sms");
-    expect(sms.isActive("/dashboard/sms")).toBe(true);
-    expect(sms.isActive("/dashboard/sms-other")).toBe(false);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("reach");
+  it("opens Anril SMS on any SMS page and marks only that page active", () => {
+    const [dashboard, setup] = smsLinks(allAccess);
+    expect(dashboard.isActive("/dashboard/sms")).toBe(true);
+    expect(dashboard.isActive("/dashboard/sms/setup")).toBe(false);
+    expect(setup.isActive("/dashboard/sms/setup")).toBe(true);
+    expect(setup.isActive("/dashboard/sms/setup-other")).toBe(false);
+    expect(sectionContainsPage(smsSection, "/dashboard/sms/otp")).toBe(true);
+    expect(sectionContainsPage(smsSection, "/dashboard/sms-other")).toBe(false);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("sms");
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms/send")).toBe("sms");
   });
 });
 

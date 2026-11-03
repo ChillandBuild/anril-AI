@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getHomeHref, isActive } from "./utils";
+import { getHomeHref, isActive, isSmsOnly } from "./utils";
 
 describe("isActive", () => {
   it("returns true for an exact path match", () => {
@@ -30,5 +30,20 @@ describe("getHomeHref", () => {
 
   it("returns /dashboard while role is still loading (null)", () => {
     expect(getHomeHref(null)).toBe("/dashboard");
+  });
+});
+
+describe("isSmsOnly", () => {
+  it("is true when SMS is the only product switched on", () => {
+    expect(isSmsOnly(["sms"])).toBe(true);
+    expect(isSmsOnly(["sms", "sms.extra"])).toBe(true);
+  });
+
+  it("is false when any other product is on, or SMS is off", () => {
+    for (const other of ["whatsapp", "outbound_messaging", "inbound_messaging", "telecalling_sim", "telecalling_telecmi", "telecalling.dialer"]) {
+      expect(isSmsOnly(["sms", other]), other).toBe(false);
+    }
+    expect(isSmsOnly([])).toBe(false);
+    expect(isSmsOnly(["whatsapp"])).toBe(false);
   });
 });
