@@ -31,7 +31,6 @@ router = APIRouter()
 BUCKET = "sms-dlt"
 SIGNED_URL_SECONDS = 24 * 3600
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-PROOF_EXTS = {"jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "odt"}
 EXCEL_EXTS = {"xlsx", "csv"}
 # A file must start with the bytes its type promises, so a renamed .exe isn't stored as proof.png.
 MAGIC_BYTES = {"png": (b"\x89PNG\r\n\x1a\n",), "jpg": (b"\xff\xd8\xff",), "jpeg": (b"\xff\xd8\xff",),
@@ -127,14 +126,6 @@ async def _save_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) 
         logger.exception("sms: upload to storage failed")
         raise HTTPException(500, "Could not store the file. Please try again.")
     return path
-
-
-def remove_upload(db, path: str) -> None:
-    """Best effort: a leftover file only costs storage, so a failed delete never fails the request."""
-    try:
-        db.storage.from_(BUCKET).remove([path])
-    except Exception:
-        logger.warning("sms: removing a stored file failed", exc_info=True)
 
 
 def signed_url(db, path: str, seconds: int = SIGNED_URL_SECONDS) -> str:
@@ -335,19 +326,22 @@ async def set_template_type(template_id: str, body: TemplateType, ctx: dict = De
 
 # ---------------------------------------------------------------- DLT adds
 
+class EntityBody(BaseModel):
+    entity_name: str = Field(min_length=1, max_length=200)
+    entity_id: str = Field(min_length=1, max_length=40)
+
+
 @router.post("/dlt/entity")
-async def dlt_entity(entity_name: str = Form(..., max_length=200), entity_id: str = Form(..., max_length=40),
-                     files: list[UploadFile] = File(...), ctx: dict = Depends(manage)):
-    if not 1 <= len(files) <= 5:
-        raise HTTPException(422, "Attach 1 to 5 proof files.")
+async def dlt_entity(body: EntityBody, ctx: dict = Depends(manage)):
+    name, eid = body.entity_name.strip(), body.entity_id.strip()
+    if not name or not eid:
+        raise HTTPException(422, "Enter the entity name and entity ID.")
     db = get_supabase()
-    urls = [await _store_upload(db, ctx["tenant_id"], f, PROOF_EXTS) for f in files]
-    body = await _bulk9(bulk9_client.add_entity(ctx["api_key"], entity_name=entity_name.strip(),
-                                                entity_id=entity_id.strip(), proof_urls=urls))
-    if ENTITY_ID_RE.fullmatch(entity_id.strip()):
+    res = await _bulk9(bulk9_client.add_entity(ctx["api_key"], entity_name=name, entity_id=eid))
+    if ENTITY_ID_RE.fullmatch(eid):
         sms_setup.record_submission(db, ctx["tenant_id"], ctx.get("user_id"), kind="entity",
-                                    entity_id=entity_id.strip(), entity_name=entity_name.strip()[:200])
-    return {"ok": True, "message": _message(body, "Entity submitted for approval.")}
+                                    entity_id=eid, entity_name=name)
+    return {"ok": True, "message": _message(res, "Entity submitted for approval.")}
 
 
 class SenderBody(BaseModel):

@@ -9,18 +9,12 @@ import { ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
 import { Btn, Card, CardHeader, Field, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-const FILE_ACCEPT = ".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.odt";
-const MAX_FILE_MB = 20;
-
 type Step = { ok: boolean; text: string };
 
 export function AddEntityTab() {
   const { canManage } = usePerm();
   const [entityId, setEntityId] = useState("");
   const [name, setName] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const [fileError, setFileError] = useState("");
-  const [fileKey, setFileKey] = useState(0);
   const [withTemplate, setWithTemplate] = useState(false);
   const [senderText, setSenderText] = useState("");
   const [dltId, setDltId] = useState("");
@@ -33,15 +27,7 @@ export function AddEntityTab() {
   const senderOk = senderIds.length > 0 && senderIds.every(isValidSenderId);
   const templateOk = !withTemplate || (senderOk && !!dltId.trim() && !!text.trim());
   const entityIdOk = isValidEntityId(entityId);
-  const canSubmit = canManage && entityIdOk && !!name.trim() && files.length >= 1 && !fileError && templateOk;
-
-  function onFiles(list: FileList | null) {
-    const picked = Array.from(list ?? []);
-    if (picked.length > 5) return setFileError("Add 1 to 5 files.");
-    if (picked.some((f) => f.size > MAX_FILE_MB * 1024 * 1024)) return setFileError(`Each file must be ${MAX_FILE_MB} MB or smaller.`);
-    setFileError("");
-    setFiles(picked);
-  }
+  const canSubmit = canManage && entityIdOk && !!name.trim() && templateOk;
 
   async function submit() {
     if (busy || !canSubmit) return;
@@ -49,7 +35,7 @@ export function AddEntityTab() {
     setResults({});
     let entityDone = false;
     try {
-      const res = await api.sms.addEntity({ entity_name: name.trim(), entity_id: entityId.trim(), files });
+      const res = await api.sms.addEntity({ entity_name: name.trim(), entity_id: entityId.trim() });
       entityDone = res.ok !== false;
       setResults({ entity: { ok: entityDone, text: res.message || (entityDone ? "Entity submitted. It's now with the operator." : "The entity wasn't added.") } });
     } catch (err) {
@@ -74,8 +60,6 @@ export function AddEntityTab() {
       // The entity went through, so the form is cleared. A failed template is retried from DLT Manager > Content Template.
       setEntityId("");
       setName("");
-      setFiles([]);
-      setFileKey((k) => k + 1);
       setDltId("");
       setText("");
       setSenderText("");
@@ -99,10 +83,6 @@ export function AddEntityTab() {
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} disabled={!canManage} />
           </Field>
         </div>
-        <Field label="Proof files" hint={`1 to 5 files: jpg, png, gif, pdf, doc, docx, odt. ${MAX_FILE_MB} MB each.`}>
-          <input key={fileKey} type="file" multiple accept={FILE_ACCEPT} disabled={!canManage} className="block w-full text-sm" onChange={(e) => onFiles(e.target.files)} />
-        </Field>
-        {fileError && <p className="text-xs font-semibold text-danger">{fileError}</p>}
 
         <CheckField checked={withTemplate} onChange={setWithTemplate} disabled={!canManage} label="Add content template (optional)" description="Send a template for this entity in the same step." />
         {withTemplate && (

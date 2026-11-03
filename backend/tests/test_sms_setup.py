@@ -62,11 +62,16 @@ def _alerts(db, kind):
 @pytest.mark.asyncio
 async def test_submitted_entity_shows_as_submitted_until_bulk9_lists_it():
     db = _db()
-    with _patches(db), patch.object(sms.bulk9_client, "add_entity", AsyncMock(return_value={"message": "ok"})), \
+    add = AsyncMock(return_value={"message": "ok"})
+    body = sms.EntityBody(entity_name=" Astro Tamil ", entity_id=f" {ENTITY} ")
+    with _patches(db), patch.object(sms.bulk9_client, "add_entity", add), \
             patch.object(sms.bulk9_client, "list_dlt", AsyncMock(return_value={"data": []})):
-        await sms.dlt_entity(entity_name="Astro Tamil", entity_id=ENTITY, files=[_file()], ctx=CTX)
-        await sms.dlt_entity(entity_name="Astro Tamil", entity_id=ENTITY, files=[_file()], ctx=CTX)  # resubmit
+        await sms.dlt_entity(body, ctx=CTX)
+        await sms.dlt_entity(body, ctx=CTX)  # resubmit
         out = await sms.dlt_entities(ctx=CTX)
+    # No proof files any more (Bulk9's own form has none); nothing is stored.
+    add.assert_awaited_with("k", entity_name="Astro Tamil", entity_id=ENTITY)
+    db.storage.from_.return_value.upload.assert_not_called()
     assert len(db.rows("sms_dlt_submissions")) == 1
     assert [(e["entity_id"], e["entity_name"], e["status"]) for e in out["entities"]] == \
         [(ENTITY, "Astro Tamil", "submitted")]
@@ -77,6 +82,24 @@ async def test_submitted_entity_shows_as_submitted_until_bulk9_lists_it():
     assert out["entities"][0]["status"] == "approved"
     assert out["senders"] == [{"sender_id": "ASTROT", "entity_id": ENTITY, "entity_name": "Astro Tamil",
                                "status": "approved", "at": None}]
+
+
+@pytest.mark.asyncio
+async def test_bulk9_refusing_an_entity_without_proofs_shows_its_message():
+    db = _db()
+    with _patches(db), patch.object(sms.bulk9_client, "add_entity",
+                                    AsyncMock(side_effect=sms.Bulk9Error("screenshot_links is required"))):
+        with pytest.raises(HTTPException) as e:
+            await sms.dlt_entity(sms.EntityBody(entity_name="X", entity_id=ENTITY), ctx=CTX)
+    assert "screenshot_links is required" in str(e.value.detail) and db.rows("sms_dlt_submissions") == []
+
+
+@pytest.mark.asyncio
+async def test_add_entity_sends_no_screenshot_links():
+    request = AsyncMock(return_value={})
+    with patch.object(sms.bulk9_client, "_request", request):
+        await sms.bulk9_client.add_entity("k", entity_name="Astro Tamil", entity_id=ENTITY)
+    assert request.await_args.kwargs["json"] == {"entity_name": "Astro Tamil", "entity_id": ENTITY}
 
 
 @pytest.mark.asyncio
@@ -105,7 +128,7 @@ async def test_odd_ids_bulk9_accepted_are_not_recorded():
     """The table only takes digits for entity IDs; a format Bulk9 allowed must not break the add."""
     db = _db()
     with _patches(db), patch.object(sms.bulk9_client, "add_entity", AsyncMock(return_value={})):
-        res = await sms.dlt_entity(entity_name="X", entity_id="ABC-1", files=[_file()], ctx=CTX)
+        res = await sms.dlt_entity(sms.EntityBody(entity_name="X", entity_id="ABC-1"), ctx=CTX)
     assert res["ok"] and db.rows("sms_dlt_submissions") == []
 
 

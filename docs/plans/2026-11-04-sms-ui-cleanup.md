@@ -15,7 +15,7 @@ Decisions from the screenshot review. One commit per task; push only when Prem s
   drop hints that repeat the app header.
 - [x] **3. PE-TM: "I've sent the binding request" button** in place of the screenshot upload. Backend route rings the
   operator bell (dedup per entity per hour, like today). Remove the upload card.
-- [ ] **4. Add Entity without proof files.** Remove the file field; send without screenshot_links; show Bulk9's message
+- [x] **4. Add Entity without proof files.** Remove the file field; send without screenshot_links; show Bulk9's message
   if it refuses.
 - [ ] **5. Send SMS layout A** (split composer: form left, preview + cost + Send right). Fits 1366×768 with no page
   scroll; numbers box ~4 lines and scrolls inside; preview one line. Phones stack and scroll.

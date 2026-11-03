@@ -159,10 +159,11 @@ async def list_dlt(api_key: str, kind: str = "template") -> dict[str, Any]:
     return await _request(api_key, "GET", "/dev/dlt_manager", params={"type": kind})
 
 
-async def add_entity(api_key: str, *, entity_name: str, entity_id: str, proof_urls: list[str]) -> dict:
-    return await _request(api_key, "POST", "/dev/dlt_manager/add_entity", json={
-        "entity_name": entity_name, "entity_id": entity_id, "screenshot_links": proof_urls,
-    })
+async def add_entity(api_key: str, *, entity_name: str, entity_id: str) -> dict:
+    # No screenshot_links: Bulk9's own Add Entity form has no proof upload. If the API ever insists,
+    # its refusal message reaches the client as-is.
+    return await _request(api_key, "POST", "/dev/dlt_manager/add_entity",
+                          json={"entity_name": entity_name, "entity_id": entity_id})
 
 
 async def add_sender(api_key: str, *, entity_id: str, sender_id: str, proof_urls: list[str] | None = None) -> dict:

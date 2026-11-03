@@ -2005,13 +2005,8 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ template_type }),
       }),
-    addEntity: (data: { entity_name: string; entity_id: string; files: File[] }) => {
-      const fd = new FormData();
-      fd.append("entity_name", data.entity_name);
-      fd.append("entity_id", data.entity_id);
-      data.files.forEach((f) => fd.append("files", f));
-      return smsMultipart<SmsOk>("/api/v1/sms/dlt/entity", fd);
-    },
+    addEntity: (data: { entity_name: string; entity_id: string }) =>
+      apiFetch<SmsOk>("/api/v1/sms/dlt/entity", { method: "POST", body: JSON.stringify(data) }),
     addSender: (data: { entity_id: string; sender_id: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/dlt/sender", { method: "POST", body: JSON.stringify(data) }),
     addSenderExcel: (data: { entity_id: string; file: File }) => {
