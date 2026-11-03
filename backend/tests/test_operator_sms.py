@@ -137,7 +137,10 @@ def test_removed_reseller_routes_are_absent():
     assert {route.path for route in operator_sms.router.routes} == {
         "/clients/{tenant_id}/sms", "/clients/{tenant_id}/sms/key", "/clients/{tenant_id}/sms/webhook",
         "/clients/{tenant_id}/sms/checklist",
-        "/clients/{tenant_id}/sms/template-requests", "/clients/{tenant_id}/sms/template-requests/{request_id}"}
+        "/clients/{tenant_id}/sms/template-requests", "/clients/{tenant_id}/sms/template-requests/{request_id}",
+        # Anril-side bookkeeping only (no Bulk9 call): PE-TM approvals and Add credit requests.
+        "/clients/{tenant_id}/sms/pe-tm", "/clients/{tenant_id}/sms/pe-tm/{row_id}/approve",
+        "/sms/credit-requests", "/sms/credit-requests/{request_id}/done"}
 
 
 @pytest.mark.asyncio

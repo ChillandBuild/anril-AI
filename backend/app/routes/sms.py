@@ -18,10 +18,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
-from app.services import bulk9_client, sms_campaigns as camp, sms_wallet
+from app.services import bulk9_client, sms_campaigns as camp, sms_setup, sms_wallet
 from app.services.bulk9_client import Bulk9Error, Bulk9NotConfigured, Bulk9Timeout
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,8 @@ EXCEL_EXTS = {"xlsx", "csv"}
 NOT_ENABLED = "SMS is not enabled for this account"
 NOT_CONNECTED = "SMS is not connected yet"
 EXPORT_CAP = 50_000
+ENTITY_ID_RE = re.compile(r"[0-9]{5,30}")
+SENDER_ID_RE = re.compile(r"[A-Z0-9]{3,6}")
 
 
 # ---------------------------------------------------------------- gates + helpers
@@ -100,8 +103,8 @@ def _safe_filename(name: str | None) -> str:
     return base[-80:]
 
 
-async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) -> str:
-    """Validate type + size, store privately under {tenant_id}/, return a 24h signed URL for Bulk9."""
+async def _save_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) -> str:
+    """Validate type + size, store privately under {tenant_id}/, return the storage path."""
     safe = _safe_filename(file.filename)
     ext = safe.rsplit(".", 1)[-1].lower() if "." in safe else ""
     if ext not in allowed:
@@ -115,10 +118,18 @@ async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str])
     ctype = mimetypes.guess_type(safe)[0] or "application/octet-stream"
     try:
         db.storage.from_(BUCKET).upload(path, data, {"content-type": ctype})
-        signed = db.storage.from_(BUCKET).create_signed_url(path, SIGNED_URL_SECONDS)
     except Exception:
         logger.exception("sms: upload to storage failed")
         raise HTTPException(500, "Could not store the file. Please try again.")
+    return path
+
+
+def signed_url(db, path: str, seconds: int = SIGNED_URL_SECONDS) -> str:
+    try:
+        signed = db.storage.from_(BUCKET).create_signed_url(path, seconds)
+    except Exception:
+        logger.exception("sms: signing a stored file failed")
+        raise HTTPException(500, "Could not prepare the file. Please try again.")
     url = None
     if isinstance(signed, dict):
         url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url") or signed.get("url")
@@ -127,6 +138,11 @@ async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str])
     if not url:
         raise HTTPException(500, "Could not prepare the file for upload.")
     return url
+
+
+async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) -> str:
+    """Store the file and return a 24h signed URL for Bulk9."""
+    return signed_url(db, await _save_upload(db, tenant_id, file, allowed))
 
 
 def _checklist(tenant_id: str) -> dict:
@@ -155,6 +171,7 @@ async def status(ctx: dict = Depends(require_permission("sms.view"))):
         "checklist": _checklist(tid),
         "templates_ready": _templates_ready(tid),
         "support_contact": get_setting("sms_support_contact", tenant_id=tid) or "",
+        "pe_tm_info": {"tm_name": env_settings.sms_tm_name, "tm_id": env_settings.sms_tm_id},
     }
 
 
@@ -194,9 +211,7 @@ def _dlt_items(body: dict) -> list[dict]:
     return [i for v in body.values() if isinstance(v, list) for i in v if isinstance(i, dict)]
 
 
-@router.get("/senders")
-async def senders(ctx: dict = Depends(view)):
-    body = await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender"))
+def _approved_senders(body: dict) -> list[dict]:
     seen, out = set(), []
     for i in _dlt_items(body):
         if not i.get("sender_id"):
@@ -207,7 +222,27 @@ async def senders(ctx: dict = Depends(view)):
         seen.add(key)
         out.append({"sender_id": i.get("sender_id"), "entity_id": i.get("entity_id"),
                     "entity_name": i.get("entity_name")})
-    return {"senders": out}
+    return out
+
+
+@router.get("/senders")
+async def senders(ctx: dict = Depends(view)):
+    """Approved senders only: what Send SMS can use."""
+    return {"senders": _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")))}
+
+
+@router.get("/dlt/entities")
+async def dlt_entities(ctx: dict = Depends(view)):
+    """DLT Manager: entities and senders, approved (from Bulk9) or submitted (from Anril). If Bulk9
+    can't be read, the submitted ones still show and `error` says why (HTTP 200)."""
+    error = None
+    try:
+        approved = _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")))
+    except HTTPException as e:
+        approved, error = [], str(e.detail)
+    db, tid = get_supabase(), ctx["tenant_id"]
+    return {"entities": sms_setup.entities(db, tid, approved), "senders": sms_setup.senders(db, tid, approved),
+            "error": error}
 
 
 # ---------------------------------------------------------------- templates (cache of Bulk9's list)
@@ -296,6 +331,9 @@ async def dlt_entity(entity_name: str = Form(..., max_length=200), entity_id: st
     urls = [await _store_upload(db, ctx["tenant_id"], f, PROOF_EXTS) for f in files]
     body = await _bulk9(bulk9_client.add_entity(ctx["api_key"], entity_name=entity_name.strip(),
                                                 entity_id=entity_id.strip(), proof_urls=urls))
+    if ENTITY_ID_RE.fullmatch(entity_id.strip()):
+        sms_setup.record_submission(db, ctx["tenant_id"], ctx.get("user_id"), kind="entity",
+                                    entity_id=entity_id.strip(), entity_name=entity_name.strip()[:200])
     return {"ok": True, "message": _message(body, "Entity submitted for approval.")}
 
 
@@ -308,6 +346,10 @@ class SenderBody(BaseModel):
 async def dlt_sender(body: SenderBody, ctx: dict = Depends(manage)):
     res = await _bulk9(bulk9_client.add_sender(ctx["api_key"], entity_id=body.entity_id.strip(),
                                                sender_id=body.sender_id.strip()))
+    eid, sid = body.entity_id.strip(), body.sender_id.strip().upper()
+    if ENTITY_ID_RE.fullmatch(eid) and SENDER_ID_RE.fullmatch(sid):
+        sms_setup.record_submission(get_supabase(), ctx["tenant_id"], ctx.get("user_id"), kind="sender",
+                                    entity_id=eid, sender_id=sid)
     return {"ok": True, "message": _message(res, "Sender ID submitted for approval.")}
 
 
@@ -355,6 +397,66 @@ async def dlt_template_excel(entity_id: str = Form(..., max_length=40),
     res = await _bulk9(bulk9_client.add_template_excel(
         ctx["api_key"], entity_id=entity_id.strip(), file_url=url, promotional=template_type == "promotional"))
     return {"ok": True, "message": _message(res, "Templates uploaded.")}
+
+
+# ---------------------------------------------------------------- PE-TM binding + Add credit
+
+PE_TM_PROOF_EXTS = {"jpg", "jpeg", "png", "pdf"}
+
+
+def _setup(fn, *args):
+    try:
+        return fn(*args)
+    except camp.SmsError as e:
+        raise _sms_error(e)
+
+
+def _row_id(raw: str) -> str:
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        raise HTTPException(404, "Not found.")
+
+
+@router.get("/pe-tm")
+async def pe_tm_list(ctx: dict = Depends(view_no_key)):
+    rows = sms_setup.pe_tm_rows(get_supabase(), ctx["tenant_id"])
+    return {"items": [sms_setup.public_pe_tm(r) for r in rows]}
+
+
+@router.post("/pe-tm")
+async def pe_tm_upload(entity_id: str = Form(..., max_length=40), file: UploadFile = File(...),
+                       ctx: dict = Depends(manage_no_key)):
+    """The binding-request screenshot for one entity. Your account manager then approves it as TM."""
+    eid = entity_id.strip()
+    if not ENTITY_ID_RE.fullmatch(eid):
+        raise HTTPException(422, "Enter the 19-digit DLT entity ID.")
+    db = get_supabase()
+    path = await _save_upload(db, ctx["tenant_id"], file, PE_TM_PROOF_EXTS)
+    return sms_setup.public_pe_tm(_setup(sms_setup.save_pe_tm_proof, db, ctx["tenant_id"], eid, path))
+
+
+@router.post("/pe-tm/{row_id}/confirm")
+async def pe_tm_confirm(row_id: str, ctx: dict = Depends(manage_no_key)):
+    """The client did the final approval in their DLT portal: sending turns on."""
+    row = _setup(sms_setup.confirm_pe, get_supabase(), ctx["tenant_id"], _row_id(row_id), ctx.get("user_id"))
+    return sms_setup.public_pe_tm(row)
+
+
+class CreditBody(BaseModel):
+    amount: float = Field(ge=100, le=1_000_000)
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+@router.get("/credit-requests")
+async def credit_list(ctx: dict = Depends(view_no_key)):
+    return {"items": [sms_setup.public_credit(r) for r in sms_setup.credit_requests(get_supabase(), ctx["tenant_id"])]}
+
+
+@router.post("/credit-requests")
+async def credit_request(body: CreditBody, ctx: dict = Depends(manage_no_key)):
+    row = _setup(sms_setup.request_credit, get_supabase(), ctx["tenant_id"], ctx.get("user_id"), body.amount, body.note)
+    return sms_setup.public_credit(row)
 
 
 # ---------------------------------------------------------------- template requests

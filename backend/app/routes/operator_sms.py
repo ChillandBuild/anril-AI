@@ -18,6 +18,9 @@ from app.dependencies.system_admin import get_system_admin
 from app.services import bulk9_client
 from app.services.audit_log import record_audit_event
 from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
+from app.routes.sms import signed_url
+from app.services import sms_setup
+from app.services.sms_campaigns import SmsError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -221,3 +224,52 @@ async def update_template_request(tenant_id: str, request_id: str, body: Request
         raise HTTPException(status_code=404, detail="Request not found")
     _audit(db, admin, tid, "operator.sms_template_request_updated")
     return {"item": {key: result.data[0].get(key) for key in _REQUEST_FIELDS.split(",")}}
+
+
+# ---------------------------------------------------------------- PE-TM binding + credit requests
+
+PROOF_URL_SECONDS = 600
+
+
+def _setup_call(fn, *args):
+    try:
+        return fn(*args)
+    except SmsError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@router.get("/clients/{tenant_id}/sms/pe-tm")
+async def list_pe_tm(tenant_id: str, _admin: dict = Depends(get_system_admin)):
+    """Each entity's binding request, with a 10-minute link to the client's screenshot."""
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    return {"items": [{**sms_setup.public_pe_tm(r), "proof_url": signed_url(db, r["proof_path"], PROOF_URL_SECONDS)}
+                      for r in sms_setup.pe_tm_rows(db, tid)]}
+
+
+@router.post("/clients/{tenant_id}/sms/pe-tm/{row_id}/approve")
+async def approve_pe_tm(tenant_id: str, row_id: str, admin: dict = Depends(get_system_admin)):
+    """TM approval done in the reseller panel; the client can now do the final approval."""
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    row = _setup_call(sms_setup.approve_tm, db, tid, _tenant_id(row_id), admin.get("user_id"))
+    _audit(db, admin, tid, "operator.sms_pe_tm_approved")
+    return {"item": sms_setup.public_pe_tm(row)}
+
+
+@router.get("/sms/credit-requests")
+async def list_credit_requests(status: Literal["open"] = "open", _admin: dict = Depends(get_system_admin)):
+    return {"items": sms_setup.open_credit_requests(get_supabase())}
+
+
+class CreditDoneIn(BaseModel):
+    status: Literal["done", "cancelled"] = "done"
+
+
+@router.post("/sms/credit-requests/{request_id}/done")
+async def finish_credit_request(request_id: str, body: CreditDoneIn, admin: dict = Depends(get_system_admin)):
+    """Credit added in the reseller panel (done) or not (cancelled)."""
+    db = get_supabase()
+    row = _setup_call(sms_setup.finish_credit, db, _tenant_id(request_id), admin.get("user_id"), body.status)
+    _audit(db, admin, row["tenant_id"], f"operator.sms_credit_{row['status']}")
+    return {"item": sms_setup.public_credit(row)}

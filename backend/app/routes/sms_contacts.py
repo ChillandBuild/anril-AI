@@ -4,10 +4,14 @@ A client's own SMS numbers, separate from leads. Every query is scoped to the ca
 Reads need sms.view, writes sms.manage (neither needs the Bulk9 key). Logic lives in
 app/services/sms_contacts.py.
 """
+import csv
+import io
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
@@ -17,6 +21,7 @@ from app.services import sms_campaigns as camp, sms_contacts as svc
 router = APIRouter()
 
 BAD_PHONE = "Enter a valid 10-digit Indian mobile number."
+PARSE_CAP = 5_000
 
 
 class ContactBody(BaseModel):
@@ -62,6 +67,24 @@ async def _read_upload(file: UploadFile) -> tuple[bytes, str]:
     if len(data) > svc.MAX_BYTES:
         raise HTTPException(413, "This file is larger than 10 MB.")
     return data, name
+
+
+def _csv_cell(v) -> str:
+    s = "" if v is None else str(v)
+    # Same rule as the messages export: a spreadsheet runs a cell starting with these as a formula.
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
+def _group_contacts(db, tenant_id: str, group_id: str) -> list[dict]:
+    rows, start = [], 0
+    while True:
+        page = (db.table("sms_contacts").select("*").eq("tenant_id", tenant_id)
+                .contains("group_ids", [group_id]).order("id").range(start, start + svc.CHUNK - 1)
+                .execute().data or [])
+        rows += page
+        if len(page) < svc.CHUNK:
+            return rows
+        start += svc.CHUNK
 
 
 # ---------------------------------------------------------------- contacts
@@ -163,3 +186,49 @@ async def rename_group(group_id: str, body: GroupBody, ctx: dict = Depends(manag
 @router.delete("/contact-groups/{group_id}")
 async def delete_group(group_id: str, with_contacts: bool = False, ctx: dict = Depends(manage_no_key)):
     return {"deleted_contacts": _run(svc.delete_group, get_supabase(), ctx["tenant_id"], group_id, with_contacts)}
+
+
+@router.get("/contact-groups/{group_id}/export.csv")
+async def export_group(group_id: str, ctx: dict = Depends(view_no_key)):
+    gid = svc.as_uuid(group_id)
+    if not gid:
+        raise HTTPException(422, "Group id is not valid.")
+    db, tenant = get_supabase(), ctx["tenant_id"]
+    group = _run(svc.get_group, db, tenant, gid)
+    rows = await run_in_threadpool(_group_contacts, db, tenant, gid)
+    keys = sorted({k for r in rows for k in (r.get("fields") or {})})
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Name", "Mobile", *keys, "Added"])
+    for r in rows:
+        fields = r.get("fields") or {}
+        w.writerow([_csv_cell(r.get("name")), _csv_cell(r["phone"]), *(_csv_cell(fields.get(k)) for k in keys),
+                    r.get("created_at") or ""])
+    safe = re.sub(r"[^A-Za-z0-9 _-]", "", group.get("name") or "")[:60].strip() or "group"
+    return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}.csv"'})
+
+
+# ---------------------------------------------------------------- numbers from a file (no saving)
+
+@router.post("/numbers/parse")
+async def parse_numbers(file: UploadFile = File(...), phone_column: Optional[str] = Form(None),
+                        ctx: dict = Depends(manage_no_key)):
+    data, name = await _read_upload(file)
+
+    def parse():
+        headers, rows = svc.read_table(data, name)
+        contacts, skipped = svc.build_contacts(headers, rows, phone_column or None, None)
+        return contacts, skipped, phone_column or svc.detect_columns(headers)[0]
+
+    try:
+        contacts, skipped, chosen = await run_in_threadpool(parse)
+    except camp.SmsError as e:
+        # A bad file is a 400 here (the shared mapping would give 422).
+        raise HTTPException(400 if e.status == 422 else e.status, str(e))
+    numbers = [c["phone"] for c in contacts]  # build_contacts already de-duplicates, in file order
+    if len(numbers) > PARSE_CAP:
+        raise HTTPException(400, f"This file has {len(numbers):,} numbers. Send SMS takes up to {PARSE_CAP:,} from a "
+                                 "file \u2014 save it to the Address Book as a group and pick the group instead.")
+    return {"numbers": numbers, "total": len(numbers), "skipped": skipped[:svc.SKIPPED_SHOWN],
+            "skipped_total": len(skipped), "phone_column": chosen}

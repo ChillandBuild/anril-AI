@@ -2328,6 +2328,14 @@ def _format_uptime(seconds: float) -> str:
 
 _INCIDENT_SEVERITY: dict[str, str] = {
     "token_invalid": "critical",
+    "sms_pe_tm_proof": "info",
+    "sms_credit_request": "info",
+}
+
+# Titles that "type".capitalize() would get wrong.
+_INCIDENT_TITLE: dict[str, str] = {
+    "sms_pe_tm_proof": "SMS PE-TM proof uploaded",
+    "sms_credit_request": "SMS credit requested",
 }
 
 _SEVERITY_RANK: dict[str, int] = {"critical": 0, "warning": 1, "info": 2}
@@ -2479,7 +2487,7 @@ def compute_alerts(
         add({
             "id": f"incident:{inc_type}:{tenant_id}:{inc.get('id')}",
             "severity": severity,
-            "title": inc_type.replace("_", " ").capitalize(),
+            "title": _INCIDENT_TITLE.get(inc_type) or inc_type.replace("_", " ").capitalize(),
             "detail": message or f"Open incident for tenant {tenant_id}.",
             "tenant_id": tenant_id,
             "tenant_name": inc.get("tenant_name"),
