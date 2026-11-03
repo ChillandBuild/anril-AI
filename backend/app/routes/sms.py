@@ -33,6 +33,9 @@ SIGNED_URL_SECONDS = 24 * 3600
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 PROOF_EXTS = {"jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "odt"}
 EXCEL_EXTS = {"xlsx", "csv"}
+# A file must start with the bytes its type promises, so a renamed .exe isn't stored as proof.png.
+MAGIC_BYTES = {"png": (b"\x89PNG\r\n\x1a\n",), "jpg": (b"\xff\xd8\xff",), "jpeg": (b"\xff\xd8\xff",),
+               "pdf": (b"%PDF-",)}
 NOT_ENABLED = "SMS is not enabled for this account"
 NOT_CONNECTED = "SMS is not connected yet"
 EXPORT_CAP = 50_000
@@ -114,6 +117,8 @@ async def _save_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) 
         raise HTTPException(413, f"{safe} is larger than 20 MB.")
     if not data:
         raise HTTPException(422, f"{safe} is empty.")
+    if ext in MAGIC_BYTES and not data.startswith(MAGIC_BYTES[ext]):
+        raise HTTPException(422, f"{safe} isn't a real {ext.upper()} file.")
     path = f"{tenant_id}/{uuid.uuid4().hex[:12]}_{safe}"
     ctype = mimetypes.guess_type(safe)[0] or "application/octet-stream"
     try:
@@ -122,6 +127,14 @@ async def _save_upload(db, tenant_id: str, file: UploadFile, allowed: set[str]) 
         logger.exception("sms: upload to storage failed")
         raise HTTPException(500, "Could not store the file. Please try again.")
     return path
+
+
+def remove_upload(db, path: str) -> None:
+    """Best effort: a leftover file only costs storage, so a failed delete never fails the request."""
+    try:
+        db.storage.from_(BUCKET).remove([path])
+    except Exception:
+        logger.warning("sms: removing a stored file failed", exc_info=True)
 
 
 def signed_url(db, path: str, seconds: int = SIGNED_URL_SECONDS) -> str:
@@ -434,7 +447,14 @@ async def pe_tm_upload(entity_id: str = Form(..., max_length=40), file: UploadFi
     db = get_supabase()
     _setup(sms_setup.check_pe_tm_open, db, ctx["tenant_id"], eid)  # before storing the file
     path = await _save_upload(db, ctx["tenant_id"], file, PE_TM_PROOF_EXTS)
-    return sms_setup.public_pe_tm(_setup(sms_setup.save_pe_tm_proof, db, ctx["tenant_id"], eid, path))
+    try:
+        row, replaced = _setup(sms_setup.save_pe_tm_proof, db, ctx["tenant_id"], eid, path)
+    except Exception:
+        remove_upload(db, path)  # nothing points at it
+        raise
+    if replaced:
+        remove_upload(db, replaced)
+    return sms_setup.public_pe_tm(row)
 
 
 @router.post("/pe-tm/{row_id}/confirm")

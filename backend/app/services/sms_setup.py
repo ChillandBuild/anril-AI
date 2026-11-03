@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.config_dynamic import get_setting, invalidate_cache
@@ -18,6 +18,8 @@ from app.services.sms_campaigns import SmsError
 logger = logging.getLogger(__name__)
 
 MAX_OPEN_CREDIT_REQUESTS = 3
+ALERT_DEDUP_MINUTES = 60
+CREDIT_CAP_MESSAGE = "You already have 3 requests waiting. Your account manager will add the credit soon."
 
 
 def _now() -> str:
@@ -26,10 +28,20 @@ def _now() -> str:
 
 # ---------------------------------------------------------------- operator bell
 
-def alert(db, tenant_id: str, kind: str, message: str) -> None:
-    """An operator-bell alert (incidents; the bell shows the last 48 hours). Never blocks the caller."""
+def alert(db, tenant_id: str, kind: str, message: str, *, dedup_key: str | None = None) -> None:
+    """An operator-bell alert (incidents; the bell shows the last 48 hours). Never blocks the caller.
+    With dedup_key, a second alert for the same tenant, kind and key within an hour is skipped."""
+    detail: dict[str, Any] = {"message": message}
     try:
-        db.table("incidents").insert({"tenant_id": tenant_id, "type": kind, "detail": {"message": message}}).execute()
+        if dedup_key:
+            detail["key"] = dedup_key
+            since = (datetime.now(timezone.utc) - timedelta(minutes=ALERT_DEDUP_MINUTES)).isoformat()
+            recent = (db.table("incidents").select("detail").eq("tenant_id", tenant_id).eq("type", kind)
+                      .gte("created_at", since).limit(50).execute()).data or []
+            if any((r.get("detail") or {}).get("key") == dedup_key for r in recent):
+                return
+        db.table("incidents").insert({"tenant_id": tenant_id, "type": kind, "detail": detail,
+                                      "created_at": _now()}).execute()
     except Exception:
         logger.exception("sms_setup: operator alert %s failed", kind)
 
@@ -129,8 +141,9 @@ def check_pe_tm_open(db, tenant_id: str, entity_id: str) -> list[dict]:
     return existing
 
 
-def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> dict:
-    """A new or replaced screenshot for one entity. A replaced proof restarts the approval."""
+def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> tuple[dict, str | None]:
+    """A new or replaced screenshot for one entity. A replaced proof restarts the approval.
+    Returns the row and the replaced file's path (the caller deletes it from storage)."""
     existing = check_pe_tm_open(db, tenant_id, entity_id)
     patch = {"proof_path": proof_path, "tm_approved_at": None, "tm_approved_by": None, "updated_at": _now()}
     if existing:
@@ -140,8 +153,9 @@ def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> dic
         row = (db.table("sms_pe_tm").insert({"tenant_id": tenant_id, "entity_id": entity_id, **patch})
                .execute()).data[0]
     alert(db, tenant_id, "sms_pe_tm_proof",
-          f"{_tenant_name(db, tenant_id)} uploaded PE-TM proof for entity {entity_id}.")
-    return row
+          f"{_tenant_name(db, tenant_id)} uploaded PE-TM proof for entity {entity_id}.", dedup_key=entity_id)
+    replaced = existing[0].get("proof_path") if existing else None
+    return row, (replaced if replaced != proof_path else None)
 
 
 def approve_tm(db, tenant_id: str, row_id: str, admin_id: str | None) -> dict:
@@ -203,12 +217,18 @@ def request_credit(db, tenant_id: str, user_id: str | None, amount: float, note:
     open_rows = (db.table("sms_credit_requests").select("id").eq("tenant_id", tenant_id).eq("status", "open")
                  .execute()).data or []
     if len(open_rows) >= MAX_OPEN_CREDIT_REQUESTS:
-        raise SmsError("You already have 3 requests waiting. Your account manager will add the credit soon.", 409)
+        raise SmsError(CREDIT_CAP_MESSAGE, 409)
     note = (note or "").strip()[:300] or None
-    row = (db.table("sms_credit_requests").insert({
-        "tenant_id": tenant_id, "amount": round(float(amount), 2), "note": note, "status": "open",
-        "requested_by": user_id,
-    }).execute()).data[0]
+    try:
+        row = (db.table("sms_credit_requests").insert({
+            "tenant_id": tenant_id, "amount": round(float(amount), 2), "note": note, "status": "open",
+            "requested_by": user_id,
+        }).execute()).data[0]
+    except Exception as e:
+        # Two requests at once can both pass the count above; the trigger in migration 244 refuses one.
+        if "sms_credit_cap" in str(e):
+            raise SmsError(CREDIT_CAP_MESSAGE, 409) from e
+        raise
     alert(db, tenant_id, "sms_credit_request",
           f"{_tenant_name(db, tenant_id)} asked for ₹{amount:,.2f} SMS credit" + (f": {note}" if note else "."))
     return row

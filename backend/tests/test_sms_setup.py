@@ -45,7 +45,11 @@ def _patches(db):
     return stack
 
 
-def _file(name="proof.png", data=b"img"):
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+PDF = b"%PDF-1.7\n%..."
+
+
+def _file(name="proof.png", data=PNG):
     return UploadFile(file=io.BytesIO(data), filename=name)
 
 
@@ -152,7 +156,7 @@ async def test_new_proof_restarts_the_tm_approval_and_a_done_binding_is_locked()
     with _patches(db):
         row = await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
         await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
-        again = await sms.pe_tm_upload(entity_id=ENTITY, file=_file("p2.pdf"), ctx=CTX)
+        again = await sms.pe_tm_upload(entity_id=ENTITY, file=_file("p2.pdf", PDF), ctx=CTX)
         assert again["id"] == row["id"] and again["tm_approved_at"] is None
         await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
         await sms.pe_tm_confirm(row["id"], ctx=CTX)
@@ -255,3 +259,90 @@ async def test_one_unsignable_proof_does_not_break_the_operator_list():
     with _patches(db):
         out = await operator_sms.list_pe_tm(T, ADMIN)
     assert out["items"][0]["proof_url"] is None
+
+
+# ---------------------------------------------------------------- hardening (deferred LOW items)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name,data", [
+    ("proof.png", b"MZ\x90\x00 an exe renamed"),
+    ("proof.jpg", PNG),
+    ("proof.pdf", b"<html>not a pdf</html>"),
+])
+async def test_a_file_must_start_with_the_bytes_its_type_promises(name, data):
+    db = _db()
+    with _patches(db):
+        with pytest.raises(HTTPException) as e:
+            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(name, data), ctx=CTX)
+    assert e.value.status_code == 422 and "isn't a real" in e.value.detail
+    db.storage.from_.return_value.upload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_real_png_jpg_and_pdf_are_accepted():
+    db = _db()
+    with _patches(db):
+        for name, data in (("a.png", PNG), ("b.jpeg", b"\xff\xd8\xff\xe0rest"), ("c.pdf", PDF)):
+            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(name, data), ctx=CTX)
+    assert db.storage.from_.return_value.upload.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_reuploads_within_an_hour_ring_the_bell_once_per_entity():
+    db = _db()
+    with _patches(db):
+        for _ in range(3):
+            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        await sms.pe_tm_upload(entity_id="1201160000000099999", file=_file(), ctx=CTX)
+        assert len(_alerts(db, "sms_pe_tm_proof")) == 2
+        # An hour later the same entity rings again (a fresh proof the operator hasn't seen).
+        for r in _alerts(db, "sms_pe_tm_proof"):
+            r["created_at"] = "2026-01-01T00:00:00+00:00"
+        await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+    assert len(_alerts(db, "sms_pe_tm_proof")) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_replaced_proof_deletes_the_old_file():
+    db = _db()
+    bucket = db.storage.from_.return_value
+    with _patches(db):
+        await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        first = db.rows("sms_pe_tm")[0]["proof_path"]
+        bucket.remove.assert_not_called()
+        await sms.pe_tm_upload(entity_id=ENTITY, file=_file("p2.pdf", PDF), ctx=CTX)
+    bucket.remove.assert_called_once_with([first])
+    assert db.rows("sms_pe_tm")[0]["proof_path"] != first
+
+
+@pytest.mark.asyncio
+async def test_a_failed_save_deletes_the_just_stored_file_and_a_failed_delete_is_harmless():
+    db = _db()
+    bucket = db.storage.from_.return_value
+    bucket.remove.side_effect = RuntimeError("storage down")
+    with _patches(db), patch.object(sms_setup, "save_pe_tm_proof", side_effect=RuntimeError("db down")):
+        with pytest.raises(RuntimeError, match="db down"):
+            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+    stored = bucket.upload.call_args.args[0]
+    bucket.remove.assert_called_once_with([stored])
+
+
+@pytest.mark.asyncio
+async def test_the_databases_credit_cap_is_a_409_not_a_500():
+    """Two requests at the same moment both pass the count; the DB trigger (migration 244) refuses one."""
+    db = _db()
+    real_table = db.table
+
+    def table(name):
+        t = real_table(name)
+        if name == "sms_credit_requests":
+            def insert(*a, **k):
+                raise Exception({"message": "sms_credit_cap: 3 open credit requests", "code": "P0001"})
+            t.insert = insert
+        return t
+
+    with _patches(db), patch.object(db, "table", table):
+        with pytest.raises(HTTPException) as e:
+            await sms.credit_request(sms.CreditBody(amount=500), ctx=CTX)
+    assert e.value.status_code == 409 and "3 requests waiting" in e.value.detail
+    assert _alerts(db, "sms_credit_request") == []
