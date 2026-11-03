@@ -219,3 +219,39 @@ async def test_finishing_a_request_twice_keeps_the_first_outcome():
     with _patches(db):
         out = await operator_sms.finish_credit_request(r["id"], operator_sms.CreditDoneIn(), ADMIN)
     assert out["item"]["status"] == "cancelled"
+
+
+# ---------------------------------------------------------------- security review fixes
+
+@pytest.mark.asyncio
+async def test_reconfirming_does_not_undo_the_operators_switch_off():
+    db = _db()
+    with _patches(db):
+        row = await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+        await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
+        await sms.pe_tm_confirm(row["id"], ctx=CTX)
+        db.rows("app_settings")[0]["value"] = json.dumps({"pe_tm": False})  # operator turned sending off
+        await sms.pe_tm_confirm(row["id"], ctx=CTX)
+    assert json.loads(db.rows("app_settings")[0]["value"]) == {"pe_tm": False}
+
+
+@pytest.mark.asyncio
+async def test_a_done_binding_refuses_the_file_before_storing_it():
+    db = _db()
+    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/a.png",
+           tm_approved_at="2026-11-03T00:00:00+00:00", pe_confirmed_at="2026-11-03T01:00:00+00:00")
+    with _patches(db):
+        with pytest.raises(HTTPException) as e:
+            await sms.pe_tm_upload(entity_id=ENTITY, file=_file(), ctx=CTX)
+    assert e.value.status_code == 409
+    db.storage.from_.return_value.upload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_one_unsignable_proof_does_not_break_the_operator_list():
+    db = _db()
+    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/gone.png")
+    db.storage.from_.return_value.create_signed_url.side_effect = RuntimeError("missing")
+    with _patches(db):
+        out = await operator_sms.list_pe_tm(T, ADMIN)
+    assert out["items"][0]["proof_url"] is None

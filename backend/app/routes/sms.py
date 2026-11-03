@@ -432,6 +432,7 @@ async def pe_tm_upload(entity_id: str = Form(..., max_length=40), file: UploadFi
     if not ENTITY_ID_RE.fullmatch(eid):
         raise HTTPException(422, "Enter the 19-digit DLT entity ID.")
     db = get_supabase()
+    _setup(sms_setup.check_pe_tm_open, db, ctx["tenant_id"], eid)  # before storing the file
     path = await _save_upload(db, ctx["tenant_id"], file, PE_TM_PROOF_EXTS)
     return sms_setup.public_pe_tm(_setup(sms_setup.save_pe_tm_proof, db, ctx["tenant_id"], eid, path))
 

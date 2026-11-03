@@ -199,7 +199,7 @@ async def export_group(group_id: str, ctx: dict = Depends(view_no_key)):
     keys = sorted({k for r in rows for k in (r.get("fields") or {})})
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Name", "Mobile", *keys, "Added"])
+    w.writerow(["Name", "Mobile", *(_csv_cell(k) for k in keys), "Added"])
     for r in rows:
         fields = r.get("fields") or {}
         w.writerow([_csv_cell(r.get("name")), _csv_cell(r["phone"]), *(_csv_cell(fields.get(k)) for k in keys),

@@ -151,3 +151,11 @@ async def test_parse_too_big_is_413(db):
     with pytest.raises(HTTPException) as e:
         await routes.parse_numbers(_upload(big, "big.csv"), phone_column=None, ctx=CTX_A)
     assert e.value.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_export_neutralises_formulas_in_header_cells(db):
+    g = _group(db)
+    _contact(db, "9876543210", [g], "Ravi", {'=HYPERLINK("http://evil/")': "x"})
+    resp = await routes.export_group(g, ctx=CTX_A)
+    assert _lines(resp)[0].startswith("Name,Mobile,\"'=HYPERLINK")

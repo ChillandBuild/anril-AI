@@ -243,8 +243,15 @@ async def list_pe_tm(tenant_id: str, _admin: dict = Depends(get_system_admin)):
     """Each entity's binding request, with a 10-minute link to the client's screenshot."""
     tid, db = _tenant_id(tenant_id), get_supabase()
     _tenant(db, tid)
-    return {"items": [{**sms_setup.public_pe_tm(r), "proof_url": signed_url(db, r["proof_path"], PROOF_URL_SECONDS)}
+    return {"items": [{**sms_setup.public_pe_tm(r), "proof_url": _proof_url(db, r["proof_path"])}
                       for r in sms_setup.pe_tm_rows(db, tid)]}
+
+
+def _proof_url(db, path: str) -> str | None:
+    try:
+        return signed_url(db, path, PROOF_URL_SECONDS)
+    except HTTPException:  # one missing file must not hide the other rows
+        return None
 
 
 @router.post("/clients/{tenant_id}/sms/pe-tm/{row_id}/approve")

@@ -120,12 +120,18 @@ def _pe_tm_row(db, tenant_id: str, row_id: str) -> dict:
     return rows[0]
 
 
-def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> dict:
-    """A new or replaced screenshot for one entity. A replaced proof restarts the approval."""
+def check_pe_tm_open(db, tenant_id: str, entity_id: str) -> list[dict]:
+    """The entity's binding row (0 or 1); refuses once the binding is done."""
     existing = (db.table("sms_pe_tm").select("*").eq("tenant_id", tenant_id).eq("entity_id", entity_id)
                 .limit(1).execute()).data or []
     if existing and existing[0].get("pe_confirmed_at"):
         raise SmsError("This entity's PE-TM binding is already done.", 409)
+    return existing
+
+
+def save_pe_tm_proof(db, tenant_id: str, entity_id: str, proof_path: str) -> dict:
+    """A new or replaced screenshot for one entity. A replaced proof restarts the approval."""
+    existing = check_pe_tm_open(db, tenant_id, entity_id)
     patch = {"proof_path": proof_path, "tm_approved_at": None, "tm_approved_by": None, "updated_at": _now()}
     if existing:
         row = (db.table("sms_pe_tm").update(patch).eq("id", existing[0]["id"]).eq("tenant_id", tenant_id)
@@ -152,9 +158,11 @@ def confirm_pe(db, tenant_id: str, row_id: str, user_id: str | None) -> dict:
     row = _pe_tm_row(db, tenant_id, row_id)
     if not row.get("tm_approved_at"):
         raise SmsError("Wait until your account manager marks the TM approval, then approve it in your DLT portal.", 409)
-    if not row.get("pe_confirmed_at"):
-        row = (db.table("sms_pe_tm").update({"pe_confirmed_at": _now(), "pe_confirmed_by": user_id, "updated_at": _now()})
-               .eq("id", row_id).eq("tenant_id", tenant_id).execute()).data[0]
+    if row.get("pe_confirmed_at"):
+        # Already confirmed: leave the switch alone, so an operator who turned sending off stays in charge.
+        return row
+    row = (db.table("sms_pe_tm").update({"pe_confirmed_at": _now(), "pe_confirmed_by": user_id, "updated_at": _now()})
+           .eq("id", row_id).eq("tenant_id", tenant_id).execute()).data[0]
     set_pe_tm_done(db, tenant_id)
     return row
 
