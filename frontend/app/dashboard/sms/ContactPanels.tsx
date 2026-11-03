@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup, type SmsUploadPreview, type SmsUploadResult } from "@/lib/api";
 import { formatCount, friendlyError, skippedRowsCsv } from "./helpers";
-import { Btn, ConsentCheck, Field, Modal, Notice, inputCls, saveCsv, textareaCls } from "./ui";
+import { Btn, ConsentCheck, Field, InlinePanel, Notice, inputCls, saveCsv, textareaCls } from "./ui";
 
 const NEW_GROUP = "__new__";
 
@@ -46,7 +46,7 @@ async function resolveGroupId(c: GroupChoice): Promise<string | undefined> {
   return c.value || undefined;
 }
 
-export function AddContactModal({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
+export function AddContactPanel({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [group, setGroup] = useState<GroupChoice>(NO_GROUP);
@@ -74,7 +74,7 @@ export function AddContactModal({ open, groups, onClose, onDone }: { open: boole
   }
 
   return (
-    <Modal open={open} title="Add contact" onClose={() => !busy && onClose()}>
+    <InlinePanel open={open} title="Add contact" onClose={() => !busy && onClose()}>
       <div className="space-y-3">
         <Field label="Mobile number" hint="10 digits, or with +91">
           <input className={inputCls} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -94,7 +94,7 @@ export function AddContactModal({ open, groups, onClose, onDone }: { open: boole
           </Btn>
         </div>
       </div>
-    </Modal>
+    </InlinePanel>
   );
 }
 
@@ -118,7 +118,7 @@ function ResultSummary({ result }: { result: SmsUploadResult }) {
   );
 }
 
-export function PasteModal({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
+export function PastePanel({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
   const [text, setText] = useState("");
   const [group, setGroup] = useState<GroupChoice>(NO_GROUP);
   const [consent, setConsent] = useState(false);
@@ -149,7 +149,7 @@ export function PasteModal({ open, groups, onClose, onDone }: { open: boolean; g
   }
 
   return (
-    <Modal open={open} title="Paste numbers" onClose={() => !busy && close()}>
+    <InlinePanel open={open} title="Paste numbers" onClose={() => !busy && close()}>
       {result ? (
         <div className="space-y-3">
           <ResultSummary result={result} />
@@ -175,11 +175,11 @@ export function PasteModal({ open, groups, onClose, onDone }: { open: boolean; g
           </div>
         </div>
       )}
-    </Modal>
+    </InlinePanel>
   );
 }
 
-export function UploadModal({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
+export function UploadPanel({ open, groups, onClose, onDone }: { open: boolean; groups: SmsContactGroup[]; onClose: () => void; onDone: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<SmsUploadPreview | null>(null);
   const [phoneCol, setPhoneCol] = useState("");
@@ -250,7 +250,7 @@ export function UploadModal({ open, groups, onClose, onDone }: { open: boolean; 
   const sample = preview?.sample.slice(0, 5) ?? [];
 
   return (
-    <Modal open={open} title="Upload contacts" onClose={() => !busy && close()} wide>
+    <InlinePanel open={open} title="Upload contacts" onClose={() => !busy && close()} wide>
       {result ? (
         <div className="space-y-3">
           <ResultSummary result={result} />
@@ -334,6 +334,6 @@ export function UploadModal({ open, groups, onClose, onDone }: { open: boolean; 
           </div>
         </div>
       )}
-    </Modal>
+    </InlinePanel>
   );
 }

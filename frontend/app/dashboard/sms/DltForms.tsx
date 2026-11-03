@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api, type SmsDltStatus, type SmsOk, type SmsTemplateType } from "@/lib/api";
 import { isValidSenderId } from "./dltSetup";
 import { friendlyError } from "./helpers";
-import { Badge, Btn, Field, Modal, Notice, inputCls, textareaCls } from "./ui";
+import { Badge, Btn, Field, InlinePanel, Notice, inputCls, textareaCls } from "./ui";
 
 export const DLT_LIST_KEY = "sms:dlt-list";
 export const TEMPLATES_KEY = "sms:templates";
@@ -131,11 +131,11 @@ function AddSenderForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AddSenderModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddSenderPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Add sender ID" onClose={onClose}>
+    <InlinePanel open={open} title="Add sender ID" onClose={onClose}>
       <AddSenderForm onClose={onClose} />
-    </Modal>
+    </InlinePanel>
   );
 }
 
@@ -177,23 +177,23 @@ function ExcelForm({
   );
 }
 
-export function SenderExcelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SenderExcelPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Import sender IDs from DLT Excel" onClose={onClose}>
+    <InlinePanel open={open} title="Import sender IDs from DLT Excel" onClose={onClose}>
       <ExcelForm
         hint="Upload the sender (header) export from your DLT portal."
         run={(a) => api.sms.addSenderExcel({ entity_id: a.entity_id, file: a.file })}
         onClose={onClose}
       />
-    </Modal>
+    </InlinePanel>
   );
 }
 
-export function TemplateExcelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function TemplateExcelPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Import templates from DLT Excel" onClose={onClose}>
+    <InlinePanel open={open} title="Import templates from DLT Excel" onClose={onClose}>
       <ExcelForm hint="Upload the template export from your DLT portal." withType run={(a) => api.sms.addTemplateExcel(a)} onClose={onClose} />
-    </Modal>
+    </InlinePanel>
   );
 }
 
@@ -256,10 +256,10 @@ function AddTemplateForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AddTemplateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddTemplatePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} title="Add template" onClose={onClose}>
+    <InlinePanel open={open} title="Add template" onClose={onClose}>
       <AddTemplateForm onClose={onClose} />
-    </Modal>
+    </InlinePanel>
   );
 }

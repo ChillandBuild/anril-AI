@@ -19,4 +19,4 @@ Decisions from the screenshot review. One commit per task; push only when Prem s
   if it refuses.
 - [x] **5. Send SMS layout A** (split composer: form left, preview + cost + Send right). Fits 1366×768 with no page
   scroll; numbers box ~4 lines and scrolls inside; preview one line. Phones stack and scroll.
-- [ ] **6. Popups → inline** in ContactsTab, GroupsPanel, ContactModals, DltForms. Delete confirmations stay modals.
+- [x] **6. Popups → inline** in ContactsTab, GroupsPanel, ContactModals, DltForms. Delete confirmations stay modals.

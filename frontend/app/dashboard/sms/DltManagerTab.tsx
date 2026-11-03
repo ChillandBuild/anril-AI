@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { FileSpreadsheet, Plus } from "lucide-react";
 import { api, type SmsDltEntity, type SmsDltSender } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { AddSenderModal, DltStatusBadge, ListToolbar, SenderExcelModal, TEMPLATES_KEY, useDltList } from "./DltForms";
+import { AddSenderPanel, DltStatusBadge, ListToolbar, SenderExcelPanel, TEMPLATES_KEY, useDltList } from "./DltForms";
 import { matchesQuery, parseDltSub, type DltSub } from "./dltSetup";
 import { formatIst, friendlyError } from "./helpers";
 import { TemplatesTab } from "./TemplatesTab";
@@ -71,21 +71,32 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
   const [status, setStatus] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
+  // One form open at a time, in place under the toolbar.
+  const openAdd = () => {
+    setExcelOpen(false);
+    setAddOpen(true);
+  };
+  const openExcel = () => {
+    setAddOpen(false);
+    setExcelOpen(true);
+  };
   const shown = rows.filter((r) => (!status || r.status === status) && matchesQuery([r.sender_id, r.entity_id, r.entity_name], query));
   return (
     <div className="space-y-3 p-4 sm:p-5">
       <ListToolbar query={query} onQuery={setQuery} placeholder="Search sender IDs" status={status} onStatus={setStatus} options={STATUS_OPTIONS}>
         {canManage && (
           <>
-            <Btn variant="outline" onClick={() => setExcelOpen(true)}>
+            <Btn variant="outline" onClick={openExcel}>
               <FileSpreadsheet size={14} /> Import from DLT Excel
             </Btn>
-            <Btn onClick={() => setAddOpen(true)}>
+            <Btn onClick={openAdd}>
               <Plus size={14} /> Add sender ID
             </Btn>
           </>
         )}
       </ListToolbar>
+      <AddSenderPanel open={addOpen} onClose={() => setAddOpen(false)} />
+      <SenderExcelPanel open={excelOpen} onClose={() => setExcelOpen(false)} />
       {shown.length === 0 ? (
         <Empty title={rows.length === 0 ? "No sender IDs yet." : "No sender IDs match."} hint={rows.length === 0 ? "Add one, or import your DLT sender export." : "Try a different search or status."} />
       ) : (
@@ -117,8 +128,6 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
           </table>
         </TableWrap>
       )}
-      <AddSenderModal open={addOpen} onClose={() => setAddOpen(false)} />
-      <SenderExcelModal open={excelOpen} onClose={() => setExcelOpen(false)} />
     </div>
   );
 }

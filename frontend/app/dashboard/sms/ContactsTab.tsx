@@ -10,10 +10,10 @@ import { CheckTick } from "@/components/ui/controls";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Pager } from "./CampaignDetail";
-import { AddContactModal, PasteModal, UploadModal } from "./ContactModals";
+import { AddContactPanel, PastePanel, UploadPanel } from "./ContactPanels";
 import { GroupsPanel } from "./GroupsPanel";
 import { formatCount, friendlyError, parseContactsSub } from "./helpers";
-import { Badge, Btn, Card, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, Empty, Field, InlinePanel, LoadError, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const PAGE = 50;
@@ -65,9 +65,8 @@ function ContactsPanel() {
   const [groupId, setGroupId] = useState("");
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [adding, setAdding] = useState(false);
-  const [pasting, setPasting] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  // One add form open at a time, in place under the buttons.
+  const [panel, setPanel] = useState<"add" | "paste" | "upload" | null>(null);
   const [groupAction, setGroupAction] = useState<GroupAction | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -129,15 +128,22 @@ function ContactsPanel() {
     <Card>
       {canManage && (
         <div className="flex flex-wrap justify-end gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
-          <Btn variant="outline" onClick={() => setAdding(true)}>
+          <Btn variant="outline" onClick={() => setPanel("add")}>
             <Plus size={15} /> Add contact
           </Btn>
-          <Btn variant="outline" onClick={() => setPasting(true)}>
+          <Btn variant="outline" onClick={() => setPanel("paste")}>
             <ClipboardPaste size={15} /> Paste numbers
           </Btn>
-          <Btn onClick={() => setUploading(true)}>
+          <Btn onClick={() => setPanel("upload")}>
             <Upload size={15} /> Add multiple contacts
           </Btn>
+        </div>
+      )}
+      {panel && (
+        <div className="border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
+          <AddContactPanel open={panel === "add"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
+          <PastePanel open={panel === "paste"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
+          <UploadPanel open={panel === "upload"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
         </div>
       )}
       <form
@@ -189,6 +195,22 @@ function ContactsPanel() {
           <Btn variant="link" className="text-xs" onClick={() => setSelected(new Set())}>
             Clear
           </Btn>
+        </div>
+      )}
+      {groupAction && (
+        <div className="border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
+          <GroupActionPanel
+            action={groupAction}
+            groups={groupList}
+            defaultGroup={groupId}
+            ids={Array.from(selected)}
+            onClose={() => setGroupAction(null)}
+            onDone={() => {
+              setGroupAction(null);
+              setSelected(new Set());
+              refresh();
+            }}
+          />
         </div>
       )}
 
@@ -251,21 +273,6 @@ function ContactsPanel() {
         </>
       )}
 
-      <AddContactModal open={adding} groups={groupList} onClose={() => setAdding(false)} onDone={refresh} />
-      <PasteModal open={pasting} groups={groupList} onClose={() => setPasting(false)} onDone={refresh} />
-      <UploadModal open={uploading} groups={groupList} onClose={() => setUploading(false)} onDone={refresh} />
-      <GroupActionModal
-        action={groupAction}
-        groups={groupList}
-        defaultGroup={groupId}
-        ids={Array.from(selected)}
-        onClose={() => setGroupAction(null)}
-        onDone={() => {
-          setGroupAction(null);
-          setSelected(new Set());
-          refresh();
-        }}
-      />
       <ConfirmModal
         open={confirmDelete}
         onClose={() => !deleteBusy && setConfirmDelete(false)}
@@ -281,7 +288,7 @@ function ContactsPanel() {
   );
 }
 
-function GroupActionModal({
+function GroupActionPanel({
   action,
   groups,
   defaultGroup,
@@ -320,7 +327,7 @@ function GroupActionModal({
   }
 
   return (
-    <Modal open={action !== null} title={action === "add" ? "Add to group" : "Remove from group"} onClose={() => !busy && onClose()}>
+    <InlinePanel open={action !== null} title={action === "add" ? "Add to group" : "Remove from group"} onClose={() => !busy && onClose()}>
       <div className="space-y-3">
         {groups.length === 0 ? (
           <p className="text-sm text-[#64748b]">You have no groups yet. Create one in the Groups tab first.</p>
@@ -345,6 +352,6 @@ function GroupActionModal({
           </Btn>
         </div>
       </div>
-    </Modal>
+    </InlinePanel>
   );
 }

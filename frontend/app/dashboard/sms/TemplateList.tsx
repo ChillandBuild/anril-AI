@@ -6,7 +6,7 @@ import { FileSpreadsheet, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsTemplate, type SmsTemplateType } from "@/lib/api";
 import { countVars, formatIst, friendlyError } from "./helpers";
-import { AddTemplateModal, ListToolbar, TEMPLATES_KEY, TemplateExcelModal } from "./DltForms";
+import { AddTemplatePanel, ListToolbar, TEMPLATES_KEY, TemplateExcelPanel } from "./DltForms";
 import { matchesQuery } from "./dltSetup";
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton } from "./ui";
 import { usePerm } from "./usePerm";
@@ -17,6 +17,15 @@ export function TemplateList() {
   const [status, setStatus] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
+  // One form open at a time, in place under the toolbar.
+  const openAdd = () => {
+    setExcelOpen(false);
+    setAddOpen(true);
+  };
+  const openExcel = () => {
+    setAddOpen(false);
+    setExcelOpen(true);
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const { data, error, isLoading, mutate } = useSWR(TEMPLATES_KEY, () => api.sms.templates(), { revalidateOnFocus: false });
@@ -81,15 +90,17 @@ export function TemplateList() {
               <Btn variant="outline" busy={refreshing} onClick={() => void refresh()}>
                 <RefreshCw size={14} /> Refresh
               </Btn>
-              <Btn variant="outline" onClick={() => setExcelOpen(true)}>
+              <Btn variant="outline" onClick={openExcel}>
                 <FileSpreadsheet size={14} /> Import from DLT Excel
               </Btn>
-              <Btn onClick={() => setAddOpen(true)}>
+              <Btn onClick={openAdd}>
                 <Plus size={14} /> Add template
               </Btn>
             </>
           )}
         </ListToolbar>
+        <AddTemplatePanel open={addOpen} onClose={() => setAddOpen(false)} />
+        <TemplateExcelPanel open={excelOpen} onClose={() => setExcelOpen(false)} />
         {data?.error && <Notice tone="danger">{"Couldn't refresh from the operator, so this is the last saved list."} {data.error}</Notice>}
         {isLoading && !data ? (
           <Skeleton className="h-40" />
@@ -133,8 +144,6 @@ export function TemplateList() {
           </ul>
         )}
       </div>
-      <AddTemplateModal open={addOpen} onClose={() => setAddOpen(false)} />
-      <TemplateExcelModal open={excelOpen} onClose={() => setExcelOpen(false)} />
     </Card>
   );
 }
