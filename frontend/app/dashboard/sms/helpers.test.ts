@@ -3,12 +3,20 @@ import {
   UNICODE_NOTE,
   buildCurl,
   buildPython,
+  EMPTY_NUMBERS,
+  EMPTY_OWN,
+  OWN_VAR_ERROR,
   buildRecipients,
+  buildSendRequest,
+  defaultSendName,
+  excelSummary,
+  numbersReady,
+  sendFormProblem,
+  type SendFormInput,
   canCancelCampaign,
   maskKey,
   otpDelivery,
   parseNumbers,
-  recipientsReady,
   skippedRowsCsv,
   smsCounterLine,
   smsSegments,
@@ -381,34 +389,101 @@ describe("otpDelivery", () => {
 });
 
 describe("recipients", () => {
-  const base = { leadIds: [], groupIds: [], numbersText: "", promotional: false, consent: false };
-  it("needs a group, a lead or a number depending on the tab", () => {
-    expect(recipientsReady({ ...base, tab: "contacts" })).toBe(false);
-    expect(recipientsReady({ ...base, tab: "contacts", groupIds: ["g1"] })).toBe(true);
-    expect(recipientsReady({ ...base, tab: "leads", leadIds: ["l1"] })).toBe(true);
-    expect(recipientsReady({ ...base, tab: "numbers", numbersText: "9876543210" })).toBe(true);
+  const n = (patch: Partial<typeof EMPTY_NUMBERS>) => ({ ...EMPTY_NUMBERS, ...patch });
+  it("needs a group, a lead or a number depending on the mode", () => {
+    expect(numbersReady(n({ mode: "list" }), false)).toBe(false);
+    expect(numbersReady(n({ mode: "list", groupIds: ["g1"] }), false)).toBe(true);
+    expect(numbersReady(n({ mode: "leads", leadIds: ["l1"] }), false)).toBe(true);
+    expect(numbersReady(n({ mode: "contact", numbersText: "9876543210" }), false)).toBe(true);
   });
-  it("blocks promotional pasted numbers until consent is ticked", () => {
-    const n = { ...base, tab: "numbers" as const, numbersText: "9876543210\n9123456780", promotional: true };
-    expect(recipientsReady(n)).toBe(false);
-    expect(recipientsReady({ ...n, consent: true })).toBe(true);
+  it("blocks promotional Contact and Excel numbers until consent is ticked", () => {
+    const c = n({ mode: "contact", numbersText: "9876543210\n9123456780" });
+    expect(numbersReady(c, true)).toBe(false);
+    expect(numbersReady({ ...c, consent: true }, true)).toBe(true);
+    const x = n({ mode: "excel", excelNumbers: ["9876543210"] });
+    expect(numbersReady(x, true)).toBe(false);
+    expect(numbersReady({ ...x, consent: true }, true)).toBe(true);
   });
-  it("rejects more than 5,000 pasted numbers", () => {
+  it("does not ask for consent on a List (contacts carry their own)", () => {
+    expect(numbersReady(n({ mode: "list", groupIds: ["g1"] }), true)).toBe(true);
+  });
+  it("rejects more than 5,000 numbers and more than 50 groups", () => {
     const text = Array.from({ length: 5001 }, (_, i) => String(9000000000 + i)).join("\n");
-    expect(recipientsReady({ ...base, tab: "numbers", numbersText: text })).toBe(false);
+    expect(numbersReady(n({ mode: "contact", numbersText: text }), false)).toBe(false);
+    expect(numbersReady(n({ mode: "list", groupIds: Array.from({ length: 51 }, (_, i) => `g${i}`) }), false)).toBe(false);
   });
   it("splits pasted numbers on lines, commas and spaces", () => {
     expect(parseNumbers("9876543210, 9123456780\n\n 9000000000;")).toEqual(["9876543210", "9123456780", "9000000000"]);
   });
   it("builds the request fields per source", () => {
-    expect(buildRecipients({ ...base, tab: "contacts", groupIds: ["g1"] })).toEqual({ source: "contacts", group_ids: ["g1"] });
-    expect(buildRecipients({ ...base, tab: "leads", leadIds: ["l1"] })).toEqual({ source: "leads", lead_ids: ["l1"] });
-    expect(buildRecipients({ ...base, tab: "numbers", numbersText: "9876543210", promotional: true, consent: true })).toEqual({
+    expect(buildRecipients(n({ mode: "list", groupIds: ["g1"] }), false)).toEqual({ source: "contacts", group_ids: ["g1"] });
+    expect(buildRecipients(n({ mode: "leads", leadIds: ["l1"] }), false)).toEqual({ source: "leads", lead_ids: ["l1"] });
+    expect(buildRecipients(n({ mode: "contact", numbersText: "9876543210", consent: true }), true)).toEqual({
       source: "numbers",
       numbers: ["9876543210"],
       consent_confirmed: true,
     });
-    expect(buildRecipients({ ...base, tab: "numbers", numbersText: "9876543210" })).toEqual({ source: "numbers", numbers: ["9876543210"] });
+    expect(buildRecipients(n({ mode: "contact", numbersText: "9876543210" }), false)).toEqual({ source: "numbers", numbers: ["9876543210"] });
+  });
+});
+
+describe("send form request", () => {
+  const tpl = { id: "t1", message: "Hi {#var#}, 20% off", template_type: "promotional" as const, var_count: 1 };
+  const nameVar = { source: "field" as const, value: "name" };
+  const own = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "1101", dlt_template_id: "1107", message: "Your order shipped", template_type: "service" as const };
+  const base: SendFormInput = { route: null, template: null, varMap: [], own: EMPTY_OWN, numbers: EMPTY_NUMBERS };
+
+  it("sends a picked template through the approved-template route", () => {
+    const input: SendFormInput = {
+      ...base,
+      route: "template",
+      template: tpl,
+      varMap: [nameVar],
+      numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] },
+    };
+    expect(buildSendRequest(input)).toEqual({ kind: "template", template_id: "t1", variable_map: [nameVar], source: "contacts", group_ids: ["g1"] });
+  });
+  it("sends Type my own through the manual (DLT IDs) route", () => {
+    const input: SendFormInput = { ...base, route: "own", own: { ...own, sender_id: " ANRILT " }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
+    expect(buildSendRequest(input)).toEqual({
+      kind: "manual",
+      manual: { sender_id: "ANRILT", entity_id: "1101", dlt_template_id: "1107", template_type: "service", message: "Your order shipped" },
+      source: "numbers",
+      numbers: ["9876543210"],
+    });
+  });
+  it("sends Excel numbers exactly like pasted ones", () => {
+    const pasted = { ...base, route: "own" as const, own, numbers: { ...EMPTY_NUMBERS, mode: "contact" as const, numbersText: "9876543210\n9123456780" } };
+    const excel = { ...pasted, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210", "9123456780"] } };
+    expect(buildSendRequest(excel)).toEqual(buildSendRequest(pasted));
+    expect(buildSendRequest(excel)).not.toBeNull();
+  });
+  it("rejects {#var#} in Type my own", () => {
+    const input: SendFormInput = { ...base, route: "own", own: { ...own, message: "Hi {#var#}" }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
+    expect(sendFormProblem(input)).toBe(OWN_VAR_ERROR);
+    expect(buildSendRequest(input)).toBeNull();
+  });
+  it("needs the consent tick for promotional Contact and Excel, but not service", () => {
+    const promo: SendFormInput = { ...base, route: "own", own: { ...own, template_type: "promotional" }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
+    expect(buildSendRequest(promo)).toBeNull();
+    expect(sendFormProblem(promo)).toMatch(/consent/i);
+    const ticked = { ...promo, numbers: { ...promo.numbers, consent: true } };
+    expect(buildSendRequest(ticked)).toMatchObject({ source: "numbers", consent_confirmed: true });
+    const excelPromo = { ...promo, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210"] } };
+    expect(buildSendRequest(excelPromo)).toBeNull();
+    expect(buildSendRequest({ ...promo, own })).not.toBeNull();
+  });
+  it("waits for every template variable to be mapped and for a route", () => {
+    expect(sendFormProblem(base)).toMatch(/template/i);
+    const input: SendFormInput = { ...base, route: "template", template: tpl, varMap: [null], numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] } };
+    expect(buildSendRequest(input)).toBeNull();
+  });
+  it("names a send like SMS 3 Nov 18:05 in Indian time", () => {
+    expect(defaultSendName(new Date("2026-11-03T12:35:00Z"))).toBe("SMS 3 Nov 18:05");
+  });
+  it("summarises an Excel read", () => {
+    expect(excelSummary({ total: 4120, skipped_total: 18 })).toBe("4,120 numbers · 18 skipped");
+    expect(excelSummary({ total: 1, skipped_total: 0 })).toBe("1 number");
   });
 });
 

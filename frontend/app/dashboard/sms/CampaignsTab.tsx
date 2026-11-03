@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { CheckCircle2, Circle, Plus } from "lucide-react";
+import { CheckCircle2, Circle } from "lucide-react";
 import { api } from "@/lib/api";
-import { CampaignComposer } from "./CampaignComposer";
 import { CampaignDetail } from "./CampaignDetail";
 import {
   campaignNeedsUpdates,
@@ -20,7 +19,7 @@ import {
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Skeleton } from "./ui";
 import { usePerm } from "./usePerm";
 
-type View = { kind: "list" } | { kind: "new" } | { kind: "detail"; id: string };
+type View = { kind: "list" } | { kind: "detail"; id: string };
 
 export function CampaignsTab({ onBalanceChanged, onOpenTemplates }: { onBalanceChanged: () => void; onOpenTemplates: () => void }) {
   const { canManage } = usePerm();
@@ -31,19 +30,6 @@ export function CampaignsTab({ onBalanceChanged, onOpenTemplates }: { onBalanceC
   const campaigns = useSWR(["sms:campaigns", offset], () => api.sms.campaigns(51, offset), {
     refreshInterval: (d) => (d?.campaigns.some(campaignNeedsUpdates) ? 15_000 : 0),
   });
-
-  if (view.kind === "new") {
-    return (
-      <CampaignComposer
-        onClose={() => setView({ kind: "list" })}
-        onCreated={(c) => {
-          void campaigns.mutate();
-          onBalanceChanged();
-          setView({ kind: "detail", id: c.id });
-        }}
-      />
-    );
-  }
 
   if (view.kind === "detail") {
     return (
@@ -71,14 +57,7 @@ export function CampaignsTab({ onBalanceChanged, onOpenTemplates }: { onBalanceC
     <Card>
       <CardHeader
         title="Campaigns"
-        hint="Every SMS you send to a group of leads."
-        action={
-          canManage ? (
-            <Btn onClick={() => setView({ kind: "new" })}>
-              <Plus size={15} /> New campaign
-            </Btn>
-          ) : undefined
-        }
+        hint="Every SMS you have sent or scheduled."
       />
       {campaigns.isLoading && !campaigns.data ? (
         <Skeleton className="m-4 h-40" />
@@ -88,7 +67,7 @@ export function CampaignsTab({ onBalanceChanged, onOpenTemplates }: { onBalanceC
         <div className="space-y-4 p-4 sm:p-5">
           <div>
             <h3 className="font-display text-base font-bold text-[#0A1528]">Get ready to send SMS</h3>
-            <p className="mt-0.5 text-xs text-[#64748b]">You can start your first campaign once these are done.</p>
+            <p className="mt-0.5 text-xs text-[#64748b]">You can send your first SMS once these are done.</p>
           </div>
           <ul className="space-y-2.5">
             {steps.map((step) => (
@@ -114,7 +93,7 @@ export function CampaignsTab({ onBalanceChanged, onOpenTemplates }: { onBalanceC
       ) : list.length === 0 ? (
         <Empty
           title="No campaigns yet."
-          hint={canManage ? "Start with New campaign: pick leads, pick a template, preview and send." : "Campaigns created by your team will show up here."}
+          hint={canManage ? "Go to Send SMS to send your first one." : "Campaigns created by your team will show up here."}
         />
       ) : (
         <ul className="divide-y divide-[#f1f5f9]">

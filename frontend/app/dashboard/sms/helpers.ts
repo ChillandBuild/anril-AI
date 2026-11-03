@@ -1,5 +1,16 @@
 /** Pure helpers for the SMS page (kept out of components so they can be unit-tested). */
-import type { SmsMessageStatus, SmsPreviewExcluded, SmsRecipients, SmsRecipientSource, SmsSkippedRow, SmsVarSource, SmsWalletItem } from "@/lib/api";
+import type {
+  SmsCampaignPreviewRequest,
+  SmsMessageStatus,
+  SmsPreviewExcluded,
+  SmsRecipients,
+  SmsRecipientSource,
+  SmsSkippedRow,
+  SmsTemplate,
+  SmsTemplateType,
+  SmsVarSource,
+  SmsWalletItem,
+} from "@/lib/api";
 
 export const MAX_LEADS_PER_CAMPAIGN = 5000;
 
@@ -429,42 +440,170 @@ export function parseNumbers(text: string): string[] {
   return text.split(/[\s,;]+/).map((n) => n.trim()).filter(Boolean);
 }
 
-export type RecipientTab = "contacts" | "leads" | "numbers";
+// ---- The one Send SMS form: numbers, template choice, request body ----
 
-export function recipientSource(tab: RecipientTab): SmsRecipientSource {
-  return tab;
+export type NumbersMode = "contact" | "list" | "excel" | "leads";
+export const NUMBERS_MODE_LABELS: Record<NumbersMode, string> = { contact: "Contact", list: "List", excel: "Excel", leads: "Leads" };
+export const MAX_LIST_GROUPS = 50;
+export const MAX_LIST_CONTACTS = 50_000;
+
+/** What the server said about an uploaded file (kept so the summary survives switching modes). */
+export interface ExcelInfo { fileName: string; total: number; skipped_total: number; phone_column: string | null; skipped: SmsSkippedRow[] }
+
+export interface NumbersState {
+  mode: NumbersMode;
+  /** Contact mode: typed or pasted numbers. */
+  numbersText: string;
+  /** Excel mode: numbers the server read from the uploaded file. */
+  excelNumbers: string[];
+  excel: ExcelInfo | null;
+  groupIds: string[];
+  leadIds: string[];
+  /** The promotional consent tick (Contact and Excel only). */
+  consent: boolean;
 }
 
-/** Whether step 1 of a campaign has what it needs. Promotional + pasted numbers also needs the consent tick. */
-export function recipientsReady(input: {
-  tab: RecipientTab;
-  leadIds: string[];
-  groupIds: string[];
-  numbersText: string;
-  promotional: boolean;
-  consent: boolean;
-}): boolean {
-  if (input.tab === "leads") return input.leadIds.length > 0;
-  if (input.tab === "contacts") return input.groupIds.length > 0;
-  const n = parseNumbers(input.numbersText).length;
-  if (n === 0 || n > MAX_PASTED_NUMBERS) return false;
-  return !input.promotional || input.consent;
+export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", excelNumbers: [], excel: null, groupIds: [], leadIds: [], consent: false };
+
+/** The loose numbers a Contact or Excel send carries. Excel numbers are sent exactly like pasted ones. */
+export function looseNumbers(n: NumbersState): string[] {
+  if (n.mode === "contact") return parseNumbers(n.numbersText);
+  if (n.mode === "excel") return n.excelNumbers;
+  return [];
+}
+
+/** Whether the numbers step has what it needs. Promotional + Contact/Excel also needs the consent tick. */
+export function numbersReady(n: NumbersState, promotional: boolean): boolean {
+  if (n.mode === "leads") return n.leadIds.length > 0;
+  if (n.mode === "list") return n.groupIds.length > 0 && n.groupIds.length <= MAX_LIST_GROUPS;
+  const count = looseNumbers(n).length;
+  if (count === 0 || count > MAX_PASTED_NUMBERS) return false;
+  return !promotional || n.consent;
 }
 
 /** The recipient fields of a preview/create request, per the API contract. */
-export function buildRecipients(input: {
-  tab: RecipientTab;
-  leadIds: string[];
-  groupIds: string[];
-  numbersText: string;
-  promotional: boolean;
-  consent: boolean;
-}): SmsRecipients {
-  if (input.tab === "leads") return { source: "leads", lead_ids: input.leadIds };
-  if (input.tab === "contacts") return { source: "contacts", group_ids: input.groupIds };
-  const out: SmsRecipients = { source: "numbers", numbers: parseNumbers(input.numbersText) };
-  if (input.promotional) out.consent_confirmed = input.consent;
+export function buildRecipients(n: NumbersState, promotional: boolean): SmsRecipients {
+  if (n.mode === "leads") return { source: "leads", lead_ids: n.leadIds };
+  if (n.mode === "list") return { source: "contacts", group_ids: n.groupIds };
+  const out: SmsRecipients = { source: "numbers", numbers: looseNumbers(n) };
+  if (promotional) out.consent_confirmed = n.consent;
   return out;
+}
+
+/** Which fields endpoint feeds the {#var#} source dropdown for these numbers. */
+export function fieldsSourceFor(mode: NumbersMode): SmsRecipientSource {
+  return mode === "list" ? "contacts" : mode === "leads" ? "leads" : "numbers";
+}
+
+/** The "Type my own" fields. */
+export interface OwnDlt {
+  sender_id: string;
+  entity_id: string;
+  dlt_template_id: string;
+  template_type: SmsTemplateType;
+  message: string;
+}
+export const EMPTY_OWN: OwnDlt = { sender_id: "", entity_id: "", dlt_template_id: "", template_type: "service", message: "" };
+
+export const OWN_VAR_ERROR = "Type my own can't have {#var#} in the message. Write the exact text to send, or pick a template that has variables.";
+
+/** "Type my own" sends no per-person values, so a {#var#} in the message is refused. */
+export function ownVarError(message: string): string | null {
+  return countVars(message) > 0 ? OWN_VAR_ERROR : null;
+}
+
+export interface SendFormInput {
+  /** "template" = an approved template is picked; "own" = Type my own; null = nothing chosen yet. */
+  route: "template" | "own" | null;
+  template: Pick<SmsTemplate, "id" | "message" | "template_type" | "var_count"> | null;
+  varMap: (SmsVarSource | null)[];
+  own: OwnDlt;
+  numbers: NumbersState;
+}
+
+/** How many {#var#} the picked template needs (the template's own count, or what the wording shows). */
+export function templateVarCount(t: Pick<SmsTemplate, "message" | "var_count"> | null): number {
+  return t ? Math.max(t.var_count ?? 0, countVars(t.message)) : 0;
+}
+
+/** Service or promotional, per the route. null until a route is chosen. */
+export function sendType(input: SendFormInput): SmsTemplateType | null {
+  if (input.route === "own") return input.own.template_type;
+  if (input.route === "template" && input.template) return input.template.template_type === "promotional" ? "promotional" : "service";
+  return null;
+}
+
+/** The first thing missing before Preview, or null when the form is ready. */
+export function sendFormProblem(input: SendFormInput): string | null {
+  const type = sendType(input);
+  if (!input.route) return "Pick a template or Type my own.";
+  if (input.route === "template") {
+    if (!input.template) return "Pick a template.";
+    if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
+  } else {
+    const o = input.own;
+    if (!o.sender_id.trim()) return "Pick a Sender ID.";
+    if (!o.entity_id.trim()) return "Enter the DLT entity ID.";
+    if (!o.dlt_template_id.trim()) return "Enter the DLT template ID.";
+    if (!o.message.trim()) return "Type the message.";
+    const v = ownVarError(o.message);
+    if (v) return v;
+  }
+  if (!numbersReady(input.numbers, type === "promotional")) {
+    const n = input.numbers;
+    if (type === "promotional" && (n.mode === "contact" || n.mode === "excel") && looseNumbers(n).length > 0 && !n.consent) {
+      return "Tick the consent box to send promotional SMS to these numbers.";
+    }
+    return "Add who should get it.";
+  }
+  return null;
+}
+
+/**
+ * The preview/create body (without name, send_at and idempotency key), or null if the form is
+ * not ready. A picked template goes through the approved-template route; Type my own goes through
+ * the DLT-IDs ("manual") route.
+ */
+export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewRequest | null {
+  if (sendFormProblem(input)) return null;
+  const promotional = sendType(input) === "promotional";
+  const recipients = buildRecipients(input.numbers, promotional);
+  if (input.route === "own") {
+    const o = input.own;
+    return {
+      kind: "manual",
+      manual: {
+        sender_id: o.sender_id.trim(),
+        entity_id: o.entity_id.trim(),
+        dlt_template_id: o.dlt_template_id.trim(),
+        template_type: o.template_type,
+        message: o.message,
+      },
+      ...recipients,
+    };
+  }
+  const t = input.template!;
+  return {
+    kind: "template",
+    template_id: t.id,
+    variable_map: input.varMap.slice(0, templateVarCount(t)) as SmsVarSource[],
+    ...recipients,
+  };
+}
+
+/** "SMS 3 Nov 18:05", in Indian time. */
+export function defaultSendName(now: Date): string {
+  const p: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now)) {
+    p[part.type] = part.value;
+  }
+  return `SMS ${p.day} ${p.month} ${p.hour}:${p.minute}`;
+}
+
+/** "4,120 numbers · 18 skipped" after an Excel upload. */
+export function excelSummary(r: { total: number; skipped_total: number }): string {
+  const nums = `${formatCount(r.total)} number${r.total === 1 ? "" : "s"}`;
+  return r.skipped_total > 0 ? `${nums} · ${formatCount(r.skipped_total)} skipped` : nums;
 }
 
 /** CSV the client can download for rows an upload skipped. */

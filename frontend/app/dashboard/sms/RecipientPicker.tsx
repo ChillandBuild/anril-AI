@@ -1,74 +1,76 @@
 "use client";
 
+import { useRef, useState } from "react";
 import useSWR from "swr";
+import { FileSpreadsheet } from "lucide-react";
 import { CheckTick } from "@/components/ui/controls";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { LeadPicker } from "./LeadPicker";
-import { MAX_PASTED_NUMBERS, buildRecipients, formatCount, friendlyError, parseNumbers, recipientsReady, type RecipientTab } from "./helpers";
-import { Empty, Field, LoadError, Skeleton, textareaCls } from "./ui";
-import { ConsentCheck } from "./ui";
+import {
+  MAX_LIST_GROUPS,
+  MAX_PASTED_NUMBERS,
+  NUMBERS_MODE_LABELS,
+  excelSummary,
+  errorText,
+  formatCount,
+  friendlyError,
+  parseNumbers,
+  skippedRowsCsv,
+  type NumbersMode,
+  type NumbersState,
+} from "./helpers";
+import { Btn, ConsentCheck, Empty, Field, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
 
-export interface RecipientState {
-  tab: RecipientTab;
-  leadIds: Set<string>;
-  groupIds: Set<string>;
-  numbersText: string;
-  consent: boolean;
+/** Whether this client has any Anril leads (the Leads mode is hidden when they have none). */
+export function useHasLeads(): boolean {
+  const probe = useSWR("sms:has-leads", () => api.leads.listPage({ page: 1, limit: 1 }), { revalidateOnFocus: false, shouldRetryOnError: false });
+  return (probe.data?.total ?? 0) > 0;
 }
 
-export const EMPTY_RECIPIENTS: RecipientState = { tab: "contacts", leadIds: new Set(), groupIds: new Set(), numbersText: "", consent: false };
-
-const TAB_LABELS: Record<RecipientTab, string> = { contacts: "SMS contacts", leads: "Leads", numbers: "Paste numbers" };
-
-export function recipientsReadyFor(r: RecipientState, promotional: boolean): boolean {
-  return recipientsReady({ tab: r.tab, leadIds: Array.from(r.leadIds), groupIds: Array.from(r.groupIds), numbersText: r.numbersText, promotional, consent: r.consent });
-}
-
-export function recipientRequest(r: RecipientState, promotional: boolean) {
-  return buildRecipients({ tab: r.tab, leadIds: Array.from(r.leadIds), groupIds: Array.from(r.groupIds), numbersText: r.numbersText, promotional, consent: r.consent });
-}
-
-/** Source tabs for who gets a campaign: saved contact groups, leads, or pasted numbers. */
-export function RecipientPicker({
+/** The four ways to say who gets an SMS: Contact (typed), List (Address Book groups), Excel (upload), Leads. */
+export function NumbersPicker({
   value,
   onChange,
-  tabs = ["contacts", "leads", "numbers"],
-  showConsent = false,
+  promotional,
+  showLeads,
 }: {
-  value: RecipientState;
-  onChange: (next: RecipientState) => void;
-  tabs?: RecipientTab[];
-  /** Show the promotional consent tick under pasted numbers. */
-  showConsent?: boolean;
+  value: NumbersState;
+  onChange: (update: (prev: NumbersState) => NumbersState) => void;
+  promotional: boolean;
+  showLeads: boolean;
 }) {
-  const set = (patch: Partial<RecipientState>) => onChange({ ...value, ...patch });
+  const set = (patch: Partial<NumbersState>) => onChange((prev) => ({ ...prev, ...patch }));
+  const modes: NumbersMode[] = showLeads ? ["contact", "list", "excel", "leads"] : ["contact", "list", "excel"];
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Where recipients come from" className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
+      <div role="tablist" aria-label="Where the numbers come from" className="flex flex-wrap gap-2">
+        {modes.map((m) => (
           <button
-            key={t}
+            key={m}
             type="button"
             role="tab"
-            aria-selected={value.tab === t}
-            onClick={() => set({ tab: t })}
+            aria-selected={value.mode === m}
+            onClick={() => set({ mode: m })}
             className={cn(
               "h-9 rounded-full border px-4 text-sm font-bold",
-              value.tab === t ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
+              value.mode === m ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
             )}
           >
-            {TAB_LABELS[t]}
+            {NUMBERS_MODE_LABELS[m]}
           </button>
         ))}
       </div>
 
-      {value.tab === "contacts" && <GroupPicker selected={value.groupIds} onChange={(groupIds) => set({ groupIds })} />}
-      {value.tab === "leads" && <LeadPicker selected={value.leadIds} onChange={(leadIds) => set({ leadIds })} />}
-      {value.tab === "numbers" && (
-        <div className="space-y-3">
-          <NumbersBox value={value.numbersText} onChange={(numbersText) => set({ numbersText })} />
-          {showConsent && <ConsentCheck checked={value.consent} onChange={(consent) => set({ consent })} />}
+      {value.mode === "contact" && <NumbersBox value={value.numbersText} onChange={(numbersText) => set({ numbersText })} />}
+      {value.mode === "list" && <GroupPicker selected={new Set(value.groupIds)} onChange={(ids) => set({ groupIds: Array.from(ids) })} />}
+      {value.mode === "excel" && <ExcelUpload value={value} onChange={onChange} />}
+      {value.mode === "leads" && <LeadPicker selected={new Set(value.leadIds)} onChange={(ids) => set({ leadIds: Array.from(ids) })} />}
+
+      {promotional && (value.mode === "contact" || value.mode === "excel") && (
+        <div className="space-y-2">
+          <Notice tone="warn">This is a promotional SMS. These numbers need your confirmation before you can send.</Notice>
+          <ConsentCheck checked={value.consent} onChange={(consent) => set({ consent })} />
         </div>
       )}
     </div>
@@ -84,13 +86,13 @@ function GroupPicker({ selected, onChange }: { selected: Set<string>; onChange: 
   function toggle(id: string) {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
-    else next.add(id);
+    else if (next.size < MAX_LIST_GROUPS) next.add(id);
     onChange(next);
   }
 
   if (groups.isLoading && !groups.data) return <Skeleton className="h-32" />;
   if (groups.error && !groups.data) return <LoadError message={friendlyError(groups.error, "Check your connection.")} onRetry={() => void groups.mutate()} />;
-  if (list.length === 0) return <Empty title="No contact groups yet." hint="Add contacts in the Contacts tab and put them in a group first." />;
+  if (list.length === 0) return <Empty title="No contact groups yet." hint="Add contacts in the Address Book and put them in a group first." />;
 
   return (
     <div className="space-y-2">
@@ -124,5 +126,79 @@ function NumbersBox({ value, onChange }: { value: string; onChange: (next: strin
         {over ? `, too many. Remove ${formatCount(count - MAX_PASTED_NUMBERS)}.` : ""}
       </span>
     </Field>
+  );
+}
+
+/** Upload a .csv/.xlsx; the server reads the phone column and hands back the numbers. */
+function ExcelUpload({ value, onChange }: { value: NumbersState; onChange: (update: (prev: NumbersState) => NumbersState) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [column, setColumn] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+
+  async function read(f: File, phoneColumn: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.sms.parseNumbers(f, phoneColumn.trim() || undefined);
+      onChange((prev) => ({
+        ...prev,
+        excelNumbers: r.numbers,
+        excel: { fileName: f.name, total: r.total, skipped_total: r.skipped_total, phone_column: r.phone_column, skipped: r.skipped },
+      }));
+    } catch (err) {
+      // The server's own message (for example "save it to the Address Book as a group first") is shown as sent.
+      setError(errorText(err, "Couldn't read that file."));
+      onChange((prev) => ({ ...prev, excelNumbers: [], excel: null }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const info = value.excel;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Excel or CSV file" hint={`.csv or .xlsx, up to ${formatCount(MAX_PASTED_NUMBERS)} numbers`}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx"
+            className="block text-sm text-[#334155] file:mr-3 file:rounded-lg file:border file:border-[#e2e8f0] file:bg-white file:px-3 file:py-2 file:text-sm file:font-bold"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              if (f) void read(f, column);
+            }}
+          />
+        </Field>
+        <Field label="Phone column (optional)" hint="Only if it wasn't found">
+          <input className={`${inputCls} w-44`} value={column} placeholder="e.g. Mobile" onChange={(e) => setColumn(e.target.value)} />
+        </Field>
+        {file && (
+          <Btn variant="outline" busy={busy} onClick={() => void read(file, column)}>
+            Read again
+          </Btn>
+        )}
+      </div>
+      {error && <Notice tone="danger">{error}</Notice>}
+      {info && !error && (
+        <div className="space-y-1 rounded-xl bg-[#f8fafc] p-3.5">
+          <p className="flex items-center gap-2 text-sm font-bold text-[#0A1528]">
+            <FileSpreadsheet size={15} className="text-primary" /> {excelSummary(info)}
+          </p>
+          <p className="text-xs text-[#64748b]">
+            {info.fileName}
+            {info.phone_column ? ` · phone column "${info.phone_column}"` : ""}
+          </p>
+          {info.skipped.length > 0 && (
+            <Btn variant="link" className="text-xs" onClick={() => saveCsv(skippedRowsCsv(info.skipped), "skipped-rows.csv")}>
+              Download skipped rows
+            </Btn>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
