@@ -39,7 +39,7 @@ export function PeTmTab() {
   const { canManage } = usePerm();
   const { status, reloadStatus } = useSms();
   const tm = status.pe_tm_info;
-  const dlt = useDltList();
+  const dlt = useDltList(status.connected);
   const { data, error, isLoading, mutate } = useSWR(PETM_KEY, () => api.sms.peTm(), { revalidateOnFocus: false });
   const [entityId, setEntityId] = useState("");
   const [file, setFile] = useState<File | null>(null);

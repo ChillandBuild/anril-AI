@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPeTmProof, isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState } from "./dltSetup";
+import { isPeTmProof, isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState, setupTabFor } from "./dltSetup";
 
 describe("parseSetupTab", () => {
   it("accepts the three tabs and defaults to entity", () => {
@@ -69,5 +69,17 @@ describe("parseDltSub", () => {
     expect(parseDltSub("entities")).toBe("entities");
     expect(parseDltSub("nope")).toBe("entities");
     expect(parseDltSub(null)).toBe("entities");
+  });
+});
+
+describe("setupTabFor (before the Bulk9 key is set, only PE-TM Binding works)", () => {
+  it("keeps the asked-for tab once connected", () => {
+    expect(setupTabFor("manager", true)).toBe("manager");
+    expect(setupTabFor(null, true)).toBe("entity");
+  });
+  it("always opens PE-TM Binding while not connected", () => {
+    expect(setupTabFor("entity", false)).toBe("petm");
+    expect(setupTabFor("manager", false)).toBe("petm");
+    expect(setupTabFor(null, false)).toBe("petm");
   });
 });

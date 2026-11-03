@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import { AddEntityTab } from "../AddEntityTab";
 import { DltManagerTab } from "../DltManagerTab";
 import { PeTmTab } from "../PeTmTab";
-import { parseSetupTab, type SetupTab } from "../dltSetup";
+import { setupTabFor, type SetupTab } from "../dltSetup";
+import { useSms } from "../SmsShell";
 import { Skeleton } from "../ui";
 
 const TABS: { key: SetupTab; label: string }[] = [
@@ -19,7 +20,9 @@ function SetupTabs() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const tab = parseSetupTab(params.get("tab"));
+  const { status } = useSms();
+  const tab = setupTabFor(params.get("tab"), status.connected);
+  const tabs = status.connected ? TABS : TABS.filter((t) => t.key === "petm");
 
   function go(next: SetupTab) {
     router.replace(`${pathname}?tab=${next}`, { scroll: false });
@@ -28,7 +31,7 @@ function SetupTabs() {
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="DLT Setup" className="flex flex-wrap gap-2 border-b border-[#e2e8f0] pb-3">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             type="button"

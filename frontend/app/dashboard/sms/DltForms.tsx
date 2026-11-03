@@ -13,8 +13,9 @@ export const DLT_LIST_KEY = "sms:dlt-list";
 export const TEMPLATES_KEY = "sms:templates";
 
 /** Entities and senders the DLT Manager shows (shared by every tab on the Setup page). */
-export function useDltList() {
-  return useSWR(DLT_LIST_KEY, () => api.sms.dltList(), { revalidateOnFocus: false });
+/** Pass enabled=false before the Bulk9 key is set: the list needs Bulk9 and would only return 409. */
+export function useDltList(enabled = true) {
+  return useSWR(enabled ? DLT_LIST_KEY : null, () => api.sms.dltList(), { revalidateOnFocus: false });
 }
 
 /** Refresh every list that a DLT change can affect. */

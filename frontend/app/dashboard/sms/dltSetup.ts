@@ -7,7 +7,12 @@ export function parseSetupTab(value: string | null | undefined): SetupTab {
   return value === "manager" || value === "petm" ? value : "entity";
 }
 
-export type DltSub = "entities" | "senders" | "templates";
+/** Before the Bulk9 key is set only PE-TM Binding works (Add Entity and DLT Manager need Bulk9). */
+export function setupTabFor(value: string | null | undefined, connected: boolean): SetupTab {
+  return connected ? parseSetupTab(value) : "petm";
+}
+
+export type DltSub ="entities" | "senders" | "templates";
 
 /** The ?sub= value inside DLT Manager, defaulting to entities for anything unknown. */
 export function parseDltSub(value: string | null | undefined): DltSub {

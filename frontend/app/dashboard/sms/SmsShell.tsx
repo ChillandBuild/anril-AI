@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import useSWR from "swr";
 import { CheckCircle2, Circle, Plus, Wallet } from "lucide-react";
 import { api, type SmsBalance, type SmsStatus } from "@/lib/api";
@@ -48,11 +49,13 @@ export function SmsShell({ children }: { children: ReactNode }) {
     refreshInterval: 60_000,
     shouldRetryOnError: false,
   });
-  const credit = useSWR(enabled && connected && canView ? "sms:credit-requests" : null, () => api.sms.creditRequests(), {
+  // Credit requests and PE-TM work before the Bulk9 key is set (their routes don't need it).
+  const credit = useSWR(enabled && canView ? "sms:credit-requests" : null, () => api.sms.creditRequests(), {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
   const [creditOpen, setCreditOpen] = useState(false);
+  const pathname = usePathname();
   const support = status.data?.support_contact || null;
 
   const ctx = useMemo<SmsContextValue | null>(
@@ -108,29 +111,73 @@ export function SmsShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const newestOpen = [...(credit.data?.items ?? [])]
+    .filter((r) => r.status === "open")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const creditLine = newestOpen && (
+    <p className="mt-2 text-xs text-[#64748b]">
+      {formatRupees(newestOpen.amount)} requested on {requestedOn(newestOpen.created_at)} · waiting
+    </p>
+  );
+  const creditModal = (
+    <AddCreditModal
+      open={creditOpen}
+      onClose={() => setCreditOpen(false)}
+      onSent={() => {
+        setCreditOpen(false);
+        void credit.mutate();
+      }}
+    />
+  );
+
   if (!connected) {
+    // Before the Bulk9 key is set: the checklist, plus the two things that already work — PE-TM
+    // Binding (shown below the card on DLT Setup, linked from everywhere else) and Add credit.
     const checklist = status.data?.checklist;
+    const onSetup = pathname === "/dashboard/sms/setup";
     return (
-      <Card className="mx-auto max-w-xl">
-        <div className="px-5 py-8">
-          <h1 className="font-display text-xl font-bold text-[#0A1528]">Setup in progress</h1>
-          <p className="mt-1 text-sm text-[#64748b]">
-            {"We're getting your SMS account ready. You'll be able to send as soon as these are done."}
-          </p>
-          <ul className="mt-5 space-y-2.5">
-            {CHECKLIST.map((item) => {
-              const done = checklist?.[item.key] === true;
-              return (
-                <li key={item.key} className="flex items-center gap-2.5 text-sm">
-                  {done ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-[#cbd5e1]" />}
-                  <span className={done ? "font-semibold text-[#0A1528]" : "text-[#64748b]"}>{item.label}</span>
-                </li>
-              );
-            })}
-          </ul>
-          {support && <p className="mt-6 text-xs text-[#64748b]">SMS help: {support}</p>}
+      <SmsContext.Provider value={ctx}>
+        <div className="w-full space-y-4">
+          <Card className="mx-auto max-w-xl">
+            <div className="px-5 py-8">
+              <h1 className="font-display text-xl font-bold text-[#0A1528]">Setup in progress</h1>
+              <p className="mt-1 text-sm text-[#64748b]">
+                {"We're getting your SMS account ready. You'll be able to send as soon as these are done. Meanwhile you can do the PE-TM binding and add credit."}
+              </p>
+              <ul className="mt-5 space-y-2.5">
+                {CHECKLIST.map((item) => {
+                  const done = checklist?.[item.key] === true;
+                  return (
+                    <li key={item.key} className="flex items-center gap-2.5 text-sm">
+                      {done ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-[#cbd5e1]" />}
+                      <span className={done ? "font-semibold text-[#0A1528]" : "text-[#64748b]"}>{item.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {!onSetup && (
+                  <Link
+                    href="/dashboard/sms/setup?tab=petm"
+                    className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-white hover:bg-primary-dark"
+                  >
+                    Open PE-TM Binding
+                  </Link>
+                )}
+                {canManage && (
+                  <Btn variant="outline" onClick={() => setCreditOpen(true)}>
+                    <Plus size={14} /> Add credit
+                  </Btn>
+                )}
+              </div>
+              {creditLine}
+              {support && <p className="mt-6 text-xs text-[#64748b]">SMS help: {support}</p>}
+            </div>
+          </Card>
+          {onSetup && children}
         </div>
-      </Card>
+        {creditModal}
+      </SmsContext.Provider>
     );
   }
 
@@ -138,10 +185,6 @@ export function SmsShell({ children }: { children: ReactNode }) {
   const balErr = balance.error ? errorStatus(balance.error) : undefined;
   const level = bal ? balanceLevel(bal.sms_count) : null;
   const topUpHint = `Contact ${support ?? SUPPORT_FALLBACK} to top up.`;
-  const newestOpen = [...(credit.data?.items ?? [])]
-    .filter((r) => r.status === "open")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-
   return (
     <SmsContext.Provider value={ctx}>
       <div className="w-full space-y-4">
@@ -181,11 +224,7 @@ export function SmsShell({ children }: { children: ReactNode }) {
               </Btn>
             )}
           </div>
-          {newestOpen && (
-            <p className="mt-2 text-xs text-[#64748b]">
-              {formatRupees(newestOpen.amount)} requested on {requestedOn(newestOpen.created_at)} · waiting
-            </p>
-          )}
+          {creditLine}
         </div>
 
         {balance.error && balErr === 409 && (
@@ -195,14 +234,7 @@ export function SmsShell({ children }: { children: ReactNode }) {
         {children}
       </div>
 
-      <AddCreditModal
-        open={creditOpen}
-        onClose={() => setCreditOpen(false)}
-        onSent={() => {
-          setCreditOpen(false);
-          void credit.mutate();
-        }}
-      />
+      {creditModal}
     </SmsContext.Provider>
   );
 }
