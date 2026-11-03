@@ -23,8 +23,8 @@ export function checklistRows(input: { status: SmsStatus; dlt: SmsDltList | null
   const senderDone = status.checklist.sender || (dlt?.senders ?? []).some((s) => s.status === "approved");
   return [
     { key: "entity", label: "Add your DLT entity", done: entityDone, href: "/dashboard/sms/setup?tab=entity", hint: "Add entity" },
-    { key: "sender", label: "Get a Sender ID approved", done: senderDone, href: "/dashboard/sms/setup?tab=manager", hint: "Open DLT Manager" },
-    { key: "template", label: "Get a content template approved", done: status.templates_ready, href: "/dashboard/sms/setup?tab=manager", hint: "Open DLT Manager" },
+    { key: "sender", label: "Get a Sender ID approved", done: senderDone, href: "/dashboard/sms/setup?tab=manager&sub=senders", hint: "Open DLT Manager" },
+    { key: "template", label: "Get a content template approved", done: status.templates_ready, href: "/dashboard/sms/setup?tab=manager&sub=templates", hint: "Open DLT Manager" },
     { key: "petm", label: "Finish the PE-TM binding", done: status.checklist.pe_tm, href: "/dashboard/sms/setup?tab=petm", hint: "Open PE-TM Binding" },
     { key: "balance", label: "Have SMS balance above zero", done: (balance?.sms_count ?? 0) > 0, href: null, hint: "Use Add credit above" },
   ];

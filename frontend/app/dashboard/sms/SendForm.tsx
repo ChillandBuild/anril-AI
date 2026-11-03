@@ -23,12 +23,15 @@ import {
   fieldsSourceFor,
   formatCount,
   friendlyError,
+  nextIdempotencyKey,
+  pruneVarMap,
   sendBlock,
   sendFormProblem,
   sendType,
   smsCounterLine,
   smsSegments,
   templateVarCount,
+  withNumbersChange,
   type NumbersState,
   type OwnDlt,
   type SendFormInput,
@@ -41,7 +44,7 @@ const OWN = "__own__";
 /** The one Send SMS form: pick an approved template or Type my own, say who gets it, preview, send or schedule. */
 export function SendForm() {
   const { canManage } = usePerm();
-  const { reloadBalance } = useSms();
+  const { reloadBalance, status: smsStatus } = useSms();
   const [choice, setChoice] = useState("");
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
   const [own, setOwn] = useState<OwnDlt>(EMPTY_OWN);
@@ -54,8 +57,9 @@ export function SendForm() {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<{ scheduled: boolean } | null>(null);
-  // One key per form fill: a double click or a retry after a lost reply cannot create a second campaign.
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  // One key per exact request (body, name, schedule): a double click or a retry after a lost reply
+  // cannot create a second campaign, and any edit gets a fresh key.
+  const keyRef = useRef<{ signature: string; key: string } | null>(null);
   const submittingRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -91,8 +95,14 @@ export function SendForm() {
 
   // Leads mode disappears if the client has none; fall back to Contact.
   useEffect(() => {
-    if (numbers.mode === "leads" && !hasLeads) setNumbers((n) => ({ ...n, mode: "contact" }));
+    if (numbers.mode === "leads" && !hasLeads) setNumbers((n) => withNumbersChange(n, { mode: "contact" }));
   }, [numbers.mode, hasLeads]);
+
+  // Switching who gets the SMS changes which contact fields exist; forget mappings to fields that are gone.
+  const offeredFields = fields.data?.fields;
+  useEffect(() => {
+    if (offeredFields) setVarMap((m) => pruneVarMap(m, offeredFields.map((f) => f.key)));
+  }, [offeredFields]);
 
   const resolved = resolveWhen(when, now);
   const bounds = dateBounds(now);
@@ -113,6 +123,8 @@ export function SendForm() {
     setChoice(value);
     setCreated(null);
     setError(null);
+    // The consent tick was for the previous template's type; ask again.
+    setNumbers((n) => withNumbersChange(n, { consent: false }));
     const t = ready.find((x) => x.id === value);
     setVarMap(Array.from({ length: templateVarCount(t ?? null) }, () => null));
   }
@@ -128,6 +140,7 @@ export function SendForm() {
   function setOwnField(patch: Partial<OwnDlt>) {
     setCreated(null);
     setOwn((o) => ({ ...o, ...patch }));
+    if (patch.template_type) setNumbers((n) => ({ ...n, consent: false }));
   }
 
   if (!canManage) {
@@ -173,12 +186,9 @@ export function SendForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await api.sms.createCampaign({
-        ...request,
-        name: name.trim(),
-        send_at: when.mode === "later" && schedule.at ? schedule.at.toISOString() : null,
-        idempotency_key: idempotencyKey,
-      });
+      const sendAt = when.mode === "later" && schedule.at ? schedule.at.toISOString() : null;
+      keyRef.current = nextIdempotencyKey(keyRef.current, JSON.stringify({ request, name: name.trim(), sendAt }), () => crypto.randomUUID());
+      await api.sms.createCampaign({ ...request, name: name.trim(), send_at: sendAt, idempotency_key: keyRef.current.key });
       toast.success(when.mode === "later" ? "SMS scheduled." : "SMS is sending.");
       setCreated({ scheduled: when.mode === "later" });
       reloadBalance();
@@ -188,11 +198,11 @@ export function SendForm() {
       setNumbers((n) => ({ ...EMPTY_NUMBERS, mode: n.mode }));
       setPreview(null);
       setName(defaultSendName(new Date()));
-      setIdempotencyKey(crypto.randomUUID());
+      keyRef.current = null;
     } catch (err) {
       const code = errorStatus(err);
-      // A 4xx means nothing was created, so the next attempt may use a fresh key (the inputs may have changed).
-      if (code && code >= 400 && code < 500) setIdempotencyKey(crypto.randomUUID());
+      // A 4xx means nothing was created, so the next attempt may use a fresh key.
+      if (code && code >= 400 && code < 500) keyRef.current = null;
       // A 409 carries the exact reason (PE–TM not confirmed, not enough balance), so show it as sent.
       setError(code === 409 ? errorText(err, "Couldn't send the SMS.") : friendlyError(err, "Couldn't send the SMS."));
     } finally {
@@ -209,6 +219,14 @@ export function SendForm() {
     <Card>
       <CardHeader title="Send SMS" hint="Pick an approved template (or type your own DLT details), say who gets it, preview, then send or schedule." />
       <div className="space-y-5 p-4 sm:p-5">
+        {!smsStatus.checklist.pe_tm && (
+          <Notice tone="warn">
+            Sending is locked until PE-TM binding is done.{" "}
+            <Link href="/dashboard/sms/setup?tab=petm" className="font-bold underline">
+              Open PE-TM Binding
+            </Link>
+          </Notice>
+        )}
         <Field label="Template">
           <select className={`${inputCls} sm:max-w-md`} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
             <option value="">Choose a template…</option>
@@ -307,7 +325,7 @@ export function SendForm() {
             value={numbers}
             onChange={(update) => {
               setCreated(null);
-              setNumbers(update);
+              setNumbers((prev) => withNumbersChange(prev, update(prev)));
             }}
             promotional={promotional}
             showLeads={hasLeads}

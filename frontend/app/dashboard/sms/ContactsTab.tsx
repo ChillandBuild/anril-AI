@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { ClipboardPaste, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { Pager } from "./CampaignDetail";
 import { AddContactModal, PasteModal, UploadModal } from "./ContactModals";
 import { GroupsPanel } from "./GroupsPanel";
-import { formatCount, friendlyError } from "./helpers";
+import { formatCount, friendlyError, parseContactsSub } from "./helpers";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
@@ -25,7 +26,12 @@ function chunks<T>(items: T[]): T[][] {
 }
 
 export function ContactsTab() {
-  const [sub, setSub] = useState<"contacts" | "groups">("contacts");
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  // The inner tab lives in the URL (?tab=contacts|groups) so links can open the right one.
+  const sub = parseContactsSub(params.get("tab"));
+  const setSub = (next: "contacts" | "groups") => router.replace(`${pathname}?tab=${next}`, { scroll: false });
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="Contacts" className="flex gap-2">

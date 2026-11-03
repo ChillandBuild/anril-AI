@@ -18,6 +18,16 @@ describe("checklistRows", () => {
     expect(rows.map((r) => r.done)).toEqual([false, false, false, false, false]);
     expect(rows[4].href).toBeNull();
   });
+  it("links each step to the screen where it is done", () => {
+    const hrefs = checklistRows({ status: status(), dlt: null, balance: null }).map((r) => r.href);
+    expect(hrefs).toEqual([
+      "/dashboard/sms/setup?tab=entity",
+      "/dashboard/sms/setup?tab=manager&sub=senders",
+      "/dashboard/sms/setup?tab=manager&sub=templates",
+      "/dashboard/sms/setup?tab=petm",
+      null,
+    ]);
+  });
   it("counts a submitted entity and an approved sender from the DLT list", () => {
     const dlt = {
       entities: [{ entity_id: "E1", entity_name: null, status: "submitted" as const, at: null }],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPeTmProof, isValidSenderId, matchesQuery, parseSenderIds, parseSetupTab, peTmDate, peTmState } from "./dltSetup";
+import { isPeTmProof, isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState } from "./dltSetup";
 
 describe("parseSetupTab", () => {
   it("accepts the three tabs and defaults to entity", () => {
@@ -59,5 +59,15 @@ describe("peTmDate", () => {
     expect(peTmDate({ tm_approved_at: null, pe_confirmed_at: null, created_at: "c" })).toBe("c");
     expect(peTmDate({ tm_approved_at: "t", pe_confirmed_at: null, created_at: "c" })).toBe("t");
     expect(peTmDate({ tm_approved_at: "t", pe_confirmed_at: "p", created_at: "c" })).toBe("p");
+  });
+});
+
+describe("parseDltSub", () => {
+  it("follows ?sub= and defaults to entities", () => {
+    expect(parseDltSub("senders")).toBe("senders");
+    expect(parseDltSub("templates")).toBe("templates");
+    expect(parseDltSub("entities")).toBe("entities");
+    expect(parseDltSub("nope")).toBe("entities");
+    expect(parseDltSub(null)).toBe("entities");
   });
 });

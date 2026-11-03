@@ -1381,7 +1381,7 @@ async function apiFetchOnce<T>(path: string, opts: RequestInit, timeoutMs: numbe
         throw new RetryableError(`Server unavailable (${res.status})`);
       }
       const err = await res.json().catch(() => ({ detail: "Request failed" }));
-      const error = new Error(err.detail || "Request failed") as Error & { status?: number };
+      const error = new Error(errorDetailText(err.detail, "Request failed")) as Error & { status?: number };
       error.status = res.status;
       throw error;
     }
@@ -1399,6 +1399,21 @@ async function apiFetchOnce<T>(path: string, opts: RequestInit, timeoutMs: numbe
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Text for an error body's `detail`. FastAPI sends a string for most errors, but a list of
+ * { msg, loc, ... } items for a 422 validation failure; those are joined with "; ".
+ */
+export function errorDetailText(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail || fallback;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (typeof d === "string" ? d : d && typeof d === "object" && typeof (d as { msg?: unknown }).msg === "string" ? (d as { msg: string }).msg : ""))
+      .filter(Boolean);
+    return msgs.length ? msgs.join("; ") : fallback;
+  }
+  return fallback;
 }
 
 async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -1958,7 +1973,7 @@ async function smsMultipart<T>(path: string, fd: FormData): Promise<T> {
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
     const err = await res.json().catch(() => null);
-    const error = new Error(typeof err?.detail === "string" ? err.detail : "Upload failed") as Error & { status?: number };
+    const error = new Error(errorDetailText(err?.detail, "Upload failed")) as Error & { status?: number };
     error.status = res.status;
     throw error;
   }

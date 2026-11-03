@@ -12,6 +12,13 @@ import {
   excelSummary,
   numbersReady,
   sendFormProblem,
+  withNumbersChange,
+  pruneVarMap,
+  nextIdempotencyKey,
+  isValidEntityId,
+  isValidDltTemplateId,
+  isValidOwnSenderId,
+  parseContactsSub,
   type SendFormInput,
   canCancelCampaign,
   maskKey,
@@ -430,7 +437,7 @@ describe("recipients", () => {
 describe("send form request", () => {
   const tpl = { id: "t1", message: "Hi {#var#}, 20% off", template_type: "promotional" as const, var_count: 1 };
   const nameVar = { source: "field" as const, value: "name" };
-  const own = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "1101", dlt_template_id: "1107", message: "Your order shipped", template_type: "service" as const };
+  const own = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", message: "Your order shipped", template_type: "service" as const };
   const base: SendFormInput = { route: null, template: null, varMap: [], own: EMPTY_OWN, numbers: EMPTY_NUMBERS };
 
   it("sends a picked template through the approved-template route", () => {
@@ -447,7 +454,7 @@ describe("send form request", () => {
     const input: SendFormInput = { ...base, route: "own", own: { ...own, sender_id: " ANRILT " }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
     expect(buildSendRequest(input)).toEqual({
       kind: "manual",
-      manual: { sender_id: "ANRILT", entity_id: "1101", dlt_template_id: "1107", template_type: "service", message: "Your order shipped" },
+      manual: { sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", template_type: "service", message: "Your order shipped" },
       source: "numbers",
       numbers: ["9876543210"],
     });
@@ -526,5 +533,98 @@ describe("developer request examples", () => {
   });
   it("never leaves a bulk9 name in the examples", () => {
     expect((buildCurl(input) + buildPython(input)).toLowerCase()).not.toContain("bulk9");
+  });
+});
+
+describe("withNumbersChange (consent follows the audience)", () => {
+  const ticked = { ...EMPTY_NUMBERS, numbersText: "9876543210", consent: true };
+  it("keeps consent when only the tick changes", () => {
+    expect(withNumbersChange({ ...ticked, consent: false }, { consent: true }).consent).toBe(true);
+    expect(withNumbersChange(ticked, {}).consent).toBe(true);
+  });
+  it("clears consent when the typed numbers change", () => {
+    expect(withNumbersChange(ticked, { numbersText: "9123456780" })).toMatchObject({ numbersText: "9123456780", consent: false });
+  });
+  it("clears consent on a new Excel read, a mode change, groups or leads", () => {
+    const x = { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210"], consent: true };
+    expect(withNumbersChange(x, { excelNumbers: ["9123456780"] }).consent).toBe(false);
+    expect(withNumbersChange(x, { excel: { fileName: "a.xlsx", total: 1, skipped_total: 0, phone_column: "A", skipped: [] } }).consent).toBe(false);
+    expect(withNumbersChange(ticked, { mode: "list" }).consent).toBe(false);
+    expect(withNumbersChange(ticked, { groupIds: ["g1"] }).consent).toBe(false);
+    expect(withNumbersChange(ticked, { leadIds: ["l1"] }).consent).toBe(false);
+  });
+  it("keeps consent when a patch repeats the same values", () => {
+    expect(withNumbersChange(ticked, { excelNumbers: [], groupIds: [] }).consent).toBe(true);
+  });
+  it("drops an explicit consent:true that arrives with a changed audience", () => {
+    expect(withNumbersChange(ticked, { numbersText: "9000000000", consent: true }).consent).toBe(false);
+  });
+});
+
+describe("pruneVarMap", () => {
+  const name = { source: "field" as const, value: "name" };
+  const city = { source: "field" as const, value: "city" };
+  const fixed = { source: "text" as const, value: "2 Nov" };
+  it("drops field mappings that are no longer offered and keeps fixed text", () => {
+    expect(pruneVarMap([name, city, fixed, null], ["name", "phone"])).toEqual([name, null, fixed, null]);
+  });
+  it("returns the same array when nothing changes", () => {
+    const m = [name, fixed, null];
+    expect(pruneVarMap(m, ["name"])).toBe(m);
+  });
+  it("makes the map incomplete so the form asks again", () => {
+    expect(isVariableMapComplete(pruneVarMap([city], ["name"]), 1)).toBe(false);
+  });
+});
+
+describe("nextIdempotencyKey", () => {
+  let n = 0;
+  const make = () => `key${++n}`;
+  it("reuses the key for the same request and renews it for any change", () => {
+    const a = nextIdempotencyKey(null, "A", make);
+    expect(nextIdempotencyKey(a, "A", make)).toBe(a);
+    const b = nextIdempotencyKey(a, "B", make);
+    expect(b.key).not.toBe(a.key);
+    expect(b.signature).toBe("B");
+  });
+});
+
+describe("DLT id checks", () => {
+  it("entity and template ids are 5 to 30 digits", () => {
+    for (const f of [isValidEntityId, isValidDltTemplateId]) {
+      expect(f("12345")).toBe(true);
+      expect(f(" 1234567890123456789012345678 ")).toBe(true);
+      expect(f("1234")).toBe(false);
+      expect(f("1".repeat(31))).toBe(false);
+      expect(f("12a45")).toBe(false);
+      expect(f("")).toBe(false);
+    }
+  });
+  it("own sender is 3 to 6 letters or digits", () => {
+    expect(isValidOwnSenderId("ANR1")).toBe(true);
+    expect(isValidOwnSenderId("ab")).toBe(false);
+    expect(isValidOwnSenderId("ABCDEFG")).toBe(false);
+    expect(isValidOwnSenderId("AB-CD")).toBe(false);
+  });
+  const ok = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", message: "Hello" };
+  const input = (own: typeof ok): SendFormInput => ({ route: "own", template: null, varMap: [], own, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } });
+  it("Type my own refuses bad ids with a clear message", () => {
+    expect(sendFormProblem(input(ok))).toBeNull();
+    expect(sendFormProblem(input({ ...ok, sender_id: "AB-CD" }))).toMatch(/Sender ID/);
+    expect(sendFormProblem(input({ ...ok, entity_id: "12ab" }))).toMatch(/entity ID must be 5 to 30 digits/);
+    expect(sendFormProblem(input({ ...ok, dlt_template_id: "123" }))).toMatch(/template ID must be 5 to 30 digits/);
+    expect(buildSendRequest(input({ ...ok, entity_id: "12ab" }))).toBeNull();
+  });
+  it("Type my own upper-cases the sender id in the request", () => {
+    expect(buildSendRequest(input({ ...ok, sender_id: "anrilt" }))).toMatchObject({ manual: { sender_id: "ANRILT" } });
+  });
+});
+
+describe("parseContactsSub", () => {
+  it("opens groups only for ?tab=groups", () => {
+    expect(parseContactsSub("groups")).toBe("groups");
+    expect(parseContactsSub("contacts")).toBe("contacts");
+    expect(parseContactsSub("x")).toBe("contacts");
+    expect(parseContactsSub(null)).toBe("contacts");
   });
 });

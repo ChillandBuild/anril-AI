@@ -117,9 +117,11 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     }
   }, [permissions, role, roleLoading, router]);
 
-  // SMS-only clients have nothing on this page; their home is the SMS dashboard.
+  // SMS-only clients have nothing on this page; their home is the SMS dashboard. Pending or
+  // unsubscribed tenants keep their subscription screen below.
   const smsHome =
     !roleLoading &&
+    subStatus === "active" &&
     isSmsOnly(enabledFeatures) &&
     (role === "owner" || permissions.includes("sms.view") || permissions.includes("sms.manage"));
   useEffect(() => {

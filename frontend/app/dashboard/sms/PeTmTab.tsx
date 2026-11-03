@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDltList } from "./DltForms";
 import { isPeTmProof, peTmDate, peTmState } from "./dltSetup";
-import { errorStatus, errorText, formatIst, friendlyError } from "./helpers";
+import { ENTITY_ID_MESSAGE, errorStatus, errorText, formatIst, friendlyError, isValidEntityId } from "./helpers";
 import { useSms } from "./SmsShell";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
@@ -51,6 +51,7 @@ export function PeTmTab() {
 
   const items = data?.items ?? [];
   const entities = dlt.data?.entities ?? [];
+  const unknownEntity = isValidEntityId(entityId) && !!dlt.data && !entities.some((e) => e.entity_id === entityId.trim());
   const nameFor = (id: string) => entities.find((e) => e.entity_id === id)?.entity_name ?? null;
 
   function onFile(f: File | null) {
@@ -64,6 +65,10 @@ export function PeTmTab() {
 
   async function upload() {
     if (uploading || !file || !entityId.trim()) return;
+    if (!isValidEntityId(entityId)) {
+      setUploadError(ENTITY_ID_MESSAGE);
+      return;
+    }
     setUploading(true);
     setUploadError("");
     try {
@@ -76,7 +81,6 @@ export function PeTmTab() {
     } catch (err) {
       const code = errorStatus(err);
       if (code === 409) setUploadError("This entity's PE-TM binding is already done.");
-      else if (code === 422) setUploadError("That entity ID isn't one of yours. Check the number or add the entity first.");
       else setUploadError(friendlyError(err, "Couldn't upload the screenshot."));
     } finally {
       setUploading(false);
@@ -149,6 +153,7 @@ export function PeTmTab() {
               </Field>
             </div>
             {fileError && <p className="text-xs font-semibold text-danger">{fileError}</p>}
+            {unknownEntity && <p className="text-xs font-semibold text-[#b45309]">This ID isn&apos;t in your DLT Manager yet — check it&apos;s right.</p>}
             {uploadError && <Notice tone="danger">{uploadError}</Notice>}
             <Btn busy={uploading} disabled={!entityId.trim() || !file} onClick={() => void upload()}>
               Upload screenshot

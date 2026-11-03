@@ -1,18 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { FileSpreadsheet, Plus } from "lucide-react";
 import { api, type SmsDltEntity, type SmsDltSender } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AddSenderModal, DltStatusBadge, ListToolbar, SenderExcelModal, TEMPLATES_KEY, useDltList } from "./DltForms";
-import { matchesQuery } from "./dltSetup";
+import { matchesQuery, parseDltSub, type DltSub } from "./dltSetup";
 import { formatIst, friendlyError } from "./helpers";
 import { TemplatesTab } from "./TemplatesTab";
 import { Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 type Inner = "entity" | "sender" | "template";
+
+const SUB_OF: Record<Inner, DltSub> = { entity: "entities", sender: "senders", template: "templates" };
+const INNER_OF: Record<DltSub, Inner> = { entities: "entity", senders: "sender", templates: "template" };
 
 const STATUS_OPTIONS = [
   { value: "", label: "All" },
@@ -120,7 +124,12 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
 }
 
 export function DltManagerTab() {
-  const [inner, setInner] = useState<Inner>("entity");
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  // The inner tab lives in the URL (?tab=manager&sub=senders) so dashboard links can open the right one.
+  const inner = INNER_OF[parseDltSub(params.get("sub"))];
+  const setInner = (next: Inner) => router.replace(`${pathname}?tab=manager&sub=${SUB_OF[next]}`, { scroll: false });
   const { data, error, isLoading, mutate } = useDltList();
   const templates = useSWR(TEMPLATES_KEY, () => api.sms.templates(), { revalidateOnFocus: false });
   const entities = data?.entities ?? [];

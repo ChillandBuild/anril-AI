@@ -7,6 +7,13 @@ export function parseSetupTab(value: string | null | undefined): SetupTab {
   return value === "manager" || value === "petm" ? value : "entity";
 }
 
+export type DltSub = "entities" | "senders" | "templates";
+
+/** The ?sub= value inside DLT Manager, defaulting to entities for anything unknown. */
+export function parseDltSub(value: string | null | undefined): DltSub {
+  return value === "senders" || value === "templates" ? value : "entities";
+}
+
 /** "ANRILX, anrily  ANRILZ" -> ["ANRILX","ANRILY","ANRILZ"] (upper-cased, no repeats). */
 export function parseSenderIds(text: string): string[] {
   const seen = new Set<string>();

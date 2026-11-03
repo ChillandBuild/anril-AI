@@ -161,6 +161,22 @@ export function isVariableMapComplete(map: (SmsVarSource | null)[], varCount: nu
   return true;
 }
 
+/**
+ * Drop mappings that point at a contact field the current audience no longer offers. Fixed-text
+ * sources stay. Returns the same array when nothing changed, so it is safe in a state update.
+ */
+export function pruneVarMap(map: (SmsVarSource | null)[], availableKeys: string[]): (SmsVarSource | null)[] {
+  let changed = false;
+  const next = map.map((v) => {
+    if (v && v.source === "field" && !availableKeys.includes(v.value)) {
+      changed = true;
+      return null;
+    }
+    return v;
+  });
+  return changed ? next : map;
+}
+
 /** Group excluded leads by reason, largest group first. */
 export function groupExcluded(excluded: SmsPreviewExcluded[]): { reason: string; leads: SmsPreviewExcluded[] }[] {
   const by = new Map<string, SmsPreviewExcluded[]>();
@@ -431,6 +447,13 @@ export function otpDelivery(status: string | null | undefined): { label: string;
 
 // ---- Contacts and recipients ----
 
+export type ContactsSub = "contacts" | "groups";
+
+/** The ?tab= value on the Contacts page, defaulting to contacts for anything unknown. */
+export function parseContactsSub(value: string | null | undefined): ContactsSub {
+  return value === "groups" ? "groups" : "contacts";
+}
+
 export const MAX_PASTED_NUMBERS = 5000;
 export const CONSENT_LABEL = "Everyone on this list agreed to get promotional SMS from us";
 export const CONSENT_HINT = "Leave this off and these contacts only get service SMS (like order updates and OTPs), never promotions.";
@@ -464,6 +487,27 @@ export interface NumbersState {
 }
 
 export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", excelNumbers: [], excel: null, groupIds: [], leadIds: [], consent: false };
+
+function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Apply a change to the numbers step. The promotional consent tick belongs to one specific audience,
+ * so any change to who gets the SMS (mode, typed text, a new Excel read, groups, leads) clears it.
+ * A patch that only touches `consent` keeps it.
+ */
+export function withNumbersChange(prev: NumbersState, patch: Partial<NumbersState>): NumbersState {
+  const next = { ...prev, ...patch };
+  const audienceChanged =
+    next.mode !== prev.mode ||
+    next.numbersText !== prev.numbersText ||
+    next.excel !== prev.excel ||
+    !sameList(next.excelNumbers, prev.excelNumbers) ||
+    !sameList(next.groupIds, prev.groupIds) ||
+    !sameList(next.leadIds, prev.leadIds);
+  return audienceChanged ? { ...next, consent: false } : next;
+}
 
 /** The loose numbers a Contact or Excel send carries. Excel numbers are sent exactly like pasted ones. */
 export function looseNumbers(n: NumbersState): string[] {
@@ -505,6 +549,24 @@ export interface OwnDlt {
 }
 export const EMPTY_OWN: OwnDlt = { sender_id: "", entity_id: "", dlt_template_id: "", template_type: "service", message: "" };
 
+/** DLT entity (PE) and content-template IDs are plain numbers, 5 to 30 digits. */
+export const ENTITY_ID_MESSAGE = "The DLT entity ID must be 5 to 30 digits (numbers only).";
+export const DLT_TEMPLATE_ID_MESSAGE = "The DLT template ID must be 5 to 30 digits (numbers only).";
+export const SENDER_ID_MESSAGE = "The Sender ID must be 3 to 6 letters or digits.";
+
+export function isValidEntityId(id: string): boolean {
+  return /^\d{5,30}$/.test(id.trim());
+}
+
+export function isValidDltTemplateId(id: string): boolean {
+  return /^\d{5,30}$/.test(id.trim());
+}
+
+/** "Type my own" sender: 3 to 6 letters or digits (sent upper-cased). */
+export function isValidOwnSenderId(id: string): boolean {
+  return /^[A-Za-z0-9]{3,6}$/.test(id.trim());
+}
+
 export const OWN_VAR_ERROR = "Type my own can't have {#var#} in the message. Write the exact text to send, or pick a template that has variables.";
 
 /** "Type my own" sends no per-person values, so a {#var#} in the message is refused. */
@@ -543,8 +605,11 @@ export function sendFormProblem(input: SendFormInput): string | null {
   } else {
     const o = input.own;
     if (!o.sender_id.trim()) return "Pick a Sender ID.";
+    if (!isValidOwnSenderId(o.sender_id)) return SENDER_ID_MESSAGE;
     if (!o.entity_id.trim()) return "Enter the DLT entity ID.";
+    if (!isValidEntityId(o.entity_id)) return ENTITY_ID_MESSAGE;
     if (!o.dlt_template_id.trim()) return "Enter the DLT template ID.";
+    if (!isValidDltTemplateId(o.dlt_template_id)) return DLT_TEMPLATE_ID_MESSAGE;
     if (!o.message.trim()) return "Type the message.";
     const v = ownVarError(o.message);
     if (v) return v;
@@ -573,7 +638,7 @@ export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewReques
     return {
       kind: "manual",
       manual: {
-        sender_id: o.sender_id.trim(),
+        sender_id: o.sender_id.trim().toUpperCase(),
         entity_id: o.entity_id.trim(),
         dlt_template_id: o.dlt_template_id.trim(),
         template_type: o.template_type,
@@ -589,6 +654,18 @@ export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewReques
     variable_map: input.varMap.slice(0, templateVarCount(t)) as SmsVarSource[],
     ...recipients,
   };
+}
+
+/**
+ * One idempotency key per exact request. The same body, name and schedule reuse the key (a double
+ * click or a retry after a lost reply cannot create a second campaign); any change gets a new key.
+ */
+export function nextIdempotencyKey(
+  prev: { signature: string; key: string } | null,
+  signature: string,
+  makeKey: () => string,
+): { signature: string; key: string } {
+  return prev && prev.signature === signature ? prev : { signature, key: makeKey() };
 }
 
 /** "SMS 3 Nov 18:05", in Indian time. */

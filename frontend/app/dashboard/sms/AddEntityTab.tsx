@@ -5,7 +5,7 @@ import { api, type SmsTemplateType } from "@/lib/api";
 import { CheckField } from "@/components/ui/controls";
 import { revalidateDlt } from "./DltForms";
 import { isValidSenderId, parseSenderIds } from "./dltSetup";
-import { friendlyError } from "./helpers";
+import { ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
 import { Btn, Card, CardHeader, Field, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
@@ -32,7 +32,8 @@ export function AddEntityTab() {
   const senderIds = parseSenderIds(senderText);
   const senderOk = senderIds.length > 0 && senderIds.every(isValidSenderId);
   const templateOk = !withTemplate || (senderOk && !!dltId.trim() && !!text.trim());
-  const canSubmit = canManage && !!entityId.trim() && !!name.trim() && files.length >= 1 && !fileError && templateOk;
+  const entityIdOk = isValidEntityId(entityId);
+  const canSubmit = canManage && entityIdOk && !!name.trim() && files.length >= 1 && !fileError && templateOk;
 
   function onFiles(list: FileList | null) {
     const picked = Array.from(list ?? []);
@@ -91,7 +92,8 @@ export function AddEntityTab() {
         {!canManage && <Notice tone="info">You can view this page. Ask an owner for SMS manage access to add an entity.</Notice>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Entity ID (PE ID)">
-            <input className={inputCls} value={entityId} onChange={(e) => setEntityId(e.target.value)} disabled={!canManage} />
+            <input className={inputCls} value={entityId} onChange={(e) => setEntityId(e.target.value)} disabled={!canManage} inputMode="numeric" />
+            {entityId.trim() && !entityIdOk && <span className="mt-1 block text-xs font-semibold text-danger">{ENTITY_ID_MESSAGE}</span>}
           </Field>
           <Field label="Entity name">
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} disabled={!canManage} />
