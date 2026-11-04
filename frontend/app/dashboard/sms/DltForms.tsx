@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api, type SmsDltStatus, type SmsOk, type SmsTemplateType } from "@/lib/api";
 import { isValidSenderId } from "./dltSetup";
 import { friendlyError } from "./helpers";
-import { Badge, Btn, Field, InlinePanel, Notice, inputCls, textareaCls } from "./ui";
+import { Badge, Btn, Field, FilePicker, Modal, Notice, inputCls, textareaCls } from "./ui";
 
 export const DLT_LIST_KEY = "sms:dlt-list";
 export const TEMPLATES_KEY = "sms:templates";
@@ -133,9 +133,9 @@ function AddSenderForm({ onClose }: { onClose: () => void }) {
 
 export function AddSenderPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <InlinePanel open={open} title="Add sender ID" onClose={onClose}>
+    <Modal open={open} title="Add sender ID" onClose={onClose}>
       <AddSenderForm onClose={onClose} />
-    </InlinePanel>
+    </Modal>
   );
 }
 
@@ -166,9 +166,7 @@ function ExcelForm({
           </select>
         </Field>
       )}
-      <Field label="DLT Excel or CSV file">
-        <input type="file" accept=".xlsx,.csv" className="block w-full text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      </Field>
+      <FilePicker label="DLT Excel or CSV file" accept=".xlsx,.csv" file={file} onChange={setFile} disabled={busy} />
       <ErrorLine text={error} />
       <Btn busy={busy} disabled={!entityId.trim() || !file} onClick={() => void submit()}>
         Upload
@@ -179,21 +177,21 @@ function ExcelForm({
 
 export function SenderExcelPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <InlinePanel open={open} title="Import sender IDs from DLT Excel" onClose={onClose}>
+    <Modal open={open} title="Import sender IDs from DLT Excel" onClose={onClose}>
       <ExcelForm
         hint="Upload the sender (header) export from your DLT portal."
         run={(a) => api.sms.addSenderExcel({ entity_id: a.entity_id, file: a.file })}
         onClose={onClose}
       />
-    </InlinePanel>
+    </Modal>
   );
 }
 
 export function TemplateExcelPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <InlinePanel open={open} title="Import templates from DLT Excel" onClose={onClose}>
+    <Modal open={open} title="Import templates from DLT Excel" onClose={onClose}>
       <ExcelForm hint="Upload the template export from your DLT portal." withType run={(a) => api.sms.addTemplateExcel(a)} onClose={onClose} />
-    </InlinePanel>
+    </Modal>
   );
 }
 
@@ -258,8 +256,8 @@ function AddTemplateForm({ onClose }: { onClose: () => void }) {
 
 export function AddTemplatePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <InlinePanel open={open} title="Add template" onClose={onClose}>
+    <Modal open={open} title="Add template" onClose={onClose} wide>
       <AddTemplateForm onClose={onClose} />
-    </InlinePanel>
+    </Modal>
   );
 }

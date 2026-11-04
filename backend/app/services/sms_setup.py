@@ -1,5 +1,5 @@
 """DLT Setup and Add credit (docs/plans/2026-11-03-sms-redesign.md): entities and sender IDs a
-client submitted, PE-TM binding per entity, and SMS credit requests. Routes: app/routes/sms.py
+client submitted, and SMS credit requests. Routes: app/routes/sms.py
 (client) and app/routes/operator_sms.py (operator).
 
 Bulk9 has no entity list and lists only approved senders, so a submitted entity or sender reads
@@ -7,12 +7,10 @@ Bulk9 has no entity list and lists only approved senders, so a submitted entity 
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.config_dynamic import get_setting, invalidate_cache
 from app.services.sms_campaigns import SmsError
 
 logger = logging.getLogger(__name__)
@@ -108,96 +106,6 @@ def senders(db, tenant_id: str, approved_senders: list[dict]) -> list[dict]:
         out.append({"sender_id": s["sender_id"], "entity_id": s["entity_id"], "entity_name": None,
                     "status": "submitted", "at": s.get("created_at")})
     return out
-
-
-# ---------------------------------------------------------------- PE-TM binding
-
-PE_TM_FIELDS = ("id", "entity_id", "tm_approved_at", "pe_confirmed_at", "created_at", "updated_at")
-
-
-def public_pe_tm(r: dict) -> dict:
-    return {k: r.get(k) for k in PE_TM_FIELDS}
-
-
-def pe_tm_rows(db, tenant_id: str) -> list[dict]:
-    return (db.table("sms_pe_tm").select("*").eq("tenant_id", tenant_id).order("created_at", desc=True)
-            .execute()).data or []
-
-
-def _pe_tm_row(db, tenant_id: str, row_id: str) -> dict:
-    rows = (db.table("sms_pe_tm").select("*").eq("tenant_id", tenant_id).eq("id", row_id).limit(1)
-            .execute()).data or []
-    if not rows:
-        raise SmsError("Binding request not found.", 404)
-    return rows[0]
-
-
-def check_pe_tm_open(db, tenant_id: str, entity_id: str) -> list[dict]:
-    """The entity's binding row (0 or 1); refuses once the binding is done."""
-    existing = (db.table("sms_pe_tm").select("*").eq("tenant_id", tenant_id).eq("entity_id", entity_id)
-                .limit(1).execute()).data or []
-    if existing and existing[0].get("pe_confirmed_at"):
-        raise SmsError("This entity's PE-TM binding is already done.", 409)
-    return existing
-
-
-def request_pe_tm(db, tenant_id: str, entity_id: str) -> dict:
-    """The client says they sent the PE-TM binding request in their DLT portal (no screenshot,
-    same as Bulk9). Rings the operator bell, at most once per entity per hour. Asking again never
-    undoes a TM approval, and a done binding is refused."""
-    existing = check_pe_tm_open(db, tenant_id, entity_id)
-    if existing and existing[0].get("tm_approved_at"):
-        return existing[0]
-    if existing:
-        row = (db.table("sms_pe_tm").update({"updated_at": _now()}).eq("id", existing[0]["id"])
-               .eq("tenant_id", tenant_id).execute()).data[0]
-    else:
-        # proof_path is NOT NULL (migration 242, from the screenshot days); "" means "no file".
-        row = (db.table("sms_pe_tm").insert({"tenant_id": tenant_id, "entity_id": entity_id, "proof_path": "",
-                                             "updated_at": _now()}).execute()).data[0]
-    alert(db, tenant_id, "sms_pe_tm_proof",
-          f"{_tenant_name(db, tenant_id)} sent the PE-TM binding request for entity {entity_id}. "
-          "Approve it as TM in the reseller panel, then mark it approved here.", dedup_key=entity_id)
-    return row
-
-
-def approve_tm(db, tenant_id: str, row_id: str, admin_id: str | None) -> dict:
-    """Operator: the TM side approved the binding (after forwarding the proof in the reseller panel)."""
-    row = _pe_tm_row(db, tenant_id, row_id)
-    if row.get("tm_approved_at"):
-        return row
-    return (db.table("sms_pe_tm").update({"tm_approved_at": _now(), "tm_approved_by": admin_id, "updated_at": _now()})
-            .eq("id", row_id).eq("tenant_id", tenant_id).execute()).data[0]
-
-
-def confirm_pe(db, tenant_id: str, row_id: str, user_id: str | None) -> dict:
-    """Client: did the final approval in the DLT portal. Turns sending on (checklist pe_tm)."""
-    row = _pe_tm_row(db, tenant_id, row_id)
-    if not row.get("tm_approved_at"):
-        raise SmsError("Wait until your account manager marks the TM approval, then approve it in your DLT portal.", 409)
-    if row.get("pe_confirmed_at"):
-        # Already confirmed: leave the switch alone, so an operator who turned sending off stays in charge.
-        return row
-    row = (db.table("sms_pe_tm").update({"pe_confirmed_at": _now(), "pe_confirmed_by": user_id, "updated_at": _now()})
-           .eq("id", row_id).eq("tenant_id", tenant_id).execute()).data[0]
-    set_pe_tm_done(db, tenant_id)
-    return row
-
-
-def set_pe_tm_done(db, tenant_id: str) -> None:
-    try:
-        raw = json.loads(get_setting("sms_checklist", tenant_id=tenant_id) or "{}")
-    except ValueError:
-        raw = {}
-    raw = raw if isinstance(raw, dict) else {}
-    if raw.get("pe_tm") is True:
-        return
-    raw["pe_tm"] = True
-    db.table("app_settings").upsert(
-        {"key": "sms_checklist", "value": json.dumps(raw), "tenant_id": tenant_id, "is_secret": False},
-        on_conflict="key,tenant_id",
-    ).execute()
-    invalidate_cache("sms_checklist")
 
 
 # ---------------------------------------------------------------- Add credit

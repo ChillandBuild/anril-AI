@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup, type SmsUploadPreview, type SmsUploadResult } from "@/lib/api";
 import { formatCount, friendlyError, skippedRowsCsv } from "./helpers";
-import { Btn, ConsentCheck, Field, InlinePanel, Notice, inputCls, saveCsv, textareaCls } from "./ui";
+import { Btn, ConsentCheck, Field, FilePicker, InlinePanel, Notice, inputCls, saveCsv, textareaCls } from "./ui";
 
 const NEW_GROUP = "__new__";
 
@@ -260,9 +260,7 @@ export function UploadPanel({ open, groups, onClose, onDone }: { open: boolean; 
         </div>
       ) : (
         <div className="space-y-4">
-          <Field label="CSV or Excel file" hint="Up to 10 MB and 50,000 rows.">
-            <input type="file" accept=".csv,.xlsx" className="block w-full text-sm" disabled={busy} onChange={(e) => void pick(e.target.files?.[0] ?? null)} />
-          </Field>
+          <FilePicker label="CSV or Excel file" accept=".csv,.xlsx" file={file} onChange={(f) => void pick(f)} disabled={busy} hint="Up to 50,000 rows." />
           {reading && <p className="text-sm text-[#64748b]">Reading the file…</p>}
           {preview && (
             <>

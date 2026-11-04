@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, parseSetupTab, peTmDate, peTmState, setupTabFor } from "./dltSetup";
-
-describe("parseSetupTab", () => {
-  it("accepts the three tabs and defaults to entity", () => {
-    expect(parseSetupTab("manager")).toBe("manager");
-    expect(parseSetupTab("petm")).toBe("petm");
-    expect(parseSetupTab("entity")).toBe("entity");
-    expect(parseSetupTab("nope")).toBe("entity");
-    expect(parseSetupTab(null)).toBe("entity");
-  });
-});
+import { isValidSenderId, matchesQuery, parseSenderIds, parseDltSub, setupSubFor } from "./dltSetup";
 
 describe("parseSenderIds", () => {
   it("splits on commas and spaces, upper-cases and removes repeats", () => {
@@ -36,22 +26,6 @@ describe("matchesQuery", () => {
   });
 });
 
-describe("peTmState", () => {
-  it("lets the client confirm only after TM approval and only once", () => {
-    expect(peTmState({ tm_approved_at: null, pe_confirmed_at: null }).canConfirm).toBe(false);
-    expect(peTmState({ tm_approved_at: "2026-11-03T10:00:00Z", pe_confirmed_at: null }).canConfirm).toBe(true);
-    expect(peTmState({ tm_approved_at: "2026-11-03T10:00:00Z", pe_confirmed_at: "2026-11-03T11:00:00Z" })).toEqual({ tmApproved: true, done: true, canConfirm: false });
-  });
-});
-
-describe("peTmDate", () => {
-  it("prefers the latest step reached", () => {
-    expect(peTmDate({ tm_approved_at: null, pe_confirmed_at: null, created_at: "c" })).toBe("c");
-    expect(peTmDate({ tm_approved_at: "t", pe_confirmed_at: null, created_at: "c" })).toBe("t");
-    expect(peTmDate({ tm_approved_at: "t", pe_confirmed_at: "p", created_at: "c" })).toBe("p");
-  });
-});
-
 describe("parseDltSub", () => {
   it("follows ?sub= and defaults to entities", () => {
     expect(parseDltSub("senders")).toBe("senders");
@@ -62,14 +36,18 @@ describe("parseDltSub", () => {
   });
 });
 
-describe("setupTabFor (before the Bulk9 key is set, only PE-TM Binding works)", () => {
-  it("keeps the asked-for tab once connected", () => {
-    expect(setupTabFor("manager", true)).toBe("manager");
-    expect(setupTabFor(null, true)).toBe("entity");
+describe("setupSubFor (old deep links still land sensibly)", () => {
+  it("opens Entity ID for the old entity and PE-TM tabs and for no params", () => {
+    expect(setupSubFor("entity", null)).toBe("entities");
+    expect(setupSubFor("petm", null)).toBe("entities");
+    expect(setupSubFor("petm", "senders")).toBe("entities");
+    expect(setupSubFor(null, null)).toBe("entities");
   });
-  it("always opens PE-TM Binding while not connected", () => {
-    expect(setupTabFor("entity", false)).toBe("petm");
-    expect(setupTabFor("manager", false)).toBe("petm");
-    expect(setupTabFor(null, false)).toBe("petm");
+  it("follows ?sub= for the manager tab and for a bare ?sub=", () => {
+    expect(setupSubFor("manager", "senders")).toBe("senders");
+    expect(setupSubFor("manager", "templates")).toBe("templates");
+    expect(setupSubFor("manager", null)).toBe("entities");
+    expect(setupSubFor(null, "templates")).toBe("templates");
+    expect(setupSubFor("nope", "nope")).toBe("entities");
   });
 });

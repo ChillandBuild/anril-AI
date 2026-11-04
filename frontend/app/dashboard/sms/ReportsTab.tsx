@@ -18,6 +18,7 @@ import {
   campaignStatusTone,
   clampRange,
   defaultRange,
+  dltReason,
   formatCount,
   formatIst,
   friendlyError,
@@ -407,7 +408,7 @@ function LogsBody() {
                     <tr key={i} className="border-b border-[#f1f5f9] last:border-0">
                       {cols.map((c) => (
                         <td key={c} className={`${tdCls} max-w-[260px] break-words`}>
-                          {row[c] == null ? "—" : String(row[c])}
+                          <LogCell column={c} value={row[c]} />
                         </td>
                       ))}
                     </tr>
@@ -490,5 +491,20 @@ export function OtpHistory() {
         </>
       )}
     </Card>
+  );
+}
+
+/** One raw-log cell. The status description (a DLT / operator code) is shown in plain English with the raw code on hover. */
+function LogCell({ column, value }: { column: string; value: unknown }) {
+  if (value == null) return <>—</>;
+  const text = String(value);
+  if (!/^status[ _-]?desc/i.test(column)) return <>{text}</>;
+  const reason = dltReason(text);
+  if (!reason.text) return <>—</>;
+  return (
+    <span title={reason.code ?? undefined}>
+      {reason.text}
+      {reason.code && reason.code.toLowerCase() !== reason.text.toLowerCase() && <span className="block text-[10px] text-[#94a3b8]">{reason.code}</span>}
+    </span>
   );
 }

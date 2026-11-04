@@ -39,8 +39,6 @@ def _patches(db):
     for mod in (sms, operator_sms):
         stack.enter_context(patch.object(mod, "get_supabase", lambda: db))
         stack.enter_context(patch.object(mod, "get_setting", _settings(db)))
-    stack.enter_context(patch.object(sms_setup, "get_setting", _settings(db)))
-    stack.enter_context(patch.object(sms_setup, "invalidate_cache", lambda *a: None))
     stack.enter_context(patch.object(operator_sms, "record_audit_event", lambda *a, **k: None))
     return stack
 
@@ -141,74 +139,19 @@ async def test_manager_still_lists_submissions_when_bulk9_is_down():
     assert out["entities"][0]["status"] == "submitted" and out["error"]
 
 
-# ---------------------------------------------------------------- PE-TM
+# ---------------------------------------------------------------- removed: PE-TM, template requests, checklist
 
 @pytest.mark.asyncio
-async def test_status_carries_the_tm_to_bind_to():
+async def test_status_has_no_pe_tm_gate_fields():
     db = _db()
     with _patches(db):
         out = await sms.status(ctx=CTX)
-    assert out["pe_tm_info"] == {"tm_name": "SID GROUPS PRIVATE LIMITED", "tm_id": "1702178720558766591"}
+    assert "checklist" not in out and "pe_tm_info" not in out
 
 
-@pytest.mark.asyncio
-async def test_pe_tm_full_flow_turns_sending_on():
-    db = _db()
-    db.add("app_settings", tenant_id=T, key="sms_checklist", value=json.dumps({"dlt": True, "sender": True}))
-    with _patches(db):
-        row = await sms.pe_tm_request(sms.PeTmBody(entity_id=f" {ENTITY} "), ctx=CTX)
-        assert row["tm_approved_at"] is None and "proof_path" not in row
-        assert db.rows("sms_pe_tm")[0]["proof_path"] == ""  # no screenshot: the client says they sent it
-        msg = _alerts(db, "sms_pe_tm_proof")[0]["detail"]["message"]
-        assert "sent the PE-TM binding request" in msg and ENTITY in msg
-        db.storage.from_.return_value.upload.assert_not_called()
-
-        with pytest.raises(HTTPException) as e:  # the client cannot confirm before the TM approval
-            await sms.pe_tm_confirm(row["id"], ctx=CTX)
-        assert e.value.status_code == 409
-
-        listed = await operator_sms.list_pe_tm(T, ADMIN)
-        assert listed["items"][0]["proof_url"] is None  # nothing to sign
-        db.storage.from_.return_value.create_signed_url.assert_not_called()
-        await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
-        done = await sms.pe_tm_confirm(row["id"], ctx=CTX)
-    assert done["pe_confirmed_at"]
-    assert json.loads(db.rows("app_settings")[0]["value"]) == {"dlt": True, "sender": True, "pe_tm": True}
-
-
-@pytest.mark.asyncio
-async def test_asking_again_keeps_one_row_never_undoes_a_tm_approval_and_a_done_binding_is_locked():
-    db = _db()
-    body = sms.PeTmBody(entity_id=ENTITY)
-    with _patches(db):
-        row = await sms.pe_tm_request(body, ctx=CTX)
-        again = await sms.pe_tm_request(body, ctx=CTX)
-        assert again["id"] == row["id"]
-        await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
-        after = await sms.pe_tm_request(body, ctx=CTX)  # a double click after the approval
-        assert after["tm_approved_at"]
-        await sms.pe_tm_confirm(row["id"], ctx=CTX)
-        with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_request(body, ctx=CTX)
-    assert e.value.status_code == 409 and len(db.rows("sms_pe_tm")) == 1
-
-
-@pytest.mark.asyncio
-async def test_pe_tm_is_tenant_scoped_and_validated():
-    db = _db()
-    other = db.add("sms_pe_tm", tenant_id=OTHER, entity_id=ENTITY, proof_path=f"{OTHER}/x.png",
-                   tm_approved_at="2026-11-03T00:00:00+00:00")
-    with _patches(db):
-        with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_confirm(other["id"], ctx=CTX)
-        assert e.value.status_code == 404
-        with pytest.raises(HTTPException) as e:
-            await operator_sms.approve_pe_tm(T, other["id"], ADMIN)
-        assert e.value.status_code == 404
-        with pytest.raises(HTTPException) as e:
-            await sms.pe_tm_request(sms.PeTmBody(entity_id="12ab"), ctx=CTX)
-        assert e.value.status_code == 422
-        assert (await sms.pe_tm_list(ctx=CTX))["items"] == []
+def test_pe_tm_and_template_request_routes_are_gone():
+    paths = {route.path for route in sms.router.routes}
+    assert not {p for p in paths if "pe-tm" in p or "template-requests" in p}
 
 
 # ---------------------------------------------------------------- Add credit
@@ -250,30 +193,6 @@ async def test_finishing_a_request_twice_keeps_the_first_outcome():
     assert out["item"]["status"] == "cancelled"
 
 
-# ---------------------------------------------------------------- security review fixes
-
-@pytest.mark.asyncio
-async def test_reconfirming_does_not_undo_the_operators_switch_off():
-    db = _db()
-    with _patches(db):
-        row = await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
-        await operator_sms.approve_pe_tm(T, row["id"], ADMIN)
-        await sms.pe_tm_confirm(row["id"], ctx=CTX)
-        db.rows("app_settings")[0]["value"] = json.dumps({"pe_tm": False})  # operator turned sending off
-        await sms.pe_tm_confirm(row["id"], ctx=CTX)
-    assert json.loads(db.rows("app_settings")[0]["value"]) == {"pe_tm": False}
-
-
-@pytest.mark.asyncio
-async def test_one_unsignable_proof_does_not_break_the_operator_list():
-    db = _db()
-    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/gone.png")
-    db.storage.from_.return_value.create_signed_url.side_effect = RuntimeError("missing")
-    with _patches(db):
-        out = await operator_sms.list_pe_tm(T, ADMIN)
-    assert out["items"][0]["proof_url"] is None
-
-
 # ---------------------------------------------------------------- hardening (deferred LOW items)
 
 @pytest.mark.asyncio
@@ -298,30 +217,6 @@ async def test_real_png_jpg_and_pdf_are_accepted():
         for name, data in (("a.png", PNG), ("b.jpeg", b"\xff\xd8\xff\xe0rest"), ("c.pdf", PDF)):
             await sms._save_upload(db, T, _file(name, data), {"png", "jpg", "jpeg", "pdf"})
     assert db.storage.from_.return_value.upload.call_count == 3
-
-
-@pytest.mark.asyncio
-async def test_asking_again_within_an_hour_rings_the_bell_once_per_entity():
-    db = _db()
-    with _patches(db):
-        for _ in range(3):
-            await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
-        await sms.pe_tm_request(sms.PeTmBody(entity_id="1201160000000099999"), ctx=CTX)
-        assert len(_alerts(db, "sms_pe_tm_proof")) == 2
-        # An hour later the same entity rings again (the client is still waiting).
-        for r in _alerts(db, "sms_pe_tm_proof"):
-            r["created_at"] = "2026-01-01T00:00:00+00:00"
-        await sms.pe_tm_request(sms.PeTmBody(entity_id=ENTITY), ctx=CTX)
-    assert len(_alerts(db, "sms_pe_tm_proof")) == 3
-
-
-@pytest.mark.asyncio
-async def test_old_screenshot_rows_still_get_a_link_for_the_operator():
-    db = _db()
-    db.add("sms_pe_tm", tenant_id=T, entity_id=ENTITY, proof_path=f"{T}/old.png")
-    with _patches(db):
-        out = await operator_sms.list_pe_tm(T, ADMIN)
-    assert out["items"][0]["proof_url"] == "https://signed/x"
 
 
 @pytest.mark.asyncio

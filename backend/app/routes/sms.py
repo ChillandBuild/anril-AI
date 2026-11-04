@@ -6,7 +6,6 @@ Contract: docs/plans/2026-10-30-sms-api-contract.md. Each tenant sends with its 
 """
 import csv
 import io
-import json
 import logging
 import mimetypes
 import re
@@ -18,7 +17,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
@@ -149,15 +147,6 @@ async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str])
     return signed_url(db, await _save_upload(db, tenant_id, file, allowed))
 
 
-def _checklist(tenant_id: str) -> dict:
-    try:
-        raw = json.loads(get_setting("sms_checklist", tenant_id=tenant_id) or "{}")
-    except ValueError:
-        raw = {}
-    raw = raw if isinstance(raw, dict) else {}
-    return {k: bool(raw.get(k)) for k in ("dlt", "pe_tm", "sender")}
-
-
 # ---------------------------------------------------------------- status, balance, senders
 
 def _templates_ready(tenant_id: str) -> bool:
@@ -172,21 +161,13 @@ async def status(ctx: dict = Depends(require_permission("sms.view"))):
     return {
         "enabled": _is_enabled(tid),
         "connected": bool(get_setting("bulk9_api_key", tenant_id=tid)),
-        "checklist": _checklist(tid),
         "templates_ready": _templates_ready(tid),
         "support_contact": get_setting("sms_support_contact", tenant_id=tid) or "",
-        "pe_tm_info": {"tm_name": env_settings.sms_tm_name, "tm_id": env_settings.sms_tm_id},
     }
 
 
-PE_TM_PENDING = "Waiting for your account manager to confirm PE–TM binding."
-
-
-async def _require_send_ready(tenant_id: str, api_key: str, needed: int) -> None:
-    """Block a send that would fail anyway: no PE–TM binding (operators block the SMS but it can
-    still be charged) or not enough balance (every message would fail)."""
-    if not _checklist(tenant_id)["pe_tm"]:
-        raise HTTPException(409, PE_TM_PENDING)
+async def _require_send_ready(api_key: str, needed: int) -> None:
+    """Block a send that would fail anyway: not enough balance (every message would fail)."""
     have = (await _bulk9(bulk9_client.wallet(api_key)))["sms_count"]
     if have < needed:
         raise HTTPException(409, f"Not enough SMS balance: this needs {needed:,} SMS and you have {have:,}.")
@@ -406,7 +387,7 @@ async def dlt_template_excel(entity_id: str = Form(..., max_length=40),
     return {"ok": True, "message": _message(res, "Templates uploaded.")}
 
 
-# ---------------------------------------------------------------- PE-TM binding + Add credit
+# ---------------------------------------------------------------- Add credit
 
 
 def _setup(fn, *args):
@@ -414,40 +395,6 @@ def _setup(fn, *args):
         return fn(*args)
     except camp.SmsError as e:
         raise _sms_error(e)
-
-
-def _row_id(raw: str) -> str:
-    try:
-        return str(uuid.UUID(raw))
-    except ValueError:
-        raise HTTPException(404, "Not found.")
-
-
-@router.get("/pe-tm")
-async def pe_tm_list(ctx: dict = Depends(view_no_key)):
-    rows = sms_setup.pe_tm_rows(get_supabase(), ctx["tenant_id"])
-    return {"items": [sms_setup.public_pe_tm(r) for r in rows]}
-
-
-class PeTmBody(BaseModel):
-    entity_id: str = Field(max_length=40)
-
-
-@router.post("/pe-tm")
-async def pe_tm_request(body: PeTmBody, ctx: dict = Depends(manage_no_key)):
-    """The client pressed "I've sent the binding request"; the account manager then approves it as TM."""
-    eid = body.entity_id.strip()
-    if not ENTITY_ID_RE.fullmatch(eid):
-        raise HTTPException(422, "Enter the 19-digit DLT entity ID.")
-    row = _setup(sms_setup.request_pe_tm, get_supabase(), ctx["tenant_id"], eid)
-    return sms_setup.public_pe_tm(row)
-
-
-@router.post("/pe-tm/{row_id}/confirm")
-async def pe_tm_confirm(row_id: str, ctx: dict = Depends(manage_no_key)):
-    """The client did the final approval in their DLT portal: sending turns on."""
-    row = _setup(sms_setup.confirm_pe, get_supabase(), ctx["tenant_id"], _row_id(row_id), ctx.get("user_id"))
-    return sms_setup.public_pe_tm(row)
 
 
 class CreditBody(BaseModel):
@@ -464,47 +411,6 @@ async def credit_list(ctx: dict = Depends(view_no_key)):
 async def credit_request(body: CreditBody, ctx: dict = Depends(manage_no_key)):
     row = _setup(sms_setup.request_credit, get_supabase(), ctx["tenant_id"], ctx.get("user_id"), body.amount, body.note)
     return sms_setup.public_credit(row)
-
-
-# ---------------------------------------------------------------- template requests
-
-REQUEST_FIELDS = ("id", "wording", "template_type", "status", "reason", "created_at", "updated_at")
-
-
-@router.get("/template-requests")
-async def list_template_requests(ctx: dict = Depends(view_no_key)):
-    rows = (get_supabase().table("sms_template_requests").select("*").eq("tenant_id", ctx["tenant_id"])
-            .order("created_at", desc=True).limit(200).execute()).data or []
-    return {"requests": [{k: r.get(k) for k in REQUEST_FIELDS} for r in rows]}
-
-
-class TemplateRequestBody(BaseModel):
-    wording: str = Field(min_length=5, max_length=1600)
-    template_type: Literal["service", "promotional"]
-
-
-@router.post("/template-requests")
-async def create_template_request(body: TemplateRequestBody, ctx: dict = Depends(manage_no_key)):
-    row = get_supabase().table("sms_template_requests").insert({
-        "tenant_id": ctx["tenant_id"], "wording": body.wording.strip(),
-        "template_type": body.template_type, "created_by": ctx.get("user_id"),
-    }).execute().data[0]
-    return {k: row.get(k) for k in REQUEST_FIELDS}
-
-
-@router.delete("/template-requests/{request_id}")
-async def delete_template_request(request_id: str, ctx: dict = Depends(manage_no_key)):
-    """Withdraw a request nobody has started on, or clear away a rejected one."""
-    db, tid = get_supabase(), ctx["tenant_id"]
-    rows = (db.table("sms_template_requests").delete().eq("id", request_id).eq("tenant_id", tid)
-            .in_("status", ["requested", "rejected"]).execute()).data or []
-    if not rows:
-        found = (db.table("sms_template_requests").select("id").eq("id", request_id).eq("tenant_id", tid)
-                 .limit(1).execute()).data
-        if not found:
-            raise HTTPException(404, "Request not found.")
-        raise HTTPException(409, "Your account manager is already working on this request, so it can't be deleted.")
-    return {"ok": True}
 
 
 # ---------------------------------------------------------------- campaigns
@@ -532,19 +438,9 @@ class VarSource(BaseModel):
     value: str = Field(max_length=200)
 
 
-class ManualSpec(BaseModel):
-    sender_id: str = Field(min_length=3, max_length=6, pattern=r"^[A-Za-z0-9]+$")
-    entity_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
-    dlt_template_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
-    template_type: Literal["service", "promotional"]
-    message: str = Field(min_length=1, max_length=2000)
-
-
 class PreviewBody(BaseModel):
-    kind: Literal["template", "manual"] = "template"
     source: Literal["leads", "contacts", "numbers"] = "leads"
     template_id: Optional[str] = None
-    manual: Optional[ManualSpec] = None
     variable_map: list[VarSource] = Field(default_factory=list, max_length=20)
     lead_ids: list[str] = Field(default_factory=list, max_length=camp.MAX_LEADS)
     group_ids: list[uuid.UUID] = Field(default_factory=list, max_length=camp.MAX_GROUPS)
@@ -568,12 +464,6 @@ def _audience(body: PreviewBody) -> camp.Audience:
 
 
 def _body_template(db, tid: str, body: PreviewBody) -> dict:
-    if body.kind == "manual":
-        if not body.manual:
-            raise camp.SmsError("Fill in the sender ID, DLT IDs and message.")
-        m = body.manual
-        return camp.manual_template(sender_id=m.sender_id, entity_id=m.entity_id, dlt_template_id=m.dlt_template_id,
-                                    template_type=m.template_type, message=m.message)
     if not body.template_id:
         raise camp.SmsError("Pick a template.")
     return camp.get_template(db, tid, body.template_id)
@@ -595,7 +485,7 @@ async def create_campaign(body: CampaignBody, ctx: dict = Depends(manage)):
     try:
         template = _body_template(db, tid, body)
         needed = camp.preview(db, tid, template, _vmap(body), audience=_audience(body))["total_segments"]
-        await _require_send_ready(tid, ctx["api_key"], needed)
+        await _require_send_ready(ctx["api_key"], needed)
         row, created = camp.create_campaign(
             db, tid, ctx.get("user_id"), name=body.name, template=template, variable_map=_vmap(body),
             send_at=body.send_at, idempotency_key=body.idempotency_key, audience=_audience(body))

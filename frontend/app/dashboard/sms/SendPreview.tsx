@@ -38,7 +38,7 @@ export function SendPreview({ preview }: { preview: SmsPreview }) {
           ))}
         </div>
       )}
-      {preview.eligible_count === 0 && <Notice tone="warn">No one is left to send to. Change the numbers and preview again.</Notice>}
+      {preview.eligible_count === 0 && <Notice tone="warn">No one is left to send to. Change the numbers to try again.</Notice>}
     </div>
   );
 }

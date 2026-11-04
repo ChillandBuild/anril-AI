@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { api, type SmsTemplateType } from "@/lib/api";
 import { CheckField } from "@/components/ui/controls";
 import { revalidateDlt } from "./DltForms";
 import { isValidSenderId, parseSenderIds } from "./dltSetup";
 import { ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
-import { Btn, Card, CardHeader, Field, Notice, inputCls, textareaCls } from "./ui";
+import { Btn, Field, Modal, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 type Step = { ok: boolean; text: string };
 
-export function AddEntityTab() {
+function AddEntityForm({ onClose }: { onClose: () => void }) {
   const { canManage } = usePerm();
   const [entityId, setEntityId] = useState("");
   const [name, setName] = useState("");
@@ -21,7 +22,7 @@ export function AddEntityTab() {
   const [text, setText] = useState("");
   const [type, setType] = useState<SmsTemplateType>("service");
   const [busy, setBusy] = useState(false);
-  const [results, setResults] = useState<{ entity?: Step; template?: Step }>({});
+  const [results, setResults] = useState<{ entity?: Step }>({});
 
   const senderIds = parseSenderIds(senderText);
   const senderOk = senderIds.length > 0 && senderIds.every(isValidSenderId);
@@ -34,14 +35,22 @@ export function AddEntityTab() {
     setBusy(true);
     setResults({});
     let entityDone = false;
+    let entityText = "";
     try {
       const res = await api.sms.addEntity({ entity_name: name.trim(), entity_id: entityId.trim() });
       entityDone = res.ok !== false;
-      setResults({ entity: { ok: entityDone, text: res.message || (entityDone ? "Entity submitted. It's now with the operator." : "The entity wasn't added.") } });
+      entityText = res.message || (entityDone ? "Entity submitted. It's now with the operator." : "The entity wasn't added.");
+      setResults({ entity: { ok: entityDone, text: entityText } });
     } catch (err) {
       setResults({ entity: { ok: false, text: friendlyError(err, "The entity wasn't added.") } });
     }
-    if (entityDone && withTemplate) {
+    if (!entityDone) {
+      setBusy(false);
+      return;
+    }
+    // The entity went through: refresh the lists and close. Only a failed template keeps the news on screen (as a toast).
+    let templateError = "";
+    if (withTemplate) {
       try {
         const res = await api.sms.addTemplate({
           entity_id: entityId.trim(),
@@ -50,29 +59,25 @@ export function AddEntityTab() {
           message_text: text.trim(),
           template_type: type,
         });
-        const ok = res.ok !== false;
-        setResults((r) => ({ ...r, template: { ok, text: res.message || (ok ? "Template submitted." : "The template wasn't added.") } }));
+        if (res.ok === false) templateError = res.message || "The template wasn't added.";
       } catch (err) {
-        setResults((r) => ({ ...r, template: { ok: false, text: friendlyError(err, "The template wasn't added.") } }));
+        templateError = friendlyError(err, "The template wasn't added.");
       }
     }
-    if (entityDone) {
-      // The entity went through, so the form is cleared. A failed template is retried from DLT Manager > Content Template.
-      setEntityId("");
-      setName("");
-      setDltId("");
-      setText("");
-      setSenderText("");
-      setWithTemplate(false);
-      revalidateDlt();
+    revalidateDlt();
+    if (templateError) {
+      toast.error(`Entity added, but the template wasn't: ${templateError} Add it again from Content Template.`);
+    } else {
+      toast.success(withTemplate ? "Entity and template submitted. They're now with the operator." : entityText);
     }
     setBusy(false);
+    onClose();
   }
 
   return (
-    <Card>
-      <CardHeader title="Add your DLT approved entity details" hint="Your business as registered on DLT. Our team checks it and links it to your account." />
-      <div className="space-y-4 p-4 sm:p-5">
+    <>
+      <div className="space-y-4">
+        <p className="text-xs text-[#64748b]">Your business as registered on DLT. Our team checks it and links it to your account.</p>
         {!canManage && <Notice tone="info">You can view this page. Ask an owner for SMS manage access to add an entity.</Notice>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Entity ID (PE ID)">
@@ -108,16 +113,21 @@ export function AddEntityTab() {
           </div>
         )}
 
-        {results.entity && <Notice tone={results.entity.ok ? "success" : "danger"}>Entity: {results.entity.text}</Notice>}
-        {results.template && <Notice tone={results.template.ok ? "success" : "danger"}>Template: {results.template.text}</Notice>}
-        {results.template && !results.template.ok && (
-          <p className="text-xs text-[#64748b]">The entity went through. Add the template again from DLT Manager &gt; Content Template.</p>
-        )}
+        {results.entity && !results.entity.ok && <Notice tone="danger">Entity: {results.entity.text}</Notice>}
 
         <Btn busy={busy} disabled={!canSubmit} onClick={() => void submit()}>
           {withTemplate ? "Submit entity and template" : "Submit"}
         </Btn>
       </div>
-    </Card>
+    </>
+  );
+}
+
+/** "+ Add entity" popup (DLT Manager > Entity ID). Closes itself after a successful submit. */
+export function AddEntityPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Modal open={open} title="Add entity" onClose={onClose} wide>
+      <AddEntityForm onClose={onClose} />
+    </Modal>
   );
 }

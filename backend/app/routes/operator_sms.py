@@ -1,14 +1,12 @@
 """Operator-only Bulk9 connection and template request management."""
 from __future__ import annotations
 
-import json
 import logging
 import secrets
 import uuid
-from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import settings as env_settings
@@ -18,14 +16,12 @@ from app.dependencies.system_admin import get_system_admin
 from app.services import bulk9_client
 from app.services.audit_log import record_audit_event
 from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
-from app.routes.sms import signed_url
 from app.services import sms_setup
 from app.services.sms_campaigns import SmsError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _RENDER_BASE_URL = "https://aira-ai-5tfr.onrender.com"
-_REQUEST_FIELDS = "id,tenant_id,wording,template_type,status,reason,created_at,updated_at"
 
 
 def _tenant_id(raw: str) -> str:
@@ -60,18 +56,6 @@ def _audit(db, admin: dict, tenant_id: str, action: str) -> None:
                        action=action, target_type="tenant", target_id=tenant_id, metadata={})
 
 
-CHECKLIST_KEYS = ("dlt", "pe_tm", "sender")
-
-
-def _checklist(tenant_id: str) -> dict:
-    try:
-        raw = json.loads(get_setting("sms_checklist", tenant_id=tenant_id) or "{}")
-    except ValueError:
-        raw = {}
-    raw = raw if isinstance(raw, dict) else {}
-    return {k: bool(raw.get(k)) for k in CHECKLIST_KEYS}
-
-
 async def _state(db, tenant_id: str) -> dict:
     _tenant(db, tenant_id)
     key = get_setting("bulk9_api_key", tenant_id=tenant_id)
@@ -87,7 +71,6 @@ async def _state(db, tenant_id: str) -> dict:
         "webhook_registered": bool(key) and get_setting("bulk9_webhook_registered", tenant_id=tenant_id) == "true",
         "webhook_error": get_setting("bulk9_webhook_error", tenant_id=tenant_id) or None,
         "sms_count": sms_count,
-        "checklist": _checklist(tenant_id),
     }
 
 
@@ -165,22 +148,6 @@ async def save_key(tenant_id: str, body: KeyIn, admin: dict = Depends(get_system
     return await _state(db, tid)
 
 
-class ChecklistIn(BaseModel):
-    dlt: bool
-    pe_tm: bool
-    sender: bool
-
-
-@router.put("/clients/{tenant_id}/sms/checklist")
-async def save_checklist(tenant_id: str, body: ChecklistIn, admin: dict = Depends(get_system_admin)):
-    """The client's setup steps Bulk9 has no API for. PE–TM gates sending (routes/sms.py)."""
-    tid, db = _tenant_id(tenant_id), get_supabase()
-    _tenant(db, tid)
-    _put(db, tid, "sms_checklist", json.dumps(body.model_dump()))
-    _audit(db, admin, tid, "operator.sms_checklist_saved")
-    return await _state(db, tid)
-
-
 @router.post("/clients/{tenant_id}/sms/webhook")
 async def reregister_webhook(tenant_id: str, admin: dict = Depends(get_system_admin)):
     tid, db = _tenant_id(tenant_id), get_supabase()
@@ -193,77 +160,13 @@ async def reregister_webhook(tenant_id: str, admin: dict = Depends(get_system_ad
     return await _state(db, tid)
 
 
-@router.get("/clients/{tenant_id}/sms/template-requests")
-async def list_template_requests(tenant_id: str, page: int = Query(default=1, ge=1),
-                                 limit: int = Query(default=50, ge=1, le=100),
-                                 _admin: dict = Depends(get_system_admin)):
-    tid, db = _tenant_id(tenant_id), get_supabase()
-    _tenant(db, tid)
-    result = (db.table("sms_template_requests").select(_REQUEST_FIELDS, count="exact").eq("tenant_id", tid)
-              .order("created_at", desc=True).range((page - 1) * limit, page * limit - 1).execute())
-    return {"items": result.data or [], "total": result.count or 0, "page": page, "limit": limit}
-
-
-class RequestUpdateIn(BaseModel):
-    status: Literal["in_progress", "ready", "rejected"]
-    reason: str | None = Field(default=None, max_length=500)
-
-
-@router.patch("/clients/{tenant_id}/sms/template-requests/{request_id}")
-async def update_template_request(tenant_id: str, request_id: str, body: RequestUpdateIn,
-                                  admin: dict = Depends(get_system_admin)):
-    tid, db = _tenant_id(tenant_id), get_supabase()
-    _tenant(db, tid)
-    reason = (body.reason or "").strip() or None
-    if body.status == "rejected" and not reason:
-        raise HTTPException(status_code=400, detail="Give a reason when rejecting")
-    result = (db.table("sms_template_requests")
-              .update({"status": body.status, "reason": reason, "updated_at": datetime.now(timezone.utc).isoformat()})
-              .eq("id", _tenant_id(request_id)).eq("tenant_id", tid).execute())
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Request not found")
-    _audit(db, admin, tid, "operator.sms_template_request_updated")
-    return {"item": {key: result.data[0].get(key) for key in _REQUEST_FIELDS.split(",")}}
-
-
-# ---------------------------------------------------------------- PE-TM binding + credit requests
-
-PROOF_URL_SECONDS = 600
-
+# ---------------------------------------------------------------- credit requests
 
 def _setup_call(fn, *args):
     try:
         return fn(*args)
     except SmsError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
-
-
-@router.get("/clients/{tenant_id}/sms/pe-tm")
-async def list_pe_tm(tenant_id: str, _admin: dict = Depends(get_system_admin)):
-    """Each entity's binding request, with a 10-minute link to the client's screenshot."""
-    tid, db = _tenant_id(tenant_id), get_supabase()
-    _tenant(db, tid)
-    return {"items": [{**sms_setup.public_pe_tm(r), "proof_url": _proof_url(db, r["proof_path"])}
-                      for r in sms_setup.pe_tm_rows(db, tid)]}
-
-
-def _proof_url(db, path: str) -> str | None:
-    if not path:  # a button-press request: no screenshot was uploaded
-        return None
-    try:
-        return signed_url(db, path, PROOF_URL_SECONDS)
-    except HTTPException:  # one missing file must not hide the other rows
-        return None
-
-
-@router.post("/clients/{tenant_id}/sms/pe-tm/{row_id}/approve")
-async def approve_pe_tm(tenant_id: str, row_id: str, admin: dict = Depends(get_system_admin)):
-    """TM approval done in the reseller panel; the client can now do the final approval."""
-    tid, db = _tenant_id(tenant_id), get_supabase()
-    _tenant(db, tid)
-    row = _setup_call(sms_setup.approve_tm, db, tid, _tenant_id(row_id), admin.get("user_id"))
-    _audit(db, admin, tid, "operator.sms_pe_tm_approved")
-    return {"item": sms_setup.public_pe_tm(row)}
 
 
 @router.get("/sms/credit-requests")

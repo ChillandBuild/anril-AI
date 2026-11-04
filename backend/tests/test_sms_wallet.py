@@ -1,5 +1,4 @@
 """SMS balance history, the low-balance alert, campaign cost and the send gate."""
-import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -118,25 +117,19 @@ def test_history_merges_topups_and_campaign_spend_newest_first():
 
 # ---------------------------------------------------------------- the send gate
 
-def _settings(checklist):
-    values = {"sms_checklist": json.dumps(checklist)}
-    return lambda key, fallback=None, tenant_id=None: values.get(key, fallback)
-
-
 @pytest.mark.asyncio
-@pytest.mark.parametrize("checklist,balance,needed,expect", [
-    ({"pe_tm": False}, 5000, 10, "PE–TM"),
-    ({"pe_tm": True}, 5, 10, "needs 10 SMS and you have 5"),
-    ({"pe_tm": True}, 10, 10, None),
+@pytest.mark.parametrize("balance,needed,expect", [
+    (5, 10, "needs 10 SMS and you have 5"),
+    (10, 10, None),
 ])
-async def test_send_gate(checklist, balance, needed, expect):
-    with patch.object(sms, "get_setting", _settings(checklist)), \
-         patch.object(bulk9_client, "wallet", AsyncMock(return_value={"sms_count": balance})):
+async def test_send_gate(balance, needed, expect):
+    """Only balance blocks a send; PE-TM binding is no longer an Anril gate."""
+    with patch.object(bulk9_client, "wallet", AsyncMock(return_value={"sms_count": balance})):
         if expect is None:
-            await sms._require_send_ready(T, "k", needed)
+            await sms._require_send_ready("k", needed)
         else:
             with pytest.raises(HTTPException) as e:
-                await sms._require_send_ready(T, "k", needed)
+                await sms._require_send_ready("k", needed)
             assert e.value.status_code == 409 and expect in e.value.detail
 
 

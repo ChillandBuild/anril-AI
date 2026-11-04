@@ -1,22 +1,19 @@
-// Pure helpers for the DLT Setup page (Add Entity, DLT Manager, PE-TM Binding).
+// Pure helpers for the DLT Setup page (Entity ID, Sender ID, Content Template).
 
-export type SetupTab = "entity" | "manager" | "petm";
+export type DltSub = "entities" | "senders" | "templates";
 
-/** The ?tab= value, defaulting to the first tab for anything unknown. */
-export function parseSetupTab(value: string | null | undefined): SetupTab {
-  return value === "manager" || value === "petm" ? value : "entity";
-}
-
-/** Before the Bulk9 key is set only PE-TM Binding works (Add Entity and DLT Manager need Bulk9). */
-export function setupTabFor(value: string | null | undefined, connected: boolean): SetupTab {
-  return connected ? parseSetupTab(value) : "petm";
-}
-
-export type DltSub ="entities" | "senders" | "templates";
-
-/** The ?sub= value inside DLT Manager, defaulting to entities for anything unknown. */
+/** The ?sub= value, defaulting to entities for anything unknown. */
 export function parseDltSub(value: string | null | undefined): DltSub {
   return value === "senders" || value === "templates" ? value : "entities";
+}
+
+/**
+ * Which sub-tab a setup URL opens. The page used to have top-level tabs, so old links still land sensibly:
+ * ?tab=entity and ?tab=petm open Entity ID; ?tab=manager&sub=X (or just ?sub=X) opens X.
+ */
+export function setupSubFor(tab: string | null | undefined, sub: string | null | undefined): DltSub {
+  if (tab === "entity" || tab === "petm") return "entities";
+  return parseDltSub(sub);
 }
 
 /** "ANRILX, anrily  ANRILZ" -> ["ANRILX","ANRILY","ANRILZ"] (upper-cased, no repeats). */
@@ -39,22 +36,4 @@ export function matchesQuery(fields: (string | null | undefined)[], query: strin
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return fields.some((f) => (f ?? "").toLowerCase().includes(q));
-}
-
-export interface PeTmState {
-  tmApproved: boolean;
-  done: boolean;
-  /** The "I've done the final approval" button: only after TM approval, and only once. */
-  canConfirm: boolean;
-}
-
-export function peTmState(item: { tm_approved_at: string | null; pe_confirmed_at: string | null }): PeTmState {
-  const tmApproved = !!item.tm_approved_at;
-  const done = !!item.pe_confirmed_at;
-  return { tmApproved, done, canConfirm: tmApproved && !done };
-}
-
-/** Newest meaningful date of a PE-TM row: confirmed, else TM-approved, else uploaded. */
-export function peTmDate(item: { tm_approved_at: string | null; pe_confirmed_at: string | null; created_at: string }): string {
-  return item.pe_confirmed_at ?? item.tm_approved_at ?? item.created_at;
 }

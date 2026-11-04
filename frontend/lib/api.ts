@@ -1765,25 +1765,14 @@ function dealFilterParams(filters: Omit<DealFilters, "stage">): URLSearchParams 
 export interface SmsStatus {
   enabled: boolean;
   connected: boolean;
-  checklist: { dlt: boolean; pe_tm: boolean; sender: boolean };
   support_contact: string | null;
   templates_ready: boolean;
-  /** The telemarketer every client binds their entity to (PE-TM Binding tab). */
-  pe_tm_info: { tm_name: string; tm_id: string };
 }
 export type SmsDltStatus = "approved" | "submitted";
 export interface SmsDltEntity { entity_id: string; entity_name: string | null; status: SmsDltStatus; at: string | null }
 export interface SmsDltSender extends SmsSender { status: SmsDltStatus; at: string | null }
 /** DLT Manager. `error` is set (HTTP 200) when Bulk9 couldn't be read; submitted rows still show. */
 export interface SmsDltList { entities: SmsDltEntity[]; senders: SmsDltSender[]; error: string | null }
-export interface SmsPeTm {
-  id: string;
-  entity_id: string;
-  tm_approved_at: string | null;
-  pe_confirmed_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
 export type SmsCreditStatus = "open" | "done" | "cancelled";
 export interface SmsCreditRequest {
   id: string;
@@ -1833,15 +1822,6 @@ export interface SmsTemplate {
   last_synced_at: string | null;
 }
 export interface SmsTemplateList { templates: SmsTemplate[]; last_synced_at: string | null; error: string | null }
-export interface SmsTemplateRequest {
-  id: string;
-  wording: string;
-  template_type: SmsTemplateType;
-  status: string;
-  reason: string | null;
-  created_at: string;
-  updated_at: string;
-}
 export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
 export interface SmsPreviewExcluded { lead_id?: string | null; name: string | null; phone: string | null; reason: string }
 export interface SmsPreviewSample { lead_id?: string | null; name: string | null; content: string; segments: number; unicode: boolean }
@@ -1940,13 +1920,6 @@ export interface SmsUploadResult {
   skipped: SmsSkippedRow[];
   group_id: string | null;
 }
-export interface SmsManualDlt {
-  sender_id: string;
-  entity_id: string;
-  dlt_template_id: string;
-  template_type: SmsTemplateType;
-  message: string;
-}
 /** Who a campaign goes to: exactly one of the three id/number lists matches `source`. */
 export interface SmsRecipients {
   source: SmsRecipientSource;
@@ -1956,9 +1929,7 @@ export interface SmsRecipients {
   consent_confirmed?: boolean;
 }
 export type SmsCampaignPreviewRequest = SmsRecipients & {
-  kind?: "template" | "manual";
-  template_id?: string;
-  manual?: SmsManualDlt;
+  template_id: string;
   variable_map?: SmsVarSource[];
 };
 export type SmsCampaignCreateRequest = SmsCampaignPreviewRequest & {
@@ -2029,11 +2000,6 @@ export const api = {
       fd.append("template_type", data.template_type);
       return smsMultipart<SmsOk>("/api/v1/sms/dlt/template-excel", fd);
     },
-    templateRequests: () => apiFetch<{ requests: SmsTemplateRequest[] }>("/api/v1/sms/template-requests"),
-    requestTemplate: (data: { wording: string; template_type: SmsTemplateType }) =>
-      apiFetch<SmsTemplateRequest>("/api/v1/sms/template-requests", { method: "POST", body: JSON.stringify(data) }),
-    deleteTemplateRequest: (id: string) =>
-      apiFetch<SmsOk>(`/api/v1/sms/template-requests/${encodeURIComponent(id)}`, { method: "DELETE" }),
     campaignFields: (source: SmsRecipientSource = "leads", groupIds: string[] = []) => {
       const qs = new URLSearchParams();
       if (source !== "leads") qs.set("source", source);
@@ -2158,11 +2124,6 @@ export const api = {
     otpHistory: (limit = 50, offset = 0) =>
       apiFetch<{ items: SmsOtpHistoryItem[]; total: number }>(`/api/v1/sms/otp/history?limit=${limit}&offset=${offset}`),
     dltList: () => apiFetch<SmsDltList>("/api/v1/sms/dlt/entities"),
-    peTm: () => apiFetch<{ items: SmsPeTm[] }>("/api/v1/sms/pe-tm"),
-    peTmRequest: (entityId: string) =>
-      apiFetch<SmsPeTm>("/api/v1/sms/pe-tm", { method: "POST", body: JSON.stringify({ entity_id: entityId }) }),
-    peTmConfirm: (id: string) =>
-      apiFetch<SmsPeTm>(`/api/v1/sms/pe-tm/${encodeURIComponent(id)}/confirm`, { method: "POST" }),
     creditRequests: () => apiFetch<{ items: SmsCreditRequest[] }>("/api/v1/sms/credit-requests"),
     requestCredit: (data: { amount: number; note?: string }) =>
       apiFetch<SmsCreditRequest>("/api/v1/sms/credit-requests", { method: "POST", body: JSON.stringify(data) }),

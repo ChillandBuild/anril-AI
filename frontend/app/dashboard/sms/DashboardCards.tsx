@@ -34,21 +34,20 @@ import { usePerm } from "./usePerm";
 
 export interface ChecklistRow { key: string; label: string; done: boolean; href: string | null; hint: string }
 
-/** The five setup steps in order. A step counts as done from either the shell status or the live DLT list. */
+/** The four setup steps in order. Entity and sender come from the live DLT list; the list is null until it loads. */
 export function checklistRows(input: { status: SmsStatus; dlt: SmsDltList | null; balance: SmsBalance | null }): ChecklistRow[] {
   const { status, dlt, balance } = input;
-  const entityDone = status.checklist.dlt || (dlt?.entities.length ?? 0) > 0;
-  const senderDone = status.checklist.sender || (dlt?.senders ?? []).some((s) => s.status === "approved");
+  const entityDone = (dlt?.entities.length ?? 0) > 0;
+  const senderDone = (dlt?.senders ?? []).some((s) => s.status === "approved");
   return [
-    { key: "entity", label: "Add your DLT entity", done: entityDone, href: "/dashboard/sms/setup?tab=entity", hint: "Add entity" },
-    { key: "sender", label: "Get a Sender ID approved", done: senderDone, href: "/dashboard/sms/setup?tab=manager&sub=senders", hint: "Open DLT Manager" },
-    { key: "template", label: "Get a content template approved", done: status.templates_ready, href: "/dashboard/sms/setup?tab=manager&sub=templates", hint: "Open DLT Manager" },
-    { key: "petm", label: "Finish the PE-TM binding", done: status.checklist.pe_tm, href: "/dashboard/sms/setup?tab=petm", hint: "Open PE-TM Binding" },
+    { key: "entity", label: "Add your DLT entity", done: entityDone, href: "/dashboard/sms/setup?sub=entities", hint: "Add entity" },
+    { key: "sender", label: "Get a Sender ID approved", done: senderDone, href: "/dashboard/sms/setup?sub=senders", hint: "Open Sender ID" },
+    { key: "template", label: "Get a content template approved", done: status.templates_ready, href: "/dashboard/sms/setup?sub=templates", hint: "Open Content Template" },
     { key: "balance", label: "Have SMS balance above zero", done: (balance?.sms_count ?? 0) > 0, href: null, hint: "Use Add credit in the wallet" },
   ];
 }
 
-/** "1 of 5 done · next: …" for the collapsed setup line. */
+/** "1 of 4 done · next: …" for the collapsed setup line. */
 export function setupProgress(rows: ChecklistRow[]): { done: number; total: number; next: string | null } {
   return { done: rows.filter((r) => r.done).length, total: rows.length, next: rows.find((r) => !r.done)?.label ?? null };
 }

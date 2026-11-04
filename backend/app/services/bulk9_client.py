@@ -136,19 +136,6 @@ async def send_dlt(api_key: str, *, sender_id: str, message_id: str, numbers: li
     return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
 
 
-async def send_dlt_manual(api_key: str, *, sender_id: str, entity_id: str, template_id: str,
-                          message: str, numbers: list[str], udf1: str | None = None) -> dict[str, Any]:
-    """Send full approved wording with DLT IDs (route=dlt_manual)."""
-    payload: dict[str, Any] = {
-        "route": "dlt_manual", "sender_id": sender_id, "entity_id": entity_id,
-        "template_id": template_id, "message": message, "numbers": ",".join(numbers),
-        "flash": 0, "sms_details": 1,
-    }
-    if udf1:
-        payload["udf1"] = udf1
-    return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
-
-
 # ---------------------------------------------------------------- DLT manager
 
 async def list_dlt(api_key: str, kind: str = "template") -> dict[str, Any]:

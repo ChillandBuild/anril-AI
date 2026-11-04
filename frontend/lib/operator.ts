@@ -116,49 +116,20 @@ export function capUsagePercent(used: number, cap: number | null): number {
   return Math.min(100, Math.max(0, Math.round((used / cap) * 100)));
 }
 
-// SMS connection and template requests in client Configuration.
-export type OperatorSmsTemplateRequest = {
-  id: string;
-  wording: string;
-  template_type: string;
-  status: string;
-  reason: string | null;
-  created_at: string;
-  updated_at: string | null;
-};
-export type OperatorSmsChecklist = { dlt: boolean; pe_tm: boolean; sender: boolean };
+// SMS connection in client Configuration.
 export type OperatorSms = {
   connected: boolean;
   key_masked: string | null;
   webhook_registered: boolean;
   webhook_error: string | null;
   sms_count?: number | null;
-  checklist?: OperatorSmsChecklist;
 };
 const smsPath = (tenantId: string) => `/api/v1/operator/clients/${encodeURIComponent(tenantId)}/sms`;
 export const getOperatorSms = (tenantId: string) => operatorFetch<OperatorSms>(smsPath(tenantId));
 export const putOperatorSmsKey = (tenantId: string, api_key: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/key`, { method: "PUT", body: JSON.stringify({ api_key }) });
-export const putOperatorSmsChecklist = (tenantId: string, body: OperatorSmsChecklist) =>
-  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/checklist`, { method: "PUT", body: JSON.stringify(body) });
 export const registerOperatorSmsWebhook = (tenantId: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/webhook`, { method: "POST" });
-export type OperatorSmsPeTm = {
-  id: string;
-  entity_id: string;
-  tm_approved_at: string | null;
-  pe_confirmed_at: string | null;
-  created_at: string;
-  updated_at: string;
-  /** 10-minute link to the client's binding-request screenshot; null if the file couldn't be read. */
-  proof_url: string | null;
-};
-export const getOperatorSmsPeTm = (tenantId: string) =>
-  operatorFetch<{ items: OperatorSmsPeTm[] }>(`${smsPath(tenantId)}/pe-tm`);
-export const approveOperatorSmsPeTm = (tenantId: string, id: string) =>
-  operatorFetch<{ item: Omit<OperatorSmsPeTm, "proof_url"> }>(`${smsPath(tenantId)}/pe-tm/${encodeURIComponent(id)}/approve`, {
-    method: "POST",
-  });
 export type OperatorSmsCreditRequest = {
   id: string;
   tenant_id: string;
@@ -176,14 +147,3 @@ export const finishOperatorSmsCreditRequest = (id: string, status: "done" | "can
     method: "POST",
     body: JSON.stringify({ status }),
   });
-export const getOperatorSmsTemplateRequests = (tenantId: string, page = 1, limit = 10) =>
-  operatorFetch<{ items: OperatorSmsTemplateRequest[]; total: number; page: number; limit: number }>(
-    `${smsPath(tenantId)}/template-requests?page=${page}&limit=${limit}`,
-  );
-export const updateOperatorSmsTemplateRequest = (
-  tenantId: string,
-  id: string,
-  body: { status: "in_progress" | "ready" | "rejected"; reason?: string },
-) => operatorFetch<{ item: OperatorSmsTemplateRequest }>(`${smsPath(tenantId)}/template-requests/${encodeURIComponent(id)}`, {
-  method: "PATCH", body: JSON.stringify(body),
-});

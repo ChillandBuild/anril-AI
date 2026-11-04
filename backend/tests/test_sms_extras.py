@@ -119,30 +119,6 @@ async def test_deleted_campaigns_leave_the_list():
     assert [c["id"] for c in out["campaigns"]] == [keep["id"]] and gone["id"] != keep["id"]
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status,code", [("requested", None), ("rejected", None), ("in_progress", 409), ("ready", 409)])
-async def test_template_request_delete(status, code):
-    db = FakeSupabase()
-    r = db.add("sms_template_requests", tenant_id=T, wording="Hello {#var#}", template_type="service", status=status)
-    with patch.object(sms, "get_supabase", lambda: db):
-        if code is None:
-            assert (await sms.delete_template_request(r["id"], CTX))["ok"]
-            assert db.rows("sms_template_requests") == []
-        else:
-            with pytest.raises(HTTPException) as e:
-                await sms.delete_template_request(r["id"], CTX)
-            assert e.value.status_code == code and len(db.rows("sms_template_requests")) == 1
-
-
-@pytest.mark.asyncio
-async def test_template_request_of_another_tenant_is_not_found():
-    db = FakeSupabase()
-    r = db.add("sms_template_requests", tenant_id=OTHER, wording="Hello", template_type="service", status="requested")
-    with patch.object(sms, "get_supabase", lambda: db), pytest.raises(HTTPException) as e:
-        await sms.delete_template_request(r["id"], CTX)
-    assert e.value.status_code == 404 and len(db.rows("sms_template_requests")) == 1
-
-
 # ---------------------------------------------------------------- OTP history
 
 @pytest.mark.asyncio

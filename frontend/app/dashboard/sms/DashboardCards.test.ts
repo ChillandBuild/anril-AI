@@ -2,29 +2,26 @@ import { describe, expect, it } from "vitest";
 import type { SmsCampaign, SmsStatus, SmsWalletItem } from "@/lib/api";
 import { checklistRows, monthSpend, setupProgress, recentCampaigns, summarize, upcomingCampaigns } from "./DashboardCards";
 
-const status = (over: Partial<SmsStatus> = {}, checklist = {}): SmsStatus => ({
+const status = (over: Partial<SmsStatus> = {}): SmsStatus => ({
   enabled: true,
   connected: true,
-  checklist: { dlt: false, pe_tm: false, sender: false, ...checklist },
   support_contact: null,
   templates_ready: false,
-  pe_tm_info: { tm_name: "", tm_id: "" },
   ...over,
 });
 
 describe("checklistRows", () => {
   it("is all not-done for a brand new account", () => {
     const rows = checklistRows({ status: status(), dlt: null, balance: { sms_count: 0, wallet: 0 } });
-    expect(rows.map((r) => r.done)).toEqual([false, false, false, false, false]);
-    expect(rows[4].href).toBeNull();
+    expect(rows.map((r) => r.done)).toEqual([false, false, false, false]);
+    expect(rows[3].href).toBeNull();
   });
   it("links each step to the screen where it is done", () => {
     const hrefs = checklistRows({ status: status(), dlt: null, balance: null }).map((r) => r.href);
     expect(hrefs).toEqual([
-      "/dashboard/sms/setup?tab=entity",
-      "/dashboard/sms/setup?tab=manager&sub=senders",
-      "/dashboard/sms/setup?tab=manager&sub=templates",
-      "/dashboard/sms/setup?tab=petm",
+      "/dashboard/sms/setup?sub=entities",
+      "/dashboard/sms/setup?sub=senders",
+      "/dashboard/sms/setup?sub=templates",
       null,
     ]);
   });
@@ -42,12 +39,17 @@ describe("checklistRows", () => {
     const dlt = { entities: [], senders: [{ sender_id: "A", entity_id: "E", entity_name: null, status: "submitted" as const, at: null }], error: null };
     expect(checklistRows({ status: status(), dlt, balance: null })[1].done).toBe(false);
   });
+  it("has four steps and no PE-TM binding step", () => {
+    const rows = checklistRows({ status: status(), dlt: null, balance: null });
+    expect(rows.map((r) => r.key)).toEqual(["entity", "sender", "template", "balance"]);
+  });
   it("marks everything done when the account is ready", () => {
-    const rows = checklistRows({
-      status: status({ templates_ready: true }, { dlt: true, pe_tm: true, sender: true }),
-      dlt: null,
-      balance: { sms_count: 10, wallet: 1 },
-    });
+    const dlt = {
+      entities: [{ entity_id: "E1", entity_name: null, status: "approved" as const, at: null }],
+      senders: [{ sender_id: "ANRIL", entity_id: "E1", entity_name: null, status: "approved" as const, at: null }],
+      error: null,
+    };
+    const rows = checklistRows({ status: status({ templates_ready: true }), dlt, balance: { sms_count: 10, wallet: 1 } });
     expect(rows.every((r) => r.done)).toBe(true);
   });
 });

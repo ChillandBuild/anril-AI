@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { FileSpreadsheet } from "lucide-react";
@@ -21,7 +21,7 @@ import {
   type NumbersMode,
   type NumbersState,
 } from "./helpers";
-import { Btn, ConsentCheck, Field, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
+import { Btn, ConsentCheck, Field, FilePicker, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
 
 /** Whether this client has any Anril leads (the Leads mode is hidden when they have none). */
 export function useHasLeads(): boolean {
@@ -146,7 +146,6 @@ function NumbersBox({ value, onChange }: { value: string; onChange: (next: strin
 
 /** Upload a .csv/.xlsx; the server reads the phone column and hands back the numbers. */
 function ExcelUpload({ value, onChange }: { value: NumbersState; onChange: (update: (prev: NumbersState) => NumbersState) => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [column, setColumn] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,19 +174,20 @@ function ExcelUpload({ value, onChange }: { value: NumbersState; onChange: (upda
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
-        <Field label="Excel or CSV file" hint={`.csv or .xlsx, up to ${formatCount(MAX_PASTED_NUMBERS)} numbers`}>
-          <input
-            ref={fileRef}
-            type="file"
+        <div className="w-full sm:w-80">
+          <FilePicker
+            label="Excel or CSV file"
             accept=".csv,.xlsx"
-            className="block text-sm text-[#334155] file:mr-3 file:rounded-lg file:border file:border-[#e2e8f0] file:bg-white file:px-3 file:py-2 file:text-sm file:font-bold"
-            onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
+            file={file}
+            disabled={busy}
+            hint={`Up to ${formatCount(MAX_PASTED_NUMBERS)} numbers.`}
+            onChange={(f) => {
               setFile(f);
               if (f) void read(f, column);
+              else onChange((prev) => ({ ...prev, excelNumbers: [], excel: null }));
             }}
           />
-        </Field>
+        </div>
         <Field label="Phone column (optional)" hint="Only if it wasn't found">
           <input className={`${inputCls} w-44`} value={column} placeholder="e.g. Mobile" onChange={(e) => setColumn(e.target.value)} />
         </Field>

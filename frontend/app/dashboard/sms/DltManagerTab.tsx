@@ -6,8 +6,9 @@ import useSWR from "swr";
 import { FileSpreadsheet, Plus } from "lucide-react";
 import { api, type SmsDltEntity, type SmsDltSender } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AddEntityPanel } from "./AddEntityTab";
 import { AddSenderPanel, DltStatusBadge, ListToolbar, SenderExcelPanel, TEMPLATES_KEY, useDltList } from "./DltForms";
-import { matchesQuery, parseDltSub, type DltSub } from "./dltSetup";
+import { matchesQuery, setupSubFor, type DltSub } from "./dltSetup";
 import { formatIst, friendlyError } from "./helpers";
 import { TemplatesTab } from "./TemplatesTab";
 import { Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls } from "./ui";
@@ -25,14 +26,23 @@ const STATUS_OPTIONS = [
 ];
 
 function EntityTable({ rows }: { rows: SmsDltEntity[] }) {
+  const { canManage } = usePerm();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const shown = rows.filter((r) => (!status || r.status === status) && matchesQuery([r.entity_id, r.entity_name], query));
   return (
     <div className="space-y-3 p-4 sm:p-5">
-      <ListToolbar query={query} onQuery={setQuery} placeholder="Search entities" status={status} onStatus={setStatus} options={STATUS_OPTIONS} />
+      <ListToolbar query={query} onQuery={setQuery} placeholder="Search entities" status={status} onStatus={setStatus} options={STATUS_OPTIONS}>
+        {canManage && (
+          <Btn onClick={() => setAddOpen(true)}>
+            <Plus size={14} /> Add entity
+          </Btn>
+        )}
+      </ListToolbar>
+      <AddEntityPanel open={addOpen} onClose={() => setAddOpen(false)} />
       {shown.length === 0 ? (
-        <Empty title={rows.length === 0 ? "No entities yet." : "No entities match."} hint={rows.length === 0 ? "Add one in the Add Entity tab." : "Try a different search or status."} />
+        <Empty title={rows.length === 0 ? "No entities yet." : "No entities match."} hint={rows.length === 0 ? "Press Add entity to submit your DLT entity." : "Try a different search or status."} />
       ) : (
         <TableWrap>
           <table className="w-full min-w-[34rem]">
@@ -71,25 +81,16 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
   const [status, setStatus] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
-  // One form open at a time, in place under the toolbar.
-  const openAdd = () => {
-    setExcelOpen(false);
-    setAddOpen(true);
-  };
-  const openExcel = () => {
-    setAddOpen(false);
-    setExcelOpen(true);
-  };
   const shown = rows.filter((r) => (!status || r.status === status) && matchesQuery([r.sender_id, r.entity_id, r.entity_name], query));
   return (
     <div className="space-y-3 p-4 sm:p-5">
       <ListToolbar query={query} onQuery={setQuery} placeholder="Search sender IDs" status={status} onStatus={setStatus} options={STATUS_OPTIONS}>
         {canManage && (
           <>
-            <Btn variant="outline" onClick={openExcel}>
+            <Btn variant="outline" onClick={() => setExcelOpen(true)}>
               <FileSpreadsheet size={14} /> Import from DLT Excel
             </Btn>
-            <Btn onClick={openAdd}>
+            <Btn onClick={() => setAddOpen(true)}>
               <Plus size={14} /> Add sender ID
             </Btn>
           </>
@@ -136,9 +137,9 @@ export function DltManagerTab() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  // The inner tab lives in the URL (?tab=manager&sub=senders) so dashboard links can open the right one.
-  const inner = INNER_OF[parseDltSub(params.get("sub"))];
-  const setInner = (next: Inner) => router.replace(`${pathname}?tab=manager&sub=${SUB_OF[next]}`, { scroll: false });
+  // The sub-tab lives in the URL (?sub=senders) so dashboard links can open the right one. Old ?tab= links still work.
+  const inner = INNER_OF[setupSubFor(params.get("tab"), params.get("sub"))];
+  const setInner = (next: Inner) => router.replace(`${pathname}?sub=${SUB_OF[next]}`, { scroll: false });
   const { data, error, isLoading, mutate } = useDltList();
   const templates = useSWR(TEMPLATES_KEY, () => api.sms.templates(), { revalidateOnFocus: false });
   const entities = data?.entities ?? [];

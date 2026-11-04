@@ -10,8 +10,6 @@ import {
   buildCurl,
   buildPython,
   EMPTY_NUMBERS,
-  EMPTY_OWN,
-  OWN_VAR_ERROR,
   buildRecipients,
   buildSendRequest,
   defaultSendName,
@@ -23,7 +21,6 @@ import {
   nextIdempotencyKey,
   isValidEntityId,
   isValidDltTemplateId,
-  isValidOwnSenderId,
   parseContactsSub,
   type SendFormInput,
   canCancelCampaign,
@@ -35,7 +32,6 @@ import {
   smsSegments,
   campaignStatusLabel,
   canDeleteCampaign,
-  canDeleteTemplateRequest,
   canRescheduleCampaign,
   estimateLine,
   fromLocalInput,
@@ -59,6 +55,8 @@ import {
   parseOtpSettings,
   sendBlock,
   walletCsv,
+  hasLink,
+  dltReason,
 } from "./helpers";
 import type { SmsWalletItem } from "@/lib/api";
 
@@ -201,16 +199,13 @@ describe("formatRupees / formatSignedSms", () => {
 });
 
 describe("sendBlock", () => {
-  const base = { loading: false, peTm: true, balance: 1000, needed: 200, support: null };
-  it("allows a send when PE-TM is confirmed and balance covers it", () => {
+  const base = { loading: false, balance: 1000, needed: 200, support: null };
+  it("allows a send when the balance covers it", () => {
     expect(sendBlock(base)).toEqual({ blocked: false, reason: null });
     expect(sendBlock({ ...base, balance: 200 }).blocked).toBe(false);
   });
   it("blocks silently while loading", () => {
     expect(sendBlock({ ...base, loading: true })).toEqual({ blocked: true, reason: null });
-  });
-  it("explains a missing PE-TM binding first", () => {
-    expect(sendBlock({ ...base, peTm: false, balance: 0 }).reason).toBe("Waiting for your account manager to confirm PE–TM binding.");
   });
   it("explains an unknown balance", () => {
     expect(sendBlock({ ...base, balance: undefined }).reason).toBe("Couldn't check your SMS balance. Refresh and try again.");
@@ -286,12 +281,6 @@ describe("status gates", () => {
     expect(canDeleteCampaign("cancelled")).toBe(true);
     expect(canDeleteCampaign("scheduled")).toBe(false);
     expect(canDeleteCampaign("sending")).toBe(false);
-  });
-  it("only requested or rejected template requests can be deleted", () => {
-    expect(canDeleteTemplateRequest("requested")).toBe(true);
-    expect(canDeleteTemplateRequest("rejected")).toBe(true);
-    expect(canDeleteTemplateRequest("in_progress")).toBe(false);
-    expect(canDeleteTemplateRequest("ready")).toBe(false);
   });
 });
 
@@ -427,53 +416,36 @@ describe("recipients", () => {
 
 describe("send form request", () => {
   const tpl = { id: "t1", message: "Hi {#var#}, 20% off", template_type: "promotional" as const, var_count: 1 };
+  const svc = { id: "t2", message: "Your order shipped", template_type: "service" as const, var_count: 0 };
   const nameVar = { source: "field" as const, value: "name" };
-  const own = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", message: "Your order shipped", template_type: "service" as const };
-  const base: SendFormInput = { route: null, template: null, varMap: [], own: EMPTY_OWN, numbers: EMPTY_NUMBERS };
+  const base: SendFormInput = { template: null, varMap: [], numbers: EMPTY_NUMBERS };
 
-  it("sends a picked template through the approved-template route", () => {
-    const input: SendFormInput = {
-      ...base,
-      route: "template",
-      template: tpl,
-      varMap: [nameVar],
-      numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] },
-    };
-    expect(buildSendRequest(input)).toEqual({ kind: "template", template_id: "t1", variable_map: [nameVar], source: "contacts", group_ids: ["g1"] });
-  });
-  it("sends Type my own through the manual (DLT IDs) route", () => {
-    const input: SendFormInput = { ...base, route: "own", own: { ...own, sender_id: " ANRILT " }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
-    expect(buildSendRequest(input)).toEqual({
-      kind: "manual",
-      manual: { sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", template_type: "service", message: "Your order shipped" },
-      source: "numbers",
-      numbers: ["9876543210"],
-    });
+  it("sends a picked template with no kind or manual fields", () => {
+    const input: SendFormInput = { ...base, template: tpl, varMap: [nameVar], numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] } };
+    const req = buildSendRequest(input);
+    expect(req).toEqual({ template_id: "t1", variable_map: [nameVar], source: "contacts", group_ids: ["g1"] });
+    expect(req).not.toHaveProperty("kind");
+    expect(req).not.toHaveProperty("manual");
   });
   it("sends Excel numbers exactly like pasted ones", () => {
-    const pasted = { ...base, route: "own" as const, own, numbers: { ...EMPTY_NUMBERS, mode: "contact" as const, numbersText: "9876543210\n9123456780" } };
+    const pasted = { ...base, template: svc, numbers: { ...EMPTY_NUMBERS, mode: "contact" as const, numbersText: "9876543210\n9123456780" } };
     const excel = { ...pasted, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210", "9123456780"] } };
     expect(buildSendRequest(excel)).toEqual(buildSendRequest(pasted));
     expect(buildSendRequest(excel)).not.toBeNull();
   });
-  it("rejects {#var#} in Type my own", () => {
-    const input: SendFormInput = { ...base, route: "own", own: { ...own, message: "Hi {#var#}" }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
-    expect(sendFormProblem(input)).toBe(OWN_VAR_ERROR);
-    expect(buildSendRequest(input)).toBeNull();
-  });
   it("needs the consent tick for promotional Contact and Excel, but not service", () => {
-    const promo: SendFormInput = { ...base, route: "own", own: { ...own, template_type: "promotional" }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
+    const promo: SendFormInput = { ...base, template: { ...tpl, message: "20% off", var_count: 0 }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
     expect(buildSendRequest(promo)).toBeNull();
     expect(sendFormProblem(promo)).toMatch(/consent/i);
     const ticked = { ...promo, numbers: { ...promo.numbers, consent: true } };
     expect(buildSendRequest(ticked)).toMatchObject({ source: "numbers", consent_confirmed: true });
     const excelPromo = { ...promo, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210"] } };
     expect(buildSendRequest(excelPromo)).toBeNull();
-    expect(buildSendRequest({ ...promo, own })).not.toBeNull();
+    expect(buildSendRequest({ ...promo, template: svc })).not.toBeNull();
   });
-  it("waits for every template variable to be mapped and for a route", () => {
+  it("waits for a template and for every template variable to be mapped", () => {
     expect(sendFormProblem(base)).toMatch(/template/i);
-    const input: SendFormInput = { ...base, route: "template", template: tpl, varMap: [null], numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] } };
+    const input: SendFormInput = { ...base, template: tpl, varMap: [null], numbers: { ...EMPTY_NUMBERS, mode: "list", groupIds: ["g1"] } };
     expect(buildSendRequest(input)).toBeNull();
   });
   it("names a send like SMS 3 Nov 18:05 in Indian time", () => {
@@ -591,24 +563,6 @@ describe("DLT id checks", () => {
       expect(f("")).toBe(false);
     }
   });
-  it("own sender is 3 to 6 letters or digits", () => {
-    expect(isValidOwnSenderId("ANR1")).toBe(true);
-    expect(isValidOwnSenderId("ab")).toBe(false);
-    expect(isValidOwnSenderId("ABCDEFG")).toBe(false);
-    expect(isValidOwnSenderId("AB-CD")).toBe(false);
-  });
-  const ok = { ...EMPTY_OWN, sender_id: "ANRILT", entity_id: "110100", dlt_template_id: "110700", message: "Hello" };
-  const input = (own: typeof ok): SendFormInput => ({ route: "own", template: null, varMap: [], own, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } });
-  it("Type my own refuses bad ids with a clear message", () => {
-    expect(sendFormProblem(input(ok))).toBeNull();
-    expect(sendFormProblem(input({ ...ok, sender_id: "AB-CD" }))).toMatch(/Sender ID/);
-    expect(sendFormProblem(input({ ...ok, entity_id: "12ab" }))).toMatch(/entity ID must be 5 to 30 digits/);
-    expect(sendFormProblem(input({ ...ok, dlt_template_id: "123" }))).toMatch(/template ID must be 5 to 30 digits/);
-    expect(buildSendRequest(input({ ...ok, entity_id: "12ab" }))).toBeNull();
-  });
-  it("Type my own upper-cases the sender id in the request", () => {
-    expect(buildSendRequest(input({ ...ok, sender_id: "anrilt" }))).toMatchObject({ manual: { sender_id: "ANRILT" } });
-  });
 });
 
 describe("parseContactsSub", () => {
@@ -693,5 +647,63 @@ describe("sendPrefill", () => {
   it("does nothing without a hand-off", () => {
     expect(sendPrefill("", "9876543210")).toBeNull();
     expect(sendPrefill("?numbers=1", null)).toBeNull();
+  });
+});
+
+describe("hasLink", () => {
+  it("spots http, https and www links", () => {
+    expect(hasLink("Visit https://anril.ai/offer today")).toBe(true);
+    expect(hasLink("Open http://x.in")).toBe(true);
+    expect(hasLink("See www.anril.ai")).toBe(true);
+  });
+  it("spots a bare domain with or without a path", () => {
+    expect(hasLink("Get the app: play.google.com/store/apps/details?id=x")).toBe(true);
+    expect(hasLink("Shop at anril.in now")).toBe(true);
+    expect(hasLink("Book on shop.co.in/abc.")).toBe(true);
+  });
+  it("ignores ordinary text, numbers and emails", () => {
+    expect(hasLink("Hi {#var#}, your order 123 ships today.")).toBe(false);
+    expect(hasLink("Pay Rs.50 by 5.30pm. Thanks.")).toBe(false);
+    expect(hasLink("Mail us at help@anril.com")).toBe(false);
+    expect(hasLink("")).toBe(false);
+    expect(hasLink(null)).toBe(false);
+  });
+});
+
+describe("dltReason", () => {
+  it("explains a non-whitelisted link and keeps the raw code", () => {
+    expect(dltReason("CTA_URL_NOT_MATCHED")).toEqual({ text: "Blocked: the link isn't whitelisted on your DLT portal", code: "CTA_URL_NOT_MATCHED" });
+    expect(dltReason("cta not whitelisted").text).toBe("Blocked: the link isn't whitelisted on your DLT portal");
+  });
+  it("maps the common DLT and operator codes", () => {
+    expect(dltReason("TEMPLATE_MISMATCH").text).toBe("Blocked: the wording doesn't match the approved DLT template");
+    expect(dltReason("Content template not matched").text).toBe("Blocked: the wording doesn't match the approved DLT template");
+    expect(dltReason("HEADER_NOT_REGISTERED").text).toBe("Blocked: the sender ID isn't registered or active on DLT");
+    expect(dltReason("Sender inactive").text).toBe("Blocked: the sender ID isn't registered or active on DLT");
+    expect(dltReason("PE_TM_BINDING_FAILED").text).toBe("Blocked: your DLT entity isn't linked to the telemarketer");
+    expect(dltReason("Invalid entity id").text).toBe("Blocked: your DLT entity isn't linked to the telemarketer");
+    expect(dltReason("NCPR_DND").text).toBe("Blocked: the number is on DND or has no consent");
+    expect(dltReason("NO_CONSENT").text).toBe("Blocked: the number is on DND or has no consent");
+    expect(dltReason("INVALID_NUMBER").text).toBe("Invalid mobile number");
+    expect(dltReason("Wrong number").text).toBe("Invalid mobile number");
+    expect(dltReason("ABSENT_SUBSCRIBER").text).toBe("Phone unreachable (switched off or out of coverage)");
+    expect(dltReason("Handset switched off").text).toBe("Phone unreachable (switched off or out of coverage)");
+    expect(dltReason("MESSAGE_EXPIRED").text).toBe("Phone unreachable (switched off or out of coverage)");
+    expect(dltReason("BLACKLISTED").text).toBe("Number is blacklisted");
+  });
+  it("does not mistake words that merely contain 'cta'", () => {
+    expect(dltReason("CONTACT_LIST_EMPTY").text).toBe("Contact list empty");
+  });
+  it("humanises an unknown code and keeps it", () => {
+    expect(dltReason("SOME_NEW_CODE")).toEqual({ text: "Some new code", code: "SOME_NEW_CODE" });
+  });
+  it("returns nothing for an empty reason", () => {
+    expect(dltReason("No SMS consent (promotional template)")).toEqual({ text: "No SMS consent (promotional template)", code: null });
+    expect(dltReason("Opted out").text).toBe("Opted out");
+    expect(dltReason("SMS is not enabled for this account.").text).toBe("SMS is not enabled for this account.");
+    expect(dltReason("Not an Indian mobile number").text).toBe("Not an Indian mobile number");
+    expect(dltReason("Some operator sentence").text).toBe("Some operator sentence");
+    expect(dltReason(null)).toEqual({ text: "", code: null });
+    expect(dltReason("  ")).toEqual({ text: "", code: null });
   });
 });

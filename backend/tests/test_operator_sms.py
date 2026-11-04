@@ -51,7 +51,7 @@ async def test_minimal_state_does_not_infer_registration_from_secret():
     with _patches(db):
         state = await operator_sms.get_sms(T, ADMIN)
     assert state == {"connected": False, "key_masked": None, "webhook_registered": False, "webhook_error": None,
-                     "sms_count": None, "checklist": {"dlt": False, "pe_tm": False, "sender": False}}
+                     "sms_count": None}
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,7 @@ async def test_good_key_uses_trusted_host_and_never_echoes_secrets():
                                          {"url": f"{URL}/otp", "secret": secret, "service": "otp"}]
     assert KEY not in json.dumps(out) and secret not in json.dumps(out)
     assert out == {"connected": True, "key_masked": "live••••••••mnop", "webhook_registered": True, "webhook_error": None,
-                   "sms_count": 50, "checklist": {"dlt": False, "pe_tm": False, "sender": False}}
+                   "sms_count": 50}
 
 
 @pytest.mark.asyncio
@@ -120,59 +120,9 @@ async def test_unknown_list_shape_does_not_create_another_callback():
     assert not out["webhook_registered"] and out["webhook_error"]
 
 
-@pytest.mark.asyncio
-async def test_template_requests_are_tenant_scoped():
-    db = _db()
-    db.add("sms_template_requests", id=OTHER, tenant_id=T, status="requested", wording="Hello", reason=None)
-    db.add("sms_template_requests", tenant_id=OTHER, status="requested", wording="Private")
-    with _patches(db):
-        result = await operator_sms.list_template_requests(T, page=1, limit=1, _admin=ADMIN)
-        assert result["total"] == 1 and len(result["items"]) == 1
-        result = await operator_sms.update_template_request(T, OTHER, operator_sms.RequestUpdateIn(status="ready"), ADMIN)
-    assert result["item"]["status"] == "ready"
-    assert db.rows("sms_template_requests")[1]["status"] == "requested"
-
-
 def test_removed_reseller_routes_are_absent():
     assert {route.path for route in operator_sms.router.routes} == {
         "/clients/{tenant_id}/sms", "/clients/{tenant_id}/sms/key", "/clients/{tenant_id}/sms/webhook",
-        "/clients/{tenant_id}/sms/checklist",
-        "/clients/{tenant_id}/sms/template-requests", "/clients/{tenant_id}/sms/template-requests/{request_id}",
-        # Anril-side bookkeeping only (no Bulk9 call): PE-TM approvals and Add credit requests.
-        "/clients/{tenant_id}/sms/pe-tm", "/clients/{tenant_id}/sms/pe-tm/{row_id}/approve",
+        # Anril-side bookkeeping only (no Bulk9 call): Add credit requests. The setup checklist,
+        # PE-TM approvals and template requests were removed on 2026-11-04.
         "/sms/credit-requests", "/sms/credit-requests/{request_id}/done"}
-
-
-@pytest.mark.asyncio
-async def test_template_request_pagination_counts_all_and_rejects_cross_tenant_updates():
-    db = _db()
-    db.add("sms_template_requests", tenant_id=T, status="requested", wording="First")
-    db.add("sms_template_requests", tenant_id=T, status="requested", wording="Second")
-    db.add("sms_template_requests", id=OTHER, tenant_id=OTHER, status="requested", wording="Private")
-    with _patches(db):
-        result = await operator_sms.list_template_requests(T, page=2, limit=1, _admin=ADMIN)
-        assert result["total"] == 2 and result["items"][0]["wording"] == "First"
-        with pytest.raises(HTTPException) as error:
-            await operator_sms.update_template_request(T, OTHER, operator_sms.RequestUpdateIn(status="ready"), ADMIN)
-    assert error.value.status_code == 404
-    assert db.rows("sms_template_requests")[2]["status"] == "requested"
-
-
-@pytest.mark.asyncio
-async def test_template_request_rejection_requires_a_reason():
-    db = _db()
-    with _patches(db), pytest.raises(HTTPException) as error:
-        await operator_sms.update_template_request(T, OTHER, operator_sms.RequestUpdateIn(status="rejected", reason="  "), ADMIN)
-    assert error.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_checklist_is_saved_audited_and_returned():
-    db = _db()
-    audits = []
-    with _patches(db), patch.object(operator_sms, "record_audit_event", lambda *a, **k: audits.append(k["action"])):
-        out = await operator_sms.save_checklist(T, operator_sms.ChecklistIn(dlt=True, pe_tm=True, sender=False), ADMIN)
-    saved = {r["key"]: r for r in db.rows("app_settings") if r["tenant_id"] == T}
-    assert json.loads(saved["sms_checklist"]["value"]) == {"dlt": True, "pe_tm": True, "sender": False}
-    assert out["checklist"] == {"dlt": True, "pe_tm": True, "sender": False}
-    assert audits == ["operator.sms_checklist_saved"]

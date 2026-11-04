@@ -93,23 +93,17 @@ export function SmsShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!connected && pathname !== "/dashboard/sms" && pathname !== "/dashboard/sms/setup") {
-    // Before the Bulk9 key is set only the Dashboard (checklist + Add credit) and PE-TM Binding work.
+  if (!connected && pathname !== "/dashboard/sms") {
+    // Before the Bulk9 key is set only the Dashboard (checklist + Add credit) works.
     return (
       <SmsContext.Provider value={ctx}>
         <Card className="mx-auto max-w-xl">
           <div className="px-5 py-8">
             <h2 className="font-display text-lg font-bold text-[#0A1528]">Setup in progress</h2>
             <p className="mt-1 text-sm text-[#64748b]">
-              {"This opens once your SMS account is ready. Meanwhile you can do the PE-TM binding and add credit from the Dashboard."}
+              {"This opens once your SMS account is ready. Meanwhile you can add credit from the Dashboard."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link
-                href="/dashboard/sms/setup?tab=petm"
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-white hover:bg-primary-dark"
-              >
-                Open PE-TM Binding
-              </Link>
               <Link
                 href="/dashboard/sms"
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-primary px-4 text-sm font-bold text-primary hover:bg-primary/5"

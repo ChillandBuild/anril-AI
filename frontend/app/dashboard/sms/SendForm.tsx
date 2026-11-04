@@ -5,7 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { api, type SmsPreview, type SmsTemplate, type SmsVarSource } from "@/lib/api";
+import { api, type SmsPreview, type SmsCampaignPreviewRequest, type SmsTemplate, type SmsVarSource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { dateBounds, defaultWhen, formatSendTime, resolveWhen, untilSend, type WhenValue } from "@/lib/schedule-time";
 import { NumbersPicker, useHasLeads } from "./RecipientPicker";
@@ -14,7 +14,6 @@ import { VariableMapper, Wording } from "./SendVars";
 import { useSms } from "./SmsShell";
 import {
   EMPTY_NUMBERS,
-  EMPTY_OWN,
   SEND_PREFILL_KEY,
   UNICODE_NOTE,
   buildSendRequest,
@@ -24,6 +23,7 @@ import {
   fieldsSourceFor,
   formatCount,
   friendlyError,
+  hasLink,
   nextIdempotencyKey,
   pruneVarMap,
   sendBlock,
@@ -36,30 +36,26 @@ import {
   templateVarCount,
   withNumbersChange,
   type NumbersState,
-  type OwnDlt,
   type SendFormInput,
 } from "./helpers";
-import { Badge, Btn, Card, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
+import { Badge, Btn, Card, Field, LoadError, Notice, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-const OWN = "__own__";
-const SOURCES = [
-  ["template", "Approved template"],
-  ["own", "Type my own"],
-] as const;
+/** Wait this long after the last change before asking the server for a fresh preview. */
+const PREVIEW_DELAY_MS = 600;
 
-/** The one Send SMS form: pick an approved template or Type my own, say who gets it, preview, send or schedule. */
+/** The one Send SMS form: pick an approved template, say who gets it, check the live preview, send or schedule. */
 export function SendForm() {
   const { canManage } = usePerm();
-  const { reloadBalance, status: smsStatus } = useSms();
+  const { reloadBalance } = useSms();
   const [choice, setChoice] = useState("");
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
-  const [own, setOwn] = useState<OwnDlt>(EMPTY_OWN);
   const [numbers, setNumbers] = useState<NumbersState>(EMPTY_NUMBERS);
   const [name, setName] = useState(() => defaultSendName(new Date()));
   const [when, setWhen] = useState<WhenValue>(() => ({ ...defaultWhen(new Date()), mode: "now" }));
   const [preview, setPreview] = useState<{ key: string; data: SmsPreview } | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<{ key: string; message: string } | null>(null);
+  const [retry, setRetry] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -75,27 +71,33 @@ export function SendForm() {
   }, []);
 
   const templates = useSWR("sms:templates", () => api.sms.templates(), { revalidateOnFocus: false });
-  const senders = useSWR("sms:senders", () => api.sms.senders(), { revalidateOnFocus: false });
   const status = useSWR("sms:status", () => api.sms.status(), { revalidateOnFocus: false });
   const balance = useSWR("sms:balance", () => api.sms.balance(), { revalidateOnFocus: true, shouldRetryOnError: false });
   const hasLeads = useHasLeads();
 
   const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready" && t.template_type !== "unclassified"), [templates.data]);
-  const route: SendFormInput["route"] = choice === OWN ? "own" : choice ? "template" : null;
-  const template: SmsTemplate | null = route === "template" ? (ready.find((t) => t.id === choice) ?? null) : null;
+  const template: SmsTemplate | null = choice ? (ready.find((t) => t.id === choice) ?? null) : null;
   const varCount = templateVarCount(template);
-  const input: SendFormInput = { route, template, varMap, own, numbers };
+  const input: SendFormInput = { template, varMap, numbers };
   const type = sendType(input);
   const promotional = type === "promotional";
   const problem = sendFormProblem(input);
   const request = buildSendRequest(input);
   const requestKey = JSON.stringify(request);
   const freshPreview = preview && request && preview.key === requestKey ? preview.data : null;
+  const resolved = resolveWhen(when, now);
+  const bounds = dateBounds(now);
+  const scheduleBad = when.mode === "later" && !!resolved.error;
+  const previewFailed = previewError?.key === requestKey ? previewError.message : null;
+  // True from the moment the request changes until its preview lands (or fails).
+  const updating = !!request && !scheduleBad && !freshPreview && !previewFailed;
+  // While updating, keep showing the previous numbers (dimmed) instead of blanking the card.
+  const shown = freshPreview ?? (updating ? (preview?.data ?? null) : null);
 
   const groupKey = numbers.groupIds.slice().sort().join(",");
   const fieldsSource = fieldsSourceFor(numbers.mode);
   const fields = useSWR(
-    route === "template" && varCount > 0 ? ["sms:campaign-fields", fieldsSource, fieldsSource === "contacts" ? groupKey : ""] : null,
+    template && varCount > 0 ? ["sms:campaign-fields", fieldsSource, fieldsSource === "contacts" ? groupKey : ""] : null,
     () => api.sms.campaignFields(fieldsSource, numbers.groupIds),
     { revalidateOnFocus: false },
   );
@@ -124,19 +126,41 @@ export function SendForm() {
     if (offeredFields) setVarMap((m) => pruneVarMap(m, offeredFields.map((f) => f.key)));
   }, [offeredFields]);
 
-  const resolved = resolveWhen(when, now);
-  const bounds = dateBounds(now);
-  const scheduleBad = when.mode === "later" && !!resolved.error;
+  // Auto-preview: 600 ms after the last change to a valid request, ask the server who gets it and
+  // what it costs. A reply for an older request is dropped.
+  useEffect(() => {
+    const body = JSON.parse(requestKey) as SmsCampaignPreviewRequest | null;
+    if (!body || scheduleBad) return;
+    let current = true;
+    const timer = window.setTimeout(() => {
+      api.sms
+        .previewCampaign(body)
+        .then((data) => {
+          if (!current) return;
+          setPreview({ key: requestKey, data });
+          setPreviewError(null);
+        })
+        .catch((err) => {
+          if (!current) return;
+          setPreview(null);
+          setPreviewError({ key: requestKey, message: friendlyError(err, "Couldn't build the preview.") });
+        });
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [requestKey, scheduleBad, retry]);
+
   const block = sendBlock({
     loading: (status.isLoading && !status.data) || (balance.isLoading && !balance.data),
-    peTm: status.data ? status.data.checklist.pe_tm === true : undefined,
     balance: balance.data?.sms_count,
     needed: freshPreview?.total_segments ?? 0,
     support: status.data?.support_contact || null,
   });
   const canSend = !!freshPreview && freshPreview.eligible_count > 0 && !scheduleBad && name.trim().length > 0 && !submitting && !block.blocked;
 
-  const message = route === "template" ? (template?.message ?? "") : own.message;
+  const message = template?.message ?? "";
   const length = smsSegments(message.replace(/\{#var#\}/gi, "x"));
 
   function pickTemplate(value: string) {
@@ -157,12 +181,6 @@ export function SendForm() {
     });
   }
 
-  function setOwnField(patch: Partial<OwnDlt>) {
-    setCreated(null);
-    setOwn((o) => ({ ...o, ...patch }));
-    if (patch.template_type) setNumbers((n) => ({ ...n, consent: false }));
-  }
-
   if (!canManage) {
     return (
       <Card>
@@ -171,22 +189,6 @@ export function SendForm() {
         </div>
       </Card>
     );
-  }
-
-  async function runPreview() {
-    if (!request) return;
-    setPreviewing(true);
-    setError(null);
-    const key = requestKey;
-    try {
-      const data = await api.sms.previewCampaign(request);
-      setPreview({ key, data });
-    } catch (err) {
-      setPreview(null);
-      setError(friendlyError(err, "Couldn't build the preview."));
-    } finally {
-      setPreviewing(false);
-    }
   }
 
   async function send() {
@@ -213,7 +215,6 @@ export function SendForm() {
       reloadBalance();
       setChoice("");
       setVarMap([]);
-      setOwn(EMPTY_OWN);
       setNumbers((n) => ({ ...EMPTY_NUMBERS, mode: n.mode }));
       setPreview(null);
       setName(defaultSendName(new Date()));
@@ -222,7 +223,7 @@ export function SendForm() {
       const code = errorStatus(err);
       // A 4xx means nothing was created, so the next attempt may use a fresh key.
       if (code && code >= 400 && code < 500) keyRef.current = null;
-      // A 409 carries the exact reason (PE–TM not confirmed, not enough balance), so show it as sent.
+      // A 409 carries the exact reason (not enough balance), so show it as sent.
       setError(code === 409 ? errorText(err, "Couldn't send the SMS.") : friendlyError(err, "Couldn't send the SMS."));
     } finally {
       submittingRef.current = false;
@@ -231,14 +232,10 @@ export function SendForm() {
     }
   }
 
-  const locked = route === "template" && !!template;
-  const senderList = senders.data?.senders ?? [];
-
-  const sample = freshPreview?.samples[0] ?? null;
-  const senderShown = locked ? (template?.sender_id ?? "") : own.sender_id;
-  const summary = sendSummary({ preview: freshPreview, parts: sample?.segments ?? length.parts, balance: balance.data ?? null });
+  const sample = shown?.samples[0] ?? null;
+  const senderShown = template?.sender_id ?? "";
+  const summary = sendSummary({ preview: shown, parts: sample?.segments ?? length.parts, balance: balance.data ?? null });
   const section = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
-  const ownRoute = route === "own";
 
   // Three numbered steps on the left; the page scrolls normally. On a laptop the preview + cost + Send
   // card sits on the right and stays pinned under the app header (64px) + page padding (28px) as you
@@ -246,54 +243,24 @@ export function SendForm() {
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
       <div className="space-y-5 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm sm:p-6">
-        {!smsStatus.checklist.pe_tm && (
-          <Notice tone="warn">
-            Sending unlocks after PE-TM binding.{" "}
-            <Link href="/dashboard/sms/setup?tab=petm" className="font-bold underline">
-              Finish binding
-            </Link>
-          </Notice>
-        )}
-
         <div>
           <Step n={1} id="sms-send-message" title="What to send">
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Message source">
-              {SOURCES.map(([key, label]) => {
-                const on = key === "own" ? ownRoute : !ownRoute;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => {
-                      if (key === "own" && !ownRoute) pickTemplate(OWN);
-                      if (key === "template" && ownRoute) pickTemplate("");
-                    }}
-                    className={cn(
-                      "flex h-10 items-center gap-2 rounded-full border px-4 text-sm",
-                      on ? "border-primary bg-primary/5 font-bold text-[#0A1528]" : "border-[#e2e8f0] font-semibold text-[#64748b] hover:border-slate-300",
-                    )}
-                  >
-                    <span aria-hidden className={cn("h-3.5 w-3.5 rounded-full border-2", on ? "border-primary bg-primary shadow-[inset_0_0_0_2px_#fff]" : "border-[#cbd5e1]")} />
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            {!ownRoute && (
-              <select aria-label="Template" className={inputCls} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
-                <option value="">Choose an approved template…</option>
-                {ready.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
-                  </option>
-                ))}
-              </select>
+            <select aria-label="Template" className={inputCls} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
+              <option value="">Choose an approved template…</option>
+              {ready.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
+                </option>
+              ))}
+            </select>
+            {template && hasLink(template.message) && (
+              <Notice tone="warn">
+                This message has a link. The link must be whitelisted on your DLT portal (CTA / URL whitelisting) for this sender, or the telecom blocks the SMS.
+              </Notice>
             )}
             {templates.error && !templates.data && <LoadError message={friendlyError(templates.error, "Couldn't load your templates.")} onRetry={() => void templates.mutate()} />}
 
-            {route === "template" && template && (
+            {template && (
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748b]">
                 <span className="font-bold text-[#0A1528]">{template.sender_id}</span>
                 <span>· Entity {template.entity_id}</span>
@@ -302,47 +269,7 @@ export function SendForm() {
               </p>
             )}
 
-            {route === "own" && (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                  <Field label="Sender ID">
-                    <select
-                      className={inputCls}
-                      value={own.sender_id}
-                      onChange={(e) => {
-                        const s = senderList.find((x) => x.sender_id === e.target.value);
-                        setOwnField({ sender_id: e.target.value, entity_id: s?.entity_id ?? "" });
-                      }}
-                    >
-                      <option value="">{senders.isLoading ? "Loading…" : "Pick a sender"}</option>
-                      {senderList.map((s) => (
-                        <option key={s.sender_id} value={s.sender_id}>
-                          {s.sender_id}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="DLT entity ID">
-                    <input className={inputCls} value={own.entity_id} onChange={(e) => setOwnField({ entity_id: e.target.value })} />
-                  </Field>
-                  <Field label="DLT template ID">
-                    <input className={inputCls} value={own.dlt_template_id} onChange={(e) => setOwnField({ dlt_template_id: e.target.value })} />
-                  </Field>
-                  <Field label="Type">
-                    <select className={inputCls} value={own.template_type} onChange={(e) => setOwnField({ template_type: e.target.value as OwnDlt["template_type"] })}>
-                      <option value="service">Service</option>
-                      <option value="promotional">Promotional</option>
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Message" hint="Exact approved wording. No {#var#} here.">
-                  <textarea className={textareaCls} rows={3} value={own.message} onChange={(e) => setOwnField({ message: e.target.value })} />
-                </Field>
-              </>
-            )}
-
-            {route === "template" &&
-              template &&
+            {template &&
               varCount > 0 &&
               (fields.error && !fields.data ? (
                 <LoadError message={friendlyError(fields.error, "Couldn't load the contact fields.")} onRetry={() => void fields.mutate()} />
@@ -350,7 +277,7 @@ export function SendForm() {
                 <VariableMapper varCount={varCount} varMap={varMap} fields={fields.data?.fields ?? []} onSet={setVar} />
               ))}
 
-            {route !== null && message && (
+            {message && (
               <div>
                 <p className="text-xs font-semibold text-[#334155]" aria-live="polite">
                   {length.unicode ? "Unicode" : "English"} · {smsCounterLine(message)}
@@ -416,15 +343,21 @@ export function SendForm() {
             {sample ? (
               <p className="whitespace-pre-wrap break-words text-sm text-[#0A1528]">{sample.content}</p>
             ) : message ? (
-              <Wording message={message} map={route === "template" ? varMap : undefined} fields={fields.data?.fields} />
+              <Wording message={message} map={varMap} fields={fields.data?.fields} />
             ) : (
               <p className="text-sm text-[#94a3b8]">Pick a template to see the message.</p>
             )}
           </div>
-          <p className="text-[11px] text-[#9fb3c8]">{sample ? `Shown with ${sample.name || "the first recipient"}'s values.` : "Press Preview to fill in real values."}</p>
+          <p className="text-[11px] text-[#9fb3c8]">{sample ? `Shown with ${sample.name || "the first recipient"}'s values.` : "Real values fill in automatically."}</p>
         </div>
 
-        <dl className="grid grid-cols-2 gap-y-2 text-sm">
+        {updating && (
+          <p className="-mb-2 text-xs font-semibold text-[#64748b]" role="status" aria-live="polite">
+            Updating…
+          </p>
+        )}
+
+        <dl className={cn("grid grid-cols-2 gap-y-2 text-sm transition-opacity", updating && "opacity-50")}>
           {summary.map((r) => (
             <div key={r.label} className="contents">
               <dt className="text-[#64748b]">{r.label}</dt>
@@ -433,9 +366,21 @@ export function SendForm() {
           ))}
         </dl>
 
-        {freshPreview && <SendPreview preview={freshPreview} />}
+        {shown && (
+          <div className={cn("transition-opacity", updating && "opacity-50")}>
+            <SendPreview preview={shown} />
+          </div>
+        )}
         {freshPreview && block.reason && <Notice tone="warn">{block.reason}</Notice>}
-        {!freshPreview && problem && route !== null && <p className="text-xs text-[#64748b]">{problem}</p>}
+        {!shown && problem && template !== null && <p className="text-xs text-[#64748b]">{problem}</p>}
+        {previewFailed && (
+          <Notice tone="danger">
+            {previewFailed}{" "}
+            <button type="button" className="font-bold underline" onClick={() => setRetry((n) => n + 1)}>
+              Try again
+            </button>
+          </Notice>
+        )}
         {error && <Notice tone="danger">{error}</Notice>}
         {created && (
           <Notice tone="success">
@@ -447,9 +392,6 @@ export function SendForm() {
         )}
 
         <div className="grid gap-2">
-          <Btn variant="outline" busy={previewing} disabled={!request || scheduleBad} onClick={() => void runPreview()}>
-            {freshPreview ? "Preview again" : "Preview"}
-          </Btn>
           <Btn
             className="h-12 text-base"
             disabled={!canSend}
@@ -463,7 +405,6 @@ export function SendForm() {
           >
             {when.mode === "later" ? "Schedule" : "Send now"}
           </Btn>
-          {!freshPreview && request && <p className="text-center text-xs text-[#64748b]">Preview first: it counts who gets it and what it costs.</p>}
         </div>
       </aside>
 

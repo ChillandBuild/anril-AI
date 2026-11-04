@@ -26,7 +26,7 @@ const SETTINGS_ROUTE_LABELS: Record<string, string> = {
 /** Anril SMS pages, keyed by the segment after /dashboard/sms ("" = the SMS dashboard). */
 const SMS_TITLES: Record<string, { title: string; description: string }> = {
   "": { title: "SMS Dashboard", description: "Your SMS wallet, today's sends and what's scheduled next." },
-  setup: { title: "DLT Setup", description: "Add your DLT entity, sender IDs and templates, and bind PE–TM." },
+  setup: { title: "DLT Setup", description: "Your DLT entity, sender IDs and content templates." },
   send: { title: "Send SMS", description: "Send or schedule a DLT-approved SMS to contacts, lists, a file or leads." },
   contacts: { title: "Address Book", description: "Your SMS contacts and groups." },
   reports: { title: "Delivery Reports", description: "Every send and what happened to each message." },

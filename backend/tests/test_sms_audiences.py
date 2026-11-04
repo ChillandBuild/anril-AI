@@ -203,43 +203,11 @@ def test_promotional_to_pasted_numbers_needs_the_tick_and_records_who():
     assert db.rows("sms_messages")[0]["phone"] == "9876543210"
 
 
-# ---------------------------------------------------------------- raw DLT IDs (manual)
+# ---------------------------------------------------------------- raw DLT IDs (manual) removed 2026-11-04
 
-def _manual(message="Your order 123 has shipped", template_type="service"):
-    return camp.manual_template(sender_id="anrilt", entity_id="1201160000000000001",
-                                dlt_template_id="1207160000000000001", template_type=template_type, message=message)
-
-
-def test_manual_message_must_be_final_text():
-    with pytest.raises(camp.SmsError, match="var"):
-        _manual("Hi {#var#}")
-
-
-@pytest.mark.asyncio
-async def test_manual_campaign_sends_with_dlt_manual():
-    db, _ = _setup()
-    c, _ = camp.create_campaign(db, T, "u1", name="Ship", template=_manual(), variable_map=[], send_at=None,
-                                idempotency_key="key-manual01", now=NOW,
-                                audience=camp.Audience(source="numbers", numbers=["9876543210"]))
-    assert c["kind"] == "manual" and c["message_id"] is None and c["manual_template_id"] == "1207160000000000001"
-    send = AsyncMock(return_value={"return": True, "request_id": "r9"})
-    with patch.object(bulk9_client, "send_dlt_manual", send), patch.object(camp, "get_setting", lambda *a, **k: "k"):
-        await camp.process_due_sms(db, now=NOW + timedelta(seconds=1))
-    kw = send.call_args.kwargs
-    assert kw["entity_id"] == "1201160000000000001" and kw["message"] == "Your order 123 has shipped"
-    assert kw["sender_id"] == "ANRILT" and kw["udf1"] == db.rows("sms_messages")[0]["id"]
-    assert db.rows("sms_messages")[0]["status"] == "submitted"
-
-
-@pytest.mark.asyncio
-async def test_route_preview_for_manual_has_no_variables():
-    db, _ = _setup()
-    body = sms.PreviewBody(kind="manual", source="numbers", numbers=["9876543210"], variable_map=[
-        sms.VarSource(source="text", value="x")], manual=sms.ManualSpec(
-        sender_id="ANRILT", entity_id="12011", dlt_template_id="12071", template_type="service", message="Hi"))
-    with patch.object(sms, "get_supabase", lambda: db), pytest.raises(sms.HTTPException) as e:
-        await sms.preview_campaign(body, CTX)
-    assert e.value.status_code == 422 and "no variables" in e.value.detail
+def test_preview_body_has_no_manual_send():
+    assert "manual" not in sms.PreviewBody.model_fields and "kind" not in sms.PreviewBody.model_fields
+    assert not hasattr(camp, "manual_template") and not hasattr(bulk9_client, "send_dlt_manual")
 
 
 # ---------------------------------------------------------------- OTP delivery webhook

@@ -292,14 +292,11 @@ export interface SendBlock { blocked: boolean; reason: string | null }
  */
 export function sendBlock(input: {
   loading: boolean;
-  peTm: boolean | undefined;
   balance: number | undefined;
   needed: number;
   support: string | null;
 }): SendBlock {
   if (input.loading) return { blocked: true, reason: null };
-  if (input.peTm === undefined) return { blocked: true, reason: "Couldn't check your SMS setup. Refresh and try again." };
-  if (input.peTm !== true) return { blocked: true, reason: "Waiting for your account manager to confirm PE–TM binding." };
   if (input.balance === undefined) return { blocked: true, reason: "Couldn't check your SMS balance. Refresh and try again." };
   if (input.balance < input.needed) {
     return {
@@ -396,10 +393,6 @@ export function canCancelCampaign(status: string): boolean {
 
 export function canDeleteCampaign(status: string): boolean {
   return status === "completed" || status === "cancelled";
-}
-
-export function canDeleteTemplateRequest(status: string): boolean {
-  return status === "requested" || status === "rejected";
 }
 
 /** ISO instant -> value for a datetime-local input (browser-local time, minute precision). */
@@ -544,20 +537,9 @@ export function fieldsSourceFor(mode: NumbersMode): SmsRecipientSource {
   return mode === "list" ? "contacts" : mode === "leads" ? "leads" : "numbers";
 }
 
-/** The "Type my own" fields. */
-export interface OwnDlt {
-  sender_id: string;
-  entity_id: string;
-  dlt_template_id: string;
-  template_type: SmsTemplateType;
-  message: string;
-}
-export const EMPTY_OWN: OwnDlt = { sender_id: "", entity_id: "", dlt_template_id: "", template_type: "service", message: "" };
-
 /** DLT entity (PE) and content-template IDs are plain numbers, 5 to 30 digits. */
 export const ENTITY_ID_MESSAGE = "The DLT entity ID must be 5 to 30 digits (numbers only).";
 export const DLT_TEMPLATE_ID_MESSAGE = "The DLT template ID must be 5 to 30 digits (numbers only).";
-export const SENDER_ID_MESSAGE = "The Sender ID must be 3 to 6 letters or digits.";
 
 export function isValidEntityId(id: string): boolean {
   return /^\d{5,30}$/.test(id.trim());
@@ -567,24 +549,10 @@ export function isValidDltTemplateId(id: string): boolean {
   return /^\d{5,30}$/.test(id.trim());
 }
 
-/** "Type my own" sender: 3 to 6 letters or digits (sent upper-cased). */
-export function isValidOwnSenderId(id: string): boolean {
-  return /^[A-Za-z0-9]{3,6}$/.test(id.trim());
-}
-
-export const OWN_VAR_ERROR = "Type my own can't have {#var#} in the message. Write the exact text to send, or pick a template that has variables.";
-
-/** "Type my own" sends no per-person values, so a {#var#} in the message is refused. */
-export function ownVarError(message: string): string | null {
-  return countVars(message) > 0 ? OWN_VAR_ERROR : null;
-}
-
 export interface SendFormInput {
-  /** "template" = an approved template is picked; "own" = Type my own; null = nothing chosen yet. */
-  route: "template" | "own" | null;
+  /** The approved template picked in step 1; null until one is chosen. */
   template: Pick<SmsTemplate, "id" | "message" | "template_type" | "var_count"> | null;
   varMap: (SmsVarSource | null)[];
-  own: OwnDlt;
   numbers: NumbersState;
 }
 
@@ -593,32 +561,17 @@ export function templateVarCount(t: Pick<SmsTemplate, "message" | "var_count"> |
   return t ? Math.max(t.var_count ?? 0, countVars(t.message)) : 0;
 }
 
-/** Service or promotional, per the route. null until a route is chosen. */
+/** Service or promotional, per the picked template. null until one is chosen. */
 export function sendType(input: SendFormInput): SmsTemplateType | null {
-  if (input.route === "own") return input.own.template_type;
-  if (input.route === "template" && input.template) return input.template.template_type === "promotional" ? "promotional" : "service";
+  if (input.template) return input.template.template_type === "promotional" ? "promotional" : "service";
   return null;
 }
 
-/** The first thing missing before Preview, or null when the form is ready. */
+/** The first thing missing before the preview, or null when the form is ready. */
 export function sendFormProblem(input: SendFormInput): string | null {
   const type = sendType(input);
-  if (!input.route) return "Pick a template or Type my own.";
-  if (input.route === "template") {
-    if (!input.template) return "Pick a template.";
-    if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
-  } else {
-    const o = input.own;
-    if (!o.sender_id.trim()) return "Pick a Sender ID.";
-    if (!isValidOwnSenderId(o.sender_id)) return SENDER_ID_MESSAGE;
-    if (!o.entity_id.trim()) return "Enter the DLT entity ID.";
-    if (!isValidEntityId(o.entity_id)) return ENTITY_ID_MESSAGE;
-    if (!o.dlt_template_id.trim()) return "Enter the DLT template ID.";
-    if (!isValidDltTemplateId(o.dlt_template_id)) return DLT_TEMPLATE_ID_MESSAGE;
-    if (!o.message.trim()) return "Type the message.";
-    const v = ownVarError(o.message);
-    if (v) return v;
-  }
+  if (!input.template) return "Pick a template.";
+  if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
   if (!numbersReady(input.numbers, type === "promotional")) {
     const n = input.numbers;
     if (type === "promotional" && (n.mode === "contact" || n.mode === "excel") && looseNumbers(n).length > 0 && !n.consent) {
@@ -629,32 +582,13 @@ export function sendFormProblem(input: SendFormInput): string | null {
   return null;
 }
 
-/**
- * The preview/create body (without name, send_at and idempotency key), or null if the form is
- * not ready. A picked template goes through the approved-template route; Type my own goes through
- * the DLT-IDs ("manual") route.
- */
+/** The preview/create body (without name, send_at and idempotency key), or null if the form is not ready. */
 export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewRequest | null {
   if (sendFormProblem(input)) return null;
   const promotional = sendType(input) === "promotional";
   const recipients = buildRecipients(input.numbers, promotional);
-  if (input.route === "own") {
-    const o = input.own;
-    return {
-      kind: "manual",
-      manual: {
-        sender_id: o.sender_id.trim().toUpperCase(),
-        entity_id: o.entity_id.trim(),
-        dlt_template_id: o.dlt_template_id.trim(),
-        template_type: o.template_type,
-        message: o.message,
-      },
-      ...recipients,
-    };
-  }
   const t = input.template!;
   return {
-    kind: "template",
     template_id: t.id,
     variable_map: input.varMap.slice(0, templateVarCount(t)) as SmsVarSource[],
     ...recipients,
@@ -841,4 +775,42 @@ export function sendProgress(counts: Partial<Record<SmsMessageStatus, number>>, 
 export function onTheWayCount(anril: Record<string, number> | null | undefined): number {
   const n = (k: string) => Number(anril?.[k]) || 0;
   return n("queued") + n("sending") + n("submitted") + n("unknown");
+}
+
+/** True when the text carries a link: http(s)://, www., or a bare domain such as play.google.com/x. */
+export function hasLink(text: string | null | undefined): boolean {
+  if (!text) return false;
+  if (/https?:\/\//i.test(text) || /\bwww\./i.test(text)) return true;
+  return /(?:^|[^@\w.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|in|co|org|net|io|app|me|ly|gl|page|link|store|shop|online|site|xyz|info|biz|edu|gov)\b(?:\/|\?|#|\s|$|[.,;:!)])/i.test(text);
+}
+
+const ANRIL_REASONS = new Set(["Opted out", "No SMS consent (promotional template)", "Not an Indian mobile number", "Duplicate number"]);
+
+const DLT_REASONS: { test: RegExp; text: string }[] = [
+  { test: /\bcta\b|url.*(not.*match|whitelist|not.*regist)|link.*(not.*match|whitelist)/, text: "Blocked: the link isn't whitelisted on your DLT portal" },
+  { test: /templ.*(mismatch|not.*match|not.*found|invalid|not.*approved|not.*regist|variable)|content.*(mismatch|not.*match|invalid|not.*approved)|message.*(not.*match|mismatch)/, text: "Blocked: the wording doesn't match the approved DLT template" },
+  { test: /(header|sender|sid|cli).*(not.*(regist|found|valid|active|approved)|invalid|inactive|blocked|expired|mismatch)|(unregistered|invalid|inactive).*(header|sender)/, text: "Blocked: the sender ID isn't registered or active on DLT" },
+  { test: /entity|pe.?tm|tm.?chain|telemarketer|binding|chain.*(not|invalid|missing)|principal/, text: "Blocked: your DLT entity isn't linked to the telemarketer" },
+  { test: /consent|dnd|ncpr|ndnc|do.?not.?disturb|preference|opt.?out|blocked.*number|number.*blocked/, text: "Blocked: the number is on DND or has no consent" },
+  { test: /black.?list/, text: "Number is blacklisted" },
+  { test: /invalid.*(number|mobile|msisdn|destination|subscriber)|(number|mobile|msisdn|destination).*invalid|wrong.*number|bad.*number|incorrect.*number/, text: "Invalid mobile number" },
+  { test: /expire|absent|switched.?off|unreachable|out.?of.?(coverage|reach)|handset|not.?reachable|subscriber.*(busy|unavailable)|phone.*off/, text: "Phone unreachable (switched off or out of coverage)" },
+];
+
+/**
+ * Plain English for a DLT / operator failure code or description. `code` is the raw text as
+ * received (null when there was none), so the screen can keep it in a tooltip.
+ */
+export function dltReason(raw: string | null | undefined): { text: string; code: string | null } {
+  const code = (raw ?? "").trim();
+  if (!code) return { text: "", code: null };
+  // Anril's own reasons (backend sms_campaigns R_* and its full sentences) are already plain English.
+  if (ANRIL_REASONS.has(code) || code.endsWith(".")) return { text: code, code: null };
+  const norm = code.toLowerCase().replace(/[_\-\s]+/g, " ");
+  const hit = DLT_REASONS.find((r) => r.test.test(norm));
+  if (hit) return { text: hit.text, code };
+  // Only a CODE_LIKE_THIS gets reworded; a sentence from the operator is shown as written.
+  if (/[a-z]/.test(code)) return { text: code, code: null };
+  const words = code.replace(/_+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  return { text: words.charAt(0).toUpperCase() + words.slice(1), code };
 }
