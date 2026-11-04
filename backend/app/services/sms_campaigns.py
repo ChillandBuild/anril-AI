@@ -5,6 +5,7 @@ or queued -> skipped | cancelled. `sending` is the claim (a conditional queued -
 two scheduler runs never double-send). A timeout may mean Bulk9 did accept the SMS, so it becomes
 `unknown` and is never re-sent; a row stuck in `sending` for 15 minutes becomes `unknown` too.
 """
+import json
 import logging
 import re
 import uuid
@@ -680,6 +681,19 @@ def _find_number(obj: Any, names: tuple[str, ...]) -> float | None:
     return None
 
 
+SEND_REPLY_MAX = 4000
+
+
+def send_reply(body: Any) -> Any:
+    """Bulk9's send reply as stored on the message (already scrubbed of financial fields by
+    send_dlt). Capped so a runaway reply can't bloat the row."""
+    try:
+        size = len(json.dumps(body, default=str))
+    except (TypeError, ValueError):
+        return {"unreadable": True}
+    return body if size <= SEND_REPLY_MAX else {"truncated": True, "size": size}
+
+
 def parse_send_result(body: dict, row_id: str) -> dict:
     """Request ID and SMS count from a send response."""
     request_id = body.get("request_id")
@@ -795,10 +809,12 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
         _finish(db, rid, {"status": "unknown", "failure_reason": "Something went wrong while sending."})
         return
     res = parse_send_result(body if isinstance(body, dict) else {}, rid)
+    reply = send_reply(body)
     if not res["request_id"]:
-        _finish(db, rid, {"status": "unknown", "failure_reason": "No request ID from the SMS provider; checking delivery logs."})
+        _finish(db, rid, {"status": "unknown", "send_response": reply,
+                          "failure_reason": "No request ID from the SMS provider; checking delivery logs."})
         return
-    patch: dict = {"status": "submitted", "request_id": res["request_id"],
+    patch: dict = {"status": "submitted", "request_id": res["request_id"], "send_response": reply,
                    "submitted_at": utcnow().isoformat()}
     if res["sms_count"] is not None:
         patch["sms_count"] = res["sms_count"]

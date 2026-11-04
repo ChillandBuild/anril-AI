@@ -23,7 +23,10 @@ import {
   fromLocalInput,
   statusLabel,
   toLocalInput,
+  NIGHT_RULE,
+  quietRelease,
 } from "./helpers";
+import { formatSendTime } from "@/lib/schedule-time";
 import { MessageStatus, messageTime } from "./MessageStatus";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
@@ -111,6 +114,9 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
   }
 
   const c = campaign.data;
+  // Sent to the operator between 9 PM and 10 AM: still held until 10 AM.
+  const nightRelease = c && c.counts.submitted > 0 ? quietRelease(c.send_at ?? c.created_at) : null;
+  const heldRelease = nightRelease && new Date() < nightRelease ? nightRelease : null;
   const rows = messages.data?.messages ?? [];
   const total = messages.data?.total ?? 0;
 
@@ -182,6 +188,11 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
             )}
             {c.build_error && <Notice tone="danger">{c.build_error}</Notice>}
             {c.status === "preparing" && !c.build_error && <Notice tone="info">We&apos;re building your recipient list. Sending starts when it&apos;s ready.</Notice>}
+            {heldRelease && (
+              <Notice tone="warn">
+                {formatCount(c.counts.submitted)} SMS will go out at {formatSendTime(heldRelease)}. {NIGHT_RULE}
+              </Notice>
+            )}
             <p className="whitespace-pre-wrap break-words rounded-xl bg-[#f8fafc] p-3 text-sm text-[#334155]">{c.template_text}</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
               <Stat label="Total" value={formatCount(c.total)} />

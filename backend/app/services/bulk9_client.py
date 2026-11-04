@@ -13,6 +13,7 @@ through _parse, which distinguishes explicit refusal from an unconfirmed respons
 """
 from __future__ import annotations
 
+import json as _json
 import logging
 from decimal import Decimal, InvalidOperation
 import re
@@ -235,8 +236,21 @@ def _webhook_path(service: str) -> str:
     return f"/dev/webhook/v2/{service}"
 
 
+# Body Bulk9 fills per callback (placeholder syntax from its Create SMS Webhook docs). Without a
+# template Bulk9 posts an empty body. The secret is repeated here because Bulk9 did not forward
+# the custom header on live callbacks; /webhook/bulk9 accepts either and strips it.
+_WEBHOOK_FIELDS = ("request_id", "mobile", "status", "status_description", "failure_reason", "description",
+                   "sms_count", "amount_debited", "udf1", "sent_timestamp", "delivery_timestamp", "webhook_type")
+
+
+def _webhook_payload(secret: str) -> str:
+    body = {"anril_secret": secret, **{f: f"@{{{{{f}}}}}" for f in _WEBHOOK_FIELDS}}
+    return _json.dumps(body, indent=2)
+
+
 def _webhook_body(service: str, url: str, secret: str) -> dict:
     return {
+        "payload": _webhook_payload(secret),
         "name": _WEBHOOK_NAMES[service],
         "url": url,
         "method": "POST",

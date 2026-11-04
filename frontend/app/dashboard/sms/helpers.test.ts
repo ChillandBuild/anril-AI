@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  heldUntil,
+  quietRelease,
   sendPrefill,
   onTheWayCount,
   sendProgress,
@@ -705,5 +707,32 @@ describe("dltReason", () => {
     expect(dltReason("Some operator sentence").text).toBe("Some operator sentence");
     expect(dltReason(null)).toEqual({ text: "", code: null });
     expect(dltReason("  ")).toEqual({ text: "", code: null });
+  });
+});
+
+describe("night-time hold", () => {
+  // 4 Nov 2026 10:47 PM IST = 17:17 UTC
+  const lateNight = "2026-11-04T17:17:09Z";
+  it("releases a 10:47 PM send at 10 AM next day", () => {
+    expect(quietRelease(lateNight)?.toISOString()).toBe("2026-11-05T04:30:00.000Z");
+  });
+  it("releases an early-morning send at 10 AM the same day", () => {
+    expect(quietRelease("2026-11-05T01:00:00Z")?.toISOString()).toBe("2026-11-05T04:30:00.000Z"); // 6:30 AM IST
+  });
+  it("does not hold daytime sends, edges included", () => {
+    expect(quietRelease("2026-11-05T04:30:00Z")).toBeNull(); // 10:00 AM IST
+    expect(quietRelease("2026-11-05T15:29:59Z")).toBeNull(); // 8:59:59 PM IST
+    expect(quietRelease("2026-11-05T15:30:00Z")).not.toBeNull(); // 9:00 PM IST
+    expect(quietRelease(null)).toBeNull();
+    expect(quietRelease("junk")).toBeNull();
+  });
+  it("crosses month ends", () => {
+    expect(quietRelease("2026-11-30T17:00:00Z")?.toISOString()).toBe("2026-12-01T04:30:00.000Z");
+  });
+  it("shows held only for submitted messages before the release", () => {
+    const m = { status: "submitted", submitted_at: lateNight };
+    expect(heldUntil(m, new Date("2026-11-04T20:00:00Z"))?.toISOString()).toBe("2026-11-05T04:30:00.000Z");
+    expect(heldUntil(m, new Date("2026-11-05T04:31:00Z"))).toBeNull();
+    expect(heldUntil({ ...m, status: "delivered" }, new Date("2026-11-04T20:00:00Z"))).toBeNull();
   });
 });

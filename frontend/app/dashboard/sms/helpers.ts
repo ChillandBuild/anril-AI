@@ -53,6 +53,40 @@ export function statusTone(status: string): Tone {
   }
 }
 
+// ---------------------------------------------------------------- night-time hold
+// TRAI night-time rule: SMS sent between 9 PM and 10 AM IST are held by Bulk9 and go out at
+// 10 AM (seen live 2026-11-04: three 10:47-11:39 PM sends were scheduled for 10:01 AM).
+const IST_OFFSET_MS = 330 * 60_000;
+const QUIET_FROM_HOUR = 21;
+const QUIET_UNTIL_HOUR = 10;
+
+function toDate(at: Date | string | null | undefined): Date | null {
+  if (!at) return null;
+  const d = at instanceof Date ? at : new Date(at);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** The 10 AM IST that releases a send made at `at`, or null when `at` is outside 9 PM–10 AM. */
+export function quietRelease(at: Date | string | null | undefined): Date | null {
+  const d = toDate(at);
+  if (!d) return null;
+  const ist = new Date(d.getTime() + IST_OFFSET_MS);
+  const hour = ist.getUTCHours();
+  if (hour >= QUIET_UNTIL_HOUR && hour < QUIET_FROM_HOUR) return null;
+  const day = ist.getUTCDate() + (hour >= QUIET_FROM_HOUR ? 1 : 0);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), day, QUIET_UNTIL_HOUR) - IST_OFFSET_MS);
+}
+
+/** When a message sent to the operator at night is still being held: the 10 AM release, else null. */
+export function heldUntil(m: { status: string; submitted_at: string | null }, now: Date): Date | null {
+  if (m.status !== "submitted") return null;
+  const release = quietRelease(m.submitted_at);
+  return release && now < release ? release : null;
+}
+
+export const NIGHT_RULE =
+  "SMS sent between 9 PM and 10 AM are held by the operator and go out at 10 AM (TRAI night-time rule).";
+
 export function formatCount(n: number | null | undefined): string {
   return (n ?? 0).toLocaleString("en-IN");
 }

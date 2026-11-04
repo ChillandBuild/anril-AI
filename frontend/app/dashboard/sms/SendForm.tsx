@@ -37,6 +37,8 @@ import {
   withNumbersChange,
   type NumbersState,
   type SendFormInput,
+  NIGHT_RULE,
+  quietRelease,
 } from "./helpers";
 import { Badge, Btn, Card, Field, LoadError, Notice, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
@@ -88,6 +90,8 @@ export function SendForm() {
   const resolved = resolveWhen(when, now);
   const bounds = dateBounds(now);
   const scheduleBad = when.mode === "later" && !!resolved.error;
+  // Sent (or scheduled) between 9 PM and 10 AM: the operator holds it until 10 AM.
+  const nightRelease = scheduleBad ? null : quietRelease(when.mode === "later" ? resolved.at : now);
   const previewFailed = previewError?.key === requestKey ? previewError.message : null;
   // True from the moment the request changes until its preview lands (or fails).
   const updating = !!request && !scheduleBad && !freshPreview && !previewFailed;
@@ -372,6 +376,11 @@ export function SendForm() {
           </div>
         )}
         {freshPreview && block.reason && <Notice tone="warn">{block.reason}</Notice>}
+        {nightRelease && (
+          <Notice tone="warn">
+            This SMS will go out at {formatSendTime(nightRelease)}, not straight away. {NIGHT_RULE} SMS credits are used when you send.
+          </Notice>
+        )}
         {!shown && problem && template !== null && <p className="text-xs text-[#64748b]">{problem}</p>}
         {previewFailed && (
           <Notice tone="danger">

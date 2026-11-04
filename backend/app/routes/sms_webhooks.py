@@ -1,15 +1,18 @@
 # backend/app/routes/sms_webhooks.py
-"""Bulk9 delivery callbacks authenticated with a per-tenant header secret.
+"""Bulk9 delivery callbacks authenticated with a per-tenant secret.
 
-Bulk9 signs nothing, so each tenant gets its own random secret, sent by Bulk9 in the
-X-Anril-Webhook-Secret header (configured when the operator saves the client's key). The tenant
-comes from the URL and is only trusted after that secret matches — never from the payload.
+Bulk9 signs nothing, so each tenant gets its own random secret. Bulk9's docs say custom headers
+are forwarded, but live callbacks arrived without them (2026-11-04), so the secret also rides
+inside the body template Anril registers (`anril_secret`). Either place is accepted; the field is
+stripped before anything is stored. The tenant comes from the URL and is only trusted after the
+secret matches — never from the payload.
 """
 from __future__ import annotations
 
 import hmac
 import json
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
@@ -32,17 +35,32 @@ def _too_big(request: Request) -> bool:
         return True
 
 
+SECRET_FIELD = "anril_secret"
+# A placeholder Bulk9 left unfilled ("@{{status}}" / "{{status}}") carries no information.
+_UNFILLED = re.compile(r"^@?\{\{\s*[\w.]+\s*\}\}$")
+
+
+def _matches(expected: str, given: object) -> bool:
+    if not isinstance(given, str) or not given:
+        return False
+    # surrogatepass: a lone surrogate in JSON must give 401, not a 500.
+    return hmac.compare_digest(expected.encode("utf-8", "surrogatepass"), given.encode("utf-8", "surrogatepass"))
+
+
+def _clean(item: dict) -> dict:
+    """Drop the secret and any empty or unfilled placeholder values."""
+    return {k: v for k, v in item.items()
+            if k != SECRET_FIELD and v != "" and not (isinstance(v, str) and _UNFILLED.match(v))}
+
+
 async def _authenticated_items(tenant_id: str, request: Request) -> tuple[str, list]:
-    """(tenant_id, payload items) once the tenant's secret matches; HTTP errors otherwise."""
+    """(tenant_id, payload items) once the tenant's secret matches; HTTP errors otherwise.
+    The secret comes from the X-Anril-Webhook-Secret header or, failing that, from the
+    `anril_secret` field of every item in the body."""
     try:
         tenant_id = str(uuid.UUID(tenant_id))
     except ValueError:
         raise HTTPException(status_code=404, detail="Not found")
-    expected = get_setting("bulk9_webhook_secret", tenant_id=tenant_id) or ""
-    given = request.headers.get("x-anril-webhook-secret", "")
-    if not expected or not hmac.compare_digest(expected.encode(), given.encode()):
-        logger.warning("Bulk9 webhook: bad secret for tenant %s", tenant_id)
-        raise HTTPException(status_code=401, detail="Unauthorized")
     if _too_big(request):
         raise HTTPException(status_code=413, detail="Payload too large")
     raw = bytearray()
@@ -53,9 +71,19 @@ async def _authenticated_items(tenant_id: str, request: Request) -> tuple[str, l
     try:
         payload = json.loads(raw)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+        payload = None
     items = payload if isinstance(payload, list) else [payload]
-    return tenant_id, [p for p in items[:500] if isinstance(p, dict)]
+    items = [p for p in items[:500] if isinstance(p, dict)]
+
+    expected = get_setting("bulk9_webhook_secret", tenant_id=tenant_id) or ""
+    header_ok = bool(expected) and _matches(expected, request.headers.get("x-anril-webhook-secret", ""))
+    body_ok = bool(expected) and bool(items) and all(_matches(expected, p.get(SECRET_FIELD)) for p in items)
+    if not (header_ok or body_ok):
+        logger.warning("Bulk9 webhook: bad secret for tenant %s", tenant_id)
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if payload is None:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    return tenant_id, [_clean(p) for p in items]
 
 
 @router.post("/webhook/bulk9/{tenant_id}")
