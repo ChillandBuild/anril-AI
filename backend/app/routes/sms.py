@@ -633,8 +633,40 @@ async def export_messages(campaign_id: Optional[str] = None, status: Optional[st
 
 # ---------------------------------------------------------------- reports
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_ts(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _ist_day(value) -> str | None:
+    d = _parse_ts(value)
+    return d.astimezone(IST).date().isoformat() if d else None
+
+
+def quiet_release(value) -> datetime | None:
+    """TRAI night rule: an SMS handed over between 9 PM and 10 AM IST is held by the operator until
+    10 AM IST. Returns that 10 AM, or None for a daytime send."""
+    d = _parse_ts(value)
+    if not d:
+        return None
+    ist = d.astimezone(IST)
+    if 10 <= ist.hour < 21:
+        return None
+    day = ist.date() + timedelta(days=1 if ist.hour >= 21 else 0)
+    return datetime(day.year, day.month, day.day, 10, tzinfo=IST)
+
+
 def _window(d_from: Optional[date], d_to: Optional[date], max_days: int) -> tuple[date, date]:
-    d_to = d_to or date.today()
+    d_to = d_to or datetime.now(IST).date()  # "today" is India's, not the server's UTC day
     d_from = d_from or d_to - timedelta(days=min(max_days, 7) - 1)
     if d_from > d_to:
         raise HTTPException(422, "'from' must be on or before 'to'.")
@@ -650,17 +682,42 @@ async def reports_summary(from_: Optional[date] = Query(None, alias="from"), to:
     db, tid = get_supabase(), ctx["tenant_id"]
     lo, hi = _day_bounds(d_from, d_to)
     counts = {s: 0 for s in camp.STATUSES}
+    days = [(d_from + timedelta(days=i)).isoformat() for i in range((d_to - d_from).days + 1)]
+    daily = {d: {"day": d, "delivered": 0, "failed": 0, "waiting": 0, "otp": 0} for d in days}
+    now, held = _utcnow(), 0
     start = 0
     while True:
-        rows = (db.table("sms_messages").select("status").eq("tenant_id", tid).gte("created_at", lo)
-                .lte("created_at", hi).order("id").range(start, start + 999).execute()).data or []
+        rows = (db.table("sms_messages").select("status,created_at,submitted_at").eq("tenant_id", tid)
+                .gte("created_at", lo).lte("created_at", hi).order("id").range(start, start + 999).execute()).data or []
         for r in rows:
-            if r["status"] in counts:
-                counts[r["status"]] += 1
+            st = r["status"]
+            if st in counts:
+                counts[st] += 1
+            day = daily.get(_ist_day(r.get("created_at")))
+            if day is not None:
+                if st in ("delivered", "failed"):
+                    day[st] += 1
+                elif st in ("submitted", "unknown"):
+                    day["waiting"] += 1
+            release = quiet_release(r.get("submitted_at")) if st == "submitted" else None
+            if release and now < release:
+                held += 1
         if len(rows) < 1000:
             break
         start += 1000
-    out = {"anril": counts, "bulk9": None, "error": None}
+    start = 0
+    while True:
+        otps = (db.table("sms_otp_log").select("created_at").eq("tenant_id", tid).in_("action", ["send", "resend"])
+                .eq("ok", True).gte("created_at", lo).lte("created_at", hi).order("id")
+                .range(start, start + 999).execute()).data or []
+        for r in otps:
+            day = daily.get(_ist_day(r.get("created_at")))
+            if day is not None:
+                day["otp"] += 1
+        if len(otps) < 1000:
+            break
+        start += 1000
+    out = {"anril": counts, "held": held, "daily": list(daily.values()), "bulk9": None, "error": None}
     try:
         out["bulk9"] = bulk9_client.scrub_financial(await bulk9_client.sms_summary(ctx["api_key"], date_from=d_from.isoformat(),
                                                       date_to=d_to.isoformat()))

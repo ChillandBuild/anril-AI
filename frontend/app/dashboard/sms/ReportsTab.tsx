@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { ChevronDown, ChevronRight, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
-import { api, type SmsCampaign, type SmsMessageFilters } from "@/lib/api";
+import { api, type SmsCampaign, type SmsMessageFilters, type SmsReportSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CampaignDetail, Pager } from "./CampaignDetail";
 import { summarize } from "./DashboardCards";
@@ -14,9 +14,9 @@ import {
   MESSAGE_STATUSES,
   REPORT_PERIODS,
   campaignNeedsUpdates,
-  campaignStatusLabel,
-  campaignStatusTone,
+  campaignStage,
   clampRange,
+  dailyBars,
   defaultRange,
   dltReason,
   formatCount,
@@ -92,22 +92,102 @@ function Totals({ range }: { range: { from: string; to: string } }) {
   if (isLoading && !data) return <Skeleton className="h-24" />;
   if (error && !data) return <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />;
   const s = summarize(data?.anril);
+  const waiting = onTheWayCount(data?.anril);
+  const held = data?.held ?? 0;
   const tiles: { label: string; value: string; note?: string; tone?: string }[] = [
-    { label: "Sent", value: formatCount(s.sent) },
+    { label: "Sent", value: formatCount(s.sent), note: "Handed to the operator" },
     { label: "Delivered", value: formatCount(s.delivered), note: s.pct != null ? `${s.pct}% of sent` : undefined, tone: "text-[#036b6e]" },
     { label: "Failed", value: formatCount(s.failed), tone: s.failed > 0 ? "text-[#b4232f]" : undefined },
-    { label: "On the way", value: formatCount(onTheWayCount(data?.anril)), note: "Not confirmed yet" },
+    {
+      label: "Waiting for delivery",
+      value: formatCount(waiting),
+      note: held > 0 ? `${formatCount(held)} held till 10 AM (night rule)` : waiting > 0 ? "No phone receipt yet" : undefined,
+      tone: held > 0 ? "text-[#a16207]" : undefined,
+    },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {tiles.map((t) => (
-        <Card key={t.label} className="px-4 py-3.5">
-          <p className="text-xs font-semibold text-[#64748b]">{t.label}</p>
-          <p className={cn("mt-1 font-display text-2xl font-bold text-[#0A1528]", t.tone)}>{t.value}</p>
-          {t.note && <p className="mt-0.5 text-xs text-[#64748b]">{t.note}</p>}
-        </Card>
-      ))}
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <Card key={t.label} className="px-4 py-3.5">
+            <p className="text-xs font-semibold text-[#64748b]">{t.label}</p>
+            <p className={cn("mt-1 font-display text-2xl font-bold text-[#0A1528]", t.tone)}>{t.value}</p>
+            {t.note && <p className="mt-0.5 text-xs text-[#64748b]">{t.note}</p>}
+          </Card>
+        ))}
+      </div>
+      {waiting > 0 && (
+        <p className="text-xs text-[#64748b]">
+          Sent counts every SMS handed to the operator, so the ones still waiting are in it too. They move to Delivered or
+          Failed when the phone network sends back its receipt.
+        </p>
+      )}
+      {data?.daily && data.daily.length > 1 && <DailyChart days={data.daily} />}
     </div>
+  );
+}
+
+const CHART_COLORS = { delivered: "#038285", failed: "#e11d48", waiting: "#cbd5e1", otp: "#6366f1" };
+
+/** SMS per day (delivered / failed / waiting stacked) and OTPs per day, one column per Indian day. */
+function DailyChart({ days }: { days: NonNullable<SmsReportSummary["daily"]> }) {
+  const bars = dailyBars(days);
+  const totalOtp = bars.reduce((n, b) => n + b.otp, 0);
+  const totalSms = bars.reduce((n, b) => n + b.sms, 0);
+  const narrow = bars.length > 10;
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className={heading}>By day</h2>
+        <div className="flex flex-wrap gap-3 text-xs text-[#64748b]">
+          {(["delivered", "failed", "waiting"] as const).map((k) => (
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[k] }} />
+              {k === "waiting" ? "Waiting" : k === "delivered" ? "Delivered" : "Failed"}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS.otp }} />
+            OTPs
+          </span>
+        </div>
+      </div>
+      {totalSms + totalOtp === 0 ? (
+        <p className="py-8 text-center text-sm text-[#64748b]">Nothing sent in this period.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <div className="flex min-w-full items-end gap-1.5" style={{ minWidth: narrow ? bars.length * 22 : undefined }}>
+            {bars.map((b, i) => (
+              <div key={b.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <div className="flex h-32 w-full items-end justify-center gap-0.5">
+                  <div
+                    className="flex w-full max-w-[28px] flex-col-reverse overflow-hidden rounded-t"
+                    style={{ height: `${b.smsPct}%` }}
+                    title={`${b.label}: ${b.delivered} delivered, ${b.failed} failed, ${b.waiting} waiting`}
+                  >
+                    {b.sms > 0 && (["delivered", "failed", "waiting"] as const).map((k) =>
+                      b[k] > 0 ? <span key={k} style={{ height: `${(b[k] / b.sms) * 100}%`, background: CHART_COLORS[k] }} /> : null,
+                    )}
+                  </div>
+                  {totalOtp > 0 && (
+                    <div className="w-full max-w-[10px] rounded-t" style={{ height: `${b.otpPct}%`, background: CHART_COLORS.otp }} title={`${b.label}: ${b.otp} OTPs`} />
+                  )}
+                </div>
+                {!narrow && <span className="text-[11px] font-semibold text-[#0A1528]">{b.sms > 0 ? formatCount(b.sms) : ""}</span>}
+                {!narrow || i % 5 === 0 ? (
+                  <span className="whitespace-nowrap text-[10px] text-[#64748b]">{b.label}</span>
+                ) : (
+                  <span className="text-[10px]">&nbsp;</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-xs text-[#64748b]">
+        {formatCount(totalSms)} SMS and {formatCount(totalOtp)} OTPs sent from Anril in this period. OTPs your own app sends with the API key aren&apos;t counted.
+      </p>
+    </Card>
   );
 }
 
@@ -164,6 +244,7 @@ function Sends({ onOpen }: { onOpen: (id: string) => void }) {
 
 function SendRow({ c, onOpen }: { c: SmsCampaign; onOpen: () => void }) {
   const p = sendProgress(c.counts, c.total);
+  const stage = campaignStage(c, new Date());
   const scheduled = c.status === "scheduled";
   return (
     <li>
@@ -188,7 +269,7 @@ function SendRow({ c, onOpen }: { c: SmsCampaign; onOpen: () => void }) {
             </div>
           </div>
         )}
-        <Badge tone={campaignStatusTone(c.status)}>{campaignStatusLabel(c.status)}</Badge>
+        <Badge tone={stage.tone}>{stage.label}</Badge>
         <ChevronRight size={16} className="hidden shrink-0 text-[#94a3b8] sm:block" />
       </button>
     </li>

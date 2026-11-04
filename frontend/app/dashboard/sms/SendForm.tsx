@@ -187,6 +187,24 @@ export function SendForm() {
     setVarMap(Array.from({ length: templateVarCount(t ?? null) }, () => null));
   }
 
+  // "Use this template" on the Templates page opens /dashboard/sms/send?template=<id>: pick it once loaded.
+  const templateFromUrl = useRef(false);
+  useEffect(() => {
+    if (templateFromUrl.current) return;
+    const id = new URLSearchParams(window.location.search).get("template");
+    if (!id) {
+      templateFromUrl.current = true;
+      return;
+    }
+    if (ready.some((t) => t.id === id)) {
+      templateFromUrl.current = true;
+      pickTemplate(id);
+    } else if (templates.data && !templates.isValidating) {
+      templateFromUrl.current = true; // a cached list may lack it; give up only after the fresh one
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs until the template is found or the fresh list lacks it
+  }, [ready, templates.isValidating]);
+
   function patchManual(patch: Partial<ManualInput>) {
     setCreated(null);
     setManual((m) => ({ ...m, ...patch }));

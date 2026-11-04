@@ -1,12 +1,15 @@
 /** Pure helpers for the SMS page (kept out of components so they can be unit-tested). */
+import { clockOf } from "@/lib/schedule-time";
 import type {
   SmsBalance,
+  SmsCampaign,
   SmsCampaignPreviewRequest,
   SmsMessageStatus,
   SmsPreview,
   SmsPreviewExcluded,
   SmsRecipients,
   SmsRecipientSource,
+  SmsReportDay,
   SmsSkippedRow,
   SmsTemplate,
   SmsTemplateType,
@@ -261,6 +264,78 @@ export function campaignStatusTone(status: string): Tone {
   if (status === "sending" || status === "preparing") return "info";
   if (status === "scheduled") return "warn";
   return "neutral";
+}
+
+/**
+ * The badge a send shows. The server marks a campaign "completed" as soon as every SMS is handed to
+ * the operator, which is not the same as delivered: while some still have no receipt it reads
+ * "Waiting for delivery", or "Held until 10:00 AM" while the TRAI night rule is holding them.
+ */
+const RECEIPT_WAIT_DAYS = 3;
+
+export function campaignStage(
+  c: Pick<SmsCampaign, "status" | "counts" | "completed_at" | "created_at" | "send_at">,
+  now: Date,
+): { label: string; tone: Tone; heldUntil: Date | null } {
+  if (c.status !== "completed") return { label: campaignStatusLabel(c.status), tone: campaignStatusTone(c.status), heldUntil: null };
+  const n = (k: SmsMessageStatus) => Number(c.counts?.[k]) || 0;
+  const waiting = n("queued") + n("sending") + n("submitted") + n("unknown");
+  if (waiting === 0) return { label: "Completed", tone: "success", heldUntil: null };
+  // Held only when the whole send went out inside one night window (started and finished before the same 10 AM).
+  const started = quietRelease(c.send_at ?? c.created_at);
+  const finished = quietRelease(c.completed_at ?? c.send_at ?? c.created_at);
+  if (n("submitted") > 0 && started && finished && started.getTime() === finished.getTime() && now < finished) {
+    return { label: `Held until ${clockOf(finished)}`, tone: "warn", heldUntil: finished };
+  }
+  // Delivery checks stop after a few days; past that a missing receipt won't come.
+  const done = toDate(c.completed_at ?? c.send_at ?? c.created_at);
+  if (done && now.getTime() - done.getTime() > RECEIPT_WAIT_DAYS * 86_400_000) {
+    return { label: `Completed · ${waiting} without receipt`, tone: "neutral", heldUntil: null };
+  }
+  return { label: "Waiting for delivery", tone: "info", heldUntil: null };
+}
+
+/** "₹0.1302": a per-SMS price needs four decimals. */
+export function formatRate(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+}
+
+export interface PlanSummary { perSms: number | null; smsLeft: number; moneyLeft: number | null; used: number; total: number; partial: boolean }
+
+/**
+ * The client's plan, like the operator panel's Plan Details: price per SMS (money left ÷ SMS left),
+ * what's left, what's been used (campaigns + use outside Anril, from the balance history) and the
+ * total (left + used). `partial` = the history hit `limit`, so used/total are "at least".
+ */
+export function planSummary(balance: SmsBalance, items: SmsWalletItem[], limit: number): PlanSummary {
+  const smsLeft = Math.max(0, Number(balance.sms_count) || 0);
+  const used = items.reduce((sum, i) => (i.kind === "topup" ? sum : sum + Math.abs(Number(i.sms) || 0)), 0);
+  const moneyLeft = balance.wallet ?? null;
+  return {
+    perSms: moneyLeft != null && smsLeft > 0 ? moneyLeft / smsLeft : null,
+    smsLeft,
+    moneyLeft,
+    used,
+    total: smsLeft + used,
+    partial: items.length >= limit,
+  };
+}
+
+/** Bar heights for the daily chart: each day's share of the busiest day (0–100), SMS and OTP scaled apart. */
+export function dailyBars(days: SmsReportDay[]): { day: string; label: string; sms: number; otp: number; delivered: number; failed: number; waiting: number; smsPct: number; otpPct: number }[] {
+  const smsMax = Math.max(0, ...days.map((d) => d.delivered + d.failed + d.waiting));
+  const otpMax = Math.max(0, ...days.map((d) => d.otp));
+  return days.map((d) => {
+    const sms = d.delivered + d.failed + d.waiting;
+    const [, m, dd] = d.day.split("-").map(Number);
+    const label = `${dd} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][(m || 1) - 1]}`;
+    return {
+      day: d.day, label, sms, otp: d.otp, delivered: d.delivered, failed: d.failed, waiting: d.waiting,
+      // A busy day must not flatten a quiet one to nothing: any non-zero day gets at least a sliver.
+      smsPct: sms > 0 ? Math.max(3, Math.round((sms / smsMax) * 100)) : 0,
+      otpPct: d.otp > 0 ? Math.max(3, Math.round((d.otp / otpMax) * 100)) : 0,
+    };
+  });
 }
 
 export function humanizeKind(kind: string): string {

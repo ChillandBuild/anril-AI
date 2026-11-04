@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_MANUAL,
+  campaignStage,
+  dailyBars,
+  formatRate,
+  planSummary,
   categoryLabel,
   manualProblem,
   heldUntil,
@@ -762,5 +766,68 @@ describe("DLT category and Type my own", () => {
     const req = buildSendRequest({ template: null, manual: { ...manual, message: " Your booking is confirmed " }, varMap: [], numbers: { ...EMPTY_NUMBERS, mode: "contact", numbersText: "9876543210" } });
     expect(req).toMatchObject({ kind: "manual", manual: { ...manual } });
     expect(req && "template_id" in req).toBe(false);
+  });
+});
+
+describe("campaignStage", () => {
+  const base = { status: "completed" as const, created_at: "2026-11-04T17:17:00Z", send_at: "2026-11-04T17:17:00Z", completed_at: "2026-11-04T17:17:08Z" };
+  const counts = (c: Record<string, number>) => ({ queued: 0, sending: 0, submitted: 0, delivered: 0, failed: 0, unknown: 0, skipped: 0, cancelled: 0, ...c }) as never;
+  it("a night send still with the operator reads Held until 10 AM, not Completed", () => {
+    const s = campaignStage({ ...base, counts: counts({ submitted: 1 }) }, new Date("2026-11-04T21:53:00Z"));
+    expect(s.tone).toBe("warn");
+    expect(s.label).toMatch(/^Held until 10:00/);
+  });
+  it("after 10 AM with no receipt it is Waiting for delivery", () => {
+    expect(campaignStage({ ...base, counts: counts({ submitted: 1 }) }, new Date("2026-11-05T05:00:00Z")).label).toBe("Waiting for delivery");
+  });
+  it("a send that started before 9 PM is not shown as held", () => {
+    const evening = { ...base, send_at: "2026-11-04T15:10:00Z", created_at: "2026-11-04T15:10:00Z", completed_at: "2026-11-04T15:40:00Z" };
+    expect(campaignStage({ ...evening, counts: counts({ submitted: 5 }) }, new Date("2026-11-04T21:53:00Z")).label).toBe("Waiting for delivery");
+  });
+  it("after 3 days without a receipt it stops saying Waiting", () => {
+    expect(campaignStage({ ...base, counts: counts({ delivered: 4, submitted: 1 }) }, new Date("2026-11-09T00:00:00Z")).label).toBe("Completed · 1 without receipt");
+  });
+  it("is Completed only once every SMS has a receipt", () => {
+    expect(campaignStage({ ...base, counts: counts({ delivered: 2, failed: 1 }) }, new Date()).label).toBe("Completed");
+  });
+  it("keeps the server label for other states", () => {
+    expect(campaignStage({ ...base, status: "scheduled", counts: counts({ queued: 3 }) }, new Date()).label).toBe("Scheduled");
+  });
+});
+
+describe("planSummary", () => {
+  it("matches the operator's Plan Details: price = money left / SMS left, total = left + used", () => {
+    const items = [
+      { kind: "campaign", sms: -3, amount: -0.39, label: "x", campaign_id: null, at: "2026-11-04", balance_after: null },
+      { kind: "outside_usage", sms: -1, amount: null, label: "y", campaign_id: null, at: "2026-11-04", balance_after: null },
+      { kind: "topup", sms: 500, amount: null, label: "z", campaign_id: null, at: "2026-11-03", balance_after: null },
+    ] as never[];
+    const p = planSummary({ sms_count: 496, wallet: 64.58 }, items, 100);
+    expect(formatRate(p.perSms!)).toBe("₹0.1302");
+    expect([p.used, p.total, p.partial]).toEqual([4, 500, false]);
+  });
+  it("has no price when the wallet is unknown or empty", () => {
+    expect(planSummary({ sms_count: 0, wallet: 0 }, [], 100).perSms).toBeNull();
+    expect(planSummary({ sms_count: 10, wallet: null }, [], 100).perSms).toBeNull();
+  });
+});
+
+describe("dailyBars", () => {
+  it("scales SMS and OTP bars to their own busiest day and labels the date", () => {
+    const bars = dailyBars([
+      { day: "2026-11-03", delivered: 1, failed: 0, waiting: 0, otp: 4 },
+      { day: "2026-11-04", delivered: 0, failed: 1, waiting: 3, otp: 2 },
+    ]);
+    expect(bars.map((b) => [b.label, b.sms, b.smsPct, b.otpPct])).toEqual([["3 Nov", 1, 25, 100], ["4 Nov", 4, 100, 50]]);
+  });
+  it("a quiet day next to a busy one still gets a visible sliver", () => {
+    const bars = dailyBars([
+      { day: "2026-11-03", delivered: 1, failed: 0, waiting: 0, otp: 0 },
+      { day: "2026-11-04", delivered: 1000, failed: 0, waiting: 0, otp: 0 },
+    ]);
+    expect(bars[0].smsPct).toBe(3);
+  });
+  it("an empty period gives zero heights", () => {
+    expect(dailyBars([{ day: "2026-11-03", delivered: 0, failed: 0, waiting: 0, otp: 0 }])[0].smsPct).toBe(0);
   });
 });

@@ -9,9 +9,8 @@ import { api, type SmsMessageStatus } from "@/lib/api";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import {
   MESSAGE_STATUSES,
-  campaignStatusLabel,
+  campaignStage,
   campaignNeedsUpdates,
-  campaignStatusTone,
   canCancelCampaign,
   canDeleteCampaign,
   canRescheduleCampaign,
@@ -140,7 +139,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
               <div className="min-w-0">
                 <h1 className="break-words font-display text-xl font-bold text-[#0A1528]">{c.name}</h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[#64748b]">
-                  <Badge tone={campaignStatusTone(c.status)}>{campaignStatusLabel(c.status)}</Badge>
+                  <Badge tone={campaignStage(c, new Date()).tone}>{campaignStage(c, new Date()).label}</Badge>
                   <span>Sender {c.sender_id}</span>
                   <span>{c.kind === "manual" ? "Typed with DLT IDs" : categoryLabel(c.template_type)}</span>
                   {c.status === "scheduled" && c.send_at ? <span>Goes out {formatIst(c.send_at)} IST</span> : <span>Created {formatIst(c.created_at)}</span>}

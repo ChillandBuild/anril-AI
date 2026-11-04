@@ -14,8 +14,7 @@ import {
   CREDIT_NOTE_MAX,
   SUPPORT_FALLBACK,
   balanceLevel,
-  campaignStatusLabel,
-  campaignStatusTone,
+  campaignStage,
   canCancelCampaign,
   creditAmountError,
   defaultRange,
@@ -432,10 +431,10 @@ export function RecentCard() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-[#0A1528]">{c.name}</p>
                   <p className="text-xs text-[#64748b]">
-                    {formatIst(c.created_at)} · {formatCount(c.total)} numbers
+                    {formatIst(c.created_at)} · {formatCount(c.total)} number{c.total === 1 ? "" : "s"}
                   </p>
                 </div>
-                <Badge tone={campaignStatusTone(c.status)}>{campaignStatusLabel(c.status)}</Badge>
+                <StageBadge c={c} />
               </Link>
             </li>
           ))}
@@ -443,4 +442,9 @@ export function RecentCard() {
       )}
     </Card>
   );
+}
+
+function StageBadge({ c }: { c: SmsCampaign }) {
+  const stage = campaignStage(c, new Date());
+  return <Badge tone={stage.tone}>{stage.label}</Badge>;
 }

@@ -1822,6 +1822,16 @@ export interface SmsTemplate {
   status: "ready" | "submitted";
   last_synced_at: string | null;
 }
+/** One Indian day of the Delivery Reports chart. waiting = handed to the operator, no receipt yet. */
+export interface SmsReportDay { day: string; delivered: number; failed: number; waiting: number; otp: number }
+export interface SmsReportSummary {
+  anril: Record<string, number>;
+  /** Handed to the operator at night and still held by the TRAI 9 PM–10 AM rule. */
+  held?: number;
+  daily?: SmsReportDay[];
+  bulk9: Record<string, unknown> | null;
+  error: string | null;
+}
 export interface SmsTemplateList { templates: SmsTemplate[]; last_synced_at: string | null; error: string | null }
 export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
 export interface SmsPreviewExcluded { lead_id?: string | null; name: string | null; phone: string | null; reason: string }
@@ -2043,7 +2053,7 @@ export const api = {
       window.URL.revokeObjectURL(url);
     },
     reportSummary: (from: string, to: string) =>
-      apiFetch<{ anril: Record<string, number>; bulk9: Record<string, unknown> | null; error: string | null }>(
+      apiFetch<SmsReportSummary>(
         `/api/v1/sms/reports/summary?from=${from}&to=${to}`,
       ),
     reportLogs: (from: string, to: string, page = 1, limit = 25) =>

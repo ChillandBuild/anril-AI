@@ -3,12 +3,16 @@
 import useSWR from "swr";
 import { Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { useSms } from "./SmsShell";
 import {
   WALLET_KIND_LABELS,
+  formatCount,
   formatIst,
+  formatRate,
   formatRupees,
   formatSignedSms,
   friendlyError,
+  planSummary,
   walletCsv,
   walletKindTone,
 } from "./helpers";
@@ -25,13 +29,43 @@ function downloadCsv(csv: string) {
   window.URL.revokeObjectURL(url);
 }
 
-/** Transactions: the balance history. The balance itself lives on the Dashboard wallet card. */
+const HISTORY_LIMIT = 100;
+
+/** Price per SMS, what's left and what's been used: the operator panel's Plan Details, in plain words. */
+function PlanCard({ items, loaded }: { items: Parameters<typeof planSummary>[1]; loaded: boolean }) {
+  const { balance } = useSms();
+  if (!balance || !loaded) return <Skeleton className="h-28" />;
+  const p = planSummary(balance, items, HISTORY_LIMIT);
+  const stats: { label: string; value: string; note?: string }[] = [
+    { label: "Price per SMS", value: p.perSms != null ? formatRate(p.perSms) : "—", note: "For one SMS of up to 160 characters" },
+    { label: "SMS left", value: formatCount(p.smsLeft), note: p.moneyLeft != null ? `${formatRupees(p.moneyLeft)} left` : undefined },
+    { label: "Used so far", value: `${p.partial ? "≥ " : ""}${formatCount(p.used)}`, note: "Sends from Anril and your own app" },
+    { label: "Plan total", value: `${p.partial ? "≥ " : ""}${formatCount(p.total)}`, note: "Left + used" },
+  ];
+  return (
+    <Card>
+      <CardHeader title="Your plan" hint="Long SMS (over 160 characters, or 70 in Tamil) count as 2 or more SMS." />
+      <div className="grid grid-cols-2 gap-3 p-4 sm:p-5 lg:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-xl bg-[#f8fafc] px-3.5 py-3">
+            <p className="text-xs font-semibold text-[#64748b]">{s.label}</p>
+            <p className="mt-1 font-display text-xl font-bold text-[#0A1528]">{s.value}</p>
+            {s.note && <p className="mt-0.5 text-xs text-[#64748b]">{s.note}</p>}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** Transactions: the plan, then the balance history. The balance itself also shows on the Dashboard wallet card. */
 export function BalanceTab() {
-  const history = useSWR("sms:wallet-history", () => api.sms.walletHistory(100), { revalidateOnFocus: false });
+  const history = useSWR("sms:wallet-history", () => api.sms.walletHistory(HISTORY_LIMIT), { revalidateOnFocus: false });
   const items = history.data?.items ?? [];
 
   return (
     <div className="space-y-4">
+      <PlanCard items={items} loaded={!!history.data || !!history.error} />
       <Card>
         <CardHeader
           title="Balance history"

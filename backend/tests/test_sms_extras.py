@@ -168,3 +168,53 @@ def test_report_dates_cover_the_indian_day():
     lo, hi = sms._day_bounds(date(2026, 11, 3), date(2026, 11, 3))
     assert lo == "2026-11-03T00:00:00+05:30"
     assert hi == "2026-11-03T23:59:59.999999+05:30"
+
+
+# ---------------------------------------------------------------- night hold + daily chart
+
+def test_quiet_release_is_10am_ist_for_night_sends_only():
+    assert sms.quiet_release("2026-11-04T17:17:09+00:00").isoformat() == "2026-11-05T10:00:00+05:30"  # 10:47 PM IST
+    assert sms.quiet_release("2026-11-04T21:30:00+00:00").isoformat() == "2026-11-05T10:00:00+05:30"  # 3 AM IST
+    assert sms.quiet_release("2026-11-04T06:00:00+00:00") is None  # 11:30 AM IST
+    assert sms.quiet_release(None) is None
+
+
+@pytest.mark.asyncio
+async def test_summary_counts_night_held_messages_and_days():
+    from datetime import date
+    db = FakeSupabase()
+    night = "2026-11-04T17:17:09+00:00"  # 10:47 PM IST, held till 10 AM on the 5th
+    for _ in range(2):
+        db.add("sms_messages", tenant_id=T, status="submitted", created_at=night, submitted_at=night)
+    db.add("sms_messages", tenant_id=T, status="delivered", created_at="2026-11-03T06:00:00+00:00",
+           submitted_at="2026-11-03T06:00:00+00:00")
+    db.add("sms_messages", tenant_id=OTHER, status="submitted", created_at=night, submitted_at=night)
+    db.add("sms_otp_log", tenant_id=T, action="send", ok=True, created_at="2026-11-04T05:00:00+00:00")
+    db.add("sms_otp_log", tenant_id=T, action="verify", ok=True, created_at="2026-11-04T05:01:00+00:00")
+    db.add("sms_otp_log", tenant_id=T, action="send", ok=False, created_at="2026-11-04T05:02:00+00:00")
+    at_3am = datetime(2026, 11, 4, 21, 53, tzinfo=timezone.utc)
+    with patch.object(sms, "get_supabase", lambda: db), patch.object(sms, "_utcnow", lambda: at_3am), \
+         patch.object(sms.bulk9_client, "sms_summary", AsyncMock(return_value={})):
+        out = await sms.reports_summary(date(2026, 11, 3), date(2026, 11, 5), CTX)
+    assert out["held"] == 2
+    assert out["daily"] == [
+        {"day": "2026-11-03", "delivered": 1, "failed": 0, "waiting": 0, "otp": 0},
+        {"day": "2026-11-04", "delivered": 0, "failed": 0, "waiting": 2, "otp": 1},
+        {"day": "2026-11-05", "delivered": 0, "failed": 0, "waiting": 0, "otp": 0},
+    ]
+    with patch.object(sms, "get_supabase", lambda: db), \
+         patch.object(sms, "_utcnow", lambda: datetime(2026, 11, 5, 5, 0, tzinfo=timezone.utc)), \
+         patch.object(sms.bulk9_client, "sms_summary", AsyncMock(return_value={})):
+        assert (await sms.reports_summary(date(2026, 11, 3), date(2026, 11, 5), CTX))["held"] == 0  # after 10 AM
+
+
+@pytest.mark.asyncio
+async def test_summary_counts_more_than_1000_otps():
+    from datetime import date
+    db = FakeSupabase()
+    for _ in range(1203):
+        db.add("sms_otp_log", tenant_id=T, action="send", ok=True, created_at="2026-11-04T05:00:00+00:00")
+    with patch.object(sms, "get_supabase", lambda: db), \
+         patch.object(sms.bulk9_client, "sms_summary", AsyncMock(return_value={})):
+        out = await sms.reports_summary(date(2026, 11, 4), date(2026, 11, 4), CTX)
+    assert out["daily"][0]["otp"] == 1203
