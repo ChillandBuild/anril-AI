@@ -6,7 +6,7 @@ import { api, type SmsTemplateType } from "@/lib/api";
 import { CheckField } from "@/components/ui/controls";
 import { revalidateDlt } from "./DltForms";
 import { isValidSenderId, parseSenderIds } from "./dltSetup";
-import { ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
+import { CATEGORY_LABELS, ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
 import { Btn, Field, Modal, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
@@ -102,8 +102,8 @@ function AddEntityForm({ onClose }: { onClose: () => void }) {
               </Field>
               <Field label="Type">
                 <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
-                  <option value="service">Service</option>
-                  <option value="promotional">Promotional</option>
+                  <option value="service">{CATEGORY_LABELS.service}</option>
+                  <option value="promotional">{CATEGORY_LABELS.promotional}</option>
                 </select>
               </Field>
             </div>

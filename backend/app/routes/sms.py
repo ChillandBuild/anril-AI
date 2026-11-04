@@ -151,7 +151,7 @@ async def _store_upload(db, tenant_id: str, file: UploadFile, allowed: set[str])
 
 def _templates_ready(tenant_id: str) -> bool:
     rows = (get_supabase().table("sms_templates").select("id").eq("tenant_id", tenant_id).eq("status", "ready")
-            .neq("template_type", "unclassified").limit(1).execute()).data or []
+            .limit(1).execute()).data or []
     return bool(rows)
 
 
@@ -266,15 +266,23 @@ async def refresh_templates(ctx: dict = Depends(manage)):
     existing = (db.table("sms_templates").select("*").eq("tenant_id", tid).execute()).data or []
     by_msg = {str(r["message_id"]): r for r in existing if r.get("message_id")}
     submitted = [r for r in existing if not r.get("message_id")]
+    logged = False
     for group in _dlt_items(body):
         for t in group.get("templates") or []:
             mid, text = t.get("message_id"), t.get("message")
             if mid is None or not text:
                 continue
+            if not logged:  # which fields Bulk9 sends (its docs don't list a category one)
+                logger.info("Bulk9 template fields: group=%s template=%s", sorted(group), sorted(t))
+                logged = True
+            # DLT's category when Bulk9 reports it on the template. Not read from the sender group:
+            # a group's "type" may be the header type, which would mislabel promo templates.
+            category = bulk9_client.template_category(t)
             fields = {"sender_id": group.get("sender_id") or "", "entity_id": group.get("entity_id"),
                       "entity_name": group.get("entity_name"), "message": text,
                       "var_count": int(t.get("var_count") or camp.var_count(text)),
-                      "status": "ready", "last_synced_at": now}
+                      "status": "ready", "last_synced_at": now,
+                      **({"template_type": category} if category else {})}
             row = by_msg.get(str(mid))
             if row:
                 db.table("sms_templates").update(fields).eq("id", row["id"]).eq("tenant_id", tid).execute()
@@ -288,21 +296,8 @@ async def refresh_templates(ctx: dict = Depends(manage)):
                 submitted.remove(stub)
             else:
                 db.table("sms_templates").insert({"tenant_id": tid, "message_id": str(mid),
-                    "template_type": "unclassified", **fields}).execute()
+                    "template_type": "unclassified", **fields}).execute()  # fields' category wins
     return _cached_templates(db, tid)
-
-
-class TemplateType(BaseModel):
-    template_type: Literal["service", "promotional"]
-
-
-@router.patch("/templates/{template_id}")
-async def set_template_type(template_id: str, body: TemplateType, ctx: dict = Depends(manage_no_key)):
-    rows = (get_supabase().table("sms_templates").update({"template_type": body.template_type})
-            .eq("id", template_id).eq("tenant_id", ctx["tenant_id"]).execute()).data or []
-    if not rows:
-        raise HTTPException(404, "Template not found.")
-    return _public_template(rows[0])
 
 
 # ---------------------------------------------------------------- DLT adds
@@ -379,11 +374,11 @@ async def dlt_template(body: DltTemplateBody, ctx: dict = Depends(manage)):
 
 @router.post("/dlt/template-excel")
 async def dlt_template_excel(entity_id: str = Form(..., max_length=40),
-                             template_type: Literal["service", "promotional"] = Form(...),
                              file: UploadFile = File(...), ctx: dict = Depends(manage)):
+    """No category: the DLT export already says which each template is (Bulk9's own panel doesn't ask)."""
     url = await _store_upload(get_supabase(), ctx["tenant_id"], file, EXCEL_EXTS)
     res = await _bulk9(bulk9_client.add_template_excel(
-        ctx["api_key"], entity_id=entity_id.strip(), file_url=url, promotional=template_type == "promotional"))
+        ctx["api_key"], entity_id=entity_id.strip(), file_url=url))
     return {"ok": True, "message": _message(res, "Templates uploaded.")}
 
 
@@ -438,7 +433,18 @@ class VarSource(BaseModel):
     value: str = Field(max_length=200)
 
 
+class ManualSpec(BaseModel):
+    """"Type my own": the DLT IDs and the exact approved text (variables filled in). No category:
+    DLT already decided it when it approved the template."""
+    sender_id: str = Field(min_length=3, max_length=6, pattern=r"^[A-Za-z0-9]+$")
+    entity_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    dlt_template_id: str = Field(min_length=5, max_length=30, pattern=r"^[0-9]+$")
+    message: str = Field(min_length=1, max_length=2000)
+
+
 class PreviewBody(BaseModel):
+    kind: Literal["template", "manual"] = "template"
+    manual: Optional[ManualSpec] = None
     source: Literal["leads", "contacts", "numbers"] = "leads"
     template_id: Optional[str] = None
     variable_map: list[VarSource] = Field(default_factory=list, max_length=20)
@@ -464,6 +470,12 @@ def _audience(body: PreviewBody) -> camp.Audience:
 
 
 def _body_template(db, tid: str, body: PreviewBody) -> dict:
+    if body.kind == "manual":
+        if not body.manual:
+            raise camp.SmsError("Fill in the sender ID, DLT template ID and message.")
+        m = body.manual
+        return camp.manual_template(sender_id=m.sender_id, entity_id=m.entity_id,
+                                    dlt_template_id=m.dlt_template_id, message=m.message)
     if not body.template_id:
         raise camp.SmsError("Pick a template.")
     return camp.get_template(db, tid, body.template_id)

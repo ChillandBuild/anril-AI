@@ -44,11 +44,16 @@ def test_past_schedule_is_rejected():
             lead_ids=[lead["id"]], send_at=now-timedelta(minutes=1), idempotency_key="past-key-123", now=now)
 
 
-def test_unclassified_template_cannot_be_selected():
-    db, _, template = setup_campaign()
+def test_template_with_no_known_category_still_sends_without_consent_filter():
+    # DLT decides the category; when Bulk9 doesn't report it the client is never asked.
+    db, lead, template = setup_campaign()
     db.rows("sms_templates")[0]["template_type"] = "unclassified"
-    with pytest.raises(camp.SmsError, match="classif"):
-        camp.get_template(db, T, template["id"])
+    db.rows("leads")[0]["sms_consent_at"] = None
+    t = camp.get_template(db, T, template["id"])
+    assert t["template_type"] == "unknown"
+    c, _ = camp.create_campaign(db, T, None, name="x", template=t, variable_map=[], lead_ids=[lead["id"]],
+                                send_at=None, idempotency_key="unknown-key-1")
+    assert c["template_type"] == "unknown" and len(db.rows("sms_messages")) == 1
 
 
 @pytest.mark.parametrize("source,date", [(None, "2026-10-01"), ("signup", None), ("", "2026-10-01")])
@@ -59,18 +64,38 @@ def test_promotional_requires_consent_date_and_source(source, date):
 
 
 @pytest.mark.asyncio
-async def test_sync_requires_classification_and_preserves_existing():
+async def test_sync_reads_dlt_category_and_keeps_existing_when_bulk9_is_silent():
     db = FakeSupabase()
     db.add("sms_templates", tenant_id=T, message_id="1", message="Hello", sender_id="ANRILT",
            template_type="promotional")
     response = {"data": [{"sender_id": "ANRILT", "templates": [
-        {"message_id": "1", "message": "Hello"}, {"message_id": "2", "message": "New"}]}]}
+        {"message_id": "1", "message": "Hello"}, {"message_id": "2", "message": "New"},
+        {"message_id": "3", "message": "OTP", "template_type": "Service Implicit"},
+        {"message_id": "4", "message": "Sale", "category": "Service Explicit / Promo"}]}]}
     with patch.object(sms, "get_supabase", return_value=db), \
          patch.object(bulk9_client, "list_dlt", AsyncMock(return_value=response)):
         await sms.refresh_templates(CTX)
     rows = {r["message_id"]: r for r in db.rows("sms_templates")}
     assert rows["1"]["template_type"] == "promotional"
     assert rows["2"]["template_type"] == "unclassified"
+    assert rows["3"]["template_type"] == "service"
+    assert rows["4"]["template_type"] == "promotional"
+
+
+@pytest.mark.parametrize("item,expected", [
+    ({"template_type": "n"}, "service"), ({"template_type": "y"}, "promotional"),
+    ({"type": "SERVICE IMPLICIT"}, "service"), ({"template_category": "Promotional"}, "promotional"),
+    ({"category": "Transactional"}, "service"), ({"type": "text"}, None), ({}, None), ({"category": 3}, None)])
+def test_template_category_mapping(item, expected):
+    assert bulk9_client.template_category(item) == expected
+
+
+@pytest.mark.asyncio
+async def test_excel_template_upload_sends_no_category():
+    req = AsyncMock(return_value={"status": True})
+    with patch.object(bulk9_client, "_request", req):
+        await bulk9_client.add_template_excel("k", entity_id="1701", file_url="https://x/f.xlsx")
+    assert "template_type" not in req.await_args.kwargs["json"]
 
 
 @pytest.mark.asyncio

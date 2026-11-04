@@ -1817,6 +1817,7 @@ export interface SmsTemplate {
   entity_name: string | null;
   message: string;
   var_count: number;
+  /** DLT's category; "unclassified" = Bulk9 didn't say (shown as "Set by DLT", still sendable). */
   template_type: SmsTemplateType | "unclassified";
   status: "ready" | "submitted";
   last_synced_at: string | null;
@@ -1855,7 +1856,8 @@ export interface SmsCampaign {
   name: string;
   template_text: string;
   sender_id: string;
-  template_type: SmsTemplateType;
+  /** "unknown": DLT's category wasn't reported (Type my own, or a template Bulk9 didn't label). */
+  template_type: SmsTemplateType | "unknown";
   status: SmsCampaignStatus;
   kind?: "template" | "manual";
   source?: SmsRecipientSource;
@@ -1928,10 +1930,12 @@ export interface SmsRecipients {
   numbers?: string[];
   consent_confirmed?: boolean;
 }
-export type SmsCampaignPreviewRequest = SmsRecipients & {
-  template_id: string;
-  variable_map?: SmsVarSource[];
-};
+/** "Type my own" (Bulk9 route=dlt_manual): the exact approved text with every variable filled in. */
+export interface SmsManualSpec { sender_id: string; entity_id: string; dlt_template_id: string; message: string }
+export type SmsCampaignPreviewRequest = SmsRecipients & (
+  | { kind?: "template"; template_id: string; variable_map?: SmsVarSource[] }
+  | { kind: "manual"; manual: SmsManualSpec; variable_map?: [] }
+);
 export type SmsCampaignCreateRequest = SmsCampaignPreviewRequest & {
   name: string;
   send_at: string | null;
@@ -1971,11 +1975,6 @@ export const api = {
     senders: () => apiFetch<{ senders: SmsSender[] }>("/api/v1/sms/senders"),
     templates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates"),
     refreshTemplates: () => apiFetch<SmsTemplateList>("/api/v1/sms/templates/refresh", { method: "POST" }),
-    setTemplateType: (id: string, template_type: SmsTemplateType) =>
-      apiFetch<SmsTemplate>(`/api/v1/sms/templates/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ template_type }),
-      }),
     addEntity: (data: { entity_name: string; entity_id: string }) =>
       apiFetch<SmsOk>("/api/v1/sms/dlt/entity", { method: "POST", body: JSON.stringify(data) }),
     addSender: (data: { entity_id: string; sender_id: string }) =>
@@ -1993,11 +1992,10 @@ export const api = {
       message_text: string;
       template_type: SmsTemplateType;
     }) => apiFetch<SmsOk>("/api/v1/sms/dlt/template", { method: "POST", body: JSON.stringify(data) }),
-    addTemplateExcel: (data: { entity_id: string; file: File; template_type: SmsTemplateType }) => {
+    addTemplateExcel: (data: { entity_id: string; file: File }) => {
       const fd = new FormData();
       fd.append("entity_id", data.entity_id);
       fd.append("file", data.file);
-      fd.append("template_type", data.template_type);
       return smsMultipart<SmsOk>("/api/v1/sms/dlt/template-excel", fd);
     },
     campaignFields: (source: SmsRecipientSource = "leads", groupIds: string[] = []) => {

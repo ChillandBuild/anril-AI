@@ -304,9 +304,26 @@ def get_template(db, tenant_id: str, template_id: str) -> dict:
     t = rows[0]
     if t.get("status") != "ready" or not t.get("message_id"):
         raise SmsError("This template is not approved yet, so it can't be sent.", 409)
-    if t.get("template_type") not in ("service", "promotional"):
-        raise SmsError("Choose a service or promotional classification before sending this template.", 409)
-    return t
+    # The category is DLT's (Bulk9 doesn't always say which). Unknown still sends; only a template
+    # known to be promotional gets the consent filter.
+    return {**t, "template_type": campaign_type(t.get("template_type"))}
+
+
+def campaign_type(template_type: str | None) -> str:
+    """'service' / 'promotional' as DLT approved it, or 'unknown' when Bulk9 didn't say."""
+    return template_type if template_type in ("service", "promotional") else "unknown"
+
+
+def manual_template(*, sender_id: str, entity_id: str, dlt_template_id: str, message: str) -> dict:
+    """A template-shaped dict for a send with raw DLT IDs (kind=manual, Bulk9 route=dlt_manual).
+    The message is the exact approved text with every variable already filled in."""
+    if not message.strip():
+        raise SmsError("Type the message.")
+    if var_count(message):
+        raise SmsError("Replace each {#var#} with the exact text to send.")
+    return {"id": None, "kind": "manual", "sender_id": sender_id.upper(), "message": message,
+            "template_type": "unknown", "message_id": None, "entity_id": entity_id,
+            "dlt_template_id": dlt_template_id}
 
 
 # ---------------------------------------------------------------- preview + create
@@ -316,6 +333,8 @@ EXCLUDED_SHOWN = 1000
 
 def _plan(db, tenant_id: str, template: dict, variable_map: list[dict], audience: "Audience"):
     """(clean variable map, eligible, excluded) for this template + audience."""
+    if template.get("kind") == "manual" and variable_map:
+        raise SmsError("A message sent with DLT IDs has no variables.")
     vmap = validate_variable_map(variable_map, template["message"], allow_cols=audience.source == "contacts")
     eligible, excluded = split_people(load_people(db, tenant_id, audience), template["template_type"], vmap)
     return vmap, eligible, excluded
@@ -400,12 +419,16 @@ def create_campaign(db, tenant_id: str, user_id: str | None, *, name: str, templ
     vmap, eligible, _excluded = _plan(db, tenant_id, template, variable_map, audience)
     if not eligible:
         raise SmsError("None of the selected recipients can receive this SMS.")
+    manual = template.get("kind") == "manual"
     background = audience.source == "contacts"
     try:
         campaign = db.table("sms_campaigns").insert({
             "tenant_id": tenant_id, "name": name.strip()[:120], "template_id": template.get("id"),
             "sender_id": template["sender_id"],
-            "message_id": str(template["message_id"]), "kind": "template",
+            "message_id": None if manual else str(template["message_id"]),
+            "kind": "manual" if manual else "template",
+            "manual_entity_id": template.get("entity_id") if manual else None,
+            "manual_template_id": template.get("dlt_template_id") if manual else None,
             "template_type": template["template_type"], "template_text": template["message"],
             "variable_map": vmap, "status": "preparing" if background else "scheduled",
             "source": audience.source, "group_ids": audience.group_ids or None,
@@ -788,10 +811,17 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
         _finish(db, rid, {"status": status, "failure_reason": skip})
         return
     try:
-        body = await bulk9_client.send_dlt(
-            tctx["key"], sender_id=campaign["sender_id"], message_id=campaign["message_id"],
-            numbers=[row["phone"]], variables=list(row.get("variables") or []), udf1=rid,
-        )
+        if campaign.get("kind") == "manual":
+            body = await bulk9_client.send_dlt_manual(
+                tctx["key"], sender_id=campaign["sender_id"], entity_id=campaign["manual_entity_id"],
+                template_id=campaign["manual_template_id"], message=row["content"], numbers=[row["phone"]],
+                udf1=rid,
+            )
+        else:
+            body = await bulk9_client.send_dlt(
+                tctx["key"], sender_id=campaign["sender_id"], message_id=campaign["message_id"],
+                numbers=[row["phone"]], variables=list(row.get("variables") or []), udf1=rid,
+            )
     except Bulk9Timeout:
         _finish(db, rid, {"status": "unknown",
                           "failure_reason": "No answer from the SMS provider; checking the delivery report."})

@@ -137,6 +137,20 @@ async def send_dlt(api_key: str, *, sender_id: str, message_id: str, numbers: li
     return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
 
 
+async def send_dlt_manual(api_key: str, *, sender_id: str, entity_id: str, template_id: str,
+                          message: str, numbers: list[str], udf1: str | None = None) -> dict[str, Any]:
+    """Send the full approved wording with DLT IDs (route=dlt_manual). The text must match the
+    DLT-approved template exactly, or the operator rejects it."""
+    payload: dict[str, Any] = {
+        "route": "dlt_manual", "sender_id": sender_id, "entity_id": entity_id,
+        "template_id": template_id, "message": message, "numbers": ",".join(numbers),
+        "flash": 0, "sms_details": 1,
+    }
+    if udf1:
+        payload["udf1"] = udf1
+    return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
+
+
 # ---------------------------------------------------------------- DLT manager
 
 async def list_dlt(api_key: str, kind: str = "template") -> dict[str, Any]:
@@ -174,10 +188,31 @@ async def add_template(api_key: str, *, entity_id: str, sender_ids: list[str], t
     })
 
 
-async def add_template_excel(api_key: str, *, entity_id: str, file_url: str, promotional: bool) -> dict:
+async def add_template_excel(api_key: str, *, entity_id: str, file_url: str) -> dict:
+    """The DLT portal export already carries each template's category, so none is sent
+    (template_type is optional in Bulk9's docs, and its own panel doesn't ask either)."""
     return await _request(api_key, "POST", "/dev/dlt_manager/add_template_excel", json={
-        "entity_id": entity_id, "content_excel": file_url, "template_type": "y" if promotional else "n",
+        "entity_id": entity_id, "content_excel": file_url,
     })
+
+
+# Where Bulk9 might report a template's DLT category, and how its values read. The docs list only
+# message_id/message/var_count, but its panel shows "Service Implicit" / "Service Explicit / Promo".
+_CATEGORY_KEYS = ("template_type", "category", "template_category", "content_type", "type", "msg_type")
+
+
+def template_category(item: dict) -> str | None:
+    """'service' (Service Implicit), 'promotional' (Service Explicit / Promo) or None if Bulk9 didn't say."""
+    for key in _CATEGORY_KEYS:
+        raw = item.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        v = raw.strip().lower()
+        if v == "y" or "explicit" in v or "promo" in v:
+            return "promotional"
+        if v == "n" or "implicit" in v or v in ("service", "transactional"):
+            return "service"
+    return None
 
 
 # ---------------------------------------------------------------- reports

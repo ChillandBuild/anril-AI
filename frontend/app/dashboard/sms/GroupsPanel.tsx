@@ -7,12 +7,13 @@ import { Download, MessageSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { formatCount, formatIst, friendlyError } from "./helpers";
-import { Btn, Card, Empty, LoadError, Modal, Notice, Skeleton, inputCls } from "./ui";
+import { Btn, Card, Empty, Field, LoadError, Modal, Notice, Skeleton, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 export function GroupsPanel() {
   const { canManage } = usePerm();
   const groups = useSWR("sms:contact-groups", () => api.sms.contactGroups(), { revalidateOnFocus: false });
+  const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function GroupsPanel() {
     try {
       await api.sms.createContactGroup(name);
       setNewName("");
+      setCreateOpen(false);
       await groups.mutate();
     } catch (err) {
       setCreateError(friendlyError(err, "Couldn't create the group."));
@@ -85,48 +87,27 @@ export function GroupsPanel() {
   return (
     <Card>
       {canManage && (
-        <form
-          className="flex flex-wrap items-end gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void create();
-          }}
-        >
-          <input aria-label="New group name" className={`${inputCls} min-w-[200px] flex-1 sm:max-w-xs`} placeholder="New group name" maxLength={80} value={newName} onChange={(e) => setNewName(e.target.value)} />
-          <Btn type="submit" busy={creating} disabled={!newName.trim()}>
+        <div className="flex justify-end border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
+          <Btn
+            onClick={() => {
+              setCreateError(null);
+              setCreateOpen(true);
+            }}
+          >
             <Plus size={15} /> Add group
           </Btn>
-          {createError && <p className="w-full text-xs font-semibold text-danger">{createError}</p>}
-        </form>
+        </div>
       )}
       {groups.isLoading && !groups.data ? (
         <Skeleton className="m-4 h-32" />
       ) : groups.error && !groups.data ? (
         <LoadError message={friendlyError(groups.error, "Check your connection.")} onRetry={() => void groups.mutate()} />
       ) : list.length === 0 ? (
-        <Empty title="No groups yet." hint={canManage ? "Create one above, or name a group while uploading contacts." : undefined} />
+        <Empty title="No groups yet." hint={canManage ? "Create one with Add group, or name a group while uploading contacts." : undefined} />
       ) : (
         <ul className="divide-y divide-[#f1f5f9]">
           {list.map((g) => (
             <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
-              {editing?.id === g.id ? (
-                <form
-                  className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void rename();
-                  }}
-                >
-                  <input aria-label="Group name" className={`${inputCls} min-w-[180px] flex-1 sm:max-w-xs`} maxLength={80} value={editing.name} onChange={(e) => setEditing({ id: g.id, name: e.target.value })} />
-                  <Btn type="submit" busy={renaming} disabled={!editing.name.trim()} className="h-9">
-                    Save
-                  </Btn>
-                  <Btn variant="outline" className="h-9" disabled={renaming} onClick={() => setEditing(null)}>
-                    Cancel
-                  </Btn>
-                  {renameError && <p className="w-full text-xs font-semibold text-danger">{renameError}</p>}
-                </form>
-              ) : (
                 <>
                   <div className="min-w-0">
                     <p className="break-words text-sm font-bold text-[#0A1528]">{g.name}</p>
@@ -172,11 +153,56 @@ export function GroupsPanel() {
                     </div>
                   )}
                 </>
-              )}
             </li>
           ))}
         </ul>
       )}
+
+      <Modal open={createOpen} title="Add group" onClose={() => !creating && setCreateOpen(false)}>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <Field label="Group name">
+            <input className={inputCls} placeholder="New group name" maxLength={80} value={newName} onChange={(e) => setNewName(e.target.value)} />
+          </Field>
+          {createError && <Notice tone="danger">{createError}</Notice>}
+          <div className="flex justify-end gap-2">
+            <Btn variant="outline" disabled={creating} onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Btn>
+            <Btn type="submit" busy={creating} disabled={!newName.trim()}>
+              Add group
+            </Btn>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!editing} title="Rename group" onClose={() => !renaming && setEditing(null)}>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void rename();
+          }}
+        >
+          <Field label="Group name">
+            <input className={inputCls} maxLength={80} value={editing?.name ?? ""} onChange={(e) => editing && setEditing({ id: editing.id, name: e.target.value })} />
+          </Field>
+          {renameError && <Notice tone="danger">{renameError}</Notice>}
+          <div className="flex justify-end gap-2">
+            <Btn variant="outline" disabled={renaming} onClick={() => setEditing(null)}>
+              Cancel
+            </Btn>
+            <Btn type="submit" busy={renaming} disabled={!editing?.name.trim()}>
+              Save
+            </Btn>
+          </div>
+        </form>
+      </Modal>
 
       <Modal open={!!deleting} title={`Delete “${deleting?.name ?? ""}”?`} onClose={() => !deleteBusy && setDeleting(null)}>
         <div className="space-y-3">

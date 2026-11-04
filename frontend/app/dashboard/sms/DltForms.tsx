@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsDltStatus, type SmsOk, type SmsTemplateType } from "@/lib/api";
 import { isValidSenderId } from "./dltSetup";
-import { friendlyError } from "./helpers";
+import { CATEGORY_LABELS, friendlyError } from "./helpers";
 import { Badge, Btn, Field, FilePicker, Modal, Notice, inputCls, textareaCls } from "./ui";
 
 export const DLT_LIST_KEY = "sms:dlt-list";
@@ -141,31 +141,20 @@ export function AddSenderPanel({ open, onClose }: { open: boolean; onClose: () =
 
 function ExcelForm({
   hint,
-  withType,
   run,
   onClose,
 }: {
   hint: string;
-  withType?: boolean;
-  run: (a: { entity_id: string; file: File; template_type: SmsTemplateType }) => Promise<SmsOk>;
+  run: (a: { entity_id: string; file: File }) => Promise<SmsOk>;
   onClose: () => void;
 }) {
   const [entityId, setEntityId] = useState("");
-  const [type, setType] = useState<SmsTemplateType>("service");
   const [file, setFile] = useState<File | null>(null);
-  const { busy, error, submit } = useModalSubmit(() => run({ entity_id: entityId.trim(), file: file as File, template_type: type }), onClose);
+  const { busy, error, submit } = useModalSubmit(() => run({ entity_id: entityId.trim(), file: file as File }), onClose);
   return (
     <div className="space-y-3">
       <p className="text-xs text-[#64748b]">{hint}</p>
       <EntityInput value={entityId} onChange={setEntityId} />
-      {withType && (
-        <Field label="Type">
-          <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
-            <option value="service">Service</option>
-            <option value="promotional">Promotional</option>
-          </select>
-        </Field>
-      )}
       <FilePicker label="DLT Excel or CSV file" accept=".xlsx,.csv" file={file} onChange={setFile} disabled={busy} />
       <ErrorLine text={error} />
       <Btn busy={busy} disabled={!entityId.trim() || !file} onClick={() => void submit()}>
@@ -190,7 +179,11 @@ export function SenderExcelPanel({ open, onClose }: { open: boolean; onClose: ()
 export function TemplateExcelPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Modal open={open} title="Import templates from DLT Excel" onClose={onClose}>
-      <ExcelForm hint="Upload the template export from your DLT portal." withType run={(a) => api.sms.addTemplateExcel(a)} onClose={onClose} />
+      <ExcelForm
+        hint="Upload the template export from your DLT portal. Each template's category comes from DLT, so you don't pick one."
+        run={(a) => api.sms.addTemplateExcel(a)}
+        onClose={onClose}
+      />
     </Modal>
   );
 }
@@ -240,10 +233,10 @@ function AddTemplateForm({ onClose }: { onClose: () => void }) {
       <Field label="Template wording">
         <textarea className={textareaCls} rows={3} value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
-      <Field label="Type">
+      <Field label="Template category" hint="As approved on DLT">
         <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
-          <option value="service">Service</option>
-          <option value="promotional">Promotional</option>
+          <option value="service">{CATEGORY_LABELS.service}</option>
+          <option value="promotional">{CATEGORY_LABELS.promotional}</option>
         </select>
       </Field>
       <ErrorLine text={error} />

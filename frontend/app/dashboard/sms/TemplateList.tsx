@@ -4,8 +4,8 @@ import { useState } from "react";
 import useSWR from "swr";
 import { FileSpreadsheet, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { api, type SmsTemplate, type SmsTemplateType } from "@/lib/api";
-import { countVars, formatIst, friendlyError } from "./helpers";
+import { api } from "@/lib/api";
+import { categoryLabel, countVars, formatIst, friendlyError } from "./helpers";
 import { AddTemplatePanel, ListToolbar, TEMPLATES_KEY, TemplateExcelPanel } from "./DltForms";
 import { matchesQuery } from "./dltSetup";
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Notice, Skeleton } from "./ui";
@@ -27,7 +27,6 @@ export function TemplateList() {
     setExcelOpen(true);
   };
   const [refreshing, setRefreshing] = useState(false);
-  const [savingId, setSavingId] = useState<string | null>(null);
   const { data, error, isLoading, mutate } = useSWR(TEMPLATES_KEY, () => api.sms.templates(), { revalidateOnFocus: false });
 
   const templates = data?.templates ?? [];
@@ -47,22 +46,6 @@ export function TemplateList() {
       toast.error(friendlyError(err, "Couldn't refresh templates"));
     } finally {
       setRefreshing(false);
-    }
-  }
-
-  async function changeType(t: SmsTemplate, next: SmsTemplateType) {
-    if (next === t.template_type) return;
-    setSavingId(t.id);
-    try {
-      const updated = await api.sms.setTemplateType(t.id, next);
-      await mutate(
-        (cur) => (cur ? { ...cur, templates: cur.templates.map((x) => (x.id === t.id ? { ...x, ...updated } : x)) } : cur),
-        { revalidate: false },
-      );
-    } catch (err) {
-      toast.error(friendlyError(err, "Couldn't change the type"));
-    } finally {
-      setSavingId(null);
     }
   }
 
@@ -119,23 +102,9 @@ export function TemplateList() {
                   <Badge tone="info">Sender {t.sender_id}</Badge>
                   <Badge tone={t.status === "ready" ? "success" : "warn"}>{t.status === "ready" ? "Ready" : "Submitted"}</Badge>
                   <span className="text-xs text-[#64748b]">{Math.max(t.var_count, countVars(t.message))} variable(s)</span>
-                  <div className="ml-auto">
-                    {canManage ? (
-                      <select
-                        aria-label="Template type"
-                        className="h-8 rounded-lg border border-[#e2e8f0] bg-white px-2 text-xs font-bold text-[#334155] disabled:opacity-50"
-                        value={t.template_type}
-                        disabled={savingId === t.id}
-                        onChange={(e) => void changeType(t, e.target.value as SmsTemplateType)}
-                      >
-                        <option value="unclassified" disabled>Choose type</option>
-                        <option value="service">Service</option>
-                        <option value="promotional">Promotional</option>
-                      </select>
-                    ) : (
-                      <Badge>{t.template_type === "unclassified" ? "Choose type" : t.template_type === "promotional" ? "Promotional" : "Service"}</Badge>
-                    )}
-                  </div>
+                  <span className="ml-auto text-xs text-[#64748b]" title="The category DLT approved this template under">
+                    Category: <span className="font-bold text-[#334155]">{categoryLabel(t.template_type)}</span>
+                  </span>
                 </div>
                 <p className="whitespace-pre-wrap break-words text-sm text-[#334155]">{t.message}</p>
                 {t.status === "submitted" && <p className="mt-2 text-xs text-[#64748b]">Waiting for approval. It can be used once it shows as Ready.</p>}

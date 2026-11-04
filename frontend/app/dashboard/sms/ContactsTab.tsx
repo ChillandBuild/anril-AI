@@ -13,7 +13,7 @@ import { Pager } from "./CampaignDetail";
 import { AddContactPanel, PastePanel, UploadPanel } from "./ContactPanels";
 import { GroupsPanel } from "./GroupsPanel";
 import { SEND_PREFILL_KEY, formatCount, friendlyError, parseContactsSub } from "./helpers";
-import { Badge, Btn, Card, Empty, Field, InlinePanel, LoadError, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const PAGE = 50;
@@ -68,7 +68,7 @@ function ContactsPanel() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Number of every contact ever ticked, so "Send SMS" works across pages.
   const [phones, setPhones] = useState<Map<string, string>>(new Map());
-  // One add form open at a time, in place under the buttons.
+  // One add form open at a time, as a popup.
   const [panel, setPanel] = useState<"add" | "paste" | "upload" | null>(null);
   const [groupAction, setGroupAction] = useState<GroupAction | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -164,13 +164,10 @@ function ContactsPanel() {
           </Btn>
         </div>
       )}
-      {panel && (
-        <div className="border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
-          <AddContactPanel open={panel === "add"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
-          <PastePanel open={panel === "paste"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
-          <UploadPanel open={panel === "upload"} groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />
-        </div>
-      )}
+      {/* Mounted only while open, so each popup starts empty (no consent tick or group left from last time). */}
+      {panel === "add" && <AddContactPanel open groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />}
+      {panel === "paste" && <PastePanel open groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />}
+      {panel === "upload" && <UploadPanel open groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />}
       <form
         className="flex flex-wrap items-center gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5"
         onSubmit={(e) => {
@@ -226,20 +223,18 @@ function ContactsPanel() {
         </div>
       )}
       {groupAction && (
-        <div className="border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
-          <GroupActionPanel
-            action={groupAction}
-            groups={groupList}
-            defaultGroup={groupId}
-            ids={Array.from(selected)}
-            onClose={() => setGroupAction(null)}
-            onDone={() => {
-              setGroupAction(null);
-              setSelected(new Set());
-              refresh();
-            }}
-          />
-        </div>
+        <GroupActionPanel
+          action={groupAction}
+          groups={groupList}
+          defaultGroup={groupId}
+          ids={Array.from(selected)}
+          onClose={() => setGroupAction(null)}
+          onDone={() => {
+            setGroupAction(null);
+            setSelected(new Set());
+            refresh();
+          }}
+        />
       )}
 
       {contacts.isLoading && !contacts.data ? (
@@ -358,7 +353,7 @@ function GroupActionPanel({
   }
 
   return (
-    <InlinePanel open={action !== null} title={action === "add" ? "Add to group" : "Remove from group"} onClose={() => !busy && onClose()}>
+    <Modal open={action !== null} title={action === "add" ? "Add to group" : "Remove from group"} onClose={() => !busy && onClose()}>
       <div className="space-y-3">
         {groups.length === 0 ? (
           <p className="text-sm text-[#64748b]">You have no groups yet. Create one in the Groups tab first.</p>
@@ -383,6 +378,6 @@ function GroupActionPanel({
           </Btn>
         </div>
       </div>
-    </InlinePanel>
+    </Modal>
   );
 }

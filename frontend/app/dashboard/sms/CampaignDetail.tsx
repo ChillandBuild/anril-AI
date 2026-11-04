@@ -24,6 +24,7 @@ import {
   statusLabel,
   toLocalInput,
   NIGHT_RULE,
+  categoryLabel,
   quietRelease,
 } from "./helpers";
 import { formatSendTime } from "@/lib/schedule-time";
@@ -141,7 +142,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[#64748b]">
                   <Badge tone={campaignStatusTone(c.status)}>{campaignStatusLabel(c.status)}</Badge>
                   <span>Sender {c.sender_id}</span>
-                  <span>{c.template_type === "promotional" ? "Promotional" : "Service"}</span>
+                  <span>{c.kind === "manual" ? "Typed with DLT IDs" : categoryLabel(c.template_type)}</span>
                   {c.status === "scheduled" && c.send_at ? <span>Goes out {formatIst(c.send_at)} IST</span> : <span>Created {formatIst(c.created_at)}</span>}
                 </div>
               </div>

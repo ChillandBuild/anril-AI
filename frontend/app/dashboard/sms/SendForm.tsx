@@ -39,18 +39,25 @@ import {
   type SendFormInput,
   NIGHT_RULE,
   quietRelease,
+  EMPTY_MANUAL,
+  MANUAL_WARNING,
+  categoryLabel,
+  type ManualInput,
 } from "./helpers";
-import { Badge, Btn, Card, Field, LoadError, Notice, inputCls } from "./ui";
+import { Badge, Btn, Card, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 /** Wait this long after the last change before asking the server for a fresh preview. */
 const PREVIEW_DELAY_MS = 600;
+/** The template picker's "Type my own" choice (Bulk9 route=dlt_manual). */
+const MANUAL = "__manual__";
 
 /** The one Send SMS form: pick an approved template, say who gets it, check the live preview, send or schedule. */
 export function SendForm() {
   const { canManage } = usePerm();
   const { reloadBalance } = useSms();
   const [choice, setChoice] = useState("");
+  const [manual, setManual] = useState<ManualInput>(EMPTY_MANUAL);
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
   const [numbers, setNumbers] = useState<NumbersState>(EMPTY_NUMBERS);
   const [name, setName] = useState(() => defaultSendName(new Date()));
@@ -77,10 +84,13 @@ export function SendForm() {
   const balance = useSWR("sms:balance", () => api.sms.balance(), { revalidateOnFocus: true, shouldRetryOnError: false });
   const hasLeads = useHasLeads();
 
-  const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready" && t.template_type !== "unclassified"), [templates.data]);
-  const template: SmsTemplate | null = choice ? (ready.find((t) => t.id === choice) ?? null) : null;
+  // Every approved template can be sent: its category is DLT's, never the client's choice.
+  const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready"), [templates.data]);
+  const isManual = choice === MANUAL;
+  const template: SmsTemplate | null = choice && !isManual ? (ready.find((t) => t.id === choice) ?? null) : null;
+  const senders = useSWR(isManual ? "sms:senders" : null, () => api.sms.senders(), { revalidateOnFocus: false });
   const varCount = templateVarCount(template);
-  const input: SendFormInput = { template, varMap, numbers };
+  const input: SendFormInput = { template, manual: isManual ? manual : null, varMap, numbers };
   const type = sendType(input);
   const promotional = type === "promotional";
   const problem = sendFormProblem(input);
@@ -164,7 +174,7 @@ export function SendForm() {
   });
   const canSend = !!freshPreview && freshPreview.eligible_count > 0 && !scheduleBad && name.trim().length > 0 && !submitting && !block.blocked;
 
-  const message = template?.message ?? "";
+  const message = isManual ? manual.message : (template?.message ?? "");
   const length = smsSegments(message.replace(/\{#var#\}/gi, "x"));
 
   function pickTemplate(value: string) {
@@ -175,6 +185,11 @@ export function SendForm() {
     setNumbers((n) => withNumbersChange(n, { consent: false }));
     const t = ready.find((x) => x.id === value);
     setVarMap(Array.from({ length: templateVarCount(t ?? null) }, () => null));
+  }
+
+  function patchManual(patch: Partial<ManualInput>) {
+    setCreated(null);
+    setManual((m) => ({ ...m, ...patch }));
   }
 
   function setVar(i: number, value: SmsVarSource | null) {
@@ -218,6 +233,7 @@ export function SendForm() {
       setCreated({ scheduled: when.mode === "later" });
       reloadBalance();
       setChoice("");
+      setManual(EMPTY_MANUAL);
       setVarMap([]);
       setNumbers((n) => ({ ...EMPTY_NUMBERS, mode: n.mode }));
       setPreview(null);
@@ -237,7 +253,7 @@ export function SendForm() {
   }
 
   const sample = shown?.samples[0] ?? null;
-  const senderShown = template?.sender_id ?? "";
+  const senderShown = isManual ? manual.sender_id : (template?.sender_id ?? "");
   const summary = sendSummary({ preview: shown, parts: sample?.segments ?? length.parts, balance: balance.data ?? null });
   const section = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
 
@@ -256,8 +272,10 @@ export function SendForm() {
                   {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
                 </option>
               ))}
+              <option value={MANUAL}>Type my own (with DLT template ID)…</option>
             </select>
-            {template && hasLink(template.message) && (
+            {isManual && <ManualFields value={manual} onChange={patchManual} senders={senders} />}
+            {(template || isManual) && hasLink(message) && (
               <Notice tone="warn">
                 This message has a link. The link must be whitelisted on your DLT portal (CTA / URL whitelisting) for this sender, or the telecom blocks the SMS.
               </Notice>
@@ -269,7 +287,7 @@ export function SendForm() {
                 <span className="font-bold text-[#0A1528]">{template.sender_id}</span>
                 <span>· Entity {template.entity_id}</span>
                 <span>· DLT {template.dlt_template_id}</span>
-                <Badge tone={promotional ? "warn" : "neutral"}>{promotional ? "Promotional" : "Service"}</Badge>
+                <Badge tone={promotional ? "warn" : "neutral"}>{categoryLabel(template.template_type)}</Badge>
               </p>
             )}
 
@@ -381,7 +399,7 @@ export function SendForm() {
             This SMS will go out at {formatSendTime(nightRelease)}, not straight away. {NIGHT_RULE} SMS credits are used when you send.
           </Notice>
         )}
-        {!shown && problem && template !== null && <p className="text-xs text-[#64748b]">{problem}</p>}
+        {!shown && problem && (template !== null || isManual) && <p className="text-xs text-[#64748b]">{problem}</p>}
         {previewFailed && (
           <Notice tone="danger">
             {previewFailed}{" "}
@@ -433,6 +451,54 @@ export function SendForm() {
         loading={submitting}
         loadingLabel="Working…"
       />
+    </div>
+  );
+}
+
+/** "Type my own": the sender (its entity fills in), the DLT template ID and the exact approved text. */
+function ManualFields({
+  value,
+  onChange,
+  senders,
+}: {
+  value: ManualInput;
+  onChange: (patch: Partial<ManualInput>) => void;
+  senders: { data?: { senders: { sender_id: string; entity_id: string; entity_name: string | null }[] }; error?: unknown; isLoading: boolean; mutate: () => unknown };
+}) {
+  const list = senders.data?.senders ?? [];
+  const picked = value.sender_id ? `${value.sender_id}|${value.entity_id}` : "";
+  return (
+    <div className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-3.5">
+      <Notice tone="warn">{MANUAL_WARNING}</Notice>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Sender ID" hint={value.entity_id ? `Entity ${value.entity_id}` : "The entity fills in from the sender"}>
+          <select
+            className={inputCls}
+            value={picked}
+            disabled={senders.isLoading && !senders.data}
+            onChange={(e) => {
+              const s = list.find((x) => `${x.sender_id}|${x.entity_id}` === e.target.value);
+              onChange({ sender_id: s?.sender_id ?? "", entity_id: s?.entity_id ?? "" });
+            }}
+          >
+            <option value="">{senders.isLoading && !senders.data ? "Loading…" : "Choose a sender ID…"}</option>
+            {list.map((s) => (
+              <option key={`${s.sender_id}|${s.entity_id}`} value={`${s.sender_id}|${s.entity_id}`}>
+                {s.sender_id}
+                {s.entity_name ? ` · ${s.entity_name}` : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="DLT template ID" hint="The 19-digit number from your DLT portal">
+          <input className={inputCls} inputMode="numeric" maxLength={30} value={value.dlt_template_id} onChange={(e) => onChange({ dlt_template_id: e.target.value.replace(/\D/g, "") })} />
+        </Field>
+      </div>
+      {senders.error && !senders.data ? <LoadError message={friendlyError(senders.error, "Couldn't load your sender IDs.")} onRetry={() => void senders.mutate()} /> : null}
+      {senders.data && list.length === 0 && <p className="text-xs text-[#64748b]">No approved sender IDs yet. Add one under DLT setup first.</p>}
+      <Field label="Message" hint="Exactly as approved on DLT, with the real values in place of {#var#}">
+        <textarea className={textareaCls} rows={4} maxLength={2000} value={value.message} onChange={(e) => onChange({ message: e.target.value })} />
+      </Field>
     </div>
   );
 }

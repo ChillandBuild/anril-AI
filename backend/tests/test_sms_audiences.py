@@ -203,11 +203,53 @@ def test_promotional_to_pasted_numbers_needs_the_tick_and_records_who():
     assert db.rows("sms_messages")[0]["phone"] == "9876543210"
 
 
-# ---------------------------------------------------------------- raw DLT IDs (manual) removed 2026-11-04
+# ---------------------------------------------------------------- Type my own (route=dlt_manual)
 
-def test_preview_body_has_no_manual_send():
-    assert "manual" not in sms.PreviewBody.model_fields and "kind" not in sms.PreviewBody.model_fields
-    assert not hasattr(camp, "manual_template") and not hasattr(bulk9_client, "send_dlt_manual")
+MANUAL = {"sender_id": "kelir", "entity_id": "1701176655431156940", "dlt_template_id": "1707176655431156001",
+          "message": "Your booking is confirmed"}
+
+
+@pytest.mark.asyncio
+async def test_type_my_own_sends_with_dlt_manual_and_no_category():
+    db, _ = _setup()
+    body = sms.PreviewBody(kind="manual", manual=MANUAL, source="numbers", numbers=["9876543210"])
+    t = sms._body_template(db, T, body)
+    assert t["template_type"] == "unknown" and t["sender_id"] == "KELIR"
+    c, _ = camp.create_campaign(db, T, "u1", name="x", template=t, variable_map=[], send_at=None,
+                                idempotency_key="manual-key-1", now=NOW, audience=sms._audience(body))
+    assert (c["kind"], c["message_id"], c["manual_template_id"]) == ("manual", None, MANUAL["dlt_template_id"])
+    row = db.rows("sms_messages")[0]
+    row["status"] = "sending"
+    manual = AsyncMock(return_value={"status": True, "request_id": "r1"})
+    with patch.object(bulk9_client, "send_dlt_manual", manual), patch.object(bulk9_client, "send_dlt", AsyncMock()) as dlt:
+        await camp._send_one(db, row, c, {"enabled": True, "key": "k"})
+    dlt.assert_not_awaited()
+    kw = manual.await_args.kwargs
+    assert (kw["entity_id"], kw["template_id"], kw["message"]) == (MANUAL["entity_id"], MANUAL["dlt_template_id"], MANUAL["message"])
+    assert row["status"] == "submitted"
+
+
+def test_type_my_own_refuses_unfilled_variables_and_variable_maps():
+    db, _ = _setup()
+    with pytest.raises(camp.SmsError, match="var"):
+        sms._body_template(db, T, sms.PreviewBody(kind="manual", manual={**MANUAL, "message": "Hi {#var#}"}))
+    t = camp.manual_template(sender_id="KELIR", entity_id="1701", dlt_template_id="1707", message="Hi")
+    with pytest.raises(camp.SmsError, match="no variables"):
+        camp.preview(db, T, t, [{"source": "text", "value": "x"}],
+                     audience=camp.Audience(source="numbers", numbers=["9876543210"]))
+    with pytest.raises(camp.SmsError, match="Fill in"):
+        sms._body_template(db, T, sms.PreviewBody(kind="manual"))
+
+
+@pytest.mark.asyncio
+async def test_send_dlt_manual_payload():
+    req = AsyncMock(return_value={"status": True, "request_id": "r1", "wallet": 9})
+    with patch.object(bulk9_client, "_request", req):
+        out = await bulk9_client.send_dlt_manual("k", sender_id="KELIR", entity_id="1", template_id="2",
+                                                 message="Hi", numbers=["9876543210"], udf1="m1")
+    assert req.await_args.kwargs["json"] == {"route": "dlt_manual", "sender_id": "KELIR", "entity_id": "1",
+        "template_id": "2", "message": "Hi", "numbers": "9876543210", "flash": 0, "sms_details": 1, "udf1": "m1"}
+    assert "wallet" not in out
 
 
 # ---------------------------------------------------------------- OTP delivery webhook

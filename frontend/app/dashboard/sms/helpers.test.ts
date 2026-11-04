@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_MANUAL,
+  categoryLabel,
+  manualProblem,
   heldUntil,
   quietRelease,
   sendPrefill,
@@ -734,5 +737,30 @@ describe("night-time hold", () => {
     expect(heldUntil(m, new Date("2026-11-04T20:00:00Z"))?.toISOString()).toBe("2026-11-05T04:30:00.000Z");
     expect(heldUntil(m, new Date("2026-11-05T04:31:00Z"))).toBeNull();
     expect(heldUntil({ ...m, status: "delivered" }, new Date("2026-11-04T20:00:00Z"))).toBeNull();
+  });
+});
+
+describe("DLT category and Type my own", () => {
+  it("labels categories the way Bulk9 does and never asks when unknown", () => {
+    expect(categoryLabel("service")).toBe("Service Implicit");
+    expect(categoryLabel("promotional")).toBe("Service Explicit / Promo");
+    expect(categoryLabel("unclassified")).toBe("Set by DLT");
+    expect(categoryLabel("unknown")).toBe("Set by DLT");
+  });
+
+  const manual = { sender_id: "KELIR", entity_id: "1701176655431156940", dlt_template_id: "1707176655431156001", message: "Your booking is confirmed" };
+
+  it("checks a typed message step by step", () => {
+    expect(manualProblem(EMPTY_MANUAL)).toMatch(/sender/);
+    expect(manualProblem({ ...manual, dlt_template_id: "12" })).toMatch(/DLT template ID/);
+    expect(manualProblem({ ...manual, message: "  " })).toMatch(/Type the message/);
+    expect(manualProblem({ ...manual, message: "Hi {#var#}" })).toMatch(/Replace/);
+    expect(manualProblem(manual)).toBeNull();
+  });
+
+  it("builds a dlt_manual request with no template and no category", () => {
+    const req = buildSendRequest({ template: null, manual: { ...manual, message: " Your booking is confirmed " }, varMap: [], numbers: { ...EMPTY_NUMBERS, mode: "contact", numbersText: "9876543210" } });
+    expect(req).toMatchObject({ kind: "manual", manual: { ...manual } });
+    expect(req && "template_id" in req).toBe(false);
   });
 });

@@ -579,13 +579,40 @@ export function isValidEntityId(id: string): boolean {
   return /^\d{5,30}$/.test(id.trim());
 }
 
+/** DLT's template categories, worded the way Bulk9's panel shows them. */
+export const CATEGORY_LABELS = { service: "Service Implicit", promotional: "Service Explicit / Promo" } as const;
+
+/** "Service Implicit" / "Service Explicit / Promo", or "Set by DLT" when Bulk9 didn't report it. */
+export function categoryLabel(type: string | null | undefined): string {
+  return type === "service" || type === "promotional" ? CATEGORY_LABELS[type] : "Set by DLT";
+}
+
 export function isValidDltTemplateId(id: string): boolean {
   return /^\d{5,30}$/.test(id.trim());
+}
+
+/** "Type my own": the DLT IDs and the exact approved text, typed by the client. */
+export interface ManualInput { sender_id: string; entity_id: string; dlt_template_id: string; message: string }
+
+export const EMPTY_MANUAL: ManualInput = { sender_id: "", entity_id: "", dlt_template_id: "", message: "" };
+
+export const MANUAL_WARNING =
+  "The text must match your DLT-approved template exactly, with every {#var#} replaced by the real value. If it doesn't match, the SMS fails and the credit is still used.";
+
+/** The first thing missing in a "Type my own" message, or null. */
+export function manualProblem(m: ManualInput): string | null {
+  if (!m.sender_id || !m.entity_id) return "Pick the sender ID.";
+  if (!isValidDltTemplateId(m.dlt_template_id)) return "Enter the DLT template ID (the long number from your DLT portal).";
+  if (!m.message.trim()) return "Type the message.";
+  if (countVars(m.message) > 0) return "Replace each {#var#} with the exact text to send.";
+  return null;
 }
 
 export interface SendFormInput {
   /** The approved template picked in step 1; null until one is chosen. */
   template: Pick<SmsTemplate, "id" | "message" | "template_type" | "var_count"> | null;
+  /** Set when "Type my own" is picked instead of a template. */
+  manual?: ManualInput | null;
   varMap: (SmsVarSource | null)[];
   numbers: NumbersState;
 }
@@ -604,8 +631,13 @@ export function sendType(input: SendFormInput): SmsTemplateType | null {
 /** The first thing missing before the preview, or null when the form is ready. */
 export function sendFormProblem(input: SendFormInput): string | null {
   const type = sendType(input);
-  if (!input.template) return "Pick a template.";
-  if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
+  if (input.manual) {
+    const p = manualProblem(input.manual);
+    if (p) return p;
+  } else {
+    if (!input.template) return "Pick a template.";
+    if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
+  }
   if (!numbersReady(input.numbers, type === "promotional")) {
     const n = input.numbers;
     if (type === "promotional" && (n.mode === "contact" || n.mode === "excel") && looseNumbers(n).length > 0 && !n.consent) {
@@ -621,6 +653,14 @@ export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewReques
   if (sendFormProblem(input)) return null;
   const promotional = sendType(input) === "promotional";
   const recipients = buildRecipients(input.numbers, promotional);
+  if (input.manual) {
+    const m = input.manual;
+    return {
+      kind: "manual",
+      manual: { sender_id: m.sender_id, entity_id: m.entity_id, dlt_template_id: m.dlt_template_id.trim(), message: m.message.trim() },
+      ...recipients,
+    };
+  }
   const t = input.template!;
   return {
     template_id: t.id,

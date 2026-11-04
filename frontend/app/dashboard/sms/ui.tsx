@@ -204,31 +204,6 @@ export function Modal({ open, title, onClose, children, wide }: { open: boolean;
   );
 }
 
-/**
- * A form that opens in place under the button that opened it (no popup). Scrolls itself into view
- * and focuses its first field. Popups are kept only for delete / send confirmations.
- */
-export function InlinePanel({ open, title, onClose, children, wide, className }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (!open || !ref.current) return;
-    ref.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    ref.current.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea")?.focus({ preventScroll: true });
-  }, [open]);
-  if (!open) return null;
-  return (
-    <section ref={ref} aria-label={title} className={cn("rounded-xl border border-primary/25 bg-[#f8fafc]", !wide && "max-w-2xl", className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] px-4 py-2.5">
-        <h3 className="font-display text-sm font-bold text-[#0A1528]">{title}</h3>
-        <button type="button" onClick={onClose} aria-label={`Close ${title}`} className="text-[#64748b] hover:text-[#0A1528]">
-          <X size={16} />
-        </button>
-      </div>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
 /** The promotional-SMS consent tick (off by default). */
 export function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
   return <CheckField checked={checked} onChange={onChange} label={CONSENT_LABEL} description={CONSENT_HINT} />;

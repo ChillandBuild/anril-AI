@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SmsContactGroup, type SmsUploadPreview, type SmsUploadResult } from "@/lib/api";
 import { formatCount, friendlyError, skippedRowsCsv } from "./helpers";
-import { Btn, ConsentCheck, Field, FilePicker, InlinePanel, Notice, inputCls, saveCsv, textareaCls } from "./ui";
+import { Btn, ConsentCheck, Field, FilePicker, Modal, Notice, inputCls, saveCsv, textareaCls } from "./ui";
 
 const NEW_GROUP = "__new__";
 
@@ -74,7 +74,7 @@ export function AddContactPanel({ open, groups, onClose, onDone }: { open: boole
   }
 
   return (
-    <InlinePanel open={open} title="Add contact" onClose={() => !busy && onClose()}>
+    <Modal open={open} title="Add contact" onClose={() => !busy && onClose()}>
       <div className="space-y-3">
         <Field label="Mobile number" hint="10 digits, or with +91">
           <input className={inputCls} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -94,7 +94,7 @@ export function AddContactPanel({ open, groups, onClose, onDone }: { open: boole
           </Btn>
         </div>
       </div>
-    </InlinePanel>
+    </Modal>
   );
 }
 
@@ -149,7 +149,7 @@ export function PastePanel({ open, groups, onClose, onDone }: { open: boolean; g
   }
 
   return (
-    <InlinePanel open={open} title="Paste numbers" onClose={() => !busy && close()}>
+    <Modal open={open} title="Paste numbers" onClose={() => !busy && close()}>
       {result ? (
         <div className="space-y-3">
           <ResultSummary result={result} />
@@ -175,7 +175,7 @@ export function PastePanel({ open, groups, onClose, onDone }: { open: boolean; g
           </div>
         </div>
       )}
-    </InlinePanel>
+    </Modal>
   );
 }
 
@@ -250,7 +250,7 @@ export function UploadPanel({ open, groups, onClose, onDone }: { open: boolean; 
   const sample = preview?.sample.slice(0, 5) ?? [];
 
   return (
-    <InlinePanel open={open} title="Upload contacts" onClose={() => !busy && close()} wide>
+    <Modal open={open} title="Upload contacts" onClose={() => !busy && close()} wide>
       {result ? (
         <div className="space-y-3">
           <ResultSummary result={result} />
@@ -332,6 +332,6 @@ export function UploadPanel({ open, groups, onClose, onDone }: { open: boolean; 
           </div>
         </div>
       )}
-    </InlinePanel>
+    </Modal>
   );
 }
