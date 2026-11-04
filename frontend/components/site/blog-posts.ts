@@ -24,6 +24,37 @@ export const BLOG_AUTHOR = "Anril AI team";
 
 export const POSTS: readonly Post[] = [
   {
+    slug: "case-study-customer-business-ai-replies",
+    title: "Case study: 1,800 to 3,000 AI conversations a month in a customer-facing business",
+    description:
+      "How a customer-facing business in our own group has used Anril for 6 to 7 months: AI replies, bulk messaging and no enquiry left unanswered. What we can and cannot say.",
+    published: "2026-11-04",
+    updated: "2026-11-04",
+    author: BLOG_AUTHOR,
+    link: { href: "/whatsapp-chatbot", label: "Anril's WhatsApp AI chatbot" },
+    body: [
+      { type: "p", text: "A customer-facing business in our own group has run on Anril for the last 6 to 7 months. It handles roughly 1,800 to 3,000 AI conversations a month on it, and its team reports that enquiries are no longer left seen but unanswered: each query gets a reply at the moment it arrives. This page explains what that business uses Anril for, and is clear about what we have not measured." },
+      { type: "h2", text: "Who this is" },
+      { type: "p", text: "This is not an outside customer. It is a business in the same group that builds Anril, and we say so because you should know. We are not naming the business." },
+      { type: "h2", text: "What the business uses Anril for" },
+      { type: "ul", items: ["AI replies to customer enquiries, answered from the information the business has given Anril.", "Bulk message sending to reach its customers."] },
+      { type: "p", text: "It does not use Anril's telecalling and call scoring in a real situation yet, so this case study says nothing about CallIQ." },
+      { type: "h2", text: "What changed for the team" },
+      { type: "ul", items: ["Faster replies: customers get an answer straight away.", "No enquiry left seen but unanswered: every query is answered at the moment it comes in."] },
+      { type: "h2", text: "The numbers we can stand behind" },
+      { type: "ul", items: ["About 1,800 to 3,000 AI conversations a month.", "6 to 7 months of use."] },
+      { type: "h2", text: "What we have not measured" },
+      { type: "p", text: "We have not published a before-and-after reply time, a change in sales or a cost saving, because we have not measured them in a way we could prove. The result above is the team's own account of how enquiry handling changed, together with the volume that Anril handles. When we have measured figures, we will add them here with the date." },
+      { type: "h2", text: "What this means for your business" },
+      { type: "p", text: "If your customers message you more often than your team can answer, the same setup can apply: Anril replies in seconds from your own business information, in Tanglish or any language, and hands the chat to your team when a person is needed. Book a free demo and we will set it up with questions like your customers really ask." },
+    ],
+    faqs: [
+      { q: "Is this an outside customer?", a: "No. It is a customer-facing business in the same group that builds Anril. We do not name it." },
+      { q: "How many conversations does it handle?", a: "Roughly 1,800 to 3,000 AI conversations a month, over 6 to 7 months of use." },
+      { q: "Does the business use Anril for telecalling?", a: "Not yet in a real situation, so this case study does not cover call recording or call scoring." },
+    ],
+  },
+  {
     slug: "send-bulk-whatsapp-messages-without-getting-blocked",
     title: "How to send bulk WhatsApp messages without getting your number blocked",
     description:

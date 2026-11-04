@@ -169,7 +169,12 @@ export function BuiltOnEnquiries() {
     <section className={ui.band} id="proof" aria-labelledby="proof-h">
       <Kicker>In use</Kicker>
       <h2 className={ui.secH} id="proof-h">Built and tested on real enquiries</h2>
-      <p className={ui.lede}>Our own group business runs on Anril and handles 1,800+ customer enquiries a month.</p>
+      <p className={ui.lede}>
+        Our own group business has run on Anril for 6 to 7 months and handles 1,800 to 3,000 AI conversations a month.
+      </p>
+      <Link prefetch={false} className={ui.tlink} href="/blog/case-study-customer-business-ai-replies">
+        Read the case study
+      </Link>
     </section>
   );
 }
