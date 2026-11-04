@@ -482,6 +482,20 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
   },
 ];
 
+/** Blog articles that go deeper on each page; shown as "Read more" links. Slugs match blog-posts.ts. */
+export const READ_MORE: Record<string, readonly string[]> = {
+  "whatsapp-chatbot": ["what-is-a-whatsapp-chatbot", "instagram-auto-dm-reply-automatically", "case-study-customer-business-ai-replies"],
+  "bulk-whatsapp-sender": ["send-bulk-whatsapp-messages-without-getting-blocked", "whatsapp-business-api-pricing-india"],
+  "whatsapp-crm": ["what-is-a-lead-management-system", "hot-warm-cold-lead-scoring"],
+  "telecaller-software": ["how-to-track-telecaller-performance"],
+  "whatsapp-payments": ["whatsapp-business-api-pricing-india"],
+  "social-media-ads": ["instagram-auto-dm-reply-automatically"],
+  "real-estate": ["real-estate-lead-management-whatsapp", "hot-warm-cold-lead-scoring"],
+  education: ["what-is-a-whatsapp-chatbot", "send-bulk-whatsapp-messages-without-getting-blocked"],
+  healthcare: ["what-is-a-whatsapp-chatbot"],
+  d2c: ["whatsapp-business-api-pricing-india", "instagram-auto-dm-reply-automatically"],
+};
+
 export const ALL_LANDINGS: readonly Landing[] = [...PRODUCT_PAGES, ...INDUSTRY_PAGES];
 
 export function findLanding(list: readonly Landing[], slug: string): Landing | undefined {

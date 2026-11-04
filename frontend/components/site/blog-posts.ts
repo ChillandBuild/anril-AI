@@ -24,6 +24,97 @@ export const BLOG_AUTHOR = "Anril AI team";
 
 export const POSTS: readonly Post[] = [
   {
+    slug: "wati-vs-interakt-vs-aisensy-vs-anril",
+    title: "Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits a small business?",
+    description:
+      "A fair comparison of Wati, Interakt, AiSensy and Anril for small businesses in India: published prices as of 4 November 2026, what to compare, and who each suits.",
+    published: "2026-11-04",
+    updated: "2026-11-04",
+    author: BLOG_AUTHOR,
+    link: { href: "/pricing", label: "Anril plans from ₹999 a month" },
+    body: [
+      { type: "p", text: "All four tools let a business use WhatsApp for customers, and the right one depends on what you need beyond sending messages. This comparison uses the prices each company publishes on its own website, checked on 4 November 2026. Prices change, billing periods differ, and Anril is our own product, so use this as a starting point and confirm on each company's site." },
+      { type: "h2", text: "Published prices on 4 November 2026" },
+      { type: "ul", items: [
+        "Wati: Growth ₹2,699 a month, Pro ₹5,799 a month and Business ₹16,799 a month, shown as billed quarterly. Growth includes 3 users, Pro and Business include 5. Template message charges are extra.",
+        "Interakt: Growth ₹2,799 a month and Advanced ₹3,799 a month, excluding taxes, with unlimited agents. There is also a Starter plan, and a separate Sales CRM at ₹2,499 a month. An AI agents add-on is ₹2,499 a month. Template message charges are billed separately.",
+        "AiSensy: an Unlimited Users base plan with monthly, quarterly and yearly billing. The base price was not visible on its pricing page when we checked, so see its site. Add-ons are priced separately, for example the WhatsApp AI Agent Builder at ₹1,350 a month.",
+        "Anril: plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. The Starter plan includes 2 users and 1,000 AI replies. WhatsApp message charges from Meta are separate."
+      ] },
+      { type: "p", text: "These are not like for like. The companies bill monthly, quarterly or yearly, some prices include or exclude taxes, and each plan includes different features, users and limits. On every one of them you also pay Meta's WhatsApp message charges." },
+      { type: "h2", text: "What to compare besides the monthly price" },
+      { type: "ul", items: [
+        "Users: how many people on your team are included, and what extra users cost.",
+        "AI replies: whether the AI answers real customer questions, how replies are counted, and what happens when you pass the limit.",
+        "Language: whether the AI replies in the way your customers write. Anril replies in Tanglish by default and in any language.",
+        "Lead scoring and handover: whether it tells you who is ready to buy and passes the chat to a person with the history.",
+        "Calls: whether telecaller calls can be recorded and scored in the same tool. Anril CallIQ does this and understands Tamil calls.",
+        "Payments and orders: whether you can send payment links and track orders. Anril Commerce does this with Razorpay.",
+        "Total cost: the plan, extra users, add-ons and Meta's message charges together."
+      ] },
+      { type: "h2", text: "Who each one suits" },
+      { type: "p", text: "Wati, Interakt and AiSensy are established WhatsApp platforms, and each has its own strengths. Check their sites for the features that matter to you. We can speak for Anril: it suits businesses that get many enquiries, especially in Tamil Nadu, and want AI replies in Tanglish, Hot, Warm and Cold lead scoring, telecaller call analysis and payments in one platform, starting from ₹999 a month." },
+      { type: "h2", text: "How to choose" },
+      { type: "ul", items: [
+        "List what you need: campaigns, AI replies, a shared inbox, calls, payments.",
+        "Work out the total monthly cost for your team size and message volume.",
+        "Ask each company for a demo with questions your customers really ask.",
+        "Check how the AI behaves on your own information, not just in a sales demo."
+      ] },
+    ],
+    faqs: [
+      { q: "Which WhatsApp tool is cheapest?", a: "It depends on your team size, billing period, add-ons and message volume. Anril plans start from ₹999 a month (plus GST). The other tools publish different plans and billing periods, so compare the total cost for your needs." },
+      { q: "Do these prices include WhatsApp message charges?", a: "No. On all four tools, Meta's WhatsApp message charges are billed separately from the plan." },
+      { q: "Can I try Anril before buying?", a: "There is no free trial, but demos are free and unlimited, online or at our Coimbatore office." },
+    ],
+  },
+  {
+    slug: "what-is-a-lead-management-system",
+    title: "What is a lead management system, and how do you choose one?",
+    description:
+      "A lead management system collects every enquiry, scores it and tells your team who to call first. Learn what it does and what to check before you choose one.",
+    published: "2026-11-04",
+    updated: "2026-11-04",
+    author: BLOG_AUTHOR,
+    link: { href: "/whatsapp-crm", label: "Anril's WhatsApp CRM and lead management" },
+    body: [
+      { type: "p", text: "A lead management system collects every enquiry your business gets, keeps it in one list, scores how ready each person is to buy, and tells your team who to follow up first. It replaces scattered phone chats and spreadsheets with a single place where no enquiry is forgotten." },
+      { type: "h2", text: "What a lead management system does" },
+      { type: "ul", items: [
+        "Captures leads from every source, such as WhatsApp, Instagram, Facebook, calls and forms.",
+        "Keeps each person's conversation history with their record.",
+        "Scores leads, for example Hot, Warm or Cold.",
+        "Assigns leads to the right team member.",
+        "Reminds the team to follow up, or follows up automatically.",
+        "Reports what is working: where leads come from and how they move."
+      ] },
+      { type: "h2", text: "Signs you need one" },
+      { type: "ul", items: [
+        "Enquiries arrive on several channels and nobody sees them all.",
+        "Replies are slow, or some messages are never answered.",
+        "Your team does not know which leads to call first.",
+        "Lead details live in personal phones or spreadsheets.",
+        "When someone leaves, their leads leave with them."
+      ] },
+      { type: "h2", text: "What to check before you choose" },
+      { type: "ul", items: [
+        "Channels: does it bring in the channels your customers use? Anril covers WhatsApp, Instagram and Facebook.",
+        "Speed: can it answer instantly, for example with an AI chatbot, so leads do not wait?",
+        "Scoring: does it tell you who is ready to buy, and can you describe what a buying step is in your business?",
+        "Handover: does the chat pass to a person with the whole conversation?",
+        "Team: how many users are included, and can managers see reports?",
+        "Cost: the plan plus any message charges. Anril plans start from ₹999 a month (plus GST), with WhatsApp message charges from Meta separate."
+      ] },
+      { type: "h2", text: "Lead management and a CRM" },
+      { type: "p", text: "The two overlap. A lead management system focuses on the early stage: capturing, scoring and following up enquiries. A CRM usually covers the whole customer relationship afterwards. In Anril, leads, conversations, payments and orders are kept together, so you do not need a separate tool for each stage." },
+    ],
+    faqs: [
+      { q: "Is a lead management system the same as a CRM?", a: "They overlap. Lead management focuses on capturing, scoring and following up enquiries, while a CRM covers the wider customer relationship. In Anril, leads, conversations, payments and orders are kept together." },
+      { q: "How does Anril score leads?", a: "Anril scores each lead Hot, Warm or Cold from what they asked and how they answered, and updates the score with every new message." },
+      { q: "How much does it cost?", a: "Anril plans start from ₹999 a month (plus GST)." },
+    ],
+  },
+  {
     slug: "case-study-customer-business-ai-replies",
     title: "Case study: 1,800 to 3,000 AI conversations a month in a customer-facing business",
     description:

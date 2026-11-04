@@ -3,7 +3,8 @@ import ui from "./site.module.css";
 import { DEMO_HREF, DEMO_LABEL } from "./content";
 import { DemoSection } from "./DemoSection";
 import { Faq } from "./Faq";
-import { ALL_LANDINGS, findLanding, type Landing } from "./landing-content";
+import { findPost, postPath } from "./blog-posts";
+import { ALL_LANDINGS, READ_MORE, findLanding, type Landing } from "./landing-content";
 import { PageIntro } from "./PageIntro";
 import { Eg, Frame, Kicker } from "./primitives";
 import { JsonLd, breadcrumbSchema, faqSchema } from "./schema";
@@ -13,6 +14,7 @@ import s from "./Landing.module.css";
 export function LandingPage({ page, parent }: { page: Landing; parent?: readonly [name: string, path: string] }) {
   const trail: [string, string][] = parent ? [[parent[0], parent[1]], [page.label, page.path]] : [[page.label, page.path]];
   const related = page.related.map((slug) => findLanding(ALL_LANDINGS, slug)).filter((l): l is Landing => Boolean(l));
+  const articles = (READ_MORE[page.slug] ?? []).map((slug) => findPost(slug)).filter((p) => p !== undefined);
   return (
     <Frame>
       <JsonLd data={breadcrumbSchema(trail)} />
@@ -56,6 +58,21 @@ export function LandingPage({ page, parent }: { page: Landing; parent?: readonly
         <Faq items={page.faqs.map((f) => ({ q: f.q, a: f.a }))} />
       </section>
 
+      {articles.length > 0 && (
+        <section className={ui.band} aria-labelledby="read-h">
+          <h2 className={ui.secH} id="read-h">Read more</h2>
+          <ul className={s.related}>
+            {articles.map((a) => (
+              <li key={a.slug}>
+                <Link prefetch={false} href={postPath(a.slug)}>
+                  <b>{a.title}</b>
+                  <span>{a.description}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className={ui.band} aria-labelledby="rel-h">
         <h2 className={ui.secH} id="rel-h">Related</h2>
         <ul className={s.related}>
