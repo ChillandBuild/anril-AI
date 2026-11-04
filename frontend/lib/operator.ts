@@ -123,6 +123,8 @@ export type OperatorSms = {
   webhook_registered: boolean;
   webhook_error: string | null;
   sms_count?: number | null;
+  /** Send campaigns up to 50 SMS per Bulk9 call (/dev/custom). Off by default. */
+  batch_send?: boolean;
 };
 const smsPath = (tenantId: string) => `/api/v1/operator/clients/${encodeURIComponent(tenantId)}/sms`;
 export const getOperatorSms = (tenantId: string) => operatorFetch<OperatorSms>(smsPath(tenantId));
@@ -130,6 +132,8 @@ export const putOperatorSmsKey = (tenantId: string, api_key: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/key`, { method: "PUT", body: JSON.stringify({ api_key }) });
 export const registerOperatorSmsWebhook = (tenantId: string) =>
   operatorFetch<OperatorSms>(`${smsPath(tenantId)}/webhook`, { method: "POST" });
+export const putOperatorSmsBatch = (tenantId: string, enabled: boolean) =>
+  operatorFetch<OperatorSms>(`${smsPath(tenantId)}/batch`, { method: "PUT", body: JSON.stringify({ enabled }) });
 export type OperatorSmsCreditRequest = {
   id: string;
   tenant_id: string;

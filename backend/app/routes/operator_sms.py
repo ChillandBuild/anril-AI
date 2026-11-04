@@ -17,7 +17,7 @@ from app.services import bulk9_client
 from app.services.audit_log import record_audit_event
 from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
 from app.services import sms_setup
-from app.services.sms_campaigns import SmsError
+from app.services.sms_campaigns import BATCH_SETTING, SmsError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,6 +71,7 @@ async def _state(db, tenant_id: str) -> dict:
         "webhook_registered": bool(key) and get_setting("bulk9_webhook_registered", tenant_id=tenant_id) == "true",
         "webhook_error": get_setting("bulk9_webhook_error", tenant_id=tenant_id) or None,
         "sms_count": sms_count,
+        "batch_send": (get_setting(BATCH_SETTING, tenant_id=tenant_id) or "").strip().lower() == "true",
     }
 
 
@@ -157,6 +158,20 @@ async def reregister_webhook(tenant_id: str, admin: dict = Depends(get_system_ad
         raise HTTPException(status_code=409, detail="Save the client's Bulk9 key first")
     if await _register_webhook(db, tid, key):
         _audit(db, admin, tid, "operator.sms_webhook_registered")
+    return await _state(db, tid)
+
+
+class BatchIn(BaseModel):
+    enabled: bool
+
+
+@router.put("/clients/{tenant_id}/sms/batch")
+async def set_batch_send(tenant_id: str, body: BatchIn, admin: dict = Depends(get_system_admin)):
+    """Send this client's campaigns up to 50 SMS per Bulk9 call (/dev/custom) instead of one per call."""
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    _put(db, tid, BATCH_SETTING, "true" if body.enabled else "false")
+    _audit(db, admin, tid, "operator.sms_batch_send_on" if body.enabled else "operator.sms_batch_send_off")
     return await _state(db, tid)
 
 

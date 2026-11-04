@@ -51,7 +51,7 @@ async def test_minimal_state_does_not_infer_registration_from_secret():
     with _patches(db):
         state = await operator_sms.get_sms(T, ADMIN)
     assert state == {"connected": False, "key_masked": None, "webhook_registered": False, "webhook_error": None,
-                     "sms_count": None}
+                     "sms_count": None, "batch_send": False}
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,7 @@ async def test_good_key_uses_trusted_host_and_never_echoes_secrets():
                                          {"url": f"{URL}/otp", "secret": secret, "service": "otp"}]
     assert KEY not in json.dumps(out) and secret not in json.dumps(out)
     assert out == {"connected": True, "key_masked": "live••••••••mnop", "webhook_registered": True, "webhook_error": None,
-                   "sms_count": 50}
+                   "sms_count": 50, "batch_send": False}
 
 
 @pytest.mark.asyncio
@@ -123,6 +123,22 @@ async def test_unknown_list_shape_does_not_create_another_callback():
 def test_removed_reseller_routes_are_absent():
     assert {route.path for route in operator_sms.router.routes} == {
         "/clients/{tenant_id}/sms", "/clients/{tenant_id}/sms/key", "/clients/{tenant_id}/sms/webhook",
+        "/clients/{tenant_id}/sms/batch",  # batch sending switch (2026-11-05)
         # Anril-side bookkeeping only (no Bulk9 call): Add credit requests. The setup checklist,
         # PE-TM approvals and template requests were removed on 2026-11-04.
         "/sms/credit-requests", "/sms/credit-requests/{request_id}/done"}
+
+
+@pytest.mark.asyncio
+async def test_batch_send_switch_is_per_tenant_and_audited():
+    db = _db()
+    db.add("tenants", id=OTHER, name="Other", enabled_features=["sms"])
+    audits = []
+    with _patches(db), patch.object(operator_sms, "record_audit_event", lambda *a, **k: audits.append(k["action"])):
+        on = await operator_sms.set_batch_send(T, operator_sms.BatchIn(enabled=True), ADMIN)
+        other = await operator_sms.get_sms(OTHER, ADMIN)
+        off = await operator_sms.set_batch_send(T, operator_sms.BatchIn(enabled=False), ADMIN)
+    assert on["batch_send"] is True and other["batch_send"] is False and off["batch_send"] is False
+    assert audits == ["operator.sms_batch_send_on", "operator.sms_batch_send_off"]
+    with _patches(db), pytest.raises(HTTPException):
+        await operator_sms.set_batch_send("not-a-uuid", operator_sms.BatchIn(enabled=True), ADMIN)

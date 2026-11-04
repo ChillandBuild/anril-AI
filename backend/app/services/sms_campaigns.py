@@ -735,6 +735,7 @@ def _tenant_ctx(db, tenant_id: str, cache: dict) -> dict:
         cache[tenant_id] = {
             "enabled": "sms" in features,
             "key": get_setting("bulk9_api_key", tenant_id=tenant_id),
+            "batch": batch_enabled(tenant_id),
         }
     return cache[tenant_id]
 
@@ -789,14 +790,16 @@ def _recipient_skip(db, row: dict, campaign: dict) -> str | None:
     return None
 
 
-async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
+def _pre_send(db, row: dict, campaign: dict | None, tctx: dict) -> bool:
+    """True when this row should go to Bulk9 now. Otherwise it has already been finished
+    (skipped / cancelled) or put back on hold."""
     rid = row["id"]
     skip = None
     if campaign is not None and campaign.get("status") == "preparing":
         # Still being built (a crashed build, or a race with another run): back on hold, unsent.
         db.table("sms_messages").update({"status": "queued", "claimed_at": None, "send_at": HOLD}) \
             .eq("id", rid).eq("status", "sending").execute()
-        return
+        return False
     if campaign is None or campaign.get("status") == "cancelled":
         skip, status = "The campaign was cancelled.", "cancelled"
     else:
@@ -809,7 +812,18 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
             skip = _recipient_skip(db, row, campaign)
     if skip:
         _finish(db, rid, {"status": status, "failure_reason": skip})
-        return
+        return False
+    return True
+
+
+async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
+    if _pre_send(db, row, campaign, tctx):
+        await _send_single(db, row, campaign, tctx)
+
+
+async def _send_single(db, row: dict, campaign: dict, tctx: dict) -> None:
+    """One SMS, one Bulk9 call (POST /dev/bulkV2)."""
+    rid = row["id"]
     try:
         if campaign.get("kind") == "manual":
             body = await bulk9_client.send_dlt_manual(
@@ -849,6 +863,97 @@ async def _send_one(db, row: dict, campaign: dict | None, tctx: dict) -> None:
     if res["sms_count"] is not None:
         patch["sms_count"] = res["sms_count"]
     _finish(db, rid, patch)
+
+
+# ---------------------------------------------------------------- batch send (Bulk9 "Multiple")
+
+BATCH_SETTING = "bulk9_batch_send"  # per tenant, "true" = send in batches; off by default
+BATCH_SEND_MAX = 50
+
+
+def batch_enabled(tenant_id: str) -> bool:
+    return (get_setting(BATCH_SETTING, tenant_id=tenant_id) or "").strip().lower() == "true"
+
+
+def _batch_item(row: dict, campaign: dict) -> dict | None:
+    """One entry of a /dev/custom `requests` list, or None when the row must go on its own
+    (a '|' in a value would shift the variables, so the single path refuses it properly)."""
+    if campaign.get("kind") == "manual":
+        return {"sender_id": campaign["sender_id"], "entity_id": campaign["manual_entity_id"],
+                "template_id": campaign["manual_template_id"], "message": row["content"],
+                "numbers": row["phone"], "udf1": row["id"]}
+    values = [str(v) for v in (row.get("variables") or [])]
+    if any("|" in v for v in values):
+        return None
+    mid = campaign["message_id"]
+    return {"sender_id": campaign["sender_id"], "message": int(mid) if str(mid).isdigit() else mid,
+            "variables_values": "|".join(values), "numbers": row["phone"], "udf1": row["id"]}
+
+
+def _finish_all(db, rows: list[dict], patch: dict) -> None:
+    for r in rows:
+        _finish(db, r["id"], patch)
+
+
+async def _send_chunk(db, rows: list[dict], items: list[dict], campaign: dict, tctx: dict) -> None:
+    """Up to 50 SMS in one Bulk9 call. Each item carries its row id as udf1, so delivery reports
+    still land on the right row even though Bulk9 gives one request_id for the whole call."""
+    route = "dlt_manual" if campaign.get("kind") == "manual" else "dlt"
+    try:
+        body = await bulk9_client.send_custom(tctx["key"], route=route, requests=items)
+    except Bulk9Timeout:
+        _finish_all(db, rows, {"status": "unknown",
+                               "failure_reason": "No answer from the SMS provider; checking the delivery report."})
+        return
+    except (Bulk9Error, ValueError) as e:
+        if isinstance(e, Bulk9Error) and not (400 <= (e.http_status or 0) < 500):
+            # HTTP 200 with return=false: Bulk9's docs don't say whether some of the batch still
+            # went out, so re-sending could send twice. Leave it to the delivery-log check.
+            logger.warning("sms_campaigns: batch of %s answered return=false (%s); marking unknown",
+                           len(rows), str(e)[:200])
+            _finish_all(db, rows, {"status": "unknown",
+                                   "failure_reason": "The SMS provider gave a mixed answer; checking delivery logs."})
+            return
+        # Refused as a whole (HTTP 4xx, or our own check before sending): nothing went out.
+        # Send each on its own so one bad row can't fail the rest.
+        logger.warning("sms_campaigns: batch of %s refused (%s); sending one by one", len(rows), str(e)[:200])
+        for r in rows:
+            await _send_single(db, r, campaign, tctx)
+        return
+    except Exception:
+        logger.exception("sms_campaigns: batch send crashed for campaign %s", campaign.get("id"))
+        _finish_all(db, rows, {"status": "unknown", "failure_reason": "Something went wrong while sending."})
+        return
+    body = body if isinstance(body, dict) else {}
+    reply = send_reply(body)
+    now = utcnow().isoformat()
+    for r in rows:
+        res = parse_send_result(body, r["id"])
+        if res["request_id"]:
+            _finish(db, r["id"], {"status": "submitted", "request_id": res["request_id"], "send_response": reply,
+                                  "submitted_at": now})
+        else:
+            _finish(db, r["id"], {"status": "unknown", "send_response": reply,
+                                  "failure_reason": "No request ID from the SMS provider; checking delivery logs."})
+
+
+async def _send_batch(db, rows: list[dict], campaign: dict | None, tctx: dict) -> None:
+    """One campaign's claimed rows: skips checked per row as always, then the rest go out in
+    chunks of up to 50 per call. A chunk of one uses the normal single send."""
+    ready = [r for r in rows if _pre_send(db, r, campaign, tctx)]
+    if not ready:
+        return
+    pairs = [(r, _batch_item(r, campaign)) for r in ready]
+    for r, item in pairs:
+        if item is None:
+            await _send_single(db, r, campaign, tctx)
+    pairs = [(r, item) for r, item in pairs if item is not None]
+    for i in range(0, len(pairs), BATCH_SEND_MAX):
+        chunk = pairs[i:i + BATCH_SEND_MAX]
+        if len(chunk) == 1:
+            await _send_single(db, chunk[0][0], campaign, tctx)
+        else:
+            await _send_chunk(db, [r for r, _ in chunk], [item for _, item in chunk], campaign, tctx)
 
 
 async def process_due_sms(db=None, now: datetime | None = None, batch_size: int = BATCH_SIZE) -> dict:
@@ -896,9 +1001,18 @@ async def process_due_sms(db=None, now: datetime | None = None, batch_size: int 
                 .in_("id", cids).in_("status", ["scheduled", "completed"]).execute()
         camps = {c["id"]: c for c in ((db.table("sms_campaigns").select("*").in_("id", cids).execute()).data or [])} \
             if cids else {}
+        groups: dict[tuple, list[dict]] = {}
         for row in claimed:
             touched.add(row.get("campaign_id"))
-            await _send_one(db, row, camps.get(row.get("campaign_id")), _tenant_ctx(db, row["tenant_id"], cache))
+            groups.setdefault((row["tenant_id"], row.get("campaign_id")), []).append(row)
+        for (tenant_id, cid), rows in groups.items():
+            tctx = _tenant_ctx(db, tenant_id, cache)
+            campaign = camps.get(cid)
+            if tctx.get("batch") and len(rows) > 1:
+                await _send_batch(db, rows, campaign, tctx)
+            else:
+                for row in rows:
+                    await _send_one(db, row, campaign, tctx)
         if len(due) < batch_size:
             break
 

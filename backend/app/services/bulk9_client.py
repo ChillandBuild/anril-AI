@@ -151,6 +151,19 @@ async def send_dlt_manual(api_key: str, *, sender_id: str, entity_id: str, templ
     return scrub_financial(await _request(api_key, "POST", "/dev/bulkV2", json=payload))
 
 
+async def send_custom(api_key: str, *, route: str, requests: list[dict]) -> dict[str, Any]:
+    """Many SMS in one call (POST /dev/custom, Bulk9's "DLT SMS / DLT Manual (Multiple)"). Each
+    request is its own SMS: sender_id, numbers, udf1 and either message (message_id) +
+    variables_values (route=dlt) or entity_id + template_id + full message (route=dlt_manual).
+    Bulk9 answers with one request_id for the whole call."""
+    if route not in ("dlt", "dlt_manual"):
+        raise ValueError(f"Unknown route {route!r}")
+    if not requests:
+        raise ValueError("Nothing to send")
+    return scrub_financial(await _request(api_key, "POST", "/dev/custom",
+                                          json={"route": route, "requests": requests}))
+
+
 # ---------------------------------------------------------------- DLT manager
 
 async def list_dlt(api_key: str, kind: str = "template") -> dict[str, Any]:

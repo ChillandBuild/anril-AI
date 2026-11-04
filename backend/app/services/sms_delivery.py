@@ -230,6 +230,8 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
             .lte("updated_at", (now - timedelta(minutes=10)).isoformat())
             .order("last_reconciled_at", nullsfirst=True).order("id").limit(limit).execute().data or [])
     keys: dict[str, str | None] = {}
+    reports: dict[tuple[str, str], Any] = {}  # one report call per batch request_id per run
+    shared: dict[tuple[str, str], bool] = {}  # request_id used by more than one row (batch send)
     for m in rows:
         tid = m["tenant_id"]
         if tid not in keys:
@@ -245,9 +247,21 @@ async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dic
         rid = m.get("request_id") or ""
         try:
             if m["status"] == "submitted" and rid and not rid.startswith("dry-run"):
-                body = await bulk9_client.delivery_report(key, rid)
-                for r in bulk9_client.report_rows(body):
-                    if last10(r.get("mobile") or r.get("number")) in ("", last10(m["phone"])):
+                k = (tid, rid)
+                if k not in reports:
+                    reports[k] = await bulk9_client.delivery_report(key, rid)
+                if k not in shared:
+                    same = (db.table("sms_messages").select("id").eq("tenant_id", tid).eq("request_id", rid)
+                            .limit(2).execute().data or [])
+                    shared[k] = len(same) > 1
+                for r in bulk9_client.report_rows(reports[k]):
+                    # A batch send shares one request_id: a report tagged for another row isn't ours,
+                    # and an untagged one with no number can't be told apart, so it isn't trusted.
+                    tag = str(r.get("udf1") or "")
+                    if tag and tag != str(m["id"]):
+                        continue
+                    mobile = last10(r.get("mobile") or r.get("number"))
+                    if tag or mobile == last10(m["phone"]) or (mobile == "" and not shared[k]):
                         st = classify(r.get("status"))
                         if st and st != "submitted":
                             apply_update(db, tid, m, status=st, reason=r.get("status_description") or r.get("description"),
