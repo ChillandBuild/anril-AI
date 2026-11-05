@@ -82,22 +82,6 @@ async def test_sync_reads_dlt_category_and_keeps_existing_when_bulk9_is_silent()
     assert rows["4"]["template_type"] == "promotional"
 
 
-@pytest.mark.asyncio
-async def test_sync_logs_raw_fields_of_a_template_with_no_known_category(caplog):
-    db = FakeSupabase()
-    response = {"data": [{"sender_id": "ANRILT", "templates": [
-        {"message_id": "7", "message": "<#> OTP {#VAR#}", "type": "OTP", "var_count": 1},
-        {"message_id": "8", "message": "Hi", "type": "Service Implicit"}]}]}
-    with patch.object(sms, "get_supabase", return_value=db), \
-         patch.object(bulk9_client, "list_dlt", AsyncMock(return_value=response)), \
-         caplog.at_level("INFO", logger=sms.logger.name):
-        await sms.refresh_templates(CTX)
-    unrecognised = [r.getMessage() for r in caplog.records if "no category we recognise" in r.getMessage()]
-    assert len(unrecognised) == 1
-    assert "Bulk9 template 7 " in unrecognised[0] and "'type': 'OTP'" in unrecognised[0]
-    assert "<#>" not in unrecognised[0]  # the message text itself stays out of the log
-
-
 @pytest.mark.parametrize("item,expected", [
     ({"template_type": "n"}, "service"), ({"template_type": "y"}, "promotional"),
     ({"type": "SERVICE IMPLICIT"}, "service"), ({"template_category": "Promotional"}, "promotional"),

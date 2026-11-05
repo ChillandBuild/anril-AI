@@ -278,9 +278,6 @@ async def refresh_templates(ctx: dict = Depends(manage)):
             # DLT's category when Bulk9 reports it on the template. Not read from the sender group:
             # a group's "type" may be the header type, which would mislabel promo templates.
             category = bulk9_client.template_category(t)
-            if not category:  # show what Bulk9 did send, so an unmapped label can be added
-                logger.info("Bulk9 template %s has no category we recognise: %s",
-                            mid, {k: v for k, v in t.items() if k != "message"})
             fields = {"sender_id": group.get("sender_id") or "", "entity_id": group.get("entity_id"),
                       "entity_name": group.get("entity_name"), "message": text,
                       "var_count": int(t.get("var_count") or camp.var_count(text)),
