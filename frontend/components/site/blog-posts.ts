@@ -2,7 +2,7 @@ import type { FaqEntry } from "./schema";
 
 // Blog articles. Facts about Anril AI come from the SEO brief and the product; the rest is general guidance
 // that does not depend on a number or a competitor. The WhatsApp API pricing article quotes no rupee rates: Meta's
-// rate card is the source. The competitor comparison is a draft until a person has verified every price on the competitors' sites.
+// rate card is the source. We do not publish comparisons that name other companies.
 
 export type Block = { type: "h2"; text: string } | { type: "p"; text: string } | { type: "ul"; items: readonly string[] };
 
@@ -28,52 +28,36 @@ export const BLOG_AUTHOR = "Anril AI team";
 
 const ALL_POSTS: readonly Post[] = [
   {
-    slug: "wati-vs-interakt-vs-aisensy-vs-anril",
-    seoTitle: "Wati vs Interakt vs AiSensy vs Anril",
-    // DRAFT: competitor prices were read by a summarising tool. A person must open each pricing page and confirm every number first.
-    draft: true,
-    title: "Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits a small business?",
+    slug: "how-to-choose-a-whatsapp-business-tool",
+    seoTitle: "How to Choose a WhatsApp Business Tool",
+    title: "How to choose a WhatsApp business tool: 7 questions to ask",
     description:
-      "A fair comparison of Wati, Interakt, AiSensy and Anril for small businesses in India: published prices as of 4 November 2026, what to compare, and who each suits.",
-    published: "2026-11-04",
-    updated: "2026-11-04",
+      "Choosing a WhatsApp tool for your business? Seven questions to ask about price, AI replies, languages, lead scoring, calls, payments and handover.",
+    published: "2026-11-05",
+    updated: "2026-11-05",
     author: BLOG_AUTHOR,
     link: { href: "/pricing", label: "Anril plans from ₹999 a month" },
     body: [
-      { type: "p", text: "All four tools let a business use WhatsApp for customers, and the right one depends on what you need beyond sending messages. This comparison uses the prices each company publishes on its own website, checked on 4 November 2026. Prices change, billing periods differ, and Anril is our own product, so use this as a starting point and confirm on each company's site." },
-      { type: "h2", text: "Published prices on 4 November 2026" },
-      { type: "ul", items: [
-        "Wati: Growth ₹2,699 a month, Pro ₹5,799 a month and Business ₹16,799 a month, shown as billed quarterly. Growth includes 3 users, Pro and Business include 5. Template message charges are extra.",
-        "Interakt: Growth ₹2,799 a month and Advanced ₹3,799 a month, excluding taxes, with unlimited agents. There is also a Starter plan, and a separate Sales CRM at ₹2,499 a month. An AI agents add-on is ₹2,499 a month. Template message charges are billed separately.",
-        "AiSensy: an Unlimited Users base plan with monthly, quarterly and yearly billing. The base price was not visible on its pricing page when we checked, so see its site. Add-ons are priced separately, for example the WhatsApp AI Agent Builder at ₹1,350 a month.",
-        "Anril: plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. The Starter plan includes 2 users and 1,000 AI replies. WhatsApp message charges from Meta are separate."
-      ] },
-      { type: "p", text: "These are not like for like. The companies bill monthly, quarterly or yearly, some prices include or exclude taxes, and each plan includes different features, users and limits. On every one of them you also pay Meta's WhatsApp message charges." },
-      { type: "h2", text: "What to compare besides the monthly price" },
-      { type: "ul", items: [
-        "Users: how many people on your team are included, and what extra users cost.",
-        "AI replies: whether the AI answers real customer questions, how replies are counted, and what happens when you pass the limit.",
-        "Language: whether the AI replies in the way your customers write. Anril replies in Tanglish by default and in any language.",
-        "Lead scoring and handover: whether it tells you who is ready to buy and passes the chat to a person with the history.",
-        "Calls: whether telecaller calls can be recorded and scored in the same tool. Anril CallIQ does this and understands Tamil calls.",
-        "Payments and orders: whether you can send payment links and track orders. Anril Commerce does this with Razorpay.",
-        "Total cost: the plan, extra users, add-ons and Meta's message charges together."
-      ] },
-      { type: "h2", text: "Who each one suits" },
-      { type: "p", text: "Wati, Interakt and AiSensy are established WhatsApp platforms, and each has its own strengths. Check their sites for the features that matter to you. We can speak for Anril: it suits businesses that get many enquiries, especially in Tamil Nadu, and want AI replies in Tanglish, Hot, Warm and Cold lead scoring, telecaller call analysis and payments in one platform, starting from ₹999 a month." },
-      { type: "p", text: "Wati, Interakt and AiSensy are trademarks of their owners, and Anril is not affiliated with them. Their prices above come from each company's public pricing page on 4 November 2026. If anything here is out of date or unfair, email anrilaitech@gmail.com and we will correct it." },
-      { type: "h2", text: "How to choose" },
-      { type: "ul", items: [
-        "List what you need: campaigns, AI replies, a shared inbox, calls, payments.",
-        "Work out the total monthly cost for your team size and message volume.",
-        "Ask each company for a demo with questions your customers really ask.",
-        "Check how the AI behaves on your own information, not just in a sales demo."
-      ] },
+      { type: "p", text: "To choose a WhatsApp business tool, decide what you need it to do beyond sending messages, then ask each provider the same seven questions and compare the total monthly cost for your team. A tool that looks cheap on its price page can cost more once users, add-ons and message charges are included." },
+      { type: "h2", text: "1. What is the total monthly cost?" },
+      { type: "p", text: "Ask for the plan price, the cost of extra users, any add-ons you would need, and how billing works: monthly, quarterly or yearly, with or without taxes. On every provider, Meta also charges for the WhatsApp messages you send, and that is billed separately from the plan. Anril plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan." },
+      { type: "h2", text: "2. Does it use the official WhatsApp Business API?" },
+      { type: "p", text: "The official API is what keeps your number safe when you send campaigns. Ask the provider how it connects to WhatsApp. Anril connects through Meta's official WhatsApp Business API." },
+      { type: "h2", text: "3. How good are the AI replies, and how are they counted?" },
+      { type: "p", text: "Ask to see the AI answer questions about your own business, not a canned demo. Ask how replies are counted and what happens when you reach the limit. With Anril, only AI replies are counted, not customer messages." },
+      { type: "h2", text: "4. Does it reply in your customers' language?" },
+      { type: "p", text: "Many customers in Tamil Nadu write Tamil in English letters. Anril replies in Tanglish by default and can reply in any language. It also understands voice notes." },
+      { type: "h2", text: "5. Does it tell you who is ready to buy?" },
+      { type: "p", text: "A long list of chats is not much help. Look for lead scoring and a clean handover to a person with the whole conversation. Anril scores each lead Hot, Warm or Cold and updates the score with every message." },
+      { type: "h2", text: "6. Can it handle calls and payments too?" },
+      { type: "p", text: "If your team also makes sales calls, or you take payments in chat, check whether the same tool covers them. Anril CallIQ records and scores calls and understands Tamil calls, and Anril Commerce sends Razorpay payment links and tracks orders." },
+      { type: "h2", text: "7. Can you try it on your own enquiries first?" },
+      { type: "p", text: "Ask for a demo with questions your customers really ask. Anril does not offer a free trial, but demos are free and unlimited, online or at our Coimbatore office." },
     ],
     faqs: [
-      { q: "Which WhatsApp tool is cheapest?", a: "It depends on your team size, billing period, add-ons and message volume. Anril plans start from ₹999 a month (plus GST). The other tools publish different plans and billing periods, so compare the total cost for your needs." },
-      { q: "Do these prices include WhatsApp message charges?", a: "No. On all four tools, Meta's WhatsApp message charges are billed separately from the plan." },
-      { q: "Can I try Anril before buying?", a: "There is no free trial, but demos are free and unlimited, online or at our Coimbatore office." },
+      { q: "Do I pay Meta separately on top of the plan?", a: "Yes, on every provider. Meta charges for delivered business messages, and the provider's plan is billed separately, so ask exactly what the plan includes." },
+      { q: "How much does Anril cost?", a: "Plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. WhatsApp message charges from Meta are separate." },
+      { q: "Is there a free trial?", a: "There is no free trial, but demos are free and unlimited, online or at our Coimbatore office." },
     ],
   },
   {
@@ -125,16 +109,16 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "case-study-customer-business-ai-replies",
-    seoTitle: "Case study: 1,800–3,000 AI Conversations a Month",
-    title: "Case study: 1,800 to 3,000 AI conversations a month in a customer-facing business",
+    seoTitle: "Case study: Anril in a Customer-Facing Business",
+    title: "Case study: how a customer-facing business in our own group uses Anril",
     description:
-      "A customer-facing business in our own group has used Anril for 6 to 7 months: AI replies and bulk messaging. What we can and cannot say.",
+      "A customer-facing business in our own group has used Anril for 6 to 7 months for AI replies and bulk messaging. What changed, and what we have not measured.",
     published: "2026-11-04",
-    updated: "2026-11-04",
+    updated: "2026-11-05",
     author: BLOG_AUTHOR,
     link: { href: "/whatsapp-chatbot", label: "Anril's WhatsApp AI chatbot" },
     body: [
-      { type: "p", text: "A customer-facing business in our own group has run on Anril for the last 6 to 7 months. It handles roughly 1,800 to 3,000 AI conversations a month on it, and its team reports that enquiries are no longer left seen but unanswered: each query gets a reply at the moment it arrives. This page explains what that business uses Anril for, and is clear about what we have not measured." },
+      { type: "p", text: "A customer-facing business in our own group has used Anril for the last 6 to 7 months. Its team reports that enquiries are no longer left seen but unanswered: each query gets a reply at the moment it arrives. This page is one business's story, not a promise of results, and it is clear about what we have not measured." },
       { type: "h2", text: "Who this is" },
       { type: "p", text: "This is not an outside customer. It is a business in the same group that builds Anril, and we say so because you should know. We are not naming the business." },
       { type: "h2", text: "What the business uses Anril for" },
@@ -142,16 +126,14 @@ const ALL_POSTS: readonly Post[] = [
       { type: "p", text: "It does not use Anril's telecalling and call scoring in a real situation yet, so this case study says nothing about CallIQ." },
       { type: "h2", text: "What changed for the team" },
       { type: "ul", items: ["Faster replies: customers get an answer straight away.", "No enquiry left seen but unanswered: every query is answered at the moment it comes in."] },
-      { type: "h2", text: "The numbers we can stand behind" },
-      { type: "ul", items: ["About 1,800 to 3,000 AI conversations a month.", "6 to 7 months of use."] },
       { type: "h2", text: "What we have not measured" },
-      { type: "p", text: "We have not published a before-and-after reply time, a change in sales or a cost saving, because we have not measured them in a way we could prove. The result above is the team's own account of how enquiry handling changed, together with the volume that Anril handles. When we have measured figures, we will add them here with the date." },
+      { type: "p", text: "We have not published a before-and-after reply time, a change in sales or a cost saving, because we have not measured them in a way we could prove. Conversation volumes vary from month to month, and another business will see different numbers. When we have measured figures, we will add them here with the date." },
       { type: "h2", text: "What this means for your business" },
       { type: "p", text: "If your customers message you more often than your team can answer, the same setup can apply: Anril replies in seconds from your own business information, in Tanglish or any language, and hands the chat to your team when a person is needed. Book a free demo and we will set it up with questions like your customers really ask." },
     ],
     faqs: [
       { q: "Is this an outside customer?", a: "No. It is a customer-facing business in the same group that builds Anril. We do not name it." },
-      { q: "How many conversations does it handle?", a: "Roughly 1,800 to 3,000 AI conversations a month, over 6 to 7 months of use." },
+      { q: "Will my business get the same results?", a: "Not necessarily. This is one business's experience over 6 to 7 months, and results depend on your business and your enquiries." },
       { q: "Does the business use Anril for telecalling?", a: "Not yet in a real situation, so this case study does not cover call recording or call scoring." },
     ],
   },

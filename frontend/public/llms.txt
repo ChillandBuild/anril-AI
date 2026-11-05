@@ -42,7 +42,8 @@
 - [About](https://www.anrilaitech.com/about): company and contact
 
 ## Blog articles
-- [Case study: 1,800 to 3,000 AI conversations a month in our own group business](https://www.anrilaitech.com/blog/case-study-customer-business-ai-replies)
+- [How to choose a WhatsApp business tool: 7 questions to ask](https://www.anrilaitech.com/blog/how-to-choose-a-whatsapp-business-tool)
+- [Case study: how a customer-facing business in our own group uses Anril](https://www.anrilaitech.com/blog/case-study-customer-business-ai-replies)
 - [How Meta's per-message pricing works in India](https://www.anrilaitech.com/blog/whatsapp-business-api-pricing-india)
 - [What a lead management system does](https://www.anrilaitech.com/blog/what-is-a-lead-management-system)
 - [What a WhatsApp chatbot is and who needs one](https://www.anrilaitech.com/blog/what-is-a-whatsapp-chatbot)
