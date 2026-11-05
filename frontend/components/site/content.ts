@@ -8,6 +8,9 @@ export const OFFICE = {
   street: "2, Sree Narayana Guru Road, Mission Road, Saibaba Koil",
   city: "Coimbatore", region: "Tamil Nadu", postalCode: "641011", country: "India",
 } as const;
+/** The office pin on Google Maps (Saibaba Colony, Coimbatore), taken from the shared Maps link. */
+export const OFFICE_GEO = { latitude: 11.0259913, longitude: 76.9508703 } as const;
+export const MAPS_URL = "https://maps.app.goo.gl/oJCrJKK1X7AuvRTu6";
 export const OFFICE_LINE = `${OFFICE.street}, ${OFFICE.city}, ${OFFICE.region} ${OFFICE.postalCode}`;
 /** Bloom Matrix's legal registered address (Anril AI's demos are held at the Coimbatore office above). */
 export const REGISTERED_OFFICE = "352-1, Srinivasapuram Street, Avinashi, Tiruppur, Tamil Nadu – 641654, India";

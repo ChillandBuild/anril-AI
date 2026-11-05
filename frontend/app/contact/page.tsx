@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Clock, Mail, MapPin, MessageCircle } from "lucide-react";
 import { LegalPageShell } from "@/components/legal/LegalPageShell";
-import { CONTACT_EMAIL, HOURS, OFFICE_LINE, PHONE, REGISTERED_OFFICE } from "@/components/site/content";
+import { CONTACT_EMAIL, HOURS, MAPS_URL, OFFICE_GEO, OFFICE_LINE, PHONE, REGISTERED_OFFICE } from "@/components/site/content";
 import { JsonLd, ORGANIZATION, breadcrumbSchema } from "@/components/site/schema";
 
-const MAP_SRC = `https://www.google.com/maps?q=${encodeURIComponent(`${OFFICE_LINE}, India`)}&output=embed`;
+// The embed uses the exact pin, not a typed address, so it always lands on the office.
+const MAP_SRC = `https://www.google.com/maps?q=${OFFICE_GEO.latitude},${OFFICE_GEO.longitude}&z=17&output=embed`;
 
 export const metadata: Metadata = {
   title: { absolute: "Contact Anril AI – Coimbatore | WhatsApp 90473 70380" },
@@ -56,6 +57,11 @@ export default function ContactPage() {
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
           />
+          <p className="mt-3 text-sm">
+            <a href={MAPS_URL} rel="noopener" className="text-primary hover:underline">
+              Open in Google Maps
+            </a>
+          </p>
         </div>
       </div>
 

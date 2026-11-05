@@ -1,4 +1,4 @@
-import { CONTACT_EMAIL, MAKER, OFFICE, SITE_URL, SOCIAL, STARTING_PRICE } from "./content";
+import { CONTACT_EMAIL, MAKER, MAPS_URL, OFFICE, OFFICE_GEO, SITE_URL, SOCIAL, STARTING_PRICE } from "./content";
 
 /** Hidden structured data for Google and AI tools. `data` is built here from the same constants the page shows. */
 export function JsonLd({ data }: { data: object }) {
@@ -32,6 +32,8 @@ export const ORGANIZATION = {
     postalCode: OFFICE.postalCode,
     addressCountry: "IN",
   },
+  geo: { "@type": "GeoCoordinates", latitude: OFFICE_GEO.latitude, longitude: OFFICE_GEO.longitude },
+  hasMap: MAPS_URL,
   openingHoursSpecification: [
     {
       "@type": "OpeningHoursSpecification",
