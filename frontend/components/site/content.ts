@@ -142,6 +142,7 @@ export const NAV: readonly NavItem[] = [
     href: "/industries",
     children: [
       ...INDUSTRIES.map((i) => ({ label: i.name, href: INDUSTRY_PAGE_PATHS[i.id] ?? `/industries#${i.id}` })),
+      { label: "Study abroad", href: "/industries/study-abroad" },
       { label: "D2C brands", href: "/industries/d2c" },
     ],
   },

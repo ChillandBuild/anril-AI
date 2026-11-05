@@ -355,10 +355,10 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/education",
     kicker: "Education",
     label: "Education",
-    title: "WhatsApp Chatbot for Schools, Colleges & Study Abroad | Anril AI",
+    title: "WhatsApp Chatbot for Schools & Colleges | Anril AI",
     description:
       "Anril replies to admission and course enquiries day and night, shares fees and brochures, and passes serious students and parents to your counsellors.",
-    h1: "WhatsApp chatbot for schools, colleges and study-abroad consultants",
+    h1: "WhatsApp chatbot for schools and colleges",
     opening:
       "Anril replies to admission and course enquiries day and night, shares fees and brochures, and passes serious students and parents to your counsellors.",
     sections: [
@@ -372,7 +372,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
         h: "How does Anril help an admissions team?",
         p: [
           "It answers the repeated questions at once, from the information you give it, and offers a campus visit. A student or parent who asks to visit is marked hot and sent to a counsellor to call, with the chat in front of them. Casual questions stay warm or cold and are followed up automatically.",
-          "Study-abroad consultants get the same benefit: every enquiry is answered, and the counsellor's time goes to the students who are serious.",
+          "Study-abroad consultants have their own page, with the questions students and parents ask them.",
         ],
       },
       {
@@ -387,11 +387,57 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
       { q: "Can it share fees and brochures?", a: "Yes. It can send photos and price lists, and answers fee questions from the information you give it." },
       { q: "How much does it cost?", a: "Plans start from ₹999 a month (plus GST)." },
     ],
-    related: ["real-estate", "healthcare"],
+    related: ["study-abroad", "healthcare"],
     example: {
       q: "What are the fees for the weekend batch?",
       r: "The weekend batch starts next month, on Saturday and Sunday mornings. I can share the fee details and book you a campus visit. Which day suits you?",
       outcome: "Marked hot after asking to visit, and sent to a counsellor to call.",
+    },
+  },
+  {
+    slug: "study-abroad",
+    path: "/industries/study-abroad",
+    kicker: "Study abroad",
+    label: "Study-abroad consultants",
+    title: "WhatsApp Chatbot & Lead Management for Study Abroad Consultants | Anril AI",
+    description:
+      "Anril replies to study-abroad enquiries on WhatsApp day and night, scores each student Hot, Warm or Cold, and passes serious students to your counsellors.",
+    h1: "WhatsApp chatbot and lead management for study-abroad consultants",
+    opening:
+      "Anril replies to students' and parents' study-abroad enquiries on WhatsApp, Instagram and Facebook at any hour, scores each lead Hot, Warm or Cold, and passes serious students to your counsellors with the whole chat.",
+    sections: [
+      {
+        h: "What do students and parents ask a study-abroad consultant?",
+        p: [
+          "They ask about countries, courses, intakes, fees and what is needed to apply. Many of these messages arrive in the evening or at the weekend, when your counsellors are offline, and the same questions come in again and again.",
+        ],
+      },
+      {
+        h: "How does Anril help your counsellors?",
+        p: [
+          "It answers the repeated questions at once, from the information you give it, and asks what the student is looking for. A student who asks for a call with a counsellor is marked hot and passed to a counsellor, with the whole chat in front of them. Students who are only browsing stay warm or cold and are followed up automatically.",
+          "Your counsellors spend their time on the students who are serious, instead of answering the same first questions all day.",
+        ],
+      },
+      {
+        h: "Can Anril also bring in more enquiries?",
+        p: [
+          "Yes. Anril Attract is a done-for-you service that we are starting with education consultancies: we run your Instagram and Facebook posts and your Meta and Google ads, and every lead lands in Anril's AI chat. The ad budget is separate and paid to Meta or Google directly.",
+          "Anril Reach sends WhatsApp campaigns to your contact lists using approved templates, with delivery and engagement reports afterwards.",
+        ],
+      },
+    ],
+    faqs: [
+      { q: "Does it reply in Tamil?", a: "Yes. It replies in Tanglish by default and can reply in any language. It also understands voice notes." },
+      { q: "Who talks to the student after the AI?", a: "Your counsellors. Anril passes the chat to your team along with everything said so far." },
+      { q: "Can it send photos and price lists?", a: "Yes, it can send photos and price lists. It can't read images that students send." },
+      { q: "How much does it cost?", a: "Plans start from ₹999 a month (plus GST). Book a demo to see it with your own questions." },
+    ],
+    related: ["education", "healthcare"],
+    example: {
+      q: "Can I get details about courses in Canada for the next intake?",
+      r: "Yes, I can share the options and what you need to apply. Which course are you interested in? I can also book you a call with a counsellor.",
+      outcome: "Marked hot after asking for a counsellor call, and passed to a counsellor.",
     },
   },
   {
@@ -492,6 +538,7 @@ export const READ_MORE: Record<string, readonly string[]> = {
   "social-media-ads": ["instagram-auto-dm-reply-automatically"],
   "real-estate": ["real-estate-lead-management-whatsapp", "hot-warm-cold-lead-scoring"],
   education: ["what-is-a-whatsapp-chatbot", "send-bulk-whatsapp-messages-without-getting-blocked"],
+  "study-abroad": ["what-is-a-whatsapp-chatbot", "hot-warm-cold-lead-scoring"],
   healthcare: ["what-is-a-whatsapp-chatbot"],
   d2c: ["whatsapp-business-api-pricing-india", "instagram-auto-dm-reply-automatically"],
 };

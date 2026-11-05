@@ -8,5 +8,6 @@ const SITE_URL = "https://www.anrilaitech.com";
 const PATHS = ["/", "/product", "/pricing", "/industries", "/about", "/contact", ...ALL_LANDINGS.map((l) => l.path), "/blog", ...POSTS.map((p) => postPath(p.slug)), "/privacy-policy", "/terms-and-conditions", "/data-deletion"];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return PATHS.map((path) => ({ url: `${SITE_URL}${path}` }));
+  const updated = new Map(POSTS.map((p) => [postPath(p.slug), new Date(`${p.updated}T00:00:00Z`)]));
+  return PATHS.map((path) => ({ url: `${SITE_URL}${path}`, lastModified: updated.get(path) }));
 }
