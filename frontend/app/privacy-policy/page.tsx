@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LegalPageShell, LegalSection, LegalList } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/privacy-policy" },
   title: "Privacy Policy",
   description: "How Bloom Matrix collects, uses, stores, and protects information when businesses access or use Anril.",
 };

@@ -32,9 +32,9 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     path: "/whatsapp-chatbot",
     kicker: "Engage",
     label: "WhatsApp AI chatbot",
-    title: "WhatsApp AI Chatbot for Business – Replies in Tanglish | Anril AI",
+    title: "WhatsApp AI Chatbot in Tanglish for Business | Anril AI",
     description:
-      "Anril's WhatsApp AI chatbot replies to every enquiry in seconds, day and night, in Tanglish or any language, and scores leads Hot, Warm or Cold. From ₹999/month.",
+      "Anril's WhatsApp AI chatbot replies to every enquiry in seconds, day and night, in Tanglish or any language, and scores leads Hot, Warm or Cold. From ₹999.",
     h1: "WhatsApp AI chatbot that replies to every enquiry",
     opening:
       "Anril's WhatsApp AI chatbot answers customer enquiries on WhatsApp, Instagram and Facebook in seconds, using your own business information. It replies in Tanglish by default, understands voice notes, scores each lead Hot, Warm or Cold, and hands over to your team when needed.",
@@ -87,7 +87,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     path: "/bulk-whatsapp-sender",
     kicker: "Reach",
     label: "Bulk WhatsApp sender",
-    title: "Bulk WhatsApp Sender & Marketing Software (Official API) | Anril AI",
+    title: "Bulk WhatsApp Sender (Official API) | Anril AI",
     description:
       "Send WhatsApp offers and updates to your whole customer list with approved templates, scheduling and delivery reports. Official WhatsApp API. From ₹999/month.",
     h1: "Bulk WhatsApp marketing, the safe and official way",
@@ -144,7 +144,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     label: "WhatsApp CRM",
     title: "WhatsApp CRM & Lead Management System | Anril AI",
     description:
-      "Every WhatsApp, Instagram and Facebook enquiry in one list, scored Hot, Warm or Cold, with follow-ups and team handover. Know who to call first. From ₹999/month.",
+      "Every WhatsApp, Instagram and Facebook enquiry in one list, scored Hot, Warm or Cold, with follow-ups and handover. Know who to call first. From ₹999.",
     h1: "WhatsApp CRM that tells you who to call first",
     opening:
       "Anril puts every enquiry from WhatsApp, Instagram and Facebook into one lead list. The AI scores each lead Hot, Warm or Cold based on the conversation, follows up automatically, and passes hot leads to the right person on your team.",
@@ -267,7 +267,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     path: "/social-media-ads",
     kicker: "Anril Attract",
     label: "Social media and ads",
-    title: "Done-for-You Social Media & Ads with WhatsApp Leads | Anril Attract",
+    title: "Done-for-You Social Media & Ads with Leads | Anril Attract",
     description:
       "We run your Instagram and Facebook posts plus Meta and Google ads, and every lead goes straight into Anril's AI chat. Built in Coimbatore.",
     h1: "We bring the leads. Anril answers them.",
@@ -399,7 +399,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/study-abroad",
     kicker: "Study abroad",
     label: "Study-abroad consultants",
-    title: "WhatsApp Chatbot & Lead Management for Study Abroad Consultants | Anril AI",
+    title: "WhatsApp Chatbot for Study Abroad Consultants | Anril AI",
     description:
       "Anril replies to study-abroad enquiries on WhatsApp day and night, scores each student Hot, Warm or Cold, and passes serious students to your counsellors.",
     h1: "WhatsApp chatbot and lead management for study-abroad consultants",

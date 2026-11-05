@@ -9,6 +9,8 @@ export type Block = { type: "h2"; text: string } | { type: "p"; text: string } |
 export type Post = {
   slug: string;
   title: string;
+  /** Shorter title for search results and the browser tab (under 60 characters with the site name). The H1 uses `title`. */
+  seoTitle?: string;
   /** Under 155 characters. */
   description: string;
   published: string; // ISO date
@@ -27,6 +29,7 @@ export const BLOG_AUTHOR = "Anril AI team";
 const ALL_POSTS: readonly Post[] = [
   {
     slug: "wati-vs-interakt-vs-aisensy-vs-anril",
+    seoTitle: "Wati vs Interakt vs AiSensy vs Anril",
     // DRAFT: competitor prices were read by a summarising tool. A person must open each pricing page and confirm every number first.
     draft: true,
     title: "Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits a small business?",
@@ -75,6 +78,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "what-is-a-lead-management-system",
+    seoTitle: "What Is a Lead Management System?",
     title: "What is a lead management system, and how do you choose one?",
     description:
       "A lead management system collects every enquiry, scores it and tells your team who to call first. Learn what it does and what to check before you choose one.",
@@ -121,9 +125,10 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "case-study-customer-business-ai-replies",
+    seoTitle: "Case study: 1,800–3,000 AI Conversations a Month",
     title: "Case study: 1,800 to 3,000 AI conversations a month in a customer-facing business",
     description:
-      "How a customer-facing business in our own group has used Anril for 6 to 7 months: AI replies, bulk messaging and no enquiry left unanswered. What we can and cannot say.",
+      "A customer-facing business in our own group has used Anril for 6 to 7 months: AI replies and bulk messaging. What we can and cannot say.",
     published: "2026-11-04",
     updated: "2026-11-04",
     author: BLOG_AUTHOR,
@@ -152,6 +157,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "send-bulk-whatsapp-messages-without-getting-blocked",
+    seoTitle: "Bulk WhatsApp Messages Without Getting Blocked",
     title: "How to send bulk WhatsApp messages without getting your number blocked",
     description:
       "Use the official WhatsApp Business API, approved templates and opted-in contacts. Here is how bulk WhatsApp messaging works without risking your number.",
@@ -185,6 +191,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "what-is-a-whatsapp-chatbot",
+    seoTitle: "What Is a WhatsApp Chatbot? Do You Need One?",
     title: "What is a WhatsApp chatbot, and does a small business need one?",
     description:
       "A WhatsApp chatbot replies to customer messages automatically. Here is what it can do, when a small business needs one, and what to look for before you buy.",
@@ -213,6 +220,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "how-to-track-telecaller-performance",
+    seoTitle: "How to Track Telecaller Performance (Scorecard)",
     title: "How to track telecaller performance (with a simple scorecard)",
     description:
       "Track telecaller performance with a few clear measures: call volume, talk time, follow-ups and call quality. Includes a simple scorecard you can use today.",
@@ -243,6 +251,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "real-estate-lead-management-whatsapp",
+    seoTitle: "Real Estate Lead Management on WhatsApp",
     title: "Lead management for real estate: stop losing buyers on WhatsApp",
     description:
       "Property buyers message several builders at once. Here is how real estate teams answer fast, qualify buyers and call the hot ones first on WhatsApp.",
@@ -271,6 +280,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "hot-warm-cold-lead-scoring",
+    seoTitle: "Hot, Warm, Cold: Score WhatsApp Leads Simply",
     title: "Hot, Warm, Cold: a simple way to score leads from WhatsApp",
     description:
       "Score every WhatsApp lead Hot, Warm or Cold so your team calls the right person first. Learn what each score means and how to keep scoring accurate.",
@@ -299,9 +309,10 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "whatsapp-business-api-pricing-india",
+    seoTitle: "WhatsApp Business API Pricing in India (2026)",
     title: "WhatsApp Business API pricing in India (2026): what you actually pay",
     description:
-      "How WhatsApp Business API pricing works in India: Meta charges per delivered message by category, plus your provider's plan. What is free, what is not, and an example.",
+      "How WhatsApp Business API pricing works in India: Meta charges per delivered message by category, plus your provider's plan. What's free, with an example.",
     published: "2026-11-02",
     updated: "2026-11-02",
     author: BLOG_AUTHOR,
@@ -333,6 +344,7 @@ const ALL_POSTS: readonly Post[] = [
   },
   {
     slug: "instagram-auto-dm-reply-automatically",
+    seoTitle: "Instagram Auto DM: Reply to Every Message",
     title: "Instagram auto DM: how to reply to every Instagram message automatically",
     description:
       "Instagram auto DM replies answer customer messages in seconds, even at night. Learn what automation can do, what to avoid, and how to hand over to a person.",

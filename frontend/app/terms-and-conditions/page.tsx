@@ -3,6 +3,7 @@ import Link from "next/link";
 import { LegalPageShell, LegalSection, LegalList } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/terms-and-conditions" },
   title: "Terms & Conditions",
   description: "The terms and conditions governing access to and use of Anril, a Bloom Matrix product.",
 };

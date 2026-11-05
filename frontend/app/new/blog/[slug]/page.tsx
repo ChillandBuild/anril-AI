@@ -14,7 +14,7 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   const post = findPost(params.slug);
   if (!post) return {};
   return {
-    title: { absolute: `${post.title} | Anril AI` },
+    title: { absolute: `${post.seoTitle ?? post.title} | Anril AI` },
     description: post.description,
     alternates: { canonical: postPath(post.slug) },
     openGraph: { type: "article", publishedTime: post.published, modifiedTime: post.updated, authors: [post.author] },

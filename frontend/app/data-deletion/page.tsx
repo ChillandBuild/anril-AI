@@ -3,6 +3,7 @@ import Link from "next/link";
 import { LegalPageShell, LegalSection, LegalList } from "@/components/legal/LegalPageShell";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/data-deletion" },
   title: "Data Deletion",
   description: "How to request deletion of your personal data from Anril, a Bloom Matrix product.",
 };
