@@ -80,6 +80,10 @@ export function SiteFooter() {
             ))}
           </ul>
         </div>
+        <p className={s.legalnote}>
+          WhatsApp, Instagram, Facebook and Meta are trademarks of Meta Platforms, Inc. Razorpay is a trademark of Razorpay.
+          Anril AI is an independent product and is not affiliated with or endorsed by them.
+        </p>
       </div>
     </footer>
   );

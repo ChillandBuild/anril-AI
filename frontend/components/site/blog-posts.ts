@@ -1,8 +1,8 @@
 import type { FaqEntry } from "./schema";
 
 // Blog articles. Facts about Anril AI come from the SEO brief and the product; the rest is general guidance
-// that does not depend on a number or a competitor. The WhatsApp API pricing article quotes Meta rates only as
-// approximate figures: re-check them against Meta's rate card. The competitor comparison is NOT here: it needs prices checked on the day.
+// that does not depend on a number or a competitor. The WhatsApp API pricing article quotes no rupee rates: Meta's
+// rate card is the source. The competitor comparison is a draft until a person has verified every price on the competitors' sites.
 
 export type Block = { type: "h2"; text: string } | { type: "p"; text: string } | { type: "ul"; items: readonly string[] };
 
@@ -18,13 +18,17 @@ export type Post = {
   link: { href: string; label: string };
   body: readonly Block[];
   faqs: readonly FaqEntry[];
+  /** A draft is not published: no page, no listing, no sitemap entry. Remove the flag once every fact is verified. */
+  draft?: boolean;
 };
 
 export const BLOG_AUTHOR = "Anril AI team";
 
-export const POSTS: readonly Post[] = [
+const ALL_POSTS: readonly Post[] = [
   {
     slug: "wati-vs-interakt-vs-aisensy-vs-anril",
+    // DRAFT: competitor prices were read by a summarising tool. A person must open each pricing page and confirm every number first.
+    draft: true,
     title: "Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits a small business?",
     description:
       "A fair comparison of Wati, Interakt, AiSensy and Anril for small businesses in India: published prices as of 4 November 2026, what to compare, and who each suits.",
@@ -54,6 +58,7 @@ export const POSTS: readonly Post[] = [
       ] },
       { type: "h2", text: "Who each one suits" },
       { type: "p", text: "Wati, Interakt and AiSensy are established WhatsApp platforms, and each has its own strengths. Check their sites for the features that matter to you. We can speak for Anril: it suits businesses that get many enquiries, especially in Tamil Nadu, and want AI replies in Tanglish, Hot, Warm and Cold lead scoring, telecaller call analysis and payments in one platform, starting from ₹999 a month." },
+      { type: "p", text: "Wati, Interakt and AiSensy are trademarks of their owners, and Anril is not affiliated with them. Their prices above come from each company's public pricing page on 4 November 2026. If anything here is out of date or unfair, email anrilaitech@gmail.com and we will correct it." },
       { type: "h2", text: "How to choose" },
       { type: "ul", items: [
         "List what you need: campaigns, AI replies, a shared inbox, calls, payments.",
@@ -310,8 +315,8 @@ export const POSTS: readonly Post[] = [
       { type: "h2", text: "What is free" },
       { type: "ul", items: ["Messages that customers send to your business.", "Each business phone number gets 1,000 free service messages a month. They do not roll over.", "When a customer messages you by tapping a Click to WhatsApp ad, a free entry point window opens (Meta says up to 7 days), and your messages in that window are free."] },
       { type: "p", text: "Meta has changed these rules several times, and one change took effect on 1 October 2026: utility templates sent inside an open customer service window used to be free and are now charged, except inside a free entry point window. Always check Meta's current rules before you budget." },
-      { type: "h2", text: "Approximate rates in India" },
-      { type: "p", text: "Meta publishes its rates in a rate card, and providers report them in rupees. As reported by providers in 2026, marketing messages in India cost roughly ₹0.86 each after Meta's increase on 1 January 2026, and utility and authentication messages roughly ₹0.115 each. Treat these as a guide only: they exclude GST, a provider may add its own markup, and Meta can change them. Confirm the current figure on Meta's rate card or with your provider before you plan." },
+      { type: "h2", text: "Where to find the current rates in India" },
+      { type: "p", text: "Meta publishes the exact rates for each country in its rate card, and they change from time to time. Marketing is the most expensive category, and Meta raised the India marketing rate on 1 January 2026. Check the current rupee rates on Meta's rate card, or ask your provider, before you plan. Rates exclude GST, and a provider may add its own markup." },
       { type: "p", text: "Meta also now bills Indian businesses in rupees. Eligible accounts must move to INR billing by 31 December 2026." },
       { type: "h2", text: "Part 2: your provider's plan" },
       { type: "p", text: "A provider connects you to the API and gives you the tools to use it: campaigns, a shared inbox, chatbot and reports. Plans vary in what they include and how they count usage. Anril plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. Only AI replies are counted, not customer messages, and WhatsApp message charges from Meta are billed separately." },
@@ -355,6 +360,9 @@ export const POSTS: readonly Post[] = [
     ],
   },
 ];
+
+/** Published articles only. */
+export const POSTS: readonly Post[] = ALL_POSTS.filter((p) => !p.draft);
 
 export function findPost(slug: string): Post | undefined {
   return POSTS.find((p) => p.slug === slug);

@@ -38,6 +38,8 @@
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .doneTitle { font-size: 1.8rem; line-height: 1.1; outline: none; }
 .doneText { color: var(--body); }
+.consent { font-size: 0.8rem; line-height: 1.45; color: var(--muted); }
+.consent a { color: inherit; text-underline-offset: 3px; }
 .submit { position: relative; overflow: hidden; }
 .submit:disabled::after {
   content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 35%; background: var(--teal-l);

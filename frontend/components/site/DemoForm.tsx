@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import ui from "./site.module.css";
 import { INDUSTRY_OPTIONS, submitDemo, validateDemo, type DemoFields } from "./demo-request";
@@ -120,6 +121,10 @@ export function DemoForm() {
         <label htmlFor="demo-hp">Leave this empty</label>
         <input id="demo-hp" name="_hp" tabIndex={-1} autoComplete="off" />
       </div>
+      <p className={s.consent}>
+        By requesting a demo you agree that Anril AI may contact you about it. See our{" "}
+        <Link prefetch={false} href="/privacy-policy">Privacy Policy</Link>.
+      </p>
       <button className={`${ui.btn} ${s.submit}`} type="submit" disabled={sending}>
         {sending ? "Sending…" : "Book a demo"}
       </button>
