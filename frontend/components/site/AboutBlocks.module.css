@@ -31,3 +31,8 @@
 .copy:active { transform: scale(0.97); }
 .copy[data-done] { background: var(--teal); border-color: var(--teal); color: var(--white); }
 @media (prefers-reduced-motion: reduce) { .copy { transition: none; } }
+
+.photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0 0; padding: 0; list-style: none; }
+.photos li { overflow: hidden; background: var(--wash-2); aspect-ratio: 4 / 3; }
+.photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 760px) { .photos { grid-template-columns: minmax(0, 1fr); } }

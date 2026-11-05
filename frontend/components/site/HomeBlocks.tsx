@@ -170,7 +170,7 @@ export function BuiltOnEnquiries() {
       <Kicker>In use</Kicker>
       <h2 className={ui.secH} id="proof-h">Built and tested on real enquiries</h2>
       <p className={ui.lede}>
-        A customer-facing business in our own group has used Anril for 6 to 7 months to answer its customers' enquiries.
+        A customer-facing business in our own group has used Anril for 6 to 7 months to answer customer enquiries.
       </p>
       <Link prefetch={false} className={ui.tlink} href="/blog/case-study-customer-business-ai-replies">
         Read the case study

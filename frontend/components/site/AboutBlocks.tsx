@@ -1,6 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import ui from "./site.module.css";
-import { MAKER } from "./content";
+import { HOURS, MAKER, OFFICE_LINE } from "./content";
+import office1 from "./images/office-1.jpg";
+import office2 from "./images/office-2.jpg";
+import office3 from "./images/office-3.jpg";
 import { Kicker } from "./primitives";
 import s from "./AboutBlocks.module.css";
 
@@ -55,6 +59,33 @@ export function MakerPanel() {
           </ul>
         </div>
       </div>
+    </section>
+  );
+}
+
+// Real photos of the Coimbatore office, where demos are held.
+const OFFICE_PHOTOS = [
+  { src: office1, alt: "The Anril AI team's workspace in Coimbatore: shared desks with computers and a sprint-plan whiteboard" },
+  { src: office2, alt: "Bright workspace at the Anril AI office in Coimbatore with a green wall, shared desks and large windows" },
+  { src: office3, alt: "Desks at the Anril AI office in Coimbatore with team value posters on the desk dividers" },
+] as const;
+
+/** Where the team works and where demos are held, with the address and opening hours. */
+export function OfficePhotos() {
+  return (
+    <section className={ui.band} id="office" aria-labelledby="office-h">
+      <Kicker>Our office</Kicker>
+      <h2 className={ui.secH} id="office-h">Visit us in Coimbatore</h2>
+      <p className={ui.lede}>
+        Free demos are held at our office: {OFFICE_LINE}. Open {HOURS}, closed on government holidays.
+      </p>
+      <ul className={s.photos}>
+        {OFFICE_PHOTOS.map((p, i) => (
+          <li key={p.src.src} data-reveal style={{ "--rd": `${i * 80}ms` } as React.CSSProperties}>
+            <Image src={p.src} alt={p.alt} sizes="(max-width: 760px) 100vw, 33vw" quality={75} />
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

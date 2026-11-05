@@ -3,7 +3,7 @@ import ui from "@/components/site/site.module.css";
 import { HOURS, OFFICE_LINE, PHONE } from "@/components/site/content";
 import { ContactCard } from "@/components/site/ContactCard";
 import { DemoSection } from "@/components/site/DemoSection";
-import { MakerPanel, Principles } from "@/components/site/AboutBlocks";
+import { MakerPanel, OfficePhotos, Principles } from "@/components/site/AboutBlocks";
 import { PageIntro } from "@/components/site/PageIntro";
 import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
@@ -25,6 +25,7 @@ export default function AboutPage() {
       />
       <Principles />
       <MakerPanel />
+      <OfficePhotos />
       <section className={ui.band} id="contact" aria-labelledby="contact-h">
         <Kicker>Contact</Kicker>
         <h2 className={ui.secH} id="contact-h">Talk to us</h2>
