@@ -393,7 +393,7 @@ export function Sidebar(_props: SidebarProps) {
       </div>
 
       {showSettings ? (
-        <div className="relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden px-3.5 scrollbar-thin">
+        <GlowScroll className="px-3.5">
           <button
             type="button"
             onClick={() => {
@@ -434,11 +434,11 @@ export function Sidebar(_props: SidebarProps) {
             );
           })}
           <ActiveIndicator pathname={pathname} />
-        </div>
+        </GlowScroll>
       ) : (
         <>
           <div className="nav-ws mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
-          <nav aria-label="Main" className="relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden px-3.5 scrollbar-thin">
+          <GlowScroll as="nav" label="Main" className="px-3.5">
             <MainNavItem
               href={dashboard.href}
               active={pathname === dashboard.href}
@@ -449,7 +449,7 @@ export function Sidebar(_props: SidebarProps) {
             <div className="mx-2 my-3.5 h-px bg-[var(--navy-800)]" />
             {NAV_SECTIONS.map((section) => renderSection(section))}
             <ActiveIndicator pathname={pathname} />
-          </nav>
+          </GlowScroll>
         </>
       )}
 
@@ -475,5 +475,137 @@ export function Sidebar(_props: SidebarProps) {
         <ActiveIndicator pathname={pathname} />
       </div>
     </aside>
+  );
+}
+
+// Scroll area for the navy sidebar. The browser's own scrollbar is hidden (its
+// light-grey thumb looked like tape on navy). In its place: a teal pill that is
+// invisible at rest, faint while the sidebar is hovered and bright while
+// scrolling or dragging, plus navy fades at the top and bottom edges that show
+// only when more menu sits past that edge. The pill can be dragged like a
+// normal thumb. All updates are direct style writes, so scrolling never
+// re-renders the menu.
+const PILL_MIN = 28;
+
+function GlowScroll({
+  as: Tag = "div",
+  label,
+  className,
+  children,
+}: {
+  as?: "div" | "nav";
+  label?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const scrollRef = useRef<HTMLElement | null>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const liveTimer = useRef<number | undefined>(undefined);
+
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    const pill = pillRef.current;
+    if (!el || !pill) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const room = scrollHeight - clientHeight;
+    const overflows = room > 1;
+    topRef.current?.style.setProperty("opacity", scrollTop > 2 ? "1" : "0");
+    bottomRef.current?.style.setProperty("opacity", scrollTop < room - 2 ? "1" : "0");
+    pill.style.display = overflows ? "" : "none";
+    if (!overflows) return;
+    const h = Math.max(PILL_MIN, (clientHeight / scrollHeight) * clientHeight);
+    const y = (scrollTop / room) * (clientHeight - h);
+    pill.style.height = `${h}px`;
+    pill.style.transform = `translateY(${y}px)`;
+  }, []);
+
+  const flashLive = useCallback(() => {
+    const pill = pillRef.current;
+    if (!pill) return;
+    pill.dataset.live = "true";
+    window.clearTimeout(liveTimer.current);
+    liveTimer.current = window.setTimeout(() => {
+      if (pill.dataset.drag !== "true") delete pill.dataset.live;
+    }, 800);
+  }, []);
+
+  // Sections open and close with an animation, which changes the content
+  // height without the scroller itself resizing. Watch every direct child too,
+  // and re-attach when React adds or removes children.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      Array.from(el.children).forEach((c) => ro.observe(c));
+      measure();
+    };
+    const mo = new MutationObserver(watch);
+    mo.observe(el, { childList: true });
+    watch();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      window.clearTimeout(liveTimer.current);
+    };
+  }, [measure]);
+
+  const onPillDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const pill = pillRef.current;
+    if (!el || !pill) return;
+    e.preventDefault();
+    pill.setPointerCapture(e.pointerId);
+    pill.dataset.drag = "true";
+    pill.dataset.live = "true";
+    const startY = e.clientY;
+    const startTop = el.scrollTop;
+    const ratio = (el.scrollHeight - el.clientHeight) / Math.max(1, el.clientHeight - pill.offsetHeight);
+    const move = (ev: PointerEvent) => {
+      el.scrollTop = startTop + (ev.clientY - startY) * ratio;
+    };
+    const up = () => {
+      delete pill.dataset.drag;
+      flashLive();
+      pill.removeEventListener("pointermove", move);
+      pill.removeEventListener("pointerup", up);
+      pill.removeEventListener("pointercancel", up);
+    };
+    pill.addEventListener("pointermove", move);
+    pill.addEventListener("pointerup", up);
+    pill.addEventListener("pointercancel", up);
+  };
+
+  const fade = "pointer-events-none absolute inset-x-0 z-10 h-7 opacity-0 transition-opacity duration-200 motion-reduce:transition-none";
+
+  return (
+    <div className="group/scroll relative flex min-h-0 flex-grow flex-col">
+      <Tag
+        ref={(node: HTMLElement | null) => { scrollRef.current = node; }}
+        aria-label={label}
+        onScroll={() => { measure(); flashLive(); }}
+        className={cn(
+          "relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          className,
+        )}
+      >
+        {children}
+      </Tag>
+      <div ref={topRef} aria-hidden="true" className={cn(fade, "top-0 bg-gradient-to-b from-[var(--navy)] to-transparent")} />
+      <div ref={bottomRef} aria-hidden="true" className={cn(fade, "bottom-0 bg-gradient-to-t from-[var(--navy)] to-transparent")} />
+      {/* 10px-wide grab area; the visible pill is the 4px bar inside it. */}
+      <div
+        ref={pillRef}
+        aria-hidden="true"
+        onPointerDown={onPillDown}
+        className="group/pill absolute right-0.5 top-0 z-20 flex w-2.5 cursor-grab touch-none justify-center opacity-0 transition-opacity duration-300 group-hover/scroll:opacity-50 data-[live=true]:!opacity-100 data-[drag=true]:cursor-grabbing motion-reduce:transition-none"
+      >
+        <div className="h-full w-1 rounded-full bg-[var(--navy-accent)] transition-[width] duration-150 group-data-[live=true]/pill:w-[5px]" />
+      </div>
+    </div>
   );
 }
