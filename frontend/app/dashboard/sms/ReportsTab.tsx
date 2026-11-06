@@ -17,6 +17,7 @@ import {
   campaignStage,
   clampRange,
   dailyBars,
+  SMS_CHART_COLORS,
   defaultRange,
   dltReason,
   formatCount,
@@ -127,7 +128,7 @@ function Totals({ range }: { range: { from: string; to: string } }) {
   );
 }
 
-const CHART_COLORS = { delivered: "#038285", failed: "#e11d48", waiting: "#cbd5e1", otp: "#6366f1" };
+const CHART_COLORS = SMS_CHART_COLORS;
 
 /** SMS per day (delivered / failed / waiting stacked) and OTPs per day, one column per Indian day. */
 function DailyChart({ days }: { days: NonNullable<SmsReportSummary["daily"]> }) {

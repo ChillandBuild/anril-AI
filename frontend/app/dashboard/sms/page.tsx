@@ -1,6 +1,6 @@
 "use client";
 
-import { RecentCard, SetupChecklistCard, TodayCard, UpcomingCard, WalletCard } from "./DashboardCards";
+import { AttentionCard, RecentCard, SetupChecklistCard, TodayCard, UpcomingCard, WalletCard } from "./DashboardCards";
 import { useSms } from "./SmsShell";
 
 export default function SmsDashboardPage() {
@@ -11,6 +11,7 @@ export default function SmsDashboardPage() {
         <WalletCard />
         {status.connected && <TodayCard />}
       </div>
+      {status.connected && <AttentionCard />}
       <SetupChecklistCard />
       {status.connected && (
         <div className="grid gap-4 md:grid-cols-2">

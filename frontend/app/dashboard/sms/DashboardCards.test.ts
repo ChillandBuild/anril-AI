@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SmsCampaign, SmsStatus, SmsWalletItem } from "@/lib/api";
-import { checklistRows, monthSpend, setupProgress, recentCampaigns, summarize, upcomingCampaigns } from "./DashboardCards";
+import type { SmsCampaign, SmsMessage, SmsStatus, SmsWalletItem } from "@/lib/api";
+import {
+  attentionItems, checklistRows, failureSummary, monthSpend, outcomeLine, setupProgress, recentCampaigns, summarize, upcomingCampaigns,
+} from "./DashboardCards";
 
 const status = (over: Partial<SmsStatus> = {}): SmsStatus => ({
   enabled: true,
@@ -109,5 +111,50 @@ describe("setupProgress", () => {
   });
   it("has no next step when everything is done", () => {
     expect(setupProgress([row("a", true)])).toEqual({ done: 1, total: 1, next: null });
+  });
+});
+
+describe("outcomeLine", () => {
+  const counts = (c: Record<string, number>) => ({ queued: 0, sending: 0, submitted: 0, delivered: 0, failed: 0, unknown: 0, skipped: 0, cancelled: 0, ...c }) as SmsCampaign["counts"];
+  it("lists only the parts that are there", () => {
+    expect(outcomeLine(counts({ delivered: 1 }))).toBe("1 delivered");
+    expect(outcomeLine(counts({ delivered: 2, failed: 1, submitted: 3, queued: 1 }))).toBe("2 delivered · 1 failed · 4 waiting");
+    expect(outcomeLine(counts({}))).toBe("");
+  });
+});
+
+describe("failureSummary", () => {
+  const msg = (over: Partial<SmsMessage>): SmsMessage => ({
+    id: "m", campaign_id: "c1", lead_id: null, lead_name: null, phone: "", content: "", status: "failed",
+    failure_reason: "CTA_URL_NOT_MATCHED", sms_count: 1, submitted_at: "2026-11-04T17:17:09Z", delivered_at: null, updated_at: null, ...over,
+  });
+  it("groups failures by plain-English reason, most common first, and remembers each send's reason", () => {
+    const s = failureSummary([
+      msg({ id: "1", campaign_id: "a", submitted_at: "2026-11-04T17:19:09Z" }),
+      msg({ id: "2", campaign_id: "b" }),
+      msg({ id: "3", campaign_id: "c", failure_reason: "NDNC" }),
+    ]);
+    expect(s.groups[0]).toMatchObject({ text: "Blocked: the link isn't whitelisted on your DLT portal", count: 2, sends: 2, lastAt: "2026-11-04T17:19:09Z", href: "/dashboard/sms/setup?sub=templates" });
+    expect(s.groups).toHaveLength(2);
+    expect(s.byCampaign.get("a")).toBe("Blocked: the link isn't whitelisted on your DLT portal");
+  });
+  it("a failure with no reason is grouped as unknown and points at the report", () => {
+    const s = failureSummary([msg({ failure_reason: null })]);
+    expect(s.groups[0]).toMatchObject({ text: "No reason given by the operator", href: "/dashboard/sms/reports" });
+  });
+});
+
+describe("attentionItems", () => {
+  const groups = failureSummary([]).groups;
+  it("is empty when nothing is wrong, so the card hides", () => {
+    expect(attentionItems({ groups, smsLeft: 5000 })).toEqual([]);
+  });
+  it("flags a low or empty wallet", () => {
+    expect(attentionItems({ groups, smsLeft: 496 })[0]).toMatchObject({ key: "wallet", tone: "warn" });
+    expect(attentionItems({ groups, smsLeft: 0 })[0]).toMatchObject({ key: "wallet", tone: "danger" });
+  });
+  it("puts failures before the wallet", () => {
+    const g = failureSummary([{ id: "1", campaign_id: "a", lead_id: null, lead_name: null, phone: "", content: "", status: "failed", failure_reason: "CTA_URL_NOT_MATCHED", sms_count: 1, submitted_at: null, delivered_at: null, updated_at: null }]).groups;
+    expect(attentionItems({ groups: g, smsLeft: 496 }).map((i) => i.key)).toEqual(["fail:Blocked: the link isn't whitelisted on your DLT portal", "wallet"]);
   });
 });

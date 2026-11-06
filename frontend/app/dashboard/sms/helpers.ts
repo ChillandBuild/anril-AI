@@ -270,6 +270,7 @@ export function campaignStatusTone(status: string): Tone {
  * The badge a send shows. The server marks a campaign "completed" as soon as every SMS is handed to
  * the operator, which is not the same as delivered: while some still have no receipt it reads
  * "Waiting for delivery", or "Held until 10:00 AM" while the TRAI night rule is holding them.
+ * Once every receipt is in it reads Delivered, Failed or "2 of 3 delivered".
  */
 const RECEIPT_WAIT_DAYS = 3;
 
@@ -280,7 +281,7 @@ export function campaignStage(
   if (c.status !== "completed") return { label: campaignStatusLabel(c.status), tone: campaignStatusTone(c.status), heldUntil: null };
   const n = (k: SmsMessageStatus) => Number(c.counts?.[k]) || 0;
   const waiting = n("queued") + n("sending") + n("submitted") + n("unknown");
-  if (waiting === 0) return { label: "Completed", tone: "success", heldUntil: null };
+  if (waiting === 0) return finishedOutcome(n("delivered"), n("failed"));
   // Held only when the whole send went out inside one night window (started and finished before the same 10 AM).
   const started = quietRelease(c.send_at ?? c.created_at);
   const finished = quietRelease(c.completed_at ?? c.send_at ?? c.created_at);
@@ -293,6 +294,18 @@ export function campaignStage(
     return { label: `Completed · ${waiting} without receipt`, tone: "neutral", heldUntil: null };
   }
   return { label: "Waiting for delivery", tone: "info", heldUntil: null };
+}
+
+/**
+ * The badge for a send where every SMS has its receipt. "Completed" alone hid failures (a send
+ * where every SMS failed showed a green Completed), so it names the result instead.
+ */
+function finishedOutcome(delivered: number, failed: number): { label: string; tone: Tone; heldUntil: null } {
+  const sent = delivered + failed;
+  if (sent === 0) return { label: "Nothing sent", tone: "neutral", heldUntil: null };
+  if (failed === 0) return { label: "Delivered", tone: "success", heldUntil: null };
+  if (delivered === 0) return { label: "Failed", tone: "danger", heldUntil: null };
+  return { label: `${formatCount(delivered)} of ${formatCount(sent)} delivered`, tone: "warn", heldUntil: null };
 }
 
 /** "₹0.1302": a per-SMS price needs four decimals. */
@@ -322,6 +335,9 @@ export function planSummary(balance: SmsBalance, items: SmsWalletItem[], limit: 
 }
 
 /** Bar heights for the daily chart: each day's share of the busiest day (0–100), SMS and OTP scaled apart. */
+/** Bar colours shared by the Reports "By day" chart and the dashboard's 7-day bars. */
+export const SMS_CHART_COLORS = { delivered: "#038285", failed: "#e11d48", waiting: "#cbd5e1", otp: "#6366f1" };
+
 export function dailyBars(days: SmsReportDay[]): { day: string; label: string; sms: number; otp: number; delivered: number; failed: number; waiting: number; smsPct: number; otpPct: number }[] {
   const smsMax = Math.max(0, ...days.map((d) => d.delivered + d.failed + d.waiting));
   const otpMax = Math.max(0, ...days.map((d) => d.otp));

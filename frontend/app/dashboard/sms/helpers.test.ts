@@ -787,8 +787,14 @@ describe("campaignStage", () => {
   it("after 3 days without a receipt it stops saying Waiting", () => {
     expect(campaignStage({ ...base, counts: counts({ delivered: 4, submitted: 1 }) }, new Date("2026-11-09T00:00:00Z")).label).toBe("Completed · 1 without receipt");
   });
-  it("is Completed only once every SMS has a receipt", () => {
-    expect(campaignStage({ ...base, counts: counts({ delivered: 2, failed: 1 }) }, new Date()).label).toBe("Completed");
+  it("once every SMS has a receipt, the badge says how it went", () => {
+    const stage = (c: Record<string, number>) => campaignStage({ ...base, counts: counts(c) }, new Date());
+    expect(stage({ delivered: 3 })).toMatchObject({ label: "Delivered", tone: "success" });
+    expect(stage({ failed: 1 })).toMatchObject({ label: "Failed", tone: "danger" });
+    expect(stage({ delivered: 2, failed: 1 })).toMatchObject({ label: "2 of 3 delivered", tone: "warn" });
+  });
+  it("a finished send where nothing went out (all skipped or cancelled) is not shown as delivered", () => {
+    expect(campaignStage({ ...base, counts: counts({ skipped: 2, cancelled: 1 }) }, new Date())).toMatchObject({ label: "Nothing sent", tone: "neutral" });
   });
   it("keeps the server label for other states", () => {
     expect(campaignStage({ ...base, status: "scheduled", counts: counts({ queued: 3 }) }, new Date()).label).toBe("Scheduled");

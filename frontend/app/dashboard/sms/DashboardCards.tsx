@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { CheckCircle2, ChevronDown, Circle, Loader2 } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { api, type SmsBalance, type SmsCampaign, type SmsDltList, type SmsStatus, type SmsWalletItem } from "@/lib/api";
+import { api, type SmsBalance, type SmsCampaign, type SmsDltList, type SmsMessage, type SmsReportDay, type SmsStatus, type SmsWalletItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   CREDIT_MAX,
@@ -17,13 +17,17 @@ import {
   campaignStage,
   canCancelCampaign,
   creditAmountError,
+  dailyBars,
   defaultRange,
+  dltReason,
   formatCount,
   formatIst,
   formatRupees,
   friendlyError,
   istDateString,
   requestedOn,
+  SMS_CHART_COLORS,
+  type Tone,
 } from "./helpers";
 import { useSms } from "./SmsShell";
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Skeleton } from "./ui";
@@ -102,6 +106,78 @@ export function recentCampaigns(list: SmsCampaign[], max = 5): SmsCampaign[] {
     .filter((c) => c.status !== "scheduled")
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, max);
+}
+
+/** "2 delivered · 1 failed · 4 waiting": only the parts a send has. Empty when nothing went out. */
+export function outcomeLine(counts: SmsCampaign["counts"] | null | undefined): string {
+  const n = (k: string) => Number((counts as Record<string, number> | undefined)?.[k]) || 0;
+  const waiting = n("queued") + n("sending") + n("submitted") + n("unknown");
+  return [
+    n("delivered") > 0 && `${formatCount(n("delivered"))} delivered`,
+    n("failed") > 0 && `${formatCount(n("failed"))} failed`,
+    waiting > 0 && `${formatCount(waiting)} waiting`,
+  ].filter(Boolean).join(" · ");
+}
+
+export interface FailureGroup { text: string; code: string | null; count: number; sends: number; lastAt: string | null; href: string }
+
+const NO_REASON = "No reason given by the operator";
+
+/** Where to go to fix a failure: DLT setup for a DLT block, otherwise the report. */
+function reasonHref(text: string): string {
+  if (/sender id/i.test(text)) return "/dashboard/sms/setup?sub=senders";
+  if (text.startsWith("Blocked:")) return "/dashboard/sms/setup?sub=templates";
+  return "/dashboard/sms/reports";
+}
+
+/**
+ * Failed messages grouped by their plain-English reason (most common first), and each send's
+ * latest reason. Messages arrive newest first, so the first reason seen for a send is its latest.
+ */
+export function failureSummary(messages: SmsMessage[]): { groups: FailureGroup[]; byCampaign: Map<string, string> } {
+  const map = new Map<string, FailureGroup & { ids: Set<string> }>();
+  const byCampaign = new Map<string, string>();
+  for (const m of messages) {
+    if (m.status !== "failed") continue;
+    const r = dltReason(m.failure_reason);
+    const text = r.text || NO_REASON;
+    let g = map.get(text);
+    if (!g) {
+      g = { text, code: r.code, count: 0, sends: 0, lastAt: null, href: reasonHref(text), ids: new Set() };
+      map.set(text, g);
+    }
+    g.count += 1;
+    if (m.campaign_id) {
+      g.ids.add(m.campaign_id);
+      if (!byCampaign.has(m.campaign_id)) byCampaign.set(m.campaign_id, text);
+    }
+    const at = m.submitted_at ?? m.updated_at;
+    if (at && (!g.lastAt || at > g.lastAt)) g.lastAt = at;
+  }
+  const groups = Array.from(map.values())
+    .map(({ ids, ...g }) => ({ ...g, sends: ids.size }))
+    .sort((a, b) => b.count - a.count || String(b.lastAt ?? "").localeCompare(String(a.lastAt ?? "")));
+  return { groups, byCampaign };
+}
+
+export interface AttentionItem { key: string; tone: Tone; title: string; detail: string; href: string | null; cta: string | null }
+
+/** What needs fixing, worst first: failures in the last 7 days, then a low or empty wallet. Empty = hide the card. */
+export function attentionItems(input: { groups: FailureGroup[]; smsLeft: number | null | undefined }): AttentionItem[] {
+  const items: AttentionItem[] = input.groups.map((g) => ({
+    key: `fail:${g.text}`,
+    tone: "danger",
+    title: g.text,
+    detail: `${formatCount(g.count)} SMS failed${g.sends > 1 ? ` across ${formatCount(g.sends)} sends` : ""} in the last 7 days${g.lastAt ? ` · last ${formatIst(g.lastAt)}` : ""}`,
+    href: g.href,
+    cta: g.href.includes("/setup") ? "Fix in DLT setup" : "See the report",
+  }));
+  if (input.smsLeft != null) {
+    const level = balanceLevel(input.smsLeft);
+    if (level === "empty") items.push({ key: "wallet", tone: "danger", title: "Your wallet is empty", detail: "Nothing can go out until you add credit.", href: null, cta: null });
+    if (level === "low") items.push({ key: "wallet", tone: "warn", title: "Your wallet is running low", detail: `${formatCount(input.smsLeft)} SMS left. Add credit before your next big send.`, href: null, cta: null });
+  }
+  return items;
 }
 
 // ---- Cards ----
@@ -298,14 +374,32 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
-/** Today's sends, with the last 7 days as one line. */
+/** Today's date in India, kept fresh so a tab left open past midnight moves to the new day. */
+function useIstToday(): string {
+  const [today, setToday] = useState(() => istDateString(new Date()));
+  useEffect(() => {
+    const t = window.setInterval(() => setToday(istDateString(new Date())), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  return today;
+}
+
+/** Failed messages from the last 7 days. Shared (one request) by Needs attention and Recent sends. */
+function useWeekFailures(today: string) {
+  const week = defaultRange(today, 7);
+  return useSWR(["sms:week-failures", week.from, week.to], () => api.sms.messages({ status: "failed", from: week.from, to: week.to, limit: 200 }), SWR_OPTS);
+}
+
+/** Today's sends, the last 7 days as bars, and when the last send was if today is empty. */
 export function TodayCard() {
-  const today = useMemo(() => istDateString(new Date()), []);
+  const today = useIstToday();
   const week = useMemo(() => defaultRange(today, 7), [today]);
   const day = useSWR(["sms:summary", today, today], () => api.sms.reportSummary(today, today), SWR_OPTS);
   const wk = useSWR(["sms:summary", week.from, week.to], () => api.sms.reportSummary(week.from, week.to), SWR_OPTS);
+  const camps = useSWR(CAMPAIGNS_KEY, () => api.sms.campaigns(50, 0), SWR_OPTS);
   const s = summarize(day.data?.anril);
   const w = summarize(wk.data?.anril);
+  const last = recentCampaigns(camps.data?.campaigns ?? [], 1)[0];
   return (
     <Card className="flex min-w-0 flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -321,13 +415,84 @@ export function TodayCard() {
       ) : day.error && !day.data ? (
         <LoadError message={friendlyError(day.error, "Check your connection.")} onRetry={() => void day.mutate()} />
       ) : (
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Sent" value={formatCount(s.sent)} />
-          <Stat label="Delivered" value={formatCount(s.delivered)} tone="good" />
-          <Stat label="Failed" value={formatCount(s.failed)} tone={s.failed > 0 ? "bad" : undefined} />
+        <div>
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label="Sent" value={formatCount(s.sent)} />
+            <Stat label="Delivered" value={formatCount(s.delivered)} tone="good" />
+            <Stat label="Failed" value={formatCount(s.failed)} tone={s.failed > 0 ? "bad" : undefined} />
+          </div>
+          {s.sent === 0 && (
+            <p className="mt-2 text-xs text-[#64748b]">
+              Nothing sent today{last ? ` · last send ${formatIst(last.created_at)}` : ""}
+            </p>
+          )}
         </div>
       )}
+      {wk.data?.daily && wk.data.daily.length > 1 && <WeekBars days={wk.data.daily} today={today} />}
     </Card>
+  );
+}
+
+/** Seven small stacked bars (delivered / failed / waiting), today's label in bold. Fills the card's lower half. */
+function WeekBars({ days, today }: { days: SmsReportDay[]; today: string }) {
+  const bars = dailyBars(days);
+  return (
+    <div className="mt-auto" aria-label="SMS sent per day, last 7 days">
+      <div className="flex items-end gap-2">
+        {bars.map((b) => (
+          <div key={b.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+            <div className="flex h-14 w-full items-end justify-center">
+              {b.sms > 0 ? (
+                <div
+                  className="flex w-full max-w-[34px] flex-col-reverse overflow-hidden rounded-t"
+                  style={{ height: `${b.smsPct}%` }}
+                  title={`${b.label}: ${b.delivered} delivered, ${b.failed} failed, ${b.waiting} waiting`}
+                >
+                  {(["delivered", "failed", "waiting"] as const).map((k) =>
+                    b[k] > 0 ? <span key={k} style={{ height: `${(b[k] / b.sms) * 100}%`, background: SMS_CHART_COLORS[k] }} /> : null,
+                  )}
+                </div>
+              ) : (
+                <div className="h-0.5 w-full max-w-[34px] rounded bg-[#e2e8f0]" title={`${b.label}: nothing sent`} />
+              )}
+            </div>
+            <span className={cn("text-[10.5px] text-[#94a3b8]", b.day === today && "font-bold text-[#0A1528]")}>
+              {b.day === today ? "Today" : b.label.split(" ")[0]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Shown only when something needs fixing: failures in the last 7 days, a low or empty wallet. */
+export function AttentionCard() {
+  const { balance } = useSms();
+  const today = useIstToday();
+  const failures = useWeekFailures(today);
+  const items = attentionItems({ groups: failureSummary(failures.data?.messages ?? []).groups, smsLeft: balance?.sms_count });
+  if (items.length === 0) return null;
+  return (
+    <section aria-label="Needs attention" className="rounded-2xl border border-[#fecdd3] bg-white px-4 py-3 shadow-sm sm:px-5">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-[#b4232f]">Needs attention</h2>
+      <ul className="mt-1 divide-y divide-[#e2e8f0]">
+        {items.map((i) => (
+          <li key={i.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", i.tone === "danger" ? "bg-[#e11d48]" : "bg-[#f59e0b]")} aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[#0A1528]">{i.title}</p>
+              <p className="text-xs text-[#64748b]">{i.detail}</p>
+            </div>
+            {i.href && i.cta && (
+              <Link href={i.href} className="text-sm font-bold text-primary hover:underline">
+                {i.cta} →
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -367,7 +532,14 @@ export function UpcomingCard() {
       ) : error && !data ? (
         <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
       ) : upcoming.length === 0 ? (
-        <Empty title="Nothing scheduled." hint="Pick a later time when you send a campaign and it will show up here." />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+          <p className="text-sm text-[#64748b]">Nothing scheduled. Pick a later time when you send and it shows up here.</p>
+          {canManage && (
+            <Link href="/dashboard/sms/send" className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-bold text-white hover:bg-primary-dark">
+              Schedule a send
+            </Link>
+          )}
+        </div>
       ) : (
         <ul className="divide-y divide-[#e2e8f0]">
           {upcoming.map((c) => (
@@ -407,6 +579,9 @@ export function RecentCard() {
   // Same key and fetcher as UpcomingCard, so SWR shares one request between the two.
   const { data, error, isLoading, mutate } = useSWR(CAMPAIGNS_KEY, () => api.sms.campaigns(50, 0), SWR_OPTS);
   const recent = recentCampaigns(data?.campaigns ?? []);
+  const today = useIstToday();
+  const failures = useWeekFailures(today);
+  const reasons = failureSummary(failures.data?.messages ?? []).byCampaign;
   return (
     <Card>
       <CardHeader
@@ -433,6 +608,12 @@ export function RecentCard() {
                   <p className="text-xs text-[#64748b]">
                     {formatIst(c.created_at)} · {formatCount(c.total)} number{c.total === 1 ? "" : "s"}
                   </p>
+                  {outcomeLine(c.counts) && (
+                    <p className="mt-0.5 truncate text-xs text-[#0A1528]">
+                      {outcomeLine(c.counts)}
+                      {reasons.get(c.id) && <span className="text-[#b4232f]"> · {reasons.get(c.id)}</span>}
+                    </p>
+                  )}
                 </div>
                 <StageBadge c={c} />
               </Link>
