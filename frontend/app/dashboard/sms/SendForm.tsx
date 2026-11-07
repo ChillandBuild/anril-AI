@@ -4,12 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ConfirmModal } from "@/components/ConfirmModal";
+import { Plus, Search } from "lucide-react";
 import { api, type SmsPreview, type SmsCampaignPreviewRequest, type SmsTemplate, type SmsVarSource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { dateBounds, defaultWhen, formatSendTime, resolveWhen, untilSend, type WhenValue } from "@/lib/schedule-time";
 import { NumbersPicker, useHasLeads } from "./RecipientPicker";
+import { AddTemplatePanel, type TemplatePrefill } from "./DltForms";
+import { matchesQuery } from "./dltSetup";
+import { SendConfirm } from "./SendConfirm";
 import { SendPreview } from "./SendPreview";
+import { SenderChips, TemplateCard } from "./TemplateCard";
 import { VariableMapper, Wording } from "./SendVars";
 import { useSms } from "./SmsShell";
 import {
@@ -17,21 +21,24 @@ import {
   SEND_PREFILL_KEY,
   UNICODE_NOTE,
   buildSendRequest,
-  defaultSendName,
   errorStatus,
   errorText,
   fieldsSourceFor,
   formatCount,
   friendlyError,
+  hasCurlyQuotes,
+  languageLine,
+  matchSavedTemplate,
+  sendNameFor,
+  sendersFrom,
+  straightenQuotes,
   hasLink,
   nextIdempotencyKey,
   pruneVarMap,
   sendBlock,
   sendFormProblem,
   sendType,
-  smsCounterLine,
   sendPrefill,
-  sendSummary,
   smsSegments,
   templateVarCount,
   withNumbersChange,
@@ -42,25 +49,40 @@ import {
   EMPTY_MANUAL,
   MANUAL_WARNING,
   categoryLabel,
+  countVars,
   type ManualInput,
 } from "./helpers";
-import { Badge, Btn, Card, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
+import { Badge, Btn, Card, Empty, Field, LoadError, Notice, inputCls, textareaCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 /** Wait this long after the last change before asking the server for a fresh preview. */
 const PREVIEW_DELAY_MS = 600;
-/** The template picker's "Type my own" choice (Bulk9 route=dlt_manual). */
-const MANUAL = "__manual__";
+/** Show the template search once a sender has more cards than fit at a glance. */
+const SEARCH_FROM = 5;
 
-/** The one Send SMS form: pick an approved template, say who gets it, check the live preview, send or schedule. */
+type SendTab = "saved" | "manual";
+const TABS: { id: SendTab; label: string; hint: string }[] = [
+  { id: "saved", label: "Saved templates", hint: "Pick a sender, then one of its approved templates." },
+  { id: "manual", label: "DLT Manual", hint: "New sender, entity or message? Type the DLT details yourself." },
+];
+
+/**
+ * The one Send SMS form. Two tabs: Saved templates (sender chips, then phone-style template cards) or
+ * DLT Manual (Bulk9 route=dlt_manual: an added sender, the DLT IDs and the exact text). Then who gets
+ * it and when; Send SMS opens a popup with the counts, SMS credits and ₹ at the client's plan price.
+ */
 export function SendForm() {
   const { canManage } = usePerm();
   const { reloadBalance } = useSms();
+  const [tab, setTab] = useState<SendTab>("saved");
+  const [sender, setSender] = useState("");
+  const [query, setQuery] = useState("");
   const [choice, setChoice] = useState("");
   const [manual, setManual] = useState<ManualInput>(EMPTY_MANUAL);
   const [varMap, setVarMap] = useState<(SmsVarSource | null)[]>([]);
   const [numbers, setNumbers] = useState<NumbersState>(EMPTY_NUMBERS);
-  const [name, setName] = useState(() => defaultSendName(new Date()));
+  // Empty = use the automatic name ("KELIR · 14893 · 7 Nov").
+  const [name, setName] = useState("");
   const [when, setWhen] = useState<WhenValue>(() => ({ ...defaultWhen(new Date()), mode: "now" }));
   const [preview, setPreview] = useState<{ key: string; data: SmsPreview } | null>(null);
   const [previewError, setPreviewError] = useState<{ key: string; message: string } | null>(null);
@@ -68,7 +90,9 @@ export function SendForm() {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [created, setCreated] = useState<{ scheduled: boolean } | null>(null);
+  // After a DLT Manual send, `save` fills "Save to my templates" (null when it matched a saved one).
+  const [created, setCreated] = useState<{ scheduled: boolean; save: TemplatePrefill | null } | null>(null);
+  const [saving, setSaving] = useState<TemplatePrefill | null>(null);
   // One key per exact request (body, name, schedule): a double click or a retry after a lost reply
   // cannot create a second campaign, and any edit gets a fresh key.
   const keyRef = useRef<{ signature: string; key: string } | null>(null);
@@ -86,8 +110,14 @@ export function SendForm() {
 
   // Every approved template can be sent: its category is DLT's, never the client's choice.
   const ready = useMemo(() => (templates.data?.templates ?? []).filter((t) => t.status === "ready"), [templates.data]);
-  const isManual = choice === MANUAL;
-  const template: SmsTemplate | null = choice && !isManual ? (ready.find((t) => t.id === choice) ?? null) : null;
+  const isManual = tab === "manual";
+  const senderList = useMemo(() => sendersFrom(ready), [ready]);
+  // No chip tapped yet: the first sender's cards show (most clients have one sender).
+  const activeSender = senderList.some((s) => s.sender_id === sender) ? sender : (senderList[0]?.sender_id ?? "");
+  const senderCards = ready.filter((t) => t.sender_id === activeSender);
+  const cards = senderCards.filter((t) => matchesQuery([t.message, t.message_id, t.dlt_template_id], query));
+  const template: SmsTemplate | null = !isManual && choice ? (ready.find((t) => t.id === choice) ?? null) : null;
+  const savedMatch = isManual ? matchSavedTemplate(ready, manual.sender_id, manual.message) : null;
   const senders = useSWR(isManual ? "sms:senders" : null, () => api.sms.senders(), { revalidateOnFocus: false });
   const varCount = templateVarCount(template);
   const input: SendFormInput = { template, manual: isManual ? manual : null, varMap, numbers };
@@ -172,13 +202,16 @@ export function SendForm() {
     needed: freshPreview?.total_segments ?? 0,
     support: status.data?.support_contact || null,
   });
-  const canSend = !!freshPreview && freshPreview.eligible_count > 0 && !scheduleBad && name.trim().length > 0 && !submitting && !block.blocked;
+  const canSend = !!freshPreview && freshPreview.eligible_count > 0 && !scheduleBad && !submitting && !block.blocked;
 
   const message = isManual ? manual.message : (template?.message ?? "");
   const length = smsSegments(message.replace(/\{#var#\}/gi, "x"));
+  const senderShown = isManual ? manual.sender_id : (template?.sender_id ?? activeSender);
+  const autoName = sendNameFor(senderShown, isManual ? "DLT Manual" : (template?.message_id ?? "Template"), now);
 
   function pickTemplate(value: string) {
     setChoice(value);
+    setTab("saved");
     setCreated(null);
     setError(null);
     // The consent tick was for the previous template's type; ask again.
@@ -196,14 +229,33 @@ export function SendForm() {
       templateFromUrl.current = true;
       return;
     }
-    if (ready.some((t) => t.id === id)) {
+    const found = ready.find((t) => t.id === id);
+    if (found) {
       templateFromUrl.current = true;
+      setSender(found.sender_id);
+      setQuery("");
       pickTemplate(id);
     } else if (templates.data && !templates.isValidating) {
       templateFromUrl.current = true; // a cached list may lack it; give up only after the fresh one
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs until the template is found or the fresh list lacks it
   }, [ready, templates.isValidating]);
+
+  function switchTab(next: SendTab) {
+    if (next === tab) return;
+    setTab(next);
+    setCreated(null);
+    setError(null);
+    // Service vs promotional can change with the tab; ask for consent again.
+    setNumbers((n) => withNumbersChange(n, { consent: false }));
+  }
+
+  function pickSender(value: string) {
+    setSender(value);
+    setQuery("");
+    // A card from another sender stays chosen only if it belongs to this one.
+    if (template && template.sender_id !== value) pickTemplate("");
+  }
 
   function patchManual(patch: Partial<ManualInput>) {
     setCreated(null);
@@ -245,17 +297,22 @@ export function SendForm() {
     setError(null);
     try {
       const sendAt = when.mode === "later" && schedule.at ? schedule.at.toISOString() : null;
+      const finalName = name.trim() || autoName;
       keyRef.current = nextIdempotencyKey(keyRef.current, JSON.stringify({ request, name: name.trim(), sendAt }), () => crypto.randomUUID());
-      await api.sms.createCampaign({ ...request, name: name.trim(), send_at: sendAt, idempotency_key: keyRef.current.key });
+      await api.sms.createCampaign({ ...request, name: finalName, send_at: sendAt, idempotency_key: keyRef.current.key });
       toast.success(when.mode === "later" ? "SMS scheduled." : "SMS is sending.");
-      setCreated({ scheduled: when.mode === "later" });
+      const save: TemplatePrefill | null =
+        isManual && !savedMatch
+          ? { entity_id: manual.entity_id, sender_id: manual.sender_id, dlt_template_id: manual.dlt_template_id.trim(), message_text: manual.message.trim() }
+          : null;
+      setCreated({ scheduled: when.mode === "later", save });
       reloadBalance();
       setChoice("");
       setManual(EMPTY_MANUAL);
       setVarMap([]);
       setNumbers((n) => ({ ...EMPTY_NUMBERS, mode: n.mode }));
       setPreview(null);
-      setName(defaultSendName(new Date()));
+      setName("");
       keyRef.current = null;
     } catch (err) {
       const code = errorStatus(err);
@@ -271,8 +328,6 @@ export function SendForm() {
   }
 
   const sample = shown?.samples[0] ?? null;
-  const senderShown = isManual ? manual.sender_id : (template?.sender_id ?? "");
-  const summary = sendSummary({ preview: shown, parts: sample?.segments ?? length.parts, balance: balance.data ?? null });
   const section = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
 
   // Three numbered steps on the left; the page scrolls normally. On a laptop the preview + cost + Send
@@ -282,23 +337,80 @@ export function SendForm() {
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
       <div className="space-y-5 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm sm:p-6">
         <div>
-          <Step n={1} id="sms-send-message" title="What to send">
-            <select aria-label="Template" className={inputCls} value={choice} onChange={(e) => pickTemplate(e.target.value)}>
-              <option value="">Choose an approved template…</option>
-              {ready.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.message.length > 70 ? `${t.message.slice(0, 70)}…` : t.message}
-                </option>
-              ))}
-              <option value={MANUAL}>Type my own (with DLT template ID)…</option>
-            </select>
-            {isManual && <ManualFields value={manual} onChange={patchManual} senders={senders} />}
+          <div role="group" aria-label="How to send" className="mb-2 grid gap-2 sm:grid-cols-2">
+            {TABS.map((t) => {
+              const on = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => switchTab(t.id)}
+                  className={cn(
+                    "rounded-xl border px-4 py-3 text-left transition-colors",
+                    on ? "border-[#038285] bg-[#e6f4f4]" : "border-[#e2e8f0] bg-white hover:border-[#94a3b8]",
+                  )}
+                >
+                  <span className={cn("block text-sm font-extrabold", on ? "text-[#036b6e]" : "text-[#0A1528]")}>{t.label}</span>
+                  <span className="mt-0.5 block text-xs text-[#64748b]">{t.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <Step n={1} id="sms-send-message" title={isManual ? "Type the DLT details" : "Pick a sender and template"}>
+            {templates.error && !templates.data && <LoadError message={friendlyError(templates.error, "Couldn't load your templates.")} onRetry={() => void templates.mutate()} />}
+
+            {!isManual && (
+              <>
+                {templates.data && ready.length === 0 ? (
+                  <Empty
+                    title="No approved templates yet."
+                    hint="Add one under DLT setup → Content Template, or use DLT Manual to send with the DLT IDs."
+                  />
+                ) : (
+                  <>
+                    <SenderChips label="Sender" senders={senderList} value={activeSender} onChange={pickSender} />
+                    {senderCards.length >= SEARCH_FROM && (
+                      <label className="relative block sm:max-w-xs">
+                        <span className="sr-only">Search {activeSender} templates</span>
+                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
+                        <input className={cn(inputCls, "pl-9")} placeholder="Search the message text" value={query} onChange={(e) => setQuery(e.target.value)} />
+                      </label>
+                    )}
+                    {cards.length === 0 && senderCards.length > 0 ? (
+                      <p className="text-sm text-[#64748b]">No {activeSender} template has that text.</p>
+                    ) : (
+                      <ul aria-label={`${activeSender} templates`} className="grid gap-3 sm:grid-cols-2">
+                        {cards.map((t) => (
+                          <TemplateCard key={t.id} t={t} variant="pick" selected={choice === t.id} onPick={() => pickTemplate(t.id)} />
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {isManual && (
+              <ManualFields
+                value={manual}
+                onChange={patchManual}
+                senders={senders}
+                match={savedMatch}
+                onUseMatch={(t) => {
+                  setSender(t.sender_id);
+                  setQuery("");
+                  pickTemplate(t.id);
+                }}
+              />
+            )}
+
             {(template || isManual) && hasLink(message) && (
               <Notice tone="warn">
                 This message has a link. The link must be whitelisted on your DLT portal (CTA / URL whitelisting) for this sender, or the telecom blocks the SMS.
               </Notice>
             )}
-            {templates.error && !templates.data && <LoadError message={friendlyError(templates.error, "Couldn't load your templates.")} onRetry={() => void templates.mutate()} />}
 
             {template && (
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748b]">
@@ -317,10 +429,10 @@ export function SendForm() {
                 <VariableMapper varCount={varCount} varMap={varMap} fields={fields.data?.fields ?? []} onSet={setVar} />
               ))}
 
-            {message && (
+            {message && (template || isManual) && (
               <div>
                 <p className="text-xs font-semibold text-[#334155]" aria-live="polite">
-                  {length.unicode ? "Unicode" : "English"} · {smsCounterLine(message)}
+                  {languageLine(message.replace(/\{#var#\}/gi, "x"))}
                   {varCount > 0 ? " (each variable counted as 1 character; the real length can differ)" : ""}
                 </p>
                 {length.unicode && <p className="mt-0.5 text-xs text-[#b45309]">{UNICODE_NOTE}</p>}
@@ -342,8 +454,8 @@ export function SendForm() {
 
           <Step n={3} id="sms-send-when" title="When">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name">
-                <input className={inputCls} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+              <Field label="Name this send (optional)" hint="So you can find it later in Reports">
+                <input className={inputCls} value={name} placeholder={autoName} maxLength={80} onChange={(e) => setName(e.target.value)} />
               </Field>
               <Field label="Send">
                 <select className={inputCls} value={when.mode} onChange={(e) => setWhen((w) => ({ ...w, mode: e.target.value as WhenValue["mode"] }))}>
@@ -385,7 +497,7 @@ export function SendForm() {
             ) : message ? (
               <Wording message={message} map={varMap} fields={fields.data?.fields} />
             ) : (
-              <p className="text-sm text-[#94a3b8]">Pick a template to see the message.</p>
+              <p className="text-sm text-[#94a3b8]">{isManual ? "Type the message to see it here." : "Pick a template to see the message."}</p>
             )}
           </div>
           <p className="text-[11px] text-[#9fb3c8]">{sample ? `Shown with ${sample.name || "the first recipient"}'s values.` : "Real values fill in automatically."}</p>
@@ -397,14 +509,12 @@ export function SendForm() {
           </p>
         )}
 
-        <dl className={cn("grid grid-cols-2 gap-y-2 text-sm transition-opacity", updating && "opacity-50")}>
-          {summary.map((r) => (
-            <div key={r.label} className="contents">
-              <dt className="text-[#64748b]">{r.label}</dt>
-              <dd className={cn("text-right font-bold text-[#0A1528]", r.bad && "text-danger")}>{r.value}</dd>
-            </div>
-          ))}
-        </dl>
+        {shown && (
+          <p className={cn("text-sm text-[#334155] transition-opacity", updating && "opacity-50")}>
+            <span className="font-bold text-[#0A1528]">{formatCount(shown.eligible_count)}</span> {shown.eligible_count === 1 ? "person" : "people"} ·{" "}
+            <span className="font-bold text-[#0A1528]">{formatCount(shown.total_segments)}</span> SMS credits. Press Send SMS to check the cost and confirm.
+          </p>
+        )}
 
         {shown && (
           <div className={cn("transition-opacity", updating && "opacity-50")}>
@@ -433,6 +543,14 @@ export function SendForm() {
             <Link href="/dashboard/sms/reports" className="font-bold underline">
               See it in Reports
             </Link>
+            {created.save && (
+              <span className="mt-2 block">
+                <Btn variant="outline" onClick={() => setSaving(created.save)}>
+                  <Plus size={14} /> Save to my templates
+                </Btn>
+                <span className="mt-1 block text-xs">Next time it&apos;s one tap under Saved templates, with no IDs to type.</span>
+              </span>
+            )}
           </Notice>
         )}
 
@@ -445,52 +563,80 @@ export function SendForm() {
               setNow(current);
               const schedule = resolveWhen(when, current);
               if (schedule.error) setError(schedule.error);
-              else setConfirming(true);
+              else {
+                void balance.mutate();
+                setConfirming(true);
+              }
             }}
           >
-            {when.mode === "later" ? "Schedule" : "Send now"}
+            {when.mode === "later" ? "Schedule SMS" : "Send SMS"}
           </Btn>
         </div>
       </aside>
 
-      <ConfirmModal
-        open={confirming}
-        onClose={() => !submitting && setConfirming(false)}
-        onConfirm={() => void send()}
-        title={when.mode === "later" ? "Schedule this SMS?" : "Send this SMS now?"}
-        description={
-          freshPreview
-            ? `${formatCount(freshPreview.eligible_count)} people will get this SMS. ${
-                when.mode === "later" && resolved.at ? `It goes out ${formatSendTime(resolved.at)} IST.` : "Sending can't be undone once it starts."
-              }`
-            : ""
-        }
-        confirmLabel={when.mode === "later" ? "Schedule" : "Send"}
-        loading={submitting}
-        loadingLabel="Working…"
+      {freshPreview && (
+        <SendConfirm
+          open={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => void send()}
+          submitting={submitting}
+          preview={freshPreview}
+          balance={balance.data ?? null}
+          sender={senderShown}
+          source={isManual ? `DLT Manual · ${manual.dlt_template_id}` : template?.message_id ? `Template #${template.message_id}` : `DLT ${template?.dlt_template_id ?? "template"}`}
+          manual={isManual}
+          sendAt={when.mode === "later" ? resolved.at : null}
+          nightRelease={nightRelease}
+        />
+      )}
+      <AddTemplatePanel
+        open={!!saving}
+        onClose={() => setSaving(null)}
+        initial={saving ?? undefined}
+        onSaved={() => setCreated((c) => (c ? { ...c, save: null } : c))}
       />
     </div>
   );
 }
 
-/** "Type my own": the sender (its entity fills in), the DLT template ID and the exact approved text. */
+/**
+ * DLT Manual: an added sender (Bulk9 needs it in DLT Manager first, so it is never typed freely), its
+ * entity (filled in, editable), the DLT template ID and the exact approved text, with live checks.
+ */
 function ManualFields({
   value,
   onChange,
   senders,
+  match,
+  onUseMatch,
 }: {
   value: ManualInput;
   onChange: (patch: Partial<ManualInput>) => void;
   senders: { data?: { senders: { sender_id: string; entity_id: string; entity_name: string | null }[] }; error?: unknown; isLoading: boolean; mutate: () => unknown };
+  match: SmsTemplate | null;
+  onUseMatch: (t: SmsTemplate) => void;
 }) {
   const list = senders.data?.senders ?? [];
-  const picked = value.sender_id ? `${value.sender_id}|${value.entity_id}` : "";
+  const pickedSender = list.find((s) => s.sender_id === value.sender_id) ?? null;
+  // A sender can sit under more than one entity; the dropdown keys on both.
+  const picked = value.sender_id ? `${value.sender_id}|${list.some((s) => s.sender_id === value.sender_id && s.entity_id === value.entity_id) ? value.entity_id : (pickedSender?.entity_id ?? "")}` : "";
+  const entityChanged = !!pickedSender && !!value.entity_id && !list.some((s) => s.sender_id === value.sender_id && s.entity_id === value.entity_id);
+  const id = value.dlt_template_id;
+  const leftoverVars = countVars(value.message) > 0;
   return (
     <div className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-3.5">
-      <Notice tone="warn">{MANUAL_WARNING}</Notice>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Sender ID" hint={value.entity_id ? `Entity ${value.entity_id}` : "The entity fills in from the sender"}>
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label htmlFor="sms-manual-sender" className="text-xs font-bold text-[#334155]">
+              Sender ID
+            </label>
+            <Link href="/dashboard/sms/setup?sub=senders" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+              <Plus size={12} /> Add sender
+            </Link>
+          </div>
           <select
+            id="sms-manual-sender"
             className={inputCls}
             value={picked}
             disabled={senders.isLoading && !senders.data}
@@ -507,16 +653,48 @@ function ManualFields({
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="DLT template ID" hint="The 19-digit number from your DLT portal">
-          <input className={inputCls} inputMode="numeric" maxLength={30} value={value.dlt_template_id} onChange={(e) => onChange({ dlt_template_id: e.target.value.replace(/\D/g, "") })} />
+          <span className="mt-1 block text-[11px] text-[#64748b]">Only senders added in DLT Manager can send.</span>
+        </div>
+        <Field label="Entity ID" hint={entityChanged ? "Different from this sender's saved entity. Check it matches your DLT portal." : "Fills in from the sender. You can change it."}>
+          <input
+            className={inputCls}
+            inputMode="numeric"
+            maxLength={30}
+            value={value.entity_id}
+            disabled={!value.sender_id}
+            onChange={(e) => onChange({ entity_id: e.target.value.replace(/\D/g, "") })}
+          />
         </Field>
       </div>
       {senders.error && !senders.data ? <LoadError message={friendlyError(senders.error, "Couldn't load your sender IDs.")} onRetry={() => void senders.mutate()} /> : null}
-      {senders.data && list.length === 0 && <p className="text-xs text-[#64748b]">No approved sender IDs yet. Add one under DLT setup first.</p>}
-      <Field label="Message" hint="Exactly as approved on DLT, with the real values in place of {#var#}">
+      {senders.data && list.length === 0 && <p className="text-xs text-[#64748b]">No approved sender IDs yet. Use Add sender first.</p>}
+      <Field
+        label="DLT template ID"
+        hint={id && id.length !== 19 ? `DLT template IDs are usually 19 digits (this has ${id.length}).` : "The 19-digit number from your DLT portal (Jio, Airtel, Vi)."}
+      >
+        <input className={inputCls} inputMode="numeric" maxLength={30} placeholder="1707171234567890123" value={id} onChange={(e) => onChange({ dlt_template_id: e.target.value.replace(/\D/g, "") })} />
+      </Field>
+      <Field label="Message" hint="Paste it exactly as approved on DLT, with the real values in place of {#var#}. One changed character and the operator blocks it.">
         <textarea className={textareaCls} rows={4} maxLength={2000} value={value.message} onChange={(e) => onChange({ message: e.target.value })} />
       </Field>
+      {match && (
+        <Notice tone="success">
+          This matches your saved template <span className="font-bold">#{match.message_id ?? match.dlt_template_id}</span>. Send it from Saved templates instead: no IDs to type and no typo risk.{" "}
+          <button type="button" className="font-bold underline" onClick={() => onUseMatch(match)}>
+            Use #{match.message_id ?? match.dlt_template_id}
+          </button>
+        </Notice>
+      )}
+      {leftoverVars && <Notice tone="danger">Replace each {"{#var#}"} with the real value. DLT Manual sends the text exactly as typed.</Notice>}
+      {hasCurlyQuotes(value.message) && (
+        <Notice tone="warn">
+          This has a curly quote (’ or “ ”). It makes the SMS Unicode (70 characters per SMS), and DLT most likely approved a straight one.{" "}
+          <button type="button" className="font-bold underline" onClick={() => onChange({ message: straightenQuotes(value.message) })}>
+            Fix quotes
+          </button>
+        </Notice>
+      )}
+      <Notice tone="warn">{MANUAL_WARNING}</Notice>
     </div>
   );
 }

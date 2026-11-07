@@ -188,22 +188,31 @@ export function TemplateExcelPanel({ open, onClose }: { open: boolean; onClose: 
   );
 }
 
-function AddTemplateForm({ onClose }: { onClose: () => void }) {
+/** What "Save to my templates" (after a DLT Manual send) fills in for the client. */
+export interface TemplatePrefill { entity_id: string; sender_id: string; dlt_template_id: string; message_text: string }
+
+function AddTemplateForm({ onClose, initial, onSaved }: { onClose: () => void; initial?: TemplatePrefill; onSaved?: () => void }) {
   const { data } = useDltList();
-  const [entityId, setEntityId] = useState("");
-  const [senderIds, setSenderIds] = useState<string[]>([]);
-  const [dltId, setDltId] = useState("");
-  const [text, setText] = useState("");
-  const [type, setType] = useState<SmsTemplateType>("service");
-  const { busy, error, submit } = useModalSubmit(
-    () => api.sms.addTemplate({ entity_id: entityId.trim(), sender_ids: senderIds, dlt_template_id: dltId.trim(), message_text: text.trim(), template_type: type }),
-    onClose,
-  );
+  const [entityId, setEntityId] = useState(initial?.entity_id ?? "");
+  const [senderIds, setSenderIds] = useState<string[]>(initial ? [initial.sender_id] : []);
+  const [dltId, setDltId] = useState(initial?.dlt_template_id ?? "");
+  const [text, setText] = useState(initial?.message_text ?? "");
+  // A DLT Manual send has no known category, so the prefilled form makes the client choose it.
+  const [type, setType] = useState<SmsTemplateType | "">(initial ? "" : "service");
+  const { busy, error, submit } = useModalSubmit(async () => {
+    const res = await api.sms.addTemplate({ entity_id: entityId.trim(), sender_ids: senderIds, dlt_template_id: dltId.trim(), message_text: text.trim(), template_type: type as SmsTemplateType });
+    if (res.ok !== false) onSaved?.();
+    return res;
+  }, onClose);
   const list = data?.senders ?? [];
   const forEntity = entityId.trim() ? list.filter((s) => s.entity_id === entityId.trim()) : list;
   return (
     <div className="space-y-3">
-      <p className="text-xs text-[#64748b]">Paste the wording exactly as approved on DLT. Use {"{#var#}"} where a value changes.</p>
+      <p className="text-xs text-[#64748b]">
+        {initial
+          ? "Filled in from the SMS you just sent. If your DLT template has {#var#} where a value changes, put them back in place of the real values."
+          : "Paste the wording exactly as approved on DLT. Use {#var#} where a value changes."}
+      </p>
       <EntityInput value={entityId} onChange={setEntityId} />
       <Field label="DLT template ID">
         <input className={inputCls} value={dltId} onChange={(e) => setDltId(e.target.value)} />
@@ -233,24 +242,25 @@ function AddTemplateForm({ onClose }: { onClose: () => void }) {
       <Field label="Template wording">
         <textarea className={textareaCls} rows={3} value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
-      <Field label="Template category" hint="As approved on DLT">
+      <Field label="Template category" hint="As approved on DLT. Check your DLT portal if you're not sure.">
         <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
+          {type === "" && <option value="">Choose the category…</option>}
           <option value="service">{CATEGORY_LABELS.service}</option>
           <option value="promotional">{CATEGORY_LABELS.promotional}</option>
         </select>
       </Field>
       <ErrorLine text={error} />
-      <Btn busy={busy} disabled={!entityId.trim() || !dltId.trim() || !text.trim() || senderIds.length === 0} onClick={() => void submit()}>
+      <Btn busy={busy} disabled={!entityId.trim() || !dltId.trim() || !text.trim() || senderIds.length === 0 || !type} onClick={() => void submit()}>
         Add template
       </Btn>
     </div>
   );
 }
 
-export function AddTemplatePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddTemplatePanel({ open, onClose, initial, onSaved }: { open: boolean; onClose: () => void; initial?: TemplatePrefill; onSaved?: () => void }) {
   return (
-    <Modal open={open} title="Add template" onClose={onClose} wide>
-      <AddTemplateForm onClose={onClose} />
+    <Modal open={open} title={initial ? "Save to my templates" : "Add template"} onClose={onClose} wide>
+      <AddTemplateForm onClose={onClose} initial={initial} onSaved={onSaved} />
     </Modal>
   );
 }

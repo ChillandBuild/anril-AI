@@ -325,7 +325,7 @@ export function planSummary(balance: SmsBalance, items: SmsWalletItem[], limit: 
   const used = items.reduce((sum, i) => (i.kind === "topup" ? sum : sum + Math.abs(Number(i.sms) || 0)), 0);
   const moneyLeft = balance.wallet ?? null;
   return {
-    perSms: moneyLeft != null && smsLeft > 0 ? moneyLeft / smsLeft : null,
+    perSms: planRate(balance),
     smsLeft,
     moneyLeft,
     used,
@@ -978,4 +978,96 @@ export function dltReason(raw: string | null | undefined): { text: string; code:
   if (/[a-z]/.test(code)) return { text: code, code: null };
   const words = code.replace(/_+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
   return { text: words.charAt(0).toUpperCase() + words.slice(1), code };
+}
+
+// ---- Send SMS: Saved templates / DLT Manual tabs and the preview popup ----
+
+/** Each sender that has at least one ready template, with how many, in A–Z order. */
+export function sendersFrom(templates: Pick<SmsTemplate, "sender_id">[]): { sender_id: string; count: number }[] {
+  const by = new Map<string, number>();
+  for (const t of templates) by.set(t.sender_id, (by.get(t.sender_id) ?? 0) + 1);
+  return Array.from(by.entries())
+    .map(([sender_id, count]) => ({ sender_id, count }))
+    .sort((a, b) => a.sender_id.localeCompare(b.sender_id));
+}
+
+/** Whitespace-insensitive, case-sensitive: DLT treats "Class" and "class" as different text. */
+function sameWording(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().replace(/\s+/g, " ");
+  return norm(a) === norm(b);
+}
+
+/**
+ * The saved template of this sender whose wording is exactly this text, or null. Only templates
+ * without {#var#} can match a typed DLT Manual message (the typed text has real values in place).
+ */
+export function matchSavedTemplate<T extends Pick<SmsTemplate, "sender_id" | "message">>(
+  templates: T[],
+  senderId: string,
+  message: string,
+): T | null {
+  if (!senderId || !message.trim()) return null;
+  return templates.find((t) => t.sender_id === senderId && sameWording(t.message, message)) ?? null;
+}
+
+const CURLY_RE = /[‘’‚‛“”„‟]/;
+
+/** True when the text has a curly quote (’ “ ”), which turns the SMS into Unicode and rarely matches DLT. */
+export function hasCurlyQuotes(text: string): boolean {
+  return CURLY_RE.test(text);
+}
+
+/** The same text with curly quotes made straight (’ → ', “ ” → "). */
+export function straightenQuotes(text: string): string {
+  return text.replace(/[‘’‚‛]/g, "'").replace(/[“”„‟]/g, '"');
+}
+
+/** "English · 160 characters per SMS · this message = 1 SMS" or "Unicode (Tamil) · 70 characters per SMS · …". */
+export function languageLine(text: string): string {
+  const { parts, unicode } = smsSegments(text);
+  const lang = !unicode ? "English" : /[஀-௿]/.test(text) ? "Unicode (Tamil)" : "Unicode";
+  return `${lang} · ${unicode ? 70 : 160} characters per SMS · this message = ${formatCount(parts)} SMS`;
+}
+
+/** The client's own price per SMS, the same figure as the "Your plan" card (wallet ₹ ÷ SMS left). */
+export function planRate(balance: SmsBalance | null | undefined): number | null {
+  if (!balance || balance.wallet == null) return null;
+  const left = Number(balance.sms_count);
+  return left > 0 && balance.wallet > 0 ? balance.wallet / left : null;
+}
+
+export interface PopupCost {
+  credits: number;
+  /** Credits left after this send; negative when there aren't enough. */
+  left: number | null;
+  rate: number | null;
+  rupees: number | null;
+}
+
+/** SMS credits first, then ₹ at the client's plan price. */
+export function popupCost(totalSegments: number, balance: SmsBalance | null | undefined): PopupCost {
+  const rate = planRate(balance);
+  return {
+    credits: totalSegments,
+    left: balance ? Number(balance.sms_count) - totalSegments : null,
+    rate,
+    rupees: rate != null ? Math.round(rate * totalSegments * 100) / 100 : null,
+  };
+}
+
+/**
+ * Skipped numbers per reason, largest first. The preview lists at most 1,000; `more` is how many
+ * skipped people that list leaves out.
+ */
+export function skipCounts(preview: Pick<SmsPreview, "excluded" | "excluded_total">): { rows: { reason: string; count: number }[]; more: number } {
+  const rows = groupExcluded(preview.excluded).map((g) => ({ reason: g.reason, count: g.leads.length }));
+  const total = preview.excluded_total ?? preview.excluded.length;
+  return { rows, more: Math.max(0, total - preview.excluded.length) };
+}
+
+/** "KELIR · 14893 · 7 Nov" (or "KELIR · DLT Manual · 7 Nov"), in Indian time. Falls back to the old "SMS 3 Nov 18:05". */
+export function sendNameFor(senderId: string, label: string, now: Date): string {
+  if (!senderId) return defaultSendName(now);
+  const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }).format(now);
+  return `${senderId} · ${label} · ${day}`;
 }

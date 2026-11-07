@@ -1,19 +1,17 @@
 "use client";
 
 import type { SmsPreview } from "@/lib/api";
-import { estimateLine, formatCount, groupExcluded } from "./helpers";
+import { formatCount, groupExcluded } from "./helpers";
 import { Notice } from "./ui";
 
-/** Under the Send SMS summary: who was skipped and why, and notes on cost and Unicode. */
+/** Under the Send SMS preview: who was skipped and why, and a Unicode note. Credits and ₹ are in the Send popup. */
 export function SendPreview({ preview }: { preview: SmsPreview }) {
   const skipped = preview.excluded_total ?? preview.excluded.length;
   const groups = groupExcluded(preview.excluded);
-  const cost = estimateLine(preview);
   const anyUnicode = preview.samples.some((s) => s.unicode);
   return (
     <div className="space-y-2">
       {skipped > 0 && <p className="text-xs font-semibold text-[#b45309]">{formatCount(skipped)} skipped. Open a reason to see who.</p>}
-      {!cost.known && <p className="text-xs text-[#64748b]">{cost.text}</p>}
       {anyUnicode && (
         <p className="text-xs text-[#b45309]">
           Some text isn&apos;t plain English letters (Unicode). These messages are shorter per SMS, so they can use more than one SMS each and use more credits.
