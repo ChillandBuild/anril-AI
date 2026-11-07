@@ -47,14 +47,6 @@ _ALL_ADSET_STATUSES = [
     "WITH_ISSUES",
 ]
 
-# Meta action_type sets mapped to a human "Results" label, checked in order.
-_RESULT_RULES: list[tuple[str, str, set[str]]] = [
-    ("CONVERSATIONS", "Messaging conversations", {"onsite_conversion.total_messaging_connection"}),
-    ("APP_INSTALLS", "App installs", {"mobile_app_install"}),
-    ("LINK_CLICKS", "Link clicks", set()),  # falls through to inline_link_clicks
-]
-
-
 def sum_actions(actions, action_types: set[str]) -> int:
     """Sum the integer `value` across entries whose action_type is in the set."""
     total = 0
@@ -65,18 +57,6 @@ def sum_actions(actions, action_types: set[str]) -> int:
             except (TypeError, ValueError):
                 continue
     return total
-
-
-def extract_result_metric(row: dict) -> tuple[str, int]:
-    """Return (result_label, result_count) for an ad row based on its optimization goal."""
-    goal = (row.get("optimization_goal") or "").upper()
-    actions = row.get("actions")
-    for goal_key, label, types in _RESULT_RULES:
-        if goal == goal_key:
-            if not types:  # LINK_CLICKS → inline_link_clicks
-                return label, int(float(row.get("inline_link_clicks", 0) or 0))
-            return label, sum_actions(actions, types)
-    return "Results", int(float(row.get("inline_link_clicks", 0) or 0))
 
 
 def normalize_account_id(raw: str) -> str:
