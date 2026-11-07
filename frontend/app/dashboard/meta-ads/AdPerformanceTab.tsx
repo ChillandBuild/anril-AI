@@ -50,6 +50,11 @@ type MetricKey =
   | "clicks_all"
   | "messages"
   | "meta_conversations"
+  | "meta_conversations_started"
+  | "meta_new_contacts"
+  | "meta_conversations_replied"
+  | "meta_blocks"
+  | "cost_per_meta_conversation"
   | "conversation_rate"
   | "meta_conversation_rate"
   | "attribution_gap"
@@ -74,6 +79,10 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "clicks_all", label: "Clicks (all)", defaultVisible: false, help: "All interactions Meta classifies as clicks" },
   { key: "messages", label: "Messages sent (Anril confirmed)", defaultVisible: true, help: "Unique people who messaged from this ad on WhatsApp, Instagram or Messenger; repeat messages from the same person and ad count once" },
   { key: "meta_conversations", label: "Meta messaging contacts", defaultVisible: false, help: "People who connected by message, as counted by Meta (same number as Messaging contacts in All ads). Not the same as Messaging conversations started in All ads, which counts new chats within 7 days. For tracking comparison only" },
+  { key: "meta_conversations_started", label: "Messaging conversations started", defaultVisible: false, help: "New chats Meta says began within 7 days of someone seeing or clicking the ad. This is the result Meta's own Ads Manager reports for chat ads" },
+  { key: "meta_new_contacts", label: "New messaging contacts", defaultVisible: false, help: "People Meta says messaged your business for the first time" },
+  { key: "meta_conversations_replied", label: "Messaging conversations replied", defaultVisible: false, help: "Chats Meta says got a reply from your business within 7 days" },
+  { key: "meta_blocks", label: "Messaging blocks", defaultVisible: false, help: "People who blocked your business after messaging from this ad. A high number means the ad or the follow-up is annoying people" },
   { key: "conversation_rate", label: "Message rate", defaultVisible: true, help: "Anril-confirmed messages divided by chat clicks" },
   { key: "meta_conversation_rate", label: "Meta messaging contact rate", defaultVisible: false, help: "Meta messaging contacts divided by chat clicks" },
   { key: "attribution_gap", label: "Tracking difference", defaultVisible: false, help: "Anril-confirmed messages minus Meta messaging contacts" },
@@ -82,11 +91,23 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "spend", label: "Spend", defaultVisible: true, help: "Amount spent in the selected period" },
   { key: "cpc", label: "CPC", defaultVisible: true, help: "Spend divided by chat clicks" },
   { key: "cost_per_message", label: "Cost / sent message", defaultVisible: true, help: "Spend divided by Anril-confirmed messages" },
+  { key: "cost_per_meta_conversation", label: "Cost per messaging conversation started", defaultVisible: false, help: "Spend divided by Messaging conversations started" },
   { key: "ctr", label: "CTR", defaultVisible: false, help: "Click-through rate: chat clicks divided by impressions" },
   { key: "cpm", label: "CPM", defaultVisible: false, help: "Cost per mille: spend per 1,000 impressions" },
   { key: "hot", label: "Hot", defaultVisible: false, help: "Anril leads currently in the Hot segment" },
   { key: "hot_rate", label: "Hot lead rate", defaultVisible: false, help: "Hot leads divided by Anril-confirmed messages" },
   { key: "cost_per_hot", label: "Cost / hot lead", defaultVisible: false, help: "Spend divided by Hot leads" },
+];
+
+/** Numbers Meta reports as-is. Every other metric is calculated by Anril: from Anril's own leads, or by dividing Meta's numbers. */
+const META_DIRECT_METRICS = new Set<MetricKey>([
+  "delivery_status", "budget", "impressions", "reach", "inline_link_clicks", "clicks_all", "meta_conversations", "spend",
+  "meta_conversations_started", "meta_new_contacts", "meta_conversations_replied", "meta_blocks",
+]);
+
+const METRIC_GROUPS = [
+  { title: "From Meta", metrics: METRICS.filter((metric) => META_DIRECT_METRICS.has(metric.key)) },
+  { title: "Calculated by Anril", metrics: METRICS.filter((metric) => !META_DIRECT_METRICS.has(metric.key)) },
 ];
 
 const DEFAULT_METRICS = new Set(METRICS.filter((metric) => metric.defaultVisible).map((metric) => metric.key));
@@ -332,6 +353,10 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     acc.clicks_all += row.clicks_all;
     acc.messages += row.messages;
     acc.meta_conversations += row.meta_conversations;
+    acc.meta_conversations_started += row.meta_conversations_started;
+    acc.meta_new_contacts += row.meta_new_contacts;
+    acc.meta_conversations_replied += row.meta_conversations_replied;
+    acc.meta_blocks += row.meta_blocks;
     acc.clicked_no_message += row.clicked_no_message;
     acc.hot += row.hot;
     acc.spend += row.spend;
@@ -346,6 +371,10 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     clicks_all: 0,
     messages: 0,
     meta_conversations: 0,
+    meta_conversations_started: 0,
+    meta_new_contacts: 0,
+    meta_conversations_replied: 0,
+    meta_blocks: 0,
     clicked_no_message: 0,
     hot: 0,
     spend: 0,
@@ -378,6 +407,7 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     cpm: total.impressions ? (total.spend / total.impressions) * 1000 : null,
     cpc: total.inline_link_clicks ? total.spend / total.inline_link_clicks : null,
     cost_per_message: total.messages ? total.spend / total.messages : null,
+    cost_per_meta_conversation: total.meta_conversations_started ? total.spend / total.meta_conversations_started : null,
     cost_per_hot: total.hot ? total.spend / total.hot : null,
   };
 }
@@ -394,6 +424,10 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
     case "clicks_all":
     case "messages":
     case "meta_conversations":
+    case "meta_conversations_started":
+    case "meta_new_contacts":
+    case "meta_conversations_replied":
+    case "meta_blocks":
     case "clicked_no_message":
     case "hot":
       return count(row[metric]);
@@ -408,6 +442,7 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
     case "spend":
     case "cpc":
     case "cost_per_message":
+    case "cost_per_meta_conversation":
     case "cpm":
     case "cost_per_hot":
       return money(row[metric]);
@@ -793,21 +828,26 @@ export function AdPerformanceTab() {
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
-                  {METRICS.map((metric) => (
-                    <button
-                      key={metric.key}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={visibleMetrics.has(metric.key)}
-                      onClick={() => toggleMetric(metric.key)}
-                      className="flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left hover:bg-stone-50"
-                    >
-                      <TickMark checked={visibleMetrics.has(metric.key)} size="sm" className="mt-0.5" />
-                      <span>
-                        <span className="block font-label text-[11px] font-bold text-stone-700">{metric.label}</span>
-                        <span className="block font-body text-[10px] leading-4 text-stone-400">{metric.help}</span>
-                      </span>
-                    </button>
+                  {METRIC_GROUPS.map((group) => (
+                    <div key={group.title} className="space-y-1">
+                      <p className="px-2 pt-2 font-label text-[10px] font-bold uppercase tracking-wide text-stone-400">{group.title}</p>
+                      {group.metrics.map((metric) => (
+                        <button
+                          key={metric.key}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={visibleMetrics.has(metric.key)}
+                          onClick={() => toggleMetric(metric.key)}
+                          className="flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left hover:bg-stone-50"
+                        >
+                          <TickMark checked={visibleMetrics.has(metric.key)} size="sm" className="mt-0.5" />
+                          <span>
+                            <span className="block font-label text-[11px] font-bold text-stone-700">{metric.label}</span>
+                            <span className="block font-body text-[10px] leading-4 text-stone-400">{metric.help}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>

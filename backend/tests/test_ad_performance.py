@@ -242,6 +242,38 @@ def test_sync_start_date_bounds_the_insights_query(settings, monkeypatch):
     assert reach_calls[0]["date_from"] == "2026-09-01"
 
 
+def test_meta_messaging_counters_are_summed_across_days(settings):
+    db = _perf_db()
+    for day, started, first_reply, blocks in (("2026-09-05", "3", "2", "1"), ("2026-09-06", "5", "4", "0")):
+        db.add("ad_insights_daily", tenant_id="t1", meta_ad_account_id=ACCOUNT, ad_creative_id="ad-1",
+               insight_date=day, spend=40, inline_link_clicks=10, actions=[
+                   {"action_type": "onsite_conversion.total_messaging_connection", "value": "6"},
+                   {"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": started},
+                   {"action_type": "onsite_conversion.messaging_first_reply", "value": first_reply},
+                   {"action_type": "onsite_conversion.messaging_conversation_replied_7d", "value": "2"},
+                   {"action_type": "onsite_conversion.messaging_block", "value": blocks},
+               ])
+
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(db, "t1")}
+
+    row = rows["ad-1"]
+    assert row["meta_conversations"] == 12
+    assert row["meta_conversations_started"] == 8
+    assert row["meta_new_contacts"] == 6
+    assert row["meta_conversations_replied"] == 4
+    assert row["meta_blocks"] == 1
+    assert row["cost_per_meta_conversation"] == 10  # spend 80 / 8 conversations started
+
+
+def test_meta_messaging_counters_default_to_zero_and_cost_is_none(settings):
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(_perf_db(), "t1")}
+
+    row = rows["ad-1"]  # no insights rows at all
+    assert row["meta_conversations_started"] == 0
+    assert row["meta_blocks"] == 0
+    assert row["cost_per_meta_conversation"] is None
+
+
 @pytest.mark.parametrize("destination, label", [
     ("WHATSAPP", "WhatsApp"),
     ("WHATSAPP_MESSENGER", "Multi-destination"),

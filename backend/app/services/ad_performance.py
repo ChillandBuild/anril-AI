@@ -52,6 +52,28 @@ def _safe_div(numer: float, denom: float):
     return numer / denom
 
 
+# Meta's messaging counters, summed from each day's stored `actions`.
+# row key -> Meta action_type.
+_META_MESSAGING_ACTIONS = {
+    "meta_conversations": "onsite_conversion.total_messaging_connection",
+    "meta_conversations_started": "onsite_conversion.messaging_conversation_started_7d",
+    "meta_new_contacts": "onsite_conversion.messaging_first_reply",
+    "meta_conversations_replied": "onsite_conversion.messaging_conversation_replied_7d",
+    "meta_blocks": "onsite_conversion.messaging_block",
+}
+
+
+def _empty_insights() -> dict:
+    return {
+        "inline_link_clicks": 0,
+        "clicks": 0,
+        "spend": 0.0,
+        "impressions": 0,
+        "reach": 0,
+        **{key: 0 for key in _META_MESSAGING_ACTIONS},
+    }
+
+
 def compute_cost_metrics(row: dict) -> dict:
     """Add cpc / cost_per_message / cost_per_qualified / cost_per_hot / roas.
     All guard against divide-by-zero (return None). Mutates and returns row.
@@ -191,26 +213,14 @@ def build_creative_performance(
 
     ins_by_creative: dict[str, dict] = {}
     for r in insights:
-        acc = ins_by_creative.setdefault(
-            r["ad_creative_id"],
-            {
-                "inline_link_clicks": 0,
-                "clicks": 0,
-                "spend": 0.0,
-                "impressions": 0,
-                "reach": 0,
-                "meta_conversations": 0,
-            },
-        )
+        acc = ins_by_creative.setdefault(r["ad_creative_id"], _empty_insights())
         acc["inline_link_clicks"] += int(r.get("inline_link_clicks", 0) or 0)
         acc["clicks"] += int(r.get("clicks", 0) or 0)
         acc["spend"] += float(r.get("spend", 0) or 0)
         acc["impressions"] += int(r.get("impressions", 0) or 0)
         acc["reach"] += int(r.get("reach", 0) or 0)
-        acc["meta_conversations"] += sum_actions(
-            r.get("actions"),
-            {"onsite_conversion.total_messaging_connection"},
-        )
+        for key, action_type in _META_MESSAGING_ACTIONS.items():
+            acc[key] += sum_actions(r.get("actions"), {action_type})
 
     # Unique lead/ad relationships. The table primary key prevents the same
     # lead from being counted twice for the same Meta ad.
@@ -275,14 +285,7 @@ def build_creative_performance(
 
     out: list[dict] = []
     for c in creatives:
-        ins = ins_by_creative.get(c["id"], {
-            "inline_link_clicks": 0,
-            "clicks": 0,
-            "spend": 0.0,
-            "impressions": 0,
-            "reach": 0,
-            "meta_conversations": 0,
-        })
+        ins = ins_by_creative.get(c["id"]) or _empty_insights()
         fn = funnel.get(c["meta_ad_id"], {"messages": 0, "hot": 0, "by_channel": _empty_channel_counts()})
         campaign = campaigns.get(c.get("campaign_id"), {})
         adset = adsets.get(c.get("meta_adset_id"), {})
@@ -332,6 +335,11 @@ def build_creative_performance(
             "inline_link_clicks": clicks,
             "messages": messages,
             "meta_conversations": ins["meta_conversations"],
+            "meta_conversations_started": ins["meta_conversations_started"],
+            "meta_new_contacts": ins["meta_new_contacts"],
+            "meta_conversations_replied": ins["meta_conversations_replied"],
+            "meta_blocks": ins["meta_blocks"],
+            "cost_per_meta_conversation": _safe_div(spend, ins["meta_conversations_started"]),
             "clicked_no_message": no_message,
             "hot": fn["hot"],
             "spend": spend,

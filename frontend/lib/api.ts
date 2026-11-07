@@ -3626,6 +3626,11 @@ export interface AdPerformanceRow {
   clicks_all: number;
   messages: number;
   meta_conversations: number;
+  meta_conversations_started: number;
+  meta_new_contacts: number;
+  meta_conversations_replied: number;
+  meta_blocks: number;
+  cost_per_meta_conversation: number | null;
   conversation_rate: number | null;
   meta_conversation_rate: number | null;
   attribution_gap: number;
