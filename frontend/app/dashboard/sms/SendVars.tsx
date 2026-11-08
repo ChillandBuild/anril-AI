@@ -1,32 +1,9 @@
 "use client";
 
-import { Fragment } from "react";
 import type { SmsVarSource } from "@/lib/api";
-import { splitTemplate } from "./helpers";
 import { Field, inputCls } from "./ui";
 
 const FIXED = "__fixed__";
-
-/** Wording with each {#var#} shown as a numbered chip, or as the chosen value once mapped. */
-export function Wording({ message, map, fields }: { message: string; map?: (SmsVarSource | null)[]; fields?: { key: string; label: string }[] }) {
-  return (
-    <p className="whitespace-pre-wrap break-words text-sm text-[#334155]">
-      {splitTemplate(message).map((part, i) => {
-        if (part.kind === "text") return <Fragment key={i}>{part.text}</Fragment>;
-        const src = map?.[part.index];
-        let label = `Variable ${part.index + 1}`;
-        if (src?.value) {
-          label = src.source === "field" ? (fields?.find((f) => f.key === src.value)?.label ?? src.value) : src.value;
-        }
-        return (
-          <span key={i} className="mx-0.5 inline-block rounded-md bg-primary-100 px-1.5 py-0.5 text-xs font-bold text-primary-dark">
-            {label}
-          </span>
-        );
-      })}
-    </p>
-  );
-}
 
 /** One source picker per {#var#}: a contact field (name, phone, an extra column) or fixed text. */
 export function VariableMapper({

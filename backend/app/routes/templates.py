@@ -20,7 +20,7 @@ from app.services.meta_cloud import (
     _strip_emojis,
     build_core_components,
 )
-from app.services import template_fields, template_rules
+from app.services import template_fields, template_media, template_rules
 from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.services.meta_webhook_verify import verify_meta_signature
@@ -337,7 +337,8 @@ async def create_template(
         "language": payload.language,
         "body_text": payload.body_text,
         "header_media_type": payload.header_media_type,
-        "header_media_url": payload.header_media_url,
+        # Meta got the upload handle; sends need a link Meta can fetch.
+        "header_media_url": template_media.link_for(db, tenant_id, payload.header_media_url),
         "buttons": [b.model_dump() for b in payload.buttons] if payload.buttons else None,
         "carousel_cards": (
             [
@@ -511,6 +512,16 @@ async def sync_templates_from_meta(
                 footer_text = comp.get("text", "")
             elif comp_type == "BUTTONS":
                 buttons = comp.get("buttons", [])
+
+        if header_media_url and header_media_type in template_media.MEDIA_TYPES:
+            # Meta's example link expires; sends need a permanent one. If the copy
+            # fails (e.g. the link already expired), keep the copy we already have.
+            previous = (existing_by_name.get(name) or {}).get("header_media_url")
+            ours = await template_media.copy_from_meta(db, tenant_id, name, header_media_url)
+            if ours:
+                header_media_url = ours
+            elif template_media.is_ours(previous):
+                header_media_url = previous
 
         if name in existing_by_name:
             # Sync is authoritative for the active WABA. If this row came from a
@@ -855,6 +866,16 @@ async def update_template(
     if payload.buttons is not None:
         updates["buttons"] = [b.model_dump() for b in payload.buttons]
 
+    # Meta's template API wants an upload handle as the header example; the DB
+    # keeps a link Meta can fetch at send time.
+    meta_header_media = await _meta_header_handle(
+        db, tenant_id,
+        updates.get("header_media_type", template.get("header_media_type")),
+        updates.get("header_media_url", template.get("header_media_url")),
+    )
+    if "header_media_url" in updates:
+        updates["header_media_url"] = template_media.link_for(db, tenant_id, updates["header_media_url"])
+
     if never_reached_meta:
         waba_id = template.get("meta_waba_id") or get_setting("meta_waba_id", tenant_id=tenant_id)
         if not waba_id:
@@ -868,7 +889,7 @@ async def update_template(
                 body_text=updates.get("body_text", template.get("body_text", "")),
                 header_text=updates.get("header_text", template.get("header_text")),
                 header_media_type=updates.get("header_media_type", template.get("header_media_type")),
-                header_media_url=updates.get("header_media_url", template.get("header_media_url")),
+                header_media_url=meta_header_media,
                 footer_text=updates.get("footer_text", template.get("footer_text")),
                 buttons=updates.get("buttons", template.get("buttons")),
                 tenant_id=tenant_id,
@@ -894,7 +915,6 @@ async def update_template(
         merged_body = updates.get("body_text", template.get("body_text", ""))
         merged_header_text = updates.get("header_text", template.get("header_text"))
         merged_header_media_type = updates.get("header_media_type", template.get("header_media_type"))
-        merged_header_media_url = updates.get("header_media_url", template.get("header_media_url"))
         merged_footer_text = updates.get("footer_text", template.get("footer_text"))
         merged_buttons = updates.get("buttons", template.get("buttons"))
 
@@ -909,7 +929,7 @@ async def update_template(
         )
         components = build_core_components(
             merged_body, payload.body_examples, merged_header_text, payload.header_example,
-            merged_header_media_type, merged_header_media_url, merged_footer_text,
+            merged_header_media_type, meta_header_media, merged_footer_text,
         )
 
         if merged_buttons:
@@ -945,10 +965,7 @@ async def upload_template_media(
     if not access_token:
         raise HTTPException(status_code=400, detail="meta_access_token not configured in Settings")
 
-    # Meta's upload API needs the id of the app that issued the access token. Clients
-    # connect through Anril's own Meta app (Embedded Signup), so that is the default;
-    # a client who set up their own app can still override it in app_settings.
-    app_id = get_setting("meta_app_id", tenant_id=tenant_id) or env_settings.meta_app_id
+    app_id = _meta_app_id(tenant_id)
     if not app_id:
         logger.error("Template media upload: no Meta app id (env META_APP_ID is unset)")
         raise HTTPException(
@@ -968,4 +985,29 @@ async def upload_template_media(
         access_token=access_token,
         tenant_id=tenant_id,
     )
+    template_media.save_upload(get_supabase(), tenant_id, handle, file_bytes, file_type)
     return {"header_handle": handle}
+
+
+def _meta_app_id(tenant_id: str) -> Optional[str]:
+    # Meta's upload API needs the id of the app that issued the access token. Clients
+    # connect through Anril's own Meta app (Embedded Signup), so that is the default;
+    # a client who set up their own app can still override it in app_settings.
+    return get_setting("meta_app_id", tenant_id=tenant_id) or env_settings.meta_app_id
+
+
+async def _meta_header_handle(db, tenant_id: str, media_type: Optional[str], value: Optional[str]) -> Optional[str]:
+    """The header example to send Meta on an edit. Our stored copy is a URL, which
+    Meta's template API doesn't take, so re-upload it for a fresh handle. If that
+    fails, send what we have (what edits did before)."""
+    if (media_type or "").upper() not in template_media.MEDIA_TYPES or not template_media.is_ours(value):
+        return value
+    try:
+        data, content_type = template_media.read_ours(db, value)
+        return await upload_media_for_template(
+            file_bytes=data, file_type=content_type, file_length=len(data),
+            app_id=_meta_app_id(tenant_id), tenant_id=tenant_id,
+        )
+    except Exception as e:
+        logger.warning("Couldn't re-upload template media to Meta: %s", e)
+        return value

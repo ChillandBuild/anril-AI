@@ -280,10 +280,14 @@ async def test_media_upload_falls_back_to_platform_app_id():
     settings = {"meta_access_token": "tok"}
     with patch("app.routes.templates.get_setting", side_effect=lambda k, **kw: settings.get(k)), \
          patch.object(templates.env_settings, "meta_app_id", "aira-app", create=True), \
-         patch("app.routes.templates.upload_media_for_template", side_effect=fake_upload):
+         patch("app.routes.templates.upload_media_for_template", side_effect=fake_upload), \
+         patch("app.routes.templates.get_supabase", return_value=MagicMock()), \
+         patch.object(templates.template_media, "save_upload") as save_upload:
         out = await templates.upload_template_media(file=file, tenant_id="t1")
     assert out == {"header_handle": "4::handle"}
     assert upload.call_args.kwargs["app_id"] == "aira-app"
+    # Our own copy is kept so the template stores a link Meta can fetch at send time.
+    assert save_upload.call_args.args[1:] == ("t1", "4::handle", b"png-bytes", "image/png")
 
 
 @pytest.mark.asyncio
@@ -305,6 +309,8 @@ async def test_media_upload_prefers_clients_own_app_id():
     settings = {"meta_access_token": "tok", "meta_app_id": "client-app"}
     with patch("app.routes.templates.get_setting", side_effect=lambda k, **kw: settings.get(k)), \
          patch.object(templates.env_settings, "meta_app_id", "aira-app", create=True), \
-         patch("app.routes.templates.upload_media_for_template", side_effect=fake_upload):
+         patch("app.routes.templates.upload_media_for_template", side_effect=fake_upload), \
+         patch("app.routes.templates.get_supabase", return_value=MagicMock()), \
+         patch.object(templates.template_media, "save_upload"):
         await templates.upload_template_media(file=file, tenant_id="t1")
     assert captured["app_id"] == "client-app"

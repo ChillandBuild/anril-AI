@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from app.db.supabase import get_supabase
 from app.services.ai_reply import send_whatsapp
@@ -44,6 +45,34 @@ def _lead_matches_sources(lead: dict, target_sources) -> bool:
     if not target_sources:
         return True
     return _classify_source(lead) in target_sources
+
+
+_HEADER_VAR = re.compile(r"\{\{\s*\d+\s*\}\}")
+_MEDIA_HEADERS = ("IMAGE", "VIDEO", "DOCUMENT")
+
+
+def _header_component(db, tenant_id: str, template_name: str, lead: dict) -> dict | None:
+    """The header Meta needs for this template on every send. Meta keeps no
+    media for a template: an IMAGE/VIDEO/DOCUMENT header must carry its link
+    each time, or Meta refuses it (#132012 "expected IMAGE, received UNKNOWN").
+    A text header with {{1}} gets the lead's name."""
+    rows = (
+        db.table("message_templates").select("header_media_type, header_media_url, header_text")
+        .eq("tenant_id", tenant_id).eq("name", template_name).limit(1).execute().data or []
+    )
+    if not rows:
+        return None
+    t = rows[0]
+    media = (t.get("header_media_type") or "").upper()
+    if media in _MEDIA_HEADERS:
+        link = t.get("header_media_url")
+        if not link:
+            raise ValueError(f"Template {template_name} has a {media} header but no saved media link")
+        kind = media.lower()
+        return {"type": "header", "parameters": [{"type": kind, kind: {"link": link}}]}
+    if _HEADER_VAR.search(t.get("header_text") or ""):
+        return {"type": "header", "parameters": [{"type": "text", "text": lead.get("name") or "there"}]}
+    return None
 
 
 _IN_CLAUSE_BATCH_SIZE = 200
@@ -229,7 +258,12 @@ async def _send_step_template(
             val = ""
         parameters.append({"type": "text", "text": str(val)})
 
-    components = [{"type": "body", "parameters": parameters}] if parameters else []
+    components = []
+    header = _header_component(db, tenant_id, template_name, lead)
+    if header:
+        components.append(header)
+    if parameters:
+        components.append({"type": "body", "parameters": parameters})
 
     # A re-engagement template is marketing Anril starts, so it follows the
     # broadcast rules: never from a Red/resting/unverified number, within the

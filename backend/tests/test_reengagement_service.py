@@ -24,13 +24,19 @@ def _sender_always_available():
     rs._NO_SENDER_UNTIL.clear()
 
 
-def _make_db(captured_logs):
-    """Supabase mock that records every reengagement_logs insert into captured_logs."""
+def _make_db(captured_logs, template_row=None):
+    """Supabase mock that records every reengagement_logs insert into captured_logs.
+    template_row is what message_templates returns (none by default)."""
     db = MagicMock()
 
     def table_selector(name):
         t = MagicMock()
-        if name == "reengagement_logs":
+        if name == "message_templates":
+            q = t.select.return_value
+            q.eq.return_value = q
+            q.limit.return_value = q
+            q.execute.return_value.data = [template_row] if template_row else []
+        elif name == "reengagement_logs":
             def _insert(row):
                 captured_logs.append(row)
                 res = MagicMock()
@@ -215,3 +221,50 @@ async def test_template_step_always_sends_template():
     assert len(logs) == 1
     components = tpl.await_args.kwargs["components"]
     assert components == [{"type": "body", "parameters": [{"type": "text", "text": "Asha"}]}]
+
+
+@pytest.mark.asyncio
+async def test_template_with_image_header_sends_the_image():
+    """Regression: an approved template with an IMAGE header was sent with no
+    header component, so Meta refused every send (#132012 "expected IMAGE,
+    received UNKNOWN") and 146 re-engagements in a row were logged failed."""
+    from app.services import reengagement_service as svc
+    logs = []
+    db = _make_db(logs, template_row={
+        "header_media_type": "IMAGE",
+        "header_media_url": "https://example.com/promo.jpg",
+        "header_text": None,
+    })
+    with patch.object(svc, "send_template_message",
+                      new=AsyncMock(return_value={"messages": [{"id": "sid-9"}]})) as tpl:
+        ok = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+    assert ok is True
+    assert tpl.await_args.kwargs["components"] == [
+        {"type": "header", "parameters": [{"type": "image", "image": {"link": "https://example.com/promo.jpg"}}]},
+        {"type": "body", "parameters": [{"type": "text", "text": "Asha"}]},
+    ]
+    assert logs[-1]["status"] == "sent"
+
+
+@pytest.mark.asyncio
+async def test_template_with_text_header_variable_fills_it_with_the_name():
+    from app.services import reengagement_service as svc
+    logs = []
+    db = _make_db(logs, template_row={"header_media_type": None, "header_media_url": None, "header_text": "Hi {{1}}"})
+    with patch.object(svc, "send_template_message",
+                      new=AsyncMock(return_value={"messages": [{"id": "sid-10"}]})) as tpl:
+        ok = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+    assert ok is True
+    assert tpl.await_args.kwargs["components"][0] == {"type": "header", "parameters": [{"type": "text", "text": "Asha"}]}
+
+
+@pytest.mark.asyncio
+async def test_image_header_with_no_saved_link_fails_without_calling_meta():
+    from app.services import reengagement_service as svc
+    logs = []
+    db = _make_db(logs, template_row={"header_media_type": "IMAGE", "header_media_url": None, "header_text": None})
+    with patch.object(svc, "send_template_message", new=AsyncMock()) as tpl:
+        ok = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+    assert ok is False
+    tpl.assert_not_awaited()
+    assert logs[-1]["status"] == "failed"
