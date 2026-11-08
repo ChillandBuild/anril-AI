@@ -79,10 +79,18 @@ forget_person wipes facts and state (and Mem0 data when present); switching a ch
 
 ## Phase 3: Mem0
 
-### - [ ] Task 7: Mem0 spike (S, time-boxed to 2 h, scratch venv, no repo change)
+### - [x] Task 7: Mem0 spike (S, time-boxed to 2 h, scratch venv, no repo change)
 Answer: can Mem0 2.2.1 use our Jina embeddings through a wrapper; can its pgvector tables be pre-created with RLS on; does Groq extraction work without JSON mode issues; what does one add() cost in calls and time.
 - Acceptance: a short written result in this file; a go / no-go for Task 8.
 - Depends on: none
+
+**Result (2026-11-09): NO-GO for Task 8 for now; the card stays the only engine.** mem0ai 2.2.1 in a scratch venv, no keys, stubs; Postgres 16 + pgvector locally for the table check.
+- Jina embedder: works, via a subclass of EmbeddingBase assigned after construction (config rejects a "jina" provider). Must be sync (Mem0 runs it in a thread). Our dimension is 512, not 1024.
+- pgvector tables: can be pre-created with RLS on; Mem0 skips its DDL if they exist. No tenant column, so the tenant goes into user_id. Not proven against Supabase's role (local test used a superuser).
+- LLM: JSON mode (response_format json_object), not tools. Bad JSON → 0 memories, no error. Sarvam path can't send reasoning_effort=None (our known null-content fix), so it would silently save nothing.
+- Cost per add(): 1 LLM call + 2–3 Jina calls + 2 vector calls. search(): 0 LLM + 1 Jina.
+- Blockers: **add() in 2.2.1 is ADD-only** (every result event is "ADD"; dedupe is exact-text only). "Quit Infosys, joined TCS" is stored next to "works at Infosys". That breaks the spec's core rule (close a fact, never pile up contradictions) and the "forget that" path. Also: forget-me leaves fact text and raw messages in Mem0's SQLite history (must be purged by hand), +200 MB of dependencies (qdrant-client, grpcio, numpy), tested on Python 3.11 only (Render runs 3.13).
+- Revisit if a later Mem0 brings back update/delete in add(), or if we need semantic search over hundreds of facts per person (the card caps at 60). Full notes were in the session scratchpad (mem0-spike/RESULT.md), not kept in the repo.
 
 ### - [ ] Task 8: Mem0Engine (M, only after Prem's yes on mem0ai)
 memory_mem0.py: one AsyncMemory per tenant (cached), MEM0_TELEMETRY=False before import, add with user_id/agent_id, search drops agent_id in business scope, card fallback for Sarvam, no Jina key, or a failed import.
