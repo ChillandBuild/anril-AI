@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.services import meta_ads_fields as mf
@@ -57,44 +59,52 @@ def test_field_passthrough_is_float_and_text_stays_text():
 
 # ---- results --------------------------------------------------------------
 
-def test_results_conversations_goal_and_cost_per_result():
-    row = {
-        "optimization_goal": "CONVERSATIONS",
-        "spend": "100",
-        "actions": [{"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "4"}],
-    }
-    assert _val("results", row) == 4
+def _meta_result(indicator, value=None, cost=None):
+    """An insight row's `results` / `cost_per_result` the way Meta returns them."""
+    def block(v):
+        entry = {"indicator": indicator}
+        if v is not None:
+            entry["values"] = [{"value": v, "attribution_windows": ["default"]}]
+        return [entry]
+    return {"spend": "100", "results": block(value), "cost_per_result": block(cost)}
+
+
+def test_results_come_from_meta_for_app_installs():
+    # Real figures from the Astro Tamil New account: Ads Manager shows 641 installs at ₹18.25.
+    row = {**_meta_result("actions:mobile_app_install", "641", "18.24588144"),
+           "optimization_goal": "APP_INSTALLS", "inline_link_clicks": "3556"}
+    assert _val("results", row) == 641
+    assert _val("result_type", row) == "App installs"
+    assert _val("cost_per_result", row) == 18.24588144
+
+
+def test_whatsapp_ads_on_the_replies_goal_count_conversations_not_clicks():
+    row = {**_meta_result("actions:onsite_conversion.messaging_conversation_started_7d", "31", "7.86516129"),
+           "optimization_goal": "REPLIES", "inline_link_clicks": "53"}
+    assert _val("results", row) == 31
     assert _val("result_type", row) == "Messaging conversations started"
-    assert _val("cost_per_result", row) == 25.0
+    assert _val("cost_per_result", row) == 7.86516129
 
 
-def test_zero_results_gives_no_cost_per_result():
-    row = {"optimization_goal": "CONVERSATIONS", "spend": "100", "actions": []}
+def test_conversion_ad_names_the_event_it_targets():
+    # A "Conversions" ad chasing an in-app purchase: Ads Manager shows "—", not website purchases.
+    row = _meta_result("actions:app_custom_event.fb_mobile_purchase")
     assert _val("results", row) is None
     assert _val("cost_per_result", row) is None
+    assert _val("result_type", row) == "App purchases"
 
 
-def test_a_real_zero_result_stays_zero():
-    row = {"optimization_goal": "LINK_CLICKS", "spend": "50", "inline_link_clicks": "0"}
-    assert _val("results", row) == 0
-    assert _val("cost_per_result", row) is None
+def test_an_event_without_a_friendly_name_is_still_readable():
+    row = _meta_result("actions:app_custom_event.fb_mobile_tutorial_completion", "3", "5")
+    assert _val("result_type", row) == "Tutorial completion"
+    assert _val("results", row) == 3
 
 
-def test_unknown_goal_falls_back_to_link_clicks():
+def test_no_results_from_meta_shows_blank_never_link_clicks():
     row = {"optimization_goal": "SOMETHING_NEW", "spend": "10", "inline_link_clicks": "7"}
-    assert _val("results", row) == 7
-    assert _val("result_type", row) == "Link clicks"
-    assert _val("cost_per_result", row) == 10 / 7
-
-
-def test_thruplay_goal_reads_video_list():
-    row = {
-        "optimization_goal": "THRUPLAY",
-        "spend": "20",
-        "video_thruplay_watched_actions": [{"action_type": "video_view", "value": "40"}],
-    }
-    assert _val("results", row) == 40
-    assert _val("cost_per_result", row) == 0.5
+    assert _val("results", row) is None
+    assert _val("result_type", row) is None
+    assert _val("cost_per_result", row) is None
 
 
 # ---- budget ---------------------------------------------------------------
@@ -253,6 +263,23 @@ def test_insight_params_shape(graph):
     fields = params["fields"].split(",")
     assert "spend" in fields and "quality_ranking" in fields
     assert len(fields) == len(set(fields))
+
+
+def test_ad_id_filter_also_asks_for_archived_and_deleted_ads(graph):
+    # Meta drops archived ads from an ad.id-filtered insights call unless the
+    # status filter names them -- their spend then vanished from All ads.
+    graph["ads"] = []
+    _fetch(ad_ids={"A", "B"})
+    filters = {f["field"]: f["value"] for f in json.loads(graph["insight_calls"][-1]["filtering"])}
+    assert filters["ad.id"] == ["A", "B"]
+    assert {"ARCHIVED", "DELETED", "ACTIVE"} <= set(filters["ad.effective_status"])
+
+
+def test_result_keys_ask_meta_for_its_results_fields(graph):
+    graph["ads"] = []
+    _fetch(keys=["results"])
+    fields = graph["insight_calls"][-1]["fields"].split(",")
+    assert "results" in fields and "cost_per_result" in fields
 
 
 # ---- catalogue sanity -----------------------------------------------------

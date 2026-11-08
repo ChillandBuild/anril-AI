@@ -215,7 +215,8 @@ def test_ad_ids_are_sent_to_meta_as_a_filter(graph):
     mf.fetch_meta_insights_live("tok", ACCOUNT, date_from="2026-10-01", date_to="2026-10-15",
                                 keys=["spend"], ad_ids={"1", "2"})
     filtering = json.loads(graph["insight_calls"][-1]["filtering"])
-    assert filtering == [{"field": "ad.id", "operator": "IN", "value": ["1", "2"]}]
+    # The status filter beside it keeps archived ads in (see test_meta_ads_fields).
+    assert filtering[0] == {"field": "ad.id", "operator": "IN", "value": ["1", "2"]}
 
 
 def test_no_ad_ids_means_no_filtering_param(graph):

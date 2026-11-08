@@ -298,6 +298,9 @@ def build_creative_performance(
         no_message = max(clicks - messages, 0)
         spend = round(ins["spend"], 2)
         impressions = ins["impressions"]
+        # Without Meta's de-duplicated figure, reach is the daily rows added up,
+        # which counts anyone reached on two days twice -- flag it for the page.
+        reach_estimated = c["meta_ad_id"] not in unique_reach_by_ad and ins["reach"] > 0
         reach = unique_reach_by_ad.get(c["meta_ad_id"], ins["reach"])
         row = {
             "ad_creative_id": c["id"],
@@ -331,6 +334,7 @@ def build_creative_performance(
             ),
             "impressions": impressions,
             "reach": reach,
+            "reach_estimated": reach_estimated,
             "clicks_all": ins["clicks"],
             "inline_link_clicks": clicks,
             "messages": messages,
@@ -573,6 +577,53 @@ def ad_type_label(destination_type: str | None) -> str:
     if any(word in value for word in ("MESSAGING", "MESSENGER", "INSTAGRAM")):
         return "Messaging"
     return value.replace("_", " ").title()
+
+
+def build_total_reach(
+    db,
+    tenant_id: str,
+    *,
+    ad_creative_ids: list[str],
+    date_from: str | None,
+    date_to: str | None,
+) -> dict:
+    """De-duplicated reach for the Messaging ads Total row: the ads currently on
+    screen, read from Meta in one call. {"reach": None} when Meta can't answer, so
+    the page falls back to the added-up figure marked as an estimate."""
+    from app.services.meta_ads_insights_sync import (
+        _get_ads_credentials,
+        fetch_total_unique_reach,
+        get_ads_setting,
+        get_current_ads_account_id,
+    )
+
+    account = get_current_ads_account_id(db, tenant_id)
+    credentials = _get_ads_credentials(db, tenant_id)
+    if not account or not credentials or not ad_creative_ids or not date_to:
+        return {"reach": None}
+    date_from = _clip_date_from(date_from, get_ads_setting(db, tenant_id, "meta_ads_sync_start_date"))
+    if not date_from or date_from > date_to:
+        return {"reach": None}
+
+    # Only this tenant's ads on the connected account ever go to Meta.
+    creatives = (
+        db.table("ad_creatives").select("meta_ad_id")
+        .eq("tenant_id", tenant_id)
+        .eq("meta_ad_account_id", account)
+        .in_("id", ad_creative_ids)
+        .execute().data
+    ) or []
+    meta_ad_ids = sorted({str(c["meta_ad_id"]) for c in creatives if c.get("meta_ad_id")})
+    if not meta_ad_ids:
+        return {"reach": None}
+    try:
+        reach = fetch_total_unique_reach(
+            *credentials, meta_ad_ids=meta_ad_ids, date_from=date_from, date_to=date_to,
+        )
+    except Exception as error:
+        logger.warning("Meta total reach fetch failed for tenant %s: %s", tenant_id, error)
+        reach = None
+    return {"reach": reach}
 
 
 def build_all_ads(

@@ -31,6 +31,7 @@ import { api, AdPerformanceRow, AdTrackingCodeResponse, TrackedAd } from "@/lib/
 import {
   useAdFilters,
   useAdPerformance,
+  useAdTotalReach,
   useSyncStart,
   useTrackedAds,
 } from "@/hooks/useApi";
@@ -78,11 +79,11 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "inline_link_clicks", label: "Chat clicks", defaultVisible: true, help: "Clicks that opened a WhatsApp, Instagram or Messenger chat" },
   { key: "clicks_all", label: "Clicks (all)", defaultVisible: false, help: "All interactions Meta classifies as clicks" },
   { key: "messages", label: "Messages sent (Anril confirmed)", defaultVisible: true, help: "Unique people who messaged from this ad on WhatsApp, Instagram or Messenger; repeat messages from the same person and ad count once" },
-  { key: "meta_conversations", label: "Meta messaging contacts", defaultVisible: false, help: "People who connected by message, as counted by Meta (same number as Messaging contacts in All ads). Not the same as Messaging conversations started in All ads, which counts new chats within 7 days. For tracking comparison only" },
-  { key: "meta_conversations_started", label: "Messaging conversations started", defaultVisible: false, help: "New chats Meta says began within 7 days of someone seeing or clicking the ad. This is the result Meta's own Ads Manager reports for chat ads" },
-  { key: "meta_new_contacts", label: "New messaging contacts", defaultVisible: false, help: "People Meta says messaged your business for the first time" },
-  { key: "meta_conversations_replied", label: "Messaging conversations replied", defaultVisible: false, help: "Chats Meta says got a reply from your business within 7 days" },
-  { key: "meta_blocks", label: "Messaging blocks", defaultVisible: false, help: "People who blocked your business after messaging from this ad. A high number means the ad or the follow-up is annoying people" },
+  { key: "meta_conversations", label: "Meta messaging contacts", defaultVisible: false, help: "People who messaged your business after this ad, as counted by Meta. Compare it with Messages sent (Anril confirmed)" },
+  { key: "meta_conversations_started", label: "Messaging conversations started", defaultVisible: false, help: "New chats Meta credits to this ad: someone messaging you for the first time, or again after 7 or more quiet days. This is the Results number in Ads Manager" },
+  { key: "meta_new_contacts", label: "New messaging contacts", defaultVisible: false, help: "People who messaged your business for the first time, as counted by Meta" },
+  { key: "meta_conversations_replied", label: "Messaging conversations replied", defaultVisible: false, help: "Meta's count of chats from this ad that your business replied to within 24 hours. Meta often leaves this empty for chats answered through Anril, the same as in Ads Manager. For Anril's own count, use Messages sent" },
+  { key: "meta_blocks", label: "Messaging blocks", defaultVisible: false, help: "People who blocked your business after messaging from this ad. Lower is better" },
   { key: "conversation_rate", label: "Message rate", defaultVisible: true, help: "Anril-confirmed messages divided by chat clicks" },
   { key: "meta_conversation_rate", label: "Meta messaging contact rate", defaultVisible: false, help: "Meta messaging contacts divided by chat clicks" },
   { key: "attribution_gap", label: "Tracking difference", defaultVisible: false, help: "Anril-confirmed messages minus Meta messaging contacts" },
@@ -99,15 +100,25 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "cost_per_hot", label: "Cost / hot lead", defaultVisible: false, help: "Spend divided by Hot leads" },
 ];
 
-/** Numbers Meta reports as-is. Every other metric is calculated by Anril: from Anril's own leads, or by dividing Meta's numbers. */
+/** Numbers Meta reports as-is. */
 const META_DIRECT_METRICS = new Set<MetricKey>([
   "delivery_status", "budget", "impressions", "reach", "inline_link_clicks", "clicks_all", "meta_conversations", "spend",
   "meta_conversations_started", "meta_new_contacts", "meta_conversations_replied", "meta_blocks",
 ]);
 
+/** Anril divides Meta's own numbers; no Anril lead data is involved. */
+const META_CALCULATED_METRICS = new Set<MetricKey>([
+  "frequency", "cpc", "ctr", "cpm", "meta_conversation_rate", "cost_per_meta_conversation",
+]);
+
+// Everything else is built on Anril's own attributed leads.
 const METRIC_GROUPS = [
   { title: "From Meta", metrics: METRICS.filter((metric) => META_DIRECT_METRICS.has(metric.key)) },
-  { title: "Calculated by Anril", metrics: METRICS.filter((metric) => !META_DIRECT_METRICS.has(metric.key)) },
+  { title: "Calculated from Meta numbers", metrics: METRICS.filter((metric) => META_CALCULATED_METRICS.has(metric.key)) },
+  {
+    title: "From Anril leads",
+    metrics: METRICS.filter((metric) => !META_DIRECT_METRICS.has(metric.key) && !META_CALCULATED_METRICS.has(metric.key)),
+  },
 ];
 
 const DEFAULT_METRICS = new Set(METRICS.filter((metric) => metric.defaultVisible).map((metric) => metric.key));
@@ -418,8 +429,11 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
       return <StatusBadge status={row.delivery_status} lastDelivery={row.last_delivery_date} />;
     case "budget":
       return budgetLabel(row);
-    case "impressions":
     case "reach":
+      return row.reach_estimated ? (
+        <span title="Estimate: Meta's exact figure wasn't available, so this adds up reach and may count someone twice">≈ {count(row.reach)}</span>
+      ) : count(row.reach);
+    case "impressions":
     case "inline_link_clicks":
     case "clicks_all":
     case "messages":
@@ -531,7 +545,25 @@ export function AdPerformanceTab() {
   // filter currently selects. Cards that quietly excluded archived ads while the
   // filter read "All statuses" contradicted the control right next to them --
   // to see live-only numbers, pick Active in the Delivery filter.
-  const totals = useMemo(() => aggregateRows(rows), [rows]);
+  // Adding the rows' reach counts anyone who saw two of these ads twice, so the
+  // Total row asks Meta for the de-duplicated figure, like Ads Manager's total.
+  const { data: totalReach, error: totalReachError } = useAdTotalReach(
+    rows.map((row) => row.ad_creative_id),
+    dateFrom || undefined,
+    dateTo || undefined,
+  );
+  const totals = useMemo(() => {
+    const summed = aggregateRows(rows);
+    const reach = totalReach?.reach;
+    if (reach != null) {
+      return { ...summed, reach, reach_estimated: false, frequency: reach ? summed.impressions / reach : null };
+    }
+    const metaFailed = Boolean(totalReachError) || totalReach?.reach === null;
+    return {
+      ...summed,
+      reach_estimated: rows.some((row) => row.reach_estimated) || (metaFailed && rows.length > 1 && summed.reach > 0),
+    };
+  }, [rows, totalReach, totalReachError]);
   const selectedMetrics = useMemo(
     () => METRICS.filter((metric) => visibleMetrics.has(metric.key)),
     [visibleMetrics],
@@ -1038,6 +1070,12 @@ export function AdPerformanceTab() {
       {showSyncNote && syncStart?.start_date && (
         <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
           Showing data from {formatDay(syncStart.start_date)} — the history date set for this account.
+        </p>
+      )}
+
+      {totals.reach_estimated && (
+        <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
+          Reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it adds up the reach of each day or each ad and may count the same person twice. Refresh to try again.
         </p>
       )}
 

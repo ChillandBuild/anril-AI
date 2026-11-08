@@ -242,6 +242,80 @@ def test_sync_start_date_bounds_the_insights_query(settings, monkeypatch):
     assert reach_calls[0]["date_from"] == "2026-09-01"
 
 
+def _reach_db():
+    db = _perf_db()
+    for day in ("2026-09-05", "2026-09-06"):
+        db.add("ad_insights_daily", tenant_id="t1", meta_ad_account_id=ACCOUNT, ad_creative_id="ad-1",
+               insight_date=day, spend=10, impressions=100, reach=80, inline_link_clicks=1)
+    return db
+
+
+def test_reach_uses_meta_unique_reach_and_is_not_marked_estimated(settings, monkeypatch):
+    monkeypatch.setattr(sync, "fetch_unique_reach_by_ad", lambda *a, **k: {"m1": 120})
+
+    row = next(r for r in ad_performance.build_creative_performance(_reach_db(), "t1")
+               if r["ad_creative_id"] == "ad-1")
+
+    assert row["reach"] == 120
+    assert row["reach_estimated"] is False
+
+
+def test_reach_falls_back_to_daily_sum_and_is_marked_estimated_when_meta_fails(settings, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("Meta timed out")
+    monkeypatch.setattr(sync, "fetch_unique_reach_by_ad", boom)
+
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(_reach_db(), "t1")}
+
+    assert rows["ad-1"]["reach"] == 160  # 80 + 80: may count the same person twice
+    assert rows["ad-1"]["reach_estimated"] is True
+    # An ad with no reach at all has nothing to estimate.
+    assert rows["ad-3"]["reach_estimated"] is False
+
+
+def test_total_reach_asks_meta_for_only_this_tenants_ads(settings, monkeypatch):
+    settings["meta_ads_sync_start_date"] = "2026-09-01"
+    calls = []
+    monkeypatch.setattr(sync, "fetch_total_unique_reach",
+                        lambda *a, **k: calls.append((a, k)) or 300)
+    db = _perf_db()
+    # Another tenant's ad: its id must never reach Meta under this tenant's token.
+    db.add("ad_creatives", id="other", tenant_id="t2", meta_ad_account_id=ACCOUNT, meta_ad_id="mX")
+
+    out = ad_performance.build_total_reach(
+        db, "t1", ad_creative_ids=["ad-1", "ad-3", "other"],
+        date_from="2026-08-01", date_to="2026-09-30",
+    )
+
+    assert out == {"reach": 300}
+    (args, kwargs), = calls
+    assert args == ("tok", ACCOUNT)
+    assert sorted(kwargs["meta_ad_ids"]) == ["m1", "m3"]
+    assert kwargs["date_from"] == "2026-09-01"  # clipped to the history date, like the table
+    assert kwargs["date_to"] == "2026-09-30"
+
+
+def test_total_reach_is_none_when_meta_fails(settings, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("Meta timed out")
+    monkeypatch.setattr(sync, "fetch_total_unique_reach", boom)
+
+    out = ad_performance.build_total_reach(
+        _perf_db(), "t1", ad_creative_ids=["ad-1"], date_from="2026-09-01", date_to="2026-09-30",
+    )
+
+    assert out == {"reach": None}
+
+
+def test_total_reach_without_ads_skips_meta(settings, monkeypatch):
+    monkeypatch.setattr(sync, "fetch_total_unique_reach",
+                        lambda *a, **k: pytest.fail("Meta should not be called"))
+
+    assert ad_performance.build_total_reach(
+        _perf_db(), "t1", ad_creative_ids=["nope"], date_from="2026-09-01", date_to="2026-09-30",
+    ) == {"reach": None}
+
+
 def test_meta_messaging_counters_are_summed_across_days(settings):
     db = _perf_db()
     for day, started, first_reply, blocks in (("2026-09-05", "3", "2", "1"), ("2026-09-06", "5", "4", "0")):

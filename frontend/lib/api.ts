@@ -3328,6 +3328,13 @@ export const api = {
       if (params?.date_to) qs.set("date_to", params.date_to);
       return apiFetch<{ data: AdPerformanceRow[] }>(`/api/v1/inbound-leads/ad-performance?${qs}`);
     },
+    /** Meta's de-duplicated reach across these ads; null when Meta can't answer. */
+    adPerformanceTotalReach: async (params: { ad_creative_ids: string[]; date_from?: string; date_to?: string }) => {
+      const qs = new URLSearchParams({ ad_creative_ids: params.ad_creative_ids.join(",") });
+      if (params.date_from) qs.set("date_from", params.date_from);
+      if (params.date_to) qs.set("date_to", params.date_to);
+      return apiFetch<{ reach: number | null }>(`/api/v1/inbound-leads/ad-performance/total-reach?${qs}`);
+    },
     getMetaFieldCatalog: async () =>
       apiFetch<MetaFieldCatalog>(`/api/v1/inbound-leads/meta-ads/field-catalog`),
     getAllMetaAds: async (params: AllAdsParams) => {
@@ -3621,6 +3628,8 @@ export interface AdPerformanceRow {
   budget_level: "campaign" | "ad_set" | null;
   impressions: number;
   reach: number;
+  /** Meta didn't return its de-duplicated reach, so `reach` is the daily figures added up. */
+  reach_estimated?: boolean;
   frequency: number | null;
   inline_link_clicks: number;
   clicks_all: number;

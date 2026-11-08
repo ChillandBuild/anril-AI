@@ -457,6 +457,41 @@ def fetch_unique_reach_by_ad(
     }
 
 
+# Meta's ad.id filter is kept to the size the All ads report already uses.
+_TOTAL_REACH_MAX_ADS = 50
+
+
+def fetch_total_unique_reach(
+    token: str,
+    account: str,
+    *,
+    meta_ad_ids: list[str],
+    date_from: str,
+    date_to: str,
+) -> int | None:
+    """Meta's de-duplicated reach across a set of ads -- someone who saw two of
+    them counts once, as in Ads Manager's total row. None when there are too many
+    ads to filter by."""
+    if not meta_ad_ids or len(meta_ad_ids) > _TOTAL_REACH_MAX_ADS:
+        return None
+    params = {
+        "level": "account",
+        "fields": "reach",
+        "time_range": json.dumps({"since": date_from, "until": date_to}),
+        # Without the status filter Meta drops archived/deleted ads from an ad.id filter.
+        "filtering": json.dumps([
+            {"field": "ad.id", "operator": "IN", "value": sorted(meta_ad_ids)},
+            {"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)},
+        ]),
+        "access_token": token,
+    }
+    with httpx.Client(timeout=30) as client:
+        response = client.get(f"{_GRAPH_BASE}/{account}/insights", params=params)
+        response.raise_for_status()
+        data = response.json().get("data") or []
+    return int(float(data[0].get("reach", 0) or 0)) if data else 0
+
+
 def _fetch_paged(url: str, params: dict) -> list[dict]:
     """GET an edge and follow paging.next. Hard cap of 20 pages, as elsewhere."""
     out: list[dict] = []

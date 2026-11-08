@@ -1,7 +1,7 @@
 """Catalogue of per-ad fields named the way Meta Ads Manager names them, plus a
 live pass-through fetch that builds one report row per ad (or per breakdown
-value). Values come from Meta untouched; the only arithmetic is Results,
-Cost per result and Budget (minor -> major currency units).
+value). Values come from Meta untouched, Results and Cost per result included;
+the only arithmetic is Budget (minor -> major currency units).
 
 Read-only against Meta (ads_read). Results are cached in-process for a few
 minutes; the token is not part of the cache key because account ids are unique
@@ -157,22 +157,49 @@ META_FIELD_CATALOG: list[dict] = [
 
 _BY_KEY: dict[str, dict] = {e["key"]: e for e in META_FIELD_CATALOG}
 
-# Results mirror Ads Manager: keyed by insight row optimization_goal (upper-cased).
-# (label, kind, source) where kind is "action" (types list), "list" or "field".
-_RESULT_BY_GOAL: dict[str, tuple[str, str, object]] = {
-    "CONVERSATIONS": ("Messaging conversations started", "action", ["onsite_conversion.messaging_conversation_started_7d"]),
-    "LEAD_GENERATION": ("Leads", "action", ["lead", "onsite_conversion.lead_grouped"]),
-    "QUALITY_LEAD": ("Leads", "action", ["lead", "onsite_conversion.lead_grouped"]),
-    "LINK_CLICKS": ("Link clicks", "field", "inline_link_clicks"),
-    "LANDING_PAGE_VIEWS": ("Landing page views", "action", ["landing_page_view", "omni_landing_page_view"]),
-    "OFFSITE_CONVERSIONS": ("Purchases", "action", ["omni_purchase", "purchase"]),
-    "REACH": ("Reach", "field", "reach"),
-    "IMPRESSIONS": ("Impressions", "field", "impressions"),
-    "THRUPLAY": ("ThruPlays", "list", "video_thruplay_watched_actions"),
-    "POST_ENGAGEMENT": ("Post engagements", "action", ["post_engagement"]),
-    "PAGE_LIKES": ("Follows or likes", "action", ["like"]),
+# Results come straight from Meta's own `results` / `cost_per_result` insight
+# fields -- the same numbers as Ads Manager's Results column for every goal,
+# including what a Conversions ad actually targets. Meta names the result by an
+# indicator such as "actions:mobile_app_install"; these are the friendly names.
+_RESULT_LABELS: dict[str, str] = {
+    "mobile_app_install": "App installs",
+    "omni_app_install": "App installs",
+    "onsite_conversion.messaging_conversation_started_7d": "Messaging conversations started",
+    "onsite_conversion.total_messaging_connection": "Messaging contacts",
+    "onsite_conversion.messaging_first_reply": "New messaging contacts",
+    "lead": "Leads",
+    "onsite_conversion.lead_grouped": "Leads",
+    "offsite_conversion.fb_pixel_lead": "Website leads",
+    "link_click": "Link clicks",
+    "landing_page_view": "Landing page views",
+    "omni_landing_page_view": "Landing page views",
+    "purchase": "Purchases",
+    "omni_purchase": "Purchases",
+    "offsite_conversion.fb_pixel_purchase": "Website purchases",
+    "app_custom_event.fb_mobile_purchase": "App purchases",
+    "omni_complete_registration": "Registrations completed",
+    "offsite_conversion.fb_pixel_complete_registration": "Website registrations completed",
+    "app_custom_event.fb_mobile_complete_registration": "App registrations completed",
+    "omni_activate_app": "App activations",
+    "app_custom_event.fb_mobile_activate_app": "App activations",
+    "omni_add_to_cart": "Adds to cart",
+    "omni_initiated_checkout": "Checkouts initiated",
+    "omni_view_content": "Content views",
+    "omni_search": "Searches",
+    "post_engagement": "Post engagements",
+    "page_engagement": "Page engagement",
+    "like": "Follows or likes",
+    "video_view": "3-second video plays",
+    "video_thruplay_watched_actions": "ThruPlays",
+    "reach": "Reach",
+    "impressions": "Impressions",
 }
-_UNKNOWN_GOAL_RESULT = ("Link clicks", "field", "inline_link_clicks")
+# Stripped from an unlisted indicator to make a readable name.
+_INDICATOR_PREFIXES = (
+    "offsite_conversion.fb_pixel_", "app_custom_event.fb_mobile_", "onsite_conversion.",
+    "offsite_conversion.", "app_custom_event.", "omni_",
+)
+_RESULT_FIELDS = ["results", "cost_per_result"]
 
 BREAKDOWNS: dict[str, dict] = {
     "age": {"label": "Age", "breakdowns": "age"},
@@ -192,10 +219,6 @@ _BASE_INSIGHT_FIELDS = [
     "inline_link_clicks", "actions", "cost_per_action_type", "action_values",
 ]
 
-# Result computation for the thruplay goal reads this list field, so any key
-# that depends on the result must request it too.
-_RESULT_EXTRA_FIELDS = ["video_thruplay_watched_actions"]
-
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAX_ENTRIES = 200
 _CACHE: dict[tuple, tuple[float, list[dict]]] = {}
@@ -213,7 +236,7 @@ def insight_fields_for(keys: list[str]) -> str:
         if kind in ("field", "list"):
             fields.append(src["field"])
         elif kind in ("result", "result_type", "cost_per_result"):
-            fields.extend(_RESULT_EXTRA_FIELDS)
+            fields.extend(_RESULT_FIELDS)
     return ",".join(dict.fromkeys(fields))
 
 
@@ -282,17 +305,31 @@ def _budget(ad: dict | None) -> dict | None:
     return None
 
 
-def _result_for_row(row: dict) -> tuple[str, float | None]:
-    goal = str(row.get("optimization_goal") or "").upper()
-    label, kind, source = _RESULT_BY_GOAL.get(goal, _UNKNOWN_GOAL_RESULT)
-    if kind == "action":
-        value = _first_match(row.get("actions"), source)
-    elif kind == "list":
-        value = _first_list(row.get(source))
-    else:
-        value = _to_float(row.get(source))
-    # None only when Meta reported nothing for the result; a real zero stays 0.
-    return label, value
+def _result_label(indicator: str) -> str:
+    """'actions:mobile_app_install' -> 'App installs'; unlisted ones are tidied up."""
+    name = indicator.split(":", 1)[-1]
+    if name in _RESULT_LABELS:
+        return _RESULT_LABELS[name]
+    if indicator in _RESULT_LABELS:
+        return _RESULT_LABELS[indicator]
+    for prefix in _INDICATOR_PREFIXES:
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    name = name.replace(".", " ").replace("_", " ").strip()
+    return name[:1].upper() + name[1:] if name else indicator
+
+
+def _meta_result(entries) -> tuple[str | None, float | None]:
+    """(label, value) from Meta's `results` or `cost_per_result` list. Meta sends the
+    indicator without values when there is nothing to count -- Ads Manager's '—'."""
+    if not isinstance(entries, list) or not entries or not isinstance(entries[0], dict):
+        return None, None
+    first = entries[0]
+    indicator = str(first.get("indicator") or "")
+    values = first.get("values") or []
+    value = _to_float(values[0].get("value")) if values and isinstance(values[0], dict) else None
+    return (_result_label(indicator) if indicator else None), value
 
 
 def extract_value(entry: dict, row: dict, ad: dict | None):
@@ -319,15 +356,11 @@ def extract_value(entry: dict, row: dict, ad: dict | None):
     if kind == "budget":
         return _budget(ad)
     if kind == "result":
-        return _result_for_row(row)[1]
+        return _meta_result(row.get("results"))[1]
     if kind == "result_type":
-        return _result_for_row(row)[0] if row else None
+        return _meta_result(row.get("results"))[0]
     if kind == "cost_per_result":
-        _, result = _result_for_row(row)
-        spend = _to_float(row.get("spend"))
-        if result is not None and result > 0 and spend is not None:
-            return spend / result
-        return None
+        return _meta_result(row.get("cost_per_result"))[1]
     raise ValueError(f"unknown source kind: {kind}")
 
 
@@ -410,10 +443,13 @@ def fetch_meta_insights_live(
     if breakdown is not None:
         insight_params["breakdowns"] = BREAKDOWNS[breakdown]["breakdowns"]
     if wanted is not None and 0 < len(wanted) <= 50:
-        # Ask Meta for just these ads instead of the whole account.
-        insight_params["filtering"] = json.dumps(
-            [{"field": "ad.id", "operator": "IN", "value": sorted(wanted)}]
-        )
+        # Ask Meta for just these ads instead of the whole account. With an ad.id
+        # filter Meta silently drops archived/deleted ads unless the status filter
+        # names them, and their spend would vanish from the report.
+        insight_params["filtering"] = json.dumps([
+            {"field": "ad.id", "operator": "IN", "value": sorted(wanted)},
+            {"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)},
+        ])
     insight_rows = _fetch_paged(f"{_GRAPH_BASE}/{account}/insights", insight_params)
 
     ad_rows = _fetch_paged_all_statuses(

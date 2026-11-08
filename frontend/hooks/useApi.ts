@@ -220,6 +220,17 @@ export function useAdPerformance(
   );
 }
 
+/** De-duplicated reach for the Messaging ads Total row: the ads on screen, one Meta call. */
+export function useAdTotalReach(adCreativeIds: string[], dateFrom?: string, dateTo?: string) {
+  const ids = [...adCreativeIds].sort();
+  const key = ids.length ? `ad-total-reach:${dateFrom ?? ""}:${dateTo ?? ""}:${ids.join(",")}` : null;
+  return useSWR<{ reach: number | null }>(
+    key,
+    () => api.inboundLeads.adPerformanceTotalReach({ ad_creative_ids: ids, date_from: dateFrom, date_to: dateTo }),
+    defaultConfig,
+  );
+}
+
 /** The Meta field catalogue is static for the life of a deploy, so it is fetched once per session. */
 export function useMetaFieldCatalog() {
   return useSWR<MetaFieldCatalog>(

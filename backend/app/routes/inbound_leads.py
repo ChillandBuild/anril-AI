@@ -481,6 +481,23 @@ async def ad_performance(
     return {"data": rows}
 
 
+@router.get("/ad-performance/total-reach", dependencies=[Depends(require_meta_ads_view)])
+async def ad_performance_total_reach(
+    ad_creative_ids: str = Query(..., description="Comma-separated ad_creative ids on screen"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Meta's de-duplicated reach across the ads in the Total row."""
+    from app.services.ad_performance import build_total_reach
+    ids = [i.strip() for i in ad_creative_ids.split(",") if i.strip()][:200]
+    d_from = _parse_day(date_from, "date_from") if date_from else None
+    d_to = _parse_day(date_to, "date_to") if date_to else datetime.now(timezone.utc).date().isoformat()
+    return build_total_reach(
+        get_supabase(), tenant_id, ad_creative_ids=ids, date_from=d_from, date_to=d_to,
+    )
+
+
 @router.get("/meta-ads/field-catalog", dependencies=[Depends(require_meta_ads_view)])
 async def meta_ads_field_catalog():
     """Meta-computed columns and breakdowns the All ads page can ask for."""
@@ -674,13 +691,16 @@ async def set_sync_start(
     return {**_sync_start_payload(db, tenant_id), "syncing": True}
 
 
-# (row key, header) in on-screen order. Headers mirror the table's column labels
-# (METRICS in frontend/app/dashboard/meta-ads/AdPerformanceTab.tsx) so the
-# download reads the same as the page.
+# (row key, header). The first six match an Ads Manager export so the two files
+# line up by Ad ID; the rest follow the on-screen order and mirror the table's
+# column labels (METRICS in frontend/app/dashboard/meta-ads/AdPerformanceTab.tsx).
 AD_PERFORMANCE_EXPORT_COLUMNS = [
-    ("campaign_name", "Campaign"),
-    ("adset_name", "Ad set"),
-    ("creative_label", "Creative"),
+    ("reporting_starts", "Reporting starts"),
+    ("reporting_ends", "Reporting ends"),
+    ("meta_ad_id", "Ad ID"),
+    ("campaign_name", "Campaign name"),
+    ("adset_name", "Ad set name"),
+    ("creative_label", "Ad name"),
     ("delivery_status", "Delivery"),
     ("budget", "Budget"),
     ("impressions", "Impressions"),
@@ -735,13 +755,21 @@ async def ad_performance_export(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """CSV of the per-creative performance table, honoring the same filters."""
-    from app.services.ad_performance import build_creative_performance
+    from app.services.ad_performance import _clip_date_from, build_creative_performance
+    from app.services.meta_ads_insights_sync import get_ads_setting
     db = get_supabase()
     rows = build_creative_performance(
         db, tenant_id,
         campaign_id=campaign_id, adset_id=adset_id, ad_creative_id=ad_creative_id,
         date_from=date_from, date_to=date_to, delivery_status=delivery_status,
     )
+    # The dates the numbers actually cover: the table never reads before the history date.
+    report_cells = {
+        "reporting_starts": _clip_date_from(
+            date_from, get_ads_setting(db, tenant_id, "meta_ads_sync_start_date")
+        ) or "",
+        "reporting_ends": date_to or datetime.now(timezone.utc).date().isoformat(),
+    }
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([label for _, label in AD_PERFORMANCE_EXPORT_COLUMNS])
@@ -751,6 +779,7 @@ async def ad_performance_export(
             "messages_whatsapp": by_channel.get("whatsapp", 0),
             "messages_instagram": by_channel.get("instagram", 0),
             "messages_messenger": by_channel.get("messenger", 0),
+            **report_cells,
         }
         writer.writerow([
             _budget_label(r) if key == "budget"

@@ -34,7 +34,12 @@ def test_ad_performance_export_headers_match_table_labels():
 
     tab = (ROOT.parent / "frontend/app/dashboard/meta-ads/AdPerformanceTab.tsx").read_text(encoding="utf-8")
     metrics_block = tab.split("const METRICS", 1)[1].split("];", 1)[0]
-    table_labels = ["Campaign", "Ad set", "Creative"] + re.findall(r'label: "([^"]+)"', metrics_block)
+    # The CSV opens with the identity columns an Ads Manager export has, so the
+    # two files line up by Ad ID; after them it follows the on-screen table.
+    meta_identity = ["Reporting starts", "Reporting ends", "Ad ID", "Campaign name", "Ad set name", "Ad name"]
+    assert export_labels[:len(meta_identity)] == meta_identity
+    export_labels = export_labels[len(meta_identity):]
+    table_labels = re.findall(r'label: "([^"]+)"', metrics_block)
 
     # The per-app split shows inside the Messages sent cell on screen; the CSV
     # gives it its own columns right after Messages sent.
