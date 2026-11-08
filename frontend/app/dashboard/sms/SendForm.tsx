@@ -14,7 +14,7 @@ import { matchesQuery } from "./dltSetup";
 import { SendConfirm } from "./SendConfirm";
 import { SendPreview } from "./SendPreview";
 import { SenderChips, TemplateCard } from "./TemplateCard";
-import { VariableMapper, Wording } from "./SendVars";
+import { VariableMapper } from "./SendVars";
 import { useSms } from "./SmsShell";
 import {
   EMPTY_NUMBERS,
@@ -327,14 +327,10 @@ export function SendForm() {
     }
   }
 
-  const sample = shown?.samples[0] ?? null;
-  const section = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
-
-  // Three numbered steps on the left; the page scrolls normally. On a laptop the preview + cost + Send
-  // card sits on the right and stays pinned under the app header (64px) + page padding (28px) as you
-  // scroll. Phones stack the card under step 3.
+  // One column: the three numbered steps, then the summary, notices and Send at the bottom. The
+  // message itself is shown on the picked card and, filled in, in the popup Send opens.
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+    <>
       <div className="space-y-5 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm sm:p-6">
         <div>
           <div role="group" aria-label="How to send" className="mb-2 grid gap-2 sm:grid-cols-2">
@@ -482,97 +478,80 @@ export function SendForm() {
               ))}
           </Step>
         </div>
+
+        <section aria-label="Send" className="flex flex-col gap-4 border-t border-[#eef2f6] pt-5">
+          {updating && (
+            <p className="-mb-2 text-xs font-semibold text-[#64748b]" role="status" aria-live="polite">
+              Updating…
+            </p>
+          )}
+
+          {shown && (
+            <p className={cn("text-sm text-[#334155] transition-opacity", updating && "opacity-50")}>
+              <span className="font-bold text-[#0A1528]">{formatCount(shown.eligible_count)}</span> {shown.eligible_count === 1 ? "person" : "people"} ·{" "}
+              <span className="font-bold text-[#0A1528]">{formatCount(shown.total_segments)}</span> SMS credits. Press Send SMS to check the cost and confirm.
+            </p>
+          )}
+
+          {shown && (
+            <div className={cn("transition-opacity", updating && "opacity-50")}>
+              <SendPreview preview={shown} />
+            </div>
+          )}
+          {freshPreview && block.reason && <Notice tone="warn">{block.reason}</Notice>}
+          {nightRelease && (
+            <Notice tone="warn">
+              This SMS will go out at {formatSendTime(nightRelease)}, not straight away. {NIGHT_RULE} SMS credits are used when you send.
+            </Notice>
+          )}
+          {!shown && problem && (template !== null || isManual) && <p className="text-xs text-[#64748b]">{problem}</p>}
+          {previewFailed && (
+            <Notice tone="danger">
+              {previewFailed}{" "}
+              <button type="button" className="font-bold underline" onClick={() => setRetry((n) => n + 1)}>
+                Try again
+              </button>
+            </Notice>
+          )}
+          {error && <Notice tone="danger">{error}</Notice>}
+          {created && (
+            <Notice tone="success">
+              {created.scheduled ? "SMS scheduled." : "SMS is sending."}{" "}
+              <Link href="/dashboard/sms/reports" className="font-bold underline">
+                See it in Reports
+              </Link>
+              {created.save && (
+                <span className="mt-2 block">
+                  <Btn variant="outline" onClick={() => setSaving(created.save)}>
+                    <Plus size={14} /> Save to my templates
+                  </Btn>
+                  <span className="mt-1 block text-xs">Next time it&apos;s one tap under Saved templates, with no IDs to type.</span>
+                </span>
+              )}
+            </Notice>
+          )}
+
+          <div className="flex justify-end">
+            <Btn
+              className="h-12 w-full px-8 text-base sm:w-auto"
+              disabled={!canSend}
+              onClick={() => {
+                const current = new Date();
+                setNow(current);
+                const schedule = resolveWhen(when, current);
+                if (schedule.error) setError(schedule.error);
+                else {
+                  void balance.mutate();
+                  setConfirming(true);
+                }
+              }}
+            >
+              {when.mode === "later" ? "Schedule SMS" : "Send SMS"}
+            </Btn>
+          </div>
+        </section>
       </div>
 
-      <aside
-        aria-label="Preview and send"
-        className="flex flex-col gap-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.75rem] lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto"
-      >
-        <h2 className={section}>Preview</h2>
-        <div className="space-y-2 rounded-xl bg-[#0A1528] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-[#9fb3c8]">{senderShown || "Sender ID"}</p>
-          <div className="max-w-[92%] rounded-xl rounded-bl-sm bg-white px-3 py-2.5">
-            {sample ? (
-              <p className="whitespace-pre-wrap break-words text-sm text-[#0A1528]">{sample.content}</p>
-            ) : message ? (
-              <Wording message={message} map={varMap} fields={fields.data?.fields} />
-            ) : (
-              <p className="text-sm text-[#94a3b8]">{isManual ? "Type the message to see it here." : "Pick a template to see the message."}</p>
-            )}
-          </div>
-          <p className="text-[11px] text-[#9fb3c8]">{sample ? `Shown with ${sample.name || "the first recipient"}'s values.` : "Real values fill in automatically."}</p>
-        </div>
-
-        {updating && (
-          <p className="-mb-2 text-xs font-semibold text-[#64748b]" role="status" aria-live="polite">
-            Updating…
-          </p>
-        )}
-
-        {shown && (
-          <p className={cn("text-sm text-[#334155] transition-opacity", updating && "opacity-50")}>
-            <span className="font-bold text-[#0A1528]">{formatCount(shown.eligible_count)}</span> {shown.eligible_count === 1 ? "person" : "people"} ·{" "}
-            <span className="font-bold text-[#0A1528]">{formatCount(shown.total_segments)}</span> SMS credits. Press Send SMS to check the cost and confirm.
-          </p>
-        )}
-
-        {shown && (
-          <div className={cn("transition-opacity", updating && "opacity-50")}>
-            <SendPreview preview={shown} />
-          </div>
-        )}
-        {freshPreview && block.reason && <Notice tone="warn">{block.reason}</Notice>}
-        {nightRelease && (
-          <Notice tone="warn">
-            This SMS will go out at {formatSendTime(nightRelease)}, not straight away. {NIGHT_RULE} SMS credits are used when you send.
-          </Notice>
-        )}
-        {!shown && problem && (template !== null || isManual) && <p className="text-xs text-[#64748b]">{problem}</p>}
-        {previewFailed && (
-          <Notice tone="danger">
-            {previewFailed}{" "}
-            <button type="button" className="font-bold underline" onClick={() => setRetry((n) => n + 1)}>
-              Try again
-            </button>
-          </Notice>
-        )}
-        {error && <Notice tone="danger">{error}</Notice>}
-        {created && (
-          <Notice tone="success">
-            {created.scheduled ? "SMS scheduled." : "SMS is sending."}{" "}
-            <Link href="/dashboard/sms/reports" className="font-bold underline">
-              See it in Reports
-            </Link>
-            {created.save && (
-              <span className="mt-2 block">
-                <Btn variant="outline" onClick={() => setSaving(created.save)}>
-                  <Plus size={14} /> Save to my templates
-                </Btn>
-                <span className="mt-1 block text-xs">Next time it&apos;s one tap under Saved templates, with no IDs to type.</span>
-              </span>
-            )}
-          </Notice>
-        )}
-
-        <div className="grid gap-2">
-          <Btn
-            className="h-12 text-base"
-            disabled={!canSend}
-            onClick={() => {
-              const current = new Date();
-              setNow(current);
-              const schedule = resolveWhen(when, current);
-              if (schedule.error) setError(schedule.error);
-              else {
-                void balance.mutate();
-                setConfirming(true);
-              }
-            }}
-          >
-            {when.mode === "later" ? "Schedule SMS" : "Send SMS"}
-          </Btn>
-        </div>
-      </aside>
 
       {freshPreview && (
         <SendConfirm
@@ -595,7 +574,7 @@ export function SendForm() {
         initial={saving ?? undefined}
         onSaved={() => setCreated((c) => (c ? { ...c, save: null } : c))}
       />
-    </div>
+    </>
   );
 }
 
