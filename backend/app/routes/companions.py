@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.companion import engine, store
-from app.companion.models import CompanionSettings, CompanionUpdate
+from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, ToolResult
+from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.dependencies.tenant import require_permission
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,39 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
 
 class TestChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
+    tools: list[AppTool] = Field(default_factory=list)
+
+
+class ContinueIn(BaseModel):
+    turn_id: UUID
+    results: list[ToolResult] = Field(default_factory=list, max_length=MAX_TOOLS)
+
+
+def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (engine.CompanionNotFound, engine.TurnExpired)):
+        detail = _NOT_FOUND if isinstance(exc, engine.CompanionNotFound) else \
+            "This tool turn has expired or was already used. Send the message again."
+        return HTTPException(status_code=404, detail=detail)
+    if isinstance(exc, ToolsInvalid):
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, engine.CompanionPaused):
+        return HTTPException(status_code=409, detail="This character is paused. Set it to draft or live to chat.")
+    if isinstance(exc, engine.CompanionMisconfigured):
+        return HTTPException(status_code=400, detail="Set your AI model and its API key in Settings first")
+    return HTTPException(status_code=503, detail="The companion is busy right now. Try again in a few seconds.")
+
+
+_EXPECTED = (engine.CompanionError, ToolsInvalid)
+
+
+@router.post("/test-chat/continue")
+async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_settings_manage)):
+    """The owner types the tool result by hand (playing the app) and the reply finishes."""
+    try:
+        result = await engine.continue_reply(str(payload.turn_id), ctx["tenant_id"], payload.results)
+    except _EXPECTED as exc:
+        raise _http_error(exc)
+    return result.model_dump()
 
 
 @router.post("/{companion_id}/test-chat")
@@ -79,13 +113,7 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
         raise HTTPException(status_code=422, detail="Type a message first")
     try:
         result = await engine.reply(
-            str(companion_id), ctx["tenant_id"], f"owner-test:{ctx['user_id']}", message)
-    except engine.CompanionNotFound:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
-    except engine.CompanionPaused:
-        raise HTTPException(status_code=409, detail="This character is paused. Set it to draft or live to chat.")
-    except engine.CompanionMisconfigured:
-        raise HTTPException(status_code=400, detail="Set your AI model and its API key in Settings first")
-    except engine.CompanionBusy:
-        raise HTTPException(status_code=503, detail="The companion is busy right now. Try again in a few seconds.")
+            str(companion_id), ctx["tenant_id"], f"owner-test:{ctx['user_id']}", message, tools=payload.tools)
+    except _EXPECTED as exc:
+        raise _http_error(exc)
     return result.model_dump()

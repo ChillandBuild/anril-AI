@@ -91,14 +91,16 @@ async def _llm_complete(prompt: str, max_tokens: int = 300, tenant_id: str | Non
 
 
 async def _llm_chat_with_tools(
-    messages: list[dict], tools: list[dict], max_tokens: int = 300, tenant_id: str | None = None
+    messages: list[dict], tools: list[dict], max_tokens: int = 300, tenant_id: str | None = None,
+    *, purpose: str = "ai_reply",
 ) -> tuple[str, list[dict]]:
     """Tool-calling counterpart to _llm_chat -- routes catalog-recommendation replies
-    through the tenant's selected ai_reply_model instead of hardcoding Sarvam."""
+    through the tenant's selected ai_reply_model instead of hardcoding Sarvam.
+    purpose is overridable so other callers (the companion) meter under their own name."""
     provider, native_model = _resolve_provider(tenant_id)
     kwargs = dict(
         messages=messages, tools=tools, model=native_model, max_tokens=max_tokens,
-        tenant_id=tenant_id, purpose="ai_reply",
+        tenant_id=tenant_id, purpose=purpose,
     )
     if provider == "sarvam":
         return await sarvam_chat_completion_with_tools(**kwargs)

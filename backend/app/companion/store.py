@@ -183,3 +183,87 @@ async def recent_messages(tenant_id: str, companion_id: str, end_user_id: str, l
         )
     rows = await asyncio.to_thread(_q) or []
     return list(reversed(rows))
+
+
+# --- pending turns (a reply paused while the client's app runs a tool) -------------------------
+
+PENDING_TTL = timedelta(minutes=2)
+
+
+def _sweep_expired(db) -> None:
+    """Deletes every tenant's expired pending turns. Deliberately not tenant-filtered: it only
+    removes rows past expires_at, so no paused prompt outlives its 2 minutes. No cron needed."""
+    db.table("companion_pending_turns").delete().lt("expires_at", _now()).execute()
+
+
+async def create_pending_turn(tenant_id: str, companion_id: str, conversation_id: str,
+                              state: dict, tools: list[dict], round_no: int) -> str:
+    """Saves the paused turn and returns its id (the turn_id given to the app).
+    state holds the prompt so far plus what's needed to finish the reply later."""
+    row = {
+        "tenant_id": tenant_id, "companion_id": companion_id, "conversation_id": conversation_id,
+        "messages": state, "tools": tools, "round": round_no,
+        "expires_at": (datetime.now(timezone.utc) + PENDING_TTL).isoformat(),
+    }
+
+    def _q():
+        db = get_supabase()
+        _sweep_expired(db)
+        return db.table("companion_pending_turns").insert(row).execute().data[0]["id"]
+    return await asyncio.to_thread(_q)
+
+
+async def take_pending_turn(tenant_id: str, turn_id: str) -> dict | None:
+    """Consumes a live turn: deleted as it's read, so one turn_id can be continued only once.
+    Unknown, expired or another tenant's turn → None."""
+    def _q():
+        db = get_supabase()
+        _sweep_expired(db)
+        return (
+            db.table("companion_pending_turns").delete()
+            .eq("tenant_id", tenant_id).eq("id", turn_id).gt("expires_at", _now()).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+async def get_conversation(tenant_id: str, conversation_id: str) -> dict | None:
+    def _q():
+        return (
+            get_supabase().table("companion_conversations").select("*")
+            .eq("tenant_id", tenant_id).eq("id", conversation_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+# --- forget (business-wide: every character's chats with this person) ---------------------------
+
+async def find_end_user(tenant_id: str, external_user_id: str) -> dict | None:
+    def _q():
+        return (
+            get_supabase().table("companion_end_users").select("*")
+            .eq("tenant_id", tenant_id).eq("external_user_id", external_user_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
+    """Hard-deletes the person's pending turns, messages and conversations with every character
+    of this tenant, then blanks their name and stamps forgotten_at. The person row stays, so a
+    later message starts fresh (empty history, default mood) under the same external id."""
+    def _q():
+        db = get_supabase()
+        conv_ids = [c["id"] for c in (
+            db.table("companion_conversations").select("id")
+            .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute().data or [])]
+        if conv_ids:
+            (db.table("companion_pending_turns").delete()
+             .eq("tenant_id", tenant_id).in_("conversation_id", conv_ids).execute())
+        db.table("companion_messages").delete().eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute()
+        (db.table("companion_conversations").delete()
+         .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
+        (db.table("companion_end_users").update({"display_name": None, "forgotten_at": _now()})
+         .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
+    await asyncio.to_thread(_q)

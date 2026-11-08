@@ -1,8 +1,9 @@
 """Pydantic models for companion settings (the character card) and the reply contract."""
+import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.companion.platform_rules import MOODS
 
@@ -70,6 +71,19 @@ class AppTool(_CardFields):
     name: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
     description: str = Field(max_length=500)
     parameters: dict = Field(default_factory=dict)
+
+
+class ToolResult(_CardFields):
+    """What the client's app sends back for one tool call (output is capped to 4,000 chars later)."""
+    id: str = Field(min_length=1, max_length=100)
+    output: dict | str | None = None
+
+    @field_validator("output")
+    @classmethod
+    def _not_huge(cls, v):
+        if v is not None and len(v if isinstance(v, str) else json.dumps(v)) > 64_000:
+            raise ValueError("tool output is over 64 KB")
+        return v
 
 
 class CompanionReply(BaseModel):
