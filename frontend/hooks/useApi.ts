@@ -231,6 +231,22 @@ export function useAdTotalReach(adCreativeIds: string[], dateFrom?: string, date
   );
 }
 
+/** De-duplicated reach for the All ads Total row. `metaAdIds` undefined = every ad in the account. */
+export function useAllAdsTotalReach(
+  range: { date_from: string; date_to: string } | null,
+  metaAdIds?: string[],
+) {
+  const ids = metaAdIds ? [...metaAdIds].sort() : undefined;
+  const key = range && (!ids || ids.length)
+    ? `all-ads-total-reach:${range.date_from}:${range.date_to}:${ids ? ids.join(",") : "*"}`
+    : null;
+  return useSWR<{ reach: number | null }>(
+    key,
+    () => api.inboundLeads.getAllAdsTotalReach({ ...range!, meta_ad_ids: ids }),
+    defaultConfig,
+  );
+}
+
 /** The Meta field catalogue is static for the life of a deploy, so it is fetched once per session. */
 export function useMetaFieldCatalog() {
   return useSWR<MetaFieldCatalog>(

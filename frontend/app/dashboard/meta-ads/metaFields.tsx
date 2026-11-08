@@ -29,6 +29,30 @@ function humanize(raw: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** The words Ads Manager's Delivery column uses for Meta's effective_status.
+ * Mirrors DELIVERY_LABELS in backend/app/services/ad_performance.py (the CSV export). */
+const DELIVERY_LABELS: Record<string, string> = {
+  ACTIVE: "Active",
+  PAUSED: "Off",
+  ADSET_PAUSED: "Ad set off",
+  CAMPAIGN_PAUSED: "Campaign off",
+  ARCHIVED: "Archived",
+  DELETED: "Deleted",
+  PENDING_REVIEW: "In review",
+  DISAPPROVED: "Rejected",
+  PREAPPROVED: "Approved",
+  PENDING_BILLING_INFO: "Billing issue",
+  WITH_ISSUES: "Has issues",
+  IN_PROCESS: "Processing",
+};
+
+/** "ADSET_PAUSED" -> "Ad set off". An unknown status is tidied up, never hidden. */
+export function deliveryLabel(status: unknown): string {
+  if (typeof status !== "string" || !status.trim()) return "";
+  const key = status.trim().toUpperCase();
+  return DELIVERY_LABELS[key] ?? humanize(key);
+}
+
 /** Under ₹100 keep paise (the per-unit costs read better); above that, whole rupees. */
 function formatRupees(amount: number): string {
   const digits = Math.abs(amount) < 100 ? 2 : 0;

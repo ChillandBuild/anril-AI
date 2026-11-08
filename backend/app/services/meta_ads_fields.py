@@ -412,7 +412,14 @@ def fetch_meta_insights_live(
     keys: list[str],
     breakdown: str | None = None,
     ad_ids: set[str] | None = None,
+    zero_delivery_ad_ids: set[str] | None = None,
+    refresh: bool = False,
 ) -> list[dict]:
+    """One row per ad (or per breakdown value). `ad_ids` limits the report to
+    those ads; None reads every ad that delivered. Ads with no delivery in the
+    range get a blank row only if they are in `ad_ids`, or in
+    `zero_delivery_ad_ids` when that is given. `refresh` skips the few-minute
+    cache (Sync now) and stores the fresh answer."""
     if breakdown is not None and breakdown not in BREAKDOWNS:
         raise ValueError(f"unknown breakdown: {breakdown}")
 
@@ -420,6 +427,7 @@ def fetch_meta_insights_live(
     if breakdown is not None:
         effective = [k for k in effective if k not in RANKING_KEYS]
     wanted = None if ad_ids is None else {str(a) for a in ad_ids}
+    blank_ok = None if zero_delivery_ad_ids is None else {str(a) for a in zero_delivery_ad_ids}
 
     cache_key = (
         account,
@@ -428,8 +436,9 @@ def fetch_meta_insights_live(
         tuple(sorted(effective)),
         breakdown,
         None if wanted is None else tuple(sorted(wanted)),
+        None if blank_ok is None else tuple(sorted(blank_ok)),
     )
-    cached = _cache_get(cache_key)
+    cached = None if refresh else _cache_get(cache_key)
     if cached is not None:
         return list(cached)
 
@@ -442,14 +451,13 @@ def fetch_meta_insights_live(
     }
     if breakdown is not None:
         insight_params["breakdowns"] = BREAKDOWNS[breakdown]["breakdowns"]
+    # Every status, always: Meta can silently drop archived/deleted ads from
+    # insights, and their spend would vanish from the report.
+    filtering = [{"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)}]
     if wanted is not None and 0 < len(wanted) <= 50:
-        # Ask Meta for just these ads instead of the whole account. With an ad.id
-        # filter Meta silently drops archived/deleted ads unless the status filter
-        # names them, and their spend would vanish from the report.
-        insight_params["filtering"] = json.dumps([
-            {"field": "ad.id", "operator": "IN", "value": sorted(wanted)},
-            {"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)},
-        ])
+        # Ask Meta for just these ads instead of the whole account.
+        filtering.insert(0, {"field": "ad.id", "operator": "IN", "value": sorted(wanted)})
+    insight_params["filtering"] = json.dumps(filtering)
     insight_rows = _fetch_paged(f"{_GRAPH_BASE}/{account}/insights", insight_params)
 
     ad_rows = _fetch_paged_all_statuses(
@@ -475,6 +483,11 @@ def fetch_meta_insights_live(
         ad_id = str(row.get("ad_id") or "")
         if wanted is not None and ad_id not in wanted:
             continue
+        # With the status filter Meta also returns all-zero rows for ads that
+        # never ran; those follow the no-delivery rule below, not "delivered".
+        delivered = (_to_float(row.get("spend")) or 0) > 0 or (_to_float(row.get("impressions")) or 0) > 0
+        if not delivered and (breakdown is not None or (blank_ok is not None and ad_id not in blank_ok)):
+            continue
         seen.add(ad_id)
         label = _breakdown_label(row, breakdown) if breakdown is not None else None
         out.append(_build_row(ad_id, row, ads_by_id.get(ad_id), label, effective))
@@ -482,7 +495,10 @@ def fetch_meta_insights_live(
     if breakdown is None:
         # Zero-delivery ads get a row too, so they still show in the report.
         # Ads Meta no longer returns have no name to show, so they get no row.
-        candidates = [a for a in ads_by_id if wanted is None or a in wanted]
+        candidates = [
+            a for a in ads_by_id
+            if (wanted is None or a in wanted) and (blank_ok is None or a in blank_ok)
+        ]
         for ad_id in candidates:
             if ad_id in seen:
                 continue

@@ -465,24 +465,24 @@ def fetch_total_unique_reach(
     token: str,
     account: str,
     *,
-    meta_ad_ids: list[str],
+    meta_ad_ids: list[str] | None,
     date_from: str,
     date_to: str,
 ) -> int | None:
     """Meta's de-duplicated reach across a set of ads -- someone who saw two of
-    them counts once, as in Ads Manager's total row. None when there are too many
-    ads to filter by."""
-    if not meta_ad_ids or len(meta_ad_ids) > _TOTAL_REACH_MAX_ADS:
+    them counts once, as in Ads Manager's total row. `meta_ad_ids` None means
+    every ad in the account. None when there are too many ads to filter by."""
+    if meta_ad_ids is not None and (not meta_ad_ids or len(meta_ad_ids) > _TOTAL_REACH_MAX_ADS):
         return None
+    # Without the status filter Meta drops archived/deleted ads.
+    filtering = [{"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)}]
+    if meta_ad_ids is not None:
+        filtering.insert(0, {"field": "ad.id", "operator": "IN", "value": sorted(meta_ad_ids)})
     params = {
         "level": "account",
         "fields": "reach",
         "time_range": json.dumps({"since": date_from, "until": date_to}),
-        # Without the status filter Meta drops archived/deleted ads from an ad.id filter.
-        "filtering": json.dumps([
-            {"field": "ad.id", "operator": "IN", "value": sorted(meta_ad_ids)},
-            {"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)},
-        ]),
+        "filtering": json.dumps(filtering),
         "access_token": token,
     }
     with httpx.Client(timeout=30) as client:

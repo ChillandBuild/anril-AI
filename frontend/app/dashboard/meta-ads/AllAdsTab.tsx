@@ -2,14 +2,20 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { CircleAlert, Info, Megaphone } from "lucide-react";
-import { useAllMetaAds, useMetaFieldCatalog } from "@/hooks/useApi";
-import type { AllAdsParams, AllAdsRow } from "@/lib/api";
+import { CircleAlert, Download, Info, Megaphone, Zap } from "lucide-react";
+import { toast } from "sonner";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { useAllAdsTotalReach, useAllMetaAds, useMetaFieldCatalog } from "@/hooks/useApi";
+import { api } from "@/lib/api";
+import type { AllAdsParams, AllAdsRow, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { buildAllAdsCsv, computeTotals, fieldsToFetch } from "./allAdsReport";
+import { DataFromPicker } from "./DataFromPicker";
 import {
   AdTypeBadge,
   BreakdownSelect,
   MetaColumnPicker,
+  deliveryLabel,
   formatMetaValue,
   usePersistedColumns,
 } from "./metaFields";
@@ -57,6 +63,12 @@ function formatIsoDate(iso: string) {
     : parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** One cell: Delivery in Ads Manager's words, everything else by its format. */
+function cellValue(value: unknown, field: MetaField) {
+  if (field.key === "delivery") return deliveryLabel(value) || "—";
+  return formatMetaValue(value, field.format);
+}
+
 function matchesType(row: AllAdsRow, filterKey: string) {
   if (filterKey === "all") return true;
   const type = (row.ad_type || "").trim().toLowerCase();
@@ -65,6 +77,9 @@ function matchesType(row: AllAdsRow, filterKey: string) {
 }
 
 export function AllAdsTab() {
+  const { role, permissions } = useAuthRole();
+  const canManage = role === "owner" || permissions.includes("meta_ads.manage");
+  const [syncing, setSyncing] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => localDate(29));
   const [dateTo, setDateTo] = useState(() => localDate());
   const [breakdown, setBreakdown] = useState<string | null>(null);
@@ -83,11 +98,12 @@ export function AllAdsTab() {
     ? {
         date_from: dateFrom,
         date_to: dateTo,
-        fields: columnFields.map((field) => field.key),
+        // Plus the inputs the Total row and download need, even if hidden.
+        fields: fieldsToFetch(columnFields.map((field) => field.key)),
         breakdown: breakdown ?? undefined,
       }
     : null;
-  const { data, error } = useAllMetaAds(request);
+  const { data, error, mutate } = useAllMetaAds(request);
   const loadError = catalogError ?? error;
 
   const allRows = useMemo(() => data?.data ?? [], [data]);
@@ -114,6 +130,63 @@ export function AllAdsTab() {
     }
     return Array.from(byAd.values());
   }, [filteredRows]);
+
+  // Total row reach, de-duplicated by Meta: the whole account when every type is
+  // shown (All ads lists every ad that delivered), else just the ads in view.
+  const filteredAdIds = useMemo(
+    () => Array.from(new Set(filteredRows.map((row) => row.meta_ad_id))),
+    [filteredRows],
+  );
+  const reachRange = data && filteredRows.length ? { date_from: data.date_from, date_to: data.date_to } : null;
+  const { data: totalReachData, error: totalReachError, mutate: mutateTotalReach } = useAllAdsTotalReach(
+    reachRange,
+    typeFilter === "all" ? undefined : filteredAdIds,
+  );
+  const totalReach = totalReachData ? totalReachData.reach : totalReachError ? null : undefined;
+  const totals = useMemo(
+    () => computeTotals(filteredRows, columnFields, totalReach),
+    [filteredRows, columnFields, totalReach],
+  );
+  const showReachNote = totals.reachEstimated && columnFields.some((field) => field.key === "reach" || field.key === "frequency");
+
+  /** The account sync (refreshes Anril's ad list and the Messaging ads copy),
+   * then this table straight from Meta, skipping the few-minute cache. */
+  async function handleSyncNow() {
+    setSyncing(true);
+    try {
+      const result = await api.inboundLeads.adSyncNow();
+      if (!result.ok) {
+        toast.error(result.error ?? "Sync failed — no details returned");
+        return;
+      }
+      if (request) {
+        await mutate(api.inboundLeads.getAllMetaAds({ ...request, refresh: true }), { revalidate: false });
+      }
+      await mutateTotalReach();
+      toast.success("Synced — numbers are fresh from Meta.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function handleDownload() {
+    if (!data) return;
+    const csv = buildAllAdsCsv(filteredRows, columnFields, {
+      date_from: data.date_from,
+      date_to: data.date_to,
+      breakdown,
+    });
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `all_ads_${data.date_from}_to_${data.date_to}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 
   const showStartNote = Boolean(data?.start_date && data.date_from && data.start_date > data.date_from);
   const columnCount = 3 + (breakdown ? 1 : 0) + columnFields.length;
@@ -209,7 +282,7 @@ export function AllAdsTab() {
                       NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
                     )}
                   >
-                    {formatMetaValue(row.values?.[field.key], field.format)}
+                    {cellValue(row.values?.[field.key], field)}
                   </td>
                 ))}
               </tr>
@@ -217,6 +290,40 @@ export function AllAdsTab() {
           }),
         )}
       </tbody>
+    );
+  }
+
+  function renderTotal() {
+    if (!data || filteredRows.length === 0) return null;
+    const ads = filteredAdIds.length;
+    return (
+      <tfoot>
+        <tr className="border-t-2 border-surface-mid bg-surface-low font-bold">
+          <td colSpan={3} className="sticky left-0 z-10 border-r border-surface-mid/60 bg-surface-low px-4 py-3 text-left">
+            <span className="font-label text-xs font-bold text-on-surface">Total</span>
+            <span className="ml-2 font-body text-[11px] font-normal text-on-surface-muted">
+              {ads} {ads === 1 ? "ad" : "ads"}
+            </span>
+          </td>
+          {breakdown && <td className="px-4 py-3" />}
+          {columnFields.map((field) => {
+            const value = totals.values[field.key];
+            const estimated = totals.reachEstimated && (field.key === "reach" || field.key === "frequency");
+            return (
+              <td
+                key={field.key}
+                className={cn(
+                  "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
+                  NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
+                )}
+              >
+                {estimated && value != null ? "≈ " : ""}
+                {cellValue(value, field)}
+              </td>
+            );
+          })}
+        </tr>
+      </tfoot>
     );
   }
 
@@ -264,7 +371,7 @@ export function AllAdsTab() {
         <div>
           <h2 className="font-display text-xl font-bold text-on-surface">All ads</h2>
           <p className="mt-0.5 font-body text-xs text-on-surface-muted">
-            Every ad running since you connected Meta, of every type, with the numbers exactly as Meta reports them.
+            Every ad that ran in the dates you picked, of every type, with the numbers exactly as Meta reports them.
           </p>
         </div>
 
@@ -292,13 +399,35 @@ export function AllAdsTab() {
             value={breakdown}
             onChange={setBreakdown}
           />
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleSyncNow}
+              disabled={syncing || !canManage}
+              title={canManage ? "Pull the latest numbers from Meta now" : "Needs Meta Ads write access"}
+              className="flex h-9 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-label text-xs font-bold text-amber-700 shadow-sm transition-all hover:bg-amber-100 disabled:opacity-40"
+            >
+              <Zap size={12} className={syncing ? "animate-pulse" : ""} /> {syncing ? "Syncing…" : "Sync now"}
+            </button>
+            <DataFromPicker
+              canManage={canManage}
+              onSaved={() => mutate()}
+              note="The earliest date Anril shows for this ad account, on both All ads and Messaging ads. All ads lists every ad that ran from then on, including ads that were already off when you connected."
+            />
             <MetaColumnPicker
               fields={fields}
               selected={columns}
               onChange={setColumns}
               defaultKeys={DEFAULT_COLUMN_KEYS}
             />
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={!data || filteredRows.length === 0}
+              className="flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40"
+            >
+              <Download size={12} /> Download CSV
+            </button>
           </div>
         </div>
 
@@ -340,12 +469,19 @@ export function AllAdsTab() {
         </div>
       )}
 
+      {showReachNote && (
+        <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
+          Total reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it adds up each ad&apos;s reach and may count the same person twice. Refresh to try again.
+        </p>
+      )}
+
       <div className="card overflow-hidden rounded-2xl">
         {emptyState ?? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px]">
               {renderHeader()}
               {renderBody()}
+              {renderTotal()}
             </table>
           </div>
         )}

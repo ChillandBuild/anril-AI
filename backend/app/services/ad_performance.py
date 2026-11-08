@@ -33,6 +33,43 @@ DELIVERY_GROUPS: dict[str, set[str]] = {
 }
 
 
+# The words Ads Manager's Delivery column uses for Meta's effective_status.
+# Mirrors DELIVERY_LABELS in frontend/app/dashboard/meta-ads/metaFields.tsx.
+DELIVERY_LABELS: dict[str, str] = {
+    "ACTIVE": "Active",
+    "PAUSED": "Off",
+    "ADSET_PAUSED": "Ad set off",
+    "CAMPAIGN_PAUSED": "Campaign off",
+    "ARCHIVED": "Archived",
+    "DELETED": "Deleted",
+    "PENDING_REVIEW": "In review",
+    "DISAPPROVED": "Rejected",
+    "PREAPPROVED": "Approved",
+    "PENDING_BILLING_INFO": "Billing issue",
+    "WITH_ISSUES": "Has issues",
+    "IN_PROCESS": "Processing",
+}
+
+
+def excel_text(value) -> str:
+    """A CSV cell Excel keeps as text: 18-digit Meta ids would otherwise become
+    1.20255E+17 and lose their last digits. Google Sheets reads it the same way."""
+    if value in (None, ""):
+        return ""
+    return f'="{value}"'
+
+
+def delivery_label(status: str | None) -> str:
+    """'ADSET_PAUSED' -> 'Ad set off'; an unknown status is tidied up, never dropped."""
+    if not status:
+        return ""
+    key = status.strip().upper()
+    if key in DELIVERY_LABELS:
+        return DELIVERY_LABELS[key]
+    text = key.replace("_", " ").lower()
+    return text[:1].upper() + text[1:]
+
+
 def filter_by_delivery(rows: list[dict], delivery_status: str | None) -> list[dict]:
     """Narrow rows to one DELIVERY_GROUPS bucket. An unknown key is ignored
     rather than returning nothing -- a stale bookmark or a typo'd query param
@@ -626,6 +663,42 @@ def build_total_reach(
     return {"reach": reach}
 
 
+def build_all_ads_total_reach(
+    db,
+    tenant_id: str,
+    *,
+    meta_ad_ids: list[str] | None,
+    date_from: str | None,
+    date_to: str,
+) -> dict:
+    """De-duplicated reach for the All ads Total row. `meta_ad_ids` None means the
+    whole account (All ads shows every ad that delivered). Meta only ever answers
+    for the tenant's own connected account, whatever ids are passed."""
+    from app.services.meta_ads_insights_sync import (
+        _get_ads_credentials,
+        fetch_total_unique_reach,
+        get_ads_setting,
+    )
+
+    credentials = _get_ads_credentials(db, tenant_id)
+    if not credentials:
+        return {"reach": None}
+    date_from = _clip_date_from(date_from, get_ads_setting(db, tenant_id, "meta_ads_sync_start_date"))
+    if not date_from or date_from > date_to:
+        return {"reach": None}
+    ids = None if meta_ad_ids is None else [i for i in meta_ad_ids if i.isdigit()]
+    if ids is not None and not ids:
+        return {"reach": None}
+    try:
+        reach = fetch_total_unique_reach(
+            *credentials, meta_ad_ids=ids, date_from=date_from, date_to=date_to,
+        )
+    except Exception as error:
+        logger.warning("Meta all-ads total reach fetch failed for tenant %s: %s", tenant_id, error)
+        reach = None
+    return {"reach": reach}
+
+
 def build_all_ads(
     db,
     tenant_id: str,
@@ -634,9 +707,13 @@ def build_all_ads(
     date_to: str,
     fields: list[str],
     breakdown: str | None,
+    refresh: bool = False,
 ) -> dict:
-    """Live Meta numbers for every eligible ad of the connected account, not only
-    the ones tracked in Anril. Eligible ads come from meta_ad_registry."""
+    """Live Meta numbers for every ad of the connected account that delivered in
+    the range, whatever its status now and whether or not it was running when the
+    account connected -- the same set as Ads Manager. Ads with no delivery get a
+    blank row only when eligible in meta_ad_registry, so long-dead ads stay out.
+    (The join rule still governs which ads the Messaging ads report syncs.)"""
     from app.services.meta_ads_fields import fetch_meta_insights_live
     from app.services.meta_ads_insights_sync import _get_ads_credentials, get_ads_setting
 
@@ -644,6 +721,11 @@ def build_all_ads(
     if not credentials:
         raise ValueError("Connect a Meta Ads account first")
     token, account = credentials
+
+    start = get_ads_setting(db, tenant_id, "meta_ads_sync_start_date")
+    date_from = _clip_date_from(date_from, start)
+    if date_from > date_to:
+        return {"data": [], "start_date": start, "date_from": date_from, "date_to": date_to}
 
     registry = (
         db.table("meta_ad_registry").select("meta_ad_id")
@@ -654,11 +736,6 @@ def build_all_ads(
     ) or []
     eligible_ids = {r["meta_ad_id"] for r in registry if r.get("meta_ad_id")}
 
-    start = get_ads_setting(db, tenant_id, "meta_ads_sync_start_date")
-    date_from = _clip_date_from(date_from, start)
-    if date_from > date_to or not eligible_ids:
-        return {"data": [], "start_date": start, "date_from": date_from, "date_to": date_to}
-
     rows = fetch_meta_insights_live(
         token,
         account,
@@ -666,7 +743,9 @@ def build_all_ads(
         date_to=date_to,
         keys=fields,
         breakdown=breakdown,
-        ad_ids=eligible_ids,
+        ad_ids=None,
+        zero_delivery_ad_ids=eligible_ids,
+        refresh=refresh,
     )
     for row in rows:
         row["ad_type"] = ad_type_label(row.get("destination_type"))

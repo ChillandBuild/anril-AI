@@ -195,6 +195,37 @@ def test_zero_delivery_ad_gets_a_row(graph):
     assert c["values"]["budget"] == {"amount": 100.0, "type": "daily", "level": "ad_set"}
 
 
+def test_blank_rows_only_for_listed_ads_when_reading_the_whole_account(graph):
+    # A delivered ad always gets its row; an ad with no delivery only when it is
+    # on the zero-delivery list (the old "-Stoped" ads would otherwise flood the page).
+    graph["ads"] = [_ad("A", "Ad A"), _ad("B", "Ad B"), _ad("C", "Ad C")]
+    graph["insights"] = [{"ad_id": "A", "ad_name": "Ad A", "spend": "5"}]
+    rows = _fetch(ad_ids=None, zero_delivery_ad_ids={"B"})
+    assert sorted(r["meta_ad_id"] for r in rows) == ["A", "B"]
+
+
+def test_all_zero_rows_from_meta_count_as_no_delivery(graph):
+    # With the status filter Meta also returns zero rows for ads that never ran.
+    graph["ads"] = [_ad("A", "Ad A"), _ad("Z", "Stopped"), _ad("E", "Eligible idle")]
+    graph["insights"] = [
+        {"ad_id": "A", "spend": "5", "impressions": "100"},
+        {"ad_id": "Z", "spend": "0", "impressions": "0"},
+        {"ad_id": "E", "spend": "0", "impressions": "0"},
+    ]
+    rows = _fetch(ad_ids=None, zero_delivery_ad_ids={"E"})
+    assert sorted(r["meta_ad_id"] for r in rows) == ["A", "E"]
+
+
+def test_empty_breakdown_buckets_are_dropped(graph):
+    graph["ads"] = [_ad("A", "Ad A")]
+    graph["insights"] = [
+        {"ad_id": "A", "age": "18-24", "spend": "3", "impressions": "40"},
+        {"ad_id": "A", "age": "65+", "spend": "0", "impressions": "0"},
+    ]
+    rows = _fetch(breakdown="age")
+    assert [r["breakdown"] for r in rows] == ["18-24"]
+
+
 def test_eligible_ad_missing_from_meta_gets_no_blank_row(graph):
     graph["ads"] = [_ad("A", "Ad A")]
     graph["insights"] = []
@@ -249,6 +280,17 @@ def test_second_identical_call_hits_cache(graph):
     second = _fetch(keys=["spend"])
     assert (len(graph["insight_calls"]), graph["ad_calls"]) == calls_after_first
     assert second == first
+
+
+def test_refresh_skips_the_cache_and_stores_the_fresh_answer(graph):
+    graph["ads"] = [_ad("A", "Ad A")]
+    graph["insights"] = [{"ad_id": "A", "spend": "2"}]
+    _fetch(keys=["spend"])
+    graph["insights"] = [{"ad_id": "A", "spend": "9"}]
+
+    assert _fetch(keys=["spend"])[0]["values"]["spend"] == 2.0  # cached
+    assert _fetch(keys=["spend"], refresh=True)[0]["values"]["spend"] == 9.0
+    assert _fetch(keys=["spend"])[0]["values"]["spend"] == 9.0  # cache now holds the fresh one
 
 
 def test_insight_params_shape(graph):

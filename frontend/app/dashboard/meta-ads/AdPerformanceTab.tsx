@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Ban,
   Check,
   ChevronDown,
   Columns3,
-  CalendarDays,
   Copy,
   Download,
   Filter,
@@ -38,7 +37,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { TickMark } from "@/components/ui/controls";
-import { ChannelMarks } from "./metaFields";
+import { DataFromPicker } from "./DataFromPicker";
+import { ChannelMarks, deliveryLabel } from "./metaFields";
 import { AdDetailPanel } from "./AdDetailPanel";
 
 type MetricKey =
@@ -136,40 +136,9 @@ function localDate(daysBack = 0) {
   return isoLocal(date);
 }
 
-/** Today minus N months, clamped to the end of the target month (31 Mar - 1 month = 28/29 Feb). */
-function monthsBack(months: number) {
-  const today = new Date();
-  const target = new Date(today.getFullYear(), today.getMonth() - months, 1);
-  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-  target.setDate(Math.min(today.getDate(), lastDay));
-  return isoLocal(target);
-}
-
 /** "2026-08-24" -> "24 Aug 2026". */
 function formatDay(iso: string) {
   return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
-
-type SyncOption = { value: string; label: string; date?: string };
-
-/**
- * Data-from presets. A preset may never reach before the earliest tracked ad:
- * any preset dated on or before it collapses into one "Since your first ad" option
- * dated to that ad, so no two options share a date.
- */
-function buildSyncOptions(earliestAd: string): SyncOption[] {
-  const presets = [1, 2, 3].map((months) => ({
-    date: monthsBack(months),
-    label: months === 1 ? "Last 1 month" : `Last ${months} months`,
-  }));
-  const asOption = (preset: { date: string; label: string }): SyncOption => ({ value: preset.date, label: preset.label, date: preset.date });
-  const custom: SyncOption = { value: "custom", label: "Custom date" };
-  if (!earliestAd || presets.every((preset) => preset.date > earliestAd)) return [...presets.map(asOption), custom];
-  return [
-    ...presets.filter((preset) => preset.date > earliestAd).map(asOption),
-    { value: earliestAd, label: "Since your first ad", date: earliestAd },
-    custom,
-  ];
 }
 
 function money(value: number | null | undefined) {
@@ -253,7 +222,7 @@ function PerformanceKpiCard({
 }
 
 function statusLabel(status: string | null | undefined) {
-  return (status || "UNKNOWN").replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return deliveryLabel(status) || "Unknown";
 }
 
 /** Meta statuses meaning the ad no longer exists in Ads Manager, as opposed to
@@ -489,11 +458,6 @@ export function AdPerformanceTab() {
   const [showManage, setShowManage] = useState(false);
   const [detailRow, setDetailRow] = useState<AdPerformanceRow | null>(null);
   const [manageQuery, setManageQuery] = useState("");
-  const [showSyncStart, setShowSyncStart] = useState(false);
-  const [syncChoice, setSyncChoice] = useState("custom");
-  const [customSyncDate, setCustomSyncDate] = useState("");
-  const [savingSyncStart, setSavingSyncStart] = useState(false);
-  const syncRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setShowReportingNotice(false), 10_000);
@@ -509,24 +473,9 @@ export function AdPerformanceTab() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showManage]);
 
-  useEffect(() => {
-    if (!showSyncStart) return;
-    function handlePointerDown(event: MouseEvent) {
-      if (syncRef.current && !syncRef.current.contains(event.target as Node)) setShowSyncStart(false);
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setShowSyncStart(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showSyncStart]);
 
   const { data: filters, mutate: mutateFilters } = useAdFilters();
-  const { data: syncStart, mutate: mutateSyncStart } = useSyncStart();
+  const { data: syncStart } = useSyncStart();
   const { data: trackedData, mutate: mutateTracked } = useTrackedAds(showManage);
   const params = {
     campaign_id: campaignId || undefined,
@@ -589,15 +538,7 @@ export function AdPerformanceTab() {
   );
   const activeDimensionFilters =
     Number(Boolean(campaignId)) + Number(Boolean(adsetId)) + Number(Boolean(creativeId)) + Number(Boolean(deliveryStatus));
-  const dataFromLabel = syncStart?.start_date ? formatDay(syncStart.start_date) : null;
   const showSyncNote = Boolean(syncStart?.start_date) && dateFrom < (syncStart?.start_date ?? "").slice(0, 10);
-  const today = localDate();
-  const historyFloor = syncStart ? localDate(syncStart.max_history_days) : "";
-  const earliestAd = (syncStart?.earliest_ad_start ?? "").slice(0, 10);
-  // Custom date may go no earlier than the later of: the earliest ad's start, or the history limit.
-  const customMin = earliestAd && earliestAd > historyFloor ? earliestAd : historyFloor;
-  const syncOptions = buildSyncOptions(earliestAd);
-  const chosenSyncDate = syncChoice === "custom" ? customSyncDate : syncChoice;
 
   const trackedGroups = useMemo(() => {
     const needle = manageQuery.trim().toLowerCase();
@@ -657,29 +598,6 @@ export function AdPerformanceTab() {
       await Promise.all([mutate(), mutateFilters()]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update this ad");
-    }
-  }
-
-  function openSyncStart() {
-    const current = (syncStart?.start_date ?? "").slice(0, 10);
-    const match = syncOptions.find((option) => option.date === current);
-    setSyncChoice(match ? match.value : "custom");
-    setCustomSyncDate(current || customMin || today);
-    setShowSyncStart((visible) => !visible);
-  }
-
-  async function saveSyncStart() {
-    if (!chosenSyncDate) return;
-    setSavingSyncStart(true);
-    try {
-      await api.inboundLeads.setSyncStart(chosenSyncDate);
-      toast.success(`Pulling ad data from ${formatDay(chosenSyncDate)} — this can take a few minutes.`);
-      setShowSyncStart(false);
-      await Promise.all([mutateSyncStart(), mutate()]);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save the history date");
-    } finally {
-      setSavingSyncStart(false);
     }
   }
 
@@ -898,64 +816,12 @@ export function AdPerformanceTab() {
             <SlidersHorizontal size={12} /> Manage ads
           </button>
 
-          <div ref={syncRef} className="relative col-span-2">
-            {canManage ? (
-              <button type="button" onClick={openSyncStart}
-                aria-expanded={showSyncStart} aria-haspopup="dialog"
-                title="Choose how far back Anril pulls ad data from Meta"
-                className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700">
-                <CalendarDays size={12} /> Data from: {dataFromLabel ?? "last 30 days"}
-              </button>
-            ) : (
-              <div className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface-muted shadow-sm">
-                <CalendarDays size={12} /> Data from: {dataFromLabel ?? "last 30 days"}
-              </div>
-            )}
-            {canManage && showSyncStart && (
-              <div role="dialog" aria-label="How far back to pull ad data"
-                className="absolute right-0 top-11 z-30 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-xl">
-                <p className="font-label text-xs font-bold text-[#13284A]">How far back should Anril pull ad data?</p>
-                <div role="radiogroup" aria-label="History range" className="mt-3 space-y-1">
-                  {syncOptions.map((option) => {
-                    const tooOld = option.date !== undefined && Boolean(historyFloor) && option.date < historyFloor;
-                    return (
-                      <label key={option.value}
-                        className={cn(
-                          "flex items-center gap-2 rounded-xl px-2 py-2 font-label text-[11px] font-bold text-stone-700 hover:bg-stone-50",
-                          tooOld && "cursor-not-allowed opacity-40",
-                        )}>
-                        <input type="radio" name="sync-start-range" value={option.value}
-                          checked={syncChoice === option.value} disabled={tooOld}
-                          onChange={() => setSyncChoice(option.value)}
-                          className="h-3.5 w-3.5 accent-primary-600" />
-                        <span className="flex-1">{option.label}</span>
-                        {option.date && <span className="font-body text-[10px] font-medium text-stone-400">from {formatDay(option.date)}</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-                {syncChoice === "custom" && (
-                  <input type="date" aria-label="Custom start date" value={customSyncDate}
-                    min={customMin || undefined} max={today}
-                    onChange={(event) => setCustomSyncDate(event.target.value)}
-                    className="mt-2 h-9 w-full rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200" />
-                )}
-                <p className="mt-3 font-body text-[10px] leading-4 text-stone-500">
-                  Applies to ads that were running when you connected, and new ones since. Each ad starts no earlier than the day it began running.
-                </p>
-                {earliestAd && (
-                  <p className="mt-1.5 font-body text-[10px] leading-4 text-stone-500">
-                    Your earliest tracked ad started on {formatDay(earliestAd)}.
-                  </p>
-                )}
-                <button type="button" onClick={saveSyncStart} disabled={savingSyncStart || !chosenSyncDate}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 font-label text-xs font-bold text-white transition hover:bg-primary/90 disabled:opacity-40">
-                  {savingSyncStart && <Loader2 size={13} className="animate-spin" />}
-                  {savingSyncStart ? "Saving…" : "Save"}
-                </button>
-              </div>
-            )}
-          </div>
+          <DataFromPicker
+            className="col-span-2"
+            canManage={canManage}
+            onSaved={() => mutate()}
+            note="Applies to ads that were running when you connected, and new ones since. Each ad starts no earlier than the day it began running."
+          />
 
           <button type="button" onClick={handleExport} disabled={exporting || rows.length === 0}
             className="col-span-2 flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40">

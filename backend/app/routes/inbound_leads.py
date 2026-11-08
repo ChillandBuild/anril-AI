@@ -498,6 +498,24 @@ async def ad_performance_total_reach(
     )
 
 
+@router.get("/meta-ads/all-ads/total-reach", dependencies=[Depends(require_meta_ads_view)])
+async def meta_ads_all_ads_total_reach(
+    meta_ad_ids: str | None = Query(None, description="Comma-separated Meta ad ids; omit for the whole account"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Meta's de-duplicated reach for the All ads Total row."""
+    from app.services.ad_performance import build_all_ads_total_reach
+    ids = None if meta_ad_ids is None else [i.strip() for i in meta_ad_ids.split(",") if i.strip()][:200]
+    today = datetime.now(timezone.utc).date()
+    d_to = _parse_day(date_to, "date_to") if date_to else today.isoformat()
+    d_from = _parse_day(date_from, "date_from") if date_from else (today - timedelta(days=30)).isoformat()
+    return build_all_ads_total_reach(
+        get_supabase(), tenant_id, meta_ad_ids=ids, date_from=d_from, date_to=d_to,
+    )
+
+
 @router.get("/meta-ads/field-catalog", dependencies=[Depends(require_meta_ads_view)])
 async def meta_ads_field_catalog():
     """Meta-computed columns and breakdowns the All ads page can ask for."""
@@ -524,9 +542,10 @@ async def meta_ads_all_ads(
     date_to: str | None = Query(None),
     fields: str | None = Query(None),
     breakdown: str | None = Query(None),
+    refresh: bool = Query(False, description="Skip the few-minute cache (Sync now)"),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """Live Meta numbers for every eligible ad, not only the ones tracked in Anril."""
+    """Live Meta numbers for every ad that delivered in the range."""
     import httpx
     from app.services.ad_performance import build_all_ads
 
@@ -546,6 +565,7 @@ async def meta_ads_all_ads(
         return build_all_ads(
             db, tenant_id,
             date_from=d_from, date_to=d_to, fields=field_keys, breakdown=breakdown,
+            refresh=refresh,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -755,7 +775,12 @@ async def ad_performance_export(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """CSV of the per-creative performance table, honoring the same filters."""
-    from app.services.ad_performance import _clip_date_from, build_creative_performance
+    from app.services.ad_performance import (
+        _clip_date_from,
+        build_creative_performance,
+        delivery_label,
+        excel_text,
+    )
     from app.services.meta_ads_insights_sync import get_ads_setting
     db = get_supabase()
     rows = build_creative_performance(
@@ -780,6 +805,8 @@ async def ad_performance_export(
             "messages_instagram": by_channel.get("instagram", 0),
             "messages_messenger": by_channel.get("messenger", 0),
             **report_cells,
+            "meta_ad_id": excel_text(r.get("meta_ad_id")),
+            "delivery_status": delivery_label(r.get("delivery_status")),
         }
         writer.writerow([
             _budget_label(r) if key == "budget"

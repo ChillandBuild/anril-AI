@@ -388,31 +388,77 @@ def _registry(db, *ads):
                meta_ad_id=meta_ad_id, eligible=eligible)
 
 
-def test_build_all_ads_passes_only_eligible_ids(settings, meta):
+def test_build_all_ads_asks_meta_for_every_ad_that_delivered(settings, meta):
+    # An ad paused before the account connected (m9, not eligible) still spent
+    # money in the range, so All ads must show it: no ad.id filter goes to Meta.
+    # Only ads with no delivery fall back to the eligible list for a blank row.
     db = _perf_db()
     _registry(db, ("m1", True), ("m3", True), ("m9", False))
-    meta.results = [{"meta_ad_id": "m1", "destination_type": "WHATSAPP", "values": {"results": 4}}]
+    meta.results = [{"meta_ad_id": "m9", "destination_type": "APP", "values": {"results": 4}}]
 
     out = ad_performance.build_all_ads(db, "t1", date_from="2026-09-01", date_to="2026-09-30",
                                        fields=["results"], breakdown=None)
 
-    assert meta.calls[0]["ad_ids"] == {"m1", "m3"}
+    assert meta.calls[0]["ad_ids"] is None
+    assert meta.calls[0]["zero_delivery_ad_ids"] == {"m1", "m3"}
     assert meta.calls[0]["keys"] == ["results"]
-    assert out["data"][0]["ad_type"] == "WhatsApp"
+    assert out["data"][0]["meta_ad_id"] == "m9"
     assert out["date_from"] == "2026-09-01"
     assert out["date_to"] == "2026-09-30"
     assert out["start_date"] is None
 
 
-def test_build_all_ads_without_eligible_ads_skips_meta(settings, meta):
+def test_build_all_ads_passes_refresh_through(settings, meta):
+    ad_performance.build_all_ads(_perf_db(), "t1", date_from="2026-09-01", date_to="2026-09-30",
+                                 fields=["spend"], breakdown=None, refresh=True)
+    assert meta.calls[0]["refresh"] is True
+
+
+def test_build_all_ads_without_eligible_ads_still_asks_meta(settings, meta):
     db = _perf_db()
     _registry(db, ("m9", False))
+    meta.results = [{"meta_ad_id": "m9", "destination_type": "WHATSAPP", "values": {}}]
 
     out = ad_performance.build_all_ads(db, "t1", date_from="2026-09-01", date_to="2026-09-30",
                                        fields=["results"], breakdown=None)
 
-    assert out["data"] == []
-    assert meta.calls == []
+    assert [r["meta_ad_id"] for r in out["data"]] == ["m9"]
+    assert out["data"][0]["ad_type"] == "WhatsApp"
+    assert meta.calls[0]["zero_delivery_ad_ids"] == set()
+
+
+def test_all_ads_total_reach_uses_given_ads_or_the_whole_account(settings, monkeypatch):
+    settings["meta_ads_sync_start_date"] = "2026-09-10"
+    calls = []
+    monkeypatch.setattr(sync, "fetch_total_unique_reach", lambda *a, **k: calls.append(k) or 900)
+    db = _perf_db()
+
+    some = ad_performance.build_all_ads_total_reach(
+        db, "t1", meta_ad_ids=["123", "456", "bad id"], date_from="2026-09-01", date_to="2026-09-30")
+    whole = ad_performance.build_all_ads_total_reach(
+        db, "t1", meta_ad_ids=None, date_from="2026-09-01", date_to="2026-09-30")
+
+    assert some == whole == {"reach": 900}
+    assert calls[0]["meta_ad_ids"] == ["123", "456"]  # only numeric Meta ids are passed on
+    assert calls[0]["date_from"] == "2026-09-10"
+    assert calls[1]["meta_ad_ids"] is None
+
+
+def test_excel_text_keeps_long_ids_whole():
+    # Excel turns 120254601940750747 into 1.20255E+17 and drops the last digits.
+    assert ad_performance.excel_text("120254601940750747") == '="120254601940750747"'
+    assert ad_performance.excel_text(None) == ""
+    assert ad_performance.excel_text("") == ""
+
+
+@pytest.mark.parametrize("status,label", [
+    ("ACTIVE", "Active"), ("PAUSED", "Off"), ("ADSET_PAUSED", "Ad set off"),
+    ("CAMPAIGN_PAUSED", "Campaign off"), ("ARCHIVED", "Archived"), ("DELETED", "Deleted"),
+    ("PENDING_REVIEW", "In review"), ("DISAPPROVED", "Rejected"), ("SOMETHING_NEW", "Something new"),
+    (None, ""),
+])
+def test_delivery_label_uses_ads_manager_words(status, label):
+    assert ad_performance.delivery_label(status) == label
 
 
 def test_build_all_ads_clips_to_sync_start_and_skips_empty_range(settings, meta):

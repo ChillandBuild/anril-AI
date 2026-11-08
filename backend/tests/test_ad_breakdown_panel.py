@@ -219,7 +219,9 @@ def test_ad_ids_are_sent_to_meta_as_a_filter(graph):
     assert filtering[0] == {"field": "ad.id", "operator": "IN", "value": ["1", "2"]}
 
 
-def test_no_ad_ids_means_no_filtering_param(graph):
+def test_no_ad_ids_filters_only_by_status(graph):
     mf.fetch_meta_insights_live("tok", ACCOUNT, date_from="2026-10-01", date_to="2026-10-15",
                                 keys=["spend"], ad_ids=None)
-    assert "filtering" not in graph["insight_calls"][-1]
+    filtering = json.loads(graph["insight_calls"][-1]["filtering"])
+    # Every status, so archived and deleted ads that spent in the range still come back.
+    assert [f["field"] for f in filtering] == ["ad.effective_status"]

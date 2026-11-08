@@ -3343,7 +3343,14 @@ export const api = {
       if (params.date_to) qs.set("date_to", params.date_to);
       if (params.fields.length) qs.set("fields", params.fields.join(","));
       if (params.breakdown) qs.set("breakdown", params.breakdown);
+      if (params.refresh) qs.set("refresh", "true");
       return apiFetch<AllAdsResponse>(`/api/v1/inbound-leads/meta-ads/all-ads?${qs}`);
+    },
+    /** De-duplicated reach for the All ads Total row; omit ids for the whole account. */
+    getAllAdsTotalReach: async (params: { meta_ad_ids?: string[]; date_from: string; date_to: string }) => {
+      const qs = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to });
+      if (params.meta_ad_ids) qs.set("meta_ad_ids", params.meta_ad_ids.join(","));
+      return apiFetch<{ reach: number | null }>(`/api/v1/inbound-leads/meta-ads/all-ads/total-reach?${qs}`);
     },
     getTrackedAds: async () =>
       apiFetch<{ data: TrackedAd[] }>(`/api/v1/inbound-leads/meta-ads/tracked-ads`),
@@ -3730,6 +3737,8 @@ export interface AllAdsParams {
   date_to?: string;
   fields: string[];
   breakdown?: string;
+  /** Skip the server's few-minute cache (Sync now). */
+  refresh?: boolean;
 }
 
 export interface TrackedAd {
