@@ -15,7 +15,7 @@ Write migration 248 (247 was taken by a teammate) with the 5 tables from spec §
 - Depends on: none
 - Files: backend/supabase/migrations/247_companion_core.sql, backend/app/companion/__init__.py, models.py, store.py, backend/tests/test_companion_store.py
 
-### - [ ] Task 2: Settings routes (S)
+### - [x] Task 2: Settings routes (S)
 Add GET/POST /api/v1/companions and GET/PATCH /api/v1/companions/{id} behind require_permission("settings.manage"). Register the router in main.py.
 - Acceptance:
   - [ ] The owner can create several characters, then list, read and patch them. Another tenant's id returns 404, and invalid input returns 422.
