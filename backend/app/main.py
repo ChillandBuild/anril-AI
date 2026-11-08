@@ -216,7 +216,7 @@ async def lifespan(app: FastAPI):
     else:
         _scheduler_started_at = datetime.now(timezone.utc)
         _queue_worker = asyncio.create_task(_run_queue_worker())
-        logger.info("Schedulers started (procrastinate): 24 queue tasks + rescue-stalled(1m) + queue-cleanup(03:45 IST) on queues messages, calls, maintenance")
+        logger.info("Schedulers started (procrastinate): 26 queue tasks + rescue-stalled(1m) + queue-cleanup(03:45 IST) on queues messages, calls, maintenance, companion")
 
     lag_watchdog = asyncio.create_task(_watch_event_loop_lag())
 

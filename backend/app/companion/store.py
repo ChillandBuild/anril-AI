@@ -436,3 +436,50 @@ async def forget_memory(tenant_id: str, end_user_id: str) -> None:
         (db.table("companion_memory_state").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
     await asyncio.to_thread(_q)
+
+
+# --- the memory sweep (system job: reads across tenants, but every per-pair query filters tenant_id)
+
+async def level2_companions() -> list[dict]:
+    """Every character with Level 2 memory, all tenants. Only ids and settings, no content."""
+    def _q():
+        return (
+            get_supabase().table("companions")
+            .select("id, tenant_id, language, memory_level, memory_engine")
+            .eq("memory_level", 2).order("created_at").execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def memory_watermarks(tenant_id: str, companion_id: str) -> dict[str, str | None]:
+    """end_user_id → watermark for every person this character has swept."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_state").select("end_user_id, last_message_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).execute().data
+        )
+    return {r["end_user_id"]: r["last_message_at"] for r in (await asyncio.to_thread(_q) or [])}
+
+
+async def active_conversations(tenant_id: str, companion_id: str, since: str) -> list[dict]:
+    """This character's conversations with a message after `since`, oldest activity first."""
+    def _q():
+        return (
+            get_supabase().table("companion_conversations").select("end_user_id, last_message_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).gt("last_message_at", since)
+            .order("last_message_at").execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def messages_after(tenant_id: str, companion_id: str, end_user_id: str, after: str | None,
+                         limit: int) -> list[dict]:
+    """Messages of this (character, person) after the watermark, oldest first, at most `limit`.
+    No watermark yet → the latest `limit` messages."""
+    def _q():
+        q = (get_supabase().table("companion_messages").select("role, content, created_at")
+             .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id))
+        if after:
+            return q.gt("created_at", after).order("created_at").limit(limit).execute().data
+        return list(reversed(q.order("created_at", desc=True).limit(limit).execute().data or []))
+    return await asyncio.to_thread(_q) or []

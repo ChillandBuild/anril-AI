@@ -1,4 +1,4 @@
-"""The 25 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 26 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -31,6 +31,7 @@ RETRY_CLASS: dict[str, str] = {
     "crm-cutoff-sweep": "A",
     "call-alert-summary": "C",
     "brain-weekly-digest": "C",
+    "companion-memory": "A",
 }
 
 
@@ -231,6 +232,15 @@ def brain_weekly_digest(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.brain_digest import send_weekly_digests
     send_weekly_digests(get_supabase())
+
+
+@queue_app.periodic(cron="* * * * *", periodic_id="companion-memory")
+@queue_app.task(name="companion-memory", **_one_at_a_time("companion-memory"), queue="companion")
+async def companion_memory(timestamp: int) -> None:
+    """Aira Companion Level 2 memory: turns new chat messages into facts (spec 2026-11-09 §3.2).
+    Locked so a slow tick (20 AI calls) never overlaps the next one and sweeps a pair twice."""
+    from app.companion.memory_sweep import run_memory_sweep
+    await run_memory_sweep()
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="rescue-stalled")

@@ -35,7 +35,7 @@ memory_card.py: build the extraction prompt (spec §3.3), parse the ops JSON tol
 - Depends on: Task 2
 - Files: backend/app/companion/memory_card.py, backend/tests/test_companion_memory_card.py
 
-### - [ ] Task 4: The sweep (M)
+### - [x] Task 4: The sweep (M)
 memory_sweep.py: run_memory_sweep() finds up to 20 Level 2 pairs with messages past their watermark, sends at most 20 new messages each to the card with purpose "companion_memory", and moves the watermark on success. Register the periodic "companion-memory" task (every minute, class A, _one_at_a_time).
 - Acceptance:
   - [ ] The spec §1 worked example passes: Karthik's day-1 messages → 4 facts; the job-change message closes one fact and adds one.
