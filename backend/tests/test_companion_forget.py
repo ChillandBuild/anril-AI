@@ -102,8 +102,8 @@ def test_memory_providers_are_told(env, monkeypatch):
     told = []
 
     class Spy:
-        async def forget(self, end_user_id):
-            told.append(end_user_id)
-    monkeypatch.setattr(engine, "provider_for", lambda level: Spy())
+        async def forget(self, tenant_id, end_user_id):
+            told.append((tenant_id, end_user_id))
+    monkeypatch.setattr(engine, "forget_providers", lambda: [Spy(), Spy()])
     asyncio.run(engine.forget_person("t1", "48213"))
-    assert len(told) == 1
+    assert len(told) == 2 and {t for t, _ in told} == {"t1"}

@@ -15,7 +15,7 @@ Write 249_companion_memory.sql per spec §3.1: companions.memory_engine (card/me
 - Depends on: none
 - Files: backend/supabase/migrations/249_companion_memory.sql, backend/app/companion/store.py, models.py, backend/tests/test_companion_memory_store.py
 
-### - [ ] Task 2: Provider wiring (S)
+### - [x] Task 2: Provider wiring (S)
 memory.py: tenant_id becomes the first parameter of context_for, record_turn and forget; provider_for(level, engine) returns Level1History for level 1 and the card for level 2 (Mem0 later). engine.py passes tenant_id and the character's memory_engine.
 - Acceptance:
   - [ ] Level 1 behaviour and every existing companion test are unchanged.

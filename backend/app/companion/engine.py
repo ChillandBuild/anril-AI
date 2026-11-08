@@ -18,7 +18,7 @@ import time
 import weakref
 
 from app.companion import store, tools as app_tools
-from app.companion.memory import provider_for
+from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.prompt import build_messages, parse_mood
 from app.services import ai_reply
@@ -158,9 +158,9 @@ async def _knowledge(tenant_id: str, message: str, tag_id: str | None) -> str:
         return ""
 
 
-async def _memory(provider, companion_id: str, end_user_id: str, message: str) -> str:
+async def _memory(provider, tenant_id: str, companion_id: str, end_user_id: str, message: str) -> str:
     try:
-        return await provider.context_for(companion_id, end_user_id, message) or ""
+        return await provider.context_for(tenant_id, companion_id, end_user_id, message) or ""
     except Exception as exc:
         logger.warning("companion %s: memory lookup failed (%s)", companion_id, type(exc).__name__)
         return ""
@@ -173,12 +173,12 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name)
     conversation = await store.open_conversation(
         tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm")
-    memory = provider_for(companion.get("memory_level") or 1)
+    memory = _provider(companion)
 
     # History is read before this message is saved, so the prompt doesn't carry it twice.
     kb_context, memory_context, history = await asyncio.gather(
         _knowledge(tenant_id, message, companion.get("knowledge_tag_id")),
-        _memory(memory, companion_id, person["id"], message),
+        _memory(memory, tenant_id, companion_id, person["id"], message),
         store.recent_messages(tenant_id, companion_id, person["id"], limit=HISTORY_LIMIT),
     )
     await store.save_message(tenant_id, conversation, "user", message)
@@ -187,6 +187,10 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     prompt = build_messages(companion, mood, kb_context, memory_context, history, message)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started)
+
+
+def _provider(companion: dict):
+    return provider_for(companion.get("memory_level") or 1, companion.get("memory_engine") or "card")
 
 
 def _mood(conversation: dict, companion: dict) -> str:
@@ -252,8 +256,8 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     if mood != conversation.get("mood"):
         await store.set_conversation_mood(tenant_id, conversation["id"], mood)
     try:
-        await provider_for(companion.get("memory_level") or 1).record_turn(
-            companion_id, conversation["end_user_id"], user_message, text)
+        await _provider(companion).record_turn(
+            tenant_id, companion_id, conversation["end_user_id"], user_message, text)
     except Exception as exc:
         logger.warning("companion %s: memory record failed (%s)", companion_id, type(exc).__name__)
 
@@ -266,13 +270,12 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
 
 async def forget_person(tenant_id: str, external_user_id: str) -> bool:
     """'Forget me', business-wide: wipes this person's chats with every character of the tenant,
-    then tells each memory provider in use. False if the person never talked to this tenant."""
+    then wipes their facts in every memory engine. False if the person never talked to this tenant."""
     person = await store.find_end_user(tenant_id, external_user_id)
     if not person:
         return False
     await store.forget_end_user(tenant_id, person["id"])
-    levels = {c.get("memory_level") or 1 for c in await store.list_companions(tenant_id)} or {1}
-    for level in levels:
-        await provider_for(level).forget(person["id"])
+    for provider in forget_providers():
+        await provider.forget(tenant_id, person["id"])
     logger.info("companion: forgot end user %s for tenant %s", person["id"], tenant_id)
     return True

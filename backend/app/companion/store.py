@@ -425,3 +425,14 @@ async def reset_watermarks(tenant_id: str, companion_id: str) -> None:
         (get_supabase().table("companion_memory_state").delete()
          .eq("tenant_id", tenant_id).eq("companion_id", companion_id).execute())
     await asyncio.to_thread(_q)
+
+
+async def forget_memory(tenant_id: str, end_user_id: str) -> None:
+    """'Forget me' for the card engine: every fact and watermark of this person, all characters."""
+    def _q():
+        db = get_supabase()
+        (db.table("companion_memory_facts").delete()
+         .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
+        (db.table("companion_memory_state").delete()
+         .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
+    await asyncio.to_thread(_q)

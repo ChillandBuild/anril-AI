@@ -159,10 +159,13 @@ def test_wrong_tenant_never_sees_rows(world):
 
 
 # 7. memory slot
-def test_level1_hooks_do_nothing_and_levels_1_2_use_it():
+def test_level1_hooks_do_nothing_and_level2_uses_the_card():
+    from app.companion.memory_card import MemoryCard
     p = memory.Level1History()
-    assert run(p.context_for("c1", "u1", "hi")) == ""
-    assert run(p.record_turn("c1", "u1", "hi", "hello")) is None
-    assert run(p.forget("u1")) is None
+    assert run(p.context_for("t1", "c1", "u1", "hi")) == ""
+    assert run(p.record_turn("t1", "c1", "u1", "hi", "hello")) is None
+    assert run(p.forget("t1", "u1")) is None
     assert isinstance(memory.provider_for(1), memory.Level1History)
-    assert isinstance(memory.provider_for(2), memory.Level1History)
+    assert isinstance(memory.provider_for(1, "mem0"), memory.Level1History)
+    assert isinstance(memory.provider_for(2), MemoryCard)
+    assert isinstance(memory.provider_for(2, "mem0"), MemoryCard)  # mem0 not built yet: card fallback

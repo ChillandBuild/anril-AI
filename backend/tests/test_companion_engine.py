@@ -205,3 +205,40 @@ def test_test_chat_route_maps_errors(env, client, monkeypatch):
         monkeypatch.setattr(engine, "reply", boom)
         assert client.post(f"/api/v1/companions/{env.jothidar['id']}/test-chat",
                            json={"message": "hi"}).status_code == code
+
+
+# --- companion-memory T2: Level 2 facts reach the prompt -------------------------------------------
+
+def _level2(env, engine_name="card"):
+    for r in env.db.rows("companions"):
+        if r["id"] == env.jothidar["id"]:
+            r.update(memory_level=2, memory_engine=engine_name)
+
+
+def test_level2_prompt_carries_the_persons_facts(env):
+    reply(env.jothidar["id"], "Vanakkam")  # creates the person
+    person = env.db.rows("companion_end_users")[0]
+    _level2(env)
+    for section, text, valid_from in [("life", "lost job", "2026-10-01"),
+                                      ("threads", "Zoho interview", "2026-11-20")]:
+        asyncio.run(store.add_fact("t1", env.jothidar["id"], person["id"], section, text, valid_from))
+    reply(env.jothidar["id"], "Hi")
+    prompt = system_prompt(env.state["llm"][-1])
+    assert "Open threads: Zoho interview (20 Nov 2026)" in prompt
+    assert "Life: lost job (since Oct 2026)" in prompt
+
+
+def test_level1_prompt_ignores_facts_and_memory_errors_become_none(env, monkeypatch):
+    reply(env.jothidar["id"], "Vanakkam")
+    person = env.db.rows("companion_end_users")[0]
+    asyncio.run(store.add_fact("t1", env.jothidar["id"], person["id"], "life", "lost job"))
+    reply(env.jothidar["id"], "Hi")
+    assert "lost job" not in system_prompt(env.state["llm"][-1])
+
+    _level2(env)
+
+    async def boom(*a, **k):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(store, "list_facts", boom)
+    r = reply(env.jothidar["id"], "Hi again")
+    assert r.status == "done" and "lost job" not in system_prompt(env.state["llm"][-1])
