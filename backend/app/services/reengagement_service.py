@@ -94,6 +94,20 @@ def _already_processed_lead_ids(db, step_id: str, lead_ids: list[str]) -> set[st
     return processed
 
 
+def _lead_already_logged(db, step_id: str, lead_id: str) -> bool:
+    """Fresh check just before a send. The run's batch check can be minutes old by the
+    time a lead's turn comes, and another run may have messaged the lead since."""
+    res = (
+        db.table("reengagement_logs")
+        .select("id")
+        .eq("step_id", step_id)
+        .eq("lead_id", lead_id)
+        .limit(1)
+        .execute()
+    )
+    return bool(res.data)
+
+
 def _fetch_leads_by_id(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dict]:
     """Batched replacement for a per-lead `leads` fetch, keyed by lead id."""
     leads_by_id: dict[str, dict] = {}
@@ -337,6 +351,10 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
     block_reason = lead_blocks_automated_outbound(lead)
     if block_reason:
         logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} ({block_reason})")
+        return False
+
+    if _lead_already_logged(db, step_id, lead_id):
+        logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (already handled by another run)")
         return False
 
     # Check 24-hour WhatsApp session window for freeform messages

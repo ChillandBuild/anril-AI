@@ -4,7 +4,7 @@ from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
 
 # A: a sweep, the next tick redoes it. B: idempotent daily, rescued and re-run once.
-# C: could double-send, never re-run.
+# C: could double-send, never re-run, and never two copies at once (see _one_at_a_time).
 RETRY_CLASS: dict[str, str] = {
     "scheduled-broadcasts": "A",
     "token-health-check": "A",
@@ -34,6 +34,15 @@ RETRY_CLASS: dict[str, str] = {
 }
 
 
+def _one_at_a_time(job_id: str) -> dict:
+    """Task options for a class-C job (and sms-send). The worker runs 4 jobs at once, so without these an
+    every-minute job overlapped itself and each copy messaged the same people. lock: a copy
+    waits until the running one finishes. queueing_lock: at most one copy waits in line
+    (the periodic deferrer skips a slot while one is queued). A dead worker's copy is marked
+    failed by rescue-stalled, which releases the lock."""
+    return {"lock": job_id, "queueing_lock": job_id}
+
+
 def _daily_ist_as_utc_cron(hour: int, minute: int) -> str:
     """Daily cron for a fixed IST clock time, in UTC (IST has no DST)."""
     total = (hour * 60 + minute - 330) % 1440
@@ -57,14 +66,14 @@ async def token_health_check(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="reengagement-rules")
-@queue_app.task(name="reengagement-rules", queue="messages")
+@queue_app.task(name="reengagement-rules", **_one_at_a_time("reengagement-rules"), queue="messages")
 async def reengagement_rules(timestamp: int) -> None:
     from app.services.reengagement_service import process_due_reengagements
     await process_due_reengagements()
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="silence-nudge")
-@queue_app.task(name="silence-nudge", queue="messages")
+@queue_app.task(name="silence-nudge", **_one_at_a_time("silence-nudge"), queue="messages")
 async def silence_nudge(timestamp: int) -> None:
     from app.services.silence_nudge import drain_due_nudges
     await drain_due_nudges()
@@ -85,7 +94,7 @@ def recycle_contacts(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="callback-notifications")
-@queue_app.task(name="callback-notifications", queue="messages")
+@queue_app.task(name="callback-notifications", **_one_at_a_time("callback-notifications"), queue="messages")
 def callback_notifications(timestamp: int) -> None:
     from app.services.callback_notifications import process_callback_notifications
     process_callback_notifications()
@@ -113,7 +122,7 @@ async def call_ai_sweep(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="pending-whatsapp-alerts")
-@queue_app.task(name="pending-whatsapp-alerts", queue="messages")
+@queue_app.task(name="pending-whatsapp-alerts", **_one_at_a_time("pending-whatsapp-alerts"), queue="messages")
 async def pending_whatsapp_alerts(timestamp: int) -> None:
     from app.services.whatsapp_notify import process_due_whatsapp_alerts
     await process_due_whatsapp_alerts()
@@ -148,7 +157,9 @@ async def scheduled_templates(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="sms-send")
-@queue_app.task(name="sms-send", queue="messages")
+# Class A, but locked: overlapping copies could both build one campaign once a build
+# runs past BUILD_STALE (10 min) and send its SMS twice (sms_campaigns.build_preparing).
+@queue_app.task(name="sms-send", **_one_at_a_time("sms-send"), queue="messages")
 async def sms_send(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.sms_campaigns import process_due_sms
@@ -207,7 +218,7 @@ async def crm_cutoff_sweep(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron=_daily_ist_as_utc_cron(MORNING_SUMMARY_HOUR_IST, 0), periodic_id="call-alert-summary")
-@queue_app.task(name="call-alert-summary", queue="messages")
+@queue_app.task(name="call-alert-summary", **_one_at_a_time("call-alert-summary"), queue="messages")
 def call_alert_summary(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.call_alerts import send_morning_summaries
@@ -215,7 +226,7 @@ def call_alert_summary(timestamp: int) -> None:
 
 
 @queue_app.periodic(cron="30 3 * * 1", periodic_id="brain-weekly-digest")  # Monday 09:00 IST
-@queue_app.task(name="brain-weekly-digest", queue="messages")
+@queue_app.task(name="brain-weekly-digest", **_one_at_a_time("brain-weekly-digest"), queue="messages")
 def brain_weekly_digest(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.brain_digest import send_weekly_digests

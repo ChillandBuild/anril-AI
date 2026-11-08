@@ -209,3 +209,18 @@ async def test_scheduled_broadcasts_sets_the_heartbeat_for_the_ready_check():
         await _run("scheduled-broadcasts")
     assert isinstance(app.main._heartbeats["scheduled-broadcasts"], datetime)
 
+
+
+# sms-send is class A (a sweep), but two overlapping copies can both build the same
+# campaign when a build runs past BUILD_STALE (10 min), so it is locked too.
+ONE_AT_A_TIME = CLASS_C | {"sms-send"}
+
+
+@pytest.mark.parametrize("job_id", sorted(ONE_AT_A_TIME))
+def test_a_job_that_could_double_send_runs_one_copy_at_a_time(job_id):
+    """Regression: with no lock, the worker (concurrency 4) ran up to 4 copies of
+    reengagement-rules at once and each one messaged the same leads. lock makes
+    a copy wait for the running one; queueing_lock keeps at most one waiting."""
+    task = queue_app.tasks[job_id]
+    assert task.lock == job_id
+    assert task.queueing_lock == job_id
