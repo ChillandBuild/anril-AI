@@ -5,12 +5,12 @@ Focused test command: cd backend && python -m pytest tests/test_companion_*.py -
 
 ## Phase 1: The card engine, end to end
 
-### - [ ] Task 1: Migration 249 and the fact store (M)
+### - [x] Task 1: Migration 249 and the fact store (M)
 Write 249_companion_memory.sql per spec §3.1: companions.memory_engine (card/mem0, default card), companion_tenant_settings, companion_memory_facts, companion_memory_state. RLS on, zero policies. Add store functions for facts (list active + closed-in-90-days, insert, close, update, delete, count active), state (get/upsert watermark, reset), and tenant settings (get with default, upsert). Add memory_engine to the Pydantic models.
 - Acceptance:
-  - [ ] House style (header, SET LOCAL lock_timeout, IF NOT EXISTS), tenant_id on every table, CHECKs on section/status/scope/engine, text ≤300, index (tenant_id, end_user_id, status).
-  - [ ] Every store query filters tenant_id; a wrong tenant reads nothing and changes nothing.
-  - [ ] Insert refuses a 61st active fact for the pair; memory_engine "redis" → 422.
+  - [x] House style (header, SET LOCAL lock_timeout, IF NOT EXISTS), tenant_id on every table, CHECKs on section/status/scope/engine, text ≤300, index (tenant_id, end_user_id, status).
+  - [x] Every store query filters tenant_id; a wrong tenant reads nothing and changes nothing.
+  - [x] A pair holds at most 60 fact rows: an add evicts the oldest closed fact, then the oldest active preference, else it's refused (spec §3.1); memory_engine "redis" → 422.
 - Verify: test_companion_memory_store.py passes.
 - Depends on: none
 - Files: backend/supabase/migrations/249_companion_memory.sql, backend/app/companion/store.py, models.py, backend/tests/test_companion_memory_store.py

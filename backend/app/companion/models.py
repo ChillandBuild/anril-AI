@@ -35,7 +35,8 @@ class CompanionSettings(_CardFields):
     language: Language = "ta-en"
     rules: list[Rule] = Field(default_factory=list, max_length=30)
     knowledge_tag_id: UUID | None = None
-    memory_level: Literal[1, 2] = 1          # 3 (graph memory) arrives with companion-memory
+    memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
+    memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
     privacy_mode: Literal["A", "B"] = "A"
     status: Literal["draft", "live", "paused"] = "draft"
 
@@ -55,6 +56,7 @@ class CompanionUpdate(_CardFields):
     rules: list[Rule] | None = Field(None, max_length=30)
     knowledge_tag_id: UUID | None = None
     memory_level: Literal[1, 2] | None = None
+    memory_engine: Literal["card", "mem0"] | None = None
     privacy_mode: Literal["A", "B"] | None = None
     status: Literal["draft", "live", "paused"] | None = None
 

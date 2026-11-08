@@ -267,3 +267,161 @@ async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
         (db.table("companion_end_users").update({"display_name": None, "forgotten_at": _now()})
          .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
     await asyncio.to_thread(_q)
+
+
+# --- Level 2 memory: facts, watermarks, tenant settings (migration 249) -------------------------
+
+FACT_SECTIONS = ("profile", "people", "life", "preferences", "threads")
+MAX_FACTS_PER_PAIR = 60
+CLOSED_FACT_WINDOW = timedelta(days=90)
+
+
+async def get_memory_scope(tenant_id: str) -> str:
+    """'character' (default: each character keeps its own facts) or 'business' (shared)."""
+    def _q():
+        return (
+            get_supabase().table("companion_tenant_settings").select("memory_scope")
+            .eq("tenant_id", tenant_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0]["memory_scope"] if rows else "character"
+
+
+async def set_memory_scope(tenant_id: str, scope: str) -> str:
+    if scope not in ("character", "business"):
+        raise ValueError("memory_scope must be 'character' or 'business'")
+
+    def _q():
+        (
+            get_supabase().table("companion_tenant_settings")
+            .upsert({"tenant_id": tenant_id, "memory_scope": scope, "updated_at": _now()},
+                    on_conflict="tenant_id").execute()
+        )
+    await asyncio.to_thread(_q)
+    return scope
+
+
+async def list_facts(tenant_id: str, end_user_id: str, companion_id: str | None = None,
+                     *, include_closed: bool = True) -> list[dict]:
+    """This person's active facts, plus facts closed in the last 90 days. companion_id=None reads
+    every character's facts (business scope). Oldest first."""
+    since = (datetime.now(timezone.utc) - CLOSED_FACT_WINDOW).isoformat()
+
+    def _base():
+        q = (get_supabase().table("companion_memory_facts").select("*")
+             .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id))
+        return q.eq("companion_id", companion_id) if companion_id else q
+
+    def _q():
+        active = _base().eq("status", "active").order("created_at").execute().data or []
+        closed = (_base().eq("status", "closed").gte("updated_at", since).order("created_at").execute().data
+                  or []) if include_closed else []
+        return active + closed
+    return await asyncio.to_thread(_q)
+
+
+async def get_fact(tenant_id: str, fact_id: str) -> dict | None:
+    def _q():
+        return (
+            get_supabase().table("companion_memory_facts").select("*")
+            .eq("tenant_id", tenant_id).eq("id", fact_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+def _make_room(db, tenant_id: str, companion_id: str, end_user_id: str) -> bool:
+    """Keeps a (character, person) pair under MAX_FACTS_PER_PAIR rows before an add: deletes the
+    oldest closed fact first, then the oldest active preference. False if neither exists."""
+    rows = (
+        db.table("companion_memory_facts").select("id, status, section, created_at")
+        .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+        .order("created_at").execute().data or []
+    )
+    if len(rows) < MAX_FACTS_PER_PAIR:
+        return True
+    victim = next((r for r in rows if r["status"] == "closed"), None) or next(
+        (r for r in rows if r["status"] == "active" and r["section"] == "preferences"), None)
+    if not victim:
+        return False
+    db.table("companion_memory_facts").delete().eq("tenant_id", tenant_id).eq("id", victim["id"]).execute()
+    return True
+
+
+async def add_fact(tenant_id: str, companion_id: str, end_user_id: str, section: str, text: str,
+                   valid_from: str | None = None, valid_to: str | None = None) -> dict | None:
+    """Adds one active fact. None when the pair is full (60 rows, nothing evictable)."""
+    if section not in FACT_SECTIONS:
+        raise ValueError(f"unknown section {section!r}")
+    now = _now()
+    row = {
+        "tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+        "section": section, "text": text.strip()[:300], "valid_from": valid_from, "valid_to": valid_to,
+        "status": "active", "created_at": now, "updated_at": now,
+    }
+
+    def _q():
+        db = get_supabase()
+        if not _make_room(db, tenant_id, companion_id, end_user_id):
+            return None
+        return db.table("companion_memory_facts").insert(row).execute().data[0]
+    return await asyncio.to_thread(_q)
+
+
+async def _update_fact(tenant_id: str, fact_id: str, payload: dict) -> bool:
+    payload = {**payload, "updated_at": _now()}
+
+    def _q():
+        return (
+            get_supabase().table("companion_memory_facts").update(payload)
+            .eq("tenant_id", tenant_id).eq("id", fact_id).execute().data
+        )
+    return bool(await asyncio.to_thread(_q))
+
+
+async def close_fact(tenant_id: str, fact_id: str, valid_to: str | None = None) -> bool:
+    """Marks a fact as no longer true. It stays visible to the character for 90 days."""
+    return await _update_fact(tenant_id, fact_id, {"status": "closed", "valid_to": valid_to})
+
+
+async def update_fact_text(tenant_id: str, fact_id: str, text: str) -> bool:
+    return await _update_fact(tenant_id, fact_id, {"text": text.strip()[:300]})
+
+
+async def delete_fact(tenant_id: str, fact_id: str) -> bool:
+    def _q():
+        return (
+            get_supabase().table("companion_memory_facts").delete()
+            .eq("tenant_id", tenant_id).eq("id", fact_id).execute().data
+        )
+    return bool(await asyncio.to_thread(_q))
+
+
+async def get_watermark(tenant_id: str, companion_id: str, end_user_id: str) -> str | None:
+    """created_at of the newest message already turned into memory, or None (never swept)."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_state").select("last_message_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0]["last_message_at"] if rows else None
+
+
+async def set_watermark(tenant_id: str, companion_id: str, end_user_id: str, last_message_at: str) -> None:
+    row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+           "last_message_at": last_message_at, "updated_at": _now()}
+
+    def _q():
+        (get_supabase().table("companion_memory_state")
+         .upsert(row, on_conflict="companion_id,end_user_id").execute())
+    await asyncio.to_thread(_q)
+
+
+async def reset_watermarks(tenant_id: str, companion_id: str) -> None:
+    """After an engine switch: the new engine relearns from each person's recent messages."""
+    def _q():
+        (get_supabase().table("companion_memory_state").delete()
+         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).execute())
+    await asyncio.to_thread(_q)
