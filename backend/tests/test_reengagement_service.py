@@ -37,6 +37,20 @@ def _make_db(captured_logs, template_row=None):
             q.limit.return_value = q
             q.execute.return_value.data = [template_row] if template_row else []
         elif name == "reengagement_logs":
+            # Reads see every row inserted so far, filtered by .eq()/.in_(), so a
+            # second send attempt for the same lead+step finds the first one's log.
+            def _select(*_a, **_k):
+                filters = {}
+                q = MagicMock()
+                q.eq.side_effect = lambda col, val: (filters.__setitem__(col, {val}), q)[1]
+                q.in_.side_effect = lambda col, vals: (filters.__setitem__(col, set(vals)), q)[1]
+                q.limit.return_value = q
+                q.execute.side_effect = lambda: MagicMock(data=[
+                    r for r in captured_logs if all(r.get(c) in v for c, v in filters.items())
+                ])
+                return q
+            t.select.side_effect = _select
+
             def _insert(row):
                 captured_logs.append(row)
                 res = MagicMock()
@@ -268,3 +282,35 @@ async def test_image_header_with_no_saved_link_fails_without_calling_meta():
     assert ok is False
     tpl.assert_not_awaited()
     assert logs[-1]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_lead_already_logged_by_an_overlapping_run_is_not_sent_again():
+    """Regression: two copies of the every-minute job ran at once. Both read the
+    logs before either wrote, so 143 leads got cold_leads_reengagement up to 4
+    times (433 sends). A lead logged since the run's first check must be skipped."""
+    from app.services import reengagement_service as svc
+    logs = [{"tenant_id": "t1", "lead_id": "lead-1", "step_id": "step-1", "status": "sent"}]
+    db = _make_db(logs)
+    with patch.object(svc, "send_whatsapp", new=AsyncMock(return_value="sid-1")) as wa, \
+         patch.object(svc, "send_template_message", new=AsyncMock()) as tpl:
+        ok = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+    assert ok is False
+    wa.assert_not_awaited()
+    tpl.assert_not_awaited()
+    assert len(logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_two_send_attempts_for_the_same_lead_send_once():
+    """The same lead reaching the send twice (two overlapping runs) gets one message."""
+    from app.services import reengagement_service as svc
+    logs = []
+    db = _make_db(logs)
+    with patch.object(svc, "send_template_message",
+                      new=AsyncMock(return_value={"messages": [{"id": "sid-9"}]})) as tpl:
+        first = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+        second = await svc._send_reengagement(db, "t1", _lead(30), _step(message_type="template"))
+    assert (first, second) == (True, False)
+    tpl.assert_awaited_once()
+    assert [r["status"] for r in logs] == ["sent"]

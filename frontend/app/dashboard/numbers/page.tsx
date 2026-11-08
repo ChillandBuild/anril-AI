@@ -6,13 +6,14 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   X, Check, Trash2, PauseCircle, PlayCircle, Star, RefreshCw,
   Info, ChevronDown, ChevronUp, ChevronRight, Lock, Copy, Phone,
-  ShieldCheck, Activity, Smartphone, CheckCircle2,
+  ShieldCheck, Activity, CheckCircle2,
   Search, ArrowRightLeft, ExternalLink, ShieldAlert, Hourglass, Sunrise
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { usePolling } from "@/hooks/usePolling";
 import { cn } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 
@@ -823,22 +824,20 @@ function NumbersPageContent() {
           {/* ── KPI Overview Grid ───────────────────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* KPI 1: Pool Utilization */}
-            <div className="p-5 rounded-2xl bg-white border border-border/80 border-t-4 border-t-primary-500 shadow-xs hover:shadow-card transition-all flex flex-col justify-between">
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary flex items-center justify-center shrink-0">
-                  <Smartphone size={20} />
-                </div>
+            <KpiCard
+              label="Active Pool Capacity"
+              value={totalPoolUsed}
+              loading={loading}
+              suffix={`/ ${totalPoolLimit} Used`}
+              edge="bg-primary"
+              stacked
+              badge={
                 <span className="font-label text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary-100/70 text-primary">
                   {loading ? "—" : totalPoolUsed >= totalPoolLimit ? "Quota Full" : `${totalPoolLimit - totalPoolUsed} slots free`}
                 </span>
-              </div>
-              <div>
-                <p className="font-display text-2xl font-bold text-on-surface">
-                  {loading ? "—" : totalPoolUsed} <span className="text-sm font-semibold text-on-surface-muted">/ {loading ? "—" : totalPoolLimit} Used</span>
-                </p>
-                <p className="font-label text-xs text-on-surface-muted mt-0.5">Active Pool Capacity</p>
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
+              }
+            >
+              <div className="flex items-center justify-between text-[11px] font-body text-on-surface-muted">
                 <span>{loading ? "—" : visible.length} connected</span>
                 {!loading && totalPoolUsed >= totalPoolLimit && (
                   <a href="/dashboard/subscriptions" className="font-label text-primary font-bold hover:underline inline-flex items-center gap-0.5">
@@ -846,59 +845,54 @@ function NumbersPageContent() {
                   </a>
                 )}
               </div>
-            </div>
+            </KpiCard>
 
             {/* KPI 2: Meta limit used, moving 24 hours */}
-            <div className="p-5 rounded-2xl bg-white border border-border/80 border-t-4 border-t-sky-400 shadow-xs hover:shadow-card transition-all flex flex-col justify-between">
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                  <Activity size={20} />
-                </div>
+            <KpiCard
+              label="Used of Meta's limit (Anril's count)"
+              title="People sent a template outside their 24-hour chat window, over the last 24 hours. This is what Meta counts toward your limit. Broadcasts stop at 90% of it, leaving room for messages sent outside Anril; app messages never stop."
+              value={totalDailySends.toLocaleString()}
+              loading={loading}
+              suffix={`/ ${formatLimit(totalDailyCapacity)}`}
+              edge="bg-blue-600"
+              stacked
+              badge={
                 <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                   {loading ? "—" : `${Math.round(totalSendPct)}% used`}
                 </span>
+              }
+            >
+              <div className="w-full h-1.5 rounded-full bg-surface-mid overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    totalSendPct > 85 ? "bg-red-500" : totalSendPct > 50 ? "bg-amber-500" : "bg-emerald-500"
+                  )}
+                  style={{ width: `${loading ? 0 : Math.max(totalSendPct, 3)}%` }}
+                />
               </div>
-              <div>
-                <p className="font-display text-2xl font-bold text-on-surface">
-                  {loading ? "—" : totalDailySends.toLocaleString()} <span className="text-sm font-semibold text-on-surface-muted">/ {loading ? "—" : formatLimit(totalDailyCapacity)}</span>
-                </p>
-                <p className="font-label text-xs text-on-surface-muted mt-0.5" title="People sent a template outside their 24-hour chat window, over the last 24 hours. This is what Meta counts toward your limit. Broadcasts stop at 90% of it, leaving room for messages sent outside Anril; app messages never stop.">Used of Meta&apos;s limit (Anril&apos;s count)</p>
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/60">
-                <div className="w-full h-1.5 rounded-full bg-surface-mid overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-500",
-                      totalSendPct > 85 ? "bg-red-500" : totalSendPct > 50 ? "bg-amber-500" : "bg-emerald-500"
-                    )}
-                    style={{ width: `${loading ? 0 : Math.max(totalSendPct, 3)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+            </KpiCard>
 
             {/* KPI 3: Portfolio Health */}
-            <div className="p-5 rounded-2xl bg-white border border-border/80 border-t-4 border-t-emerald-400 shadow-xs hover:shadow-card transition-all flex flex-col justify-between">
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <ShieldCheck size={20} />
-                </div>
-                {loading ? (
+            <KpiCard
+              label="Portfolio Health Status"
+              value={healthyCount}
+              loading={loading}
+              suffix="Healthy"
+              edge="bg-emerald-500"
+              stacked
+              badge={
+                loading ? (
                   <span className="font-label text-[11px] font-bold text-on-surface-muted">—</span>
                 ) : (
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label text-[11px] font-bold border ${QUALITY_BG[overallQuality]}`}>
                     <span className={`w-2 h-2 rounded-full animate-pulse ${QUALITY_COLOR[overallQuality]}`} />
                     {QUALITY_LABEL[overallQuality]} Quality
                   </span>
-                )}
-              </div>
-              <div>
-                <p className="font-display text-2xl font-bold text-on-surface">
-                  {loading ? "—" : healthyCount} <span className="text-sm font-semibold text-on-surface-muted">Healthy</span>
-                </p>
-                <p className="font-label text-xs text-on-surface-muted mt-0.5">Portfolio Health Status</p>
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
+                )
+              }
+            >
+              <div className="flex items-center justify-between text-[11px] font-body text-on-surface-muted">
                 <span>
                   {loading ? "—" : pausedCount > 0
                     ? `${pausedCount} paused line${pausedCount > 1 ? "s" : ""}`
@@ -908,27 +902,24 @@ function NumbersPageContent() {
                 </span>
                 {!loading && <span className="text-emerald-700 font-semibold">Meta synced</span>}
               </div>
-            </div>
+            </KpiCard>
 
             {/* KPI 4: Primary Sender */}
-            <div className="p-5 rounded-2xl bg-white border border-border/80 border-t-4 border-t-amber-400 shadow-xs hover:shadow-card transition-all flex flex-col justify-between">
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                  <Star size={20} className="fill-amber-400 text-amber-500" />
-                </div>
+            <KpiCard
+              label="Primary Sender"
+              value={primaryNumber ? primaryNumber.display_name : "None Set"}
+              hint={primaryNumber ? primaryNumber.number : "No primary selected"}
+              loading={loading}
+              edge="bg-amber-400"
+              stacked
+              valueClassName="!text-xl min-w-0 !shrink truncate"
+              badge={
                 <span className="font-label text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-800">
                   Primary Routing
                 </span>
-              </div>
-              <div>
-                <p className="font-display text-lg font-bold text-on-surface truncate">
-                  {loading ? "—" : primaryNumber ? primaryNumber.display_name : "None Set"}
-                </p>
-                <p className="font-mono text-xs text-on-surface-muted mt-0.5 truncate">
-                  {loading ? "—" : primaryNumber ? primaryNumber.number : "No primary selected"}
-                </p>
-              </div>
-              <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] font-body text-on-surface-muted">
+              }
+            >
+              <div className="flex items-center justify-between text-[11px] font-body text-on-surface-muted">
                 <span>{loading ? "—" : `${standbyCount} standby failover${standbyCount === 1 ? "" : "s"}`}</span>
                 {loading ? null : broadcastsPaused ? (
                   <span className="text-amber-700 font-semibold">Broadcasts paused</span>
@@ -936,7 +927,7 @@ function NumbersPageContent() {
                   <span className="text-primary font-semibold">Broadcasting</span>
                 )}
               </div>
-            </div>
+            </KpiCard>
           </div>
 
           {/* ── Messaging Tier Guide Banner ──────────────────────────────────── */}

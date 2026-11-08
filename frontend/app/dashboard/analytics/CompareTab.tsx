@@ -16,6 +16,7 @@ import {
 import { canLoadComparison, ComparisonSelection, isCompleteSelection } from "@/components/analytics/periodSelection";
 import { buildFunnel, buildOverviewCards, buildTrend, FunnelStep, PerformanceCard } from "./overviewPresentation";
 import { AiraLoader } from "@/components/AiraLoader";
+import { KpiCard, edgeFromTone } from "@/components/kpi-card";
 
 const CURRENT_COLOR = "var(--primary-800)";
 const PREVIOUS_COLOR = "#94a3b8";
@@ -108,14 +109,14 @@ function StatCard({
   tone?: string;
 }) {
   return (
-    <div className={`flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 border-t-4 ${tone} transition-all`}>
-      <p className="font-label text-xs uppercase tracking-wider text-on-surface-muted">{label}</p>
-      <p className="mt-1 font-display text-2xl font-bold text-on-surface">{value}</p>
-      <div className="flex items-center gap-2">
-        {delta !== undefined && <DeltaBadge pct={delta ?? null} sense={sense} />}
-        {sub && <span className="font-label text-xs text-on-surface-muted">{sub}</span>}
-      </div>
-    </div>
+    <KpiCard stacked label={label} value={value} edge={edgeFromTone(tone)}>
+      {(delta !== undefined || sub) && (
+        <div className="flex items-center gap-2">
+          {delta !== undefined && <DeltaBadge pct={delta ?? null} sense={sense} />}
+          {sub && <span className="font-label text-xs text-on-surface-muted">{sub}</span>}
+        </div>
+      )}
+    </KpiCard>
   );
 }
 
@@ -177,9 +178,12 @@ function PerformanceKpi({ card }: { card: PerformanceCard }) {
     ? null
     : `${card.delta >= 0 ? "+" : ""}${card.delta}% vs comparison`;
   return (
-    <div className={`flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-5 border-t-4 ${card.tone ?? "border-t-primary-500"} transition-all`}>
-      <p className="font-label text-xs uppercase tracking-wider text-on-surface-muted">{card.label}</p>
-      <p className="mt-1 font-display text-2xl font-bold text-on-surface sm:text-3xl">{card.value}</p>
+    <KpiCard
+      stacked
+      label={card.label}
+      value={card.value}
+      edge={edgeFromTone(card.tone ?? "border-t-primary-500")}
+    >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-label text-xs">
         <span className="text-on-surface-muted">{card.scope}</span>
         {deltaLabel && (
@@ -188,7 +192,7 @@ function PerformanceKpi({ card }: { card: PerformanceCard }) {
           </span>
         )}
       </div>
-    </div>
+    </KpiCard>
   );
 }
 

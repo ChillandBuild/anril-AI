@@ -18,12 +18,13 @@ import { LeadSourceSection } from "@/components/dashboard/LeadSourceSection";
 import { TeamCallsSection } from "@/components/dashboard/TeamCallsSection";
 import { AdSpendSection } from "@/components/dashboard/AdSpendSection";
 import { isSmsOnly } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 
-const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; tone: string; bar: string; bg: string; borderTop: string }> = {
-  A: { label: "Hot", tone: "text-emerald-700", bar: "bg-emerald-500", bg: "bg-emerald-50", borderTop: "border-t-emerald-500" },
-  B: { label: "Warm", tone: "text-amber-700", bar: "bg-amber-500", bg: "bg-amber-50", borderTop: "border-t-amber-500" },
-  C: { label: "Cold", tone: "text-ink-muted", bar: "bg-stone-400", bg: "bg-stone-100", borderTop: "border-t-stone-400" },
-  D: { label: "Not Interested", tone: "text-rose-600", bar: "bg-rose-400", bg: "bg-rose-50", borderTop: "border-t-rose-500" },
+const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; bar: string }> = {
+  A: { label: "Hot", bar: "bg-emerald-500" },
+  B: { label: "Warm", bar: "bg-amber-500" },
+  C: { label: "Cold", bar: "bg-stone-400" },
+  D: { label: "Not Interested", bar: "bg-rose-400" },
 };
 
 function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D", number> }) {
@@ -75,19 +76,15 @@ function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D",
               const cfg = SEGMENT_CONFIG[seg];
               const pct = total ? Math.round((count / total) * 100) : 0;
               return (
-                <Link
+                <KpiCard
                   key={seg}
                   href={`/dashboard/leads?segment=${seg}&date_from=${today}&date_to=${today}`}
-                  className={`p-4 rounded-2xl ${cfg.bg} border border-border/40 border-t-4 ${cfg.borderTop} hover:border-border transition-all`}
-                >
-                  <div className="font-mono font-bold text-ink text-[22px]">
-                    {count}
-                  </div>
-                  <div className="font-label text-[10px] font-semibold mt-1 uppercase tracking-wider text-ink-secondary">
-                    {cfg.label}
-                  </div>
-                  <div className="font-body text-[11px] text-ink-muted mt-0.5">{pct}% of today&apos;s leads</div>
-                </Link>
+                  stacked
+                  label={cfg.label}
+                  value={count}
+                  hint={`${pct}% of today's leads`}
+                  edge={cfg.bar}
+                />
               );
             })}
           </div>

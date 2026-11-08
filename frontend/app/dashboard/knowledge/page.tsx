@@ -6,15 +6,16 @@ import {
   Search, Plus, Trash2, XCircle,
   Upload, FileText, Loader2, AlertCircle,
   Save, Eye, Download, X,
-  HardDrive, Check, Copy,
-  Sparkles, LayoutGrid, List,
+  Check, Copy,
+  LayoutGrid, List,
   FileSpreadsheet, FileCode, Image as ImageIcon,
-  Tag, Shield, BookOpen, ArrowRight, Lightbulb,
+  Tag, Shield, ArrowRight, Lightbulb,
   ClipboardCheck, History, RefreshCw, Pencil,
   AlertTriangle
 } from "lucide-react";
 import { api, API_URL, getAuthHeaders, KnowledgeDocContent } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 import { AiraLoader } from "@/components/AiraLoader";
 import { SectionLoadGate } from "../settings/SettingsSection";
 import { usePolling } from "@/hooks/usePolling";
@@ -902,42 +903,33 @@ export default function KnowledgePage() {
         <div className="space-y-6">
           {/* ── Top Overview Stats ────────────────────────────────────────── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-surface rounded-2xl p-4 border border-surface-mid border-t-4 border-t-sky-400 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
-                  Total Documents
-                </p>
-                <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {loading ? "—" : stats.total.toLocaleString()}
-                </p>
-                <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                  Across all formats
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <BookOpen size={20} />
-              </div>
-            </div>
+            <KpiCard
+              label="Total Documents"
+              value={stats.total.toLocaleString()}
+              loading={loading}
+              hint="Across all formats"
+              edge="bg-blue-600"
+              stacked
+            />
 
-            <div className="bg-surface rounded-2xl p-4 border border-surface-mid border-t-4 border-t-emerald-400 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
-                  Active & Indexed
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="font-display text-2xl font-black text-emerald-700">
-                    {loading ? "—" : stats.indexed.toLocaleString()}
-                  </p>
-                  {!loading && stats.processing > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                      <Loader2 size={10} className="animate-spin" />
-                      {stats.processing} sorting
-                    </span>
-                  )}
-                </div>
-                <p
+            <KpiCard
+              label="Active & Indexed"
+              value={stats.indexed.toLocaleString()}
+              loading={loading}
+              edge="bg-emerald-500"
+              stacked
+              badge={
+                !loading && stats.processing > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                    <Loader2 size={10} className="animate-spin" />
+                    {stats.processing} sorting
+                  </span>
+                ) : undefined
+              }
+              hint={
+                <span
                   className={cn(
-                    "font-body text-[11px] font-semibold mt-0.5",
+                    "font-semibold",
                     !loading && stats.notSearchable > 0 ? "text-amber-700" : "text-emerald-700"
                   )}
                 >
@@ -946,46 +938,27 @@ export default function KnowledgePage() {
                     : stats.notSearchable > 0
                     ? `${stats.notSearchable} not searchable`
                     : "Ready for AI RAG retrieval"}
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-                <Sparkles size={20} />
-              </div>
-            </div>
+                </span>
+              }
+            />
 
-            <div className="bg-surface rounded-2xl p-4 border border-surface-mid border-t-4 border-t-amber-400 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
-                  Storage Footprint
-                </p>
-                <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {loading ? "—" : formatBytes(stats.totalBytes)}
-                </p>
-                <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                  Indexed vector data
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-                <HardDrive size={20} />
-              </div>
-            </div>
+            <KpiCard
+              label="Storage Footprint"
+              value={formatBytes(stats.totalBytes)}
+              loading={loading}
+              hint="Indexed vector data"
+              edge="bg-amber-400"
+              stacked
+            />
 
-            <div className="bg-surface rounded-2xl p-4 border border-surface-mid border-t-4 border-t-purple-400 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
-                  Campaign Scopes
-                </p>
-                <p className="font-display text-2xl font-black text-on-surface mt-1">
-                  {loading ? "—" : stats.scopedCount > 0 ? `${stats.scopedCount} Scoped` : "All Shared"}
-                </p>
-                <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                  {loading ? "—" : campaignTags.length} campaigns available
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 shrink-0">
-                <Tag size={20} />
-              </div>
-            </div>
+            <KpiCard
+              label="Campaign Scopes"
+              value={stats.scopedCount > 0 ? `${stats.scopedCount} Scoped` : "All Shared"}
+              loading={loading}
+              hint={`${loading ? "—" : campaignTags.length} campaigns available`}
+              edge="bg-violet-500"
+              stacked
+            />
           </div>
 
           {gapQuestion && (
