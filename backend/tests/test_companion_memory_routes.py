@@ -75,3 +75,30 @@ def test_bad_ids_are_422(env):
     url = f"{BASE}/{env.j['id']}/people/{'x' * 201}/memory"
     assert env.client.get(url).status_code == 422
     assert env.client.delete(f"{BASE}/{env.j['id']}/people/astro-123/memory/not-a-uuid").status_code == 422
+
+
+# --- T6: switching a character's engine resets its watermarks ------------------------------------
+
+def test_engine_switch_resets_watermarks_only_on_a_real_change(env):
+    import asyncio
+    karthik = env.db.rows("companion_end_users")[0]
+    v = env.db.add("companions", tenant_id="t1", name="Vastu Guru", status="live", privacy_mode="A")
+
+    def mark():
+        for cid in (env.j["id"], v["id"]):
+            asyncio.run(store.set_watermark("t1", cid, karthik["id"], "2026-11-09T10:00:00+00:00"))
+
+    def marks():
+        return sorted(r["companion_id"] for r in env.db.rows("companion_memory_state"))
+
+    mark()
+    assert env.client.patch(f"{BASE}/{env.j['id']}", json={"name": "Jothidar"}).status_code == 200
+    assert len(marks()) == 2                                         # no engine change: untouched
+    assert env.client.patch(f"{BASE}/{env.j['id']}", json={"memory_engine": "card"}).status_code == 200
+    assert len(marks()) == 2                                         # same engine: untouched
+    assert env.client.patch(f"{BASE}/{env.j['id']}", json={"memory_engine": "mem0"}).status_code == 200
+    assert marks() == [v["id"]]                                      # only this character's reset
+    mark()
+    assert env.client.patch(f"{BASE}/{env.j['id']}", json={"memory_engine": "card"}).status_code == 200
+    assert marks() == [v["id"]]
+    assert len(env.db.rows("companion_memory_facts")) == 1          # card facts stay until forget-me

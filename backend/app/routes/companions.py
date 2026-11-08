@@ -68,9 +68,12 @@ async def get_companion(companion_id: UUID, ctx: dict = Depends(require_settings
 async def update_companion(companion_id: UUID, payload: CompanionUpdate,
                            ctx: dict = Depends(require_settings_manage)):
     tenant_id = ctx["tenant_id"]
-    if not await store.get_companion(tenant_id, str(companion_id)):
+    current = await store.get_companion(tenant_id, str(companion_id))
+    if not current:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     changes = payload.changes()
+    engine_switched = changes.get("memory_engine", current.get("memory_engine", "card")) != \
+        current.get("memory_engine", "card")
     await _check_tag(tenant_id, changes.get("knowledge_tag_id"))
     try:
         row = await store.update_companion(tenant_id, str(companion_id), changes)
@@ -78,6 +81,10 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
         raise HTTPException(status_code=409, detail="You already have a character with that name")
     if not row:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    if engine_switched:
+        # The new engine relearns from each person's latest messages; the old engine's facts stay
+        # until forget-me or a manual delete (spec §3.7).
+        await store.reset_watermarks(tenant_id, str(companion_id))
     return row
 
 

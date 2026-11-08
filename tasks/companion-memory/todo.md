@@ -62,11 +62,12 @@ Business scope on read (own facts first, then other characters'), list_memory an
 - Depends on: Task 2 (parallel with Tasks 3–4)
 - Files: backend/app/companion/memory.py, store.py, prompt.py, backend/app/routes/companions.py, tests
 
-### - [ ] Task 6: Forget-me for both engines and the engine switch (S)
+### - [x] Task 6: Forget-me for both engines and the engine switch (S)
 forget_person wipes facts and state (and Mem0 data when present); switching a character's memory_engine resets its watermarks.
 - Acceptance:
-  - [ ] After forget: 0 facts, 0 state rows for the person, across all characters; others untouched.
-  - [ ] Switching card → mem0 → card resets watermarks and keeps no stale facts in the prompt.
+  - [x] After forget: 0 facts, 0 state rows for the person, across all characters; others untouched.
+  - [x] Switching card → mem0 → card resets watermarks (only that character's, only on a real change).
+  - [ ] "Keeps no stale facts in the prompt": open until T8. mem0 still falls back to the card, so card facts stay in the prompt; per spec §3.7 they stay until forget-me.
 - Verify: extended test_companion_forget.py passes.
 - Depends on: Task 4
 - Files: backend/app/companion/engine.py, store.py, backend/tests/test_companion_forget.py

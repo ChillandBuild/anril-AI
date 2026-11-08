@@ -107,3 +107,20 @@ def test_memory_providers_are_told(env, monkeypatch):
     monkeypatch.setattr(engine, "forget_providers", lambda: [Spy(), Spy()])
     asyncio.run(engine.forget_person("t1", "48213"))
     assert len(told) == 2 and {t for t, _ in told} == {"t1"}
+
+
+# --- companion-memory T6: forget-me wipes Level 2 memory too --------------------------------------
+
+def test_forget_wipes_remembered_facts_and_watermarks_across_characters(env):
+    say(env, "jothidar", "48213")
+    say(env, "jothidar", "77001")
+    karthik, meena = (asyncio.run(store.find_end_user("t1", u)) for u in ("48213", "77001"))
+    for char in ("jothidar", "vastu"):
+        for person in (karthik, meena):
+            asyncio.run(store.add_fact("t1", env.chars[char]["id"], person["id"], "life", f"fact {char}"))
+            asyncio.run(store.set_watermark("t1", env.chars[char]["id"], person["id"], "2026-11-09T10:00:00+00:00"))
+
+    assert asyncio.run(engine.forget_person("t1", "48213"))
+    for table in ("companion_memory_facts", "companion_memory_state"):
+        assert mine(env, table, karthik["id"]) == []
+        assert len(mine(env, table, meena["id"])) == 2
