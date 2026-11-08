@@ -1,8 +1,7 @@
 "use client";
 
-import { Phone, TrendingUp, Clock, Coffee, Award, BarChart2, Loader2, Zap, Headphones } from "lucide-react";
 import type { TelecallingAnalyticsExtended } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 import { showsEvaluation } from "@/lib/evaluation-visibility";
 import {
   formatTalk, formatPct, formatMinutes,
@@ -32,7 +31,7 @@ interface TileDeltas {
 function DeltaRow({ deltas, asPct, unit }: { deltas: TileDeltas; asPct?: boolean; unit?: string }) {
   if (!deltas.yesterday && !deltas.avg7d) return null;
   return (
-    <div className="mt-2 flex flex-col gap-0.5 text-[10px] font-bold">
+    <div className="flex flex-col gap-0.5 text-[10px] font-bold">
       {deltas.yesterday && (
         <span className={deltaColor(deltas.yesterday)}>
           {deltaLabel(deltas.yesterday, { asPct, unit })} <span className="text-[#94a3b8] font-medium">vs yesterday</span>
@@ -48,27 +47,21 @@ function DeltaRow({ deltas, asPct, unit }: { deltas: TileDeltas; asPct?: boolean
 }
 
 interface TileProps {
-  icon: React.ReactNode;
-  iconClass: string;
   value: string;
   label: string;
   tooltip: string;
   loading: boolean;
   deltas?: TileDeltas;
   deltaOpts?: { asPct?: boolean; unit?: string };
-  tone?: string;
+  edge?: string;
 }
 
-function Tile({ icon, iconClass, value, label, tooltip, loading, deltas, deltaOpts, tone = "border-t-primary-500" }: TileProps) {
+function Tile({ value, label, tooltip, loading, deltas, deltaOpts, edge = "bg-primary" }: TileProps) {
+  const showDeltas = !loading && deltas && (deltas.yesterday || deltas.avg7d);
   return (
-    <div className={cn("bg-surface rounded-card border-t-4 p-4 shadow-card ring-1 ring-[#c4c7c7]/15", tone)} title={tooltip}>
-      <div className={`p-2 rounded-lg w-fit mb-2 ${iconClass}`}>{icon}</div>
-      <span className="block text-2xl font-display font-black text-[#13284A]">
-        {loading ? <Loader2 className="animate-spin text-[#94a3b8]" size={20} /> : value}
-      </span>
-      <span className="text-[#94a3b8] font-label text-[10px] uppercase font-bold tracking-wider mt-1 block">{label}</span>
-      {!loading && deltas && <DeltaRow deltas={deltas} asPct={deltaOpts?.asPct} unit={deltaOpts?.unit} />}
-    </div>
+    <KpiCard stacked label={label} value={value} loading={loading} title={tooltip} edge={edge}>
+      {showDeltas ? <DeltaRow deltas={deltas} asPct={deltaOpts?.asPct} unit={deltaOpts?.unit} /> : null}
+    </KpiCard>
   );
 }
 
@@ -130,100 +123,82 @@ export default function PerformanceKpis({ stats, callerStats, selectedCallerId, 
     <div className={gridClass}>
       <Tile
         loading={loading}
-        icon={<Phone size={16} />}
-        iconClass="bg-primary-light text-primary"
         value={formatPct(connectRate)}
         label="Connection Rate"
         tooltip="Connect Rate = answered ÷ dialed"
         deltas={isTeam ? connectDeltas : teamOnly}
         deltaOpts={{ unit: "pts" }}
-        tone="border-t-sky-400"
+        edge="bg-blue-600"
       />
       <Tile
         loading={loading}
-        icon={<Clock size={16} />}
-        iconClass="bg-sky-50 text-sky-600"
         value={formatTalk(avgTalk)}
         label="Avg Talk Time"
         tooltip="Avg Talk Time = total talk seconds ÷ calls"
         deltas={isTeam ? talkDeltas : teamOnly}
         deltaOpts={{ asPct: true }}
-        tone="border-t-blue-500"
+        edge="bg-sky-500"
       />
       <Tile
         loading={loading}
-        icon={<Coffee size={16} />}
-        iconClass="bg-amber-50 text-amber-600"
         value={formatMinutes(idle)}
         label={selectedCallerId ? "Idle Minutes" : "Total Team Idle"}
         tooltip="Idle = active (logged-in) minutes minus talk minutes. Lower is better."
         deltas={isTeam ? idleDeltas : teamOnly}
         deltaOpts={{ unit: "min" }}
-        tone="border-t-amber-400"
+        edge="bg-amber-400"
       />
       <Tile
         loading={loading}
-        icon={<TrendingUp size={16} />}
-        iconClass="bg-emerald-50 text-emerald-600"
         value={String(conversions)}
         label="Conversions"
         tooltip="Conversions = calls with a 'converted' outcome today"
         deltas={isTeam ? convDeltas : teamOnly}
-        tone="border-t-emerald-400"
+        edge="bg-emerald-500"
       />
       <Tile
         loading={loading}
-        icon={<TrendingUp size={16} />}
-        iconClass="bg-teal-50 text-teal-600"
         value={formatPct(convRate)}
         label="Conversion Rate"
         tooltip="Conversion Rate = converted ÷ calls"
         deltas={isTeam ? convRateDeltas : teamOnly}
         deltaOpts={{ unit: "pts" }}
-        tone="border-t-teal-400"
+        edge="bg-teal-500"
       />
       {!isTeam && evaluationVisible && (
         <Tile
           loading={loading}
-          icon={<Award size={16} />}
-          iconClass="bg-primary-50 text-primary-600"
           value={quality ? `${quality.toFixed(1)}/100` : "—"}
           label="Avg Score"
           tooltip="Average of this period's fully scored calls, out of 100. Each real sales conversation is marked on 10 checks. Unanswered, under-30-second and early-exit calls count toward calls, not the score."
-          tone="border-t-purple-400"
+          edge="bg-purple-500"
         />
       )}
       {!isTeam && (
         <Tile
           loading={loading}
-          icon={<Zap size={16} />}
-          iconClass="bg-yellow-50 text-yellow-600"
           value={speedToLead != null ? `${speedToLead.toFixed(1)} min` : "—"}
           label="Speed to Lead"
           tooltip="Median minutes before calling back a new lead. Lower is better."
-          tone="border-t-yellow-400"
+          edge="bg-yellow-400"
         />
       )}
       {!isTeam && (
         <Tile
           loading={loading}
-          icon={<Headphones size={16} />}
-          iconClass="bg-cyan-50 text-cyan-600"
           value={formatMinutes(talkMinutes)}
           label="Total Talk Time"
           tooltip="Total minutes spent talking today"
-          tone="border-t-cyan-400"
+          edge="bg-cyan-500"
         />
       )}
       <Tile
         loading={loading}
-        icon={<BarChart2 size={16} />}
-        iconClass="bg-rose-50 text-rose-600"
         value={String(callsVal)}
         label="Total Calls Today"
         tooltip="Total dialed calls in the selected window"
         deltas={isTeam ? callsDeltas : teamOnly}
-        tone="border-t-rose-400"
+        edge="bg-rose-500"
       />
     </div>
   );

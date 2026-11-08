@@ -11,12 +11,7 @@ import {
   Filter,
   KeyRound,
   Loader2,
-  type LucideIcon,
   Megaphone,
-  MessageCircle,
-  MessageSquareOff,
-  MousePointerClick,
-  Percent,
   RefreshCw,
   RotateCcw,
   Search,
@@ -26,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
+import { KpiCard } from "@/components/kpi-card";
 import { api, AdPerformanceRow, AdTrackingCodeResponse, TrackedAd } from "@/lib/api";
 import {
   useAdFilters,
@@ -188,37 +184,6 @@ function channelSplit(byChannel: ChannelCounts | undefined): string | null {
   const parts = CHANNEL_SHORT.filter((channel) => (byChannel[channel.key] ?? 0) > 0)
     .map((channel) => `${count(byChannel[channel.key])} ${channel.short}`);
   return parts.length >= 2 ? parts.join(" · ") : null;
-}
-
-function PerformanceKpiCard({
-  label,
-  value,
-  description,
-  icon: Icon,
-  gradient,
-  tone = "border-t-primary-500",
-}: {
-  label: string;
-  value: string;
-  description: string;
-  icon: LucideIcon;
-  gradient: string;
-  tone?: string;
-}) {
-  return (
-    <div className={cn("group flex items-center gap-4 rounded-2xl border border-[#e2e8f0]/80 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md border-t-4", tone)}>
-      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition-transform group-hover:scale-110", gradient)}>
-        <Icon size={19} />
-      </span>
-      <span className="min-w-0">
-        <span className="block font-display text-2xl font-bold leading-none tabular-nums text-[#0A1528]">{value}</span>
-        <span className="mt-0.5 block font-label text-xs font-medium text-[#94a3b8]">{label}</span>
-        <span className="mt-1 block truncate font-body text-[9px] leading-none text-stone-400" title={description}>
-          {description}
-        </span>
-      </span>
-    </div>
-  );
 }
 
 function statusLabel(status: string | null | undefined) {
@@ -694,43 +659,8 @@ export function AdPerformanceTab() {
 
   return (
     <div>
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-              <PerformanceKpiCard
-                label="Chat Clicks"
-                value={isLoading ? "—" : count(totals.inline_link_clicks)}
-                description="Clicked the ad and opened a chat"
-                icon={MousePointerClick}
-                gradient="bg-gradient-to-br from-primary-500 to-primary"
-                tone="border-t-primary-500"
-              />
-              <PerformanceKpiCard
-                label="Messages Sent"
-                value={isLoading ? "—" : count(totals.messages)}
-                description="Clicked and sent a message"
-                icon={MessageCircle}
-                gradient="bg-gradient-to-br from-blue-500 to-cyan-600"
-                tone="border-t-sky-400"
-              />
-              <PerformanceKpiCard
-                label="No Message"
-                value={isLoading ? "—" : count(totals.clicked_no_message)}
-                description="Clicked but did not send the message"
-                icon={MessageSquareOff}
-                gradient="bg-gradient-to-br from-amber-500 to-orange-500"
-                tone="border-t-amber-400"
-              />
-              <PerformanceKpiCard
-                label="Message Rate"
-                value={isLoading ? "—" : percent(totals.conversation_rate)}
-                description="Messages sent out of chat clicks"
-                icon={Percent}
-                gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
-                tone="border-t-emerald-400"
-              />
-        </div>
-
-        <div className="grid h-fit grid-cols-2 gap-2 self-start p-1">
+      <div className="mb-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" onClick={() => mutate()} disabled={isValidating}
             className="flex h-9 items-center justify-center gap-2 rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700 disabled:opacity-40">
             <RefreshCw size={12} className={isValidating ? "animate-spin" : ""} /> Refresh
@@ -817,16 +747,25 @@ export function AdPerformanceTab() {
           </button>
 
           <DataFromPicker
-            className="col-span-2"
             canManage={canManage}
             onSaved={() => mutate()}
             note="Messaging ads covers ads that were running when you connected, and new ones since, so months before those ads show nothing here. The same date applies to All ads."
           />
 
           <button type="button" onClick={handleExport} disabled={exporting || rows.length === 0}
-            className="col-span-2 flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40">
+            className="flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40">
             <Download size={12} /> {exporting ? "Downloading…" : "Download CSV"}
           </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <KpiCard label="Chat Clicks" value={count(totals.inline_link_clicks)} loading={isLoading}
+            hint="Clicked the ad and opened a chat" edge="bg-primary" />
+          <KpiCard label="Messages Sent" value={count(totals.messages)} loading={isLoading}
+            hint="Clicked and sent a message" edge="bg-blue-600" />
+          <KpiCard label="No Message" value={count(totals.clicked_no_message)} loading={isLoading}
+            hint="Clicked but did not send the message" edge="bg-amber-400" />
+          <KpiCard label="Message Rate" value={percent(totals.conversation_rate)} loading={isLoading}
+            hint="Messages sent out of chat clicks" edge="bg-emerald-500" />
         </div>
       </div>
 

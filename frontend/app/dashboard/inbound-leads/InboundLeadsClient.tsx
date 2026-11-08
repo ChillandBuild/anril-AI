@@ -4,11 +4,12 @@ import { api, InboundLead } from "@/lib/api";
 import { useInboundLeads, useInboundCampaigns } from "@/hooks/useApi";
 import {
   Download, Megaphone, Filter, X,
-  Smartphone, MessageSquare, Users, RefreshCw, ChevronDown, RadioTower,
+  Smartphone, RefreshCw, ChevronDown, RadioTower,
   Link2, Copy, Check,
 } from "lucide-react";
 import { cn, formatPhone } from "@/lib/utils";
 import { SegmentBadge } from "@/components/segment-badge";
+import { KpiCard } from "@/components/kpi-card";
 import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
@@ -98,28 +99,6 @@ function ChannelBadge({ source }: { source: string }) {
   );
 }
 
-
-function StatCard({
-  label, value, icon: Icon, gradient, tone = "border-t-primary-500",
-}: {
-  label: string;
-  value: string | number;
-  icon: typeof Users;
-  gradient: string;
-  tone?: string;
-}) {
-  return (
-    <div className={cn("bg-white rounded-2xl border border-[#e2e8f0]/80 border-t-4 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-all duration-200 group", tone)}>
-      <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110", gradient)}>
-        <Icon size={19} className="text-white" />
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-[#0A1528] leading-none tabular-nums">{value}</p>
-        <p className="text-xs text-[#94a3b8] font-medium mt-0.5">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 function EmptyState() {
   return (
@@ -484,19 +463,12 @@ export function InboundLeadsClient({
       </div>
 
       {/* ── Stats & Actions ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
-        <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Total Inbound Leads" value={loading ? "—" : total} icon={RadioTower} gradient="bg-gradient-to-br from-primary-500 to-primary" tone="border-t-primary-500" />
-          <StatCard label="Showing Now" value={loading ? "—" : leads.length} icon={Users} gradient="bg-gradient-to-br from-blue-500 to-cyan-600" tone="border-t-sky-400" />
-          <StatCard label="Unique Keywords" value={loading ? "—" : uniqueKeywords} icon={MessageSquare} gradient="bg-gradient-to-br from-amber-500 to-orange-500" tone="border-t-amber-400" />
-          <StatCard label="Active Campaigns" value={loading ? "—" : uniqueCampaigns} icon={Megaphone} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" tone="border-t-emerald-400" />
-        </div>
-        <div className="flex flex-col justify-between gap-2 p-1">
-          <div className="flex gap-2">
+      <div className="mb-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => setShowFilters((p) => !p)}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl font-label text-xs font-bold border transition-all shadow-sm",
+                "flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl font-label text-xs font-bold border transition-all shadow-sm",
                 showFilters || hasFilters
                   ? "bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100"
                   : "bg-white border-surface-mid text-on-surface hover:border-primary-300 hover:text-primary-700"
@@ -513,15 +485,14 @@ export function InboundLeadsClient({
             <button
               onClick={() => mutateLeads()}
               disabled={leadsValidating}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] font-label text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
+              className="flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] font-label text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
             >
               <RefreshCw size={12} className={leadsValidating ? "animate-spin" : ""} />
               <span>Refresh</span>
             </button>
-          </div>
           <button
             onClick={() => setShowGoogleModal(true)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary-50 border border-primary-200 text-primary-700 hover:bg-primary-100 font-label text-xs font-bold transition-all shadow-sm"
+            className="flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary-50 border border-primary-200 text-primary-700 hover:bg-primary-100 font-label text-xs font-bold transition-all shadow-sm"
           >
             <Link2 size={12} />
             <span>Google Ads Link</span>
@@ -529,11 +500,17 @@ export function InboundLeadsClient({
           <button
             onClick={handleExport}
             disabled={exporting || leads.length === 0}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-xl font-label text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-40 shadow-sm"
+            className="flex h-9 items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-xl font-label text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-40 shadow-sm"
           >
             <Download size={12} />
             <span>{exporting ? "Downloading…" : "Download CSV"}</span>
           </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard label="Total Inbound Leads" value={total} loading={loading} hint="Organic + Meta Ad" edge="bg-primary" />
+          <KpiCard label="Showing Now" value={leads.length} loading={loading} hint="Rows in the table, up to 200" edge="bg-blue-600" />
+          <KpiCard label="Unique Keywords" value={uniqueKeywords} loading={loading} hint="Distinct first messages shown" edge="bg-amber-400" />
+          <KpiCard label="Active Campaigns" value={uniqueCampaigns} loading={loading} hint="Campaigns in the rows shown" edge="bg-emerald-500" />
         </div>
       </div>
 

@@ -40,6 +40,7 @@ import {
   ComparisonSelection,
 } from "@/components/analytics/periodSelection";
 import { AiraLoader } from "@/components/AiraLoader";
+import { KpiCard as BaseKpiCard, edgeFromTone } from "@/components/kpi-card";
 
 type Tab = "overview" | "channels" | "templates" | "inbound";
 
@@ -120,11 +121,14 @@ function KpiCard({
   tone?: string;
 }) {
   return (
-    <div className={`flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 border-t-4 ${tone} sm:p-6 transition-all`}>
-      <p className="font-label text-xs text-on-surface-muted uppercase tracking-wider">{label}</p>
-      <p className={`mt-1 font-display text-2xl font-bold text-on-surface sm:text-3xl ${valueClass ?? ""}`}>{value}</p>
-      {sub && <p className="font-label text-xs text-on-surface-muted">{sub}</p>}
-    </div>
+    <BaseKpiCard
+      stacked
+      label={label}
+      value={value}
+      hint={sub}
+      edge={edgeFromTone(tone)}
+      valueClassName={valueClass}
+    />
   );
 }
 

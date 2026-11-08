@@ -469,7 +469,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
 
   function getChannelDot(lead: Lead): { color: string; title: string } {
     const channelColors: Record<string, string> = {
-      whatsapp: "#25D366",
+      whatsapp: "var(--primary)", // brand teal; WhatsApp green is banned (lib/brand-guard.test.ts)
       instagram: "#E1306C",
       telegram: "#229ED9",
       facebook: "#1877F2",

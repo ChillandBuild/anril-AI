@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { SegmentBadge } from "@/components/segment-badge";
 import { isClosedLeadStatus, isWorkingLeadStatus } from "@/lib/call-wrapup";
 import { AiraLoader } from "@/components/AiraLoader";
+import { KpiCard } from "@/components/kpi-card";
 
 export default function CallerView({ callerId, readOnly = false }: { callerId: string | null; readOnly?: boolean }) {
   const searchParams = useSearchParams();
@@ -331,14 +332,8 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
                   Choose a lead from your active queue on the left to review campaign source attribution details, previous calls history, and log feedback notes.
                 </p>
                 <div className="grid grid-cols-2 gap-4 mt-8 w-full max-w-xs">
-                  <div className="p-4 bg-white border border-[#f1f5f9] border-t-4 border-t-sky-400 rounded-2xl shadow-sm text-left">
-                    <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider block">Total Queue</span>
-                    <span className="text-xl font-bold text-[#13284A] mt-1 block">{queueLoading ? "—" : myLeads.length}</span>
-                  </div>
-                  <div className="p-4 bg-white border border-[#f1f5f9] border-t-4 border-t-amber-400 rounded-2xl shadow-sm text-left">
-                    <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider block">Today Callbacks</span>
-                    <span className="text-xl font-bold text-[#13284A] mt-1 block">{cockpit.todayCallbacks.length}</span>
-                  </div>
+                  <KpiCard stacked label="Total Queue" value={myLeads.length} loading={queueLoading} edge="bg-blue-600" />
+                  <KpiCard stacked label="Today Callbacks" value={cockpit.todayCallbacks.length} edge="bg-amber-400" />
                 </div>
               </div>
             ) : (

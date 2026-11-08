@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
+import { KpiCard } from "@/components/kpi-card";
 import { LANGUAGES, STATUS_COLORS } from "./types";
 import type { Template } from "./types";
 import TemplateCard from "./components/template-card";
@@ -364,66 +365,59 @@ export default function TemplatesPage() {
     <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
       {/* Top Locked Section: Stats, Actions & Filters */}
       <div className="shrink-0 space-y-4 pb-4">
-        {/* Stats and Action Bar */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4">
-        {[
-          { label: "Approved Templates", count: countApproved, color: "#10b981", tone: "border-t-emerald-400" },
-          { label: "Pending Review", count: countPending, color: "#f59e0b", tone: "border-t-amber-400" },
-          { label: "Rejected / Paused", count: countRejected, color: "#ef4444", tone: "border-t-rose-400" },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className={`flex items-center gap-3 rounded-2xl border border-border border-t-4 bg-white p-4 shadow-sm sm:gap-4 ${s.tone}`}
-            style={{ borderTopColor: s.color, borderTopWidth: "4px", borderTopStyle: "solid" }}
+        {/* Action Bar */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing || !canManageTemplates}
+            title={canManageTemplates ? "Sync from Meta" : "Read-only role: sync is disabled"}
+            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
           >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-subtle bg-white text-lg font-bold sm:h-12 sm:w-12" style={{ color: s.color }}>
-              {loading ? "—" : s.count}
-            </div>
-            <div className="min-w-0">
-              <p className="font-body text-xs text-ink-muted uppercase tracking-wider font-bold">{s.label}</p>
-              <p className="font-display font-semibold text-ink text-sm mt-0.5">{loading ? "Loading…" : "templates loaded"}</p>
-            </div>
-          </div>
-        ))}
-
-        {/* Actions Column */}
-        <div className="flex flex-col justify-between gap-2 p-1">
-          <div className="flex gap-2">
-            <button
-              onClick={handleSyncAll}
-              disabled={syncing || !canManageTemplates}
-              title={canManageTemplates ? "Sync from Meta" : "Read-only role: sync is disabled"}
-              className="flex-1 px-3 py-2 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
-              {syncing ? "Syncing..." : "Sync"}
-            </button>
-            <Link
-              href="/dashboard/templates/carousel"
-              className="flex-1 px-3 py-2 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <Layers size={12} />
-              Carousel
-            </Link>
-            <button
-              onClick={handleExportExcel}
-              disabled={exporting || filteredTemplates.length === 0}
-              title="Download the currently filtered templates as an Excel file"
-              className="flex-1 px-3 py-2 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              <Download size={12} className={exporting ? "animate-pulse" : ""} />
-              {exporting ? "Exporting..." : "Excel"}
-            </button>
-          </div>
+            <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing..." : "Sync"}
+          </button>
+          <Link
+            href="/dashboard/templates/carousel"
+            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+          >
+            <Layers size={12} />
+            Carousel
+          </Link>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || filteredTemplates.length === 0}
+            title="Download the currently filtered templates as an Excel file"
+            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Download size={12} className={exporting ? "animate-pulse" : ""} />
+            {exporting ? "Exporting..." : "Excel"}
+          </button>
           <Link
             href="/dashboard/templates/new"
-            className="w-full py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-label text-xs font-bold transition-all shadow-md shadow-primary-200 flex items-center justify-center gap-1.5"
+            className="h-9 px-4 bg-primary hover:bg-primary/90 text-white rounded-xl font-label text-xs font-bold transition-all shadow-md shadow-primary-200 flex items-center justify-center gap-1.5"
           >
             <Plus size={14} />
             Create Template
           </Link>
         </div>
-      </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:gap-4">
+          {[
+            { label: "Approved Templates", count: countApproved, edge: "bg-emerald-500" },
+            { label: "Pending Review", count: countPending, edge: "bg-amber-400" },
+            { label: "Rejected / Paused", count: countRejected, edge: "bg-rose-500" },
+          ].map((s) => (
+            <KpiCard
+              key={s.label}
+              label={s.label}
+              value={s.count}
+              loading={loading}
+              hint={loading ? "Loading…" : "templates loaded"}
+              edge={s.edge}
+            />
+          ))}
+        </div>
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2 animate-slide-up">

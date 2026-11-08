@@ -30,6 +30,7 @@ import {
 import { api, API_URL, AuditLogEntry, ClientRole, PermissionDef, RbacUser } from "@/lib/api";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
 import { AiraLoader } from "@/components/AiraLoader";
@@ -664,42 +665,13 @@ export default function RolesPage() {
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="card flex items-center gap-3 rounded-2xl border border-primary-100 bg-primary-50/50 p-4 shadow-sm">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-subtle bg-white text-primary-600">
-            <ShieldCheck size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="font-body text-xs font-bold uppercase tracking-wider text-ink-muted">Roles Defined</p>
-            <p className="mt-0.5 font-display text-lg font-black text-ink">{roles.length}</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-4 shadow-sm">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-subtle bg-white text-blue-600">
-            <Users size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="font-body text-xs font-bold uppercase tracking-wider text-ink-muted">Total Users</p>
-            <p className="mt-0.5 font-display text-lg font-black text-ink">{users.length}</p>
-          </div>
-        </div>
-        <div className={cn(
-          "card flex items-center gap-3 rounded-2xl border p-4 shadow-sm",
-          telecallerSeats && telecallerSeats.used >= telecallerSeats.limit
-            ? "border-red-100 bg-red-50/50" : "border-emerald-100 bg-emerald-50/50",
-        )}>
-          <div className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-subtle bg-white",
-            telecallerSeats && telecallerSeats.used >= telecallerSeats.limit ? "text-red-600" : "text-emerald-600",
-          )}>
-            <Phone size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="font-body text-xs font-bold uppercase tracking-wider text-ink-muted">Telecaller Seats</p>
-            <p className="mt-0.5 font-display text-lg font-black text-ink">
-              {telecallerSeats ? `${telecallerSeats.used}/${telecallerSeats.limit}` : "—"}
-            </p>
-          </div>
-        </div>
+        <KpiCard label="Roles Defined" value={roles.length} edge="bg-primary" />
+        <KpiCard label="Total Users" value={users.length} edge="bg-blue-600" />
+        <KpiCard
+          label="Telecaller Seats"
+          value={telecallerSeats ? `${telecallerSeats.used}/${telecallerSeats.limit}` : "—"}
+          edge={telecallerSeats && telecallerSeats.used >= telecallerSeats.limit ? "bg-rose-500" : "bg-emerald-500"}
+        />
       </div>
 
       {tab === "roles" ? (

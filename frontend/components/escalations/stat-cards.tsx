@@ -1,37 +1,14 @@
 "use client";
 import { cn } from "@/lib/utils";
+import { KpiCard } from "@/components/kpi-card";
 
 export type StatTone = "neutral" | "positive" | "warning" | "critical";
 
-const TONE: Record<StatTone, { dot: string; ring: string; value: string; bg: string; border: string }> = {
-  neutral: {
-    dot: "bg-gray-400",
-    ring: "ring-gray-200/60",
-    value: "text-gray-900",
-    bg: "bg-white",
-    border: "border-gray-200/80 border-t-4 border-t-slate-300",
-  },
-  positive: {
-    dot: "bg-emerald-500",
-    ring: "ring-emerald-100",
-    value: "text-emerald-600",
-    bg: "bg-gradient-to-br from-white via-white to-emerald-50/25",
-    border: "border-emerald-100/90 border-t-4 border-t-emerald-400",
-  },
-  warning: {
-    dot: "bg-amber-500",
-    ring: "ring-amber-100",
-    value: "text-amber-600",
-    bg: "bg-gradient-to-br from-white via-white to-amber-50/25",
-    border: "border-amber-100/90 border-t-4 border-t-amber-400",
-  },
-  critical: {
-    dot: "bg-rose-500",
-    ring: "ring-rose-100",
-    value: "text-rose-600",
-    bg: "bg-gradient-to-br from-white via-white to-rose-50/30",
-    border: "border-rose-100/90 border-t-4 border-t-rose-400",
-  },
+const TONE: Record<StatTone, { value: string; edge: string }> = {
+  neutral: { value: "text-gray-900", edge: "bg-slate-400" },
+  positive: { value: "text-emerald-600", edge: "bg-emerald-500" },
+  warning: { value: "text-amber-600", edge: "bg-amber-400" },
+  critical: { value: "text-rose-600", edge: "bg-rose-500" },
 };
 
 export type StatItem = {
@@ -58,42 +35,21 @@ export function StatCards({ items }: { items: StatItem[] }) {
         const tone = TONE[item.tone ?? "neutral"];
         const figure = isFigure(item.value);
         return (
-          <div
+          <KpiCard
             key={item.label}
-            className={cn(
-              "min-w-[145px] flex-1 rounded-2xl border p-3 shadow-xs hover:shadow-sm transition-all",
-              tone.bg,
-              tone.border
+            stacked
+            label={item.label}
+            value={item.value}
+            hint={item.detail}
+            edge={tone.edge}
+            title={figure ? undefined : item.value}
+            valueClassName={cn(
+              "tracking-tight",
+              figure ? "text-[22px] leading-none" : "min-w-0 shrink truncate text-sm leading-tight",
+              tone.value
             )}
-          >
-            <div className="flex items-center justify-between gap-1.5">
-              <span className="truncate font-label text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                {item.label}
-              </span>
-              <span className={cn("h-1.5 w-1.5 flex-shrink-0 rounded-full ring-4", tone.ring, tone.dot)} aria-hidden />
-            </div>
-
-            <div className="mt-1.5 flex h-[26px] items-center">
-              <p
-                className={cn(
-                  "truncate font-display font-bold tracking-tight",
-                  figure
-                    ? "text-[22px] leading-none tabular-nums"
-                    : "text-sm leading-tight",
-                  tone.value
-                )}
-                title={item.value}
-              >
-                {item.value}
-              </p>
-            </div>
-
-            {item.detail && (
-              <p className="mt-1 truncate font-body text-[11px] font-medium text-gray-400" title={item.detail}>
-                {item.detail}
-              </p>
-            )}
-          </div>
+            className="min-w-[145px] flex-1"
+          />
         );
       })}
     </div>
