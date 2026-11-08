@@ -107,17 +107,22 @@ def test_put_sync_start_saves_the_date_and_schedules_a_resync(client, db, sync_c
     assert sync_calls[0][1] == "t1"
 
 
-def test_get_sync_start_reports_the_earliest_eligible_ad(client, db, sync_calls):
+def test_get_sync_start_reports_the_accounts_first_ad_even_if_it_was_off(client, db, sync_calls):
+    # The "Data from" floor is the account's first ad ever, so a client can go back
+    # to it: All ads shows an ad that was already off at connect (m3) for its dates.
     db.add("meta_ad_registry", tenant_id="t1", meta_ad_account_id=ACCOUNT, meta_ad_id="m1",
            eligible=True, ad_created_time="2026-03-14T10:00:00+00:00")
     db.add("meta_ad_registry", tenant_id="t1", meta_ad_account_id=ACCOUNT, meta_ad_id="m2",
            eligible=True, ad_created_time="2026-02-01T08:00:00+00:00")
     db.add("meta_ad_registry", tenant_id="t1", meta_ad_account_id=ACCOUNT, meta_ad_id="m3",
            eligible=False, ad_created_time="2025-12-01T08:00:00+00:00")
+    # A previously connected account's ads never count.
+    db.add("meta_ad_registry", tenant_id="t1", meta_ad_account_id="act_old", meta_ad_id="m4",
+           eligible=True, ad_created_time="2024-01-01T08:00:00+00:00")
 
     body = client.get("/api/v1/inbound-leads/meta-ads/sync-start").json()
 
-    assert body["earliest_ad_start"] == "2026-02-01"
+    assert body["earliest_ad_start"] == "2025-12-01"
     assert body["start_date"] is None
     assert body["max_history_days"] == sync._MAX_HISTORY_DAYS
 

@@ -657,11 +657,12 @@ def _sync_start_payload(db, tenant_id: str) -> dict:
     account = get_current_ads_account_id(db, tenant_id)
     earliest = None
     if account:
+        # The account's first ad ever, eligible or not: the "Data from" floor. An ad
+        # that was already off at connect still shows in All ads for its dates.
         registry = (
             db.table("meta_ad_registry").select("ad_created_time")
             .eq("tenant_id", tenant_id)
             .eq("meta_ad_account_id", account)
-            .eq("eligible", True)
             .execute().data
         ) or []
         times = [str(r["ad_created_time"]) for r in registry if r.get("ad_created_time")]

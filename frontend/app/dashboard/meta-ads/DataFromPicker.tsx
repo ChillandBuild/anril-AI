@@ -38,7 +38,7 @@ function formatDay(iso: string) {
 type SyncOption = { value: string; label: string; date?: string };
 
 /**
- * Data-from presets. A preset may never reach before the earliest tracked ad:
+ * Data-from presets. A preset may never reach before the account's first ad:
  * any preset dated on or before it collapses into one "Since your first ad" option
  * dated to that ad, so no two options share a date.
  */
@@ -174,7 +174,7 @@ export function DataFromPicker({
           <p className="mt-3 font-body text-[10px] leading-4 text-stone-500">{note}</p>
           {earliestAd && (
             <p className="mt-1.5 font-body text-[10px] leading-4 text-stone-500">
-              Your earliest tracked ad started on {formatDay(earliestAd)}.
+              Your first ad on this account was created on {formatDay(earliestAd)}.
             </p>
           )}
           <button type="button" onClick={save} disabled={saving || !chosen}

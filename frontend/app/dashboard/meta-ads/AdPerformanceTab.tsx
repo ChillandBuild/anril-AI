@@ -820,7 +820,7 @@ export function AdPerformanceTab() {
             className="col-span-2"
             canManage={canManage}
             onSaved={() => mutate()}
-            note="Applies to ads that were running when you connected, and new ones since. Each ad starts no earlier than the day it began running."
+            note="Messaging ads covers ads that were running when you connected, and new ones since, so months before those ads show nothing here. The same date applies to All ads."
           />
 
           <button type="button" onClick={handleExport} disabled={exporting || rows.length === 0}
