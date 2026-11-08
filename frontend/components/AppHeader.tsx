@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List, Plus, ScrollText, Send, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -101,10 +102,16 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "All inbound leads — organic and Meta Ad, across messaging channels.",
     };
   }
+  if (pathname?.startsWith("/dashboard/meta-ads/all-ads")) {
+    return {
+      title: "Meta Ads / All ads",
+      description: "Every ad that ran in the dates you picked, with the numbers exactly as Meta reports them.",
+    };
+  }
   if (pathname?.startsWith("/dashboard/meta-ads")) {
     return {
-      title: "Meta Ads",
-      description: "Meta messaging ad performance and lead attribution.",
+      title: "Meta Ads / Messaging ads",
+      description: "Ads that open WhatsApp, Instagram or Messenger chats, and the leads they bring.",
     };
   }
   if (pathname === "/dashboard/knowledge") {
@@ -409,6 +416,32 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
               </button>
             ))}
           </div>
+        )}
+
+        {pathname?.startsWith("/dashboard/meta-ads") && (
+          <nav aria-label="Meta ads views" className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
+            {([
+              { href: "/dashboard/meta-ads", label: "Messaging ads" },
+              { href: "/dashboard/meta-ads/all-ads", label: "All ads" },
+            ] as const).map((view) => {
+              const active = view.href === "/dashboard/meta-ads/all-ads"
+                ? pathname.startsWith("/dashboard/meta-ads/all-ads")
+                : !pathname.startsWith("/dashboard/meta-ads/all-ads");
+              return (
+                <Link
+                  key={view.href}
+                  href={view.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
+                    active ? "bg-white text-primary shadow-sm" : "text-[#475569] hover:text-[#13284A]",
+                  )}
+                >
+                  {view.label}
+                </Link>
+              );
+            })}
+          </nav>
         )}
 
         {pathname === "/dashboard/numbers" && (

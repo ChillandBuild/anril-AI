@@ -376,6 +376,9 @@ def _build_row(ad_id: str, row: dict, ad: dict | None, label: str | None, keys: 
     campaign = ad_obj.get("campaign") or {}
     return {
         "meta_ad_id": ad_id,
+        # Grouping keys for the Campaigns / Ad sets views.
+        "campaign_id": str(row.get("campaign_id") or campaign.get("id") or "") or None,
+        "adset_id": str(row.get("adset_id") or adset.get("id") or "") or None,
         "ad_name": row.get("ad_name") or ad_obj.get("name"),
         "adset_name": row.get("adset_name") or adset.get("name"),
         "campaign_name": row.get("campaign_name") or campaign.get("name"),

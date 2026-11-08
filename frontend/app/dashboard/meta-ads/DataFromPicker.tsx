@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays, History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSyncStart } from "@/hooks/useApi";
 import { api } from "@/lib/api";
@@ -67,11 +67,14 @@ export function DataFromPicker({
   note,
   onSaved,
   className,
+  variant = "button",
 }: {
   canManage: boolean;
   note: ReactNode;
   onSaved?: () => unknown;
   className?: string;
+  /** "inline": a one-line "Anril has ad data from … · Change" row whose choices open in place (inside the Dates menu). */
+  variant?: "button" | "inline";
 }) {
   const { data: syncStart, mutate: mutateSyncStart } = useSyncStart();
   const [open, setOpen] = useState(false);
@@ -128,23 +131,8 @@ export function DataFromPicker({
     }
   }
 
-  return (
-    <div ref={rootRef} className={cn("relative", className)}>
-      {canManage ? (
-        <button type="button" onClick={toggle}
-          aria-expanded={open} aria-haspopup="dialog"
-          title="Choose how far back Anril pulls ad data from Meta"
-          className="flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700">
-          <CalendarDays size={12} /> Data from: {label}
-        </button>
-      ) : (
-        <div className="flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface-muted shadow-sm">
-          <CalendarDays size={12} /> Data from: {label}
-        </div>
-      )}
-      {canManage && open && (
-        <div role="dialog" aria-label="How far back to pull ad data"
-          className="absolute right-0 top-11 z-30 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-xl">
+  const panel = (
+    <>
           <p className="font-label text-xs font-bold text-[#13284A]">How far back should Anril pull ad data?</p>
           <div role="radiogroup" aria-label="History range" className="mt-3 space-y-1">
             {options.map((option) => {
@@ -182,6 +170,53 @@ export function DataFromPicker({
             {saving && <Loader2 size={13} className="animate-spin" />}
             {saving ? "Saving…" : "Save"}
           </button>
+    </>
+  );
+
+  if (variant === "inline") {
+    return (
+      <div ref={rootRef} className={className}>
+        <div className="flex items-center gap-2.5 rounded-xl border border-[#eef2f6] bg-[#f8fafc] px-3 py-2">
+          <History size={14} className="shrink-0 text-[#64748b]" aria-hidden="true" />
+          <span className="min-w-0 flex-1 font-body text-[11px] leading-4 text-[#475569]">
+            {syncStart?.start_date
+              ? <>Anril has ad data from <b className="text-[#0A1528]">{label}</b></>
+              : <>No history date set for this account</>}
+          </span>
+          {canManage && (
+            <button type="button" onClick={toggle} aria-expanded={open}
+              className="shrink-0 font-label text-[11px] font-bold text-primary-700 hover:text-primary-900">
+              {open ? "Close" : "Change"}
+            </button>
+          )}
+        </div>
+        {canManage && open && (
+          <div role="group" aria-label="How far back to pull ad data" className="mt-2 rounded-xl border border-[#e2e8f0] p-3">
+            {panel}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={rootRef} className={cn("relative", className)}>
+      {canManage ? (
+        <button type="button" onClick={toggle}
+          aria-expanded={open} aria-haspopup="dialog"
+          title="Choose how far back Anril pulls ad data from Meta"
+          className="flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700">
+          <CalendarDays size={12} /> Data from: {label}
+        </button>
+      ) : (
+        <div className="flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface-muted shadow-sm">
+          <CalendarDays size={12} /> Data from: {label}
+        </div>
+      )}
+      {canManage && open && (
+        <div role="dialog" aria-label="How far back to pull ad data"
+          className="absolute right-0 top-11 z-30 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-xl">
+          {panel}
         </div>
       )}
     </div>

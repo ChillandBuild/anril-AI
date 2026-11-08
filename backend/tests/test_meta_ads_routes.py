@@ -123,6 +123,7 @@ def test_get_sync_start_reports_the_accounts_first_ad_even_if_it_was_off(client,
     body = client.get("/api/v1/inbound-leads/meta-ads/sync-start").json()
 
     assert body["earliest_ad_start"] == "2025-12-01"
+    assert "last_synced_at" in body
     assert body["start_date"] is None
     assert body["max_history_days"] == sync._MAX_HISTORY_DAYS
 

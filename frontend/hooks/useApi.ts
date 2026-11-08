@@ -231,6 +231,24 @@ export function useAdTotalReach(adCreativeIds: string[], dateFrom?: string, date
   );
 }
 
+/** Meta's reach per campaign or ad set for the Campaigns / Ad sets views; no call at ad level.
+ * `metaAdIds` undefined = every ad in the account. */
+export function useReachByLevel(
+  level: "campaign" | "adset" | "ad",
+  range: { date_from: string; date_to: string } | null,
+  metaAdIds?: string[],
+) {
+  const ids = metaAdIds ? [...metaAdIds].sort() : undefined;
+  const key = level !== "ad" && range && (!ids || ids.length)
+    ? `reach-by-level:${level}:${range.date_from}:${range.date_to}:${ids ? ids.join(",") : "*"}`
+    : null;
+  return useSWR<{ reach: Record<string, number> | null }>(
+    key,
+    () => api.inboundLeads.getReachByLevel({ level: level as "campaign" | "adset", ...range!, meta_ad_ids: ids }),
+    defaultConfig,
+  );
+}
+
 /** De-duplicated reach for the All ads Total row. `metaAdIds` undefined = every ad in the account. */
 export function useAllAdsTotalReach(
   range: { date_from: string; date_to: string } | null,

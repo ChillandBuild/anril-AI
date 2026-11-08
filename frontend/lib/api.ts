@@ -3346,6 +3346,12 @@ export const api = {
       if (params.refresh) qs.set("refresh", "true");
       return apiFetch<AllAdsResponse>(`/api/v1/inbound-leads/meta-ads/all-ads?${qs}`);
     },
+    /** Meta's de-duplicated reach per campaign or ad set ({id: reach}); null when Meta can't answer. */
+    getReachByLevel: async (params: { level: "campaign" | "adset"; meta_ad_ids?: string[]; date_from: string; date_to: string }) => {
+      const qs = new URLSearchParams({ level: params.level, date_from: params.date_from, date_to: params.date_to });
+      if (params.meta_ad_ids) qs.set("meta_ad_ids", params.meta_ad_ids.join(","));
+      return apiFetch<{ reach: Record<string, number> | null }>(`/api/v1/inbound-leads/meta-ads/reach-by-level?${qs}`);
+    },
     /** De-duplicated reach for the All ads Total row; omit ids for the whole account. */
     getAllAdsTotalReach: async (params: { meta_ad_ids?: string[]; date_from: string; date_to: string }) => {
       const qs = new URLSearchParams({ date_from: params.date_from, date_to: params.date_to });
@@ -3614,6 +3620,8 @@ export interface AdPerformanceRow {
   adset_id: string | null;
   adset_name: string | null;
   campaign_id: string | null;
+  /** Meta's campaign id: the Campaigns view groups by it. */
+  meta_campaign_id?: string | null;
   campaign_name: string;
   /** The ad's own Meta effective_status (ACTIVE / PAUSED / DELETED / ...), falling
    * back to the campaign's or ad set's for rows synced before it was tracked. */
@@ -3716,6 +3724,9 @@ export interface MetaFieldCatalog {
 
 export interface AllAdsRow {
   meta_ad_id: string;
+  /** Meta's campaign / ad set ids: the Campaigns and Ad sets views group by them. */
+  campaign_id?: string | null;
+  adset_id?: string | null;
   ad_name: string;
   adset_name: string;
   campaign_name: string;
@@ -3777,6 +3788,8 @@ export interface SyncStartInfo {
   connected_at: string | null;
   backfilled_from: string | null;
   earliest_ad_start: string | null;
+  /** When the account last synced with Meta (ISO), for the "Last synced" note. */
+  last_synced_at?: string | null;
   max_history_days: number;
   /** Only present on the response to PUT. */
   syncing?: boolean;

@@ -457,6 +457,40 @@ def fetch_unique_reach_by_ad(
     }
 
 
+def fetch_reach_by_level(
+    token: str,
+    account: str,
+    *,
+    level: str,
+    meta_ad_ids: list[str] | None,
+    date_from: str,
+    date_to: str,
+) -> dict[str, int] | None:
+    """Meta's de-duplicated reach per campaign or per ad set ({id: reach}), for the
+    reports' Campaigns / Ad sets views -- adding the ads' reach would count anyone
+    who saw two of them twice. `meta_ad_ids` None means every ad in the account.
+    None when there are too many ads to filter by."""
+    if level not in ("campaign", "adset"):
+        raise ValueError(f"unknown level: {level}")
+    if meta_ad_ids is not None and (not meta_ad_ids or len(meta_ad_ids) > _TOTAL_REACH_MAX_ADS):
+        return None
+    filtering = [{"field": "ad.effective_status", "operator": "IN", "value": list(_ALL_AD_STATUSES)}]
+    if meta_ad_ids is not None:
+        filtering.insert(0, {"field": "ad.id", "operator": "IN", "value": sorted(meta_ad_ids)})
+    rows = _fetch_paged(f"{_GRAPH_BASE}/{account}/insights", {
+        "level": level,
+        "fields": f"{level}_id,reach",
+        "time_range": json.dumps({"since": date_from, "until": date_to}),
+        "filtering": json.dumps(filtering),
+        "limit": "200",
+        "access_token": token,
+    })
+    return {
+        str(r[f"{level}_id"]): int(float(r.get("reach", 0) or 0))
+        for r in rows if r.get(f"{level}_id")
+    }
+
+
 # Meta's ad.id filter is kept to the size the All ads report already uses.
 _TOTAL_REACH_MAX_ADS = 50
 

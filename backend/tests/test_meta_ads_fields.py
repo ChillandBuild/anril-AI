@@ -226,6 +226,15 @@ def test_empty_breakdown_buckets_are_dropped(graph):
     assert [r["breakdown"] for r in rows] == ["18-24"]
 
 
+def test_rows_carry_campaign_and_ad_set_ids_for_grouping(graph):
+    graph["ads"] = [_ad("A", "Ad A", adset={"id": "S1", "name": "set"}, campaign={"id": "C1", "name": "camp"})]
+    graph["insights"] = [{"ad_id": "A", "campaign_id": "C1", "adset_id": "S1", "spend": "5", "impressions": "9"}]
+    graph["ads"].append(_ad("B", "Idle", adset={"id": "S2", "name": "s2"}, campaign={"id": "C2", "name": "c2"}))
+    rows = {r["meta_ad_id"]: r for r in _fetch(ad_ids={"A", "B"})}
+    assert (rows["A"]["campaign_id"], rows["A"]["adset_id"]) == ("C1", "S1")
+    assert (rows["B"]["campaign_id"], rows["B"]["adset_id"]) == ("C2", "S2")  # from the /ads object
+
+
 def test_eligible_ad_missing_from_meta_gets_no_blank_row(graph):
     graph["ads"] = [_ad("A", "Ad A")]
     graph["insights"] = []

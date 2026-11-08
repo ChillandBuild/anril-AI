@@ -2,21 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
+  AlertTriangle,
+  Archive,
   Ban,
   Check,
   ChevronDown,
+  ChevronRight,
   Columns3,
   Copy,
   Download,
-  Filter,
   KeyRound,
+  LayoutGrid,
   Loader2,
   type LucideIcon,
   Megaphone,
-  MessageCircle,
-  MessageSquareOff,
-  MousePointerClick,
-  Percent,
+  Pause,
   RefreshCw,
   RotateCcw,
   Search,
@@ -31,14 +32,23 @@ import {
   useAdFilters,
   useAdPerformance,
   useAdTotalReach,
+  useReachByLevel,
   useSyncStart,
   useTrackedAds,
 } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { TickMark } from "@/components/ui/controls";
-import { DataFromPicker } from "./DataFromPicker";
 import { ChannelMarks, deliveryLabel } from "./metaFields";
+import {
+  DatesMenu,
+  LevelSwitch,
+  MoreMenu,
+  SummaryCard,
+  TOOLBAR_BUTTON,
+  rangeLabel,
+  type ReportLevel,
+} from "./reportControls";
 import { AdDetailPanel } from "./AdDetailPanel";
 
 type MetricKey =
@@ -190,37 +200,6 @@ function channelSplit(byChannel: ChannelCounts | undefined): string | null {
   return parts.length >= 2 ? parts.join(" · ") : null;
 }
 
-function PerformanceKpiCard({
-  label,
-  value,
-  description,
-  icon: Icon,
-  gradient,
-  tone = "border-t-primary-500",
-}: {
-  label: string;
-  value: string;
-  description: string;
-  icon: LucideIcon;
-  gradient: string;
-  tone?: string;
-}) {
-  return (
-    <div className={cn("group flex items-center gap-4 rounded-2xl border border-[#e2e8f0]/80 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md border-t-4", tone)}>
-      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition-transform group-hover:scale-110", gradient)}>
-        <Icon size={19} />
-      </span>
-      <span className="min-w-0">
-        <span className="block font-display text-2xl font-bold leading-none tabular-nums text-[#0A1528]">{value}</span>
-        <span className="mt-0.5 block font-label text-xs font-medium text-[#94a3b8]">{label}</span>
-        <span className="mt-1 block truncate font-body text-[9px] leading-none text-stone-400" title={description}>
-          {description}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 function statusLabel(status: string | null | undefined) {
   return deliveryLabel(status) || "Unknown";
 }
@@ -234,20 +213,116 @@ function isRemoved(status: string | null | undefined) {
   return REMOVED_STATUSES.has((status || "").toUpperCase());
 }
 
-/** Mirrors DELIVERY_GROUPS in backend/app/services/ad_performance.py -- the CSV
- * export filters server-side with these same keys, so the download matches what
- * is on screen. Ordered as they appear in the dropdown. */
-const DELIVERY_FILTERS: { key: string; label: string; statuses: Set<string> }[] = [
-  { key: "active", label: "Active", statuses: new Set(["ACTIVE"]) },
-  { key: "paused", label: "Paused", statuses: new Set(["PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]) },
-  { key: "archived", label: "Archived", statuses: new Set(["ARCHIVED"]) },
-  { key: "deleted", label: "Deleted", statuses: new Set(["DELETED"]) },
-  { key: "issues", label: "Needs attention", statuses: new Set(["DISAPPROVED", "WITH_ISSUES", "PENDING_REVIEW", "PENDING_BILLING_INFO"]) },
+/** The cards above the table. Keys mirror DELIVERY_GROUPS in
+ * backend/app/services/ad_performance.py -- the CSV export filters server-side
+ * with the same key, so the download matches what is on screen. "Needs
+ * attention" only shows when an ad is in one of those states. */
+const DELIVERY_CARDS: { key: string; label: string; statuses: Set<string> | null; icon: LucideIcon; tint: string; always: boolean }[] = [
+  { key: "", label: "All ads", statuses: null, icon: LayoutGrid, tint: "bg-primary-50 text-primary-700", always: true },
+  { key: "active", label: "Active", statuses: new Set(["ACTIVE"]), icon: Activity, tint: "bg-emerald-50 text-emerald-700", always: true },
+  { key: "paused", label: "Switched off", statuses: new Set(["PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]), icon: Pause, tint: "bg-amber-50 text-amber-700", always: true },
+  { key: "removed", label: "Archived & deleted", statuses: new Set(["ARCHIVED", "DELETED"]), icon: Archive, tint: "bg-slate-100 text-slate-600", always: true },
+  { key: "issues", label: "Needs attention", statuses: new Set(["DISAPPROVED", "WITH_ISSUES", "PENDING_REVIEW", "PENDING_BILLING_INFO"]), icon: AlertTriangle, tint: "bg-red-50 text-red-700", always: false },
 ];
 
+const ISSUE_STATUSES = DELIVERY_CARDS[4].statuses ?? new Set<string>();
+
 function matchesDelivery(row: AdPerformanceRow, key: string) {
-  const group = DELIVERY_FILTERS.find((filter) => filter.key === key);
-  return group ? group.statuses.has((row.delivery_status || "").toUpperCase()) : true;
+  const card = DELIVERY_CARDS.find((item) => item.key === key);
+  return !card?.statuses || card.statuses.has((row.delivery_status || "").toUpperCase());
+}
+
+const LEVEL_HEADINGS: Record<ReportLevel, string> = { campaign: "Campaign", adset: "Ad set", ad: "Ad" };
+const LEVEL_NOUNS: Record<ReportLevel, [string, string]> = { campaign: ["campaign", "campaigns"], adset: ["ad set", "ad sets"], ad: ["ad", "ads"] };
+
+/** Columns that hold words rather than numbers, so they read left-aligned. */
+const TEXT_METRICS = new Set<MetricKey>(["delivery_status", "budget"]);
+
+/** "8 Nov, 11:45 am" in the viewer's own clock. */
+function syncedAt(iso: string) {
+  return new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+function RateBar({ value }: { value: number | null }) {
+  return (
+    <span className="inline-flex w-[120px] items-center gap-2">
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef2f6]">
+        <span className="block h-full rounded-full bg-primary-500" style={{ width: `${Math.max(0, Math.min(100, value ?? 0))}%` }} />
+      </span>
+      <span className="w-11 text-right font-bold">{percent(value)}</span>
+    </span>
+  );
+}
+
+/** One status for a campaign or ad set row: live if any ad is, removed only if every ad is. */
+function groupStatus(rows: AdPerformanceRow[]): string {
+  const statuses = rows.map((row) => (row.delivery_status || "").toUpperCase());
+  if (statuses.includes("ACTIVE")) return "ACTIVE";
+  if (statuses.every((status) => REMOVED_STATUSES.has(status))) return statuses.includes("ARCHIVED") ? "ARCHIVED" : "DELETED";
+  return statuses.find((status) => ISSUE_STATUSES.has(status)) ?? "PAUSED";
+}
+
+type TableRow = { key: string; level: ReportLevel; row: AdPerformanceRow; title: string; subtitle: string };
+
+/**
+ * The table's rows at the chosen level. Campaign and ad set rows add up their
+ * ads (aggregateRows); reach comes from Meta per campaign / ad set, since adding
+ * the ads' reach would count anyone who saw two of them twice.
+ */
+function groupRows(rows: AdPerformanceRow[], level: ReportLevel, reachById: Record<string, number> | null | undefined): TableRow[] {
+  if (level === "ad") {
+    return rows.map((row) => ({
+      key: row.ad_creative_id,
+      level,
+      row,
+      title: row.creative_label,
+      subtitle: `${row.campaign_name} › ${row.adset_name ?? "—"}`,
+    }));
+  }
+  const groups = new Map<string, AdPerformanceRow[]>();
+  for (const row of rows) {
+    const id = level === "campaign"
+      ? row.meta_campaign_id || row.campaign_id || row.campaign_name
+      : row.adset_id || row.adset_name || "—";
+    const list = groups.get(id);
+    if (list) list.push(row);
+    else groups.set(id, [row]);
+  }
+  return Array.from(groups.entries()).map(([id, members]) => {
+    const first = members[0];
+    const summed = aggregateRows(members);
+    const metaReach = reachById?.[id];
+    const reach = metaReach ?? summed.reach;
+    const budgetHere = first.budget_level === (level === "campaign" ? "campaign" : "ad_set");
+    const adsets = new Set(members.map((member) => member.adset_id)).size;
+    const title = level === "campaign" ? first.campaign_name : first.adset_name ?? "—";
+    return {
+      key: `${level}:${id}`,
+      level,
+      title,
+      subtitle: level === "campaign"
+        ? `${first.campaign_created_at ? `Created ${createdOn(first.campaign_created_at)} · ` : ""}${adsets} ${adsets === 1 ? "ad set" : "ad sets"} · ${members.length} ${members.length === 1 ? "ad" : "ads"}`
+        : `${first.campaign_name} · ${members.length} ${members.length === 1 ? "ad" : "ads"}`,
+      row: {
+        ...summed,
+        ad_creative_id: `${level}:${id}`,
+        creative_label: title,
+        campaign_id: first.campaign_id,
+        meta_campaign_id: first.meta_campaign_id,
+        campaign_name: first.campaign_name,
+        adset_id: level === "adset" ? first.adset_id : null,
+        adset_name: level === "adset" ? first.adset_name : null,
+        delivery_status: groupStatus(members),
+        daily_budget: budgetHere ? first.daily_budget : null,
+        lifetime_budget: budgetHere ? first.lifetime_budget : null,
+        budget_level: budgetHere ? first.budget_level : null,
+        reach,
+        // Not while Meta's figure is still loading (reachById undefined).
+        reach_estimated: reachById !== undefined && metaReach == null && members.length > 1 && summed.reach > 0,
+        frequency: reach ? summed.impressions / reach : null,
+      },
+    };
+  });
 }
 
 /** Days between an ISO date and today in India. */
@@ -444,7 +519,6 @@ export function AdPerformanceTab() {
   const [dateTo, setDateTo] = useState(() => localDate());
   const [exporting, setExporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [trackingCreativeId, setTrackingCreativeId] = useState("");
@@ -452,17 +526,13 @@ export function AdPerformanceTab() {
   const [trackingResult, setTrackingResult] = useState<AdTrackingCodeResponse | null>(null);
   const [generatingTrackingCode, setGeneratingTrackingCode] = useState(false);
   const [copiedTrackingMessage, setCopiedTrackingMessage] = useState(false);
-  const [showReportingNotice, setShowReportingNotice] = useState(true);
   const [deliveryStatus, setDeliveryStatus] = useState("");
+  const [level, setLevel] = useState<ReportLevel>("ad");
+  const [search, setSearch] = useState("");
   const [visibleMetrics, setVisibleMetrics] = useState<Set<MetricKey>>(() => new Set(DEFAULT_METRICS));
   const [showManage, setShowManage] = useState(false);
   const [detailRow, setDetailRow] = useState<AdPerformanceRow | null>(null);
   const [manageQuery, setManageQuery] = useState("");
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => setShowReportingNotice(false), 10_000);
-    return () => window.clearTimeout(timeoutId);
-  }, []);
 
   useEffect(() => {
     if (!showManage) return;
@@ -486,14 +556,28 @@ export function AdPerformanceTab() {
   };
   const { data, isLoading, isValidating, mutate } = useAdPerformance(params);
   const allRows = useMemo(() => data?.data ?? [], [data]);
+  // Search narrows everything below it -- cards included -- so the cards'
+  // numbers always add up to what the table can show.
+  const searched = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return allRows;
+    return allRows.filter((row) =>
+      [row.creative_label, row.campaign_name, row.adset_name ?? ""].some((text) => text.toLowerCase().includes(needle)),
+    );
+  }, [allRows, search]);
+  // The selected card is the delivery filter: the table, Total row and export
+  // all describe the same set.
   const rows = useMemo(
-    () => (deliveryStatus ? allRows.filter((row) => matchesDelivery(row, deliveryStatus)) : allRows),
-    [allRows, deliveryStatus],
+    () => (deliveryStatus ? searched.filter((row) => matchesDelivery(row, deliveryStatus)) : searched),
+    [searched, deliveryStatus],
   );
-  // Cards, Total and rows all describe the same set: whatever the Delivery
-  // filter currently selects. Cards that quietly excluded archived ads while the
-  // filter read "All statuses" contradicted the control right next to them --
-  // to see live-only numbers, pick Active in the Delivery filter.
+  const deliveryCards = useMemo(
+    () => DELIVERY_CARDS.map((card) => {
+      const members = card.key ? searched.filter((row) => matchesDelivery(row, card.key)) : searched;
+      return { ...card, count: members.length, totals: aggregateRows(members) };
+    }).filter((card) => card.always || card.count > 0),
+    [searched],
+  );
   // Adding the rows' reach counts anyone who saw two of these ads twice, so the
   // Total row asks Meta for the de-duplicated figure, like Ads Manager's total.
   const { data: totalReach, error: totalReachError } = useAdTotalReach(
@@ -517,6 +601,16 @@ export function AdPerformanceTab() {
     () => METRICS.filter((metric) => visibleMetrics.has(metric.key)),
     [visibleMetrics],
   );
+  const { data: levelReach } = useReachByLevel(
+    level,
+    dateFrom && dateTo ? { date_from: dateFrom, date_to: dateTo } : null,
+    rows.map((row) => row.meta_ad_id).filter(Boolean),
+  );
+  const tableRows = useMemo(() => groupRows(rows, level, levelReach?.reach), [rows, level, levelReach]);
+  const [singular, plural] = LEVEL_NOUNS[level];
+  const showingLabel = isLoading
+    ? "Loading…"
+    : `Showing ${tableRows.length} ${tableRows.length === 1 ? singular : plural} · ${rangeLabel(dateFrom, dateTo)}`;
 
   const adsetOptions = useMemo(
     () => (filters?.adsets ?? []).filter((adset) => !campaignId || adset.campaign_id === campaignId),
@@ -536,8 +630,12 @@ export function AdPerformanceTab() {
     ),
     [filters, campaignId, adsetId],
   );
-  const activeDimensionFilters =
-    Number(Boolean(campaignId)) + Number(Boolean(adsetId)) + Number(Boolean(creativeId)) + Number(Boolean(deliveryStatus));
+  const hasFilters = Boolean(campaignId || adsetId || creativeId || search.trim() || deliveryStatus);
+  /** "Ads: New Sales ad, New Engagement ad" -- tells apart campaigns or ad sets that share a name. */
+  function adsIn(key: "campaign_id" | "adset_id", id: string) {
+    const names = (filters?.creatives ?? []).filter((creative) => creative[key] === id).map((creative) => creative.name);
+    return names.length ? `Ads: ${names.join(", ")}` : undefined;
+  }
   const showSyncNote = Boolean(syncStart?.start_date) && dateFrom < (syncStart?.start_date ?? "").slice(0, 10);
 
   const trackedGroups = useMemo(() => {
@@ -575,8 +673,23 @@ export function AdPerformanceTab() {
     setAdsetId("");
     setCreativeId("");
     setDeliveryStatus("");
-    setDateFrom(localDate(29));
-    setDateTo(localDate());
+    setSearch("");
+  }
+
+  /** Like Ads Manager: a campaign row opens its ad sets, an ad set row its ads, an ad its detail panel. */
+  function openRow(item: TableRow) {
+    if (item.level === "ad") {
+      setDetailRow(item.row);
+    } else if (item.level === "campaign") {
+      setCampaignId(item.row.campaign_id ?? "");
+      setAdsetId("");
+      setCreativeId("");
+      setLevel("adset");
+    } else {
+      setAdsetId(item.row.adset_id ?? "");
+      setCreativeId("");
+      setLevel("ad");
+    }
   }
 
   /** Optimistic on the tracked-ads list; SWR rolls it back if the save fails. */
@@ -693,76 +806,97 @@ export function AdPerformanceTab() {
     "h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid/80 bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-sm transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
-    <div>
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-              <PerformanceKpiCard
-                label="Chat Clicks"
-                value={isLoading ? "—" : count(totals.inline_link_clicks)}
-                description="Clicked the ad and opened a chat"
-                icon={MousePointerClick}
-                gradient="bg-gradient-to-br from-primary-500 to-primary"
-                tone="border-t-primary-500"
-              />
-              <PerformanceKpiCard
-                label="Messages Sent"
-                value={isLoading ? "—" : count(totals.messages)}
-                description="Clicked and sent a message"
-                icon={MessageCircle}
-                gradient="bg-gradient-to-br from-blue-500 to-cyan-600"
-                tone="border-t-sky-400"
-              />
-              <PerformanceKpiCard
-                label="No Message"
-                value={isLoading ? "—" : count(totals.clicked_no_message)}
-                description="Clicked but did not send the message"
-                icon={MessageSquareOff}
-                gradient="bg-gradient-to-br from-amber-500 to-orange-500"
-                tone="border-t-amber-400"
-              />
-              <PerformanceKpiCard
-                label="Message Rate"
-                value={isLoading ? "—" : percent(totals.conversation_rate)}
-                description="Messages sent out of chat clicks"
-                icon={Percent}
-                gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
-                tone="border-t-emerald-400"
-              />
-        </div>
+    <div className="space-y-[18px]">
+      <div
+        role="group"
+        aria-label="Filter ads by delivery"
+        className={cn("grid grid-cols-1 gap-3.5 sm:grid-cols-2", deliveryCards.length > 4 ? "xl:grid-cols-5" : "xl:grid-cols-4")}
+      >
+        {deliveryCards.map((card) => (
+          <SummaryCard
+            key={card.key || "all"}
+            selected={deliveryStatus === card.key}
+            onSelect={() => setDeliveryStatus(card.key)}
+            icon={card.icon}
+            tint={card.tint}
+            label={card.label}
+            badge={isLoading ? "—" : `${card.count} ${card.count === 1 ? "ad" : "ads"}`}
+            value={isLoading ? "—" : count(card.totals.messages)}
+            caption="messages sent"
+            stats={[
+              { label: "Clicks", value: isLoading ? "—" : count(card.totals.inline_link_clicks) },
+              { label: "Rate", value: isLoading ? "—" : percent(card.totals.conversation_rate) },
+              { label: "Spent", value: isLoading ? "—" : money(card.totals.spend) },
+            ]}
+          />
+        ))}
+      </div>
 
-        <div className="grid h-fit grid-cols-2 gap-2 self-start p-1">
-          <button type="button" onClick={() => mutate()} disabled={isValidating}
-            className="flex h-9 items-center justify-center gap-2 rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700 disabled:opacity-40">
-            <RefreshCw size={12} className={isValidating ? "animate-spin" : ""} /> Refresh
+      <section aria-label="Messaging ads" className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f6] p-3.5 xl:flex-nowrap">
+          <LevelSwitch
+            level={level}
+            onLevel={setLevel}
+            filters={{
+              campaign: {
+                options: (filters?.campaigns ?? []).map((campaign) => ({ id: campaign.id, name: campaign.name, hint: adsIn("campaign_id", campaign.id) })),
+                value: campaignId,
+                onChange: (id) => { setCampaignId(id); setAdsetId(""); setCreativeId(""); },
+              },
+              adset: {
+                options: adsetOptions.map((adset) => ({ id: adset.id, name: adset.name, hint: adsIn("adset_id", adset.id) })),
+                value: adsetId,
+                onChange: (id) => { setAdsetId(id); setCreativeId(""); },
+              },
+              ad: {
+                options: creativeOptions.map((creative) => ({ id: creative.id, name: creative.name })),
+                value: creativeId,
+                onChange: setCreativeId,
+              },
+            }}
+          />
+          <label className="relative min-w-[160px] max-w-[260px] flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search ads"
+              aria-label="Search ad or campaign"
+              className="h-9 w-full rounded-xl border border-[#e2e8f0] bg-[#f8fafc] pl-9 pr-3 font-body text-xs font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-200"
+            />
+          </label>
+          <DatesMenu
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+            canManage={canManage}
+            onHistorySaved={() => mutate()}
+            historyNote="Messaging ads covers ads that were running when you connected, and new ones since, so months before those ads show nothing here. The same date applies to All ads."
+          />
+          {hasFilters && (
+            <button type="button" onClick={clearFilters}
+              className="shrink-0 px-1 font-label text-xs font-bold text-primary-700 hover:text-primary-900">
+              Clear
+            </button>
+          )}
+
+          <span className="hidden flex-1 xl:block" />
+
+          <button type="button" onClick={() => mutate()} disabled={isValidating} aria-label="Refresh" title="Refresh"
+            className={cn(TOOLBAR_BUTTON, "w-9 px-0")}>
+            <RefreshCw size={14} className={isValidating ? "animate-spin" : ""} />
           </button>
           <button type="button" onClick={handleSyncNow} disabled={syncing || !canManage}
             title={canManage ? "Pull the latest messaging ad performance from Meta" : "Needs Meta Ads write access"}
-            className="flex h-9 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-label text-xs font-bold text-amber-700 shadow-sm transition-all hover:bg-amber-100 disabled:opacity-40">
-            <Zap size={12} className={syncing ? "animate-pulse" : ""} /> {syncing ? "Syncing…" : "Sync now"}
+            className="flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 font-label text-xs font-bold text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:opacity-40">
+            <Zap size={13} className={syncing ? "animate-pulse" : ""} /> {syncing ? "Syncing…" : "Sync now"}
           </button>
-
-          <button type="button" onClick={() => setShowFilters((visible) => !visible)}
-            aria-expanded={showFilters} aria-controls="ad-performance-filters"
-            className={cn(
-              "flex h-9 items-center justify-center gap-2 rounded-xl border px-3 py-2 font-label text-xs font-bold shadow-sm transition-all",
-              showFilters || activeDimensionFilters > 0
-                ? "border-primary-200 bg-primary-50 text-primary-700"
-                : "border-surface-mid bg-white text-on-surface hover:border-primary-300 hover:text-primary-700",
-            )}>
-            <Filter size={12} /> Filters
-            {activeDimensionFilters > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary-600 text-[9px] text-white">
-                {activeDimensionFilters}
-              </span>
-            )}
-          </button>
-
-          <div className="relative">
+          <div className="relative shrink-0">
             <button type="button" onClick={() => setShowColumns((visible) => !visible)}
-              aria-expanded={showColumns} aria-haspopup="dialog"
-              className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-primary-200 bg-white px-3 py-2 font-label text-xs font-bold text-primary-700 shadow-sm transition-all hover:bg-primary-50">
+              aria-expanded={showColumns} aria-haspopup="dialog" className={TOOLBAR_BUTTON}>
               <Columns3 size={13} /> Columns
-              <span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[9px]">{selectedMetrics.length}</span>
+              <span className="rounded-full bg-[#f1f5f9] px-1.5 py-0.5 text-[10px] text-[#475569]">{selectedMetrics.length}</span>
             </button>
             {showColumns && (
               <div role="dialog" aria-label="Customize ad performance columns"
@@ -803,253 +937,163 @@ export function AdPerformanceTab() {
               </div>
             )}
           </div>
-
-          <button type="button" onClick={openTrackingModal} disabled={!canManage || whatsappCreatives.length === 0}
-            title={canManage ? "Generate a fallback ID for a Meta ad's pre-filled WhatsApp message" : "Needs Meta Ads write access"}
-            className="flex h-9 items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 font-label text-xs font-bold text-primary-700 shadow-sm transition-all hover:bg-primary-100 disabled:opacity-40">
-            <KeyRound size={12} /> Generate ID
-          </button>
-
-          <button type="button" onClick={() => setShowManage(true)} disabled={!canManage}
-            title={canManage ? "Switch individual ads on or off in this report" : "Needs Meta Ads write access"}
-            className="flex h-9 items-center justify-center gap-2 rounded-xl border border-surface-mid bg-white px-3 py-2 font-label text-xs font-bold text-on-surface shadow-sm transition-all hover:border-primary-300 hover:text-primary-700 disabled:opacity-40">
-            <SlidersHorizontal size={12} /> Manage ads
-          </button>
-
-          <DataFromPicker
-            className="col-span-2"
-            canManage={canManage}
-            onSaved={() => mutate()}
-            note="Messaging ads covers ads that were running when you connected, and new ones since, so months before those ads show nothing here. The same date applies to All ads."
+          <MoreMenu
+            items={[
+              {
+                label: "Generate ID",
+                icon: KeyRound,
+                onClick: openTrackingModal,
+                disabled: !canManage || whatsappCreatives.length === 0,
+                title: canManage ? "Generate a fallback ID for a Meta ad's pre-filled WhatsApp message" : "Needs Meta Ads write access",
+              },
+              {
+                label: "Manage ads",
+                icon: SlidersHorizontal,
+                onClick: () => setShowManage(true),
+                disabled: !canManage,
+                title: canManage ? "Switch individual ads on or off in this report" : "Needs Meta Ads write access",
+              },
+            ]}
           />
-
           <button type="button" onClick={handleExport} disabled={exporting || rows.length === 0}
-            className="col-span-2 flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40">
-            <Download size={12} /> {exporting ? "Downloading…" : "Download CSV"}
+            className="flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-primary px-3.5 font-label text-xs font-bold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-40">
+            <Download size={13} /> {exporting ? "Exporting…" : "Export"}
           </button>
         </div>
-      </div>
 
-      {showFilters && (
-        <div id="ad-performance-filters" className="mb-5 overflow-hidden rounded-2xl border border-primary-100/80 bg-gradient-to-br from-primary-50/70 via-white to-primary-50/50 p-3 shadow-sm">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-600 text-white shadow-sm shadow-primary-200">
-                <Filter size={13} />
-              </span>
-              <div>
-                <p className="font-label text-[13px] font-bold text-on-surface">Filter ad performance</p>
-                <p className="font-body text-[10px] text-on-surface-muted">Set a date range, then narrow by campaign, ad set, creative, or delivery status.</p>
-              </div>
-            </div>
-            <button type="button" onClick={clearFilters}
-              className="flex h-7 items-center gap-1 rounded-full border border-primary-200 bg-white/90 px-2.5 font-label text-[11px] font-semibold text-primary-700 shadow-sm transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-900">
-              <X size={11} /> Clear filters
-            </button>
-          </div>
-          <div className="grid gap-2.5 items-end grid-cols-1 sm:grid-cols-2 xl:grid-cols-6">
-            <div>
-              <label htmlFor="ad-performance-from" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">From Date</label>
-              <input id="ad-performance-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)}
-                className="h-9 w-full rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200" />
-            </div>
-            <div>
-              <label htmlFor="ad-performance-to" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">To Date</label>
-              <input id="ad-performance-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)}
-                className="h-9 w-full rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200" />
-            </div>
-            <div>
-              <label htmlFor="ad-performance-campaign" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Campaign</label>
-              <div className="relative">
-                <select id="ad-performance-campaign" className={selectClass} value={campaignId}
-                  onChange={(event) => { setCampaignId(event.target.value); setAdsetId(""); setCreativeId(""); }}>
-                  <option value="">All campaigns</option>
-                  {(filters?.campaigns ?? []).map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
-                </select>
-                <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="ad-performance-adset" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Ad set</label>
-              <div className="relative">
-                <select id="ad-performance-adset" className={selectClass} value={adsetId}
-                  onChange={(event) => { setAdsetId(event.target.value); setCreativeId(""); }}>
-                  <option value="">All ad sets</option>
-                  {adsetOptions.map((adset) => <option key={adset.id} value={adset.id}>{adset.name}</option>)}
-                </select>
-                <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="ad-performance-creative" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Creative</label>
-              <div className="relative">
-                <select id="ad-performance-creative" className={selectClass} value={creativeId} onChange={(event) => setCreativeId(event.target.value)}>
-                  <option value="">All creatives</option>
-                  {creativeOptions.map((creative) => <option key={creative.id} value={creative.id}>{creative.name}</option>)}
-                </select>
-                <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="ad-performance-delivery" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Delivery</label>
-              <div className="relative">
-                <select id="ad-performance-delivery" className={selectClass} value={deliveryStatus}
-                  onChange={(event) => setDeliveryStatus(event.target.value)}>
-                  <option value="">All statuses</option>
-                  {/* Only statuses actually present, so the list never offers a
-                      choice that would empty the table. */}
-                  {DELIVERY_FILTERS.filter(
-                    (filter) => allRows.some((row) => filter.statuses.has((row.delivery_status || "").toUpperCase())),
-                  ).map((filter) => (
-                    <option key={filter.key} value={filter.key}>{filter.label}</option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-              </div>
-            </div>
-          </div>
+        <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#eef2f6] bg-[#fbfcfd] px-4 py-2.5 font-body text-[11px] text-[#64748b]">
+          <span className="font-bold text-[#0A1528]">{showingLabel}</span>
+          {showSyncNote && syncStart?.start_date && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Numbers start {formatDay(syncStart.start_date)}, the history date set for this account</span>
+            </>
+          )}
+          {syncStart?.last_synced_at && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Last synced {syncedAt(syncStart.last_synced_at)}</span>
+            </>
+          )}
+          {(totals.reach_estimated || tableRows.some((item) => item.row.reach_estimated)) && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-amber-800">Reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it may count someone twice. Refresh to try again.</span>
+            </>
+          )}
         </div>
-      )}
 
-      {showReportingNotice && (
-        <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary-100 bg-primary-50/60 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
-              <Megaphone size={15} />
-            </span>
-            <div>
-              <p className="font-label text-xs font-bold text-primary-950">Messaging ads reporting</p>
-              <p className="font-body text-[11px] text-primary-700">
-                Current account {filters?.account_id ?? "not connected"} · Ads that open WhatsApp, Instagram or Messenger chats. Messages sent counts chats on all three apps.
-              </p>
-              <p className="font-body text-[10px] text-primary-600">
-                Website, form and app ads are on the All ads tab. The Leads tab still includes WhatsApp, Instagram, Facebook, and Telegram leads.
+        <div className="overflow-hidden rounded-b-2xl">
+          {isLoading ? (
+            <AiraLoader inline className="min-h-[300px]" />
+          ) : allRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50">
+                <Megaphone size={24} className="text-primary-400" />
+              </div>
+              <h3 className="mb-1 text-base font-bold text-[#1e293b]">No messaging ad data for this account</h3>
+              <p className="max-w-md text-sm leading-relaxed text-[#94a3b8]">
+                Validate the Meta Ads card in Settings, then run Sync now. Ads from previously connected accounts stay hidden.
               </p>
             </div>
-          </div>
-          <span className="rounded-full border border-primary-200 bg-white px-3 py-1 font-label text-[10px] font-bold text-primary-700">
-            {dateFrom} — {dateTo}
-          </span>
-        </div>
-      )}
-
-      {showSyncNote && syncStart?.start_date && (
-        <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
-          Showing data from {formatDay(syncStart.start_date)} — the history date set for this account.
-        </p>
-      )}
-
-      {totals.reach_estimated && (
-        <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
-          Reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it adds up the reach of each day or each ad and may count the same person twice. Refresh to try again.
-        </p>
-      )}
-
-      <div className="card overflow-hidden rounded-2xl">
-        {isLoading ? (
-          <AiraLoader inline className="min-h-[300px]" />
-        ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50">
-              <Megaphone size={24} className="text-primary-400" />
+          ) : tableRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
+              <h3 className="mb-1 text-sm font-bold text-[#1e293b]">No ads match</h3>
+              <p className="max-w-md text-xs leading-relaxed text-[#94a3b8]">Pick another card above, or clear the search and filters.</p>
             </div>
-            <h3 className="mb-1 text-base font-bold text-[#1e293b]">No messaging ad data for this account</h3>
-            <p className="max-w-md text-sm leading-relaxed text-[#94a3b8]">
-              Validate the Meta Ads card in Settings, then run Sync now. Ads from previously connected accounts stay hidden.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px]">
-              <thead>
-                <tr className="border-b border-surface-mid bg-surface-low/60">
-                  {["Campaign", "Ad set", "Creative"].map((heading) => (
-                    <th key={heading} className="whitespace-nowrap px-4 py-3 text-center font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">{heading}</th>
-                  ))}
-                  {selectedMetrics.map((metric) => (
-                    <th key={metric.key} title={metric.help}
-                      className="whitespace-nowrap px-4 py-3 text-center font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
-                      {metric.label}
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1080px]">
+                <thead>
+                  <tr className="border-b border-[#eef2f6]">
+                    <th className="sticky left-0 z-10 min-w-[280px] bg-white px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
+                      {LEVEL_HEADINGS[level]}
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-mid/50">
-                {rows.map((row) => {
-                  // Ads removed in Ads Manager stay in the table -- their spend is
-                  // real and still counts toward the totals -- but recede visually.
-                  // Hovering restores full opacity so the numbers stay readable.
-                  const removed = isRemoved(row.delivery_status);
-                  return (
-                    <tr
-                      key={row.ad_creative_id}
-                      onClick={() => setDetailRow(row)}
-                      className={cn(
-                        "cursor-pointer transition-all hover:bg-surface-low/60",
-                        removed && "bg-surface-low/25 opacity-55 hover:opacity-100",
-                      )}
-                    >
-                      <td className="px-4 py-3 text-center font-label text-xs font-semibold text-on-surface">
-                        {row.campaign_name}
-                        {row.campaign_created_at && (
-                          <span className="mt-0.5 block whitespace-nowrap text-[10px] font-normal text-on-surface-muted">
-                            Created {createdOn(row.campaign_created_at)}
-                          </span>
+                    {selectedMetrics.map((metric) => (
+                      <th key={metric.key} title={metric.help}
+                        className={cn(
+                          "whitespace-nowrap px-4 py-3 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted",
+                          TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
+                        )}>
+                        {metric.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f1f5f9]">
+                  {tableRows.map((item) => {
+                    const { row } = item;
+                    // Ads removed in Ads Manager stay in the table -- their spend is
+                    // real and still counts toward the totals -- but recede visually.
+                    const removed = item.level === "ad" && isRemoved(row.delivery_status);
+                    return (
+                      <tr
+                        key={item.key}
+                        onClick={() => openRow(item)}
+                        title={item.level === "ad" ? "See where this ad works best" : `Show this ${item.level === "campaign" ? "campaign's ad sets" : "ad set's ads"}`}
+                        className={cn(
+                          "group cursor-pointer transition-colors hover:bg-[#f8fafc]",
+                          removed && "opacity-55 hover:opacity-100",
+                        )}
+                      >
+                        <td className="sticky left-0 z-10 bg-white px-4 py-3 group-hover:bg-[#f8fafc]">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "min-w-0 truncate font-label text-[13px] font-bold text-[#0A1528] group-hover:text-primary-700",
+                              removed && "line-through decoration-stone-400",
+                            )} title={item.title}>
+                              {item.title}
+                            </span>
+                            {item.level === "ad" && <ChannelMarks channels={row.messaging_channels} multiDestination={row.is_multi_destination} />}
+                            {item.level !== "ad" && <ChevronRight size={14} className="shrink-0 text-[#cbd5e1] group-hover:text-primary-600" />}
+                          </div>
+                          <div className="mt-0.5 truncate font-body text-[11px] text-[#94a3b8]" title={item.subtitle}>{item.subtitle}</div>
+                        </td>
+                        {selectedMetrics.map((metric) => (
+                          <td key={metric.key} className={cn(
+                            "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
+                            TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
+                            metric.key === "messages" && "font-bold text-on-surface",
+                            metric.key === "inline_link_clicks" && "font-semibold text-primary-700",
+                            metric.key === "hot" && "font-semibold text-rose-600",
+                          )}>
+                            {metric.key === "conversation_rate" ? (
+                              <RateBar value={row.conversation_rate} />
+                            ) : metric.key === "delivery_status" && item.level !== "ad" ? (
+                              <StatusBadge status={row.delivery_status} />
+                            ) : metricValue(metric.key, row)}
+                            {metric.key === "messages" && channelSplit(row.messages_by_channel) && (
+                              <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(row.messages_by_channel)}</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-[#e2e8f0] bg-[#f8fafc] font-bold">
+                    <td className="sticky left-0 z-10 bg-[#f8fafc] px-4 py-3 text-sm">
+                      Total <span className="ml-1.5 font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
+                    </td>
+                    {selectedMetrics.map((metric) => (
+                      <td key={metric.key} className={cn(
+                        "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
+                        TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
+                      )}>
+                        {metric.key === "delivery_status" || metric.key === "budget" ? "—" : metricValue(metric.key, totals)}
+                        {metric.key === "messages" && channelSplit(totals.messages_by_channel) && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(totals.messages_by_channel)}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center text-xs text-on-surface-muted">{row.adset_name ?? "—"}</td>
-                      <td className="min-w-[264px] px-4 py-3 text-center font-label text-xs font-semibold text-on-surface">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDetailRow(row); }}
-                          title="See where this ad works best"
-                          className={cn(
-                            "block rounded text-center hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-200",
-                            removed && "line-through decoration-stone-400",
-                          )}
-                        >
-                          {row.creative_label}
-                        </button>
-                        <div className="mt-1 flex justify-center">
-                          <ChannelMarks channels={row.messaging_channels} multiDestination={row.is_multi_destination} />
-                        </div>
-                      </td>
-                      {selectedMetrics.map((metric) => (
-                        <td key={metric.key} className={cn(
-                          "whitespace-nowrap px-4 py-3 text-center text-xs tabular-nums",
-                          metric.key === "messages" && "font-bold text-on-surface",
-                          metric.key === "inline_link_clicks" && "font-semibold text-primary-700",
-                          metric.key === "hot" && "font-semibold text-rose-600",
-                        )}>
-                          {metricValue(metric.key, row)}
-                          {metric.key === "messages" && channelSplit(row.messages_by_channel) && (
-                            <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(row.messages_by_channel)}</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-surface-mid bg-surface-low/50 font-bold">
-                  <td className="px-4 py-3 text-center text-sm">Total</td>
-                  <td className="text-center" />
-                  <td className="text-center" />
-                  {selectedMetrics.map((metric) => (
-                    <td key={metric.key} className="whitespace-nowrap px-4 py-3 text-center text-xs tabular-nums">
-                      {metric.key === "delivery_status" ? "—" : metricValue(metric.key, totals)}
-                      {metric.key === "messages" && channelSplit(totals.messages_by_channel) && (
-                        <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(totals.messages_by_channel)}</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
 
       {showTrackingModal && (
         <div

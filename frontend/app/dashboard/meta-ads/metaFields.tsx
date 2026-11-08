@@ -289,13 +289,14 @@ export function BreakdownSelect({
   onChange: (value: string | null) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
-      Break down by
+    <label className="relative flex h-9 shrink-0 items-center rounded-xl border border-[#e2e8f0] bg-white pl-3 font-label text-xs font-bold text-[#0A1528] shadow-sm transition-colors hover:border-primary-200 focus-within:ring-2 focus-within:ring-primary-200">
+      Breakdown
       <span className="relative">
         <select
           value={value ?? ""}
           onChange={(event) => onChange(event.target.value || null)}
-          className="h-9 min-w-[10rem] cursor-pointer appearance-none rounded-xl border border-surface-mid/80 bg-white pl-3 pr-8 font-body text-xs font-semibold normal-case tracking-normal text-on-surface shadow-sm transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
+          aria-label="Break down by"
+          className="h-8 !w-[7rem] cursor-pointer truncate appearance-none border-0 bg-transparent pl-1.5 pr-7 font-label text-xs font-semibold text-[#64748b] shadow-none focus:outline-none focus:ring-0"
         >
           <option value="">None</option>
           {breakdowns.map((breakdown) => (

@@ -84,10 +84,17 @@ def test_rows_with_no_status_are_excluded_by_any_filter():
     assert len(filter_by_delivery(rows, None)) == 1
 
 
-def test_frontend_dropdown_keys_all_exist_server_side():
-    """AdPerformanceTab.tsx sends these keys with the CSV export request; a key
-    missing here would silently return an unfiltered download."""
-    for key in ("active", "paused", "archived", "deleted", "issues"):
+def test_frontend_card_keys_all_exist_server_side():
+    """AdPerformanceTab.tsx sends the selected card's key with the CSV export
+    request; a key missing here would silently return an unfiltered download."""
+    import re
+    from pathlib import Path
+
+    tab = (Path(__file__).resolve().parents[2] / "frontend/app/dashboard/meta-ads/AdPerformanceTab.tsx").read_text(encoding="utf-8")
+    block = tab.split("const DELIVERY_CARDS", 1)[1].split("];", 1)[0]
+    keys = [k for k in re.findall(r'key: "([a-z]*)"', block) if k]
+    assert keys == ["active", "paused", "removed", "issues"]
+    for key in keys:
         assert key in DELIVERY_GROUPS
 
 
@@ -442,6 +449,48 @@ def test_all_ads_total_reach_uses_given_ads_or_the_whole_account(settings, monke
     assert calls[0]["meta_ad_ids"] == ["123", "456"]  # only numeric Meta ids are passed on
     assert calls[0]["date_from"] == "2026-09-10"
     assert calls[1]["meta_ad_ids"] is None
+
+
+def test_reach_by_level_asks_meta_per_campaign_or_ad_set(settings, monkeypatch):
+    settings["meta_ads_sync_start_date"] = "2026-09-10"
+    calls = []
+    monkeypatch.setattr(sync, "fetch_reach_by_level",
+                        lambda *a, **k: calls.append(k) or {"c1": 500, "c2": 40})
+    db = _perf_db()
+
+    out = ad_performance.build_reach_by_level(
+        db, "t1", level="campaign", meta_ad_ids=["123", "bad id"],
+        date_from="2026-09-01", date_to="2026-09-30")
+
+    assert out == {"reach": {"c1": 500, "c2": 40}}
+    assert calls[0]["level"] == "campaign"
+    assert calls[0]["meta_ad_ids"] == ["123"]
+    assert calls[0]["date_from"] == "2026-09-10"
+
+
+def test_reach_by_level_rejects_other_levels_and_survives_meta_failing(settings, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("Meta timed out")
+    monkeypatch.setattr(sync, "fetch_reach_by_level", boom)
+    db = _perf_db()
+
+    with pytest.raises(ValueError):
+        ad_performance.build_reach_by_level(db, "t1", level="account", meta_ad_ids=None,
+                                            date_from="2026-09-01", date_to="2026-09-30")
+    assert ad_performance.build_reach_by_level(
+        db, "t1", level="adset", meta_ad_ids=None, date_from="2026-09-01", date_to="2026-09-30",
+    ) == {"reach": None}
+
+
+def test_rows_carry_the_meta_campaign_id_for_grouping(settings):
+    db = _perf_db()
+    db.rows("ad_creatives")[0]["meta_campaign_id"] = "mc1"
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(db, "t1")}
+    assert rows["ad-1"]["meta_campaign_id"] == "mc1"
+
+
+def test_undefined_destination_counts_as_other():
+    assert ad_performance.ad_type_label("UNDEFINED") == "Other"
 
 
 def test_excel_text_keeps_long_ids_whole():

@@ -2,15 +2,30 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { CircleAlert, Download, Info, Megaphone, Zap } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  Download,
+  FileText,
+  Globe,
+  LayoutGrid,
+  type LucideIcon,
+  Megaphone,
+  MessageCircle,
+  MoreHorizontal,
+  Phone,
+  Search,
+  Shuffle,
+  Smartphone,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { useAllAdsTotalReach, useAllMetaAds, useMetaFieldCatalog } from "@/hooks/useApi";
+import { useAllAdsTotalReach, useAllMetaAds, useMetaFieldCatalog, useReachByLevel } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import type { AllAdsParams, AllAdsRow, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { buildAllAdsCsv, computeTotals, fieldsToFetch } from "./allAdsReport";
-import { DataFromPicker } from "./DataFromPicker";
 import {
   AdTypeBadge,
   BreakdownSelect,
@@ -19,6 +34,13 @@ import {
   formatMetaValue,
   usePersistedColumns,
 } from "./metaFields";
+import {
+  DatesMenu,
+  LevelSwitch,
+  SummaryCard,
+  rangeLabel,
+  type ReportLevel,
+} from "./reportControls";
 
 const COLUMNS_STORAGE_KEY = "anril.metaAds.allAds.columns";
 const DEFAULT_COLUMN_KEYS = [
@@ -36,15 +58,29 @@ const DEFAULT_COLUMN_KEYS = [
 
 const NUMERIC_FORMATS = new Set(["number", "money", "percent", "decimal"]);
 
-/** Ad types the Meta ad-type classifier emits. Anything else falls under "Other". */
-const KNOWN_AD_TYPES = ["WhatsApp", "Multi-destination", "Instant form", "Website"];
-const TYPE_FILTERS: { key: string; label: string }[] = [
-  { key: "all", label: "All" },
-  ...KNOWN_AD_TYPES.map((type) => ({ key: type, label: type })),
-  { key: "Other", label: "Other" },
-];
+const LEVEL_HEADINGS: Record<ReportLevel, string> = { campaign: "Campaign", adset: "Ad set", ad: "Ad" };
+const LEVEL_NOUNS: Record<ReportLevel, [string, string]> = { campaign: ["campaign", "campaigns"], adset: ["ad set", "ad sets"], ad: ["ad", "ads"] };
 
-const SKELETON_ROWS = 6;
+/** A card's look per ad type (the backend's ad_type_label); anything unlisted gets the plain one. */
+const TYPE_LOOKS: Record<string, { icon: LucideIcon; tint: string }> = {
+  WhatsApp: { icon: MessageCircle, tint: "bg-emerald-50 text-emerald-700" },
+  App: { icon: Smartphone, tint: "bg-indigo-50 text-indigo-700" },
+  Website: { icon: Globe, tint: "bg-sky-50 text-sky-700" },
+  "Instant form": { icon: FileText, tint: "bg-violet-50 text-violet-700" },
+  "Multi-destination": { icon: Shuffle, tint: "bg-amber-50 text-amber-700" },
+  Calls: { icon: Phone, tint: "bg-rose-50 text-rose-700" },
+};
+const PLAIN_LOOK = { icon: MoreHorizontal, tint: "bg-slate-100 text-slate-600" };
+
+/** The few inputs a card needs, run through the same totals as the Total row. */
+const CARD_FIELDS: MetaField[] = [
+  { key: "spend", label: "Spend", group: "", format: "money", breakdown_ok: true },
+  { key: "impressions", label: "Impressions", group: "", format: "number", breakdown_ok: true },
+  { key: "inline_link_clicks", label: "Link clicks", group: "", format: "number", breakdown_ok: true },
+  { key: "results", label: "Results", group: "", format: "number", breakdown_ok: true },
+  { key: "result_type", label: "Result type", group: "", format: "text", breakdown_ok: true },
+  { key: "cost_per_result", label: "Cost per result", group: "", format: "money", breakdown_ok: true },
+];
 
 function localDate(daysBack = 0) {
   const date = new Date();
@@ -63,17 +99,108 @@ function formatIsoDate(iso: string) {
     : parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function typeOf(row: AllAdsRow) {
+  return (row.ad_type || "").trim() || "Other";
+}
+
 /** One cell: Delivery in Ads Manager's words, everything else by its format. */
 function cellValue(value: unknown, field: MetaField) {
   if (field.key === "delivery") return deliveryLabel(value) || "—";
   return formatMetaValue(value, field.format);
 }
 
-function matchesType(row: AllAdsRow, filterKey: string) {
-  if (filterKey === "all") return true;
-  const type = (row.ad_type || "").trim().toLowerCase();
-  if (filterKey === "Other") return !KNOWN_AD_TYPES.some((known) => known.toLowerCase() === type);
-  return type === filterKey.toLowerCase();
+function money(value: unknown) {
+  return formatMetaValue(value, "money") as string;
+}
+
+function count(value: unknown) {
+  return formatMetaValue(value, "number") as string;
+}
+
+/** One status for a campaign or ad set row: live if any ad is, removed only if every ad is. */
+function groupDelivery(rows: AllAdsRow[]): string | null {
+  const statuses = rows.map((row) => String(row.values?.delivery ?? "").toUpperCase()).filter(Boolean);
+  if (!statuses.length) return null;
+  if (statuses.includes("ACTIVE")) return "ACTIVE";
+  if (statuses.every((status) => status === "ARCHIVED" || status === "DELETED")) return statuses.includes("ARCHIVED") ? "ARCHIVED" : "DELETED";
+  return statuses.includes("PAUSED") ? "PAUSED" : statuses[0];
+}
+
+type TableRow = {
+  key: string;
+  /** Rows of one ad / ad set / campaign share it, so breakdown rows sit together. */
+  groupKey: string;
+  level: ReportLevel;
+  id: string;
+  title: string;
+  subtitle: string;
+  type: string | null;
+  breakdown: string | null;
+  values: Record<string, unknown>;
+  reachEstimated: boolean;
+};
+
+/**
+ * The table's rows at the chosen level. Campaign and ad set rows add up their
+ * ads the way the Total row does; reach comes from Meta per campaign / ad set
+ * (with a breakdown, the buckets' reach is added up and marked as an estimate).
+ */
+function groupRows(
+  rows: AllAdsRow[],
+  level: ReportLevel,
+  fields: MetaField[],
+  reachById: Record<string, number> | null | undefined,
+): TableRow[] {
+  if (level === "ad") {
+    return rows.map((row) => ({
+      key: `${row.meta_ad_id}:${row.breakdown ?? ""}`,
+      groupKey: row.meta_ad_id,
+      level,
+      id: row.meta_ad_id,
+      title: row.ad_name,
+      subtitle: [row.campaign_name, row.adset_name].filter(Boolean).join(" › "),
+      type: typeOf(row),
+      breakdown: row.breakdown,
+      values: row.values ?? {},
+      reachEstimated: false,
+    }));
+  }
+  const groups = new Map<string, AllAdsRow[]>();
+  for (const row of rows) {
+    const id = (level === "campaign" ? row.campaign_id : row.adset_id) || (level === "campaign" ? row.campaign_name : row.adset_name) || "—";
+    const key = `${id}|${row.breakdown ?? ""}`;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+  return Array.from(groups.entries()).map(([key, members]) => {
+    const first = members[0];
+    const id = key.split("|")[0];
+    const ads = new Set(members.map((member) => member.meta_ad_id)).size;
+    const types = Array.from(new Set(members.map(typeOf)));
+    // One ad: its own reach is exact. Several: Meta's per-group figure; undefined
+    // while that loads (no ≈ yet), null once Meta has none (≈, added up).
+    const ownReach = Number(first.values?.reach ?? 0);
+    const groupReach = first.breakdown
+      ? null
+      : reachById === undefined ? undefined : reachById?.[id] ?? null;
+    const { values, reachEstimated } = computeTotals(members, fields, ads > 1 ? groupReach : ownReach);
+    const adsets = new Set(members.map((member) => member.adset_id)).size;
+    return {
+      key,
+      groupKey: id,
+      level,
+      id,
+      title: (level === "campaign" ? first.campaign_name : first.adset_name) || "—",
+      subtitle: level === "campaign"
+        ? `${adsets} ${adsets === 1 ? "ad set" : "ad sets"} · ${ads} ${ads === 1 ? "ad" : "ads"}`
+        : `${first.campaign_name} · ${ads} ${ads === 1 ? "ad" : "ads"}`,
+      type: types.length === 1 ? types[0] : null,
+      breakdown: first.breakdown,
+      values: { ...values, delivery: groupDelivery(members) },
+      reachEstimated,
+    };
+  });
 }
 
 export function AllAdsTab() {
@@ -83,7 +210,12 @@ export function AllAdsTab() {
   const [dateFrom, setDateFrom] = useState(() => localDate(29));
   const [dateTo, setDateTo] = useState(() => localDate());
   const [breakdown, setBreakdown] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [level, setLevel] = useState<ReportLevel>("ad");
+  const [search, setSearch] = useState("");
+  const [campaignFilter, setCampaignFilter] = useState("");
+  const [adsetFilter, setAdsetFilter] = useState("");
+  const [adFilter, setAdFilter] = useState("");
   const [columns, setColumns] = usePersistedColumns(COLUMNS_STORAGE_KEY, DEFAULT_COLUMN_KEYS);
 
   const { data: catalog, error: catalogError } = useMetaFieldCatalog();
@@ -98,56 +230,122 @@ export function AllAdsTab() {
     ? {
         date_from: dateFrom,
         date_to: dateTo,
-        // Plus the inputs the Total row and download need, even if hidden.
-        fields: fieldsToFetch(columnFields.map((field) => field.key)),
+        // Plus the inputs the Total row, cards and download need, even if hidden.
+        fields: fieldsToFetch([...columnFields.map((field) => field.key), "results", "cost_per_result"]),
         breakdown: breakdown ?? undefined,
       }
     : null;
   const { data, error, mutate } = useAllMetaAds(request);
   const loadError = catalogError ?? error;
-
   const allRows = useMemo(() => data?.data ?? [], [data]);
+
+  // Campaign / ad set / ad pick lists for the switch's ▾ menus, from the ads in range.
+  const pickLists = useMemo(() => {
+    const campaigns = new Map<string, string>();
+    const adsets = new Map<string, string>();
+    const ads = new Map<string, string>();
+    // The ads inside each campaign / ad set: shown under names that repeat.
+    const inside = new Map<string, Set<string>>();
+    const note = (id: string, adName: string) => inside.set(id, (inside.get(id) ?? new Set()).add(adName));
+    for (const row of allRows) {
+      if (row.campaign_id) {
+        campaigns.set(row.campaign_id, row.campaign_name);
+        note(row.campaign_id, row.ad_name);
+      }
+      if (row.adset_id && (!campaignFilter || row.campaign_id === campaignFilter)) {
+        adsets.set(row.adset_id, row.adset_name);
+        note(row.adset_id, row.ad_name);
+      }
+      if ((!campaignFilter || row.campaign_id === campaignFilter) && (!adsetFilter || row.adset_id === adsetFilter)) ads.set(row.meta_ad_id, row.ad_name);
+    }
+    const list = (map: Map<string, string>) => Array.from(map, ([id, name]) => ({
+      id,
+      name: name || "—",
+      hint: inside.has(id) ? `Ads: ${Array.from(inside.get(id)!).join(", ")}` : undefined,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+    return { campaigns: list(campaigns), adsets: list(adsets), ads: list(ads) };
+  }, [allRows, campaignFilter, adsetFilter]);
+
+  // Everything except the type card: the cards count what each type would show.
+  const narrowed = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return allRows.filter((row) =>
+      (!campaignFilter || row.campaign_id === campaignFilter)
+      && (!adsetFilter || row.adset_id === adsetFilter)
+      && (!adFilter || row.meta_ad_id === adFilter)
+      && (!needle || [row.ad_name, row.campaign_name, row.adset_name].some((text) => (text || "").toLowerCase().includes(needle))),
+    );
+  }, [allRows, search, campaignFilter, adsetFilter, adFilter]);
   const filteredRows = useMemo(
-    () => allRows.filter((row) => matchesType(row, typeFilter)),
-    [allRows, typeFilter],
+    () => (typeFilter ? narrowed.filter((row) => typeOf(row) === typeFilter) : narrowed),
+    [narrowed, typeFilter],
   );
-  // Unique ads per type, so the chips count ads rather than breakdown buckets.
-  const typeCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const filter of TYPE_FILTERS) {
-      counts.set(filter.key, new Set(allRows.filter((row) => matchesType(row, filter.key)).map((row) => row.meta_ad_id)).size);
-    }
-    return counts;
-  }, [allRows]);
 
-  // With a breakdown, one ad produces several rows; keep them together under the ad.
-  const groups = useMemo(() => {
-    const byAd = new Map<string, AllAdsRow[]>();
-    for (const row of filteredRows) {
-      const list = byAd.get(row.meta_ad_id);
+  const typeCards = useMemo(() => {
+    const byType = new Map<string, AllAdsRow[]>();
+    for (const row of narrowed) {
+      const list = byType.get(typeOf(row));
       if (list) list.push(row);
-      else byAd.set(row.meta_ad_id, [row]);
+      else byType.set(typeOf(row), [row]);
     }
-    return Array.from(byAd.values());
-  }, [filteredRows]);
+    const card = (key: string, label: string, rows: AllAdsRow[], look: { icon: LucideIcon; tint: string }) => {
+      const { values } = computeTotals(rows, CARD_FIELDS, undefined);
+      return { key, label, look, ads: new Set(rows.map((row) => row.meta_ad_id)).size, values };
+    };
+    const types = Array.from(byType.entries())
+      .map(([type, rows]) => card(type, type, rows, TYPE_LOOKS[type] ?? PLAIN_LOOK))
+      .sort((a, b) => Number(b.values.spend ?? 0) - Number(a.values.spend ?? 0));
+    return [card("", "All types", narrowed, { icon: LayoutGrid, tint: "bg-primary-50 text-primary-700" }), ...types];
+  }, [narrowed]);
 
-  // Total row reach, de-duplicated by Meta: the whole account when every type is
-  // shown (All ads lists every ad that delivered), else just the ads in view.
+  const filtered = Boolean(typeFilter || search.trim() || campaignFilter || adsetFilter || adFilter);
   const filteredAdIds = useMemo(
     () => Array.from(new Set(filteredRows.map((row) => row.meta_ad_id))),
     [filteredRows],
   );
   const reachRange = data && filteredRows.length ? { date_from: data.date_from, date_to: data.date_to } : null;
+  // Reach de-duplicated by Meta: the whole account when nothing is filtered (All
+  // ads lists every ad that delivered), else just the ads in view.
   const { data: totalReachData, error: totalReachError, mutate: mutateTotalReach } = useAllAdsTotalReach(
     reachRange,
-    typeFilter === "all" ? undefined : filteredAdIds,
+    filtered ? filteredAdIds : undefined,
   );
+  const { data: levelReach } = useReachByLevel(level, reachRange, filtered ? filteredAdIds : undefined);
   const totalReach = totalReachData ? totalReachData.reach : totalReachError ? null : undefined;
   const totals = useMemo(
     () => computeTotals(filteredRows, columnFields, totalReach),
     [filteredRows, columnFields, totalReach],
   );
-  const showReachNote = totals.reachEstimated && columnFields.some((field) => field.key === "reach" || field.key === "frequency");
+  const tableRows = useMemo(
+    () => groupRows(filteredRows, level, columnFields, levelReach?.reach),
+    [filteredRows, level, columnFields, levelReach],
+  );
+  const groupCount = new Set(tableRows.map((row) => row.groupKey)).size;
+  const reachShown = columnFields.some((field) => field.key === "reach" || field.key === "frequency");
+  const showReachNote = reachShown && (totals.reachEstimated || tableRows.some((row) => row.reachEstimated));
+  const [singular, plural] = LEVEL_NOUNS[level];
+
+  function clearFilters() {
+    setTypeFilter("");
+    setSearch("");
+    setCampaignFilter("");
+    setAdsetFilter("");
+    setAdFilter("");
+  }
+
+  /** Like Ads Manager: a campaign row opens its ad sets, an ad set row its ads. */
+  function openRow(row: TableRow) {
+    if (row.level === "campaign") {
+      setCampaignFilter(row.id);
+      setAdsetFilter("");
+      setAdFilter("");
+      setLevel("adset");
+    } else if (row.level === "adset") {
+      setAdsetFilter(row.id);
+      setAdFilter("");
+      setLevel("ad");
+    }
+  }
 
   /** The account sync (refreshes Anril's ad list and the Messaging ads copy),
    * then this table straight from Meta, skipping the few-minute cache. */
@@ -189,16 +387,15 @@ export function AllAdsTab() {
   }
 
   const showStartNote = Boolean(data?.start_date && data.date_from && data.start_date > data.date_from);
-  const columnCount = 3 + (breakdown ? 1 : 0) + columnFields.length;
-  const typeLabel = TYPE_FILTERS.find((filter) => filter.key === typeFilter)?.label ?? "";
+  const columnCount = 1 + (breakdown ? 1 : 0) + columnFields.length;
 
   function renderHeader() {
     return (
       <thead>
-        <tr className="border-b border-surface-mid bg-surface-low/60">
-          <th className="sticky left-0 z-20 w-[180px] min-w-[180px] max-w-[180px] bg-surface-low px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Campaign</th>
-          <th className="sticky left-[180px] z-20 w-[150px] min-w-[150px] max-w-[150px] bg-surface-low px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Ad set</th>
-          <th className="sticky left-[330px] z-20 w-[260px] min-w-[260px] max-w-[260px] border-r border-surface-mid/60 bg-surface-low px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Ad</th>
+        <tr className="border-b border-[#eef2f6]">
+          <th className="sticky left-0 z-20 min-w-[300px] max-w-[340px] border-r border-[#eef2f6] bg-white px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
+            {LEVEL_HEADINGS[level]}
+          </th>
           {breakdown && (
             <th className="whitespace-nowrap px-4 py-3 text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Breakdown</th>
           )}
@@ -222,8 +419,8 @@ export function AllAdsTab() {
   function renderBody() {
     if (!data) {
       return (
-        <tbody className="divide-y divide-surface-mid/50">
-          {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+        <tbody className="divide-y divide-[#f1f5f9]">
+          {Array.from({ length: 6 }, (_, index) => (
             <tr key={index}>
               {Array.from({ length: columnCount }, (__, cell) => (
                 <td key={cell} className="px-4 py-3">
@@ -235,74 +432,72 @@ export function AllAdsTab() {
         </tbody>
       );
     }
-
+    let previous = "";
     return (
-      <tbody className="divide-y divide-surface-mid/50">
-        {groups.flatMap((group) =>
-          group.map((row, index) => {
-            const isFirst = index === 0;
-            return (
-              <tr
-                key={`${row.meta_ad_id}:${row.breakdown ?? ""}`}
-                className={cn("group transition-colors hover:bg-surface-low/60", !isFirst && "bg-stone-50/40")}
-              >
-                <td className="sticky left-0 z-10 w-[180px] min-w-[180px] max-w-[180px] bg-white px-4 py-3 text-left font-label text-xs font-semibold text-on-surface group-hover:bg-stone-50">
-                  {isFirst && (
-                    <span className="block truncate" title={row.campaign_name}>{row.campaign_name}</span>
-                  )}
-                </td>
-                <td className="sticky left-[180px] z-10 w-[150px] min-w-[150px] max-w-[150px] bg-white px-4 py-3 text-left font-body text-xs text-on-surface-muted group-hover:bg-stone-50">
-                  {isFirst && (
-                    <span className="block truncate" title={row.adset_name}>{row.adset_name || "—"}</span>
-                  )}
-                </td>
-                <td className="sticky left-[330px] z-10 w-[260px] min-w-[260px] max-w-[260px] border-r border-surface-mid/60 bg-white px-4 py-3 text-left group-hover:bg-stone-50">
-                  {isFirst && (
-                    <>
-                      <span className="block truncate font-label text-xs font-semibold text-on-surface" title={row.ad_name}>{row.ad_name}</span>
-                      <span className="mt-1 inline-block">
-                        <AdTypeBadge type={row.ad_type} />
+      <tbody className="divide-y divide-[#f1f5f9]">
+        {tableRows.map((row) => {
+          // With a breakdown, one ad (or group) produces several rows; name it once.
+          const isFirst = row.groupKey !== previous;
+          previous = row.groupKey;
+          const drills = row.level !== "ad";
+          return (
+            <tr
+              key={row.key}
+              onClick={drills ? () => openRow(row) : undefined}
+              title={drills ? `Show this ${row.level === "campaign" ? "campaign's ad sets" : "ad set's ads"}` : undefined}
+              className={cn("group transition-colors hover:bg-[#f8fafc]", drills && "cursor-pointer", !isFirst && "bg-stone-50/40")}
+            >
+              <td className="sticky left-0 z-10 min-w-[300px] max-w-[340px] border-r border-[#eef2f6] bg-white px-4 py-3 group-hover:bg-[#f8fafc]">
+                {isFirst && (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={cn("min-w-0 truncate font-label text-[13px] font-bold text-[#0A1528]", drills && "group-hover:text-primary-700")} title={row.title}>
+                        {row.title}
                       </span>
-                    </>
-                  )}
-                </td>
-                {breakdown && (
-                  <td className={cn(
-                    "whitespace-nowrap px-4 py-3 text-left text-xs capitalize",
-                    isFirst ? "font-label font-semibold text-on-surface" : "pl-8 font-body text-on-surface-muted",
-                  )}>
-                    {row.breakdown ?? "—"}
-                  </td>
+                      {row.type && <AdTypeBadge type={row.type} />}
+                      {drills && <ChevronRight size={14} className="shrink-0 text-[#cbd5e1] group-hover:text-primary-600" />}
+                    </div>
+                    {row.subtitle && <div className="mt-0.5 truncate font-body text-[11px] text-[#94a3b8]" title={row.subtitle}>{row.subtitle}</div>}
+                  </>
                 )}
-                {columnFields.map((field) => (
-                  <td
-                    key={field.key}
-                    className={cn(
-                      "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
-                      NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
-                    )}
-                  >
-                    {cellValue(row.values?.[field.key], field)}
-                  </td>
-                ))}
-              </tr>
-            );
-          }),
-        )}
+              </td>
+              {breakdown && (
+                <td className={cn(
+                  "whitespace-nowrap px-4 py-3 text-left text-xs capitalize",
+                  isFirst ? "font-label font-semibold text-on-surface" : "pl-8 font-body text-on-surface-muted",
+                )}>
+                  {row.breakdown ?? "—"}
+                </td>
+              )}
+              {columnFields.map((field) => (
+                <td
+                  key={field.key}
+                  className={cn(
+                    "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
+                    NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
+                    field.key === "spend" && "font-semibold text-on-surface",
+                  )}
+                >
+                  {row.reachEstimated && (field.key === "reach" || field.key === "frequency") && row.values[field.key] != null ? "≈ " : ""}
+                  {cellValue(row.values[field.key], field)}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
       </tbody>
     );
   }
 
   function renderTotal() {
     if (!data || filteredRows.length === 0) return null;
-    const ads = filteredAdIds.length;
     return (
       <tfoot>
-        <tr className="border-t-2 border-surface-mid bg-surface-low font-bold">
-          <td colSpan={3} className="sticky left-0 z-10 border-r border-surface-mid/60 bg-surface-low px-4 py-3 text-left">
-            <span className="font-label text-xs font-bold text-on-surface">Total</span>
+        <tr className="border-t-2 border-[#e2e8f0] bg-[#f8fafc] font-bold">
+          <td className="sticky left-0 z-10 border-r border-[#eef2f6] bg-[#f8fafc] px-4 py-3 text-left">
+            <span className="font-label text-sm font-bold text-on-surface">Total</span>
             <span className="ml-2 font-body text-[11px] font-normal text-on-surface-muted">
-              {ads} {ads === 1 ? "ad" : "ads"}
+              {filteredAdIds.length} {filteredAdIds.length === 1 ? "ad" : "ads"}
             </span>
           </td>
           {breakdown && <td className="px-4 py-3" />}
@@ -355,8 +550,8 @@ export function AllAdsTab() {
     if (data && filteredRows.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
-          <h3 className="mb-1 text-base font-bold text-[#1e293b]">No {typeLabel} ads in this date range</h3>
-          <p className="max-w-md text-sm leading-relaxed text-[#94a3b8]">Pick another ad type above to see the rest.</p>
+          <h3 className="mb-1 text-sm font-bold text-[#1e293b]">No ads match</h3>
+          <p className="max-w-md text-xs leading-relaxed text-[#94a3b8]">Pick another card above, or clear the search and filters.</p>
         </div>
       );
     }
@@ -366,126 +561,137 @@ export function AllAdsTab() {
   const emptyState = renderEmptyState();
 
   return (
-    <div>
-      <div className="mb-5 flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-xl font-bold text-on-surface">All ads</h2>
-          <p className="mt-0.5 font-body text-xs text-on-surface-muted">
-            Every ad that ran in the dates you picked, of every type, with the numbers exactly as Meta reports them.
-          </p>
-        </div>
+    <div className="space-y-[18px]">
+      <div role="group" aria-label="Filter ads by type" className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+        {typeCards.slice(0, 8).map((card) => {
+          const single = typeof card.values.result_type === "string" ? card.values.result_type : null;
+          return (
+            <SummaryCard
+              key={card.key || "all"}
+              selected={typeFilter === card.key}
+              onSelect={() => setTypeFilter(card.key)}
+              icon={card.look.icon}
+              tint={card.look.tint}
+              label={card.label}
+              badge={data ? `${card.ads} ${card.ads === 1 ? "ad" : "ads"}` : "—"}
+              value={data ? money(card.values.spend) : "—"}
+              caption="spent"
+              stats={single
+                ? [
+                    { label: single, value: data ? count(card.values.results) : "—" },
+                    { label: "Per result", value: data ? money(card.values.cost_per_result) : "—" },
+                    { label: "Link clicks", value: data ? count(card.values.inline_link_clicks) : "—" },
+                  ]
+                : [
+                    { label: "Impressions", value: data ? count(card.values.impressions) : "—" },
+                    { label: "Link clicks", value: data ? count(card.values.inline_link_clicks) : "—" },
+                    { label: "Results", value: "—" },
+                  ]}
+            />
+          );
+        })}
+      </div>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">From date</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-              className="h-9 rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">To date</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-              className="h-9 rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-            />
-          </label>
-          <BreakdownSelect
-            breakdowns={catalog?.breakdowns ?? []}
-            value={breakdown}
-            onChange={setBreakdown}
+      <section aria-label="All ads" className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f6] p-3.5 xl:flex-nowrap">
+          <LevelSwitch
+            level={level}
+            onLevel={setLevel}
+            filters={{
+              campaign: {
+                options: pickLists.campaigns,
+                value: campaignFilter,
+                onChange: (id) => { setCampaignFilter(id); setAdsetFilter(""); setAdFilter(""); },
+              },
+              adset: {
+                options: pickLists.adsets,
+                value: adsetFilter,
+                onChange: (id) => { setAdsetFilter(id); setAdFilter(""); },
+              },
+              ad: { options: pickLists.ads, value: adFilter, onChange: setAdFilter },
+            }}
           />
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSyncNow}
-              disabled={syncing || !canManage}
-              title={canManage ? "Pull the latest numbers from Meta now" : "Needs Meta Ads write access"}
-              className="flex h-9 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-label text-xs font-bold text-amber-700 shadow-sm transition-all hover:bg-amber-100 disabled:opacity-40"
-            >
-              <Zap size={12} className={syncing ? "animate-pulse" : ""} /> {syncing ? "Syncing…" : "Sync now"}
-            </button>
-            <DataFromPicker
-              canManage={canManage}
-              onSaved={() => mutate()}
-              note="The earliest date Anril shows for this ad account, on both All ads and Messaging ads. All ads lists every ad that ran from then on, including ads that were already off when you connected."
+          <label className="relative min-w-[160px] max-w-[240px] flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search ads"
+              aria-label="Search ad or campaign"
+              className="h-9 w-full rounded-xl border border-[#e2e8f0] bg-[#f8fafc] pl-9 pr-3 font-body text-xs font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-200"
             />
-            <MetaColumnPicker
-              fields={fields}
-              selected={columns}
-              onChange={setColumns}
-              defaultKeys={DEFAULT_COLUMN_KEYS}
-            />
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!data || filteredRows.length === 0}
-              className="flex h-9 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-40"
-            >
-              <Download size={12} /> Download CSV
+          </label>
+          <DatesMenu
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+            canManage={canManage}
+            onHistorySaved={() => mutate()}
+            historyNote="The earliest date Anril shows for this ad account, on both All ads and Messaging ads. All ads lists every ad that ran from then on, including ads that were already off when you connected."
+          />
+          <BreakdownSelect breakdowns={catalog?.breakdowns ?? []} value={breakdown} onChange={setBreakdown} />
+          {filtered && (
+            <button type="button" onClick={clearFilters}
+              className="shrink-0 px-1 font-label text-xs font-bold text-primary-700 hover:text-primary-900">
+              Clear
             </button>
-          </div>
+          )}
+
+          <span className="hidden flex-1 xl:block" />
+
+          <button
+            type="button"
+            onClick={handleSyncNow}
+            disabled={syncing || !canManage}
+            title={canManage ? "Pull the latest numbers from Meta now" : "Needs Meta Ads write access"}
+            className="flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 font-label text-xs font-bold text-amber-800 shadow-sm transition-colors hover:bg-amber-100 disabled:opacity-40"
+          >
+            <Zap size={13} className={syncing ? "animate-pulse" : ""} /> {syncing ? "Syncing…" : "Sync now"}
+          </button>
+          <MetaColumnPicker fields={fields} selected={columns} onChange={setColumns} defaultKeys={DEFAULT_COLUMN_KEYS} />
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!data || filteredRows.length === 0}
+            className="flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-primary px-3.5 font-label text-xs font-bold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-40"
+          >
+            <Download size={13} /> Export
+          </button>
         </div>
 
-        <div role="group" aria-label="Filter by ad type" className="flex flex-wrap gap-2">
-          {TYPE_FILTERS.map((filter) => {
-            const active = typeFilter === filter.key;
-            return (
-              <button
-                key={filter.key}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setTypeFilter(filter.key)}
-                className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-full border px-3 font-label text-[11px] font-bold shadow-sm transition-all",
-                  active
-                    ? "border-primary-200 bg-primary-50 text-primary-700"
-                    : "border-surface-mid bg-white text-on-surface-muted hover:border-primary-200 hover:text-primary-700",
-                )}
-              >
-                {filter.label}
-                {data && (
-                  <span className={cn(
-                    "rounded-full px-1.5 py-0.5 text-[9px] tabular-nums",
-                    active ? "bg-primary-100 text-primary-700" : "bg-stone-100 text-stone-500",
-                  )}>
-                    {typeCounts.get(filter.key) ?? 0}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#eef2f6] bg-[#fbfcfd] px-4 py-2.5 font-body text-[11px] text-[#64748b]">
+          <span className="font-bold text-[#0A1528]">
+            {data ? `Showing ${groupCount} ${groupCount === 1 ? singular : plural} · ${rangeLabel(data.date_from, data.date_to)}` : "Loading…"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>Numbers live from Meta</span>
+          {showStartNote && data?.start_date && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Numbers start {formatIsoDate(data.start_date)}, the history date set for this account</span>
+            </>
+          )}
+          {showReachNote && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-amber-800">Reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it may count someone twice. Refresh to try again.</span>
+            </>
+          )}
         </div>
-      </div>
 
-      {showStartNote && data?.start_date && (
-        <div role="status" className="mb-4 flex items-center gap-2 rounded-2xl border border-[#e2e8f0] bg-white px-4 py-2.5 font-body text-xs text-[#64748b]">
-          <Info size={13} className="shrink-0 text-[#94a3b8]" />
-          Showing data from {formatIsoDate(data.start_date)} — the history date set for this account.
+        <div className="overflow-hidden rounded-b-2xl">
+          {emptyState ?? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[960px]">
+                {renderHeader()}
+                {renderBody()}
+                {renderTotal()}
+              </table>
+            </div>
+          )}
         </div>
-      )}
-
-      {showReachNote && (
-        <p role="status" className="mb-3 font-body text-[11px] text-slate-500">
-          Total reach marked ≈ is an estimate: Meta&apos;s exact figure wasn&apos;t available, so it adds up each ad&apos;s reach and may count the same person twice. Refresh to try again.
-        </p>
-      )}
-
-      <div className="card overflow-hidden rounded-2xl">
-        {emptyState ?? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
-              {renderHeader()}
-              {renderBody()}
-              {renderTotal()}
-            </table>
-          </div>
-        )}
-      </div>
+      </section>
     </div>
   );
 }

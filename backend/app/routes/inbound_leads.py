@@ -516,6 +516,28 @@ async def meta_ads_all_ads_total_reach(
     )
 
 
+@router.get("/meta-ads/reach-by-level", dependencies=[Depends(require_meta_ads_view)])
+async def meta_ads_reach_by_level(
+    level: str = Query(..., description="campaign or adset"),
+    meta_ad_ids: str | None = Query(None, description="Comma-separated Meta ad ids; omit for the whole account"),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Meta's de-duplicated reach per campaign or ad set, for the Campaigns / Ad sets views."""
+    from app.services.ad_performance import build_reach_by_level
+    ids = None if meta_ad_ids is None else [i.strip() for i in meta_ad_ids.split(",") if i.strip()][:200]
+    today = datetime.now(timezone.utc).date()
+    d_to = _parse_day(date_to, "date_to") if date_to else today.isoformat()
+    d_from = _parse_day(date_from, "date_from") if date_from else (today - timedelta(days=30)).isoformat()
+    try:
+        return build_reach_by_level(
+            get_supabase(), tenant_id, level=level, meta_ad_ids=ids, date_from=d_from, date_to=d_to,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 @router.get("/meta-ads/field-catalog", dependencies=[Depends(require_meta_ads_view)])
 async def meta_ads_field_catalog():
     """Meta-computed columns and breakdowns the All ads page can ask for."""
@@ -673,6 +695,7 @@ def _sync_start_payload(db, tenant_id: str) -> dict:
         "connected_at": get_ads_setting(db, tenant_id, "meta_ads_connected_at"),
         "backfilled_from": get_ads_setting(db, tenant_id, "meta_ads_backfilled_from"),
         "earliest_ad_start": earliest,
+        "last_synced_at": get_ads_setting(db, tenant_id, "meta_ads_last_sync_at"),
         "max_history_days": _MAX_HISTORY_DAYS,
     }
 

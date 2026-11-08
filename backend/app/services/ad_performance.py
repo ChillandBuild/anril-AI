@@ -178,7 +178,7 @@ def build_creative_performance(
     date_from = _clip_date_from(date_from, start)
 
     q = db.table("ad_creatives").select(
-        "id,creative_label,meta_ad_id,meta_adset_id,meta_adset_name,"
+        "id,creative_label,meta_ad_id,meta_adset_id,meta_adset_name,meta_campaign_id,"
         "campaign_id,effective_status,ad_effective_status,"
         "destination_type,tracked_in_anril,messaging_channels"
     ).eq("tenant_id", tenant_id).eq(
@@ -347,6 +347,8 @@ def build_creative_performance(
             "adset_id": c.get("meta_adset_id"),
             "adset_name": c.get("meta_adset_name"),
             "campaign_id": c.get("campaign_id"),
+            # Meta's id, for Meta's per-campaign reach in the Campaigns view.
+            "meta_campaign_id": c.get("meta_campaign_id"),
             "campaign_name": campaign.get("campaign_name") or "—",
             # When the campaign was created in Ads Manager; None until the next sync stores it.
             "campaign_created_at": campaign.get("meta_created_at"),
@@ -601,6 +603,8 @@ def ad_type_label(destination_type: str | None) -> str:
         "FACEBOOK": "Facebook page",
         "APP": "App",
         "PHONE_CALL": "Calls",
+        # Meta's own "no single destination" value: not a type anyone picks.
+        "UNDEFINED": "Other",
     }
     if value in exact:
         return exact[value]
@@ -659,6 +663,45 @@ def build_total_reach(
         )
     except Exception as error:
         logger.warning("Meta total reach fetch failed for tenant %s: %s", tenant_id, error)
+        reach = None
+    return {"reach": reach}
+
+
+def build_reach_by_level(
+    db,
+    tenant_id: str,
+    *,
+    level: str,
+    meta_ad_ids: list[str] | None,
+    date_from: str | None,
+    date_to: str,
+) -> dict:
+    """{"reach": {campaign or ad set id: de-duplicated reach}} for the Campaigns /
+    Ad sets views of both reports; {"reach": None} when Meta can't answer, so the
+    page falls back to the added-up figure marked as an estimate."""
+    from app.services.meta_ads_insights_sync import (
+        _get_ads_credentials,
+        fetch_reach_by_level,
+        get_ads_setting,
+    )
+
+    if level not in ("campaign", "adset"):
+        raise ValueError(f"Unknown level: {level}")
+    credentials = _get_ads_credentials(db, tenant_id)
+    if not credentials:
+        return {"reach": None}
+    date_from = _clip_date_from(date_from, get_ads_setting(db, tenant_id, "meta_ads_sync_start_date"))
+    if not date_from or date_from > date_to:
+        return {"reach": None}
+    ids = None if meta_ad_ids is None else [i for i in meta_ad_ids if i.isdigit()]
+    if ids is not None and not ids:
+        return {"reach": None}
+    try:
+        reach = fetch_reach_by_level(
+            *credentials, level=level, meta_ad_ids=ids, date_from=date_from, date_to=date_to,
+        )
+    except Exception as error:
+        logger.warning("Meta reach-by-%s fetch failed for tenant %s: %s", level, tenant_id, error)
         reach = None
     return {"reach": reach}
 
