@@ -7,6 +7,9 @@ import {
   Copy,
   Send,
   RefreshCw,
+  Play,
+  FileText,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { Template } from "../types";
 import { STATUS_COLORS, CATEGORY_COLORS, LANGUAGES } from "../types";
@@ -38,6 +41,50 @@ function formatDate(dateStr?: string): string {
 
 function langLabel(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code.toUpperCase();
+}
+
+function mediaType(t: Template): "IMAGE" | "VIDEO" | "DOCUMENT" | null {
+  const m = (t.header_media_type ?? "").toUpperCase();
+  return m === "IMAGE" || m === "VIDEO" || m === "DOCUMENT" ? m : null;
+}
+
+function headerTextLine(t: Template): string {
+  return !mediaType(t) && t.header_text ? renderMiniPreview(t.header_text) : "";
+}
+
+/* ── sub-component: media header (image / video / document) ──── */
+
+// A media-header template is sent with its media on top, so the card shows it
+// too. A Meta upload handle ("4::...") isn't a URL, and Meta's example links
+// expire, so anything that can't load falls back to a labelled placeholder.
+function CardHeader({ template: t }: { template: Template }) {
+  const [failed, setFailed] = useState(false);
+  const type = mediaType(t);
+  if (!type) return null;
+  const src = t.header_media_url && /^https?:/.test(t.header_media_url) ? t.header_media_url : undefined;
+
+  if (type === "IMAGE" && src && !failed) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={src}
+        alt={`${t.name} header image`}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="block w-full h-auto max-h-48 object-contain bg-[#F0F2F5]"
+      />
+    );
+  }
+
+  const Icon = type === "VIDEO" ? Play : type === "DOCUMENT" ? FileText : ImageIcon;
+  const label = type === "VIDEO" ? "Video header" : type === "DOCUMENT" ? "Document header" : "Image header";
+  return (
+    <div className={`w-full h-16 flex items-center justify-center gap-1.5 ${type === "VIDEO" ? "bg-gray-700 text-white/80" : "bg-gray-200 text-gray-500"}`}>
+      <Icon size={16} aria-hidden="true" />
+      <span className="text-[10px] font-medium">{label}</span>
+    </div>
+  );
 }
 
 /* ── component ───────────────────────────────────────────────── */
@@ -80,14 +127,22 @@ export default function TemplateCard({
           }}
         />
 
-        <div className="relative z-10 bg-white rounded-lg rounded-tl-[3px] px-3 py-2 shadow-sm max-w-[95%]">
-          <p className="font-body text-xs text-[#111B21] line-clamp-3 leading-relaxed whitespace-pre-wrap break-words">
-            {renderMiniPreview(t.body_text)}
-          </p>
-          <div className="flex justify-end mt-0.5">
-            <span className="text-[9px]" style={{ color: "#8696A0" }}>
-              12:00 PM ✓✓
-            </span>
+        <div className="relative z-10 bg-white rounded-lg rounded-tl-[3px] shadow-sm max-w-[95%] overflow-hidden">
+          <CardHeader template={t} />
+          <div className="px-3 py-2">
+            {headerTextLine(t) && (
+              <p className="font-body text-xs font-semibold text-[#111B21] truncate mb-0.5">
+                {headerTextLine(t)}
+              </p>
+            )}
+            <p className="font-body text-xs text-[#111B21] line-clamp-3 leading-relaxed whitespace-pre-wrap break-words">
+              {renderMiniPreview(t.body_text)}
+            </p>
+            <div className="flex justify-end mt-0.5">
+              <span className="text-[9px]" style={{ color: "#8696A0" }}>
+                12:00 PM ✓✓
+              </span>
+            </div>
           </div>
         </div>
       </div>
