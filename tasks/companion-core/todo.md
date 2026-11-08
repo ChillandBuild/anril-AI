@@ -74,7 +74,13 @@ Build reply() per spec §3.7 without tools. It runs knowledge retrieval with the
 - Files: backend/app/companion/engine.py, backend/app/routes/companions.py, backend/tests/test_companion_engine.py
 
 ### Checkpoint B: Live smoke test (needs Prem's yes to apply the migration)
-- [ ] Re-check the latest migration number, then apply 248. list_tables shows 5 tables with RLS on, and pg_policies has 0 rows for them.
+Result 2026-11-08: migration 248 applied (Prem's yes). 5 tables, RLS on, 0 policies. DB half smoke-tested on
+the UI test tenant with the LLM stubbed (the tenant has no AI keys): one person row, separate Jothidar/Vastu
+conversations and history, books tag passed per character, mood "concerned" carried into the next prompt,
+history capped at 10. Non-LLM time from the laptop ~1 s per reply = about 8 DB round trips x 114 ms each;
+not measurable from here for Render. Still open: real-AI checks (Tanglish, excerpts, tenant_token_usage rows)
+need an AI model + key on the UI test tenant. Test rows left there: 2 characters, 2 "Companion smoke:" tags.
+- [x] Re-check the latest migration number, then apply 248. list_tables shows 5 tables with RLS on, and pg_policies has 0 rows for them.
 - [ ] Run make dev-backend as the UI test tenant and set up two characters with one PDF each (Jothidar → astrology books tag, Vastu Guru → vastu books tag). Then check:
   - 3 Jothidar replies come back in Tanglish, use an astrology excerpt and never a vastu one, and the 2nd refers to the 1st;
   - a worried message gets mood "concerned";
