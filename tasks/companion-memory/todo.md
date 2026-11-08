@@ -24,7 +24,7 @@ memory.py: tenant_id becomes the first parameter of context_for, record_turn and
 - Depends on: Task 1, and the Companion session's Checkpoint C commits landing
 - Files: backend/app/companion/memory.py, engine.py, backend/tests/test_companion_engine.py
 
-### - [ ] Task 3: MemoryCard (M)
+### - [x] Task 3: MemoryCard (M)
 memory_card.py: build the extraction prompt (spec §3.3), parse the ops JSON tolerantly, validate ops, apply them, and render context_for.
 - Acceptance:
   - [ ] Ops validation: unknown fact id, bad section, text over 300, more than 10 ops, or never-save content (6+ digit runs, OTP/password/aadhaar/PAN words) → that op is dropped, the rest apply.
