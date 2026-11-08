@@ -58,7 +58,7 @@ Also add memory.py with the MemoryProvider protocol (companion_id + end_user_id)
 - Depends on: Task 1
 - Files: backend/app/companion/store.py, memory.py, backend/tests/test_companion_memory.py
 
-### - [ ] Task 5: engine.reply() (text path) and the test-chat route (M)
+### - [x] Task 5: engine.reply() (text path) and the test-chat route (M)
 Build reply() per spec §3.7 without tools. It runs knowledge retrieval with the character's knowledge_tag_id, sends the mood into the prompt, then parses and saves the mood. Add POST /api/v1/companions/{id}/test-chat, with replies stored under "owner-test:<user_id>".
 - Acceptance:
   - [ ] Happy path: get_knowledge_context receives campaign_tag_id = knowledge_tag_id, and _llm_chat gets purpose "companion_reply", max_tokens 700 and temperature 0.5. The reply returns status "done" with the mood tag stripped from the text, and the mood is saved on both the message and the conversation.

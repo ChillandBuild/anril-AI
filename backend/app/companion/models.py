@@ -62,3 +62,22 @@ class CompanionUpdate(_CardFields):
         a null for any other field is ignored, since those columns are NOT NULL."""
         sent = self.model_dump(mode="json", exclude_unset=True)
         return {k: v for k, v in sent.items() if v is not None or k == "knowledge_tag_id"}
+
+
+class AppTool(_CardFields):
+    """A tool the client's own app runs (e.g. Astrotamil's get_chart). Sent with each message;
+    we never store or call it. Size limits and the LLM format live in tools.py (T6)."""
+    name: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
+    description: str = Field(max_length=500)
+    parameters: dict = Field(default_factory=dict)
+
+
+class CompanionReply(BaseModel):
+    """What reply() returns. 'done' carries the text; 'tool_call' (T6) carries a turn_id."""
+    status: Literal["done", "tool_call"]
+    text: str | None = None
+    mood: str | None = None
+    turn_id: str | None = None
+    tool_calls: list[dict] = Field(default_factory=list)
+    conversation_id: str
+    message_id: str | None = None

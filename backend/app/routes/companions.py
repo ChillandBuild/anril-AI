@@ -8,8 +8,9 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
-from app.companion import store
+from app.companion import engine, store
 from app.companion.models import CompanionSettings, CompanionUpdate
 from app.dependencies.tenant import require_permission
 
@@ -63,3 +64,28 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
     if not row:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     return row
+
+
+class TestChatIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/{companion_id}/test-chat")
+async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends(require_settings_manage)):
+    """The owner chats with a character from the dashboard. Stored as person "owner-test:<user_id>",
+    so it never mixes with a real end user's history."""
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Type a message first")
+    try:
+        result = await engine.reply(
+            str(companion_id), ctx["tenant_id"], f"owner-test:{ctx['user_id']}", message)
+    except engine.CompanionNotFound:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    except engine.CompanionPaused:
+        raise HTTPException(status_code=409, detail="This character is paused. Set it to draft or live to chat.")
+    except engine.CompanionMisconfigured:
+        raise HTTPException(status_code=400, detail="Set your AI model and its API key in Settings first")
+    except engine.CompanionBusy:
+        raise HTTPException(status_code=503, detail="The companion is busy right now. Try again in a few seconds.")
+    return result.model_dump()
