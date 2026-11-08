@@ -102,3 +102,22 @@ def test_engine_switch_resets_watermarks_only_on_a_real_change(env):
     assert env.client.patch(f"{BASE}/{env.j['id']}", json={"memory_engine": "card"}).status_code == 200
     assert marks() == [v["id"]]
     assert len(env.db.rows("companion_memory_facts")) == 1          # card facts stay until forget-me
+
+
+# --- review fix (2026-11-09): business scope never shows the owner a mode-B character's facts ---
+
+def test_business_scope_hides_private_characters_facts_from_the_owner(env):
+    karthik = env.db.rows("companion_end_users")[0]
+    private = env.db.add("companions", tenant_id="t1", name="Manasu Friend", status="live", privacy_mode="B")
+    hidden = env.db.add("companion_memory_facts", tenant_id="t1", companion_id=private["id"],
+                        end_user_id=karthik["id"], section="life", text="feels low at night", status="active")
+    env.client.put(f"{BASE}/memory-settings", json={"memory_scope": "business"})
+    url = f"{BASE}/{env.j['id']}/people/astro-123/memory"
+    assert [f["text"] for f in env.client.get(url).json()["facts"]] == [SECRET]
+    assert env.client.delete(f"{url}/{hidden['id']}").status_code == 404
+    assert len(env.db.rows("companion_memory_facts")) == 2
+    # The characters still share it: that's the business-scope promise.
+    from app.companion.memory_card import visible_facts
+    import asyncio
+    seen = asyncio.run(visible_facts("t1", env.j["id"], karthik["id"]))
+    assert "feels low at night" in [f["text"] for f in seen]

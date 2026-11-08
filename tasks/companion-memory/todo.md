@@ -73,6 +73,7 @@ forget_person wipes facts and state (and Mem0 data when present); switching a ch
 - Files: backend/app/companion/engine.py, store.py, backend/tests/test_companion_forget.py
 
 ### Checkpoint B: Live (needs Prem's yes to apply 249)
+- [ ] **Apply 249 before any push of this code.** Without it, creating a character fails (memory_engine column) and the every-minute job errors on each tick.
 - [ ] Re-check the latest migration number, then apply 249. list_tables shows the new tables with RLS on, and pg_policies has 0 rows for them.
 - [ ] Set a Groq key on the UI test tenant. Via make dev-backend: chat with a Level 2 Jothidar, call run_memory_sweep() directly, then confirm the next reply uses the facts and tenant_token_usage gains companion_memory rows.
 
@@ -92,6 +93,12 @@ memory_mem0.py: one AsyncMemory per tenant (cached), MEM0_TELEMETRY=False before
 - Verify: test_companion_memory_mem0.py passes; the app and tests still start without mem0ai installed.
 - Depends on: Task 7, Prem's yes
 - Files: backend/app/companion/memory_mem0.py, memory.py, requirements.txt, backend/tests/test_companion_memory_mem0.py
+
+Review fixes (2026-11-09, code-reviewer on T1–T6), each with a test that failed before:
+- HIGH: business scope showed the owner facts learned by a privacy-mode-B character. Owner list and delete now drop them; the characters still share them.
+- Sweep: a pair whose conversation clock ran ahead stayed due forever (watermark now catches up); oldest activity goes first across all characters; failures back off 1, 2, 4, 8, 16 min and give up after ~31 min (was 3 min); "forget me" during the AI call writes nothing; watermarks and active conversations page past 1000 rows.
+- Card: duplicate adds skipped; a non-string ref drops one op, not the batch; dd-mm-yyyy and dd.mm.yyyy birth dates kept; message text flattened to one line and the card fenced as data.
+- Left as is: tenant_id isn't tied to companion_id by a composite foreign key (app code enforces it).
 
 ### Checkpoint C: Complete
 - [ ] All spec §8 success criteria are met, and bash scripts/verify.sh is green.

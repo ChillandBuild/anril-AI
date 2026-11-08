@@ -120,14 +120,21 @@ def test_only_character_messages_move_the_watermark_without_a_call(env):
     assert mark(env, jothidar, "karthik") == at(5)
 
 
-def test_errors_keep_the_watermark_and_the_third_moves_on(env, caplog):
+def test_errors_back_off_then_give_up_after_about_half_an_hour(env, caplog):
     caplog.set_level(logging.DEBUG)
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
-    env.state["answers"] += [RuntimeError("groq down"), "not json", RuntimeError("groq down")]
-    assert sweep() == {"failed": 1} and mark(env, jothidar, "karthik") is None
-    assert sweep() == {"failed": 1} and mark(env, jothidar, "karthik") is None
-    assert sweep() == {"gave_up": 1} and mark(env, jothidar, "karthik") == at(5)
+    env.state["answers"] += [RuntimeError("groq down"), "not json"] * 3
+
+    def sweep_at(minutes_later):
+        return asyncio.run(memory_sweep.run_memory_sweep(NOW + timedelta(minutes=minutes_later)))
+
+    # Retries after 1, 2, 4, 8, 16 minutes; a pair backing off isn't even looked at.
+    for minute, wait in [(0, 1), (1, 2), (3, 4), (7, 8), (15, 16)]:
+        assert sweep_at(minute) == {"failed": 1} and mark(env, jothidar, "karthik") is None
+        assert sweep_at(minute + wait - 0.5) == {}
+    assert sweep_at(31) == {"gave_up": 1} and mark(env, jothidar, "karthik") == at(5)
+    assert len(env.state["calls"]) == 6
     assert facts(env) == []
     assert SECRET not in caplog.text and "Super!" not in caplog.text
 
@@ -154,3 +161,50 @@ def test_a_new_level2_pair_relearns_from_its_last_twenty_messages(env):
     sweep()
     sent = env.state["calls"][0]["user"]
     assert "msg 4\n" not in sent and "msg 5" in sent and "msg 24" in sent
+
+
+# --- review fixes (2026-11-09) --------------------------------------------------------------------
+
+def test_a_pair_with_nothing_newer_stops_being_due(env):
+    """The conversation's app-server clock ran ahead of the database: no messages after the
+    watermark, but last_message_at is newer. The watermark catches up so it isn't swept forever."""
+    jothidar = env.character("t1", "Jothidar AI")
+    env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
+    assert sweep() == {"ok": 1}
+    conv = env.db.rows("companion_conversations")[0]
+    conv["last_message_at"] = at(4)  # ahead of the newest message (5 min ago)
+    assert sweep() == {"skipped": 1} and mark(env, jothidar, "karthik") == at(4)
+    assert sweep() == {}
+
+
+def test_oldest_activity_goes_first_across_characters(env):
+    early = env.character("t1", "Jothidar AI")
+    late = env.character("t1", "Vastu Guru")
+    for i in range(20):
+        env.chat(early, f"user{i}", ("user", "hi", 10), ("assistant", "hello", 10))
+    env.chat(late, "waiting-longest", ("user", "hi", 100), ("assistant", "hello", 100))
+    sweep()
+    assert mark(env, late, "waiting-longest") == at(100)
+
+
+def test_forget_me_during_the_ai_call_writes_nothing(env, monkeypatch):
+    jothidar = env.character("t1", "Jothidar AI")
+    env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
+
+    async def llm_while_forgetting(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4):
+        env.db.tables["companion_messages"].clear()  # forget_end_user ran meanwhile
+        return '[{"op":"add","section":"life","text":"interview at Zoho"}]'
+    monkeypatch.setattr(memory_card.ai_reply, "_llm_chat", llm_while_forgetting)
+    assert sweep() == {"forgotten": 1}
+    assert facts(env) == [] and env.db.rows("companion_memory_state") == []
+
+
+def test_a_retried_batch_does_not_duplicate_facts(env):
+    jothidar = env.character("t1", "Jothidar AI")
+    env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
+    asyncio.run(store.add_fact("t1", jothidar["id"], "karthik", "threads", "Zoho interview on 20th"))
+    env.state["answers"].append('[{"op":"add","section":"threads","text":"zoho interview on 20th"},'
+                                '{"op":"add","section":"life","text":"job hunting"},'
+                                '{"op":"add","section":"life","text":"Job hunting"}]')
+    assert sweep() == {"ok": 1}
+    assert sorted(facts(env)) == ["Zoho interview on 20th", "job hunting"]
