@@ -421,8 +421,9 @@ canvas {
 :root[data-sidebar-rail] { --sidebar-width: 64px; }
 :root[data-sidebar-anim] { transition: --sidebar-width 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* The sidebar sizes itself: a peek widens it over the page while the page
-   stays put at 64px. It drops back under the header only after shrinking. */
+/* The sidebar sizes itself. A peek widens it and lifts data-sidebar-rail, so
+   the page slides over with it rather than sitting underneath. It drops back
+   under the header only after shrinking. */
 .sidebar-shell {
   width: 256px;
   transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s 0.32s;
@@ -430,7 +431,6 @@ canvas {
 .sidebar-shell[data-rail]:not([data-peek]) { width: 64px; }
 .sidebar-shell[data-peek] {
   z-index: 50;
-  box-shadow: 12px 0 40px rgba(10, 21, 40, 0.35);
   transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s, z-index 0s;
 }
 .nav-lbl, .nav-ws { white-space: nowrap; transition: opacity 0.2s; }
