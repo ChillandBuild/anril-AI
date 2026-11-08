@@ -129,4 +129,5 @@ Notes from the T6/T7 build (2026-11-09):
 ### Checkpoint C: Complete
 - [ ] All spec §8 success criteria are met, and bash scripts/verify.sh is green.
 - [ ] Smoke-test the tool round trip on Groq via test-chat and a typed get_chart result. Try Gemini and Sarvam if the test tenant has keys; otherwise mark them untested.
+  - Deferred by Prem on 2026-11-09 ("no need of testing now"). Still needs an AI key on the UI test tenant. Gemini and Sarvam: untested.
 - [ ] Run /review on the full diff, then /code-simplify. Nothing is pushed without Prem's yes.
