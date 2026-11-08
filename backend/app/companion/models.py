@@ -97,3 +97,19 @@ class CompanionReply(BaseModel):
     tool_calls: list[dict] = Field(default_factory=list)
     conversation_id: str
     message_id: str | None = None
+
+
+class MemoryFact(BaseModel):
+    """One remembered fact, as shown to the end user or (privacy mode A) the business owner.
+    learned_by = the name of the character the person told it to."""
+    id: str
+    section: Literal["profile", "people", "life", "preferences", "threads"]
+    text: str
+    valid_from: str | None = None
+    valid_to: str | None = None
+    status: Literal["active", "closed"]
+    learned_by: str
+
+
+class MemoryScopeIn(_CardFields):
+    memory_scope: Literal["character", "business"]

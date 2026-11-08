@@ -73,6 +73,19 @@ def newest_first(facts: list[dict]) -> list[dict]:
     return sorted(facts, key=lambda f: str(f.get("created_at") or ""), reverse=True)
 
 
+async def visible_facts(tenant_id: str, companion_id: str, end_user_id: str) -> list[dict]:
+    """What this character may see about the person under the tenant's memory scope:
+    its own facts (character scope), or every character's with its own first (business scope).
+    Newest first within each group. Scope is applied here, on read; writes never change."""
+    if await store.get_memory_scope(tenant_id) == "business":
+        facts = await store.list_facts(tenant_id, end_user_id)
+    else:
+        facts = await store.list_facts(tenant_id, end_user_id, companion_id)
+    ordered = newest_first(facts)
+    return [f for f in ordered if f["companion_id"] == companion_id] + \
+        [f for f in ordered if f["companion_id"] != companion_id]
+
+
 # --- extraction: new messages → fact operations -----------------------------------------------
 
 LLM_PURPOSE = "companion_memory"
@@ -269,8 +282,7 @@ async def extract_and_apply(tenant_id: str, companion: dict, end_user_id: str,
 
 class MemoryCard:
     async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str) -> str:
-        facts = await store.list_facts(tenant_id, end_user_id, companion_id)
-        return render(newest_first(facts))
+        return render(await visible_facts(tenant_id, companion_id, end_user_id))
 
     async def record_turn(self, tenant_id: str, companion_id: str, end_user_id: str,
                           user_msg: str, reply: str) -> None:

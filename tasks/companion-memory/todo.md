@@ -52,12 +52,12 @@ memory_sweep.py: run_memory_sweep() finds up to 20 Level 2 pairs with messages p
 
 ## Phase 2: Scope, visibility and forget
 
-### - [ ] Task 5: Scope and visibility routes (M)
+### - [x] Task 5: Scope and visibility routes (M)
 Business scope on read (own facts first, then other characters'), list_memory and forget_fact, the ABOUT THIS USER label change in prompt.py, and the routes: GET/PUT /api/v1/companions/memory-settings (declared before /{id}), GET /api/v1/companions/{id}/people/{external_user_id}/memory, DELETE .../memory/{fact_id}.
 - Acceptance:
-  - [ ] Character scope: Vastu Guru never sees Jothidar's facts. Business scope: it does, each with learned_by.
-  - [ ] Privacy mode B → 403 on the owner routes; another tenant's character or fact → 404.
-  - [ ] The tenant-audit pre-commit hook passes on routes/companions.py.
+  - [x] Character scope: Vastu Guru never sees Jothidar's facts. Business scope: it does, each with learned_by.
+  - [x] Privacy mode B → 403 on the owner routes; another tenant's character or fact → 404.
+  - [x] The tenant-audit pre-commit hook passes on routes/companions.py.
 - Verify: test_companion_memory_scope.py and test_companion_memory_routes.py pass.
 - Depends on: Task 2 (parallel with Tasks 3–4)
 - Files: backend/app/companion/memory.py, store.py, prompt.py, backend/app/routes/companions.py, tests
