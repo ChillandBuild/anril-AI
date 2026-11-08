@@ -5,8 +5,8 @@ Focused test command: cd backend && python -m pytest tests/test_companion_*.py -
 
 ## Phase 1: Foundation
 
-### - [ ] Task 1: Companion tables and character store (M)
-Write migration 247 with the 5 tables from spec §3.1 (RLS on, no policies). Add the Pydantic CompanionSettings model with the character card fields, plus store functions to create, get, list and update a character.
+### - [x] Task 1: Companion tables and character store (M)
+Write migration 248 (247 was taken by a teammate) with the 5 tables from spec §3.1 (RLS on, no policies). Add the Pydantic CompanionSettings model with the character card fields, plus store functions to create, get, list and update a character.
 - Acceptance:
   - [ ] The migration follows house style (header, SET LOCAL lock_timeout, IF NOT EXISTS). tenant_id is on every table, ENABLE ROW LEVEL SECURITY is set, and there are zero CREATE POLICY lines. UNIQUE (tenant_id, name) on companions, and UNIQUE (tenant_id, external_user_id) on end users.
   - [ ] Validation rejects: memory_level 3, an unknown default_mood, privacy_mode outside A/B, industry outside astrology/general, and any field over its spec §3.1 length limit.
@@ -74,7 +74,7 @@ Build reply() per spec §3.7 without tools. It runs knowledge retrieval with the
 - Files: backend/app/companion/engine.py, backend/app/routes/companions.py, backend/tests/test_companion_engine.py
 
 ### Checkpoint B: Live smoke test (needs Prem's yes to apply the migration)
-- [ ] Re-check the latest migration number, then apply 247. list_tables shows 5 tables with RLS on, and pg_policies has 0 rows for them.
+- [ ] Re-check the latest migration number, then apply 248. list_tables shows 5 tables with RLS on, and pg_policies has 0 rows for them.
 - [ ] Run make dev-backend as the UI test tenant and set up two characters with one PDF each (Jothidar → astrology books tag, Vastu Guru → vastu books tag). Then check:
   - 3 Jothidar replies come back in Tanglish, use an astrology excerpt and never a vastu one, and the 2nd refers to the 1st;
   - a worried message gets mood "concerned";
