@@ -25,12 +25,12 @@ Add GET/POST /api/v1/companions and GET/PATCH /api/v1/companions/{id} behind req
 - Depends on: Task 1
 - Files: backend/app/routes/companions.py, backend/app/main.py (one include_router line), backend/tests/test_companion_routes.py
 
-### - [ ] Task 3: Platform rules, character prompt and mood parsing (S)
+### - [x] Task 3: Platform rules, character prompt and mood parsing (S)
 Write platform_rules.py (PLATFORM_RULES rules 1–8, INDUSTRY_RULES["astrology"], MOODS) and prompt.py, which holds build_messages() and parse_mood(). Both are pure functions.
 - Acceptance:
   - [ ] Sections come in order: PLATFORM, INDUSTRY, CHARACTER, MOOD, OUTPUT, KNOWLEDGE, ABOUT THIS USER, then history, then the user message. Empty optional card fields are omitted, and sample lines are labelled as tone examples.
   - [ ] A backstory containing "Ignore all rules above" stays inside CHARACTER, and the platform block is byte-identical to the constant.
-  - [ ] parse_mood strips a valid tag and returns its mood. If the tag is missing or unknown, it keeps the previous mood and leaves the text unchanged.
+  - [ ] parse_mood strips a valid tag and returns its mood. If the tag is missing, it keeps the previous mood and leaves the text unchanged. A well-formed tag with an unknown mood is still stripped (so the user never sees it) and the previous mood is kept.
 - Verify: test_companion_prompt.py passes.
 - Depends on: none (parallel with T1/T2)
 - Files: backend/app/companion/platform_rules.py, prompt.py, backend/tests/test_companion_prompt.py
