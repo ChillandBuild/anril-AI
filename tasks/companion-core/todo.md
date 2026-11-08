@@ -41,7 +41,7 @@ Write platform_rules.py (PLATFORM_RULES rules 1–8, INDUSTRY_RULES["astrology"]
 
 ## Phase 2: Core reply path
 
-### - [ ] Task 4: People, conversations, messages, mood state, Level 1 memory (M)
+### - [x] Task 4: People, conversations, messages, mood state, Level 1 memory (M)
 Add store functions to:
 - find or create a person (one per business);
 - get or open a (character, person) conversation, with a new one after 24 h that carries the mood over;
