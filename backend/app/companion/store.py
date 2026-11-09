@@ -4,6 +4,7 @@ Uses the service-role client (RLS bypassed), so EVERY query filters on tenant_id
 Sync supabase calls run in a thread so they don't block the event loop.
 """
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 
 from app.companion.models import CompanionSettings
@@ -268,6 +269,206 @@ async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
         (db.table("companion_end_users").update({"display_name": None, "forgotten_at": _now()})
          .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
     await asyncio.to_thread(_q)
+
+
+TEST_PERSON_PATTERN = "owner-test:%"   # the dashboard Playground's person, not a customer
+
+
+async def overview_counts(tenant_id: str) -> dict:
+    """The Overview tiles. Example: 1 live character of 2, 2 people, 3 messages from people this
+    week, 1 active key last used an hour ago. Forgotten people and Playground test chats are left
+    out."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    def _q():
+        db = get_supabase()
+        chars = db.table("companions").select("status").eq("tenant_id", tenant_id).execute().data or []
+        testers = [r["id"] for r in (
+            db.table("companion_end_users").select("id")
+            .eq("tenant_id", tenant_id).like("external_user_id", TEST_PERSON_PATTERN).execute().data or [])]
+        people = (
+            db.table("companion_end_users").select("id", count="exact")
+            .eq("tenant_id", tenant_id).is_("forgotten_at", "null")
+            .not_.like("external_user_id", TEST_PERSON_PATTERN).limit(1).execute())
+        msgs = (db.table("companion_messages").select("id", count="exact")
+                .eq("tenant_id", tenant_id).eq("role", "user").gte("created_at", since))
+        if testers:
+            msgs = msgs.not_.in_("end_user_id", testers)
+        msgs = msgs.limit(1).execute()
+        keys = (
+            db.table("companion_api_keys").select("last_used_at")
+            .eq("tenant_id", tenant_id).eq("status", "active").execute().data or [])
+        used = [k["last_used_at"] for k in keys if k.get("last_used_at")]
+        return {
+            "characters": len(chars),
+            "live_characters": sum(1 for c in chars if c.get("status") == "live"),
+            "people": people.count or 0,
+            "messages_this_week": msgs.count or 0,
+            "active_keys": len(keys),
+            "key_last_used_at": max(used) if used else None,
+        }
+    return await asyncio.to_thread(_q)
+
+
+PEOPLE_SCAN_LIMIT = 5000   # conversations read per character for the Memories list
+
+
+async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int = 25,
+                      offset: int = 0) -> tuple[list[dict], int]:
+    """The people one character talked to, newest first, for the Memories page. Example: Karthik
+    (48213), 4 active facts learned by this character, 46 messages over two conversations.
+    Forgotten people are left out. q matches the external id or display name (case-insensitive).
+    Returns (page, total)."""
+    def _q():
+        db = get_supabase()
+        convs = (
+            db.table("companion_conversations").select("end_user_id, message_count, last_message_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id)
+            .order("last_message_at", desc=True).limit(PEOPLE_SCAN_LIMIT).execute().data or [])
+        stats: dict[str, dict] = {}
+        for c in convs:
+            s = stats.setdefault(c["end_user_id"], {"message_count": 0, "last_seen_at": c["last_message_at"]})
+            s["message_count"] += int(c.get("message_count") or 0)
+            if c["last_message_at"] > s["last_seen_at"]:
+                s["last_seen_at"] = c["last_message_at"]
+        if not stats:
+            return [], 0
+        ids, users = list(stats), []
+        for i in range(0, len(ids), 200):   # keeps each in.(...) filter well under URL limits
+            users += (
+                db.table("companion_end_users").select("id, external_user_id, display_name, forgotten_at")
+                .eq("tenant_id", tenant_id).in_("id", ids[i:i + 200]).execute().data or [])
+        needle = q.strip().lower()
+        people = [
+            {"end_user_id": u["id"], "external_user_id": u["external_user_id"],
+             "display_name": u.get("display_name"), **stats[u["id"]]}
+            for u in users
+            if not u.get("forgotten_at") and (
+                not needle or needle in u["external_user_id"].lower()
+                or needle in (u.get("display_name") or "").lower())
+        ]
+        people.sort(key=lambda p: p["last_seen_at"], reverse=True)
+        page = people[offset:offset + limit]
+        if page:
+            facts = (
+                db.table("companion_memory_facts").select("end_user_id")
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("status", "active")
+                .in_("end_user_id", [p["end_user_id"] for p in page]).execute().data or [])
+            counts: dict[str, int] = {}
+            for f in facts:
+                counts[f["end_user_id"]] = counts.get(f["end_user_id"], 0) + 1
+            for p in page:
+                p["fact_count"] = counts.get(p["end_user_id"], 0)
+        return page, len(people)
+    return await asyncio.to_thread(_q)
+
+
+# --- public API request log (migration 252) -----------------------------------------------------
+
+REQUEST_KINDS = ("chat", "chat_continue", "widget_session", "widget_chat", "widget_continue")
+REQUEST_LOG_PAGE = 100       # newest rows shown in the Requests table
+REQUEST_LOG_SCAN = 20000     # rows read for the daily counts (a busy month for one business)
+
+
+async def log_request(row: dict) -> None:
+    """One public API call: who, which character, how it went. Never message text."""
+    def _q():
+        get_supabase().table("companion_request_log").insert(row).execute()
+    await asyncio.to_thread(_q)
+
+
+async def request_log(tenant_id: str, *, kind: str | None = None, status: str | None = None,
+                      days: int = 7) -> dict:
+    """The Requests page. status "ok" = below 400, "error" = 400 and up. Example: days=7 →
+    the newest 100 rows, plus per-day ok/error counts and totals for the 7 days."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    def _base(columns: str):
+        q = (get_supabase().table("companion_request_log").select(columns)
+             .eq("tenant_id", tenant_id).gte("created_at", since))
+        if kind:
+            q = q.eq("kind", kind)
+        if status == "ok":
+            q = q.lt("status", 400)
+        elif status == "error":
+            q = q.gte("status", 400)
+        return q
+
+    def _q():
+        rows = (_base("id, companion_id, kind, external_user_id, status, ms, created_at")
+                .order("created_at", desc=True).limit(REQUEST_LOG_PAGE).execute().data or [])
+        stats = (_base("status, ms, created_at").order("created_at", desc=True)
+                 .limit(REQUEST_LOG_SCAN).execute().data or [])
+        return rows, stats
+    rows, stats = await asyncio.to_thread(_q)
+
+    daily: dict[str, dict] = {}
+    for r in stats:
+        day = daily.setdefault(str(r["created_at"])[:10], {"ok": 0, "error": 0})
+        day["error" if int(r["status"]) >= 400 else "ok"] += 1
+    times = sorted(int(r["ms"]) for r in stats)
+    return {
+        "requests": rows,
+        "daily": [{"date": d, **daily[d]} for d in sorted(daily)],
+        "total": len(stats),
+        "errors": sum(1 for r in stats if int(r["status"]) >= 400),
+        "median_ms": times[len(times) // 2] if times else None,
+        "capped": len(stats) >= REQUEST_LOG_SCAN,
+    }
+
+
+FACT_SEARCH_SCAN = 2000   # newest facts read per character for the Playground memory search
+_WORD = re.compile(r"\w+", re.UNICODE)
+
+
+def search_words(q: str) -> list[str]:
+    """Lowercase words to match, at most 8, single letters dropped. "Karthik's job?" → ["karthik", "job"]."""
+    words: list[str] = []
+    for w in _WORD.findall(q.lower()):
+        if len(w) > 1 and w not in words:
+            words.append(w)
+    return words[:8]
+
+
+async def search_facts(tenant_id: str, companion_id: str, q: str, limit: int = 10,
+                       end_user_id: str | None = None) -> list[dict]:
+    """Facts this character learned whose text contains any word of q, most words matched first,
+    then newest. Plain word match, no meaning: q "Zoho job" finds "new job at Zoho" but not
+    "works at Infosys". Only this character's own facts; forgotten people are left out."""
+    words = search_words(q)
+    if not words:
+        return []
+
+    def _q():
+        db = get_supabase()
+        query = (db.table("companion_memory_facts").select("end_user_id, section, text, status, created_at")
+                 .eq("tenant_id", tenant_id).eq("companion_id", companion_id))
+        if end_user_id:
+            query = query.eq("end_user_id", end_user_id)
+        facts = query.order("created_at", desc=True).limit(FACT_SEARCH_SCAN).execute().data or []
+        scored = []
+        for f in facts:
+            text = (f.get("text") or "").lower()
+            score = sum(1 for w in words if w in text)
+            if score:
+                scored.append((score, f))
+        scored.sort(key=lambda sf: sf[0], reverse=True)   # stable: newest first within a score
+        hits = [f for _, f in scored[: limit * 2]]   # spare rows in case some people were forgotten
+        ids, users = list({f["end_user_id"] for f in hits}), {}
+        for i in range(0, len(ids), 200):
+            for u in (db.table("companion_end_users").select("id, external_user_id, display_name, forgotten_at")
+                      .eq("tenant_id", tenant_id).in_("id", ids[i:i + 200]).execute().data or []):
+                users[u["id"]] = u
+        out = []
+        for f in hits:
+            u = users.get(f["end_user_id"])
+            if not u or u.get("forgotten_at"):
+                continue
+            out.append({"text": f["text"], "section": f["section"], "status": f["status"],
+                        "learned_at": f.get("created_at"), "external_user_id": u["external_user_id"],
+                        "display_name": u.get("display_name")})
+        return out[:limit]
+    return await asyncio.to_thread(_q)
 
 
 # --- Level 2 memory: facts, watermarks, tenant settings (migration 249) -------------------------

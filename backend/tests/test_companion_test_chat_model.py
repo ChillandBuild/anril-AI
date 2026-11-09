@@ -1,0 +1,161 @@
+"""companion-dashboard T10: the Playground model picker and "Compare without memory".
+
+The model override is test-chat only. ai_reply is shared with the live WhatsApp reply path, so
+these tests prove that generate_reply and the public companion routes never pass a model, and
+that a picked model must be one the tenant has an API key for."""
+import ast
+import json
+from pathlib import Path
+
+import pytest
+
+from app.companion import engine
+from app.services import ai_reply
+from tests.test_companion_chat_api import DASH, PUB, bearer, env  # noqa: F401  (env is a fixture)
+from tests.test_companion_tools import CHART, GET_CHART, call
+
+APP = Path(__file__).resolve().parents[1] / "app"
+LLM_FUNCS = {"_llm_chat", "_llm_chat_with_tools"}
+
+
+def _calls(path: Path, names: set[str]):
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+            if name in names:
+                yield node
+
+
+def _passes(node: ast.Call, keyword: str) -> bool:
+    """True if the call passes `keyword`, or **kwargs that could carry it."""
+    return any(k.arg == keyword or k.arg is None for k in node.keywords)
+
+
+# --- static: who may pass a model -------------------------------------------------------------
+
+def test_only_the_companion_engine_passes_a_model_to_the_llm():
+    offenders = []
+    for path in APP.rglob("*.py"):
+        for node in _calls(path, LLM_FUNCS):
+            if _passes(node, "model") and path.relative_to(APP).as_posix() != "companion/engine.py":
+                offenders.append(f"{path.relative_to(APP)}:{node.lineno}")
+    assert offenders == [], f"model passed to the LLM outside the Playground path: {offenders}"
+
+
+def test_generate_reply_path_never_passes_a_model():
+    calls = list(_calls(APP / "services" / "ai_reply.py", LLM_FUNCS))
+    assert calls, "expected ai_reply.py to call _llm_chat"
+    assert not [n.lineno for n in calls if _passes(n, "model")]
+
+
+def test_public_companion_routes_never_pass_model_or_use_memory():
+    calls = list(_calls(APP / "routes" / "companion_public.py", {"reply", "continue_reply"}))
+    assert len(calls) == 4
+    for node in calls:
+        assert not _passes(node, "model") and not _passes(node, "use_memory"), node.lineno
+
+
+# --- runtime ----------------------------------------------------------------------------------
+
+@pytest.fixture
+def spy(env, monkeypatch):  # noqa: F811
+    """Records the kwargs of every LLM call. Gemini and Groq keys are set; OpenAI and Sarvam aren't."""
+    seen = []
+
+    async def plain(messages, max_tokens=300, tenant_id=None, **kw):
+        seen.append({"kind": "plain", "messages": messages, **kw})
+        return "[mood: warm] Vanakkam Karthik!"
+
+    async def with_tools(messages, tools, max_tokens=300, tenant_id=None, **kw):
+        seen.append({"kind": "tools", "messages": messages, **kw})
+        return env.state["script"].pop(0)
+
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat", plain)
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", with_tools)
+    keys_set = {"gemini_api_key", "groq_api_key", "ai_reply_model"}
+    monkeypatch.setattr(ai_reply, "get_setting", lambda key, fallback=None, tenant_id=None:
+                        ("groq/llama-3.3-70b-versatile" if key == "ai_reply_model" else "k") if key in keys_set else None)
+    monkeypatch.setattr(ai_reply, "require_tenant_setting", lambda key, tenant_id:
+                        ai_reply.get_setting(key, tenant_id=tenant_id) or (_ for _ in ()).throw(RuntimeError(key)))
+    return seen
+
+
+def test_public_chat_never_passes_a_model(env, spy):  # noqa: F811
+    body = {"companion_id": env.live["id"], "user_id": "48213", "message": "hi"}
+    for extra in ({"model": "google/gemini-3.5-flash"}, {"use_memory": False}):
+        assert env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={**body, **extra}).status_code == 422
+    assert spy == []
+    r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=body)
+    assert r.status_code == 200 and r.json().get("model") is None
+    assert spy and all("model" not in call_kw for call_kw in spy)
+    assert len(env.db.rows("companion_messages")) == 2   # a normal turn: saved with memory
+
+
+def test_models_lists_only_providers_with_keys(env, spy):  # noqa: F811
+    body = env.client.get(f"{DASH}/models").json()
+    ids = [m["id"] for m in body["models"]]
+    assert ids == ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash",
+                   "groq/llama-3.3-70b-versatile", "groq/qwen/qwen3-32b"]
+    assert body["default"] == "groq/llama-3.3-70b-versatile"
+
+
+def test_test_chat_uses_the_picked_model(env, spy):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat",
+                        json={"message": "hi", "model": "google/gemini-3.5-flash"})
+    assert r.status_code == 200
+    assert spy[-1]["model"] == "google/gemini-3.5-flash"
+    assert r.json()["model"] == "Gemini 3.5 Flash"
+
+
+def test_test_chat_without_a_model_uses_the_live_one(env, spy):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi"})
+    assert r.status_code == 200 and "model" not in spy[-1]
+    assert r.json()["model"] == "Llama 3.3 70B"
+
+
+@pytest.mark.parametrize("model", ["openai/gpt-5-nano-2025-08-07", "sarvam-30b", "anthropic/x", "google/../etc"])
+def test_test_chat_refuses_models_without_a_key(env, spy, model):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi", "model": model})
+    assert r.status_code == 422 and spy == []
+
+
+def test_compare_without_memory_saves_nothing_and_skips_history(env, spy):  # noqa: F811
+    url = f"{DASH}/{env.live['id']}/test-chat"
+    assert env.client.post(url, json={"message": "My birth time is 4:35 am"}).status_code == 200
+    saved = {t: len(env.db.rows(t)) for t in ("companion_messages", "companion_conversations", "companion_end_users")}
+    r = env.client.post(url, json={"message": "What do you know about me?", "use_memory": False,
+                                   "tools": [GET_CHART.model_dump()]})
+    assert r.status_code == 200 and r.json()["status"] == "done"
+    assert r.json()["text"] == "Vanakkam Karthik!" and r.json()["message_id"] is None
+    assert {t: len(env.db.rows(t)) for t in saved} == saved   # nothing saved, no new conversation
+    assert r.json()["conversation_id"] is None
+    last = spy[-1]
+    assert last["kind"] == "plain"                              # tools dropped
+    prompt = json.dumps(last["messages"])
+    assert "4:35" not in prompt and "Vanakkam Karthik" not in prompt   # no history
+
+
+def test_a_tool_turn_keeps_the_picked_model_through_continue(env, spy):  # noqa: F811
+    env.state["script"] = [("", [call()]), ("[mood: warm] Ungal lagnam Kumbham.", [])]
+    first = env.client.post(f"{DASH}/{env.live['id']}/test-chat",
+                            json={"message": "En jathagam", "tools": [GET_CHART.model_dump()],
+                                  "model": "google/gemini-3.5-flash"}).json()
+    assert first["status"] == "tool_call"
+    done = env.client.post(f"{DASH}/test-chat/continue",
+                           json={"turn_id": first["turn_id"], "results": [{"id": "call_1", "output": CHART}]})
+    assert done.status_code == 200
+    assert [c.get("model") for c in spy] == ["google/gemini-3.5-flash", "google/gemini-3.5-flash"]
+
+
+def test_llm_chat_without_model_resolves_the_tenant_model(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("groq", "llama-live"))
+
+    async def groq(**kw):
+        seen.update(kw)
+        return "ok"
+    monkeypatch.setattr(ai_reply, "groq_chat_completion", groq)
+    import asyncio
+    assert asyncio.run(ai_reply._llm_chat([{"role": "user", "content": "x"}], tenant_id="t1")) == "ok"
+    assert seen["model"] == "llama-live"

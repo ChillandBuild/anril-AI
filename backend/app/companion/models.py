@@ -97,7 +97,7 @@ class CompanionReply(BaseModel):
     mood: str | None = None
     turn_id: str | None = None
     tool_calls: list[dict] = Field(default_factory=list)
-    conversation_id: str
+    conversation_id: str | None = None   # None only for the Playground's "without memory" reply
     message_id: str | None = None
 
 

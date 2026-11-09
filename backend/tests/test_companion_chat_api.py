@@ -94,7 +94,7 @@ def env(monkeypatch):
     app = FastAPI()
     app.include_router(companion_public.public_router, prefix=PUB)
     app.include_router(companions.router, prefix=DASH)
-    app.dependency_overrides[companions.require_settings_manage] = \
+    app.dependency_overrides[companions.require_companions_manage] = \
         lambda: {"tenant_id": "t1", "user_id": "u1", "role": "owner"}
     return type("Env", (), dict(db=fake, state=state, live=live, draft=draft, other=other, key=t1_key,
                                 hash=t1_hash, key_row=t1_row, t2_key=t2_key, t2_hash=t2_hash,

@@ -38,6 +38,7 @@ import { cn, isActive } from "@/lib/utils";
 import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
+import { ProductSwitch } from "@/components/nav/ProductSwitch";
 
 const BRAIN_HREF = "/dashboard/brain";
 
@@ -189,6 +190,7 @@ export function MoreMenu() {
                 <X size={18} />
               </button>
             </div>
+            <ProductSwitch onSwitch={() => setIsOpen(false)} />
             {items.length === 0 && !canSettings ? (
               <div className="rounded-xl border border-border-subtle bg-surface-low px-3 py-4 text-center font-body text-sm text-ink-muted">
                 No more sections are available for this account.

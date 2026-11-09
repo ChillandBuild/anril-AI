@@ -71,6 +71,8 @@ const ACCESS_MODULES: AccessModule[] = [
   { id: "knowledge", title: "Knowledge Base", description: "Review and maintain AI answer sources.", group: "AI", readKeys: ["knowledge.view"], writeKeys: ["knowledge.manage"] },
   { id: "brain", title: "Anril Brain", description: "See what Anril has learned. Edits here follow Knowledge Base write access.", group: "AI", readKeys: ["brain.view"], writeKeys: [] },
   { id: "catalog", title: "Catalog", description: "Review and maintain product and service items.", group: "AI", readKeys: ["catalog.view"], writeKeys: ["catalog.manage"] },
+  // One key covers all of Anril Agents (characters, keys, memories), so it sits in the Read column with no separate write.
+  { id: "companions", title: "Anril Agents", description: "Create AI characters, manage their secret keys and see what they learned. Turning this on gives full access.", group: "AI", readKeys: ["companions.manage"], writeKeys: [] },
   { id: "services", title: "Services", description: "Review or edit service packages and pricing.", group: "AI", readKeys: ["services.view"], writeKeys: ["services.manage"] },
   { id: "analytics", title: "Analytics", description: "View campaign, funnel, and performance reports.", group: "Reports", readKeys: ["analytics.view"], writeKeys: [] },
   { id: "subscription", title: "Subscription", description: "Review and update subscription controls.", group: "Admin", readKeys: ["subscription.view"], writeKeys: ["subscription.manage"] },

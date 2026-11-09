@@ -52,6 +52,40 @@ def _provider_and_native_model(model: str) -> tuple[str, str]:
     raise RuntimeError(f"Unrecognized reply model '{model}'")
 
 
+# The reply models a tenant can pick (same list as the operator console's REPLY_MODELS).
+REPLY_MODELS: dict[str, str] = {
+    "sarvam-30b": "Sarvam 30B",
+    "sarvam-105b": "Sarvam 105B",
+    "google/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+    "google/gemini-3.5-flash": "Gemini 3.5 Flash",
+    "openai/gpt-5.4-nano-2026-03-17": "GPT-5.4 Nano",
+    "openai/gpt-5-nano-2025-08-07": "GPT-5 Nano",
+    "groq/llama-3.3-70b-versatile": "Llama 3.3 70B",
+    "groq/qwen/qwen3-32b": "Qwen 3 32B",
+}
+
+
+def available_reply_models(tenant_id: str | None) -> list[dict]:
+    """The models this tenant could switch to: those whose provider API key is set. Used only
+    by the Agents Playground model picker; live replies always use ai_reply_model."""
+    out = []
+    for model_id, label in REPLY_MODELS.items():
+        provider, _ = _provider_and_native_model(model_id)
+        if get_setting(f"{provider}_api_key", tenant_id=tenant_id):
+            out.append({"id": model_id, "label": label})
+    return out
+
+
+def _provider_for(tenant_id: str | None, model: str | None) -> tuple[str, str]:
+    """(provider, native_model): the tenant's ai_reply_model, or an explicit model override
+    (Playground only), whose provider key must still be set for this tenant."""
+    if not model:
+        return _resolve_provider(tenant_id)
+    provider, native_model = _provider_and_native_model(model)
+    require_tenant_setting(f"{provider}_api_key", tenant_id)
+    return provider, native_model
+
+
 def _resolve_provider(tenant_id: str | None) -> tuple[str, str]:
     """Resolves (provider, native_model) for this tenant's selected ai_reply_model, and
     enforces that the tenant has explicitly configured that provider's API key. No
@@ -69,10 +103,12 @@ async def _llm_chat(
     *,
     purpose: str = "ai_reply",
     temperature: float = 0.4,
+    model: str | None = None,
 ) -> str:
     # purpose/temperature are overridable for non-reply callers (knowledge auto-sort
     # meters under "knowledge_sort" and needs near-deterministic output).
-    provider, native_model = _resolve_provider(tenant_id)
+    # model: Agents Playground test chat only. Live replies never pass it.
+    provider, native_model = _provider_for(tenant_id, model)
     kwargs = dict(
         messages=messages, model=native_model, temperature=temperature, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
@@ -92,12 +128,13 @@ async def _llm_complete(prompt: str, max_tokens: int = 300, tenant_id: str | Non
 
 async def _llm_chat_with_tools(
     messages: list[dict], tools: list[dict], max_tokens: int = 300, tenant_id: str | None = None,
-    *, purpose: str = "ai_reply",
+    *, purpose: str = "ai_reply", model: str | None = None,
 ) -> tuple[str, list[dict]]:
     """Tool-calling counterpart to _llm_chat -- routes catalog-recommendation replies
     through the tenant's selected ai_reply_model instead of hardcoding Sarvam.
-    purpose is overridable so other callers (the companion) meter under their own name."""
-    provider, native_model = _resolve_provider(tenant_id)
+    purpose is overridable so other callers (the companion) meter under their own name.
+    model: Agents Playground test chat only. Live replies never pass it."""
+    provider, native_model = _provider_for(tenant_id, model)
     kwargs = dict(
         messages=messages, tools=tools, model=native_model, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
