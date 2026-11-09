@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type DragEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, FileText, Info, Loader2, UploadCloud, X } from "lucide-react";
 import { CheckField } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
@@ -196,11 +197,15 @@ function ModalBody({ title, onClose, children, wide }: { title: string; onClose:
 
 /** Centered dialog over a dimmed page; the body scrolls on short screens. Escape closes it and Tab stays inside. */
 export function Modal({ open, title, onClose, children, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  if (!open) return null;
-  return (
+  if (!open || typeof document === "undefined") return null;
+  // Rendered on <body>, not where the caller placed it: inside a space-y-*
+  // list the overlay picked up the list's margin-top and left an undimmed
+  // strip along the top of the window (DLT Setup > Add template).
+  return createPortal(
     <ModalBody title={title} onClose={onClose} wide={wide}>
       {children}
-    </ModalBody>
+    </ModalBody>,
+    document.body
   );
 }
 
