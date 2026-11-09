@@ -37,6 +37,7 @@ class CompanionSettings(_CardFields):
     knowledge_tag_id: UUID | None = None
     memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
     memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
+    history_messages: int = Field(10, ge=2, le=50)   # recent messages every reply reads
     privacy_mode: Literal["A", "B"] = "A"
     status: Literal["draft", "live", "paused"] = "draft"
 
@@ -57,6 +58,7 @@ class CompanionUpdate(_CardFields):
     knowledge_tag_id: UUID | None = None
     memory_level: Literal[1, 2] | None = None
     memory_engine: Literal["card", "mem0"] | None = None
+    history_messages: int | None = Field(None, ge=2, le=50)
     privacy_mode: Literal["A", "B"] | None = None
     status: Literal["draft", "live", "paused"] | None = None
 

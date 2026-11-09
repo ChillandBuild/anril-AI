@@ -74,12 +74,13 @@ MONDAY = 0
 EVERY = {
     "scheduled-broadcasts": 60, "reengagement-rules": 60, "silence-nudge": 60,
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
-    "scheduled-templates": 60, "sms-send": 60, "companion-memory": 60, "assignment-sweep": 120, "call-ai-sweep": 180,
+    "scheduled-templates": 60, "sms-send": 60, "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
     "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "ad-insights-sync": 3600,
     "token-health-check": 4 * 3600, "number-quality-sync": 4 * 3600,
 }
 AT_IST = {
+    "companion-memory": (["02:00"], None),
     "numbers-pool-sync": (["06:00", "18:00"], None),
     "send-log-prune": (["03:00"], None),
     "scheduler-runs-prune": (["03:15"], None),

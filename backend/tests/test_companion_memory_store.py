@@ -34,6 +34,17 @@ def test_memory_engine_defaults_to_card_and_rejects_unknown():
         CompanionSettings(name="Jothidar AI", memory_engine="redis")
 
 
+def test_history_messages_defaults_to_10_and_must_be_2_to_50():
+    assert CompanionSettings(name="Jothidar AI").history_messages == 10
+    assert CompanionUpdate(history_messages=25).changes() == {"history_messages": 25}
+    assert CompanionUpdate(name="x").changes() == {"name": "x"}  # not sent → not changed
+    for bad in (1, 51):
+        with pytest.raises(ValidationError):
+            CompanionSettings(name="Jothidar AI", history_messages=bad)
+        with pytest.raises(ValidationError):
+            CompanionUpdate(history_messages=bad)
+
+
 # --- memory scope ---------------------------------------------------------------------------------
 
 def test_scope_defaults_to_character_and_is_per_tenant(db):

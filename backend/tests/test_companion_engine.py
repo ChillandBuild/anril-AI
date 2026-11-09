@@ -242,3 +242,18 @@ def test_level1_prompt_ignores_facts_and_memory_errors_become_none(env, monkeypa
     monkeypatch.setattr(store, "list_facts", boom)
     r = reply(env.jothidar["id"], "Hi again")
     assert r.status == "done" and "lost job" not in system_prompt(env.state["llm"][-1])
+
+
+def test_history_messages_setting_sets_how_many_recent_messages_are_sent(env):
+    # Prem 2026-11-09: the recent-message count is per character (default 10, 2-50).
+    env.state["replies"] = [f"[mood: calm] reply {i}" for i in range(6)]
+    for i in range(3):
+        reply(env.jothidar["id"], f"message {i}")
+    env.db.rows("companions")[0]["history_messages"] = 2
+    reply(env.jothidar["id"], "message 3")
+    sent = [m["content"] for m in env.state["llm"][-1]["messages"][1:]]
+    assert sent == ["message 2", "reply 2", "message 3"]  # 2 recent + the new one
+
+    env.db.rows("companions")[0].pop("history_messages")  # no setting → the default 10
+    reply(env.jothidar["id"], "message 4")
+    assert len(env.state["llm"][-1]["messages"][1:]) == 9  # all 8 earlier messages + the new one

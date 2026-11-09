@@ -407,12 +407,24 @@ async def get_watermark(tenant_id: str, companion_id: str, end_user_id: str) -> 
             .limit(1).execute().data
         )
     rows = await asyncio.to_thread(_q)
-    return rows[0]["last_message_at"] if rows else None
+    return rows[0].get("last_message_at") if rows else None
 
 
 async def set_watermark(tenant_id: str, companion_id: str, end_user_id: str, last_message_at: str) -> None:
+    """Moves the watermark and clears the failed-night count."""
     row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
-           "last_message_at": last_message_at, "updated_at": _now()}
+           "last_message_at": last_message_at, "failures": 0, "updated_at": _now()}
+
+    def _q():
+        (get_supabase().table("companion_memory_state")
+         .upsert(row, on_conflict="companion_id,end_user_id").execute())
+    await asyncio.to_thread(_q)
+
+
+async def record_failure(tenant_id: str, companion_id: str, end_user_id: str, failures: int) -> None:
+    """Counts a failed night for this pair; the watermark stays where it is."""
+    row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+           "failures": failures, "updated_at": _now()}
 
     def _q():
         (get_supabase().table("companion_memory_state")
@@ -452,12 +464,13 @@ async def level2_companions() -> list[dict]:
     return await asyncio.to_thread(_q) or []
 
 
-async def memory_watermarks(tenant_id: str, companion_id: str) -> dict[str, str | None]:
-    """end_user_id → watermark for every person this character has swept (paged past 1000 rows)."""
+async def memory_states(tenant_id: str, companion_id: str) -> dict[str, tuple[str | None, int]]:
+    """end_user_id → (watermark, failed nights) for every person this character has swept
+    (paged past 1000 rows)."""
     rows = await fetch_all_rows(lambda: (
-        get_supabase().table("companion_memory_state").select("end_user_id, last_message_at")
+        get_supabase().table("companion_memory_state").select("end_user_id, last_message_at, failures")
         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).order("end_user_id")))
-    return {r["end_user_id"]: r["last_message_at"] for r in rows}
+    return {r["end_user_id"]: (r.get("last_message_at"), r.get("failures") or 0) for r in rows}
 
 
 async def active_conversations(tenant_id: str, companion_id: str, since: str) -> list[dict]:

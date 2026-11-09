@@ -1,4 +1,4 @@
-"""companion-memory T4: the every-minute sweep that turns new messages into facts."""
+"""companion-memory T4/T10: the nightly sweep (02:00 IST) that turns the day's messages into facts."""
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
@@ -20,7 +20,6 @@ def at(minutes_ago: float) -> str:
 def env(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
-    memory_sweep._failures.clear()
     state = {"calls": [], "answers": []}
 
     async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
@@ -79,7 +78,7 @@ def test_day1_example_one_call_four_facts_and_watermark_moves(env):
     assert sweep() == {} and len(env.state["calls"]) == 1  # nothing new: no AI call
 
 
-def test_three_quick_replies_become_one_call_and_only_new_messages_are_sent(env):
+def test_a_whole_day_becomes_one_call_and_only_new_messages_are_sent(env):
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", "old message", 30), ("assistant", "old reply", 30))
     asyncio.run(store.set_watermark("t1", jothidar["id"], "karthik", at(30)))
@@ -120,47 +119,79 @@ def test_only_character_messages_move_the_watermark_without_a_call(env):
     assert mark(env, jothidar, "karthik") == at(5)
 
 
-def test_errors_back_off_then_give_up_after_about_half_an_hour(env, caplog):
+def test_a_failed_night_keeps_the_watermark_and_the_third_moves_it_on(env, caplog):
     caplog.set_level(logging.DEBUG)
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
-    env.state["answers"] += [RuntimeError("groq down"), "not json"] * 3
+    env.state["answers"] += [RuntimeError("groq down"), "not json", RuntimeError("groq down")]
 
-    def sweep_at(minutes_later):
-        return asyncio.run(memory_sweep.run_memory_sweep(NOW + timedelta(minutes=minutes_later)))
+    def state():
+        return env.db.rows("companion_memory_state")[0]
 
-    # Retries after 1, 2, 4, 8, 16 minutes; a pair backing off isn't even looked at.
-    for minute, wait in [(0, 1), (1, 2), (3, 4), (7, 8), (15, 16)]:
-        assert sweep_at(minute) == {"failed": 1} and mark(env, jothidar, "karthik") is None
-        assert sweep_at(minute + wait - 0.5) == {}
-    assert sweep_at(31) == {"gave_up": 1} and mark(env, jothidar, "karthik") == at(5)
-    assert len(env.state["calls"]) == 6
+    assert sweep() == {"failed": 1} and mark(env, jothidar, "karthik") is None and state()["failures"] == 1
+    assert sweep() == {"failed": 1} and state()["failures"] == 2       # night 2: still retried
+    assert sweep() == {"gave_up": 1} and mark(env, jothidar, "karthik") == at(5)  # night 3: move on
+    assert state()["failures"] == 0
+    assert sweep() == {} and len(env.state["calls"]) == 3
     assert facts(env) == []
     assert SECRET not in caplog.text and "Super!" not in caplog.text
 
 
-def test_at_most_twenty_pairs_and_twenty_messages_per_tick(env):
+def test_a_good_night_clears_the_failure_count(env):
+    jothidar = env.character("t1", "Jothidar AI")
+    env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
+    env.state["answers"] += [RuntimeError("groq down"), "[]"]
+    assert sweep() == {"failed": 1}
+    assert sweep() == {"ok": 1}
+    row = env.db.rows("companion_memory_state")[0]
+    assert row["failures"] == 0 and row["last_message_at"] == at(5)
+
+
+def test_a_long_day_goes_in_chunks_of_forty_with_the_watermark_after_each(env):
+    jothidar = env.character("t1", "Jothidar AI")
+    asyncio.run(store.set_watermark("t1", jothidar["id"], "chatty", at(200)))
+    env.chat(jothidar, "chatty", *[("user", f"line {i}", 150 - i) for i in range(90)])
+    assert sweep() == {"ok": 1}
+    assert [c["user"].count("Person: line") for c in env.state["calls"]] == [40, 40, 10]
+    assert mark(env, jothidar, "chatty") == at(150 - 89)
+
+
+def test_at_most_five_chunks_per_pair_a_night_then_the_rest_next_night(env):
+    jothidar = env.character("t1", "Jothidar AI")
+    asyncio.run(store.set_watermark("t1", jothidar["id"], "chatty", at(500)))
+    env.chat(jothidar, "chatty", *[("user", f"line {i}", 400 - i) for i in range(210)])
+    sweep()
+    assert len(env.state["calls"]) == 5 and mark(env, jothidar, "chatty") == at(400 - 199)
+    sweep()
+    assert len(env.state["calls"]) == 6 and env.state["calls"][-1]["user"].count("Person: line") == 10
+
+
+def test_a_failed_chunk_keeps_the_good_chunks_before_it(env):
+    jothidar = env.character("t1", "Jothidar AI")
+    asyncio.run(store.set_watermark("t1", jothidar["id"], "chatty", at(200)))
+    env.chat(jothidar, "chatty", *[("user", f"line {i}", 150 - i) for i in range(50)])
+    env.state["answers"] += ["[]", RuntimeError("groq down")]
+    assert sweep() == {"failed": 1}
+    assert mark(env, jothidar, "chatty") == at(150 - 39)  # chunk 1 kept
+    assert env.db.rows("companion_memory_state")[0]["failures"] == 1
+
+
+def test_at_most_max_pairs_a_night_oldest_first(env, monkeypatch):
+    monkeypatch.setattr(memory_sweep, "MAX_PAIRS", 20)
     jothidar = env.character("t1", "Jothidar AI")
     for i in range(25):
         env.chat(jothidar, f"user{i}", ("user", f"hello {i}", 5), ("assistant", "hi", 5))
     assert sweep() == {"ok": 20}
     assert sweep() == {"ok": 5}
 
-    env.chat(jothidar, "chatty", *[("user", f"line {i}", 60 - i) for i in range(30)])
-    asyncio.run(store.set_watermark("t1", jothidar["id"], "chatty", at(61)))  # a backlog after a watermark
-    sweep()
-    assert env.state["calls"][-1]["user"].count("Person: line") == 20  # first 20, rest next tick
-    assert mark(env, jothidar, "chatty") == at(60 - 19)
-    sweep()
-    assert env.state["calls"][-1]["user"].count("Person: line") == 10
 
-
-def test_a_new_level2_pair_relearns_from_its_last_twenty_messages(env):
+def test_a_new_level2_pair_learns_from_its_latest_forty_messages(env):
     jothidar = env.character("t1", "Jothidar AI")
-    env.chat(jothidar, "karthik", *[("user", f"msg {i}", 100 - i) for i in range(25)])
+    env.chat(jothidar, "karthik", *[("user", f"msg {i}", 100 - i) for i in range(45)])
     sweep()
     sent = env.state["calls"][0]["user"]
-    assert "msg 4\n" not in sent and "msg 5" in sent and "msg 24" in sent
+    assert len(env.state["calls"]) == 1
+    assert "msg 4\n" not in sent and "msg 5" in sent and "msg 44" in sent
 
 
 # --- review fixes (2026-11-09) --------------------------------------------------------------------
@@ -177,7 +208,8 @@ def test_a_pair_with_nothing_newer_stops_being_due(env):
     assert sweep() == {}
 
 
-def test_oldest_activity_goes_first_across_characters(env):
+def test_oldest_activity_goes_first_across_characters(env, monkeypatch):
+    monkeypatch.setattr(memory_sweep, "MAX_PAIRS", 20)
     early = env.character("t1", "Jothidar AI")
     late = env.character("t1", "Vastu Guru")
     for i in range(20):

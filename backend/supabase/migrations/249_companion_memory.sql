@@ -3,6 +3,8 @@
 --
 -- - companions.memory_engine: which Level 2 engine a character uses ('card' = ours, 'mem0').
 --   Ignored at memory_level 1.
+-- - companions.history_messages: how many recent messages every reply reads (default 10, 2-50).
+--   Used at every memory level.
 -- - companion_tenant_settings: one row per business. memory_scope = 'character' (each character
 --   remembers only what it was told) or 'business' (characters share what the person told any
 --   of them). No row = 'character'.
@@ -12,7 +14,8 @@
 --   (status 'closed', valid_to set), never overwritten. updated_at doubles as "closed at" for the
 --   90-day window in which closed facts are still shown to the character.
 -- - companion_memory_state: per (character, person) watermark = created_at of the newest message
---   already turned into memory. The every-minute sweep reads messages after it.
+--   already turned into memory. The nightly sweep (02:00 IST) reads messages after it.
+--   failures = nights in a row the sweep failed for this pair; the 3rd moves the watermark on.
 --
 -- RLS on with no policies: service role only, like 248. No operator route reads these tables.
 
@@ -21,6 +24,10 @@ SET LOCAL lock_timeout = '5s';
 ALTER TABLE companions
   ADD COLUMN IF NOT EXISTS memory_engine text NOT NULL DEFAULT 'card'
   CHECK (memory_engine IN ('card', 'mem0'));
+
+ALTER TABLE companions
+  ADD COLUMN IF NOT EXISTS history_messages int NOT NULL DEFAULT 10
+  CHECK (history_messages BETWEEN 2 AND 50);
 
 CREATE TABLE IF NOT EXISTS companion_tenant_settings (
   tenant_id    uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
@@ -49,6 +56,7 @@ CREATE TABLE IF NOT EXISTS companion_memory_state (
   end_user_id     uuid NOT NULL REFERENCES companion_end_users(id) ON DELETE CASCADE,
   tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   last_message_at timestamptz,
+  failures        int NOT NULL DEFAULT 0 CHECK (failures >= 0),
   updated_at      timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (companion_id, end_user_id)
 );

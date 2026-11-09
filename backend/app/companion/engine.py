@@ -26,7 +26,7 @@ from app.services.knowledge_service import get_knowledge_context
 
 logger = logging.getLogger(__name__)
 
-HISTORY_LIMIT = 10
+HISTORY_LIMIT = 10   # default when a character has no history_messages set
 LLM_MAX_TOKENS = 700
 LLM_TEMPERATURE = 0.5
 LLM_PURPOSE = "companion_reply"
@@ -179,7 +179,8 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     kb_context, memory_context, history = await asyncio.gather(
         _knowledge(tenant_id, message, companion.get("knowledge_tag_id")),
         _memory(memory, tenant_id, companion_id, person["id"], message),
-        store.recent_messages(tenant_id, companion_id, person["id"], limit=HISTORY_LIMIT),
+        store.recent_messages(tenant_id, companion_id, person["id"],
+                             limit=companion.get("history_messages") or HISTORY_LIMIT),
     )
     await store.save_message(tenant_id, conversation, "user", message)
 
