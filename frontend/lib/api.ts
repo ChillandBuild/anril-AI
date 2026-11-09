@@ -3780,6 +3780,8 @@ export interface InstantFormSummary extends InstantFormStats {
   status: string | null;
   created_at: string | null;
   questions: number;
+  /** Ads that use this form, running ones first. */
+  ad_names?: string[];
   template_id: string | null;
   template_name: string | null;
   last_lead_at: string | null;

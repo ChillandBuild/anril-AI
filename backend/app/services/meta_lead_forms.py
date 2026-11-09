@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -33,6 +34,7 @@ import httpx
 from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
+from app.services.meta_ads_insights_sync import _get_ads_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -637,3 +639,59 @@ async def catch_up_all() -> None:
         except Exception as exc:
             logger.error("instant forms: catch-up failed tenant=%s: %s", tenant_id, exc)
 
+
+# ── Which ads use each form ────────────────────────────────────────────────
+# Read from the ad account (ads_read), not from leads, so a form shows its ad
+# even before its first lead. Cached briefly: the list page reloads often.
+
+_ADS_BY_FORM_TTL = 300
+_ADS_BY_FORM_CACHE: dict[tuple[str, str], tuple[float, dict[str, list[str]]]] = {}
+
+
+def _creative_form_ids(creative: dict) -> set[str]:
+    """Lead form ids on an ad's creative: single-media ads keep it in
+    object_story_spec, dynamic-creative ads in asset_feed_spec."""
+    ids: set[str] = set()
+    story = creative.get("object_story_spec") or {}
+    ctas = [(story.get(k) or {}).get("call_to_action") or {} for k in ("link_data", "video_data")]
+    ctas += (creative.get("asset_feed_spec") or {}).get("call_to_actions") or []
+    for cta in ctas:
+        form_id = (cta.get("value") or {}).get("lead_gen_form_id") if isinstance(cta, dict) else None
+        if form_id:
+            ids.add(str(form_id))
+    return ids
+
+
+def ads_by_form(db, tenant_id: str) -> dict[str, list[str]]:
+    """{form_id: [ad name, ...]}, running ads first. {} when no ad account or Meta fails."""
+    creds = _get_ads_credentials(db, tenant_id)
+    if not creds:
+        return {}
+    token, account = creds
+    key = (tenant_id, account)
+    cached = _ADS_BY_FORM_CACHE.get(key)
+    if cached and time.monotonic() - cached[0] < _ADS_BY_FORM_TTL:
+        return cached[1]
+    fields = ("name,effective_status,creative{object_story_spec{link_data{call_to_action},"
+              "video_data{call_to_action}},asset_feed_spec{call_to_actions}}")
+    ads: list[dict] = []
+    try:
+        page = _get(f"{account}/ads", token, {"fields": fields, "limit": 200})
+        for _ in range(10):
+            ads.extend(page.get("data") or [])
+            next_url = (page.get("paging") or {}).get("next")
+            if not next_url:
+                break
+            page = _get_url(next_url)
+    except InstantFormsError as exc:
+        logger.warning("instant forms: ad names unavailable tenant=%s: %s", tenant_id, exc)
+        return {}
+    ads.sort(key=lambda ad: ad.get("effective_status") != "ACTIVE")
+    out: dict[str, list[str]] = {}
+    for ad in ads:
+        name = ad.get("name")
+        for form_id in _creative_form_ids(ad.get("creative") or {}):
+            if name and name not in out.setdefault(form_id, []):
+                out[form_id].append(name)
+    _ADS_BY_FORM_CACHE[key] = (time.monotonic(), out)
+    return out

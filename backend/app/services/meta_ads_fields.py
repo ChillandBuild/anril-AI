@@ -332,6 +332,21 @@ def _meta_result(entries) -> tuple[str | None, float | None]:
     return (_result_label(indicator) if indicator else None), value
 
 
+# Meta sometimes returns no `results` at all on lead-form ads (seen on kelir,
+# 2026-11-09) while Ads Manager still shows "Leads (Form)". That column is Meta's
+# own lead_grouped action, so only for the lead goals is it read from `actions`.
+_LEAD_GOALS = {"LEAD_GENERATION", "QUALITY_LEAD"}
+_LEAD_ACTIONS = ["onsite_conversion.lead_grouped", "lead"]
+
+
+def _lead_form_result(row: dict) -> tuple[str, float | None, float | None]:
+    """("Leads", count, spend / count) from the row's actions; no count if none yet."""
+    count = _first_match(row.get("actions"), _LEAD_ACTIONS)
+    spend = _to_float(row.get("spend"))
+    cost = spend / count if count and spend is not None else None
+    return "Leads", (count or None), cost
+
+
 def extract_value(entry: dict, row: dict, ad: dict | None):
     """Value for one catalogue entry from an insight row and its /ads object.
     `row` may be {} for ad-only rows (zero-delivery ads)."""
@@ -355,12 +370,12 @@ def extract_value(entry: dict, row: dict, ad: dict | None):
         return _ad_lookup(ad, src["path"])
     if kind == "budget":
         return _budget(ad)
-    if kind == "result":
-        return _meta_result(row.get("results"))[1]
-    if kind == "result_type":
-        return _meta_result(row.get("results"))[0]
-    if kind == "cost_per_result":
-        return _meta_result(row.get("cost_per_result"))[1]
+    if kind in ("result", "result_type", "cost_per_result"):
+        label, count = _meta_result(row.get("results"))
+        _, cost = _meta_result(row.get("cost_per_result"))
+        if label is None and str(row.get("optimization_goal") or "") in _LEAD_GOALS:
+            label, count, cost = _lead_form_result(row)
+        return {"result": count, "result_type": label, "cost_per_result": cost}[kind]
     raise ValueError(f"unknown source kind: {kind}")
 
 

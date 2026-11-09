@@ -79,6 +79,11 @@ function FormRow({ form, onOpen }: { form: InstantFormSummary; onOpen: () => voi
           </span>
           <FormStatusBadge status={form.status} />
         </div>
+        {form.ad_names && form.ad_names.length > 0 && (
+          <div className="mt-0.5 truncate font-body text-[11px] text-[#475569]" title={form.ad_names.join(", ")}>
+            {form.ad_names.length === 1 ? "Ad" : "Ads"}: <span className="font-semibold text-[#0A1528]">{form.ad_names.join(", ")}</span>
+          </div>
+        )}
         <div className="mt-0.5 font-body text-[11px] text-[#94a3b8]">
           {form.questions} {form.questions === 1 ? "question" : "questions"}
         </div>

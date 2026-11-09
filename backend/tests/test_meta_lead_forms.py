@@ -252,3 +252,38 @@ async def test_webhook_rejects_unsigned_leadgen():
 def test_instant_form_leads_count_as_ad_leads():
     assert lead_origin({"source": "meta_form"}) == "ad"
     assert lead_origin({"source": "whatsapp"}) == "organic"
+
+
+# ── which ads use each form ─────────────────────────────────────────────────
+
+
+def _ads_page():
+    # Shapes as Meta returned them for kelir (2026-11-09): a dynamic-creative ad
+    # carries the form in asset_feed_spec, a single-video ad in object_story_spec.
+    return {"data": [
+        {"name": "Star Reel", "effective_status": "CAMPAIGN_PAUSED", "creative": {"object_story_spec": {
+            "video_data": {"call_to_action": {"value": {"lead_gen_form_id": "222"}}}}}},
+        {"name": "New Leads ad", "effective_status": "ACTIVE", "creative": {"asset_feed_spec": {
+            "call_to_actions": [{"value": {"lead_gen_form_id": "111"}}]}}},
+        {"name": "Second ad", "effective_status": "ACTIVE", "creative": {"object_story_spec": {
+            "link_data": {"call_to_action": {"value": {"lead_gen_form_id": "222"}}}}}},
+        {"name": "Traffic ad", "effective_status": "ACTIVE", "creative": {"object_story_spec": {
+            "link_data": {"call_to_action": {"value": {"link": "https://x"}}}}}},
+    ]}
+
+
+def test_ads_by_form_reads_both_creative_shapes_and_lists_active_first():
+    svc._ADS_BY_FORM_CACHE.clear()
+    with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=("tok", "act_1")), \
+         patch("app.services.meta_lead_forms._get", return_value=_ads_page()):
+        result = svc.ads_by_form(MagicMock(), TENANT)
+    assert result == {"111": ["New Leads ad"], "222": ["Second ad", "Star Reel"]}
+
+
+def test_ads_by_form_is_empty_when_meta_fails_or_no_ad_account():
+    svc._ADS_BY_FORM_CACHE.clear()
+    with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=None):
+        assert svc.ads_by_form(MagicMock(), TENANT) == {}
+    with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=("tok", "act_1")), \
+         patch("app.services.meta_lead_forms._get", side_effect=svc.InstantFormsError("boom")):
+        assert svc.ads_by_form(MagicMock(), TENANT) == {}

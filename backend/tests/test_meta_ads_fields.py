@@ -107,6 +107,24 @@ def test_no_results_from_meta_shows_blank_never_link_clicks():
     assert _val("cost_per_result", row) is None
 
 
+def test_lead_ads_without_meta_results_count_form_leads():
+    # Real figures from kelir (2026-11-09): Meta sent `results: null` on these lead
+    # ads, while Ads Manager showed 91 Leads (Form) at ₹8.56 from the same actions.
+    row = {"optimization_goal": "LEAD_GENERATION", "spend": "778.65", "results": None,
+           "actions": [{"action_type": "lead", "value": "91"},
+                       {"action_type": "onsite_conversion.lead_grouped", "value": "91"}]}
+    assert _val("results", row) == 91
+    assert _val("result_type", row) == "Leads"
+    assert round(_val("cost_per_result", row), 2) == 8.56
+
+
+def test_lead_ad_with_no_leads_yet_names_the_result_but_shows_no_count():
+    row = {"optimization_goal": "LEAD_GENERATION", "spend": "0", "actions": []}
+    assert _val("results", row) is None
+    assert _val("result_type", row) == "Leads"
+    assert _val("cost_per_result", row) is None
+
+
 # ---- budget ---------------------------------------------------------------
 
 def test_budget_from_adset_daily():

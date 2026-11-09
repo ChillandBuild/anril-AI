@@ -196,6 +196,7 @@ async def overview(
     for row in rows:
         by_form.setdefault(row["form_id"], []).append(row)
     last_lead = _last_lead_by_form(db, tenant_id)
+    ad_names = await asyncio.to_thread(forms_service.ads_by_form, db, tenant_id)
     return {
         "date_from": start,
         "date_to": end,
@@ -208,6 +209,7 @@ async def overview(
                 "status": form.get("status"),
                 "created_at": form.get("meta_created_at"),
                 "questions": len(form.get("questions") or []),
+                "ad_names": ad_names.get(form["form_id"], []),
                 "template_id": form.get("template_id"),
                 "template_name": template_names.get(form.get("template_id") or ""),
                 "last_lead_at": last_lead.get(form["form_id"]),
