@@ -6,6 +6,9 @@ import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List,
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
 import { MoreMenu } from "@/components/MoreMenu";
+import { AgentsMenu } from "@/components/agents/AgentsMenu";
+import { agentsRouteMeta } from "@/components/agents/agentsNav";
+import { productOf } from "@/components/nav/products";
 import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -38,6 +41,9 @@ const SMS_TITLES: Record<string, { title: string; description: string }> = {
 
 function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   const tab = searchParams.get("tab") || "";
+
+  const agentsMeta = agentsRouteMeta(pathname);
+  if (agentsMeta) return agentsMeta;
 
   if (pathname === "/dashboard") {
     return {
@@ -359,10 +365,10 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-[#e2e8f0] bg-background px-4 lg:left-[var(--sidebar-width)] md:h-16 md:gap-4 md:px-6">
+    <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-[#e2e8f0] bg-background px-4 lg:left-[var(--shell-left)] md:h-16 md:gap-4 md:px-6">
       {/* Left side: menu trigger + title and description */}
       <div className="flex min-w-0 items-center gap-3">
-        <MoreMenu />
+        {productOf(pathname || "") === "agents" ? <AgentsMenu /> : <MoreMenu />}
         {/* Wordmark lives here, on white, where its navy letters read; the navy sidebar carries the square mark. */}
         <AnrilWordmark height={20} className="hidden w-auto shrink-0 text-ink md:block" />
         <span className="hidden h-6 w-px shrink-0 bg-[#e2e8f0] md:block" aria-hidden="true" />

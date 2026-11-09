@@ -3,6 +3,9 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FeedbackLockGate } from "./FeedbackLockGate";
 import { Sidebar } from "@/components/sidebar";
+import { ProductRail } from "@/components/nav/ProductRail";
+import { useRememberProductPage } from "@/components/nav/products";
+import { AgentsSidebar } from "@/components/agents/AgentsSidebar";
 import { AuthRoleProvider } from "./contexts/AuthRoleContext";
 import { ActiveCallProvider } from "./contexts/ActiveCallContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -72,6 +75,9 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // The conversations route renders its own thin inbox rail (Bulkwise-style) and
   // fills the viewport, so we suppress the labeled sidebar + app header there.
   const isInbox = pathname?.startsWith("/dashboard/conversations") ?? false;
+  // Anril Agents pages swap Anril's menu for the Agents menu (the product rail switches between them).
+  const isAgents = pathname === "/dashboard/agents" || (pathname?.startsWith("/dashboard/agents/") ?? false);
+  useRememberProductPage(pathname);
 
   useEffect(() => {
     const ping = () => fetch(`${API_URL}/health`, { method: "GET" }).catch(() => {});
@@ -130,6 +136,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 <div className="h-screen bg-background overflow-hidden relative">
                   {/* Collapsed Dashboard Rail (md+) */}
                   <div className="hidden lg:block">
+                    <ProductRail />
                     <Sidebar />
                   </div>
                   {children}
@@ -156,11 +163,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <DashboardAuthGuard>
               <div className="flex min-h-screen overflow-x-clip bg-background">
                 <div className="hidden lg:block">
-                  <Sidebar />
+                  <ProductRail />
+                  {isAgents ? <AgentsSidebar /> : <Sidebar />}
                 </div>
 
-                <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--sidebar-width)] md:pt-16">
-                  <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background lg:left-[var(--sidebar-width)] md:h-16" />}>
+                <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--shell-left)] md:pt-16">
+                  <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background lg:left-[var(--shell-left)] md:h-16" />}>
                     <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
                   </Suspense>
                   <ClaimBanner />
@@ -173,7 +181,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                   </div>
                 </main>
 
-                <MobileDashboardNav />
+                {!isAgents && <MobileDashboardNav />}
 
                 <CalendarPanel
                   isOpen={isCalendarOpen}

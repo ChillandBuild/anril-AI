@@ -409,6 +409,12 @@ canvas {
 
 :root { --sidebar-width: 256px; }
 
+/* Product rail (components/nav/ProductRail.tsx): the 56px strip left of the
+   sidebar on lg+ screens. --shell-left is where the header and page content
+   start: rail + sidebar. Below lg both are hidden, so the rail is 0. */
+:root { --product-rail-width: 0px; --shell-left: calc(var(--product-rail-width) + var(--sidebar-width)); }
+@media (min-width: 1024px) { :root { --product-rail-width: 56px; } }
+
 /* Sidebar fold (components/nav/useSidebarRail.ts). Wide pages fold it to a
    64px icon strip; data-sidebar-rail on <html> narrows --sidebar-width for
    the layout, header and inbox together. Registered so the change can

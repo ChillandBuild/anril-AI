@@ -1,0 +1,44 @@
+import { describe, expect, it } from "vitest";
+import { productHref, productOf, PRODUCT_HOME } from "./products";
+
+describe("productOf", () => {
+  it("puts /dashboard/agents and its pages in Agents", () => {
+    expect(productOf("/dashboard/agents")).toBe("agents");
+    expect(productOf("/dashboard/agents/characters/abc")).toBe("agents");
+  });
+
+  it("puts every other dashboard page in Anril", () => {
+    expect(productOf("/dashboard")).toBe("anril");
+    expect(productOf("/dashboard/inbound-leads")).toBe("anril");
+    // A lookalike path is not the Agents product.
+    expect(productOf("/dashboard/agentsfoo")).toBe("anril");
+  });
+});
+
+describe("productHref", () => {
+  it("returns to the last page you had open in the other product", () => {
+    const last = { anril: "/dashboard/inbound-leads", agents: "/dashboard/agents/characters" };
+    expect(productHref("anril", "/dashboard/agents/keys", last)).toBe("/dashboard/inbound-leads");
+    expect(productHref("agents", "/dashboard/inbound-leads", last)).toBe("/dashboard/agents/characters");
+  });
+
+  it("goes home when you click the product you are already in", () => {
+    const last = { anril: "/dashboard/inbound-leads", agents: "/dashboard/agents/keys" };
+    expect(productHref("agents", "/dashboard/agents/keys", last)).toBe(PRODUCT_HOME.agents);
+    expect(productHref("anril", "/dashboard/inbound-leads", last)).toBe(PRODUCT_HOME.anril);
+  });
+
+  it("falls back to the home page when nothing was remembered", () => {
+    expect(productHref("agents", "/dashboard", {})).toBe("/dashboard/agents");
+  });
+
+  it("keeps the query string of a remembered page", () => {
+    expect(productHref("agents", "/dashboard", { agents: "/dashboard/agents?tab=x" })).toBe("/dashboard/agents?tab=x");
+  });
+
+  it("ignores a remembered path that belongs to the other product", () => {
+    expect(productHref("anril", "/dashboard/agents", { anril: "/dashboard/agents/keys" })).toBe("/dashboard");
+    expect(productHref("anril", "/dashboard/agents", { anril: "https://evil.example" })).toBe("/dashboard");
+  });
+});
+

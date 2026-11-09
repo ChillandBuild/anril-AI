@@ -5,12 +5,12 @@ Checks for every task: `cd backend && python -m pytest` (backend tasks), `cd fro
 
 ## Phase 1: frontend on existing APIs
 
-### - [ ] Task 1: Product rail and Agents shell (M)
+### - [x] Task 1: Product rail and Agents shell (M)
 Example: the Astrotamil owner is on Inbound Leads, clicks ✦ Agents on the rail, sees the Agents menu, clicks Anril, and is back on Inbound Leads.
-- [ ] ProductRail (56 px, fixed far left, lg+) on every dashboard page, Conversations included: Anril icon and ✦ Agents icon; active product highlighted; click returns to the last page in that product; click on the active product goes to its home.
-- [ ] Sidebar, AppHeader and page content shift right by --product-rail-width; the sidebar fold/peek and the Conversations layout still line up (no overlap, no gap).
-- [ ] /dashboard/agents/* renders AgentsSidebar (Overview, Playground, Characters, Memories, Knowledge, API Keys, Install, Requests, User Insights "Later", Settings) instead of Sidebar; no "Back to dashboard" link.
-- [ ] Phone (< lg): rail hidden; "Anril | Agents" switch at the top of MoreMenu and of the Agents drawer; MobileDashboardNav hidden on Agents pages; no horizontal scroll at 375 px.
+- [x] ProductRail (56 px, fixed far left, lg+) on every dashboard page, Conversations included: Anril icon and ✦ Agents icon; active product highlighted; click returns to the last page in that product; click on the active product goes to its home.
+- [x] Sidebar, AppHeader and page content shift right by --product-rail-width; the sidebar fold/peek and the Conversations layout still line up (no overlap, no gap).
+- [x] /dashboard/agents/* renders AgentsSidebar (Overview, Playground, Characters, Memories, Knowledge, API Keys, Install, Requests, User Insights "Later", Settings) instead of Sidebar; no "Back to dashboard" link.
+- [x] Phone (< lg): rail hidden; "Anril | Agents" switch at the top of MoreMenu and of the Agents drawer; MobileDashboardNav hidden on Agents pages; no horizontal scroll at 375 px.
 - Verify: typecheck + lint; screenshots before/after of Dashboard, Conversations, Meta Ads, folded sidebar, an Agents page, and phone with each drawer open.
 - Files: frontend/components/nav/ProductRail.tsx (new), frontend/components/agents/AgentsSidebar.tsx (new), frontend/app/dashboard/agents/page.tsx (new, placeholder), frontend/app/dashboard/ClientLayout.tsx, frontend/app/globals.css, frontend/components/sidebar.tsx, frontend/components/AppHeader.tsx, frontend/components/MoreMenu.tsx, frontend/app/dashboard/conversations/page.tsx, frontend/components/nav/useSidebarRail.ts (offset only, if it reads --sidebar-width)
 - Before starting: pull origin/main (keerthi-sarav's AppHeader.tsx change).

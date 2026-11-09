@@ -253,7 +253,7 @@ export function Sidebar(_props: SidebarProps) {
 
   if (roleLoading) {
     return (
-      <aside className="swiss-sidebar fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
+      <aside className="swiss-sidebar fixed left-[var(--product-rail-width)] top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] z-20 w-[var(--sidebar-width)]" />
     );
   }
 
@@ -377,7 +377,7 @@ export function Sidebar(_props: SidebarProps) {
       data-rail={fold.rail || undefined}
       data-peek={fold.peek || undefined}
       {...fold.handlers}
-      className="swiss-sidebar sidebar-shell fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] [--nav-label:#fff] [color-scheme:dark] flex flex-col z-20 select-none pt-[22px] pb-[18px] text-white"
+      className="swiss-sidebar sidebar-shell fixed left-[var(--product-rail-width)] top-0 h-full overflow-hidden rounded-r-3xl bg-[var(--navy)] [--nav-label:#fff] [color-scheme:dark] flex flex-col z-20 select-none pt-[22px] pb-[18px] text-white"
     >
       {/* Flex centring keeps the logo centred even on the 64px strip, where it is wider than the space. */}
       <div className="flex shrink-0 justify-center px-3.5">
