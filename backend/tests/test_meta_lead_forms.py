@@ -287,3 +287,81 @@ def test_ads_by_form_is_empty_when_meta_fails_or_no_ad_account():
     with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=("tok", "act_1")), \
          patch("app.services.meta_lead_forms._get", side_effect=svc.InstantFormsError("boom")):
         assert svc.ads_by_form(MagicMock(), TENANT) == {}
+
+
+# ── lead downloads ──────────────────────────────────────────────────────────
+
+_FORMS = {"555": {"form_id": "555", "name": "Host form", "questions": [
+    {"key": "which_city?"}, {"key": "email"}, {"key": "full_name"}, {"key": "phone_number"},
+]}}
+
+
+def _rows(text: str) -> list[list[str]]:
+    import csv
+    import io
+    assert text.startswith("﻿")
+    return list(csv.reader(io.StringIO(text[1:])))
+
+
+def test_leads_csv_matches_ads_manager_layout():
+    lead = {**_lead(), "created_time": "2026-11-08T18:08:25+0000", "adset_id": "7", "adset_name": "Set",
+            "campaign_id": "8", "campaign_name": "Camp", "platform": "ig"}
+    header, row = _rows(svc.leads_csv([lead], _FORMS))
+    assert header == svc.EXPORT_COLUMNS + ["which_city?", "email", "full_name", "phone_number"]
+    assert header[:10] == ["id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
+                           "campaign_id", "campaign_name", "form_id", "form_name"]
+    assert row[:12] == ["l:900", "2026-11-08T23:38:25+05:30", "ag:42", "Loan ad", "as:7", "Set",
+                        "c:8", "Camp", "f:555", "Host form", "false", "ig"]
+    assert row[12:] == ["Chennai", "priya@example.com", "Priya Raman", "p:9876543210"]
+
+
+def test_leads_csv_keeps_answers_missing_from_the_saved_form():
+    lead = _lead()
+    lead["field_data"].append({"name": "new_question", "values": ["yes"]})
+    header, row = _rows(svc.leads_csv([lead], _FORMS))
+    assert header[-1] == "new_question" and row[-1] == "yes"
+
+
+def test_node_leads_follows_pages_and_stops_at_the_start_date():
+    since = datetime.now(timezone.utc) - timedelta(days=3)
+    first = {"data": [_lead("1", timedelta(hours=1))], "paging": {"next": "https://next"}}
+    second = {"data": [_lead("2", timedelta(days=2)), _lead("3", timedelta(days=5))], "paging": {"next": "https://more"}}
+    with patch("app.services.meta_lead_forms._get", return_value=first), \
+         patch("app.services.meta_lead_forms._get_url", return_value=second) as nxt:
+        leads = svc._node_leads("tok", "555", since)
+    assert [lead["id"] for lead in leads] == ["1", "2"]
+    assert nxt.call_count == 1
+
+
+def test_form_download_says_how_to_fix_access_when_meta_hides_the_leads():
+    def fake_get(path, token, params=None):
+        return {"data": []} if path.endswith("/leads") else {"leads_count": 108}
+    with patch("app.services.meta_lead_forms.page_credentials", return_value=(PAGE, "tok")), \
+         patch("app.services.meta_lead_forms._get", side_effect=fake_get):
+        with pytest.raises(svc.InstantFormsError, match="108 leads.*Leads access"):
+            svc.form_leads_csv(MagicMock(), TENANT, "555")
+
+
+def test_form_download_reads_live_from_meta():
+    db = FakeSupabase()
+    db.tables["meta_lead_forms"] = [{"tenant_id": TENANT, **_FORMS["555"]}]
+    with patch("app.services.meta_lead_forms.page_credentials", return_value=(PAGE, "tok")), \
+         patch("app.services.meta_lead_forms._get", return_value={"data": [_lead("1"), _lead("2")]}):
+        _, *rows = _rows(svc.form_leads_csv(db, TENANT, "555"))
+    assert [row[0] for row in rows] == ["l:1", "l:2"]
+    assert all(row[9] == "Host form" for row in rows)
+
+
+def test_ads_download_merges_ads_newest_first_and_explains_an_empty_result():
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    until = datetime.now(timezone.utc) + timedelta(days=1)
+    pages = {"10/leads": {"data": [_lead("old", timedelta(days=2))]},
+             "11/leads": {"data": [_lead("new", timedelta(hours=1))]}}
+    with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=("tok", "act_1")), \
+         patch("app.services.meta_lead_forms._get", side_effect=lambda p, t, q=None: pages[p]):
+        _, *rows = _rows(svc.ads_leads_csv(MagicMock(), TENANT, ["10", "11"], since, until))
+    assert [row[0] for row in rows] == ["l:new", "l:old"]
+    with patch("app.services.meta_lead_forms._get_ads_credentials", return_value=("tok", "act_1")), \
+         patch("app.services.meta_lead_forms._get", return_value={"data": []}):
+        with pytest.raises(svc.InstantFormsError, match="no leads"):
+            svc.ads_leads_csv(MagicMock(), TENANT, ["10"], since, until)

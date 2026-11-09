@@ -6,6 +6,8 @@ import { ChevronDown, Columns3, RotateCcw, Search, SlidersHorizontal } from "luc
 import type { MetaBreakdown, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TickMark } from "@/components/ui/controls";
+import { fieldHelp } from "./metaFieldHelp";
+import { HoverTip } from "./HoverTip";
 
 const MISSING = "—";
 
@@ -255,7 +257,9 @@ export function MetaColumnPicker({
                     className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-stone-50"
                   >
                     <TickMark checked={selectedSet.has(field.key)} size="sm" />
-                    <span className="block font-label text-[11px] font-bold text-stone-700">{field.label}</span>
+                    <HoverTip text={fieldHelp(field)} side="bottom" focusable={false}>
+                      <span className="block font-label text-[11px] font-bold text-stone-700">{field.label}</span>
+                    </HoverTip>
                   </button>
                 ))}
               </div>

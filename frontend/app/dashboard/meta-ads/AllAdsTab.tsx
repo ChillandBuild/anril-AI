@@ -27,6 +27,7 @@ import type { AllAdsParams, AllAdsRow, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { buildAllAdsCsv, computeTotals, fieldsToFetch, totalExplanation } from "./allAdsReport";
 import { HoverTip } from "./HoverTip";
+import { LeadsDownloadButton } from "./LeadsDownloadButton";
 import { fieldHelp } from "./metaFieldHelp";
 import {
   AdTypeBadge,
@@ -111,6 +112,11 @@ function cellValue(value: unknown, field: MetaField) {
   return formatMetaValue(value, field.format);
 }
 
+/** Instant form leads, the only results Meta lets us download. */
+function hasFormLeads(values: Record<string, unknown>) {
+  return values.result_type === "Leads" && Number(values.results) > 0;
+}
+
 function money(value: unknown) {
   return formatMetaValue(value, "money") as string;
 }
@@ -140,6 +146,8 @@ type TableRow = {
   breakdown: string | null;
   values: Record<string, unknown>;
   reachEstimated: boolean;
+  /** The ads behind the row: what its leads download reads. */
+  adIds: string[];
 };
 
 /**
@@ -165,6 +173,7 @@ function groupRows(
       breakdown: row.breakdown,
       values: row.values ?? {},
       reachEstimated: false,
+      adIds: [row.meta_ad_id],
     }));
   }
   const groups = new Map<string, AllAdsRow[]>();
@@ -198,6 +207,7 @@ function groupRows(
         ? `${adsets} ${adsets === 1 ? "ad set" : "ad sets"} · ${ads} ${ads === 1 ? "ad" : "ads"}`
         : `${first.campaign_name} · ${ads} ${ads === 1 ? "ad" : "ads"}`,
       type: types.length === 1 ? types[0] : null,
+      adIds: Array.from(new Set(members.map((member) => member.meta_ad_id))),
       breakdown: first.breakdown,
       values: { ...values, delivery: groupDelivery(members) },
       reachEstimated,
@@ -481,6 +491,12 @@ export function AllAdsTab() {
                 >
                   {row.reachEstimated && (field.key === "reach" || field.key === "frequency") && row.values[field.key] != null ? "≈ " : ""}
                   {cellValue(row.values[field.key], field)}
+                  {field.key === "results" && hasFormLeads(row.values) && (
+                    <LeadsDownloadButton
+                      label="Download these leads"
+                      download={() => api.instantForms.downloadAdLeads(row.adIds, { date_from: data.date_from, date_to: data.date_to })}
+                    />
+                  )}
                 </td>
               ))}
             </tr>

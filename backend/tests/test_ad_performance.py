@@ -230,6 +230,26 @@ def test_attribution_without_a_channel_counts_as_whatsapp(settings):
     assert rows["ad-1"]["messages_by_channel"] == {"whatsapp": 2, "instagram": 0, "messenger": 0}
 
 
+def test_messaging_contact_costs_and_rates_are_calculated_from_meta_actions(settings):
+    db = _perf_db()
+    _attribute(db, "L1", "B")
+    db.add("ad_insights_daily", tenant_id="t1", meta_ad_account_id=ACCOUNT, ad_creative_id="ad-1",
+           insight_date="2026-09-05", spend=100, actions=[
+               {"action_type": "onsite_conversion.total_messaging_connection", "value": "4"},
+               {"action_type": "onsite_conversion.messaging_first_reply", "value": "2"},
+               {"action_type": "onsite_conversion.messaging_conversation_replied_7d", "value": "3"},
+               {"action_type": "onsite_conversion.messaging_block", "value": "1"},
+           ])
+
+    row = next(r for r in ad_performance.build_creative_performance(db, "t1") if r["ad_creative_id"] == "ad-1")
+
+    assert row["cost_per_messaging_contact"] == 25
+    assert row["cost_per_new_messaging_contact"] == 50
+    assert row["messaging_reply_rate"] == 75
+    assert row["messaging_block_rate"] == 25
+    assert row["meta_anril_contact_match_rate"] == 25
+
+
 def test_sync_start_date_bounds_the_insights_query(settings, monkeypatch):
     settings["meta_ads_sync_start_date"] = "2026-09-01"
     reach_calls = []

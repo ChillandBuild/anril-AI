@@ -55,6 +55,8 @@ import { HoverTip } from "./HoverTip";
 type MetricKey =
   | "delivery_status"
   | "budget"
+  | "schedule"
+  | "last_significant_edit"
   | "impressions"
   | "reach"
   | "frequency"
@@ -67,8 +69,13 @@ type MetricKey =
   | "meta_conversations_replied"
   | "meta_blocks"
   | "cost_per_meta_conversation"
+  | "cost_per_messaging_contact"
+  | "cost_per_new_messaging_contact"
   | "conversation_rate"
   | "meta_conversation_rate"
+  | "messaging_reply_rate"
+  | "messaging_block_rate"
+  | "meta_anril_contact_match_rate"
   | "attribution_gap"
   | "clicked_no_message"
   | "no_message_rate"
@@ -84,6 +91,8 @@ type MetricKey =
 const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: string }[] = [
   { key: "delivery_status", label: "Delivery", defaultVisible: true, help: "The ad's own delivery status in Meta. Ads removed in Ads Manager show as Deleted." },
   { key: "budget", label: "Budget", defaultVisible: false, help: "Daily or lifetime budget from the campaign or ad set in Meta" },
+  { key: "schedule", label: "Schedule", defaultVisible: false, help: "When the ad set starts and ends. An ongoing ad has no end date." },
+  { key: "last_significant_edit", label: "Last significant edit", defaultVisible: false, help: "The latest update time Meta reports for the campaign or ad set." },
   { key: "impressions", label: "Impressions", defaultVisible: true, help: "Times the ad was shown" },
   { key: "reach", label: "Reach", defaultVisible: true, help: "Unique people reached in Meta for the selected period" },
   { key: "frequency", label: "Frequency", defaultVisible: false, help: "Impressions divided by unique Meta reach" },
@@ -95,8 +104,13 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "meta_new_contacts", label: "New messaging contacts", defaultVisible: false, help: "People who messaged your business for the first time, as counted by Meta" },
   { key: "meta_conversations_replied", label: "Messaging conversations replied", defaultVisible: false, help: "Meta's count of chats from this ad that your business replied to within 24 hours. Meta often leaves this empty for chats answered through Anril, the same as in Ads Manager. For Anril's own count, use Messages sent" },
   { key: "meta_blocks", label: "Messaging blocks", defaultVisible: false, help: "People who blocked your business after messaging from this ad. Lower is better" },
+  { key: "cost_per_messaging_contact", label: "Cost per messaging contact", defaultVisible: false, help: "Spend divided by Meta messaging contacts." },
+  { key: "cost_per_new_messaging_contact", label: "Cost per new messaging contact", defaultVisible: false, help: "Spend divided by Meta new messaging contacts." },
   { key: "conversation_rate", label: "Message rate", defaultVisible: true, help: "Anril-confirmed messages divided by chat clicks" },
   { key: "meta_conversation_rate", label: "Meta messaging contact rate", defaultVisible: false, help: "Meta messaging contacts divided by chat clicks" },
+  { key: "messaging_reply_rate", label: "Messaging reply rate", defaultVisible: false, help: "Meta messaging conversations replied divided by Meta messaging contacts." },
+  { key: "messaging_block_rate", label: "Messaging block rate", defaultVisible: false, help: "Meta messaging blocks divided by Meta messaging contacts. Lower is better." },
+  { key: "meta_anril_contact_match_rate", label: "Meta-to-Anril contact match rate", defaultVisible: false, help: "Anril-confirmed messages divided by Meta messaging contacts. It can exceed 100% when the systems attribute contacts differently." },
   { key: "attribution_gap", label: "Tracking difference", defaultVisible: false, help: "Anril-confirmed messages minus Meta messaging contacts" },
   { key: "clicked_no_message", label: "No message", defaultVisible: true, help: "Chat clicks not matched to a unique Anril lead for this ad" },
   { key: "no_message_rate", label: "No-message rate", defaultVisible: false, help: "No-message clicks divided by chat clicks" },
@@ -113,13 +127,13 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
 
 /** Numbers Meta reports as-is. */
 const META_DIRECT_METRICS = new Set<MetricKey>([
-  "delivery_status", "budget", "impressions", "reach", "inline_link_clicks", "clicks_all", "meta_conversations", "spend",
+  "delivery_status", "budget", "schedule", "last_significant_edit", "impressions", "reach", "inline_link_clicks", "clicks_all", "meta_conversations", "spend",
   "meta_conversations_started", "meta_new_contacts", "meta_conversations_replied", "meta_blocks",
 ]);
 
 /** Anril divides Meta's own numbers; no Anril lead data is involved. */
 const META_CALCULATED_METRICS = new Set<MetricKey>([
-  "frequency", "cpc", "ctr", "cpm", "meta_conversation_rate", "cost_per_meta_conversation",
+  "frequency", "cpc", "ctr", "cpm", "meta_conversation_rate", "cost_per_meta_conversation", "cost_per_messaging_contact", "cost_per_new_messaging_contact", "messaging_reply_rate", "messaging_block_rate", "meta_anril_contact_match_rate",
 ]);
 
 // Everything else is built on Anril's own attributed leads.
@@ -237,7 +251,7 @@ const LEVEL_HEADINGS: Record<ReportLevel, string> = { campaign: "Campaign", adse
 const LEVEL_NOUNS: Record<ReportLevel, [string, string]> = { campaign: ["campaign", "campaigns"], adset: ["ad set", "ad sets"], ad: ["ad", "ads"] };
 
 /** Columns that hold words rather than numbers, so they read left-aligned. */
-const TEXT_METRICS = new Set<MetricKey>(["delivery_status", "budget"]);
+const TEXT_METRICS = new Set<MetricKey>(["delivery_status", "budget", "schedule", "last_significant_edit"]);
 
 /** "8 Nov, 11:45 am" in the viewer's own clock. */
 function syncedAt(iso: string) {
@@ -413,6 +427,11 @@ const TOTAL_FORMULAS: Partial<Record<MetricKey, string>> = {
   cpc: "Total spend ÷ total chat clicks.",
   cost_per_message: "Total spend ÷ total messages sent.",
   cost_per_meta_conversation: "Total spend ÷ total messaging conversations started.",
+  cost_per_messaging_contact: "Total spend ÷ total Meta messaging contacts.",
+  cost_per_new_messaging_contact: "Total spend ÷ total Meta new messaging contacts.",
+  messaging_reply_rate: "Total Meta messaging conversations replied ÷ total Meta messaging contacts × 100.",
+  messaging_block_rate: "Total Meta messaging blocks ÷ total Meta messaging contacts × 100.",
+  meta_anril_contact_match_rate: "Total Anril-confirmed messages ÷ total Meta messaging contacts × 100.",
   ctr: "Total chat clicks ÷ total impressions × 100.",
   cpm: "Total spend ÷ total impressions × 1,000.",
   hot_rate: "Total hot leads ÷ total messages sent × 100.",
@@ -475,6 +494,9 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     campaign_id: null,
     campaign_name: "Total",
     delivery_status: null,
+    schedule_start: null,
+    schedule_end: null,
+    last_significant_edit: null,
     daily_budget: null,
     lifetime_budget: null,
     budget_level: null,
@@ -491,6 +513,11 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     cpc: total.inline_link_clicks ? total.spend / total.inline_link_clicks : null,
     cost_per_message: total.messages ? total.spend / total.messages : null,
     cost_per_meta_conversation: total.meta_conversations_started ? total.spend / total.meta_conversations_started : null,
+    cost_per_messaging_contact: total.meta_conversations ? total.spend / total.meta_conversations : null,
+    cost_per_new_messaging_contact: total.meta_new_contacts ? total.spend / total.meta_new_contacts : null,
+    messaging_reply_rate: total.meta_conversations ? (total.meta_conversations_replied / total.meta_conversations) * 100 : null,
+    messaging_block_rate: total.meta_conversations ? (total.meta_blocks / total.meta_conversations) * 100 : null,
+    meta_anril_contact_match_rate: total.meta_conversations ? (total.messages / total.meta_conversations) * 100 : null,
     cost_per_hot: total.hot ? total.spend / total.hot : null,
   };
 }
@@ -501,6 +528,13 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
       return <StatusBadge status={row.delivery_status} lastDelivery={row.last_delivery_date} />;
     case "budget":
       return budgetLabel(row);
+    case "schedule": {
+      const start = row.schedule_start ? formatDay(row.schedule_start) : "—";
+      const end = row.schedule_end ? formatDay(row.schedule_end) : "Ongoing";
+      return `${start} – ${end}`;
+    }
+    case "last_significant_edit":
+      return row.last_significant_edit ? formatDay(row.last_significant_edit) : "—";
     case "reach":
       return row.reach_estimated ? (
         <span title="Estimate: Meta's exact figure wasn't available, so this adds up reach and may count someone twice">≈ {count(row.reach)}</span>
@@ -521,6 +555,9 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
       return signedCount(row.attribution_gap);
     case "conversation_rate":
     case "meta_conversation_rate":
+    case "messaging_reply_rate":
+    case "messaging_block_rate":
+    case "meta_anril_contact_match_rate":
     case "no_message_rate":
     case "hot_rate":
     case "ctr":
@@ -529,6 +566,8 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
     case "cpc":
     case "cost_per_message":
     case "cost_per_meta_conversation":
+    case "cost_per_messaging_contact":
+    case "cost_per_new_messaging_contact":
     case "cpm":
     case "cost_per_hot":
       return money(row[metric]);
@@ -954,7 +993,9 @@ export function AdPerformanceTab() {
                         >
                           <TickMark checked={visibleMetrics.has(metric.key)} size="sm" className="mt-0.5" />
                           <span>
-                            <span className="block font-label text-[11px] font-bold text-stone-700">{metric.label}</span>
+                            <HoverTip text={metric.help} side="bottom" focusable={false}>
+                              <span className="block font-label text-[11px] font-bold text-stone-700">{metric.label}</span>
+                            </HoverTip>
                             <span className="block font-body text-[10px] leading-4 text-stone-400">{metric.help}</span>
                           </span>
                         </button>

@@ -24,6 +24,8 @@ forms need `pages_manage_ads`, the answers need `leads_retrieval`.
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import logging
 import time
@@ -695,3 +697,127 @@ def ads_by_form(db, tenant_id: str) -> dict[str, list[str]]:
                 out[form_id].append(name)
     _ADS_BY_FORM_CACHE[key] = (time.monotonic(), out)
     return out
+
+
+# ── Lead downloads ─────────────────────────────────────────────────────────
+# Read live from Meta on every click, so a download an hour later carries every
+# lead that came in since. Laid out like Ads Manager's own leads export.
+
+EXPORT_COLUMNS = [
+    "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
+    "campaign_id", "campaign_name", "form_id", "form_name", "is_organic", "platform",
+]
+# Ads Manager's prefixes keep 15-18 digit ids (and phone numbers) as text in Excel.
+_ID_PREFIX = {"id": "l:", "ad_id": "ag:", "adset_id": "as:", "campaign_id": "c:", "form_id": "f:"}
+_PHONE_KEYS = {"phone_number", "phone", "mobile_number"}
+_EXPORT_PAGES = 50  # 100 leads a page: Meta keeps leads for 90 days
+
+
+def _node_leads(token: str, node_id: str, since: datetime | None = None, until: datetime | None = None) -> list[dict]:
+    """Every lead on a form or an ad (newest first), within [since, until) when given."""
+    out: list[dict] = []
+    payload = _get(f"{node_id}/leads", token, {"fields": LEAD_FIELDS, "limit": 100})
+    for _ in range(_EXPORT_PAGES):
+        for lead in payload.get("data") or []:
+            created = _parse_time(lead.get("created_time"))
+            if since and created and created < since:
+                return out
+            if until and created and created >= until:
+                continue
+            out.append(lead)
+        next_url = (payload.get("paging") or {}).get("next")
+        if not next_url:
+            break
+        payload = _get_url(next_url)
+    return out
+
+
+def _ist(value: str | None) -> str:
+    parsed = _parse_time(value)
+    if not parsed:
+        return value or ""
+    return parsed.astimezone(timezone(timedelta(hours=5, minutes=30))).isoformat()
+
+
+def leads_csv(leads: list[dict], forms: dict[str, dict]) -> str:
+    """CSV text: Ads Manager's fixed columns, then every question in form order.
+    `forms` is {form_id: meta_lead_forms row} for names and question order."""
+    question_keys: list[str] = []
+    for form_id in dict.fromkeys(str(lead.get("form_id") or "") for lead in leads):
+        for question in (forms.get(form_id) or {}).get("questions") or []:
+            key = question.get("key")
+            if key and key not in question_keys:
+                question_keys.append(key)
+    answers = [answers_map(lead.get("field_data")) for lead in leads]
+    for row in answers:
+        for key in row:
+            if key not in question_keys:
+                question_keys.append(key)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(EXPORT_COLUMNS + question_keys)
+    for lead, answer in zip(leads, answers):
+        form_id = str(lead.get("form_id") or "")
+        fixed = {
+            **{key: lead.get(key) for key in EXPORT_COLUMNS},
+            "created_time": _ist(lead.get("created_time")),
+            "form_name": (forms.get(form_id) or {}).get("name") or "",
+            "is_organic": str(bool(lead.get("is_organic"))).lower(),
+        }
+        cells = []
+        for key in EXPORT_COLUMNS:
+            value = "" if fixed.get(key) is None else str(fixed[key])
+            cells.append(f"{_ID_PREFIX[key]}{value}" if value and key in _ID_PREFIX else value)
+        for key in question_keys:
+            value = answer.get(key, "")
+            cells.append(f"p:{value}" if value and key in _PHONE_KEYS else value)
+        writer.writerow(cells)
+    return "﻿" + buffer.getvalue()  # BOM: Excel reads Tamil names correctly
+
+
+def _forms_by_id(db, tenant_id: str) -> dict[str, dict]:
+    rows = db.table("meta_lead_forms").select("form_id,name,questions").eq("tenant_id", tenant_id).execute().data or []
+    return {row["form_id"]: row for row in rows}
+
+
+_LEAD_ACCESS_FIX = (
+    "In Meta Business Settings, open Integrations > Leads access, pick your Page, "
+    "and give Anril access under CRMs."
+)
+NO_LEAD_ACCESS = "Meta has {count} leads on this form but isn't sharing them with Anril yet. " + _LEAD_ACCESS_FIX
+NO_AD_LEADS = (
+    "Meta sent no leads for these ads and dates. If Ads Manager shows leads here, "
+    "Meta isn't sharing them with Anril yet. " + _LEAD_ACCESS_FIX
+)
+
+
+def form_leads_csv(db, tenant_id: str, form_id: str) -> str:
+    """All of one form's leads, straight from Meta."""
+    creds = page_credentials(tenant_id)
+    if not creds:
+        raise InstantFormsError("Connect your Facebook Page first.")
+    _, token = creds
+    leads = _node_leads(token, form_id)
+    if not leads:
+        count = int(_get(form_id, token, {"fields": "leads_count"}).get("leads_count") or 0)
+        if count:
+            raise InstantFormsError(NO_LEAD_ACCESS.format(count=count))
+    for lead in leads:
+        lead.setdefault("form_id", form_id)
+    return leads_csv(leads, _forms_by_id(db, tenant_id))
+
+
+def ads_leads_csv(db, tenant_id: str, ad_ids: list[str], since: datetime, until: datetime) -> str:
+    """The leads from these ads within [since, until), straight from Meta."""
+    creds = _get_ads_credentials(db, tenant_id)
+    if not creds:
+        raise InstantFormsError("Connect your Meta ad account first.")
+    token, _ = creds
+    leads: list[dict] = []
+    for ad_id in ad_ids:
+        leads.extend(_node_leads(token, ad_id, since, until))
+    if not leads:
+        raise InstantFormsError(NO_AD_LEADS)
+    leads.sort(key=lambda lead: lead.get("created_time") or "", reverse=True)
+    return leads_csv(leads, _forms_by_id(db, tenant_id))

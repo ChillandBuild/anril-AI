@@ -199,7 +199,7 @@ def build_creative_performance(
     if campaign_ids:
         campaign_rows = (
             db.table("ad_campaigns").select(
-                "id,campaign_name,effective_status,daily_budget,lifetime_budget,meta_created_at"
+                "id,campaign_name,effective_status,daily_budget,lifetime_budget,meta_created_at,meta_updated_at"
             )
             .eq("tenant_id", tenant_id)
             .eq("meta_ad_account_id", account)
@@ -214,7 +214,7 @@ def build_creative_performance(
     if adset_ids:
         adset_rows = (
             db.table("ad_sets").select(
-                "meta_adset_id,daily_budget,lifetime_budget"
+                "meta_adset_id,daily_budget,lifetime_budget,start_time,end_time,meta_updated_at"
             )
             .eq("tenant_id", tenant_id)
             .eq("meta_ad_account_id", account)
@@ -352,6 +352,9 @@ def build_creative_performance(
             "campaign_name": campaign.get("campaign_name") or "—",
             # When the campaign was created in Ads Manager; None until the next sync stores it.
             "campaign_created_at": campaign.get("meta_created_at"),
+            "last_significant_edit": campaign.get("meta_updated_at") or adset.get("meta_updated_at"),
+            "schedule_start": adset.get("start_time"),
+            "schedule_end": adset.get("end_time"),
             "delivery_status": _status(c),
             # Only set for ACTIVE ads; None there means it has never delivered.
             "last_delivery_date": last_delivery.get(c["id"]),
@@ -383,6 +386,8 @@ def build_creative_performance(
             "meta_conversations_replied": ins["meta_conversations_replied"],
             "meta_blocks": ins["meta_blocks"],
             "cost_per_meta_conversation": _safe_div(spend, ins["meta_conversations_started"]),
+            "cost_per_messaging_contact": _safe_div(spend, ins["meta_conversations"]),
+            "cost_per_new_messaging_contact": _safe_div(spend, ins["meta_new_contacts"]),
             "clicked_no_message": no_message,
             "hot": fn["hot"],
             "spend": spend,
@@ -393,6 +398,18 @@ def build_creative_performance(
             "meta_conversation_rate": (
                 (_safe_div(ins["meta_conversations"], clicks) or 0) * 100
                 if clicks else None
+            ),
+            "messaging_reply_rate": (
+                (_safe_div(ins["meta_conversations_replied"], ins["meta_conversations"]) or 0) * 100
+                if ins["meta_conversations"] else None
+            ),
+            "messaging_block_rate": (
+                (_safe_div(ins["meta_blocks"], ins["meta_conversations"]) or 0) * 100
+                if ins["meta_conversations"] else None
+            ),
+            "meta_anril_contact_match_rate": (
+                (_safe_div(messages, ins["meta_conversations"]) or 0) * 100
+                if ins["meta_conversations"] else None
             ),
             "no_message_rate": (_safe_div(no_message, clicks) or 0) * 100 if clicks else None,
             "hot_rate": (

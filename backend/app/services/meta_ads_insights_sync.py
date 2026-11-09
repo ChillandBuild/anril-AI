@@ -25,10 +25,10 @@ _INSIGHT_FIELDS = (
     "optimization_goal,inline_link_clicks,clicks,spend,impressions,reach,actions"
 )
 
-_CAMPAIGN_FIELDS = "id,name,objective,effective_status,daily_budget,lifetime_budget,bid_strategy,created_time"
+_CAMPAIGN_FIELDS = "id,name,objective,effective_status,daily_budget,lifetime_budget,bid_strategy,created_time,updated_time"
 _ADSET_FIELDS = (
     "id,name,campaign_id,optimization_goal,effective_status,destination_type,"
-    "daily_budget,lifetime_budget"
+    "daily_budget,lifetime_budget,start_time,end_time,updated_time"
 )
 _AD_FIELDS = "id,name,adset_id,campaign_id,effective_status,created_time"
 
@@ -253,6 +253,9 @@ def upsert_creative_from_insight(
             "effective_status": adset_meta.get("effective_status"),
             "daily_budget": _major_currency_units(adset_meta.get("daily_budget")),
             "lifetime_budget": _major_currency_units(adset_meta.get("lifetime_budget")),
+            "start_time": adset_meta.get("start_time"),
+            "end_time": adset_meta.get("end_time"),
+            "meta_updated_at": adset_meta.get("updated_time"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="tenant_id,meta_adset_id").execute()
 
@@ -612,9 +615,17 @@ def sync_campaign_meta(
             continue
         if campaign_ids is not None and cid not in campaign_ids:
             # No WhatsApp delivery in this window, but the Meta Ads table still lists the
-            # campaign's ads, so store its Ads Manager creation date anyway.
-            if c.get("created_time"):
-                db.table("ad_campaigns").update({"meta_created_at": c["created_time"]}).eq(
+            # campaign's ads, so keep its Ads Manager timestamps current anyway.
+            timestamps = {
+                key: value
+                for key, value in {
+                    "meta_created_at": c.get("created_time"),
+                    "meta_updated_at": c.get("updated_time"),
+                }.items()
+                if value
+            }
+            if timestamps:
+                db.table("ad_campaigns").update(timestamps).eq(
                     "external_campaign_id", cid
                 ).eq("tenant_id", tenant_id).execute()
             continue
@@ -628,6 +639,7 @@ def sync_campaign_meta(
             "lifetime_budget": (float(lifetime) / 100.0) if lifetime else None,
             "bid_strategy": c.get("bid_strategy"),
             "meta_created_at": c.get("created_time"),
+            "meta_updated_at": c.get("updated_time"),
             "meta_ad_account_id": account,
         }
         res = (

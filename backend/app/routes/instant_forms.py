@@ -12,7 +12,7 @@ import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
@@ -311,6 +311,52 @@ async def form_leads(
     for row in rows:
         row["replied"] = row.get("lead_id") in replied
     return {"data": rows, "total": result.count or 0, "page": page, "limit": limit}
+
+
+def _csv_download(text: str, name: str) -> Response:
+    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in name).strip() or "leads"
+    return Response(
+        content=text.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.csv"', "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/forms/{form_id}/download", dependencies=[Depends(require_view)])
+async def download_form_leads(form_id: str, tenant_id: str = Depends(get_tenant_id)):
+    """Every lead on the form, read live from Meta: a later download has the newer leads too."""
+    if not form_id.isdigit():
+        raise HTTPException(status_code=404, detail="Form not found.")
+    db = get_supabase()
+    form = _form_or_404(db, tenant_id, form_id)
+    try:
+        text = await asyncio.to_thread(forms_service.form_leads_csv, db, tenant_id, form_id)
+    except InstantFormsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    today = datetime.now(IST).date().isoformat()
+    return _csv_download(text, f"{form.get('name') or 'form'}_Leads_{today}")
+
+
+@router.get("/ads/download", dependencies=[Depends(require_view)])
+async def download_ad_leads(
+    ad_ids: str = Query(..., max_length=4000),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Leads from these ads in the chosen dates, read live from Meta (All ads > Results)."""
+    ids = list(dict.fromkeys(a.strip() for a in ad_ids.split(",") if a.strip()))
+    if not ids or len(ids) > 200 or not all(a.isdigit() for a in ids):
+        raise HTTPException(status_code=400, detail="Pick between 1 and 200 ads.")
+    start, end, lo, hi = _range(date_from, date_to)
+    try:
+        text = await asyncio.to_thread(
+            forms_service.ads_leads_csv, get_supabase(), tenant_id, ids,
+            datetime.fromisoformat(lo), datetime.fromisoformat(hi),
+        )
+    except InstantFormsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _csv_download(text, f"Leads_{start}_{end}")
 
 
 # ── Template settings ──────────────────────────────────────────────────────

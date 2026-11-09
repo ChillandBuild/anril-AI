@@ -66,6 +66,9 @@ META_FIELD_CATALOG: list[dict] = [
     _entry("results", "Results", _PERF, "number", {"kind": "result"}),
     _entry("result_type", "Result type", _PERF, "text", {"kind": "result_type"}),
     _entry("cost_per_result", "Cost per result", _PERF, "money", {"kind": "cost_per_result"}),
+    _entry("result_rate", "Result rate", _PERF, "percent", {"kind": "result_rate"}),
+    _entry("results_value", "Results value", _PERF, "money", {"kind": "result_value"}),
+    _entry("results_roas", "Results ROAS", _PERF, "decimal", {"kind": "results_roas"}),
     _field("reach", "Reach", _PERF, "number"),
     _field("impressions", "Impressions", _PERF, "number"),
     _field("frequency", "Frequency", _PERF, "decimal"),
@@ -145,8 +148,10 @@ META_FIELD_CATALOG: list[dict] = [
     _field("optimization_goal", "Optimisation goal", _SETUP, "text"),
     _ad("bid_strategy", "Bid strategy", _SETUP, "text", ["adset.bid_strategy", "campaign.bid_strategy"]),
     _entry("budget", "Budget", _SETUP, "money", {"kind": "budget"}),
+    _entry("schedule", "Schedule", _SETUP, "text", {"kind": "schedule"}),
     _ad("starts", "Starts", _SETUP, "date", "adset.start_time"),
     _ad("ends", "Ends", _SETUP, "date", "adset.end_time"),
+    _ad("last_significant_edit", "Last significant edit", _SETUP, "date", ["updated_time", "adset.updated_time", "campaign.updated_time"]),
     _ad("destination", "Destination", _SETUP, "text", "adset.destination_type"),
     # Creative
     _ad("thumbnail", "Ad preview", _CREATIVE, "image", "creative.thumbnail_url"),
@@ -347,6 +352,27 @@ def _lead_form_result(row: dict) -> tuple[str, float | None, float | None]:
     return "Leads", (count or None), cost
 
 
+def _result_value(row: dict) -> float | None:
+    """The value for Meta's primary result, when that result has a monetary value."""
+    label, count = _meta_result(row.get("results"))
+    if label is None and str(row.get("optimization_goal") or "") in _LEAD_GOALS:
+        return None
+    entries = row.get("results") or []
+    if not entries or not isinstance(entries[0], dict):
+        return None
+    indicator = str(entries[0].get("indicator") or "")
+    action_type = indicator.split(":", 1)[-1]
+    return _first_match(row.get("action_values"), [action_type])
+
+
+def _schedule(ad: dict | None) -> str | None:
+    adset = (ad or {}).get("adset") or {}
+    start, end = adset.get("start_time"), adset.get("end_time")
+    if not start and not end:
+        return None
+    return f"{str(start or '—')[:10]} – {str(end or 'Ongoing')[:10]}"
+
+
 def extract_value(entry: dict, row: dict, ad: dict | None):
     """Value for one catalogue entry from an insight row and its /ads object.
     `row` may be {} for ad-only rows (zero-delivery ads)."""
@@ -370,12 +396,25 @@ def extract_value(entry: dict, row: dict, ad: dict | None):
         return _ad_lookup(ad, src["path"])
     if kind == "budget":
         return _budget(ad)
+    if kind == "schedule":
+        return _schedule(ad)
     if kind in ("result", "result_type", "cost_per_result"):
         label, count = _meta_result(row.get("results"))
         _, cost = _meta_result(row.get("cost_per_result"))
         if label is None and str(row.get("optimization_goal") or "") in _LEAD_GOALS:
             label, count, cost = _lead_form_result(row)
         return {"result": count, "result_type": label, "cost_per_result": cost}[kind]
+    if kind == "result_rate":
+        _, count = _meta_result(row.get("results"))
+        if count is None and str(row.get("optimization_goal") or "") in _LEAD_GOALS:
+            _, count, _ = _lead_form_result(row)
+        impressions = _to_float(row.get("impressions"))
+        return (count / impressions * 100) if count is not None and impressions else None
+    if kind == "result_value":
+        return _result_value(row)
+    if kind == "results_roas":
+        value, spend = _result_value(row), _to_float(row.get("spend"))
+        return (value / spend) if value is not None and spend else None
     raise ValueError(f"unknown source kind: {kind}")
 
 
@@ -482,9 +521,9 @@ def fetch_meta_insights_live(
         f"{_GRAPH_BASE}/{account}/ads",
         {
             "fields": (
-                "id,name,effective_status,"
-                "adset{id,name,destination_type,daily_budget,lifetime_budget,start_time,end_time,bid_strategy},"
-                "campaign{id,name,objective,daily_budget,lifetime_budget,bid_strategy},"
+                "id,name,effective_status,updated_time,"
+                "adset{id,name,destination_type,daily_budget,lifetime_budget,start_time,end_time,bid_strategy,updated_time},"
+                "campaign{id,name,objective,daily_budget,lifetime_budget,bid_strategy,updated_time},"
                 "creative{thumbnail_url,body,title,call_to_action_type}"
             ),
             "limit": "200",

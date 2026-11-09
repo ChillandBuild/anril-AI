@@ -86,6 +86,18 @@ def test_whatsapp_ads_on_the_replies_goal_count_conversations_not_clicks():
     assert _val("cost_per_result", row) == 7.86516129
 
 
+def test_result_rate_value_and_roas_follow_metas_primary_result():
+    row = {
+        **_meta_result("actions:purchase", "4", "25"),
+        "spend": "100",
+        "impressions": "200",
+        "action_values": [{"action_type": "purchase", "value": "300"}],
+    }
+    assert _val("result_rate", row) == 2
+    assert _val("results_value", row) == 300
+    assert _val("results_roas", row) == 3
+
+
 def test_conversion_ad_names_the_event_it_targets():
     # A "Conversions" ad chasing an in-app purchase: Ads Manager shows "—", not website purchases.
     row = _meta_result("actions:app_custom_event.fb_mobile_purchase")
@@ -139,6 +151,16 @@ def test_budget_falls_back_to_campaign_lifetime():
 
 def test_budget_none_without_any_budget():
     assert _val("budget", {}, {"adset": {}, "campaign": {}}) is None
+
+
+def test_schedule_and_last_significant_edit_use_live_ad_metadata():
+    ad = {
+        "updated_time": "2026-11-10T08:00:00+0000",
+        "adset": {"start_time": "2026-11-01T00:00:00+0000", "end_time": None},
+        "campaign": {},
+    }
+    assert _val("schedule", {}, ad) == "2026-11-01 – Ongoing"
+    assert _val("last_significant_edit", {}, ad) == "2026-11-10T08:00:00+0000"
 
 
 # ---- fetch ----------------------------------------------------------------

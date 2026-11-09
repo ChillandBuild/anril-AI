@@ -1418,6 +1418,24 @@ export function errorDetailText(detail: unknown, fallback: string): string {
   return fallback;
 }
 
+/** GET a CSV and save it as `fileName`. */
+async function downloadCsv(path: string, fileName: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(typeof err?.detail === "string" ? err.detail : `Download failed: ${res.status}`);
+  }
+  const url = window.URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const method = (opts.method ?? "GET").toUpperCase();
   // Only idempotent reads are retried — retrying a POST/PATCH/DELETE could
@@ -3477,6 +3495,18 @@ export const api = {
         `/api/v1/instant-forms/leads/${encodeURIComponent(rowId)}/send-template`,
         { method: "POST" },
       ),
+    /** Every lead on the form, read live from Meta, saved as a CSV laid out like Ads Manager's. */
+    downloadFormLeads: (formId: string, formName: string) =>
+      downloadCsv(
+        `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/download`,
+        `${formName.replace(/[\\/:*?"<>|]/g, "_").trim() || "form"}_Leads_${new Date().toISOString().slice(0, 10)}.csv`,
+      ),
+    /** Leads from these ads in the chosen dates, read live from Meta. */
+    downloadAdLeads: (adIds: string[], range: { date_from: string; date_to: string }) =>
+      downloadCsv(
+        `/api/v1/instant-forms/ads/download?${new URLSearchParams({ ad_ids: adIds.join(","), ...range })}`,
+        `leads_${range.date_from}_${range.date_to}.csv`,
+      ),
   },
   marketplace: {
     status: () => apiFetch<Record<"indiamart" | "justdial", MarketplaceStatus>>("/api/v1/marketplace/status"),
@@ -3659,6 +3689,9 @@ export interface AdPerformanceRow {
   last_delivery_date?: string | null;
   /** When the campaign was created in Meta Ads Manager; null until the next sync stores it. */
   campaign_created_at?: string | null;
+  last_significant_edit?: string | null;
+  schedule_start?: string | null;
+  schedule_end?: string | null;
   /** Meta destination type (WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE, ON_AD, ...). */
   destination_type?: string | null;
   /** True when the ad opens more than one chat app (e.g. WhatsApp plus Messenger). */
@@ -3684,8 +3717,13 @@ export interface AdPerformanceRow {
   meta_conversations_replied: number;
   meta_blocks: number;
   cost_per_meta_conversation: number | null;
+  cost_per_messaging_contact: number | null;
+  cost_per_new_messaging_contact: number | null;
   conversation_rate: number | null;
   meta_conversation_rate: number | null;
+  messaging_reply_rate: number | null;
+  messaging_block_rate: number | null;
+  meta_anril_contact_match_rate: number | null;
   attribution_gap: number;
   clicked_no_message: number;
   no_message_rate: number | null;

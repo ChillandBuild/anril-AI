@@ -11,6 +11,7 @@ import { useInstantFormsOverview, useInstantFormsStatus } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import type { InstantFormRange, InstantFormSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { LeadsDownloadButton } from "./LeadsDownloadButton";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
 import {
   FormStatusBadge,
@@ -88,7 +89,13 @@ function FormRow({ form, onOpen }: { form: InstantFormSummary; onOpen: () => voi
           {form.questions} {form.questions === 1 ? "question" : "questions"}
         </div>
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold tabular-nums text-on-surface">{countText(form.leads)}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold tabular-nums text-on-surface">
+        {countText(form.leads)}
+        <LeadsDownloadButton
+          label="Download every lead on this form"
+          download={() => api.instantForms.downloadFormLeads(form.form_id, form.name)}
+        />
+      </td>
       <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">{inrText(form.cost_per_lead)}</td>
       <td className="max-w-[220px] px-4 py-3 text-xs">
         {form.template_name ? (

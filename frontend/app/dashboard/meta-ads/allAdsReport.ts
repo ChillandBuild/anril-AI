@@ -8,6 +8,9 @@ const ALWAYS_FETCH = ["spend", "impressions", "inline_link_clicks", "clicks"];
 const NEEDS: Record<string, string[]> = {
   results: ["result_type"],
   cost_per_result: ["results", "result_type"],
+  result_rate: ["results", "result_type"],
+  results_value: ["results", "result_type"],
+  results_roas: ["results", "result_type", "results_value"],
   cost_per_messaging_conversation: ["messaging_conversations_started"],
   cost_per_lead: ["leads"],
   purchase_roas: ["purchase_value"],
@@ -64,6 +67,9 @@ export function computeTotals(
   );
   const singleType = resultTypes.size === 1 ? Array.from(resultTypes)[0] : null;
   const results = singleType ? sum(rows, "results") : null;
+  const hasResultsValue =
+    singleType && rows.some((row) => num(row.values?.results_value) !== null);
+  const resultsValue = hasResultsValue ? sum(rows, "results_value") : null;
 
   const computed: Record<string, unknown> = {
     spend,
@@ -80,6 +86,9 @@ export function computeTotals(
     results,
     result_type: singleType,
     cost_per_result: results ? spend / results : null,
+    result_rate: results === null ? null : ratio(results, impressions, 100),
+    results_value: resultsValue,
+    results_roas: resultsValue === null ? null : ratio(resultsValue, spend),
     cost_per_messaging_conversation: ratio(spend, sum(rows, "messaging_conversations_started")),
     cost_per_lead: ratio(spend, sum(rows, "leads")),
     purchase_value: sum(rows, "purchase_value"),
@@ -108,6 +117,9 @@ const TOTAL_FORMULAS: Record<string, string> = {
   results: "Added up when every ad has the same result type. Different types show —.",
   result_type: "Shown when every ad has the same result type. Different types show —.",
   cost_per_result: "Total spend ÷ total results. Different result types show —.",
+  result_rate: "Total results ÷ total impressions × 100. Different result types show —.",
+  results_value: "Total result value when every ad has the same result type. Different result types show —.",
+  results_roas: "Total result value ÷ total spend. Different result types show —.",
   cost_per_messaging_conversation: "Total spend ÷ total messaging conversations started.",
   cost_per_lead: "Total spend ÷ total leads.",
   purchase_roas: "Total purchase value ÷ total spend.",

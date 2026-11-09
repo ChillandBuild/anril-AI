@@ -12,10 +12,13 @@ import { createPortal } from "react-dom";
 export function HoverTip({
   text,
   side = "top",
+  focusable = true,
   children,
 }: {
   text: string | null | undefined;
   side?: "top" | "bottom";
+  /** Set false when the trigger lives inside a button. */
+  focusable?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -53,7 +56,7 @@ export function HoverTip({
     <>
       <span
         ref={anchorRef}
-        tabIndex={0}
+        tabIndex={focusable ? 0 : undefined}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
