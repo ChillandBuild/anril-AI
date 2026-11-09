@@ -4075,6 +4075,26 @@ export type ApiError = Error & { status?: number; detail?: unknown };
 
 export type CompanionModel = { id: string; label: string };
 
+export type CompanionRequestKind = "chat" | "chat_continue" | "widget_session" | "widget_chat" | "widget_continue";
+export type CompanionRequestRow = {
+  id: number;
+  companion_id: string | null;
+  companion_name: string | null;
+  kind: CompanionRequestKind;
+  external_user_id: string | null;
+  status: number;
+  ms: number;
+  created_at: string;
+};
+export type CompanionRequestLog = {
+  requests: CompanionRequestRow[];
+  daily: { date: string; ok: number; error: number }[];
+  total: number;
+  errors: number;
+  median_ms: number | null;
+  capped: boolean;
+};
+
 export type CompanionSearchIn = "knowledge" | "memories";
 export type CompanionKnowledgeHit = { content: string; similarity: number | null; document_name: string | null };
 export type CompanionMemoryHit = {
@@ -4129,6 +4149,15 @@ export const companionsApi = {
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
       `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
     ),
+  requests: (params: { kind?: CompanionRequestKind | ""; status?: "ok" | "error" | ""; days?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.kind) query.set("kind", params.kind);
+    if (params.status) query.set("status", params.status);
+    if (params.days) query.set("days", String(params.days));
+    const qs = query.toString();
+    return apiFetch<CompanionRequestLog>(`${COMPANIONS}/requests${qs ? `?${qs}` : ""}`);
+  },
+
   models: () => apiFetch<{ models: CompanionModel[]; default: string | null }>(`${COMPANIONS}/models`),
 
   search: (id: string, body: { in: CompanionSearchIn; q: string; limit?: number; external_user_id?: string }) =>

@@ -87,6 +87,22 @@ async def list_models(ctx: dict = Depends(require_companions_manage)):
     return {"models": models, "default": await asyncio.to_thread(_tenant_model_id, tenant_id)}
 
 
+@router.get("/requests")
+async def list_requests(kind: Literal[store.REQUEST_KINDS] | None = None,  # type: ignore[valid-type]
+                        status: Literal["ok", "error"] | None = None,
+                        days: int = Query(7, ge=1, le=30),
+                        ctx: dict = Depends(require_companions_manage)):
+    """The Requests page: calls to the public API (no message text), newest first, with daily counts."""
+    tenant_id = ctx["tenant_id"]
+    log = await store.request_log(tenant_id, kind=kind, status=status, days=days)
+    names = {c["id"]: c["name"] for c in await store.list_companions(tenant_id)}
+    for r in log["requests"]:
+        r["companion_name"] = names.get(r.get("companion_id"))
+        if r.get("companion_id") not in names:
+            r["companion_id"] = None   # another business's or a deleted id: don't echo it back
+    return log
+
+
 # Declared before /{companion_id} so "memory-settings" is never read as a character id.
 @router.get("/memory-settings")
 async def get_memory_settings(ctx: dict = Depends(require_companions_manage)):

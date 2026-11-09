@@ -15,10 +15,12 @@ business, 20/min per person.
 """
 import logging
 import time
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.companion import engine, keys, store
@@ -174,15 +176,34 @@ def _require_text(message: str) -> None:
         raise ApiError(422, "empty_message", "Type a message first")
 
 
-async def _run(call) -> JSONResponse:
+async def _log_request(row: dict) -> None:
+    """Runs after the response is sent. Never raises: a broken log must not break a chat."""
     try:
-        return _json(await call())
+        await store.log_request(row)
+    except Exception as exc:
+        logger.warning("companion public api: request log insert failed (%s)", type(exc).__name__)
+
+
+async def _run(call, kind: str, log: dict) -> JSONResponse:
+    """Runs one public call and, once the business is known (log["tenant_id"], set by call()),
+    queues one companion_request_log row to be written after the response. No message text."""
+    started = time.monotonic()
+    try:
+        response = _json(await call())
     except ApiError as exc:
-        return _error(exc)
+        response = _error(exc)
     except (engine.CompanionError, ToolsInvalid) as exc:
         api = _engine_error(exc)
         logger.info("companion public api: %s", api.code)
-        return _error(api)
+        response = _error(api)
+    if log.get("tenant_id"):
+        response.background = BackgroundTask(_log_request, {
+            "tenant_id": log["tenant_id"], "companion_id": log.get("companion_id"), "kind": kind,
+            "external_user_id": log.get("user_id"), "status": response.status_code,
+            "ms": int((time.monotonic() - started) * 1000),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    return response
 
 
 # --- server to server -------------------------------------------------------------------------
@@ -191,25 +212,29 @@ async def _run(call) -> JSONResponse:
 async def server_chat(body: ServerChatIn, request: Request):
     """{"companion_id", "user_id", "message", "display_name"?, "tools"?} → the reply, or
     status "tool_call" with a turn_id: run the tools and POST /chat/continue."""
+    log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
+
     async def call():
-        tenant_id = await _server_tenant(request)
+        tenant_id = log["tenant_id"] = await _server_tenant(request)
         _check_person(tenant_id, body.user_id)
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True)
         return result.model_dump()
-    return await _run(call)
+    return await _run(call, "chat", log)
 
 
 @public_router.post("/chat/continue")
 async def server_continue(body: ServerContinueIn, request: Request):
+    log = {"companion_id": None, "user_id": body.user_id}
+
     async def call():
-        tenant_id = await _server_tenant(request)
+        tenant_id = log["tenant_id"] = await _server_tenant(request)
         _check_person(tenant_id, body.user_id)
         result = await engine.continue_reply(str(body.turn_id), tenant_id, body.results,
                                              external_user_id=body.user_id, require_live=True)
         return result.model_dump()
-    return await _run(call)
+    return await _run(call, "chat_continue", log)
 
 
 # --- web widget -------------------------------------------------------------------------------
@@ -218,8 +243,10 @@ async def server_continue(body: ServerContinueIn, request: Request):
 async def widget_session(body: WidgetAuthIn, request: Request):
     """When the widget opens: the character's name and language, plus this person's last 20
     messages with it (empty for a first visit). Creates nothing."""
+    log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
+
     async def call():
-        tenant_id = await _widget_tenant(request, body)
+        tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
         _check_person(tenant_id, body.user_id)
         companion = await store.get_companion(tenant_id, str(body.companion_id))
         if not companion or companion.get("status") != "live":
@@ -233,29 +260,33 @@ async def widget_session(body: WidgetAuthIn, request: Request):
             "messages": [{"role": m["role"], "content": m["content"], "mood": m.get("mood"),
                           "created_at": m.get("created_at")} for m in history],
         }
-    return await _run(call)
+    return await _run(call, "widget_session", log)
 
 
 @public_router.post("/widget/chat")
 async def widget_chat(body: WidgetChatIn, request: Request):
+    log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
+
     async def call():
-        tenant_id = await _widget_tenant(request, body)
+        tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
         _check_person(tenant_id, body.user_id)
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True)
         return result.model_dump()
-    return await _run(call)
+    return await _run(call, "widget_chat", log)
 
 
 @public_router.post("/widget/chat/continue")
 async def widget_continue(body: WidgetContinueIn, request: Request):
     """The page ran the tools (a browser tool can be faked by the user, so tools that touch money
     or other people's data belong on the business's server, through /chat)."""
+    log = {"companion_id": None, "user_id": body.user_id}
+
     async def call():
-        tenant_id = await _widget_tenant(request, body)
+        tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
         _check_person(tenant_id, body.user_id)
         result = await engine.continue_reply(str(body.turn_id), tenant_id, body.results,
                                              external_user_id=body.user_id, require_live=True)
         return result.model_dump()
-    return await _run(call)
+    return await _run(call, "widget_continue", log)

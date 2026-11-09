@@ -363,6 +363,60 @@ async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int
     return await asyncio.to_thread(_q)
 
 
+# --- public API request log (migration 252) -----------------------------------------------------
+
+REQUEST_KINDS = ("chat", "chat_continue", "widget_session", "widget_chat", "widget_continue")
+REQUEST_LOG_PAGE = 100       # newest rows shown in the Requests table
+REQUEST_LOG_SCAN = 20000     # rows read for the daily counts (a busy month for one business)
+
+
+async def log_request(row: dict) -> None:
+    """One public API call: who, which character, how it went. Never message text."""
+    def _q():
+        get_supabase().table("companion_request_log").insert(row).execute()
+    await asyncio.to_thread(_q)
+
+
+async def request_log(tenant_id: str, *, kind: str | None = None, status: str | None = None,
+                      days: int = 7) -> dict:
+    """The Requests page. status "ok" = below 400, "error" = 400 and up. Example: days=7 →
+    the newest 100 rows, plus per-day ok/error counts and totals for the 7 days."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    def _base(columns: str):
+        q = (get_supabase().table("companion_request_log").select(columns)
+             .eq("tenant_id", tenant_id).gte("created_at", since))
+        if kind:
+            q = q.eq("kind", kind)
+        if status == "ok":
+            q = q.lt("status", 400)
+        elif status == "error":
+            q = q.gte("status", 400)
+        return q
+
+    def _q():
+        rows = (_base("id, companion_id, kind, external_user_id, status, ms, created_at")
+                .order("created_at", desc=True).limit(REQUEST_LOG_PAGE).execute().data or [])
+        stats = (_base("status, ms, created_at").order("created_at", desc=True)
+                 .limit(REQUEST_LOG_SCAN).execute().data or [])
+        return rows, stats
+    rows, stats = await asyncio.to_thread(_q)
+
+    daily: dict[str, dict] = {}
+    for r in stats:
+        day = daily.setdefault(str(r["created_at"])[:10], {"ok": 0, "error": 0})
+        day["error" if int(r["status"]) >= 400 else "ok"] += 1
+    times = sorted(int(r["ms"]) for r in stats)
+    return {
+        "requests": rows,
+        "daily": [{"date": d, **daily[d]} for d in sorted(daily)],
+        "total": len(stats),
+        "errors": sum(1 for r in stats if int(r["status"]) >= 400),
+        "median_ms": times[len(times) // 2] if times else None,
+        "capped": len(stats) >= REQUEST_LOG_SCAN,
+    }
+
+
 FACT_SEARCH_SCAN = 2000   # newest facts read per character for the Playground memory search
 _WORD = re.compile(r"\w+", re.UNICODE)
 

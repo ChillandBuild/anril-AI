@@ -101,11 +101,11 @@ Example: pick Gemini 3.1 Flash, tick Compare → two bubbles, the second labelle
 
 ## Phase 3: request log
 
-### - [ ] Task 11: Requests (M)
+### - [x] Task 11: Requests (M)
 Example: Karthik chats on astrotamil.com → a row "10:42 · Chat · Jothidar AI · 48213 · 200 · 1.4 s".
-- [ ] Migration 252 companion_request_log (tenant_id, companion_id, kind, external_user_id, status, ms, created_at), RLS on, no policies, index (tenant_id, created_at desc). No message text column.
-- [ ] Public routes insert one row per call after responding; insert errors are swallowed and logged.
-- [ ] GET /companions/requests (filters: kind, status, days) + daily counts; page with filters, stat tiles, bar chart, table.
+- [x] Migration 252 companion_request_log (tenant_id, companion_id, kind, external_user_id, status, ms, created_at), RLS on, no policies, index (tenant_id, created_at desc). No message text column.
+- [x] Public routes insert one row per call after responding; insert errors are swallowed and logged.
+- [x] GET /companions/requests (filters: kind, status, days) + daily counts; page with filters, stat tiles, bar chart, table.
 - Verify: tenant test; a failing insert does not fail the chat.
 - Files: backend/supabase/migrations/252_companion_request_log.sql, backend/app/routes/companion_public.py, backend/app/companion/store.py, backend/app/routes/companions.py, frontend/app/dashboard/agents/requests/page.tsx
 - Deps: 1
