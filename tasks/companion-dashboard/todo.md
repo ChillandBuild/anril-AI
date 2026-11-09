@@ -32,9 +32,9 @@ Example: owner opens Jothidar AI, changes default mood to warm, picks tag "astro
 - Files: frontend/lib/api.ts (companions helpers), frontend/app/dashboard/agents/characters/page.tsx, .../characters/[id]/page.tsx, frontend/components/agents/CharacterEditor.tsx
 - Deps: 1
 
-### - [ ] Task 3: API Keys and Install (S)
-- [ ] Keys page lists keys (prefix, created, last used); create shows the full key once with Copy and a "you won't see it again" line; revoke asks to confirm. At 2 active keys, Create is disabled with the reason.
-- [ ] Install page shows the AI prompt, widget and server snippets from GET /{id}/install, and "Create a key first" when has_active_key is false.
+### - [x] Task 3: API Keys and Install (S)
+- [x] Keys page lists keys (prefix, created, last used); create shows the full key once with Copy and a "you won't see it again" line; revoke asks to confirm. At 2 active keys, Create is disabled with the reason.
+- [x] Install page shows the AI prompt, widget and server snippets from GET /{id}/install, and "Create a key first" when has_active_key is false.
 - Files: frontend/app/dashboard/agents/keys/page.tsx, .../install/page.tsx, frontend/lib/api.ts
 - Deps: 1
 
