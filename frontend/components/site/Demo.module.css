@@ -24,9 +24,9 @@
   font-weight: 600; font-size: 1rem; color: var(--muted); pointer-events: none; transform-origin: left top;
   transition: top 0.2s var(--ease), font-size 0.2s var(--ease), color 0.2s var(--ease);
 }
-.field:focus-within label, .filled label { top: 10px; font-size: 0.72rem; color: var(--navy); letter-spacing: 0.02em; }
+.field:focus-within label, .filled label { top: 10px; font-size: 0.75rem; color: var(--navy); letter-spacing: 0.02em; }
 .field:focus-within label { color: var(--teal-d); }
-.field input:-webkit-autofill + label { top: 10px; font-size: 0.72rem; color: var(--navy); letter-spacing: 0.02em; }
+.field input:-webkit-autofill + label { top: 10px; font-size: 0.75rem; color: var(--navy); letter-spacing: 0.02em; }
 .tick { position: absolute; right: 12px; top: 19px; color: var(--teal); animation: pop 0.3s var(--ease); }
 .field:has(select) .tick { right: 34px; }
 @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }

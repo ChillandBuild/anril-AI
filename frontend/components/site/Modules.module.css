@@ -1,7 +1,7 @@
 /* The four modules (Plans page) and the pricing questions below them. */
 /* Two by two, so four modules never leave one alone on a row. */
 .grid.grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
-.num { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; color: var(--copper); }
+.num { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; color: var(--copper); }
 .feats { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 0; padding: 0; list-style: none; }
 .feats li { display: flex; flex-direction: column; padding-left: 14px; border-left: 2px solid var(--wash-1); }
 .feats b { color: var(--navy); font-weight: 700; }

@@ -12,7 +12,7 @@
 /* Channel marquee: two identical tracks slide left together, so the join never shows. */
 .chans { padding: 28px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
 .chansHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-inline: clamp(20px, 4vw, 56px); }
-.chans .chansH { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.chans .chansH { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .marquee {
   display: flex; overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
@@ -48,7 +48,7 @@
 .q, .r { font-size: 0.8rem; line-height: 1.4; padding: 7px 10px; }
 .q { background: var(--grey); color: var(--navy); align-self: flex-start; }
 .r { background: var(--navy); color: var(--white); align-self: flex-end; }
-.peek small { font: 500 0.64rem var(--mono); color: var(--muted); }
+.peek small { font: 500 0.75rem var(--mono); color: var(--muted); }
 .tile:hover, .tile:focus-visible { background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--teal); }
 .tile:hover svg, .tile:focus-visible svg { transform: translateY(-2px); }
 .tile:hover .peek, .tile:focus-visible .peek { grid-template-rows: 1fr; opacity: 1; }
@@ -61,7 +61,7 @@
 @media (max-width: 520px) { .tiles { grid-template-columns: minmax(0, 1fr); } .tiles > li:last-child { grid-column: auto; } }
 @media (prefers-reduced-motion: reduce) { .tile, .tile svg, .peek { transition: none; } }
 
-.pause { min-height: 44px; padding: 0 14px; background: none; border: 1px solid var(--soft); color: var(--navy); font: 700 0.72rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: border-color 0.2s var(--ease), transform 0.16s var(--ease); }
+.pause { min-height: 44px; padding: 0 14px; background: none; border: 1px solid var(--soft); color: var(--navy); font: 700 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: border-color 0.2s var(--ease), transform 0.16s var(--ease); }
 .pause:hover { border-color: var(--navy); }
 .pause:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) { .pause { display: none; } }

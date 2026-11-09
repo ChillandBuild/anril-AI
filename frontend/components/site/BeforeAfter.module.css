@@ -2,8 +2,8 @@
 .side { background: var(--grey); padding: clamp(20px, 3vw, 36px); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .with { background: var(--wash-2); box-shadow: inset 0 0 0 2px var(--teal); }
 .side p { color: var(--body); max-width: 44ch; }
-.label { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.label { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .on { color: var(--teal-d); }
-.tag { align-self: flex-start; font: 700 0.7rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 10px; background: var(--soft); color: var(--navy); }
+.tag { align-self: flex-start; font: 700 0.75rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 10px; background: var(--soft); color: var(--navy); }
 .hot { background: var(--copper); color: var(--white); }
 @media (max-width: 760px) { .pair { grid-template-columns: minmax(0, 1fr); } }
