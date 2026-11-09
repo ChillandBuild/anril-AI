@@ -22,7 +22,7 @@ from app.routes import call_review
 from app.routes.marketplace_intake import public_router as marketplace_public_router
 from app.routes import marketplace_intake
 from app.routes import deals, business_details
-from app.routes import companions
+from app.routes import companions, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
@@ -456,5 +456,7 @@ app.include_router(telecalling_upload.router, prefix="/api/v1/telecalling-upload
 app.include_router(subscriptions.router, prefix="/api/v1/subscriptions", tags=["subscriptions"], dependencies=_auth)
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"], dependencies=_auth)
 app.include_router(companions.router, prefix="/api/v1/companions", tags=["companions"], dependencies=_auth)
+# Public companion chat API: secret key or signed user id, checked in each handler (no login).
+app.include_router(companion_public.public_router, prefix="/api/v1/companion", tags=["companion-public"])
 
 

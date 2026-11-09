@@ -52,6 +52,11 @@ class CompanionPaused(CompanionError):
     pass
 
 
+class CompanionNotLive(CompanionError):
+    """A draft character, reached through the public chat API. Only live characters talk to end users;
+    the owner tests drafts with the dashboard's test chat."""
+
+
 class CompanionBusy(CompanionError):
     """Every load slot stayed taken for SLOT_WAIT_SECONDS. Callers answer 503 'try again'."""
 
@@ -87,13 +92,15 @@ def fallback_line(language: str | None) -> str:
     return FALLBACK_LINES.get(language or "", FALLBACK_LINES["en"])
 
 
-async def _live_companion(tenant_id: str, companion_id: str) -> tuple[dict, str]:
+async def _live_companion(tenant_id: str, companion_id: str, require_live: bool = False) -> tuple[dict, str]:
     """The character, checked usable, plus the tenant's LLM provider name."""
     companion = await store.get_companion(tenant_id, companion_id)
     if not companion:
         raise CompanionNotFound(companion_id)
     if companion.get("status") == "paused":
         raise CompanionPaused(companion_id)
+    if require_live and companion.get("status") != "live":
+        raise CompanionNotLive(companion_id)
     try:
         provider, _ = await asyncio.to_thread(ai_reply._resolve_provider, tenant_id)
     except RuntimeError as exc:
@@ -113,11 +120,11 @@ async def _take_slot(companion_id: str) -> asyncio.Semaphore:
 
 async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
-    *, display_name: str | None = None, tools: list[AppTool] | None = None,
+    *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
 ) -> CompanionReply:
     tools = tools or []
     app_tools.validate_tools(tools)
-    companion, provider = await _live_companion(tenant_id, companion_id)
+    companion, provider = await _live_companion(tenant_id, companion_id, require_live)
     sem = await _take_slot(companion_id)
     try:
         return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools)
@@ -125,18 +132,24 @@ async def reply(
         sem.release()
 
 
-async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]) -> CompanionReply:
+async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult], *,
+                         external_user_id: str | None = None, require_live: bool = False) -> CompanionReply:
     """Finishes a turn paused for app-run tools. The turn is consumed: a turn_id works once.
-    The load slot is taken first, so a busy moment doesn't use up the turn."""
+    The load slot is taken first, so a busy moment doesn't use up the turn.
+    external_user_id (public API): the turn must belong to this person, else TurnExpired."""
     sem = await _take_slot(f"turn {turn_id}")
     try:
         turn = await store.take_pending_turn(tenant_id, turn_id)
         if not turn:
             raise TurnExpired(turn_id)
-        companion, provider = await _live_companion(tenant_id, turn["companion_id"])
+        companion, provider = await _live_companion(tenant_id, turn["companion_id"], require_live)
         conversation = await store.get_conversation(tenant_id, turn["conversation_id"])
         if not conversation:
             raise TurnExpired(turn_id)
+        if external_user_id is not None:
+            person = await store.find_end_user(tenant_id, external_user_id)
+            if not person or person["id"] != conversation.get("end_user_id"):
+                raise TurnExpired(turn_id)
         state = turn["messages"]
         tools = [AppTool(**t) for t in turn.get("tools") or []]
         extra, log = app_tools.round_messages(

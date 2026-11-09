@@ -503,3 +503,93 @@ async def messages_after(tenant_id: str, companion_id: str, end_user_id: str, af
             return q.gt("created_at", after).order("created_at").limit(limit).execute().data
         return list(reversed(q.order("created_at", desc=True).limit(limit).execute().data or []))
     return await asyncio.to_thread(_q) or []
+
+
+# --- chat API secret keys (migration 250). Only the SHA-256 of a key is ever stored. -------------
+
+_KEY_FIELDS = ("id", "key_prefix", "status", "created_at", "revoked_at", "last_used_at")
+_KEY_COLUMNS = ", ".join(_KEY_FIELDS)
+
+
+async def create_api_key(tenant_id: str, key_prefix: str, key_hash: str, created_by: str | None) -> dict:
+    row = {"tenant_id": tenant_id, "key_prefix": key_prefix, "key_hash": key_hash, "status": "active",
+           "created_by": created_by}
+
+    def _q():
+        return get_supabase().table("companion_api_keys").insert(row).execute().data[0]
+    created = await asyncio.to_thread(_q)
+    return {k: created.get(k) for k in ("id", "key_prefix", "status", "created_at")}
+
+
+async def list_api_keys(tenant_id: str) -> list[dict]:
+    """Newest first: the active keys and the 10 most recent revoked ones. Never the hash."""
+    def _q():
+        return (
+            get_supabase().table("companion_api_keys").select(_KEY_COLUMNS)
+            .eq("tenant_id", tenant_id).order("created_at", desc=True).limit(20).execute().data
+        )
+    rows = [{k: r.get(k) for k in _KEY_FIELDS} for r in (await asyncio.to_thread(_q) or [])]
+    active = [r for r in rows if r.get("status") == "active"]
+    return active + [r for r in rows if r.get("status") != "active"][:10]
+
+
+async def count_active_api_keys(tenant_id: str) -> int:
+    def _q():
+        return (
+            get_supabase().table("companion_api_keys").select("id")
+            .eq("tenant_id", tenant_id).eq("status", "active").execute().data
+        )
+    return len(await asyncio.to_thread(_q) or [])
+
+
+async def revoke_api_key(tenant_id: str, key_id: str) -> bool:
+    """False if the key isn't this tenant's or is already revoked."""
+    def _q():
+        return (
+            get_supabase().table("companion_api_keys")
+            .update({"status": "revoked", "revoked_at": _now()})
+            .eq("tenant_id", tenant_id).eq("id", key_id).eq("status", "active").execute().data
+        )
+    return bool(await asyncio.to_thread(_q))
+
+
+async def find_active_api_key(key_hash: str) -> dict | None:
+    """The key itself names the tenant, so this one lookup has no tenant filter: the caller
+    takes tenant_id FROM the row and every later query filters on it."""
+    def _q():
+        return (
+            get_supabase().table("companion_api_keys").select("id, tenant_id")
+            .eq("key_hash", key_hash).eq("status", "active").limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+async def active_key_hashes(tenant_id: str) -> list[tuple[str, str]]:
+    """(key id, key hash) of the tenant's active keys, for checking a widget's signed user id."""
+    def _q():
+        return (
+            get_supabase().table("companion_api_keys").select("id, key_hash")
+            .eq("tenant_id", tenant_id).eq("status", "active").execute().data
+        )
+    return [(r["id"], r["key_hash"]) for r in (await asyncio.to_thread(_q) or [])]
+
+
+async def touch_api_key(tenant_id: str, key_id: str) -> None:
+    def _q():
+        get_supabase().table("companion_api_keys").update({"last_used_at": _now()}) \
+            .eq("tenant_id", tenant_id).eq("id", key_id).execute()
+    await asyncio.to_thread(_q)
+
+
+async def companion_tenant(companion_id: str) -> str | None:
+    """Which business owns this character. The widget sends only the character id and a signed
+    user id, so the tenant must come from here; the signature is then checked against THAT
+    tenant's keys, and every later query filters on it."""
+    def _q():
+        return (
+            get_supabase().table("companions").select("tenant_id")
+            .eq("id", companion_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0]["tenant_id"] if rows else None

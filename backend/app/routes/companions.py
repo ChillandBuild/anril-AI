@@ -9,12 +9,16 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.companion import engine, memory, store
+from app.companion import engine, install, keys, memory, store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
+from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
+from app.routes.auto_messages import _SlidingWindow
+from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,6 +58,63 @@ async def put_memory_settings(payload: MemoryScopeIn, ctx: dict = Depends(requir
     """'character': each character remembers only what it was told. 'business': all characters
     share what the person told any of them (the widget must say so)."""
     return {"memory_scope": await store.set_memory_scope(ctx["tenant_id"], payload.memory_scope)}
+
+
+# --- chat API secret keys (Install tab). Declared before /{companion_id} too. --------------------
+
+KEY_CHANGES_PER_MINUTE = 5
+_NO_STORE = {"Cache-Control": "no-store"}
+# Per tenant, in-process. Create and revoke share one budget.
+_key_limiter = _SlidingWindow(KEY_CHANGES_PER_MINUTE, 60)
+
+
+def _audit_key(ctx: dict, action: str, key_id: str, metadata: dict) -> None:
+    # Never the key or its hash: the full key exists only in the create response.
+    try:
+        record_audit_event(
+            get_supabase(), tenant_id=ctx["tenant_id"], actor_user_id=ctx.get("user_id"),
+            actor_role=ctx.get("role"), action=action, target_type="companion_api_key",
+            target_id=key_id, metadata=metadata,
+        )
+    except Exception as exc:
+        logger.warning("companion key audit failed (%s)", type(exc).__name__)
+
+
+def _key_rate_check(tenant_id: str) -> None:
+    if not _key_limiter.allow(tenant_id):
+        raise HTTPException(status_code=429, detail="Too many key changes. Try again in a minute.",
+                            headers={"Retry-After": "60"})
+
+
+@router.get("/keys")
+async def list_keys(ctx: dict = Depends(require_settings_manage)):
+    return JSONResponse(content={"keys": await store.list_api_keys(ctx["tenant_id"]),
+                                 "max_active": keys.MAX_ACTIVE_KEYS}, headers=_NO_STORE)
+
+
+@router.post("/keys", status_code=201)
+async def create_key(ctx: dict = Depends(require_settings_manage)):
+    """The full key is in this response only. At most 2 active keys, so the owner can rotate."""
+    tenant_id = ctx["tenant_id"]
+    _key_rate_check(tenant_id)
+    if await store.count_active_api_keys(tenant_id) >= keys.MAX_ACTIVE_KEYS:
+        raise HTTPException(status_code=409, detail="You already have 2 active keys. Revoke one first.")
+    raw, prefix, key_hash = keys.generate_key()
+    row = await store.create_api_key(tenant_id, prefix, key_hash, ctx.get("user_id"))
+    _audit_key(ctx, "tenant.companion_key_created", row["id"], {"prefix": prefix})
+    logger.info("companion key created tenant=%s key=%s", tenant_id, row["id"])
+    return JSONResponse(status_code=201, content={**row, "key": raw}, headers=_NO_STORE)
+
+
+@router.delete("/keys/{key_id}", status_code=204)
+async def revoke_key(key_id: UUID, ctx: dict = Depends(require_settings_manage)):
+    """Takes effect on the next request: the API and every widget signed with it stop working."""
+    tenant_id = ctx["tenant_id"]
+    _key_rate_check(tenant_id)
+    if not await store.revoke_api_key(tenant_id, str(key_id)):
+        raise HTTPException(status_code=404, detail="Key not found")
+    _audit_key(ctx, "tenant.companion_key_revoked", str(key_id), {})
+    logger.info("companion key revoked tenant=%s key=%s", tenant_id, key_id)
 
 
 @router.get("/{companion_id}")
@@ -138,6 +199,18 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
     except _EXPECTED as exc:
         raise _http_error(exc)
     return result.model_dump()
+
+
+@router.get("/{companion_id}/install")
+async def get_install(companion_id: UUID, ctx: dict = Depends(require_settings_manage)):
+    """The Install tab: copy-paste widget and server code for this character, plus key status."""
+    tenant_id = ctx["tenant_id"]
+    row = await store.get_companion(tenant_id, str(companion_id))
+    if not row:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    info = install.install_info(row)
+    info["has_active_key"] = await store.count_active_api_keys(tenant_id) > 0
+    return info
 
 
 ExternalUserId = Path(min_length=1, max_length=200)
