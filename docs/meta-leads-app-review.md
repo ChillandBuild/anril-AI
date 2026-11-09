@@ -18,7 +18,9 @@ The order matters. Meta wants a **screen recording of the feature working in Anr
 
 ## Step 0 — Check these first (10 minutes)
 
-Open <https://developers.facebook.com/apps/2225044871604460/> and check each item:
+Open <https://developers.facebook.com/apps/2225044871604460/> **logged in as the Facebook account that owns the app**. The account used for testing Anril can't edit it: it sees "No apps yet" (see `.agents/projects/active-backlog.md`, Messenger/Instagram embedded-signup item). Past reviews on this app approved the WhatsApp permissions and rejected `business_management` twice because there was no in-product use to show, so the screencast in Step 4 matters.
+
+Check each item:
 
 1. **Business Verification is done.** Left menu → **App settings** → **Basic** → scroll to **Business verification**. It must say *Verified*. If it doesn't, follow the link there. Meta asks for a company document and takes 1–5 working days.
 2. **App is Live.** The top bar shows **App Mode: Live**.

@@ -156,7 +156,7 @@ async def test_image_header_template_sends_its_saved_image():
     }
     assert components[-1] == {"type": "body", "parameters": [{"type": "text", "text": "Priya"}]}
     logged = db.rows("messages")[0]
-    assert logged["content"] == "[Image] Hi Priya, here is our offer"
+    assert logged["content"] == "[Template: offer]"  # broadcast-style: hidden from Conversations until a reply
 
 
 def test_media_template_without_saved_file_is_not_offered():

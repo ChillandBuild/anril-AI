@@ -474,7 +474,6 @@ def _meta_error(exc: Exception) -> str:
 async def send_form_template(db, tenant_id: str, form_lead_id: str) -> str:
     """Send the form's template to one stored lead. Returns the final status.
     The pending -> sending claim makes a second caller a no-op."""
-    from app.services.call_details_share import render_template
     from app.services.meta_cloud import send_template_message
 
     claimed = (
@@ -523,10 +522,10 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str) -> str:
     message_id = ((response or {}).get("messages") or [{}])[0].get("id")
 
     if row.get("lead_id"):
-        media = (template.get("header_media_type") or "").upper()
-        content = render_template(template.get("body_text"), values)
-        if media in MEDIA_HEADERS:
-            content = f"[{media.capitalize()}] {content}"
+        # Logged the way broadcasts log templates: get_conversation_leads skips a chat
+        # whose only messages are "[Template: …]", so it reaches Conversations when
+        # the person replies, not when the form is filled.
+        content = f"[Template: {template['name']}]"
         try:
             db.table("messages").insert({
                 "lead_id": row["lead_id"], "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
