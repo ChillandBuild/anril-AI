@@ -4,12 +4,11 @@ import { api, InboundLead } from "@/lib/api";
 import { useInboundLeads, useInboundCampaigns } from "@/hooks/useApi";
 import {
   Download, Megaphone, Filter, X,
-  Smartphone, RefreshCw, ChevronDown, RadioTower,
+  Info, RefreshCw, ChevronDown, RadioTower,
   Link2, Copy, Check,
 } from "lucide-react";
 import { cn, formatPhone } from "@/lib/utils";
 import { SegmentBadge } from "@/components/segment-badge";
-import { KpiCard } from "@/components/kpi-card";
 import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
@@ -309,7 +308,7 @@ export function InboundLeadsClient({
     selectedSegment,
   ].filter(Boolean).length;
   const uniqueKeywords = new Set(leads.filter((l) => l.keyword !== "—").map((l) => l.keyword.toLowerCase().trim())).size;
-  const uniqueCampaigns = new Set(leads.map((l) => l.campaign_name)).size;
+  const uniqueCampaigns = new Set(leads.filter((l) => l.ad_campaign_id).map((l) => l.ad_campaign_id)).size;
 
   useEffect(() => {
     if (leadsError) {
@@ -384,25 +383,6 @@ export function InboundLeadsClient({
             )}
           </div>
           <div className="flex flex-wrap items-end gap-2.5">
-            <div className="w-full sm:w-[300px]">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Origin</label>
-              <div className="grid h-9 grid-cols-3 gap-1 rounded-full border border-[#e2e8f0] bg-[#f8f5ef] p-1">
-                {ORIGIN_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    onClick={() => setOrigin(o.value)}
-                    className={`rounded-full px-2 text-xs font-bold transition ${
-                      origin === o.value
-                        ? "bg-white text-primary shadow-sm ring-1 ring-primary-100"
-                        : "text-[#475569] hover:bg-white/60 hover:text-[#1e293b]"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="w-full sm:w-[165px]">
               <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Segment</label>
               <select
@@ -469,9 +449,25 @@ export function InboundLeadsClient({
         </div>
       </div>
 
-      {/* ── Stats & Actions ────────────────────────────────────── */}
-      <div className="mb-5 space-y-3">
-        <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* ── Toolbar & Stats ─────────────────────────────────────── */}
+      <div className="mb-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Origin" className="grid h-9 w-[240px] grid-cols-3 gap-1 rounded-full border border-[#e2e8f0] bg-[#f8f5ef] p-1">
+            {ORIGIN_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => setOrigin(o.value)}
+                aria-pressed={origin === o.value}
+                className={`rounded-full px-2 text-xs font-bold transition ${
+                  origin === o.value
+                    ? "bg-white text-primary shadow-sm ring-1 ring-primary-100"
+                    : "text-[#475569] hover:bg-white/60 hover:text-[#1e293b]"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
             <button
               onClick={() => setShowFilters((p) => !p)}
               className={cn(
@@ -489,6 +485,7 @@ export function InboundLeadsClient({
                 </span>
               )}
             </button>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               onClick={() => mutateLeads()}
               disabled={leadsValidating}
@@ -512,30 +509,27 @@ export function InboundLeadsClient({
             <Download size={12} />
             <span>{exporting ? "Downloading…" : "Download CSV"}</span>
           </button>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <KpiCard label="Total Inbound Leads" value={total} loading={loading} hint="Organic + Meta Ad" edge="bg-primary" />
-          <KpiCard label="Showing Now" value={leads.length} loading={loading} hint="Rows in the table, up to 200" edge="bg-blue-600" />
-          <KpiCard label="Unique Keywords" value={uniqueKeywords} loading={loading} hint="Distinct first messages shown" edge="bg-amber-400" />
-          <KpiCard label="Active Campaigns" value={uniqueCampaigns} loading={loading} hint="Campaigns in the rows shown" edge="bg-emerald-500" />
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-surface-mid bg-surface-mid lg:grid-cols-4">
+          {[
+            { label: "total inbound", value: total, hint: "Organic + Meta Ad" },
+            { label: "showing", value: leads.length, hint: "Rows in the table, up to 200" },
+            { label: "unique keywords", value: uniqueKeywords, hint: "Distinct first messages shown" },
+            { label: uniqueCampaigns === 1 ? "ad campaign" : "ad campaigns", value: uniqueCampaigns, hint: "Ad campaigns in the rows shown" },
+          ].map((stat) => (
+            <div key={stat.hint} title={stat.hint} className="flex items-baseline gap-2 bg-white px-4 py-2.5">
+              <span className="font-label text-lg font-bold tabular-nums text-on-surface">{loading ? "–" : stat.value}</span>
+              <span className="font-body text-xs text-on-surface-muted">{stat.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
       {showGoogleModal && <GoogleAdsLinkModal onClose={() => setShowGoogleModal(false)} />}
 
-      {/* ── Info Banner ─────────────────────────────────────────── */}
-      <div className="flex items-start gap-3 bg-primary-light border border-primary-muted rounded-2xl px-4 py-3 mb-5">
-        <Smartphone size={14} className="text-primary mt-0.5 flex-shrink-0" />
-        <p className="font-body text-xs text-primary leading-relaxed">
-          <strong>Origin:</strong> Leads tagged <em>Ad</em> have an{" "}
-          <code className="bg-primary-light px-1 rounded text-[10px] font-mono">ad_campaign_id</code> from Meta Ad referral data.
-          Leads tagged <em>Organic</em> messaged you directly without an ad click.
-          Use the Origin toggle above to filter between the two.
-        </p>
-      </div>
-
       {/* ── Table ──────────────────────────────────────────────── */}
-      <div className="card rounded-2xl overflow-hidden">
+      <div className="card rounded-2xl overflow-hidden !p-0">
         {loading ? (
           <AiraLoader inline className="min-h-[300px]" />
         ) : leads.length === 0 ? (
@@ -546,8 +540,8 @@ export function InboundLeadsClient({
               {leads.map((lead) => (
                 <MobileRecordCard key={lead.id}>
                   <MobileRecordHeader
-                    title={lead.name !== "â€”" ? lead.name : formatPhone(lead.phone)}
-                    subtitle={lead.phone !== "â€”" ? formatPhone(lead.phone) : "No phone"}
+                    title={lead.name !== "—" ? lead.name : formatPhone(lead.phone)}
+                    subtitle={lead.phone !== "—" ? formatPhone(lead.phone) : "No phone"}
                     aside={<ChannelBadge source={lead.source} />}
                   />
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -566,7 +560,7 @@ export function InboundLeadsClient({
                     <MobileRecordField
                       label="Keyword"
                       className="col-span-2"
-                      value={lead.keyword !== "â€”" ? <span className="line-clamp-2 text-xs leading-snug">&ldquo;{lead.keyword}&rdquo;</span> : "No message yet"}
+                      value={lead.keyword !== "—" ? <span className="line-clamp-2 text-xs leading-snug">&ldquo;{lead.keyword}&rdquo;</span> : "No message yet"}
                     />
                     <MobileRecordField
                       label="Campaign"
@@ -582,8 +576,17 @@ export function InboundLeadsClient({
                 <thead>
                   <tr className="border-b border-surface-mid bg-surface-low/60">
                     {["Contact", "Channel", "Origin", "Keyword (First Message)", "Ad Campaign", "Segment", "Date & Time Joined"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-left font-label text-[10px] font-bold text-on-surface-muted uppercase tracking-widest whitespace-nowrap">
+                      <th key={h} className="px-4 py-3 text-left font-label text-[10px] font-bold text-on-surface-muted uppercase tracking-widest whitespace-nowrap">
                         {h}
+                        {h === "Origin" && (
+                          <span
+                            title="Ad: the lead clicked a Meta ad, so it has a campaign. Organic: the lead messaged you directly."
+                            aria-label="Ad: the lead clicked a Meta ad, so it has a campaign. Organic: the lead messaged you directly."
+                            className="ml-1 inline-flex cursor-help align-middle"
+                          >
+                            <Info size={11} />
+                          </span>
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -598,24 +601,24 @@ export function InboundLeadsClient({
                       )}
                     >
                       {/* Contact */}
-                      <td className="px-5 py-3.5">
-                        <p className="font-label text-sm font-semibold text-on-surface leading-tight">
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className="font-label text-sm font-semibold text-on-surface">
                           {lead.name !== "—" ? lead.name : (
                             <span className="text-on-surface-muted italic font-normal text-xs">No name</span>
                           )}
-                        </p>
-                        <p className="font-body text-xs text-on-surface-muted mt-0.5">
-                          {lead.phone !== "—" ? formatPhone(lead.phone) : "—"}
-                        </p>
+                        </span>
+                        <span className="font-body text-xs text-on-surface-muted">
+                          {" · "}{lead.phone !== "—" ? formatPhone(lead.phone) : "—"}
+                        </span>
                       </td>
 
                       {/* Channel */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2.5 whitespace-nowrap">
                         <ChannelBadge source={lead.source} />
                       </td>
 
                       {/* Origin */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2.5 whitespace-nowrap">
                         <span className={cn(
                           "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border",
                           lead.origin === "ad"
@@ -627,11 +630,11 @@ export function InboundLeadsClient({
                       </td>
 
                       {/* Keyword */}
-                      <td className="px-5 py-3.5 max-w-[210px]">
+                      <td className="px-4 py-2.5 max-w-[240px]">
                         {lead.keyword !== "—" ? (
                           <span
                             title={lead.keyword}
-                            className="inline-block font-body text-xs text-amber-800 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg max-w-full truncate"
+                            className="inline-block font-body text-xs text-amber-800 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg max-w-full truncate"
                           >
                             &ldquo;{lead.keyword}&rdquo;
                           </span>
@@ -641,25 +644,29 @@ export function InboundLeadsClient({
                       </td>
 
                       {/* Campaign */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-1.5">
-                          <Megaphone size={11} className="text-primary-400 flex-shrink-0" />
-                          <span
-                            className="font-label text-xs font-semibold text-on-surface truncate max-w-[140px]"
-                            title={lead.campaign_name}
-                          >
-                            {lead.campaign_name}
-                          </span>
-                        </div>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {lead.campaign_name === "—" ? (
+                          <span className="text-xs text-on-surface-muted">—</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Megaphone size={11} className="text-primary-400 flex-shrink-0" />
+                            <span
+                              className="font-label text-xs font-semibold text-on-surface truncate max-w-[160px]"
+                              title={lead.campaign_name}
+                            >
+                              {lead.campaign_name}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Segment */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2.5 whitespace-nowrap">
                         <SegmentBadge segment={lead.segment as "A" | "B" | "C" | "D"} />
                       </td>
 
                       {/* Date joined */}
-                      <td className="px-5 py-3.5 whitespace-nowrap">
+                      <td className="px-4 py-2.5 whitespace-nowrap">
                         <p className="font-body text-xs text-on-surface-muted">{formatDate(lead.created_at)}</p>
                       </td>
                     </tr>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BarChart3, Image as ImageIcon, Package, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ export default function CatalogPage() {
   const canManageCatalog = role === "owner" || permissions.includes("catalog.manage");
   const router = useRouter();
   const searchParams = useSearchParams();
+  // The Items tab portals its search / reindex / add controls into this slot, so tabs and controls share one row.
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
   const rawTab = searchParams.get("tab");
   const tab = (TABS.some((item) => item.id === rawTab) ? rawTab : "items") as CatalogTab;
 
@@ -56,10 +58,10 @@ export default function CatalogPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <CatalogueTabs />
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full flex-wrap gap-1 rounded-xl border border-border bg-white p-1 shadow-sm md:w-fit">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex w-full flex-wrap gap-1 rounded-xl border border-border bg-white p-1 shadow-sm sm:w-fit">
           {TABS.map((item) => {
             const Icon = item.icon;
             const active = tab === item.id;
@@ -79,10 +81,11 @@ export default function CatalogPage() {
             );
           })}
         </div>
+        <div ref={setToolbarSlot} className="flex min-w-0 flex-wrap items-center gap-2" />
       </div>
 
       {tab === "items" && <ConflictsLink />}
-      {tab === "items" && <ItemsTab canManage={canManageCatalog} />}
+      {tab === "items" && <ItemsTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "media" && <MediaTab canManage={canManageCatalog} />}
       {tab === "ai-rules" && <AiRulesTab canManage={canManageCatalog} />}
       {tab === "insights" && <InsightsTab />}

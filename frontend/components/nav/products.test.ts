@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { canSeeAgents, productHref, productOf, PRODUCT_HOME } from "./products";
 
 describe("productOf", () => {
@@ -52,5 +52,25 @@ describe("canSeeAgents", () => {
   it("keeps everyone else out, settings.manage alone included", () => {
     expect(canSeeAgents("caller", ["settings.manage"])).toBe(false);
     expect(canSeeAgents(null, [])).toBe(false);
+  });
+});
+
+describe("Sales | Agents switch", () => {
+  it("labels Anril as Sales", async () => {
+    const { PRODUCT_LABEL } = await import("./products");
+    expect(PRODUCT_LABEL).toEqual({ anril: "Sales", agents: "Agents" });
+  });
+
+  it("marks <html> at once on a click and stops animating later", async () => {
+    vi.useFakeTimers();
+    const dataset: Record<string, string> = {};
+    vi.stubGlobal("document", { documentElement: { dataset } });
+    const { startProductSwitch } = await import("./products");
+    startProductSwitch("agents");
+    expect(dataset).toEqual({ product: "agents", productAnim: "" });
+    vi.advanceTimersByTime(3000);
+    expect(dataset).toEqual({ product: "agents" });
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 });
