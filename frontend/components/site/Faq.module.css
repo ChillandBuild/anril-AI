@@ -6,6 +6,7 @@
   background: none; border: 0; cursor: pointer; text-align: left; color: var(--navy);
   font: 400 1.3rem var(--serif); line-height: 1.25;
 }
+@media (max-width: 700px) { .item button { min-height: 56px; font-size: 1.15rem; padding: 10px 0; } }
 .item button:hover span { color: var(--teal-d); }
 .item button span { transition: color 0.2s var(--ease); }
 /* A plus whose upright bar folds away to make a minus. */

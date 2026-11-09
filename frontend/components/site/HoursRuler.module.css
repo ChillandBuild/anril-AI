@@ -33,6 +33,7 @@
 
 .wrap:not([data-live]) :is(.sweep, .body) { display: none; }
 
+@media (max-width: 700px) { .sky { height: 120px; } }
 .hours { display: flex; justify-content: space-between; font: 500 0.75rem var(--mono); color: var(--muted); }
 .legend { display: flex; gap: 8px 20px; flex-wrap: wrap; align-items: center; font-size: 0.9rem; color: var(--body); }
 .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--teal); }

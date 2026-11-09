@@ -151,7 +151,8 @@ export function HomeModules() {
       <p className={ui.lede}>
         Use one module or all of them. Every enquiry, payment and call lands in the same place.
       </p>
-      <ul className={s.mods}>
+      <p className={s.modHint} aria-hidden="true">Swipe sideways to see each module →</p>
+      <ul className={s.mods} role="region" aria-label="Modules" tabIndex={0}>
         {HOME_MODULES.map((m, i) => (
           <li key={m.name} data-reveal style={{ "--rd": `${i * 60}ms` } as React.CSSProperties}>
             <h3>{m.name}</h3>

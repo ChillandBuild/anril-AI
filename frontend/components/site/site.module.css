@@ -77,6 +77,26 @@
   align-self: flex-start; padding-block: 12px;
 }
 
+/* Phones: tighter sections, so a page is a few screens and not a long scroll. */
+@media (max-width: 700px) {
+  .band { padding: 28px 20px; gap: 14px; }
+  .secH { font-size: 1.65rem; }
+  .lede { font-size: 1rem; }
+}
+
+/* A row of cards you swipe sideways on phones and tablets (the four steps on the home page). On wide
+   screens the rows simply stack as they always did. */
+.swipeHint { display: none; }
+@media (max-width: 860px) {
+  .swipeHint { display: block; padding: 0 20px; margin: 0 0 12px; font: 600 0.8rem var(--sans); color: var(--muted); }
+  .swipe {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    padding: 4px 20px 24px; scroll-padding-inline: 20px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .swipe::-webkit-scrollbar { display: none; }
+  .swipe > section { flex: 0 0 86%; scroll-snap-align: start; border: 1px solid var(--line); background: var(--white); }
+}
+
 /* Legal and contact pages: plain reading text inside the site frame. The doubled class outranks the
    marketing resets above (serif headings, zero paragraph margins) without touching them. */
 .legal.legal h1 { font-family: var(--sans); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; text-wrap: wrap; }

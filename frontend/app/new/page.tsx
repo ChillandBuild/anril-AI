@@ -38,7 +38,8 @@ export default function NewHomePage() {
           <HoursRuler />
         </section>
 
-        <div id="how">
+        <p className={ui.swipeHint} aria-hidden="true">Swipe sideways to see all four steps →</p>
+        <div id="how" className={ui.swipe} role="region" aria-label="How Anril AI works, four steps" tabIndex={0}>
           {FEATURES.map((f, i) => (
             <FeatureRow key={f.id} feature={f} flip={i % 2 === 1} linkHref="#demo" linkLabel="See it in a demo" />
           ))}

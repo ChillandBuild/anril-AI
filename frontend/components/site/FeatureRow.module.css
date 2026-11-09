@@ -6,6 +6,9 @@
 @media (max-width: 860px) {
   .row { grid-template-columns: minmax(0, 1fr); }
   .flip .txt { order: 0; }
+  .txt { padding: 22px 20px 20px; gap: 12px; }
+  .vis { padding: 16px; }
+  .row h2 { font-size: 1.55rem; }
 }
 .row h2 { font-size: clamp(1.8rem, 3.3vw, 2.7rem); line-height: 1.1; }
 .b { color: var(--body); max-width: 44ch; }

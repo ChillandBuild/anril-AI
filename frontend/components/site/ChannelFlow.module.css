@@ -13,5 +13,7 @@
 @media (max-width: 600px) {
   .wide { display: none; }
   .narrow { display: flex; }
+  .narrow .col:first-child { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .narrow .col:first-child .box { padding: 12px 8px; text-align: center; font-size: 0.9rem; }
 }
 @media (prefers-reduced-motion: reduce) { .dots { display: none; } }

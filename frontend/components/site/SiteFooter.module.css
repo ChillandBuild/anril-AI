@@ -29,9 +29,12 @@
 @media (max-width: 640px) {
   .top { gap: 32px; }
   .lead { flex-basis: 100%; }
-  .cols { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 24px 20px; }
+  .cols { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
   .cols > div { min-width: 0; }
-  .cols > div:last-child { grid-column: 1 / -1; }
-  .base { flex-direction: column; align-items: flex-start; }
+  .cols > div:first-child { grid-row: span 2; }
+  .cols a { min-height: 40px; }
+  .mark { max-width: 62%; }
+  .base { gap: 0 20px; }
+  .base p, .details address { min-height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .cta, .cols a { transition: none; } }
