@@ -26,10 +26,26 @@ export function SmsBubble({ message, className, as: Tag = "p" }: { message: stri
 }
 
 /** The round "KE" avatar a phone shows next to the sender. */
-export function SenderAvatar({ sender }: { sender: string }) {
+export function SenderAvatar({ sender, dark }: { sender: string; dark?: boolean }) {
   return (
-    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f4f4] text-[11px] font-bold text-[#036b6e]" aria-hidden>
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full font-bold",
+        dark ? "h-6 w-6 bg-[var(--navy-accent)] text-[10px] text-[var(--navy)]" : "h-8 w-8 bg-[#e6f4f4] text-[11px] text-[#036b6e]",
+      )}
+      aria-hidden
+    >
       {sender.slice(0, 2)}
+    </span>
+  );
+}
+
+/** The sender ID as a dark pill with its avatar, heading a template card. */
+function SenderChip({ sender }: { sender: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-[var(--navy)] py-0.5 pl-0.5 pr-3">
+      <SenderAvatar sender={sender} dark />
+      <span className="text-[13px] font-bold text-white">{sender}</span>
     </span>
   );
 }
@@ -117,8 +133,7 @@ export function TemplateCard({
           )}
         >
           <span className="flex items-center gap-2">
-            <SenderAvatar sender={t.sender_id} />
-            <span className="text-sm font-bold text-[#0A1528]">{t.sender_id}</span>
+            <SenderChip sender={t.sender_id} />
             {selected && (
               <span className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-[#036b6e]">
                 <Check size={14} /> Selected
@@ -138,8 +153,7 @@ export function TemplateCard({
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-[#e2e8f0] p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <SenderAvatar sender={t.sender_id} />
-        <span className="text-sm font-bold text-[#0A1528]">{t.sender_id}</span>
+        <SenderChip sender={t.sender_id} />
         <Badge tone={ready ? "success" : "warn"}>{ready ? "Approved" : "Waiting for approval"}</Badge>
         <span className="ml-auto text-xs text-[#64748b]" title="The category DLT approved this template under">
           {categoryLabel(t.template_type)}
