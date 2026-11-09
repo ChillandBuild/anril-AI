@@ -54,8 +54,8 @@ Example: drop Porutham guide.pdf, tag "astrology books", Import → Processing s
 - Files: frontend/app/dashboard/agents/knowledge/page.tsx, frontend/components/agents/ImportCard.tsx
 - Deps: 2
 
-### - [ ] Task 6: Settings page (XS)
-- [ ] Memory scope (this character only / whole business) via GET/PUT memory-settings, with the Karthik example line from the mockup.
+### - [x] Task 6: Settings page (XS)
+- [x] Memory scope (this character only / whole business) via GET/PUT memory-settings, with the Karthik example line from the mockup.
 - Files: frontend/app/dashboard/agents/settings/page.tsx
 - Deps: 1
 
