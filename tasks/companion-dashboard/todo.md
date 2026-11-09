@@ -24,11 +24,11 @@ Example: the Astrotamil owner is on Inbound Leads, clicks ✦ Agents on the rail
 - Files: backend/app/services/rbac.py, backend/app/routes/companions.py, backend/tests/test_companion_permission.py, backend/supabase/migrations/251_companions_permission.sql, frontend/app/dashboard/roles/page.tsx, frontend/components/nav/ProductRail.tsx, frontend/components/MoreMenu.tsx
 - Deps: 1
 
-### - [ ] Task 2: Characters list and editor (M)
+### - [x] Task 2: Characters list and editor (M)
 Example: owner opens Jothidar AI, changes default mood to warm, picks tag "astrology books", sets status Live.
-- [ ] List shows name, status pill, language, memory level; "+ New character" creates a Draft and opens it.
-- [ ] Editor tabs Persona / Memory / Knowledge save through PATCH; a 422 shows the field error inline; 409 on duplicate name shows "Name already used".
-- [ ] Knowledge tab tag picker lists only this tenant's tags.
+- [x] List shows name, status pill, language, memory level; "+ New character" creates a Draft and opens it.
+- [x] Editor tabs Persona / Memory / Knowledge save through PATCH; a 422 shows the field error inline; 409 on duplicate name shows "Name already used".
+- [x] Knowledge tab tag picker lists only this tenant's tags.
 - Files: frontend/lib/api.ts (companions helpers), frontend/app/dashboard/agents/characters/page.tsx, .../characters/[id]/page.tsx, frontend/components/agents/CharacterEditor.tsx
 - Deps: 1
 

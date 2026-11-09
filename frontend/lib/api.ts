@@ -1381,8 +1381,10 @@ async function apiFetchOnce<T>(path: string, opts: RequestInit, timeoutMs: numbe
         throw new RetryableError(`Server unavailable (${res.status})`);
       }
       const err = await res.json().catch(() => ({ detail: "Request failed" }));
-      const error = new Error(errorDetailText(err.detail, "Request failed")) as Error & { status?: number };
+      const error = new Error(errorDetailText(err.detail, "Request failed")) as Error & { status?: number; detail?: unknown };
       error.status = res.status;
+      // Raw body detail, so forms can place a 422's per-field messages (loc) next to the field.
+      error.detail = err.detail;
       throw error;
     }
     return res.json();
@@ -3956,4 +3958,145 @@ function instantFormsQuery(params: InstantFormRange & { search?: string; page?: 
   }
   const text = query.toString();
   return text ? `?${text}` : "";
+}
+
+// ---------------------------------------------------------------------------
+// Anril Agents (companion characters). Backend: routes/companions.py, behind
+// companions.manage. Example: Astrotamil's "Jothidar AI" character.
+// ---------------------------------------------------------------------------
+
+export type CompanionMood = "calm" | "warm" | "happy" | "concerned" | "encouraging" | "serious";
+export type CompanionStatus = "draft" | "live" | "paused";
+
+export interface Companion {
+  id: string;
+  name: string;
+  industry: "astrology" | "general";
+  role: string;
+  backstory: string;
+  speaking_style: string;
+  sample_lines: string[];
+  goals: string[];
+  temperament: string;
+  default_mood: CompanionMood;
+  language: string;
+  rules: string[];
+  knowledge_tag_id: string | null;
+  memory_level: 1 | 2;
+  memory_engine: "card" | "mem0";
+  history_messages: number;
+  privacy_mode: "A" | "B";
+  status: CompanionStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type CompanionInput = Partial<Omit<Companion, "id" | "created_at" | "updated_at">>;
+
+export interface CompanionApiKey {
+  id: string;
+  key_prefix: string;
+  status: "active" | "revoked";
+  created_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+}
+
+export interface CompanionInstall {
+  companion_id: string;
+  status: CompanionStatus;
+  widget_script_url: string;
+  api_base: string;
+  has_active_key: boolean;
+  snippets: { html: string; python: string; node: string; curl: string };
+}
+
+export interface CompanionToolCall {
+  id: string;
+  name: string;
+  arguments?: Record<string, unknown>;
+}
+
+export interface CompanionReply {
+  status: "done" | "tool_call";
+  text: string | null;
+  mood: string | null;
+  turn_id: string | null;
+  tool_calls: CompanionToolCall[];
+  conversation_id: string;
+  message_id: string | null;
+  /** The model that answered (test chat only). */
+  model?: string | null;
+}
+
+export interface CompanionMemoryFact {
+  id: string;
+  section: "profile" | "people" | "life" | "preferences" | "threads";
+  text: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  status: "active" | "closed";
+  learned_by: string;
+}
+
+export type CompanionMemoryScope = "character" | "business";
+
+/** An error from the API with its HTTP status (409 duplicate name, 422 bad field, ...). */
+export type ApiError = Error & { status?: number; detail?: unknown };
+
+const COMPANIONS = "/api/v1/companions";
+
+export const companionsApi = {
+  list: () => apiFetch<{ companions: Companion[] }>(COMPANIONS).then((r) => r.companions),
+  get: (id: string) => apiFetch<Companion>(`${COMPANIONS}/${id}`),
+  create: (data: CompanionInput & { name: string }) =>
+    apiFetch<Companion>(COMPANIONS, { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, changes: CompanionInput) =>
+    apiFetch<Companion>(`${COMPANIONS}/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+
+  memorySettings: () => apiFetch<{ memory_scope: CompanionMemoryScope }>(`${COMPANIONS}/memory-settings`),
+  setMemorySettings: (memory_scope: CompanionMemoryScope) =>
+    apiFetch<{ memory_scope: CompanionMemoryScope }>(`${COMPANIONS}/memory-settings`, {
+      method: "PUT",
+      body: JSON.stringify({ memory_scope }),
+    }),
+
+  keys: () => apiFetch<{ keys: CompanionApiKey[]; max_active: number }>(`${COMPANIONS}/keys`),
+  createKey: () => apiFetch<CompanionApiKey & { key: string }>(`${COMPANIONS}/keys`, { method: "POST" }),
+  revokeKey: (id: string) => apiFetchNoContent(`${COMPANIONS}/keys/${id}`, { method: "DELETE" }),
+
+  install: (id: string) => apiFetch<CompanionInstall>(`${COMPANIONS}/${id}/install`),
+
+  testChat: (id: string, message: string, opts: { model?: string; use_memory?: boolean } = {}) =>
+    apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
+      method: "POST",
+      body: JSON.stringify({ message, ...opts }),
+    }),
+  continueTestChat: (turn_id: string, results: { id: string; output: unknown }[]) =>
+    apiFetch<CompanionReply>(`${COMPANIONS}/test-chat/continue`, {
+      method: "POST",
+      body: JSON.stringify({ turn_id, results }),
+    }),
+
+  personMemory: (id: string, externalUserId: string) =>
+    apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
+      `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
+    ),
+  deleteFact: (id: string, externalUserId: string, factId: string) =>
+    apiFetchNoContent(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory/${factId}`, {
+      method: "DELETE",
+    }),
+};
+
+/** For 204 responses (no JSON body). Same errors as apiFetch. */
+async function apiFetchNoContent(path: string, opts: RequestInit): Promise<void> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, { ...opts, headers: { ...authHeaders } });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
+    const err = await res.json().catch(() => ({ detail: "Request failed" }));
+    const error = new Error(errorDetailText(err.detail, "Request failed")) as ApiError;
+    error.status = res.status;
+    throw error;
+  }
 }
