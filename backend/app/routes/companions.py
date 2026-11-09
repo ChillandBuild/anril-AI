@@ -5,10 +5,11 @@ Every query is scoped to the caller's tenant_id; another tenant's id answers 404
 No route here lists or reads end users' chats (that belongs to companion-dashboard).
 Remembered facts (Level 2 memory) are readable here only for characters in privacy mode A.
 """
+import asyncio
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,7 @@ from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
 from app.routes.auto_messages import _SlidingWindow
+from app.services import ai_reply
 from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,27 @@ async def create_companion(payload: CompanionSettings, ctx: dict = Depends(requi
         raise HTTPException(status_code=409, detail="You already have a character with that name")
 
 
+def _tenant_model(tenant_id: str) -> tuple[str | None, bool]:
+    """(model name, ready). Ready means the model and its provider's API key are both set."""
+    try:
+        return ai_reply._resolve_provider(tenant_id)[1], True
+    except RuntimeError:
+        pass
+    try:
+        return ai_reply._provider_and_native_model(ai_reply._resolve_reply_model(tenant_id))[1], False
+    except RuntimeError:
+        return None, False
+
+
+@router.get("/overview")
+async def overview(ctx: dict = Depends(require_companions_manage)):
+    """The Agents Overview page: setup checklist inputs and the four stat tiles."""
+    tenant_id = ctx["tenant_id"]
+    counts = await store.overview_counts(tenant_id)
+    model, ready = await asyncio.to_thread(_tenant_model, tenant_id)
+    return {**counts, "model": model, "model_ready": ready}
+
+
 # Declared before /{companion_id} so "memory-settings" is never read as a character id.
 @router.get("/memory-settings")
 async def get_memory_settings(ctx: dict = Depends(require_companions_manage)):
@@ -58,6 +81,27 @@ async def put_memory_settings(payload: MemoryScopeIn, ctx: dict = Depends(requir
     """'character': each character remembers only what it was told. 'business': all characters
     share what the person told any of them (the widget must say so)."""
     return {"memory_scope": await store.set_memory_scope(ctx["tenant_id"], payload.memory_scope)}
+
+
+# --- people (Memories page). DELETE /people/... is declared before /{companion_id} routes. -------
+
+@router.delete("/people/{external_user_id}", status_code=204)
+async def forget_person(external_user_id: str = Path(min_length=1, max_length=200),
+                        ctx: dict = Depends(require_companions_manage)):
+    """"Delete this person": their chats with every character and every remembered fact,
+    business-wide (engine.forget_person). Audited by our person id, never the external id."""
+    tenant_id = ctx["tenant_id"]
+    person = await store.find_end_user(tenant_id, external_user_id)
+    if not person or not await engine.forget_person(tenant_id, external_user_id):
+        raise HTTPException(status_code=404, detail="Person not found")
+    try:
+        record_audit_event(
+            get_supabase(), tenant_id=tenant_id, actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
+            action="tenant.companion_person_forgotten", target_type="companion_end_user",
+            target_id=person["id"], metadata={},
+        )
+    except Exception as exc:
+        logger.warning("companion forget audit failed (%s)", type(exc).__name__)
 
 
 # --- chat API secret keys (Install tab). Declared before /{companion_id} too. --------------------
@@ -224,6 +268,30 @@ async def _readable_character(tenant_id: str, companion_id: UUID) -> dict:
     if row.get("privacy_mode") == "B":
         raise HTTPException(status_code=403, detail=_PRIVATE)
     return row
+
+
+@router.get("/{companion_id}/people")
+async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
+                      limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0, le=100_000),
+                      ctx: dict = Depends(require_companions_manage)):
+    """People this character talked to, newest first. fact_count is None in privacy mode B
+    (the business can't see that character's memory)."""
+    tenant_id = ctx["tenant_id"]
+    row = await store.get_companion(tenant_id, str(companion_id))
+    if not row:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    people, total = await store.list_people(tenant_id, str(companion_id), q, limit, offset)
+    private = row.get("privacy_mode") == "B"
+    return {
+        "people": [
+            {"external_user_id": p["external_user_id"], "display_name": p["display_name"],
+             "fact_count": None if private else p["fact_count"], "message_count": p["message_count"],
+             "last_seen_at": p["last_seen_at"]}
+            for p in people
+        ],
+        "total": total,
+        "privacy_mode": row.get("privacy_mode", "A"),
+    }
 
 
 @router.get("/{companion_id}/people/{external_user_id}/memory")

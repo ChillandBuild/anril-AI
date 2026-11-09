@@ -4048,6 +4048,28 @@ export interface CompanionMemoryFact {
 
 export type CompanionMemoryScope = "character" | "business";
 
+export interface CompanionOverview {
+  characters: number;
+  live_characters: number;
+  /** Real people, not Playground test chats or forgotten people. */
+  people: number;
+  messages_this_week: number;
+  active_keys: number;
+  key_last_used_at: string | null;
+  model: string | null;
+  /** Model and its provider's API key are both set, so characters can answer. */
+  model_ready: boolean;
+}
+
+export interface CompanionPerson {
+  external_user_id: string;
+  display_name: string | null;
+  /** null when the character is in privacy mode B. */
+  fact_count: number | null;
+  message_count: number;
+  last_seen_at: string;
+}
+
 /** An error from the API with its HTTP status (409 duplicate name, 422 bad field, ...). */
 export type ApiError = Error & { status?: number; detail?: unknown };
 
@@ -4060,6 +4082,8 @@ export const companionsApi = {
     apiFetch<Companion>(COMPANIONS, { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, changes: CompanionInput) =>
     apiFetch<Companion>(`${COMPANIONS}/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+
+  overview: () => apiFetch<CompanionOverview>(`${COMPANIONS}/overview`),
 
   memorySettings: () => apiFetch<{ memory_scope: CompanionMemoryScope }>(`${COMPANIONS}/memory-settings`),
   setMemorySettings: (memory_scope: CompanionMemoryScope) =>
@@ -4089,6 +4113,19 @@ export const companionsApi = {
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
       `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
     ),
+  people: (id: string, params: { q?: string; limit?: number; offset?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.q) query.set("q", params.q);
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiFetch<{ people: CompanionPerson[]; total: number; privacy_mode: "A" | "B" }>(
+      `${COMPANIONS}/${id}/people${qs ? `?${qs}` : ""}`,
+    );
+  },
+  /** "Delete this person": chats and facts with every character. */
+  forgetPerson: (externalUserId: string) =>
+    apiFetchNoContent(`${COMPANIONS}/people/${encodeURIComponent(externalUserId)}`, { method: "DELETE" }),
   deleteFact: (id: string, externalUserId: string, factId: string) =>
     apiFetchNoContent(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory/${factId}`, {
       method: "DELETE",

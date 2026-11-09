@@ -65,11 +65,11 @@ Example: drop Porutham guide.pdf, tag "astrology books", Import → Processing s
 
 ## Phase 2: small backend additions
 
-### - [ ] Task 7: Memories (M)
+### - [x] Task 7: Memories (M)
 Example: search "48213" → Karthik, 4 facts, 46 messages; open → facts list + graph; delete one fact; "Delete this person" wipes chats and facts.
-- [ ] GET /companions/{id}/people?q=&limit= returns external id, display name, fact count, message count, last seen (tenant filtered, paged).
-- [ ] DELETE /companions/people/{external_user_id} calls engine.forget_person; audit-logged; 404 for unknown.
-- [ ] Page: list + detail (List / Graph); privacy mode B shows the 403 reason instead of facts.
+- [x] GET /companions/{id}/people?q=&limit= returns external id, display name, fact count, message count, last seen (tenant filtered, paged).
+- [x] DELETE /companions/people/{external_user_id} calls engine.forget_person; audit-logged; 404 for unknown.
+- [x] Page: list + detail (List / Graph); privacy mode B shows the 403 reason instead of facts.
 - Verify: tenant-isolation test for both routes; forget test (rows gone).
 - Files: backend/app/routes/companions.py, backend/app/companion/store.py, backend/tests/test_companion_people.py, frontend/app/dashboard/agents/memories/page.tsx, frontend/lib/api.ts
 - Deps: 1

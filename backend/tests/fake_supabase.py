@@ -187,6 +187,13 @@ class _Query:
         self._single = True
         return self
 
+    def like(self, column, pattern: str):
+        """PostgREST `like`: % is any run of characters, _ is one character (case-sensitive)."""
+        import re
+        regex = re.compile("^" + "".join(".*" if ch == "%" else "." if ch == "_" else re.escape(ch) for ch in pattern) + "$", re.S)
+        return self._add_filter(lambda r: r.get(column) is not None and bool(regex.match(str(r.get(column)))),
+                                null_matches_neither=column)
+
     def in_(self, column, values):
         allowed = set(values)
         return self._add_filter(lambda r: r.get(column) in allowed)

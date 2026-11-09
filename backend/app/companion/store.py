@@ -270,6 +270,98 @@ async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
     await asyncio.to_thread(_q)
 
 
+TEST_PERSON_PATTERN = "owner-test:%"   # the dashboard Playground's person, not a customer
+
+
+async def overview_counts(tenant_id: str) -> dict:
+    """The Overview tiles. Example: 1 live character of 2, 2 people, 3 messages from people this
+    week, 1 active key last used an hour ago. Forgotten people and Playground test chats are left
+    out."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    def _q():
+        db = get_supabase()
+        chars = db.table("companions").select("status").eq("tenant_id", tenant_id).execute().data or []
+        testers = [r["id"] for r in (
+            db.table("companion_end_users").select("id")
+            .eq("tenant_id", tenant_id).like("external_user_id", TEST_PERSON_PATTERN).execute().data or [])]
+        people = (
+            db.table("companion_end_users").select("id", count="exact")
+            .eq("tenant_id", tenant_id).is_("forgotten_at", "null")
+            .not_.like("external_user_id", TEST_PERSON_PATTERN).limit(1).execute())
+        msgs = (db.table("companion_messages").select("id", count="exact")
+                .eq("tenant_id", tenant_id).eq("role", "user").gte("created_at", since))
+        if testers:
+            msgs = msgs.not_.in_("end_user_id", testers)
+        msgs = msgs.limit(1).execute()
+        keys = (
+            db.table("companion_api_keys").select("last_used_at")
+            .eq("tenant_id", tenant_id).eq("status", "active").execute().data or [])
+        used = [k["last_used_at"] for k in keys if k.get("last_used_at")]
+        return {
+            "characters": len(chars),
+            "live_characters": sum(1 for c in chars if c.get("status") == "live"),
+            "people": people.count or 0,
+            "messages_this_week": msgs.count or 0,
+            "active_keys": len(keys),
+            "key_last_used_at": max(used) if used else None,
+        }
+    return await asyncio.to_thread(_q)
+
+
+PEOPLE_SCAN_LIMIT = 5000   # conversations read per character for the Memories list
+
+
+async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int = 25,
+                      offset: int = 0) -> tuple[list[dict], int]:
+    """The people one character talked to, newest first, for the Memories page. Example: Karthik
+    (48213), 4 active facts learned by this character, 46 messages over two conversations.
+    Forgotten people are left out. q matches the external id or display name (case-insensitive).
+    Returns (page, total)."""
+    def _q():
+        db = get_supabase()
+        convs = (
+            db.table("companion_conversations").select("end_user_id, message_count, last_message_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id)
+            .order("last_message_at", desc=True).limit(PEOPLE_SCAN_LIMIT).execute().data or [])
+        stats: dict[str, dict] = {}
+        for c in convs:
+            s = stats.setdefault(c["end_user_id"], {"message_count": 0, "last_seen_at": c["last_message_at"]})
+            s["message_count"] += int(c.get("message_count") or 0)
+            if c["last_message_at"] > s["last_seen_at"]:
+                s["last_seen_at"] = c["last_message_at"]
+        if not stats:
+            return [], 0
+        ids, users = list(stats), []
+        for i in range(0, len(ids), 200):   # keeps each in.(...) filter well under URL limits
+            users += (
+                db.table("companion_end_users").select("id, external_user_id, display_name, forgotten_at")
+                .eq("tenant_id", tenant_id).in_("id", ids[i:i + 200]).execute().data or [])
+        needle = q.strip().lower()
+        people = [
+            {"end_user_id": u["id"], "external_user_id": u["external_user_id"],
+             "display_name": u.get("display_name"), **stats[u["id"]]}
+            for u in users
+            if not u.get("forgotten_at") and (
+                not needle or needle in u["external_user_id"].lower()
+                or needle in (u.get("display_name") or "").lower())
+        ]
+        people.sort(key=lambda p: p["last_seen_at"], reverse=True)
+        page = people[offset:offset + limit]
+        if page:
+            facts = (
+                db.table("companion_memory_facts").select("end_user_id")
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("status", "active")
+                .in_("end_user_id", [p["end_user_id"] for p in page]).execute().data or [])
+            counts: dict[str, int] = {}
+            for f in facts:
+                counts[f["end_user_id"]] = counts.get(f["end_user_id"], 0) + 1
+            for p in page:
+                p["fact_count"] = counts.get(p["end_user_id"], 0)
+        return page, len(people)
+    return await asyncio.to_thread(_q)
+
+
 # --- Level 2 memory: facts, watermarks, tenant settings (migration 249) -------------------------
 
 FACT_SECTIONS = ("profile", "people", "life", "preferences", "threads")
