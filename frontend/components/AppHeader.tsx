@@ -13,6 +13,7 @@ import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useHeaderAccordion } from "@/lib/headerAccordion";
+import { CatalogueHeaderSwitch } from "@/app/dashboard/catalog/CatalogueTabs";
 
 import { cn } from "@/lib/utils";
 
@@ -146,18 +147,15 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/catalog") {
-    let tabLabel = "Items";
-    if (tab === "media") tabLabel = "Media";
-    if (tab === "ai-rules") tabLabel = "AI Rules";
-    if (tab === "insights") tabLabel = "Insights";
+    // The Items / Media / AI Rules / Insights tabs sit in the page toolbar, so the title stays "Catalogue".
     return {
-      title: `Catalogue / ${tabLabel}`,
+      title: "Catalogue",
       description: "Your products, prices and stock — what Anril can recommend and sell.",
     };
   }
   if (pathname === "/dashboard/services") {
     return {
-      title: "Catalogue / Services",
+      title: "Catalogue",
       description: "What you sell in chat: packages, prices, and the details Anril collects before sending the payment link.",
     };
   }
@@ -406,6 +404,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
             </button>
           </div>
         )}
+
+        {(pathname === "/dashboard/catalog" || pathname === "/dashboard/services") && <CatalogueHeaderSwitch />}
 
         {pathname === "/dashboard/outbound-leads" && (
           <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
