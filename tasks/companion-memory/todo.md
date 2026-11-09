@@ -90,8 +90,8 @@ Prem 2026-11-09 correction: "after every reply" was meant for Mem0; the card lea
 - Files: backend/app/companion/memory_sweep.py, backend/app/companion/store.py, backend/app/queue/tasks.py, backend/supabase/migrations/249_companion_memory.sql, tests
 
 ### Checkpoint B: Live (needs Prem's yes to apply 249)
-- [ ] **Apply 249 before any push of this code.** Without it, creating a character fails (memory_engine and history_messages columns) and the nightly job errors.
-- [ ] Re-check the latest migration number, then apply 249. list_tables shows the new tables with RLS on, and pg_policies has 0 rows for them.
+- [x] **Apply 249 before any push of this code.** Applied 2026-11-09 (version 20261109045617), Prem's yes. The T1-T7 code had already reached origin/main before this. Without it, creating a character fails (memory_engine and history_messages columns) and the nightly job errors.
+- [x] Re-check the latest migration number, then apply 249. Live DB was at 248; after 249: 3 tables with RLS on, 0 policies, history_messages default 10, failures default 0. list_tables shows the new tables with RLS on, and pg_policies has 0 rows for them.
 - [ ] Set a Groq key on the UI test tenant. Via make dev-backend: chat with a Level 2 Jothidar, call run_memory_sweep() directly, then confirm the next reply uses the facts and tenant_token_usage gains companion_memory rows.
 
 ## Phase 3: Mem0
