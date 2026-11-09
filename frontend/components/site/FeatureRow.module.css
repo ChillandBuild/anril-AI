@@ -6,6 +6,9 @@
 @media (max-width: 860px) {
   .row { grid-template-columns: minmax(0, 1fr); }
   .flip .txt { order: 0; }
+  .txt { padding: 22px 20px 20px; gap: 12px; }
+  .vis { padding: 16px; }
+  .row h2 { font-size: 1.55rem; }
 }
 .row h2 { font-size: clamp(1.8rem, 3.3vw, 2.7rem); line-height: 1.1; }
 .b { color: var(--body); max-width: 44ch; }
@@ -25,7 +28,7 @@
 .card h3 { font: 700 0.82rem var(--sans); letter-spacing: 0; color: var(--muted); }
 
 .msg { max-width: 84%; padding: 10px 13px; font-size: 0.9rem; }
-.msg small { display: block; font: 500 0.64rem var(--mono); opacity: 0.75; margin-top: 4px; }
+.msg small { display: block; font: 500 0.75rem var(--mono); opacity: 0.75; margin-top: 4px; }
 .in { background: var(--grey); align-self: flex-start; }
 .in small { opacity: 1; color: var(--muted); }
 .out { background: var(--navy); color: var(--white); align-self: flex-end; }
@@ -42,14 +45,14 @@
 .sig:nth-of-type(3) { animation-delay: 2.4s; }
 @keyframes sig { 0% { opacity: 0.25; } 10%, 100% { opacity: 1; } }
 .scoreline { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 6px; }
-.marked { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--navy); }
+.marked { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--navy); }
 
-.chip { font: 700 0.64rem var(--mono); letter-spacing: 0.06em; padding: 4px 9px; background: var(--copper); color: var(--white); }
+.chip { font: 700 0.75rem var(--mono); letter-spacing: 0.06em; padding: 4px 9px; background: var(--copper); color: var(--white); }
 .li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
 .li b { font-weight: 700; }
 .first { border-top: 0; }
 .who { display: flex; align-items: center; gap: 10px; }
-.av { width: 34px; height: 34px; background: var(--navy); color: var(--white); font: 700 0.72rem var(--mono); display: flex; align-items: center; justify-content: center; flex: none; }
+.av { width: 34px; height: 34px; background: var(--navy); color: var(--white); font: 700 0.75rem var(--mono); display: flex; align-items: center; justify-content: center; flex: none; }
 .sc { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; }
 .leadKey { color: var(--teal-d); font-weight: 700; }
 .tcKey { color: var(--copper); font-weight: 700; }

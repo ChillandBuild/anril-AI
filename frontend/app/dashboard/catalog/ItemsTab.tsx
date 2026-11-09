@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Layers, Loader2, Package, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Layers, Loader2, Package, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ItemForm, ITEM_TYPES } from "./ItemForm";
@@ -38,7 +39,7 @@ function StockCell({ item }: { item: CatalogItem }) {
   );
 }
 
-export function ItemsTab({ canManage }: { canManage: boolean }) {
+export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolbarSlot: HTMLElement | null }) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [variantGroups, setVariantGroups] = useState<CatalogVariantGroup[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
@@ -51,6 +52,7 @@ export function ItemsTab({ canManage }: { canManage: boolean }) {
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   const [stockItem, setStockItem] = useState<CatalogItem | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
   const itemsMissingEmbedding = useMemo(
     () => items.filter((item) => item.status === "ready" && !item.embedding).length,
     [items]
@@ -170,54 +172,64 @@ export function ItemsTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-card border border-border bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="font-display text-lg font-bold text-ink">Products</h2>
-          <p className="mt-1 text-sm text-ink-muted">Manage the products, services and media Anril can recommend and sell.</p>
-        </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <label className="relative block md:w-72">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search products"
-              className="h-10 w-full rounded-xl border border-border bg-surface-low pl-9 pr-3 text-sm outline-none transition-colors focus:border-primary"
-            />
-          </label>
-          {canManage && (
-            <>
-              <button
-                type="button"
-                onClick={handleReindex}
-                disabled={isReindexing}
-                className="btn-ghost relative border border-border bg-white text-ink inline-flex items-center justify-center gap-2 self-start md:self-auto h-10 px-4 rounded-xl text-sm transition-colors hover:bg-surface-low disabled:opacity-50"
-                title={
-                  itemsMissingEmbedding > 0
-                    ? `${itemsMissingEmbedding} item(s) aren't indexed yet -- the AI can't reliably find them. Reindex to fix.`
-                    : "Reindex catalog items to refresh AI embeddings"
-                }
-              >
-                {isReindexing ? <Loader2 size={15} className="animate-spin text-ink-muted" /> : <Sparkles size={15} className="text-primary" />}
-                <span>{isReindexing ? "Reindexing..." : "Reindex"}</span>
-                {!isReindexing && itemsMissingEmbedding > 0 && (
-                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold text-white">
-                    {itemsMissingEmbedding}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="btn-primary inline-flex items-center justify-center gap-2 self-start md:self-auto"
-              >
-                <Plus size={16} />
-                Add product
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      {toolbarSlot &&
+        createPortal(
+          <>
+            <label className="relative block w-full sm:w-56">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search products"
+                className="h-9 w-full rounded-xl border border-border bg-surface-low pl-9 pr-3 text-sm outline-none transition-colors focus:border-primary"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowGroups((open) => !open)}
+              aria-expanded={showGroups}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition-colors hover:bg-surface-low",
+                showGroups ? "text-primary" : "text-ink-muted hover:text-ink"
+              )}
+            >
+              <Layers size={14} />
+              <span>Variant groups ({variantGroups.length})</span>
+            </button>
+            {canManage && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleReindex}
+                  disabled={isReindexing}
+                  className="btn-ghost relative border border-border bg-white text-ink inline-flex items-center justify-center gap-2 h-9 px-3 rounded-xl text-sm transition-colors hover:bg-surface-low disabled:opacity-50"
+                  title={
+                    itemsMissingEmbedding > 0
+                      ? `${itemsMissingEmbedding} item(s) aren't indexed yet -- the AI can't reliably find them. Reindex to fix.`
+                      : "Reindex catalog items to refresh AI embeddings"
+                  }
+                >
+                  {isReindexing ? <Loader2 size={15} className="animate-spin text-ink-muted" /> : <Sparkles size={15} className="text-primary" />}
+                  <span>{isReindexing ? "Reindexing..." : "Reindex"}</span>
+                  {!isReindexing && itemsMissingEmbedding > 0 && (
+                    <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold text-white">
+                      {itemsMissingEmbedding}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="btn-primary inline-flex h-9 items-center justify-center gap-2 !py-0"
+                >
+                  <Plus size={16} />
+                  Add product
+                </button>
+              </>
+            )}
+          </>,
+          toolbarSlot
+        )}
 
       {error && (
         <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
@@ -232,85 +244,74 @@ export function ItemsTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      {/* Variant Groups Panel */}
-      <div className="rounded-card border border-border bg-white p-4 shadow-sm">
-        <details className="group">
-          <summary className="flex cursor-pointer items-center justify-between font-display text-base font-bold text-ink list-none">
-            <span className="flex items-center gap-2">
-              <Layers size={18} className="text-primary" />
-              <span>Variant Groups ({variantGroups.length})</span>
-            </span>
-            <span className="text-ink-muted transition-transform group-open:rotate-180">
-              <ChevronDown size={18} />
-            </span>
-          </summary>
-          <div className="mt-4 border-t border-border-subtle pt-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-              <p className="text-sm text-ink-muted">
-                Group variants (e.g. properties in different locations) so Anril can disambiguate them.
-              </p>
-              {canManage && (
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    value={newPanelGroupName}
-                    onChange={(e) => setNewPanelGroupName(e.target.value)}
-                    className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary w-48"
-                    placeholder="New group name"
-                  />
-                  <select
-                    value={newPanelGroupType}
-                    onChange={(e) => setNewPanelGroupType(e.target.value)}
-                    className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary capitalize"
-                  >
-                    {ITEM_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleCreateGroupFromPanel}
-                    disabled={isCreatingGroupFromPanel || !newPanelGroupName.trim()}
-                    className="btn-primary inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs"
-                  >
-                    <Plus size={12} />
-                    Add Group
-                  </button>
-                </div>
-              )}
-            </div>
-            {panelGroupError && <p className="mb-3 text-sm text-danger">{panelGroupError}</p>}
-            {groupsError && (
-              <p className="mb-3 text-sm text-danger">Failed to load variant groups: {groupsError}</p>
-            )}
-            {isLoadingGroups ? (
-              <div className="flex items-center justify-center gap-2 py-4 text-sm text-ink-muted">
-                <Loader2 size={15} className="animate-spin" />
-                Loading variant groups...
-              </div>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {variantGroups.map((group) => {
-                  const count = items.filter((i) => i.variant_group_id === group.id).length;
-                  return (
-                    <div key={group.id} className="rounded-xl border border-border bg-surface-low p-3">
-                      <p className="font-semibold text-ink truncate">{group.name}</p>
-                      <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
-                        <span className="capitalize">{group.item_type}</span>
-                        <span>{count} {count === 1 ? "item" : "items"}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {variantGroups.length === 0 && !groupsError && (
-                  <p className="text-sm text-ink-muted col-span-full text-center py-4">No variant groups created yet.</p>
-                )}
+      {/* Variant Groups Panel -- toggled by the "Variant groups (N)" link in the toolbar */}
+      {showGroups && (
+        <div className="rounded-card border border-border bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+            <p className="text-sm text-ink-muted">
+              Group variants (e.g. properties in different locations) so Anril can disambiguate them.
+            </p>
+            {canManage && (
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={newPanelGroupName}
+                  onChange={(e) => setNewPanelGroupName(e.target.value)}
+                  className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary w-48"
+                  placeholder="New group name"
+                />
+                <select
+                  value={newPanelGroupType}
+                  onChange={(e) => setNewPanelGroupType(e.target.value)}
+                  className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary capitalize"
+                >
+                  {ITEM_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleCreateGroupFromPanel}
+                  disabled={isCreatingGroupFromPanel || !newPanelGroupName.trim()}
+                  className="btn-primary inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs"
+                >
+                  <Plus size={12} />
+                  Add Group
+                </button>
               </div>
             )}
           </div>
-        </details>
-      </div>
+          {panelGroupError && <p className="mb-3 text-sm text-danger">{panelGroupError}</p>}
+          {groupsError && (
+            <p className="mb-3 text-sm text-danger">Failed to load variant groups: {groupsError}</p>
+          )}
+          {isLoadingGroups ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-ink-muted">
+              <Loader2 size={15} className="animate-spin" />
+              Loading variant groups...
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {variantGroups.map((group) => {
+                const count = items.filter((i) => i.variant_group_id === group.id).length;
+                return (
+                  <div key={group.id} className="rounded-xl border border-border bg-surface-low p-3">
+                    <p className="font-semibold text-ink truncate">{group.name}</p>
+                    <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
+                      <span className="capitalize">{group.item_type}</span>
+                      <span>{count} {count === 1 ? "item" : "items"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {variantGroups.length === 0 && !groupsError && (
+                <p className="text-sm text-ink-muted col-span-full text-center py-4">No variant groups created yet.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
         <div className="min-w-[900px]">

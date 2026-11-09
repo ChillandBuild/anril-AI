@@ -3,8 +3,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FeedbackLockGate } from "./FeedbackLockGate";
 import { Sidebar } from "@/components/sidebar";
-import { ProductRail } from "@/components/nav/ProductRail";
-import { useRememberProductPage } from "@/components/nav/products";
+import { useProductAttribute, useRememberProductPage } from "@/components/nav/products";
 import { AgentsSidebar } from "@/components/agents/AgentsSidebar";
 import { AuthRoleProvider } from "./contexts/AuthRoleContext";
 import { ActiveCallProvider } from "./contexts/ActiveCallContext";
@@ -75,9 +74,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // The conversations route renders its own thin inbox rail (Bulkwise-style) and
   // fills the viewport, so we suppress the labeled sidebar + app header there.
   const isInbox = pathname?.startsWith("/dashboard/conversations") ?? false;
-  // Anril Agents pages swap Anril's menu for the Agents menu (the product rail switches between them).
+  // Anril Agents pages swap Anril's menu for the Agents menu (the Sales | Agents switch at the top of each sidebar moves between them).
   const isAgents = pathname === "/dashboard/agents" || (pathname?.startsWith("/dashboard/agents/") ?? false);
   useRememberProductPage(pathname);
+  useProductAttribute(pathname);
 
   useEffect(() => {
     const ping = () => fetch(`${API_URL}/health`, { method: "GET" }).catch(() => {});
@@ -136,7 +136,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 <div className="h-screen bg-background overflow-hidden relative">
                   {/* Collapsed Dashboard Rail (md+) */}
                   <div className="hidden lg:block">
-                    <ProductRail />
                     <Sidebar />
                   </div>
                   {children}
@@ -163,7 +162,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <DashboardAuthGuard>
               <div className="flex min-h-screen overflow-x-clip bg-background">
                 <div className="hidden lg:block">
-                  <ProductRail />
                   {isAgents ? <AgentsSidebar /> : <Sidebar />}
                 </div>
 

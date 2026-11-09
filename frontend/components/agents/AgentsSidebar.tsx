@@ -3,22 +3,32 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AnrilWordmark } from "@/components/logo";
+import { AnrilMarkRow, AnrilWordmark } from "@/components/logo";
+import { SidebarProductSwitch } from "@/components/nav/ProductSwitch";
 import { AGENTS_NAV, isAgentsItemActive, type AgentsNavItem } from "@/components/agents/agentsNav";
 
 /**
- * The Anril Agents menu. Same footprint and curved right edge as Anril's
- * navy sidebar (fixed, --sidebar-width wide, right of the product rail), in
- * the light console colours of the Agents product.
+ * The Anril Agents menu. Same footprint, curved right edge, logo row and
+ * Sales | Agents switch position as Anril's navy sidebar, so switching only
+ * changes colours and the menu (see .sb-agents in globals.css).
  */
 export function AgentsSidebar() {
   const pathname = usePathname() ?? "";
   return (
     <aside
       aria-label="Anril Agents menu"
-      className="swiss-sidebar fixed left-[var(--product-rail-width)] top-0 z-20 flex h-full w-[var(--sidebar-width)] flex-col overflow-y-auto rounded-r-3xl border-r border-[#ededed] bg-[#f5f5f5] px-3 pb-4 pt-[22px]"
+      className="swiss-sidebar sb-agents fixed left-0 top-0 z-20 flex h-full w-[var(--sidebar-width)] flex-col overflow-y-auto rounded-r-3xl px-3 pb-4 pt-[22px]"
     >
-      <AgentsBrand />
+      <div className="flex shrink-0 justify-center px-0.5">
+        <Link
+          href="/dashboard/agents"
+          aria-label="Anril Agents home"
+          className="mx-auto mb-[26px] block w-max shrink-0 px-2.5 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <AnrilMarkRow height={15} accent="#3fbcbf" className="block w-auto overflow-visible text-ink" />
+        </Link>
+      </div>
+      <SidebarProductSwitch className="px-0.5" />
       <AgentsNavList pathname={pathname} />
     </aside>
   );

@@ -11,16 +11,16 @@ export const metadata: Metadata = {
 export default function TermsAndConditionsPage() {
   return (
     <LegalPageShell title="Terms and Conditions" subtitle="Anril — a Bloom Matrix product" effectiveDate="14 June 2026">
-      <p className="text-sm leading-relaxed text-ink-secondary mb-6">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-6">
         Welcome to Anril, a cloud-based multi-tenant SaaS platform — a business-focused sales engagement, customer
         communication, automation, lead management, analytics, telecalling, and AI assistance platform operated by
         Bloom Matrix (&ldquo;Bloom Matrix&rdquo;, &ldquo;Company&rdquo;, &ldquo;we&rdquo;, &ldquo;our&rdquo;, or
         &ldquo;us&rdquo;).
       </p>
-      <p className="text-sm leading-relaxed text-ink-secondary mb-2">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-2">
         By accessing, registering for, or using Anril, you agree to be bound by these Terms and Conditions.
       </p>
-      <p className="text-sm leading-relaxed text-ink-secondary mb-10">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-10">
         If you do not agree to these Terms, you must not access or use Anril.
       </p>
 

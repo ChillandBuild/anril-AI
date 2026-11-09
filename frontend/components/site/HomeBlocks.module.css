@@ -5,6 +5,8 @@
 .figs > p:nth-child(2) .big { color: var(--copper); }
 @media (max-width: 760px) {
   .figs { grid-template-columns: minmax(0, 1fr); }
+  .figs > p { flex-direction: row; align-items: center; gap: 16px; padding: 16px 20px; }
+  .big { font-size: 3rem; min-width: 5.2rem; }
   .figs > p { border-left: 0; border-top: 1px solid var(--line); }
   .figs > p:first-child { border-top: 0; }
 }
@@ -12,7 +14,7 @@
 /* Channel marquee: two identical tracks slide left together, so the join never shows. */
 .chans { padding: 28px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
 .chansHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-inline: clamp(20px, 4vw, 56px); }
-.chans .chansH { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.chans .chansH { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .marquee {
   display: flex; overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
@@ -48,7 +50,7 @@
 .q, .r { font-size: 0.8rem; line-height: 1.4; padding: 7px 10px; }
 .q { background: var(--grey); color: var(--navy); align-self: flex-start; }
 .r { background: var(--navy); color: var(--white); align-self: flex-end; }
-.peek small { font: 500 0.64rem var(--mono); color: var(--muted); }
+.peek small { font: 500 0.75rem var(--mono); color: var(--muted); }
 .tile:hover, .tile:focus-visible { background: var(--wash-2); box-shadow: inset 0 -2px 0 var(--teal); }
 .tile:hover svg, .tile:focus-visible svg { transform: translateY(-2px); }
 .tile:hover .peek, .tile:focus-visible .peek { grid-template-rows: 1fr; opacity: 1; }
@@ -58,18 +60,35 @@
   .r, .peek small { display: none; }
 }
 @media (max-width: 1000px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .tiles { grid-template-columns: minmax(0, 1fr); } .tiles > li:last-child { grid-column: auto; } }
+@media (max-width: 700px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { min-height: 92px; padding: 16px 14px; gap: 8px; }
+  .tname { font-size: 1.15rem; }
+  .peek { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { .tile, .tile svg, .peek { transition: none; } }
 
-.pause { min-height: 44px; padding: 0 14px; background: none; border: 1px solid var(--soft); color: var(--navy); font: 700 0.72rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: border-color 0.2s var(--ease), transform 0.16s var(--ease); }
+.pause { min-height: 44px; padding: 0 14px; background: none; border: 1px solid var(--soft); color: var(--navy); font: 700 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: border-color 0.2s var(--ease), transform 0.16s var(--ease); }
 .pause:hover { border-color: var(--navy); }
 .pause:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) { .pause { display: none; } }
 
+.modHint { display: none; }
 .mods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
 .mods > li { background: var(--white); padding: clamp(20px, 3vw, 32px); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .mods h3 { font: 400 1.5rem var(--serif); line-height: 1.15; color: var(--navy); }
 .mods p { color: var(--body); font-size: 0.95rem; line-height: 1.5; }
 .mods > li:last-child { grid-column: span 2; }
 @media (max-width: 1000px) { .mods { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .mods { grid-template-columns: minmax(0, 1fr); } .mods > li:last-child { grid-column: auto; } }
+@media (max-width: 700px) {
+  .modHint { display: block; margin: 0; font: 600 0.8rem var(--sans); color: var(--muted); }
+  .mods {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    margin-inline: -20px; padding: 2px 20px 18px; scroll-padding-inline: 20px; scrollbar-width: none;
+    background: none; border: 0;
+  }
+  .mods::-webkit-scrollbar { display: none; }
+  .mods > li, .mods > li:last-child { flex: 0 0 78%; scroll-snap-align: start; border: 1px solid var(--line); padding: 18px; gap: 6px; }
+  .mods h3 { font-size: 1.3rem; }
+  .mods p { font-size: 0.95rem; }
+}

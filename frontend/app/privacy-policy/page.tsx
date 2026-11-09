@@ -10,17 +10,17 @@ export const metadata: Metadata = {
 export default function PrivacyPolicyPage() {
   return (
     <LegalPageShell title="Privacy Policy" subtitle="Anril — a Bloom Matrix product" effectiveDate="14 June 2026">
-      <p className="text-sm leading-relaxed text-ink-secondary mb-6">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-6">
         Welcome to Anril (&ldquo;Anril&rdquo;), a cloud-based, multi-tenant Software-as-a-Service (SaaS) platform operated by
         Bloom Matrix. Anril enables businesses to manage customer communications, AI-powered workflows, lead management,
         telecalling, analytics, and integrations with supported third-party communication platforms, including the
         WhatsApp Business Platform, Facebook Messenger, Instagram, and Telegram.
       </p>
-      <p className="text-sm leading-relaxed text-ink-secondary mb-6">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-6">
         This Privacy Policy explains how Bloom Matrix collects, uses, stores, processes, discloses, and protects
         information when businesses access or use Anril and its related services.
       </p>
-      <p className="text-sm leading-relaxed text-ink-secondary mb-10">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-10">
         By accessing, registering for, or using Anril, you acknowledge that you have read, understood, and agreed to the
         practices described in this Privacy Policy.
       </p>

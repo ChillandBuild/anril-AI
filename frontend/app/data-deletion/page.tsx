@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function DataDeletionPage() {
   return (
     <LegalPageShell title="Data Deletion" subtitle="Anril — a Bloom Matrix product" effectiveDate="14 June 2026">
-      <p className="text-sm leading-relaxed text-ink-secondary mb-10">
+      <p className="text-base md:text-sm leading-relaxed text-ink-secondary mb-10">
         This page explains how you can request deletion of personal data associated with your use of Anril, a
         product operated by Bloom Matrix. It applies to Anril business users, their team members, and individuals
         who have interacted with a business through Anril-connected channels (WhatsApp, Instagram, Facebook

@@ -148,6 +148,9 @@ def _fetch_campaign_names(db, tenant_id: str, campaign_ids: list[str]) -> dict[s
     return {row["id"]: row["campaign_name"] for row in (result.data or [])}
 
 
+_KEYWORD_CHUNK = 500  # well under PostgREST's 1000-row response cap
+
+
 def _fetch_first_keywords(db, tenant_id: str, lead_ids: list[str]) -> dict[str, str]:
     """
     For each lead_id, fetch the first inbound message (the CTA keyword/pre-fill text).
@@ -155,23 +158,20 @@ def _fetch_first_keywords(db, tenant_id: str, lead_ids: list[str]) -> dict[str, 
     """
     if not lead_ids:
         return {}
-    # Explicit high limit: PostgREST caps at 1000 rows by default, which would
-    # silently drop keywords for leads beyond that window on large exports.
-    result = (
-        db.table("messages")
-        .select("lead_id,content,created_at")
-        .in_("lead_id", lead_ids)
-        .eq("tenant_id", tenant_id)
-        .eq("direction", "inbound")
-        .order("created_at", desc=False)
-        .limit(50000)
-        .execute()
-    )
+    # One row per lead from a DB function (migration 253). Fetching every
+    # inbound message and keeping the first in Python hit PostgREST's 1000-row
+    # cap, which blanked the NEWEST leads once the page's leads had sent more
+    # than 1000 messages. Chunked so a big CSV export stays under the cap too.
     keyword_map: dict[str, str] = {}
-    for msg in (result.data or []):
-        lid = msg.get("lead_id", "")
-        if lid and lid not in keyword_map:
-            keyword_map[lid] = (msg.get("content") or "").strip()
+    for i in range(0, len(lead_ids), _KEYWORD_CHUNK):
+        rows = db.rpc(
+            "first_inbound_messages",
+            {"p_tenant": tenant_id, "p_lead_ids": lead_ids[i:i + _KEYWORD_CHUNK]},
+        ).execute().data or []
+        for row in rows:
+            lid = row.get("lead_id")
+            if lid:
+                keyword_map[lid] = (row.get("content") or "").strip()
     return keyword_map
 
 
@@ -197,7 +197,9 @@ def _enrich(
             "segment_label": SEGMENT_LABELS.get(lead.get("segment", "C"), "—"),
             "created_at": lead.get("created_at", ""),
             "ad_campaign_id": cid,
-            "campaign_name": campaign_map.get(cid, "Unknown Campaign"),
+            # No campaign id (organic, or an instant form) means no campaign:
+            # "Unknown Campaign" is only for an id we can't find a name for.
+            "campaign_name": campaign_map.get(cid, "Unknown Campaign") if cid else "—",
             "keyword": keyword_map.get(lead.get("id", ""), "—") or "—",
         })
     return enriched

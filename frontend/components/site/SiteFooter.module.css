@@ -11,7 +11,7 @@
 .cta:hover { background: var(--wash-2); }
 .cta:active { transform: scale(0.97); }
 .cols { flex: none; display: flex; gap: 40px clamp(32px, 6vw, 88px); flex-wrap: wrap; }
-.cols h2 { font: 700 0.72rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--copper-l); margin-bottom: 8px; }
+.cols h2 { font: 700 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--copper-l); margin-bottom: 8px; }
 .cols ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .cols a { display: inline-flex; align-items: center; min-height: 44px; color: #C3CFDD; text-decoration: none; transition: color 0.2s var(--ease); }
 .cols a:hover { color: var(--white); text-decoration: underline; text-underline-offset: 4px; }
@@ -23,6 +23,18 @@
 .base a:hover { color: var(--white); }
 .details { border-top: 0; padding-top: 0; color: #C3CFDD; }
 .details address { font-style: normal; display: flex; align-items: center; min-height: 44px; }
-.legalnote { color: #8FA0B6; font-size: 0.78rem; line-height: 1.5; max-width: 80ch; padding-bottom: 12px; }
+.legalnote { color: #8FA0B6; font-size: 0.8rem; line-height: 1.5; max-width: 80ch; padding-bottom: 12px; }
 .social { display: flex; flex-wrap: wrap; gap: 0 20px; list-style: none; margin: 0; padding: 0; }
+/* Phones: two link columns, the Legal column under them across the full width, so no label is ever cut off. */
+@media (max-width: 640px) {
+  .top { gap: 32px; }
+  .lead { flex-basis: 100%; }
+  .cols { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .cols > div { min-width: 0; }
+  .cols > div:first-child { grid-row: span 2; }
+  .cols a { min-height: 40px; }
+  .mark { max-width: 62%; }
+  .base { gap: 0 20px; }
+  .base p, .details address { min-height: 36px; }
+}
 @media (prefers-reduced-motion: reduce) { .cta, .cols a { transition: none; } }

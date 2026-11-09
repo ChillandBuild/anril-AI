@@ -12,6 +12,10 @@
   border: 1px solid transparent;
   transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, padding 0.4s ease, border-radius 0.4s ease;
 }
+/* Over the light home hero: dark ink, no frosted bar yet. */
+.onLight { color: var(--navy); --focus: var(--navy); }
+.onLight .login, .onLight .menuBtn { background: transparent; color: var(--navy); border-color: rgba(10, 21, 40, 0.25); }
+.onLight .cta { background: var(--navy); color: var(--white); }
 .solid { color: var(--navy); --focus: var(--navy); padding: 10px max(0px, calc(var(--hdr-x) - 24px)) 0; }
 .solid .inner {
   padding: 12px 24px; border-radius: 16px;

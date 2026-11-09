@@ -23,7 +23,7 @@
   box-shadow: 0 0 22px 4px color-mix(in srgb, rgba(213, 220, 230, 0.35) calc(var(--night) * 100%), rgba(242, 184, 75, 0.55));
 }
 .office { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, rgba(255, 255, 255, 0.14) calc(var(--night) * 100%), rgba(255, 255, 255, 0.72)); }
-.office span { position: absolute; top: 8px; left: 8px; font: 500 0.7rem var(--mono); color: color-mix(in srgb, #C3CFDD calc(var(--night) * 100%), #3B4A5E); white-space: nowrap; }
+.office span { position: absolute; top: 8px; left: 8px; font: 500 0.75rem var(--mono); color: color-mix(in srgb, #C3CFDD calc(var(--night) * 100%), #3B4A5E); white-space: nowrap; }
 .mark { position: absolute; bottom: 28px; width: 11px; height: 11px; margin-left: -5px; background: #038285; outline: 1px solid rgba(255, 255, 255, 0.75); transition: opacity 0.28s var(--ease), transform 0.28s var(--ease); }
 .late { background: #D9966B; outline-color: rgba(10, 21, 40, 0.45); }
 .wrap[data-live] .mark:not([data-seen]) { opacity: 0; transform: scale(0.3); }
@@ -33,7 +33,8 @@
 
 .wrap:not([data-live]) :is(.sweep, .body) { display: none; }
 
-.hours { display: flex; justify-content: space-between; font: 500 0.74rem var(--mono); color: var(--muted); }
+@media (max-width: 700px) { .sky { height: 120px; } }
+.hours { display: flex; justify-content: space-between; font: 500 0.75rem var(--mono); color: var(--muted); }
 .legend { display: flex; gap: 8px 20px; flex-wrap: wrap; align-items: center; font-size: 0.9rem; color: var(--body); }
 .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--teal); }
 .legend i.lateKey { background: #D9966B; outline: 1px solid rgba(10, 21, 40, 0.3); }

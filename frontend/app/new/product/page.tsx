@@ -21,9 +21,12 @@ export default function ProductPage() {
     <Frame>
       <JsonLd data={breadcrumbSchema([["Products", "/product"]])} />
       <ProductIntro />
-      {FEATURES.map((f, i) => (
-        <FeatureRow key={f.id} feature={f} flip={i % 2 === 1} showPoints linkHref="#demo" linkLabel="See it in a demo" />
-      ))}
+      <p className={ui.swipeHint} aria-hidden="true">Swipe sideways to see all four steps →</p>
+      <div className={ui.swipe} role="region" aria-label="Product features, four steps" tabIndex={0}>
+        {FEATURES.map((f, i) => (
+          <FeatureRow key={f.id} feature={f} flip={i % 2 === 1} showPoints linkHref="#demo" linkLabel="See it in a demo" />
+        ))}
+      </div>
       <BeforeAfter />
       <section className={ui.band} id="channels" aria-labelledby="ch-h">
         <Kicker>Channels</Kicker>

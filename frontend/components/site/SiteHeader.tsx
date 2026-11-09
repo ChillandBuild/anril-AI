@@ -31,7 +31,8 @@ export function SiteHeader() {
   // The home page is served at "/" (rewritten from /new).
   const isHome = pathname === "/";
   const solid = !isHome || scrolled;
-  const cls = [s.hdr, mounted && s.live, solid && s.solid].filter(Boolean).join(" ");
+  // The home hero is light, so at the top of the page the header uses dark ink instead of white.
+  const cls = [s.hdr, mounted && s.live, solid && s.solid, !solid && s.onLight].filter(Boolean).join(" ");
 
   return (
     <header className={cls}>
