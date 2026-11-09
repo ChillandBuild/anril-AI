@@ -80,11 +80,11 @@ Example: search "48213" → Karthik, 4 facts, 46 messages; open → facts list +
 - Files: backend/app/routes/companions.py, backend/tests/test_companion_overview.py, frontend/app/dashboard/agents/page.tsx
 - Deps: 1
 
-### - [ ] Task 9: Playground Search (M)
+### - [x] Task 9: Playground Search (M)
 Example: Knowledge, "lagna" → "Dasha periods explained.pdf · match 0.88"; Memories, Karthik, "lagna" → "Lagnam Kumbham…".
-- [ ] POST /companions/{id}/search {in: knowledge|memories, q, limit, external_user_id?}; knowledge returns chunks with similarity from the character's tag (public wrapper over _semantic_search, same tenant filter); memories returns word-matched facts, no score.
-- [ ] No message text logged; limit capped at 20.
-- [ ] Playground Search tab + Knowledge/Memories toggle; score shown for Knowledge only.
+- [x] POST /companions/{id}/search {in: knowledge|memories, q, limit, external_user_id?}; knowledge returns chunks with similarity from the character's tag (public wrapper over _semantic_search, same tenant filter); memories returns word-matched facts, no score.
+- [x] No message text logged; limit capped at 20.
+- [x] Playground Search tab + Knowledge/Memories toggle; score shown for Knowledge only.
 - Files: backend/app/services/knowledge_service.py, backend/app/routes/companions.py, backend/tests/test_companion_search.py, frontend/components/agents/PlaygroundSearch.tsx
 - Deps: 4
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMs, formatToolCall, parseToolOutput, toolNameError } from "./playground";
+import { formatMs, formatToolCall, parseToolOutput, scoreLabel, toolNameError } from "./playground";
 
 describe("formatToolCall", () => {
   it("shows name and args", () => {
@@ -35,5 +35,14 @@ describe("toolNameError", () => {
     expect(toolNameError("get_chart", [])).toBe("");
     expect(toolNameError("GetChart", [])).not.toBe("");
     expect(toolNameError("get_chart", ["get_chart"])).toBe("That tool is already in the list.");
+  });
+});
+
+describe("scoreLabel", () => {
+  it("shows similarity as a clamped percent", () => {
+    expect(scoreLabel(0.8234)).toBe("82% match");
+    expect(scoreLabel(1.2)).toBe("100% match");
+    expect(scoreLabel(-0.1)).toBe("0% match");
+    expect(scoreLabel(null)).toBe("");
   });
 });

@@ -4,6 +4,7 @@ Uses the service-role client (RLS bypassed), so EVERY query filters on tenant_id
 Sync supabase calls run in a thread so they don't block the event loop.
 """
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 
 from app.companion.models import CompanionSettings
@@ -359,6 +360,60 @@ async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int
             for p in page:
                 p["fact_count"] = counts.get(p["end_user_id"], 0)
         return page, len(people)
+    return await asyncio.to_thread(_q)
+
+
+FACT_SEARCH_SCAN = 2000   # newest facts read per character for the Playground memory search
+_WORD = re.compile(r"\w+", re.UNICODE)
+
+
+def search_words(q: str) -> list[str]:
+    """Lowercase words to match, at most 8, single letters dropped. "Karthik's job?" → ["karthik", "job"]."""
+    words: list[str] = []
+    for w in _WORD.findall(q.lower()):
+        if len(w) > 1 and w not in words:
+            words.append(w)
+    return words[:8]
+
+
+async def search_facts(tenant_id: str, companion_id: str, q: str, limit: int = 10,
+                       end_user_id: str | None = None) -> list[dict]:
+    """Facts this character learned whose text contains any word of q, most words matched first,
+    then newest. Plain word match, no meaning: q "Zoho job" finds "new job at Zoho" but not
+    "works at Infosys". Only this character's own facts; forgotten people are left out."""
+    words = search_words(q)
+    if not words:
+        return []
+
+    def _q():
+        db = get_supabase()
+        query = (db.table("companion_memory_facts").select("end_user_id, section, text, status, created_at")
+                 .eq("tenant_id", tenant_id).eq("companion_id", companion_id))
+        if end_user_id:
+            query = query.eq("end_user_id", end_user_id)
+        facts = query.order("created_at", desc=True).limit(FACT_SEARCH_SCAN).execute().data or []
+        scored = []
+        for f in facts:
+            text = (f.get("text") or "").lower()
+            score = sum(1 for w in words if w in text)
+            if score:
+                scored.append((score, f))
+        scored.sort(key=lambda sf: sf[0], reverse=True)   # stable: newest first within a score
+        hits = [f for _, f in scored[: limit * 2]]   # spare rows in case some people were forgotten
+        ids, users = list({f["end_user_id"] for f in hits}), {}
+        for i in range(0, len(ids), 200):
+            for u in (db.table("companion_end_users").select("id, external_user_id, display_name, forgotten_at")
+                      .eq("tenant_id", tenant_id).in_("id", ids[i:i + 200]).execute().data or []):
+                users[u["id"]] = u
+        out = []
+        for f in hits:
+            u = users.get(f["end_user_id"])
+            if not u or u.get("forgotten_at"):
+                continue
+            out.append({"text": f["text"], "section": f["section"], "status": f["status"],
+                        "learned_at": f.get("created_at"), "external_user_id": u["external_user_id"],
+                        "display_name": u.get("display_name")})
+        return out[:limit]
     return await asyncio.to_thread(_q)
 
 

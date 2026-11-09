@@ -38,3 +38,9 @@ export function toolNameError(name: string, taken: string[]): string {
   if (taken.includes(name)) return "That tool is already in the list.";
   return "";
 }
+
+/** Knowledge search score as a percent. 0.8234 → "82% match"; missing → "". */
+export function scoreLabel(similarity: number | null | undefined): string {
+  if (similarity === null || similarity === undefined || Number.isNaN(similarity)) return "";
+  return `${Math.round(Math.max(0, Math.min(1, similarity)) * 100)}% match`;
+}

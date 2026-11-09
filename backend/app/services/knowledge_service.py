@@ -215,7 +215,7 @@ def _format_excerpts(rows: list[dict]) -> str:
 
 
 async def _semantic_search(
-    db, tenant_id: str, query: str, campaign_tag_id: str | None = None
+    db, tenant_id: str, query: str, campaign_tag_id: str | None = None, match_count: int = _MATCH_COUNT
 ) -> list[dict]:
     """Vector similarity via Jina embeddings + match_knowledge_chunks RPC."""
     from app.services.embeddings import embed_query, to_pgvector
@@ -226,11 +226,36 @@ async def _semantic_search(
         {
             "query_embedding": to_pgvector(q_emb),
             "p_tenant_id": tenant_id,
-            "match_count": _MATCH_COUNT,
+            "match_count": match_count,
             "p_campaign_tag_id": campaign_tag_id,
         },
     ).execute()
     return res.data or []
+
+
+SEARCH_MAX = 20
+
+
+async def search_chunks(
+    tenant_id: str, query: str, campaign_tag_id: str | None = None, limit: int = _MATCH_COUNT
+) -> list[dict]:
+    """Public semantic search for the Agents Playground "Search" tab: the chunks a character
+    would read, best first, each with its similarity and document name. Same tenant filter and
+    tag scope as replies (tagged chunks plus untagged ones). No full-text fallback here: the
+    owner wants to see what matched, not the whole knowledge base. Raises on embedding errors."""
+    db = get_supabase()
+    rows = await _semantic_search(db, tenant_id, query, campaign_tag_id, max(1, min(limit, SEARCH_MAX)))
+    doc_ids = list({r["document_id"] for r in rows if r.get("document_id")})
+    names: dict[str, str] = {}
+    if doc_ids:
+        docs = (db.table("knowledge_documents").select("id, name")
+                .eq("tenant_id", tenant_id).in_("id", doc_ids).execute().data or [])
+        names = {d["id"]: d.get("name") for d in docs}
+    return [
+        {"content": r.get("content") or "", "similarity": r.get("similarity"),
+         "document_name": names.get(r.get("document_id"))}
+        for r in rows
+    ]
 
 
 def _keyword_search(

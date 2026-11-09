@@ -4073,6 +4073,20 @@ export interface CompanionPerson {
 /** An error from the API with its HTTP status (409 duplicate name, 422 bad field, ...). */
 export type ApiError = Error & { status?: number; detail?: unknown };
 
+export type CompanionSearchIn = "knowledge" | "memories";
+export type CompanionKnowledgeHit = { content: string; similarity: number | null; document_name: string | null };
+export type CompanionMemoryHit = {
+  text: string;
+  section: CompanionMemoryFact["section"];
+  status: "active" | "closed";
+  learned_at: string | null;
+  external_user_id: string;
+  display_name: string | null;
+};
+export type CompanionSearchResult =
+  | { in: "knowledge"; results: CompanionKnowledgeHit[] }
+  | { in: "memories"; results: CompanionMemoryHit[] };
+
 const COMPANIONS = "/api/v1/companions";
 
 export const companionsApi = {
@@ -4113,6 +4127,9 @@ export const companionsApi = {
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
       `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
     ),
+  search: (id: string, body: { in: CompanionSearchIn; q: string; limit?: number; external_user_id?: string }) =>
+    apiFetch<CompanionSearchResult>(`${COMPANIONS}/${id}/search`, { method: "POST", body: JSON.stringify(body) }),
+
   people: (id: string, params: { q?: string; limit?: number; offset?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.q) query.set("q", params.q);

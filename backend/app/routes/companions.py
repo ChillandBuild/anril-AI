@@ -11,7 +11,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.companion import engine, install, keys, memory, store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
@@ -19,7 +21,7 @@ from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
 from app.routes.auto_messages import _SlidingWindow
-from app.services import ai_reply
+from app.services import ai_reply, knowledge_service
 from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
@@ -292,6 +294,44 @@ async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
         "total": total,
         "privacy_mode": row.get("privacy_mode", "A"),
     }
+
+
+class SearchIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    in_: Literal["knowledge", "memories"] = Field(alias="in")
+    q: str = Field(min_length=1, max_length=500)
+    limit: int = Field(5, ge=1, le=knowledge_service.SEARCH_MAX)
+    external_user_id: str | None = Field(None, min_length=1, max_length=200)
+
+
+@router.post("/{companion_id}/search")
+async def search(companion_id: UUID, payload: SearchIn, ctx: dict = Depends(require_companions_manage)):
+    """The Playground "Search" tab: what a character would find. Knowledge returns chunks with a
+    similarity score from the character's books tag; memories returns word-matched facts this
+    character learned (privacy mode A only), no score. The query text is never logged."""
+    tenant_id = ctx["tenant_id"]
+    q = payload.q.strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="Type something to search for")
+    if payload.in_ == "knowledge":
+        row = await store.get_companion(tenant_id, str(companion_id))
+        if not row:
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        try:
+            results = await knowledge_service.search_chunks(tenant_id, q, row.get("knowledge_tag_id"), payload.limit)
+        except Exception as exc:
+            logger.warning("companion %s: knowledge search failed (%s)", companion_id, type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Knowledge search isn't available right now. Try again.")
+        return {"in": "knowledge", "results": results}
+    await _readable_character(tenant_id, companion_id)
+    end_user_id = None
+    if payload.external_user_id:
+        person = await store.find_end_user(tenant_id, payload.external_user_id)
+        if not person or person.get("forgotten_at"):
+            raise HTTPException(status_code=404, detail="No one with that user id has talked to your characters")
+        end_user_id = person["id"]
+    results = await store.search_facts(tenant_id, str(companion_id), q, payload.limit, end_user_id)
+    return {"in": "memories", "results": results}
 
 
 @router.get("/{companion_id}/people/{external_user_id}/memory")
