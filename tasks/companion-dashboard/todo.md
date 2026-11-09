@@ -46,11 +46,11 @@ Example: owner types "Kalyanam eppo nadakkum?" as Test person and sees the reply
 - Files: frontend/app/dashboard/agents/playground/page.tsx, frontend/components/agents/PlaygroundChat.tsx, frontend/lib/api.ts
 - Deps: 2
 
-### - [ ] Task 5: Knowledge page, Import style (S)
+### - [x] Task 5: Knowledge page, Import style (S)
 Example: drop Porutham guide.pdf, tag "astrology books", Import → Processing shows it until the document is ready.
-- [ ] Drop zone + browse use the existing upload endpoint with the chosen tag (default: the selected character's tag).
-- [ ] "Facts only" row and "Won't change Anril's Business Description" note; Processing panel polls listDocuments until ready/error.
-- [ ] Tag table: tag, files, read by (characters using it), updated.
+- [x] Drop zone + browse use the existing upload endpoint with the chosen tag (default: the selected character's tag).
+- [x] "Facts only" row and "Won't change Anril's Business Description" note; Processing panel polls listDocuments until ready/error.
+- [x] Tag table: tag, files, read by (characters using it), updated.
 - Files: frontend/app/dashboard/agents/knowledge/page.tsx, frontend/components/agents/ImportCard.tsx
 - Deps: 2
 
