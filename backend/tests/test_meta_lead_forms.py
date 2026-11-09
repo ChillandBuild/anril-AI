@@ -365,3 +365,17 @@ def test_ads_download_merges_ads_newest_first_and_explains_an_empty_result():
          patch("app.services.meta_lead_forms._get", return_value={"data": []}):
         with pytest.raises(svc.InstantFormsError, match="no leads"):
             svc.ads_leads_csv(MagicMock(), TENANT, ["10"], since, until)
+
+
+def test_lead_history_names_each_forms_past_ads_newest_first():
+    from app.routes.instant_forms import _lead_history_by_form
+    db = MagicMock()
+    db.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+        {"form_id": "1", "meta_created_at": "2026-11-09T10:00:00+00:00", "ad_name": "New Leads ad"},
+        {"form_id": "1", "meta_created_at": "2026-11-08T10:00:00+00:00", "ad_name": "Old ad"},
+        {"form_id": "1", "meta_created_at": "2026-11-07T10:00:00+00:00", "ad_name": "New Leads ad"},
+        {"form_id": "2", "meta_created_at": "2026-11-06T10:00:00+00:00", "ad_name": None},
+    ]
+    last, ads = _lead_history_by_form(db, TENANT)
+    assert last == {"1": "2026-11-09T10:00:00+00:00", "2": "2026-11-06T10:00:00+00:00"}
+    assert ads == {"1": ["New Leads ad", "Old ad"]}

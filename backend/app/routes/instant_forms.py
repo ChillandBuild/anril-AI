@@ -195,7 +195,7 @@ async def overview(
     by_form: dict[str, list[dict]] = {}
     for row in rows:
         by_form.setdefault(row["form_id"], []).append(row)
-    last_lead = _last_lead_by_form(db, tenant_id)
+    last_lead, lead_ads = _lead_history_by_form(db, tenant_id)
     ad_names = await asyncio.to_thread(forms_service.ads_by_form, db, tenant_id)
     return {
         "date_from": start,
@@ -210,6 +210,8 @@ async def overview(
                 "created_at": form.get("meta_created_at"),
                 "questions": len(form.get("questions") or []),
                 "ad_names": ad_names.get(form["form_id"], []),
+                # Only for a form no ad uses now: the ads its leads came from.
+                "past_ad_names": [] if ad_names.get(form["form_id"]) else lead_ads.get(form["form_id"], []),
                 "template_id": form.get("template_id"),
                 "template_name": template_names.get(form.get("template_id") or ""),
                 "last_lead_at": last_lead.get(form["form_id"]),
@@ -229,15 +231,21 @@ def _template_names(db, tenant_id: str, ids: set[str]) -> dict[str, str]:
     return {r["id"]: r["name"] for r in rows}
 
 
-def _last_lead_by_form(db, tenant_id: str) -> dict[str, str]:
+def _lead_history_by_form(db, tenant_id: str) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Each form's newest lead time, and the ads its leads came from (newest first).
+    Meta forgets which ad an old form was on; every lead still names its ad."""
     rows = (
-        db.table("meta_form_leads").select("form_id,meta_created_at").eq("tenant_id", tenant_id)
+        db.table("meta_form_leads").select("form_id,meta_created_at,ad_name").eq("tenant_id", tenant_id)
         .order("meta_created_at", desc=True).limit(2000).execute()
     ).data or []
-    out: dict[str, str] = {}
+    last: dict[str, str] = {}
+    ads: dict[str, list[str]] = {}
     for row in rows:
-        out.setdefault(row["form_id"], row["meta_created_at"])
-    return out
+        last.setdefault(row["form_id"], row["meta_created_at"])
+        name = row.get("ad_name")
+        if name and name not in ads.setdefault(row["form_id"], []):
+            ads[row["form_id"]].append(name)
+    return last, ads
 
 
 @router.get("/forms/{form_id}", dependencies=[Depends(require_view)])

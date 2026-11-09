@@ -85,6 +85,15 @@ function FormRow({ form, onOpen }: { form: InstantFormSummary; onOpen: () => voi
             {form.ad_names.length === 1 ? "Ad" : "Ads"}: <span className="font-semibold text-[#0A1528]">{form.ad_names.join(", ")}</span>
           </div>
         )}
+        {!form.ad_names?.length && form.past_ad_names && form.past_ad_names.length > 0 && (
+          <div
+            className="mt-0.5 truncate font-body text-[11px] text-[#475569]"
+            title={`No ad uses this form now. Its leads came from: ${form.past_ad_names.join(", ")}`}
+          >
+            {form.past_ad_names.length === 1 ? "Ad" : "Ads"} (before):{" "}
+            <span className="font-semibold text-[#0A1528]">{form.past_ad_names.join(", ")}</span>
+          </div>
+        )}
         <div className="mt-0.5 font-body text-[11px] text-[#94a3b8]">
           {form.questions} {form.questions === 1 ? "question" : "questions"}
         </div>

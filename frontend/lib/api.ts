@@ -3820,6 +3820,8 @@ export interface InstantFormSummary extends InstantFormStats {
   questions: number;
   /** Ads that use this form, running ones first. */
   ad_names?: string[];
+  /** For a form no ad uses now: the ads its leads came from, newest first. */
+  past_ad_names?: string[];
   template_id: string | null;
   template_name: string | null;
   last_lead_at: string | null;
