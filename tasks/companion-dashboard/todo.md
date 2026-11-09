@@ -38,11 +38,11 @@ Example: owner opens Jothidar AI, changes default mood to warm, picks tag "astro
 - Files: frontend/app/dashboard/agents/keys/page.tsx, .../install/page.tsx, frontend/lib/api.ts
 - Deps: 1
 
-### - [ ] Task 4: Playground chat (S)
+### - [x] Task 4: Playground chat (S)
 Example: owner types "Kalyanam eppo nadakkum?" as Test person and sees the reply, mood and tool calls.
-- [ ] Character picker; chat calls test-chat; a tool_call status shows "asked your app: get_chart(…)" and the owner can answer it by hand (test-chat/continue) or skip.
-- [ ] Draft characters work; paused shows the 409 message.
-- [ ] "This reply" panel: mood, model, reply time (measured in the browser).
+- [x] Character picker; chat calls test-chat; a tool_call status shows "asked your app: get_chart(…)" and the owner can answer it by hand (test-chat/continue) or skip.
+- [x] Draft characters work; paused shows the 409 message.
+- [x] "This reply" panel: mood, model, reply time (measured in the browser).
 - Files: frontend/app/dashboard/agents/playground/page.tsx, frontend/components/agents/PlaygroundChat.tsx, frontend/lib/api.ts
 - Deps: 2
 

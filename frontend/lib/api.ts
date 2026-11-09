@@ -4011,10 +4011,17 @@ export interface CompanionInstall {
   snippets: { html: string; python: string; node: string; curl: string };
 }
 
+/** A tool the business's own app runs, e.g. Astrotamil's get_chart. Sent with each message, never stored. */
+export interface CompanionAppTool {
+  name: string;
+  description: string;
+  parameters?: Record<string, unknown>;
+}
+
 export interface CompanionToolCall {
   id: string;
   name: string;
-  arguments?: Record<string, unknown>;
+  args?: Record<string, unknown>;
 }
 
 export interface CompanionReply {
@@ -4067,7 +4074,7 @@ export const companionsApi = {
 
   install: (id: string) => apiFetch<CompanionInstall>(`${COMPANIONS}/${id}/install`),
 
-  testChat: (id: string, message: string, opts: { model?: string; use_memory?: boolean } = {}) =>
+  testChat: (id: string, message: string, opts: { tools?: CompanionAppTool[]; model?: string; use_memory?: boolean } = {}) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
       method: "POST",
       body: JSON.stringify({ message, ...opts }),
