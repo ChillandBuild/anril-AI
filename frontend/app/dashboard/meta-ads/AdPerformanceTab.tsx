@@ -50,7 +50,7 @@ import {
   type ReportLevel,
 } from "./reportControls";
 import { AdDetailPanel } from "./AdDetailPanel";
-import { MESSAGING_TOTAL_RULES, TotalLabel } from "./TotalLabel";
+import { HoverTip } from "./HoverTip";
 
 type MetricKey =
   | "delivery_status"
@@ -399,6 +399,33 @@ function StatusBadge({ status, lastDelivery }: { status: string | null | undefin
       {idle && <span className="font-semibold">· {idle}</span>}
     </span>
   );
+}
+
+/** How aggregateRows works out each column, in a sentence: the hover tip on a Total cell. */
+const TOTAL_FORMULAS: Partial<Record<MetricKey, string>> = {
+  delivery_status: "Can't be totalled.",
+  budget: "Can't be totalled.",
+  frequency: "Total impressions ÷ total reach.",
+  conversation_rate: "Total messages sent ÷ total chat clicks × 100.",
+  meta_conversation_rate: "Total Meta messaging contacts ÷ total chat clicks × 100.",
+  attribution_gap: "Total messages sent − total Meta messaging contacts.",
+  no_message_rate: "Total no-message clicks ÷ total chat clicks × 100.",
+  cpc: "Total spend ÷ total chat clicks.",
+  cost_per_message: "Total spend ÷ total messages sent.",
+  cost_per_meta_conversation: "Total spend ÷ total messaging conversations started.",
+  ctr: "Total chat clicks ÷ total impressions × 100.",
+  cpm: "Total spend ÷ total impressions × 1,000.",
+  hot_rate: "Total hot leads ÷ total messages sent × 100.",
+  cost_per_hot: "Total spend ÷ total hot leads.",
+};
+
+function totalExplanation(metric: MetricKey, reachEstimated: boolean): string {
+  if (metric === "reach") {
+    return reachEstimated
+      ? "Estimate: Meta couldn't give the exact figure, so each ad's reach is added up. Someone may be counted twice."
+      : "People reached across all the ads, from Meta. Each person counted once, not added up.";
+  }
+  return TOTAL_FORMULAS[metric] ?? "Added up across all the ads.";
 }
 
 function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
@@ -1011,12 +1038,12 @@ export function AdPerformanceTab() {
                       {LEVEL_HEADINGS[level]}
                     </th>
                     {selectedMetrics.map((metric) => (
-                      <th key={metric.key} title={metric.help}
+                      <th key={metric.key}
                         className={cn(
                           "whitespace-nowrap px-4 py-3 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted",
                           TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
                         )}>
-                        {metric.label}
+                        <HoverTip text={metric.help} side="bottom">{metric.label}</HoverTip>
                       </th>
                     ))}
                   </tr>
@@ -1075,14 +1102,16 @@ export function AdPerformanceTab() {
                 <tfoot>
                   <tr className="border-t-2 border-[#e2e8f0] bg-[#f8fafc] font-bold">
                     <td className="sticky left-0 z-10 bg-[#f8fafc] px-4 py-3 text-sm">
-                      <TotalLabel rules={MESSAGING_TOTAL_RULES} /> <span className="ml-1.5 font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
+                      <span className="font-label text-sm font-bold text-on-surface">Total</span> <span className="ml-1.5 font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
                     </td>
                     {selectedMetrics.map((metric) => (
                       <td key={metric.key} className={cn(
                         "whitespace-nowrap px-4 py-3 text-xs tabular-nums",
                         TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
                       )}>
-                        {metric.key === "delivery_status" || metric.key === "budget" ? "—" : metricValue(metric.key, totals)}
+                        <HoverTip text={totalExplanation(metric.key, Boolean(totals.reach_estimated))}>
+                          {metric.key === "delivery_status" || metric.key === "budget" ? "—" : metricValue(metric.key, totals)}
+                        </HoverTip>
                         {metric.key === "messages" && channelSplit(totals.messages_by_channel) && (
                           <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(totals.messages_by_channel)}</span>
                         )}

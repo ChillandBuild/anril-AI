@@ -95,6 +95,36 @@ export function computeTotals(
   return { values, reachEstimated };
 }
 
+/** How computeTotals works out each column, in a sentence: the hover tip on a Total cell. */
+const TOTAL_FORMULAS: Record<string, string> = {
+  spend: "Added up across all the ads.",
+  purchase_value: "Added up across all the ads.",
+  frequency: "Total impressions ÷ total reach.",
+  cpm: "Total spend ÷ total impressions × 1,000.",
+  cost_per_inline_link_click: "Total spend ÷ total link clicks.",
+  inline_link_click_ctr: "Total link clicks ÷ total impressions × 100.",
+  ctr: "Total clicks ÷ total impressions × 100.",
+  cpc: "Total spend ÷ total clicks.",
+  results: "Added up when every ad has the same result type. Different types show —.",
+  result_type: "Shown when every ad has the same result type. Different types show —.",
+  cost_per_result: "Total spend ÷ total results. Different result types show —.",
+  cost_per_messaging_conversation: "Total spend ÷ total messaging conversations started.",
+  cost_per_lead: "Total spend ÷ total leads.",
+  purchase_roas: "Total purchase value ÷ total spend.",
+};
+
+export function totalExplanation(field: MetaField, reachEstimated: boolean): string {
+  if (field.key === "reach") {
+    return reachEstimated
+      ? "Estimate: Meta couldn't give the exact figure, so each ad's reach is added up. Someone may be counted twice."
+      : "People reached across all the ads, from Meta. Each person counted once, not added up.";
+  }
+  if (field.key in TOTAL_FORMULAS) return TOTAL_FORMULAS[field.key];
+  if (field.key === "unique_clicks") return "Can't be added up: one person may click several ads.";
+  if (field.format === "number") return "Added up across all the ads.";
+  return "Can't be totalled.";
+}
+
 /** Excel shows 18-digit Meta ids as 1.20255E+17 and drops the last digits; this
  * formula keeps them as text. Google Sheets reads it the same way. */
 function excelText(value: string): string {

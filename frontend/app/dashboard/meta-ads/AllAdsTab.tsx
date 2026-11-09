@@ -25,8 +25,9 @@ import { useAllAdsTotalReach, useAllMetaAds, useMetaFieldCatalog, useReachByLeve
 import { api } from "@/lib/api";
 import type { AllAdsParams, AllAdsRow, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { buildAllAdsCsv, computeTotals, fieldsToFetch } from "./allAdsReport";
-import { ALL_ADS_TOTAL_RULES, TotalLabel } from "./TotalLabel";
+import { buildAllAdsCsv, computeTotals, fieldsToFetch, totalExplanation } from "./allAdsReport";
+import { HoverTip } from "./HoverTip";
+import { fieldHelp } from "./metaFieldHelp";
 import {
   AdTypeBadge,
   BreakdownSelect,
@@ -403,13 +404,12 @@ export function AllAdsTab() {
           {columnFields.map((field) => (
             <th
               key={field.key}
-              title={`${field.group}: ${field.label}`}
               className={cn(
                 "whitespace-nowrap px-4 py-3 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted",
                 NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
               )}
             >
-              {field.label}
+              <HoverTip text={fieldHelp(field)} side="bottom">{field.label}</HoverTip>
             </th>
           ))}
         </tr>
@@ -496,7 +496,7 @@ export function AllAdsTab() {
       <tfoot>
         <tr className="border-t-2 border-[#e2e8f0] bg-[#f8fafc] font-bold">
           <td className="sticky left-0 z-10 border-r border-[#eef2f6] bg-[#f8fafc] px-4 py-3 text-left">
-            <TotalLabel rules={ALL_ADS_TOTAL_RULES} />
+            <span className="font-label text-sm font-bold text-on-surface">Total</span>
             <span className="ml-2 font-body text-[11px] font-normal text-on-surface-muted">
               {filteredAdIds.length} {filteredAdIds.length === 1 ? "ad" : "ads"}
             </span>
@@ -513,8 +513,10 @@ export function AllAdsTab() {
                   NUMERIC_FORMATS.has(field.format) ? "text-right" : "text-left",
                 )}
               >
-                {estimated && value != null ? "≈ " : ""}
-                {cellValue(value, field)}
+                <HoverTip text={totalExplanation(field, totals.reachEstimated)}>
+                  {estimated && value != null ? "≈ " : ""}
+                  {cellValue(value, field)}
+                </HoverTip>
               </td>
             );
           })}
