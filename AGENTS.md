@@ -3,8 +3,8 @@
 ## Core Commands
 - **Backend Dev**: `make dev-backend` (safe mode: scheduler paused, outbound dry-run). No `make` on the Windows machine: run `bash scripts/dev-backend.sh` (same thing). Never plain `uvicorn` on a laptop — it shares the live DB, so the scheduler would message real leads.
 - **Backend Build/Deps**: `cd backend && pip install -r requirements.txt`
-- **Backend Test**: `cd backend && python -m pytest` (runs tests under `backend/tests/`). Use `python -m pytest`, not bare `pytest` — several test modules import `app.*` without adding the backend dir to `sys.path`, so bare `pytest` fails at collection.
-- **Frontend Dev**: `cd frontend && npm run dev`
+- **Backend Test**: `cd backend && python -m pytest` (runs tests under `backend/tests/`). Use `python -m pytest`, not bare `pytest` — several test modules import `app.*` without adding the backend dir to `sys.path`, so bare `pytest` fails at collection. On Windows: `PYTHONUTF8=1 python -m pytest`. Why: [stack-and-rules.md § Running the Backend Tests](.agents/context/stack-and-rules.md).
+- **Frontend Dev**: `cd frontend && npm run dev`. On Windows PowerShell, the current script's Unix-style `NODE_OPTIONS=...` prefix fails; use `$env:NODE_OPTIONS='--no-experimental-vm-modules'; npx next dev` instead.
 - **Frontend Build**: `cd frontend && npm run build`
 - **Frontend Typecheck**: `cd frontend && npm run typecheck`
 - **Frontend Lint**: `cd frontend && npm run lint`
@@ -26,16 +26,20 @@
 
 - Bug, error, "it stopped working" → find the root cause before any fix;
   a regression test that fails before the fix and passes after.
-- New feature or idea → write the plan → show the plan and wait for approval → build.
+- New feature, idea or behavior change → ask one question at a time until ~95% sure what the user
+  wants (glossary of Prem's terms: [.agents/context/prem-glossary.md](.agents/context/prem-glossary.md));
+  a fully specified one-liner skips this. Then write the plan → show the plan and wait for approval → build.
 - UI change → review the design in the plan before building; after building, run a UI QA pass
   as the UI test tenant — on the live site, or locally. Local backend ONLY via `make dev-backend`
   (plain uvicorn would run the scheduler and message real leads from the live DB; see
   subsystem-notes.md). Point the local frontend at it with NEXT_PUBLIC_API_URL=http://localhost:8000.
-- Auth, webhooks, payments, RLS → also a security review.
+- Auth, webhooks, payments, RLS → also a security review against
+  [.agents/context/security-checklist.md](.agents/context/security-checklist.md); never hand these
+  (or migrations) to a cheaper helper model. Anything irreversible → stop and double-check first.
 - Before any commit → run the checks that fit the change (review the diff, `python -m pytest` for
   backend, typecheck + lint for frontend), without asking. Do NOT repeat a check that already passed on the same
   code: if no code or test file changed since the last passing run, or the change is docs/config only, skip it and
-  just commit. Push only when the user says so.
+  just commit. Commit to `main`, no branch. Push only when the user says so.
 - Before finishing → `git fetch`, check `HEAD..origin/main` for teammate commits on the
   same files; if any, rebase and re-run the tests.
 - Weekly → a short retro: what shipped, what broke.
@@ -65,3 +69,8 @@ To prevent context dilution, general invariants and rules have been split into m
 7.  **AI Reply Master Prompt**:
     *   Location: [docs/whatsapp-master-prompt.md](docs/whatsapp-master-prompt.md)
     *   Read when: Touching `_build_base_prompt()` / `ai_reply.py`'s prompt assembly — this is the canonical text.
+
+## Project conventions
+- Customer-facing copy says "Anril", never "Aira" (the repo and code still say Aira).
+- Issues: GitHub Issues for `ChillandBuild/anril-AI` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+- Domain docs: single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.

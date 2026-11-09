@@ -1,13 +1,14 @@
 # Getting Meta's approval for Instant form leads
 
-Anril reads Instant form leads with two Meta permissions it doesn't have yet. This guide takes you from "not allowed" to "approved", click by click.
+Anril reads Instant form leads with three Meta permissions that need approval. This guide takes you from "not allowed" to "approved", click by click.
 
 | Permission | Why Anril needs it | What Meta said without it (live test, 9 Nov 2026) |
 |---|---|---|
 | `leads_retrieval` | Read the answers a person typed into the form | — |
 | `pages_manage_ads` | List the Page's forms | "(#200) Requires pages_manage_ads permission to manage the object" |
+| `pages_read_engagement` | Meta lists it as required to read leads | Leads came back as an empty list with no error (live test, 10 Nov 2026, with the other two granted) |
 
-Anril already has `pages_manage_metadata`, which lets it subscribe the Page to new-lead notifications, and `pages_show_list` / `pages_read_engagement`.
+Anril already has `pages_manage_metadata`, which lets it subscribe the Page to new-lead notifications, and `pages_show_list`. It does **not** have `pages_read_engagement` on connected Pages (checked 10 Nov 2026), so it is in the list above.
 
 **Meta app:** ANRIL AI, App ID `2225044871604460`
 **Login setup Anril uses to connect a Page:** Facebook Login for Business configuration `2226622718102220`
@@ -51,7 +52,7 @@ Without this, Meta never tells Anril about a new lead, even when everything else
 1. App dashboard → left menu **Facebook Login for Business** → **Configurations**.
 2. Open the configuration with ID **2226622718102220**. This is the one the *Connect Facebook Page* button uses.
 3. Click **Edit** and go to the **Permissions** step.
-4. Tick **leads_retrieval** and **pages_manage_ads**. Leave everything already ticked as it is.
+4. Tick **leads_retrieval**, **pages_manage_ads** and **pages_read_engagement**. Leave everything already ticked as it is.
 5. **Save**. The configuration ID stays the same, so no code change is needed.
 
 ---
@@ -112,7 +113,7 @@ Save it as an MP4 under 100 MB.
 ## Step 5 — Submit for review (15 minutes)
 
 1. App dashboard → **App Review** → **Permissions and Features**.
-2. Search **leads_retrieval** → **Request advanced access**. Do the same for **pages_manage_ads**. Both go into the same submission.
+2. Search **leads_retrieval** → **Request advanced access**. Do the same for **pages_manage_ads** and **pages_read_engagement**. All three go into the same submission.
    - If Meta marks another permission as *required* for these (for example `ads_management`), add it to the same submission.
 3. Fill each request. The text below is ready to paste; replace CAPS words.
 
@@ -121,6 +122,9 @@ Save it as an MP4 under 100 MB.
 
 **pages_manage_ads: "How will your app use this permission?"**
 > Anril uses pages_manage_ads only to read the list of Instant Forms on the business's connected Page (GET /{page-id}/leadgen_forms): form name, status and questions. The business sees these forms in Anril, picks which WhatsApp template each form should send, and maps template blanks to form questions. Anril does not create, edit or delete forms or ads.
+
+**pages_read_engagement: "How will your app use this permission?"**
+> Anril uses pages_read_engagement only as Meta's required companion to leads_retrieval: it reads the connected Page's basic details (name, id) and lets Anril read the leads submitted through that Page's Instant Forms. Anril does not read, post or reply to the Page's posts or comments.
 
 **Testing instructions for the reviewer** (in the same form):
 > 1. Go to https://YOUR-ANRIL-DOMAIN/login and sign in with REVIEWER-EMAIL / REVIEWER-PASSWORD.
