@@ -2,14 +2,17 @@
 import { usePathname, useRouter } from "next/navigation";
 import { MessageCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { productHref, productOf, readLastPaths, type Product } from "@/components/nav/products";
+import { canSeeAgents, productHref, productOf, readLastPaths, type Product } from "@/components/nav/products";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 
 /**
  * The thin strip at the far left of every dashboard page (lg and up): one
  * button per product. Its width is --product-rail-width (globals.css), which
  * the sidebars, header and inbox add to their left offset.
  */
-export function ProductRail({ showAgents = true }: { showAgents?: boolean }) {
+export function ProductRail() {
+  const { role, permissions } = useAuthRole();
+  const showAgents = canSeeAgents(role, permissions);
   const pathname = usePathname() ?? "/dashboard";
   const router = useRouter();
   const current = productOf(pathname);

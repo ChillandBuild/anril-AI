@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { productHref, productOf, PRODUCT_HOME } from "./products";
+import { canSeeAgents, productHref, productOf, PRODUCT_HOME } from "./products";
 
 describe("productOf", () => {
   it("puts /dashboard/agents and its pages in Agents", () => {
@@ -42,3 +42,15 @@ describe("productHref", () => {
   });
 });
 
+
+describe("canSeeAgents", () => {
+  it("lets the owner and roles with companions.manage in", () => {
+    expect(canSeeAgents("owner", [])).toBe(true);
+    expect(canSeeAgents("caller", ["companions.manage"])).toBe(true);
+  });
+
+  it("keeps everyone else out, settings.manage alone included", () => {
+    expect(canSeeAgents("caller", ["settings.manage"])).toBe(false);
+    expect(canSeeAgents(null, [])).toBe(false);
+  });
+});

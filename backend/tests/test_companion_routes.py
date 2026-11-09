@@ -17,7 +17,7 @@ def env(monkeypatch):
     ctx = {"tenant_id": "t1", "user_id": "u1", "role": "owner"}
     app = FastAPI()
     app.include_router(companions.router, prefix=BASE)
-    app.dependency_overrides[companions.require_settings_manage] = lambda: ctx
+    app.dependency_overrides[companions.require_companions_manage] = lambda: ctx
     return type("Env", (), {"client": TestClient(app), "db": fake, "ctx": ctx})
 
 

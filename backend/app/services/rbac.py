@@ -41,6 +41,7 @@ PERMISSION_CATALOG: list[dict] = [
     {"key": "roles.manage", "label": "Manage users and roles", "group": "Admin"},
     {"key": "settings.view", "label": "View settings", "group": "Admin"},
     {"key": "settings.manage", "label": "Manage settings", "group": "Admin"},
+    {"key": "companions.manage", "label": "Manage Anril Agents (characters, keys, memories)", "group": "AI"},
     {"key": "telecalling.dialer.view", "label": "View dialer", "group": "Telecalling"},
     {"key": "telecalling.dialer", "label": "Use dialer", "group": "Telecalling"},
     {"key": "telecalling.upload.view", "label": "View call list uploads", "group": "Telecalling"},

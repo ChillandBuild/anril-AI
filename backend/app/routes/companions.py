@@ -1,4 +1,4 @@
-"""Settings for Aira Companion characters (dashboard login, settings.manage).
+"""Settings for Aira Companion characters (dashboard login, companions.manage).
 
 A tenant can run several characters, e.g. Astrotamil's "Jothidar AI" and "Vastu Guru".
 Every query is scoped to the caller's tenant_id; another tenant's id answers 404.
@@ -22,7 +22,7 @@ from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-require_settings_manage = require_permission("settings.manage")
+require_companions_manage = require_permission("companions.manage")
 
 _NOT_FOUND = "Character not found"
 
@@ -33,12 +33,12 @@ async def _check_tag(tenant_id: str, tag_id: str | None) -> None:
 
 
 @router.get("")
-async def list_companions(ctx: dict = Depends(require_settings_manage)):
+async def list_companions(ctx: dict = Depends(require_companions_manage)):
     return {"companions": await store.list_companions(ctx["tenant_id"])}
 
 
 @router.post("", status_code=201)
-async def create_companion(payload: CompanionSettings, ctx: dict = Depends(require_settings_manage)):
+async def create_companion(payload: CompanionSettings, ctx: dict = Depends(require_companions_manage)):
     tenant_id = ctx["tenant_id"]
     await _check_tag(tenant_id, str(payload.knowledge_tag_id) if payload.knowledge_tag_id else None)
     try:
@@ -49,12 +49,12 @@ async def create_companion(payload: CompanionSettings, ctx: dict = Depends(requi
 
 # Declared before /{companion_id} so "memory-settings" is never read as a character id.
 @router.get("/memory-settings")
-async def get_memory_settings(ctx: dict = Depends(require_settings_manage)):
+async def get_memory_settings(ctx: dict = Depends(require_companions_manage)):
     return {"memory_scope": await store.get_memory_scope(ctx["tenant_id"])}
 
 
 @router.put("/memory-settings")
-async def put_memory_settings(payload: MemoryScopeIn, ctx: dict = Depends(require_settings_manage)):
+async def put_memory_settings(payload: MemoryScopeIn, ctx: dict = Depends(require_companions_manage)):
     """'character': each character remembers only what it was told. 'business': all characters
     share what the person told any of them (the widget must say so)."""
     return {"memory_scope": await store.set_memory_scope(ctx["tenant_id"], payload.memory_scope)}
@@ -87,13 +87,13 @@ def _key_rate_check(tenant_id: str) -> None:
 
 
 @router.get("/keys")
-async def list_keys(ctx: dict = Depends(require_settings_manage)):
+async def list_keys(ctx: dict = Depends(require_companions_manage)):
     return JSONResponse(content={"keys": await store.list_api_keys(ctx["tenant_id"]),
                                  "max_active": keys.MAX_ACTIVE_KEYS}, headers=_NO_STORE)
 
 
 @router.post("/keys", status_code=201)
-async def create_key(ctx: dict = Depends(require_settings_manage)):
+async def create_key(ctx: dict = Depends(require_companions_manage)):
     """The full key is in this response only. At most 2 active keys, so the owner can rotate."""
     tenant_id = ctx["tenant_id"]
     _key_rate_check(tenant_id)
@@ -107,7 +107,7 @@ async def create_key(ctx: dict = Depends(require_settings_manage)):
 
 
 @router.delete("/keys/{key_id}", status_code=204)
-async def revoke_key(key_id: UUID, ctx: dict = Depends(require_settings_manage)):
+async def revoke_key(key_id: UUID, ctx: dict = Depends(require_companions_manage)):
     """Takes effect on the next request: the API and every widget signed with it stop working."""
     tenant_id = ctx["tenant_id"]
     _key_rate_check(tenant_id)
@@ -118,7 +118,7 @@ async def revoke_key(key_id: UUID, ctx: dict = Depends(require_settings_manage))
 
 
 @router.get("/{companion_id}")
-async def get_companion(companion_id: UUID, ctx: dict = Depends(require_settings_manage)):
+async def get_companion(companion_id: UUID, ctx: dict = Depends(require_companions_manage)):
     row = await store.get_companion(ctx["tenant_id"], str(companion_id))
     if not row:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
@@ -127,7 +127,7 @@ async def get_companion(companion_id: UUID, ctx: dict = Depends(require_settings
 
 @router.patch("/{companion_id}")
 async def update_companion(companion_id: UUID, payload: CompanionUpdate,
-                           ctx: dict = Depends(require_settings_manage)):
+                           ctx: dict = Depends(require_companions_manage)):
     tenant_id = ctx["tenant_id"]
     current = await store.get_companion(tenant_id, str(companion_id))
     if not current:
@@ -177,7 +177,7 @@ _EXPECTED = (engine.CompanionError, ToolsInvalid)
 
 
 @router.post("/test-chat/continue")
-async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_settings_manage)):
+async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_companions_manage)):
     """The owner types the tool result by hand (playing the app) and the reply finishes."""
     try:
         result = await engine.continue_reply(str(payload.turn_id), ctx["tenant_id"], payload.results)
@@ -187,7 +187,7 @@ async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_se
 
 
 @router.post("/{companion_id}/test-chat")
-async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends(require_settings_manage)):
+async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends(require_companions_manage)):
     """The owner chats with a character from the dashboard. Stored as person "owner-test:<user_id>",
     so it never mixes with a real end user's history."""
     message = payload.message.strip()
@@ -202,7 +202,7 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
 
 
 @router.get("/{companion_id}/install")
-async def get_install(companion_id: UUID, ctx: dict = Depends(require_settings_manage)):
+async def get_install(companion_id: UUID, ctx: dict = Depends(require_companions_manage)):
     """The Install tab: copy-paste widget and server code for this character, plus key status."""
     tenant_id = ctx["tenant_id"]
     row = await store.get_companion(tenant_id, str(companion_id))
@@ -228,7 +228,7 @@ async def _readable_character(tenant_id: str, companion_id: UUID) -> dict:
 
 @router.get("/{companion_id}/people/{external_user_id}/memory")
 async def list_person_memory(companion_id: UUID, external_user_id: str = ExternalUserId,
-                             ctx: dict = Depends(require_settings_manage)):
+                             ctx: dict = Depends(require_companions_manage)):
     """What the character remembers about one person (privacy mode A only)."""
     tenant_id = ctx["tenant_id"]
     await _readable_character(tenant_id, companion_id)
@@ -238,7 +238,7 @@ async def list_person_memory(companion_id: UUID, external_user_id: str = Externa
 
 @router.delete("/{companion_id}/people/{external_user_id}/memory/{fact_id}", status_code=204)
 async def delete_person_fact(companion_id: UUID, fact_id: UUID, external_user_id: str = ExternalUserId,
-                             ctx: dict = Depends(require_settings_manage)):
+                             ctx: dict = Depends(require_companions_manage)):
     tenant_id = ctx["tenant_id"]
     await _readable_character(tenant_id, companion_id)
     if not await memory.forget_fact(tenant_id, str(companion_id), external_user_id, str(fact_id)):

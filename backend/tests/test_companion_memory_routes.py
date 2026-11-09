@@ -20,7 +20,7 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     app = FastAPI()
     app.include_router(companions.router, prefix=BASE)
-    app.dependency_overrides[companions.require_settings_manage] = lambda: {
+    app.dependency_overrides[companions.require_companions_manage] = lambda: {
         "tenant_id": "t1", "user_id": "u1", "role": "owner"}
     j = fake.add("companions", tenant_id="t1", name="Jothidar AI", status="live", privacy_mode="A")
     karthik = fake.add("companion_end_users", tenant_id="t1", external_user_id="astro-123")

@@ -1,13 +1,18 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { productHref, productOf, readLastPaths, type Product } from "@/components/nav/products";
+import { canSeeAgents, productHref, productOf, readLastPaths, type Product } from "@/components/nav/products";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 
 /** "Anril | Agents" switch at the top of the phone drawers, where the rail is hidden. */
 export function ProductSwitch({ onSwitch }: { onSwitch?: () => void }) {
   const pathname = usePathname() ?? "/dashboard";
   const router = useRouter();
   const current = productOf(pathname);
+  const { role, permissions } = useAuthRole();
+
+  // Without Anril Agents there is only one product: no switch.
+  if (!canSeeAgents(role, permissions)) return null;
 
   const go = (target: Product) => {
     onSwitch?.();

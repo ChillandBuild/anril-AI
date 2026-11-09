@@ -222,7 +222,7 @@ def test_purpose_reaches_the_provider(monkeypatch):
 def client(env):
     app = FastAPI()
     app.include_router(companions.router, prefix="/api/v1/companions")
-    app.dependency_overrides[companions.require_settings_manage] = \
+    app.dependency_overrides[companions.require_companions_manage] = \
         lambda: {"tenant_id": "t1", "user_id": "u1", "role": "owner"}
     return TestClient(app)
 

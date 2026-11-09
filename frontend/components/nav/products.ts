@@ -35,6 +35,11 @@ export function productHref(
   return PRODUCT_HOME[target];
 }
 
+/** Who sees Anril Agents: the owner, or a role with companions.manage. */
+export function canSeeAgents(role: string | null, permissions: readonly string[]): boolean {
+  return role === "owner" || permissions.includes("companions.manage");
+}
+
 export function readLastPaths(): Partial<Record<Product, string>> {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);

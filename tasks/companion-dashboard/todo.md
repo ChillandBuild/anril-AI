@@ -16,10 +16,10 @@ Example: the Astrotamil owner is on Inbound Leads, clicks ✦ Agents on the rail
 - Before starting: pull origin/main (keerthi-sarav's AppHeader.tsx change).
 - Deps: none
 
-### - [ ] Task 1b: companions.manage permission key (M)
-- [ ] companions.manage exists in PERMISSION_CATALOG, ACCESS_MODULES (Roles page), and gates the rail's Agents icon, the MoreMenu switch and every routes/companions.py route (replacing settings.manage).
-- [ ] A user without the key sees only Anril on the rail; typing /dashboard/agents sends them to /dashboard.
-- [ ] Migration 251 grants companions.manage to every role that has settings.manage (written, NOT applied until Prem says yes).
+### - [x] Task 1b: companions.manage permission key (M)
+- [x] companions.manage exists in PERMISSION_CATALOG, ACCESS_MODULES (Roles page), and gates the rail's Agents icon, the MoreMenu switch and every routes/companions.py route (replacing settings.manage).
+- [x] A user without the key sees only Anril on the rail; typing /dashboard/agents sends them to /dashboard.
+- [x] Migration 251 grants companions.manage to every role that has settings.manage (written, NOT applied until Prem says yes).
 - Verify: route-guard test (a role without the key gets 403); backend suite.
 - Files: backend/app/services/rbac.py, backend/app/routes/companions.py, backend/tests/test_companion_permission.py, backend/supabase/migrations/251_companions_permission.sql, frontend/app/dashboard/roles/page.tsx, frontend/components/nav/ProductRail.tsx, frontend/components/MoreMenu.tsx
 - Deps: 1
