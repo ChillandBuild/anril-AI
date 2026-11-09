@@ -74,9 +74,9 @@ Example: search "48213" → Karthik, 4 facts, 46 messages; open → facts list +
 - Files: backend/app/routes/companions.py, backend/app/companion/store.py, backend/tests/test_companion_people.py, frontend/app/dashboard/agents/memories/page.tsx, frontend/lib/api.ts
 - Deps: 1
 
-### - [ ] Task 8: Overview (S)
-- [ ] GET /companions/overview: live characters, people, messages this week, active keys, tenant model name.
-- [ ] Page: setup checklist (character live → key created → seen on your site via key last_used_at) + 4 stat tiles + Copy prompt.
+### - [x] Task 8: Overview (S)
+- [x] GET /companions/overview: live characters, people, messages this week, active keys, tenant model name.
+- [x] Page: setup checklist (character live → key created → seen on your site via key last_used_at) + 4 stat tiles + Copy prompt.
 - Files: backend/app/routes/companions.py, backend/tests/test_companion_overview.py, frontend/app/dashboard/agents/page.tsx
 - Deps: 1
 
