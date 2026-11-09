@@ -9,12 +9,15 @@ Module of [Aira Companion](2026-11-08-aira-companion-capability-map.md). Intent:
 **Prem's decisions (2026-11-09):**
 1. Two engines behind the memory slot: Mem0 and our own memory card. Supermemory is out. Eval picks per client language.
 2. Sharing facts between characters: the **business chooses** (default: each character keeps its own).
-3. Facts are saved **after every reply**.
+3. **When facts are saved depends on the engine** (corrected 2026-11-09). Level 2 offers two engines:
+   - **Memory card (ours): learns once a night, at 2:00 AM IST.** During the day the character reads the recent messages; the card covers older days.
+   - **Mem0 (later, Task 8): learns after every reply**, because that is how Mem0 works.
 4. The end user can see their facts and forget one; the business sees them only in privacy mode A; Anril staff never.
+5. **The recent-message count is a per-character setting:** history_messages, default 10, allowed 2–50. It applies at Level 1 and Level 2.
 
 ## 1. Objective
 
-Level 2 memory: the character remembers **the person**, not just the last 10 messages.
+Level 2 memory: the character remembers **the person**, not just the recent messages (history_messages, default 10).
 
 **Who it's for:** businesses like Astrotamil whose users come back over weeks. Remembering family, worries and unfinished events is what makes Karthik return, and return visits are what Astrotamil earns from.
 
@@ -23,7 +26,9 @@ Level 2 memory: the character remembers **the person**, not just the last 10 mes
 ```
 Day 1, 10:02  Karthik: "Job poiduchu. En paiyan ku 10th exam March la. Zoho la interview 20th."
        10:02  Jothidar replies (no change to the reply path)
-       10:03  memory sweep (runs every minute) sees 2 new messages for (Jothidar, Karthik)
+       18:30  Karthik chats again: Jothidar still sees the 10:02 messages, because they are
+              in the last 10 (history_messages). The card isn't needed yet today.
+Day 2, 02:00  nightly memory sweep sees Day 1's new messages for (Jothidar, Karthik)
               → one AI call → saves:
                   life     lost job                       since Oct 2026
                   people   son, in 10th standard
@@ -34,10 +39,12 @@ Day 15        (30 other messages since; Day 1 is no longer in the last 10)
               context_for → ABOUT THIS USER gets the 4 facts above
               Jothidar: "Vanakkam Karthik! Zoho interview eppadi pochu? Paiyan exam ku ready-aa?"
        09:41  Karthik: "Interview pass! Next week join pannren."
-       09:42  sweep → closes "lost job", adds "works at Zoho, from Dec 2026",
+              (the rest of Day 15, the recent messages carry this news)
+Day 16, 02:00 sweep → closes "lost job", adds "works at Zoho, from Dec 2026",
               closes thread "Zoho interview"
-Day 16        Karthik: "Andha job vishayam marandhudunga" (forget that job thing)
-              sweep → deletes the 2 job facts. The reply already said "Sari, marandhuttaen."
+Day 16, 11:00 Karthik: "Andha job vishayam marandhudunga" (forget that job thing)
+              The reply says "Sari, marandhuttaen." at once.
+Day 17, 02:00 sweep → deletes the 2 job facts.
 ```
 
 Level 1 users (banks, delivery) see no change. Level 3 stays rejected.
@@ -63,34 +70,36 @@ House style as 248: header comment, SET LOCAL lock_timeout = '5s', IF NOT EXISTS
 
 | Change | Columns | Why |
 |---|---|---|
-| companions + 1 column | memory_engine text NOT NULL DEFAULT 'card' CHECK (card, mem0) | Which Level 2 engine this character uses. Ignored at Level 1. |
+| companions + 2 columns | memory_engine text NOT NULL DEFAULT 'card' CHECK (card, mem0); history_messages int NOT NULL DEFAULT 10 CHECK (2–50) | Which Level 2 engine this character uses (ignored at Level 1). How many recent messages every reply reads (Prem: configurable per business need). |
 | companion_tenant_settings (new) | tenant_id PK → tenants, memory_scope text NOT NULL DEFAULT 'character' CHECK (character, business), updated_at | Prem's "business chooses" |
 | companion_memory_facts (new, card engine) | id, tenant_id, companion_id (the character that learned it), end_user_id, section CHECK (profile, people, life, preferences, threads), text ≤ 300, valid_from date NULL, valid_to date NULL, status CHECK (active, closed), created_at, updated_at. Index (tenant_id, end_user_id, status). | One row per fact, so one fact can be listed or forgotten on its own |
-| companion_memory_state (new) | PK (companion_id, end_user_id), tenant_id, last_message_at timestamptz, updated_at | Watermark: the newest message already turned into memory |
+| companion_memory_state (new) | PK (companion_id, end_user_id), tenant_id, last_message_at timestamptz, failures int NOT NULL DEFAULT 0, updated_at | Watermark: the newest message already turned into memory. failures = nights in a row this pair's sweep failed. |
 | Mem0 tables | Pre-created with RLS on, if the spike shows Mem0's pgvector schema (a collection and a _entities collection) can be created by us. Otherwise Mem0 creates them, and a follow-up migration enables RLS. | Mem0 stores its own vectors |
 
 **Caps:** 60 active facts per (character, person). When an add would pass 60, the oldest closed facts are deleted first, then the oldest active preferences.
 
-### 3.2 "After every reply": a sweep every minute
+### 3.2 Card engine: a nightly sweep at 2:00 AM IST
 
 ```
-@queue_app.periodic(cron="* * * * *", periodic_id="companion-memory")
+@queue_app.periodic(cron="30 20 * * *", periodic_id="companion-memory")   # 02:00 IST (cron is UTC)
 @queue_app.task(name="companion-memory", queue="companion", **_one_at_a_time("companion-memory"))
 ```
-- **Retry class A:** a sweep; the next tick redoes anything missed.
-- **Each tick:**
-  1. find up to 20 (character, person) pairs with memory_level 2 whose newest message is after their watermark;
-  2. run each pair's engine on the messages since the watermark (at most 20 messages);
-  3. on success, move the watermark to the newest message processed.
-- **Why a sweep, not one job per reply:** every existing job is periodic, so this follows the house pattern. Three quick replies merge into one AI call. And there's no new on-demand job call that a laptop could enqueue into the shared queue.
-- **Effect:** facts are ready about a minute after each reply. The engine's record_turn stays a no-op, so the reply path gets no slower.
-- **Failure:** an LLM error or unparseable answer leaves the watermark in place, so the next tick retries. After 3 failures for the same pair (counted in logs only), the watermark moves on so one bad chat can't block the sweep.
-- **Cost:** at most one AI call per reply (purpose "companion_memory", metered in tenant_token_usage), usually fewer. Groq-sized for a pilot.
+- **Retry class A:** a sweep; the next night redoes anything missed.
+- **Each night:**
+  1. find every (character, person) pair with memory_level 2 whose newest message is after its watermark, oldest activity first, at most 500 pairs (the rest go first the next night);
+  2. read the messages since the watermark in chunks of 40, one AI call per chunk, at most 5 chunks (200 messages) per pair per night;
+  3. after each good chunk, move the watermark to its newest message, so a crash mid-pair loses nothing.
+- **Why nightly:** during the day the character already reads the recent messages (history_messages), so today's news is never missing from a reply. The card only has to cover older days. One run a night is fewer AI calls (a whole day in one call instead of one per reply) and no load in business hours.
+- **The engine's record_turn stays a no-op,** so the reply path gets no slower.
+- **Failure:** an LLM error or unparseable answer leaves the watermark in place and adds 1 to companion_memory_state.failures; the pair stops for tonight and retries the next night. On the 3rd failed night in a row the watermark moves past that chunk and failures goes back to 0, so one bad chat can't block the pair forever. A good chunk also sets failures to 0.
+- **Kept from the first build:** a pair idle more than 14 days is skipped (nothing new); a lone user message under 2 minutes old waits for its reply; a chunk with no user message just moves the watermark; if "forget me" ran during the AI call nothing is written.
+- **Cost:** about one AI call per active person per night (purpose "companion_memory", metered in tenant_token_usage). Groq-sized for a pilot.
 - **The worker is the existing one;** it already serves every queue (main.py:180). The queue name "companion" keeps it separate in the procrastinate tables. A separate worker service is for later (capability map assumption 4).
+- **Mem0 (Task 8, not built)** will learn after every reply instead; this sweep is the card's only.
 
 ### 3.3 Card engine: memory.py (MemoryCard)
 
-**One AI call per pair per tick.**
+**One AI call per chunk of up to 40 messages.**
 - **Input:** the character's language, the active facts numbered f1…fN, and the new messages.
 - **Output:** a JSON list of operations:
 
@@ -113,7 +122,7 @@ House style as 248: header comment, SET LOCAL lock_timeout = '5s', IF NOT EXISTS
 - Every ref must exist in the list we sent.
 - Section must be valid, text at most 300 characters, and at most 10 operations per call.
 - Anything invalid is dropped and logged as a count only.
-- If the JSON doesn't parse, nothing changes and the next tick retries.
+- If the JSON doesn't parse, nothing changes and the next night retries (§3.2).
 
 **context_for:**
 1. One query loads the active facts, plus closed facts from the last 90 days.
@@ -180,7 +189,7 @@ class MemoryFact(BaseModel): id; section; text; valid_from; valid_to; status; le
 - engine.forget_person calls forget on **both** engines whatever the current setting, because a past setting may have left data in the other one.
   - **Card engine:** delete the person's facts and memory state rows.
   - **Mem0 engine:** delete_all(user_id=end_user_id), only if Mem0 was ever used by this tenant. Skipped when it can't be loaded, with a warning.
-- **Switching a character's engine** resets its watermarks, so the new engine relearns from the last 20 messages. Old facts in the other engine stay until forget-me or a manual delete.
+- **Switching a character's engine** resets its watermarks, so the new engine relearns from the latest 40 messages. Old facts in the other engine stay until forget-me or a manual delete.
 
 ### 3.8 Changes to companion-core
 
@@ -189,8 +198,9 @@ class MemoryFact(BaseModel): id; section; text; valid_from; valid_to; status; le
 | memory.py | MemoryProvider methods gain tenant_id as the first parameter (every query must filter it). provider_for(level, engine) returns Level1History, MemoryCard or Mem0Engine. |
 | engine.py | Pass tenant_id and the engine name. forget_person calls both engines (§3.7). |
 | prompt.py | The ABOUT THIS USER label wording (§3.6). |
-| models.py, routes/companions.py | memory_engine field on characters; the new routes. |
-| queue/tasks.py | The companion-memory task and its RETRY_CLASS entry "A". |
+| models.py, routes/companions.py | memory_engine and history_messages fields on characters; the new routes. |
+| engine.py (history) | Reads the character's history_messages recent messages (default 10) instead of a fixed 10. |
+| queue/tasks.py | The nightly companion-memory task (02:00 IST) and its RETRY_CLASS entry "A". |
 
 ### 3.9 Package layout
 
@@ -211,7 +221,7 @@ cd backend && python -m pytest tests/test_companion_*.py -q
 bash scripts/verify.sh
 ```
 - **Migration 249:** applied with the Supabase MCP, only after Prem says yes.
-- **Smoke test:** make dev-backend, then test-chat as the UI test tenant. The worker is off in safe mode, so the smoke test calls run_memory_sweep() directly once. **Blocker carried over from core:** the UI test tenant has no AI model or key yet.
+- **Smoke test:** make dev-backend, then test-chat as the UI test tenant. The worker is off in safe mode, so the smoke test calls run_memory_sweep() directly once (no waiting for 2 AM). **Blocker carried over from core:** the UI test tenant has no AI model or key yet.
 
 ## 5. Code style
 
@@ -224,7 +234,7 @@ FakeSupabase plus a fake _llm_chat and a fake AsyncMemory. No network in tests.
 | File | Covers |
 |---|---|
 | test_companion_memory_card.py | Op parsing and validation (bad ref, bad section, >300 chars, >10 ops, broken JSON → no change), close vs update vs delete, the 60-fact cap, render order and the 2,000-character cap, never-save list in the prompt |
-| test_companion_memory_sweep.py | Picks only Level 2 pairs past the watermark; merges 3 replies into one call; LLM error keeps the watermark; 3 failures move it on; at most 20 pairs per tick |
+| test_companion_memory_sweep.py | Picks only Level 2 pairs past the watermark; a whole day goes in one call; 90 messages → 3 chunks, watermark after each; LLM error keeps the watermark and counts a failed night; the 3rd failed night moves it on; at most 500 pairs per night |
 | test_companion_memory_scope.py | Character scope hides other characters' facts; business scope shows them with own facts first; switching scope moves no data |
 | test_companion_memory_mem0.py | Config built from the tenant's provider; Sarvam or no Jina key → card fallback; telemetry env set before import; forget → delete_all |
 | test_companion_memory_routes.py | Privacy B → 403; other tenant → 404; scope settings get and put; forget-one |

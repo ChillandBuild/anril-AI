@@ -36,7 +36,7 @@ memory_card.py: build the extraction prompt (spec §3.3), parse the ops JSON tol
 - Files: backend/app/companion/memory_card.py, backend/tests/test_companion_memory_card.py
 
 ### - [x] Task 4: The sweep (M)
-memory_sweep.py: run_memory_sweep() finds up to 20 Level 2 pairs with messages past their watermark, sends at most 20 new messages each to the card with purpose "companion_memory", and moves the watermark on success. Register the periodic "companion-memory" task (every minute, class A, _one_at_a_time).
+memory_sweep.py: run_memory_sweep() finds up to 20 Level 2 pairs with messages past their watermark, sends at most 20 new messages each to the card with purpose "companion_memory", and moves the watermark on success. Register the periodic "companion-memory" task (every minute, class A, _one_at_a_time). Superseded by Task 10 (nightly).
 - Acceptance:
   - [ ] The spec §1 worked example passes: Karthik's day-1 messages → 4 facts; the job-change message closes one fact and adds one.
   - [ ] Level 1 characters and pairs with nothing new cost zero AI calls.
@@ -72,8 +72,25 @@ forget_person wipes facts and state (and Mem0 data when present); switching a ch
 - Depends on: Task 4
 - Files: backend/app/companion/engine.py, store.py, backend/tests/test_companion_forget.py
 
+### - [x] Task 9: Recent-message count per character (S)
+Prem 2026-11-09: the fixed 10 recent messages becomes a per-character setting. companions.history_messages int NOT NULL DEFAULT 10 CHECK (2–50) in migration 249; CompanionSettings and CompanionUpdate get the field; the engine reads that many recent messages.
+- Acceptance:
+  - [x] 1 and 51 are refused (422); a character without the column set reads 10.
+  - [x] A character set to 25 sends limit 25 to recent_messages.
+- Verify: test_companion_memory_store.py and test_companion_engine*.py pass; full suite passes.
+- Files: backend/supabase/migrations/249_companion_memory.sql, backend/app/companion/models.py, backend/app/companion/engine.py, tests
+
+### - [x] Task 10: Card sweep runs nightly at 2:00 AM IST (M)
+Prem 2026-11-09 correction: "after every reply" was meant for Mem0; the card learns once a night. Cron "30 20 * * *" (02:00 IST). Every due pair, oldest first, at most 500 a night; chunks of 40 messages, at most 5 chunks per pair, watermark after each chunk. Failed nights are counted in companion_memory_state.failures (migration 249); the 3rd failed night moves the watermark on. The in-process backoff is removed.
+- Acceptance:
+  - [x] 90 new messages → 3 AI calls in one night, watermark at the 90th.
+  - [x] An AI error keeps the watermark and sets failures to 1; the 3rd failed night moves it on and resets failures to 0.
+  - [x] Queue test: companion-memory is at 02:00 IST, still 26 tasks.
+- Verify: test_companion_memory_sweep.py and test_queue_tasks.py pass; full suite passes.
+- Files: backend/app/companion/memory_sweep.py, backend/app/companion/store.py, backend/app/queue/tasks.py, backend/supabase/migrations/249_companion_memory.sql, tests
+
 ### Checkpoint B: Live (needs Prem's yes to apply 249)
-- [ ] **Apply 249 before any push of this code.** Without it, creating a character fails (memory_engine column) and the every-minute job errors on each tick.
+- [ ] **Apply 249 before any push of this code.** Without it, creating a character fails (memory_engine and history_messages columns) and the nightly job errors.
 - [ ] Re-check the latest migration number, then apply 249. list_tables shows the new tables with RLS on, and pg_policies has 0 rows for them.
 - [ ] Set a Groq key on the UI test tenant. Via make dev-backend: chat with a Level 2 Jothidar, call run_memory_sweep() directly, then confirm the next reply uses the facts and tenant_token_usage gains companion_memory rows.
 

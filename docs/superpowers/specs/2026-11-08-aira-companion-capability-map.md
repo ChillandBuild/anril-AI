@@ -42,12 +42,12 @@ companion-memory builds Level 2 behind the existing MemoryProvider slot, so a ca
 | Candidate | How it works | Data lives | Cost shape |
 |---|---|---|---|
 | Mem0 | Apache 2.0 library, extracts facts after every reply | Our Supabase | One extra LLM call per chat |
-| Memory card (ours) | A job that runs every minute turns new messages into dated facts (spec 2026-11-09 moved it from nightly to after every reply) | Our Supabase | One LLM call per batch of new messages |
+| Memory card (ours) | A nightly job (02:00 IST) turns the day's new messages into dated facts; the recent messages cover the same day | Our Supabase | About one LLM call per active person per night |
 
 **Nightly memory card.** The idea comes from Supermemory's outside-in reconstruction of the Instinct assistant (supermemory.ai/blog/reverse-engineering-instinct-memory, 2026-09-20). That post has no code or benchmark, so we take only the pattern.
 - **Sections per person, per character:** people (family), facts (lagna, birth details), preferences, open threads (unfinished life events such as an exam or an interview), and dated corrections ("Infosys until Oct 2026, then lost job"), never silent overwrites.
 - **Who writes it:** only the nightly job. The chatting AI reads the card and never writes to it, so a chat message cannot plant a memory.
-- **Same-day gap:** covered by the last 10 messages that Level 1 already sends.
+- **Same-day gap:** covered by the recent messages that Level 1 already sends (history_messages per character, default 10).
 - **Size:** the card is injected into ABOUT THIS USER and capped at about 500 tokens (Instinct's is about 13,000).
 - **Language:** the card is written in the character's language setting, which the client chooses. Facts are stored once and recalled whatever language the user types in, so "son", "paiyan" and "beta" all match the same family fact.
 - **Search:** keyword-only search misses misspellings. Mixed-script languages (Tanglish, Hinglish) have many spelling variants (kavalai, kavalaai; pareshaan, pareshan), so recall needs fuzzy or meaning-based matching.

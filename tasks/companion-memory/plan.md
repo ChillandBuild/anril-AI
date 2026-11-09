@@ -7,7 +7,7 @@ Tasks: [todo.md](todo.md). Kept apart from tasks/companion-core/ and from tasks/
 
 Level 2 memory: a character remembers the person, not just the last 10 messages.
 - **Card engine first** (ours, no new dependency): one row per fact, 5 sections, dated corrections.
-- **A sweep every minute** turns new messages into facts, so replies don't get slower.
+- **A nightly sweep at 2:00 AM IST** turns the day's new messages into facts (Task 10, Prem's correction 2026-11-09); during the day the recent messages (history_messages, default 10, Task 9) cover today. Replies don't get slower.
 - **Sharing between characters** is a per-business setting (default: each character keeps its own).
 - **Seeing and forgetting:** the end user can see facts and forget one; the owner sees them in privacy mode A only.
 - **Mem0 last,** after a time-boxed spike and Prem's yes on the new dependency.
