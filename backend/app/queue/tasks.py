@@ -32,6 +32,7 @@ RETRY_CLASS: dict[str, str] = {
     "instant-forms-catch-up": "A",
     "call-alert-summary": "C",
     "brain-weekly-digest": "C",
+    "companion-memory": "A",
 }
 
 
@@ -241,6 +242,15 @@ def brain_weekly_digest(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.brain_digest import send_weekly_digests
     send_weekly_digests(get_supabase())
+
+
+@queue_app.periodic(cron="30 20 * * *", periodic_id="companion-memory")  # 02:00 IST
+@queue_app.task(name="companion-memory", **_one_at_a_time("companion-memory"), queue="companion")
+async def companion_memory(timestamp: int) -> None:
+    """Aira Companion Level 2 memory card: turns the day's chat messages into facts, nightly
+    (spec 2026-11-09 §3.2). Locked so a long night (up to 500 pairs) never runs twice at once."""
+    from app.companion.memory_sweep import run_memory_sweep
+    await run_memory_sweep()
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="rescue-stalled")

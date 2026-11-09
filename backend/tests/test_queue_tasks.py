@@ -24,6 +24,7 @@ MESSAGES = {
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
+COMPANION = {"companion-memory"}
 CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
@@ -62,6 +63,7 @@ CALLEES = {
     "instant-forms-catch-up": ("app.services.meta_lead_forms.catch_up_all", True, False),
     "call-alert-summary": ("app.services.call_alerts.send_morning_summaries", False, True),
     "brain-weekly-digest": ("app.services.brain_digest.send_weekly_digests", False, True),
+    "companion-memory": ("app.companion.memory_sweep.run_memory_sweep", True, False),
 }
 
 
@@ -79,6 +81,7 @@ EVERY = {
     "token-health-check": 4 * 3600, "number-quality-sync": 4 * 3600,
 }
 AT_IST = {
+    "companion-memory": (["02:00"], None),
     "numbers-pool-sync": (["06:00", "18:00"], None),
     "send-log-prune": (["03:00"], None),
     "scheduler-runs-prune": (["03:15"], None),
@@ -147,7 +150,8 @@ def test_interval_jobs_keep_their_period_aligned_to_the_clock():
 
 def test_queues():
     for job_id, pt in _periodic().items():
-        want = "messages" if job_id in MESSAGES else "calls" if job_id in CALLS else "maintenance"
+        want = ("messages" if job_id in MESSAGES else "calls" if job_id in CALLS
+                else "companion" if job_id in COMPANION else "maintenance")
         assert queue_app.tasks[job_id].queue == want, job_id
         assert pt.task.queue == want, job_id
 
@@ -214,7 +218,7 @@ async def test_scheduled_broadcasts_sets_the_heartbeat_for_the_ready_check():
 
 # sms-send is class A (a sweep), but two overlapping copies can both build the same
 # campaign when a build runs past BUILD_STALE (10 min), so it is locked too.
-ONE_AT_A_TIME = CLASS_C | {"sms-send"}
+ONE_AT_A_TIME = CLASS_C | {"sms-send", "companion-memory"}
 
 
 @pytest.mark.parametrize("job_id", sorted(ONE_AT_A_TIME))
