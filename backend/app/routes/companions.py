@@ -72,6 +72,21 @@ async def overview(ctx: dict = Depends(require_companions_manage)):
     return {**counts, "model": model, "model_ready": ready}
 
 
+def _tenant_model_id(tenant_id: str) -> str | None:
+    try:
+        return ai_reply._resolve_reply_model(tenant_id)
+    except RuntimeError:
+        return None
+
+
+@router.get("/models")
+async def list_models(ctx: dict = Depends(require_companions_manage)):
+    """The Playground model picker: models whose API key this business has, plus the live one."""
+    tenant_id = ctx["tenant_id"]
+    models = await asyncio.to_thread(ai_reply.available_reply_models, tenant_id)
+    return {"models": models, "default": await asyncio.to_thread(_tenant_model_id, tenant_id)}
+
+
 # Declared before /{companion_id} so "memory-settings" is never read as a character id.
 @router.get("/memory-settings")
 async def get_memory_settings(ctx: dict = Depends(require_companions_manage)):
@@ -198,6 +213,8 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
 class TestChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     tools: list[AppTool] = Field(default_factory=list)
+    model: str | None = Field(None, max_length=100)   # Playground picker; must be one the tenant has a key for
+    use_memory: bool = True                           # False = the "Compare without memory" reply
 
 
 class ContinueIn(BaseModel):
@@ -236,15 +253,23 @@ async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_co
 async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends(require_companions_manage)):
     """The owner chats with a character from the dashboard. Stored as person "owner-test:<user_id>",
     so it never mixes with a real end user's history."""
+    tenant_id = ctx["tenant_id"]
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Type a message first")
+    if payload.model:
+        allowed = {m["id"] for m in await asyncio.to_thread(ai_reply.available_reply_models, tenant_id)}
+        if payload.model not in allowed:
+            raise HTTPException(status_code=422, detail="That model isn't set up for your business")
     try:
         result = await engine.reply(
-            str(companion_id), ctx["tenant_id"], f"owner-test:{ctx['user_id']}", message, tools=payload.tools)
+            str(companion_id), tenant_id, f"owner-test:{ctx['user_id']}", message,
+            tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory)
     except _EXPECTED as exc:
         raise _http_error(exc)
-    return result.model_dump()
+    model = payload.model or (await asyncio.to_thread(_tenant_model_id, tenant_id))
+    return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model or "", model)}
+
 
 
 @router.get("/{companion_id}/install")

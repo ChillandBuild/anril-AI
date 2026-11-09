@@ -4030,7 +4030,7 @@ export interface CompanionReply {
   mood: string | null;
   turn_id: string | null;
   tool_calls: CompanionToolCall[];
-  conversation_id: string;
+  conversation_id: string | null;
   message_id: string | null;
   /** The model that answered (test chat only). */
   model?: string | null;
@@ -4072,6 +4072,8 @@ export interface CompanionPerson {
 
 /** An error from the API with its HTTP status (409 duplicate name, 422 bad field, ...). */
 export type ApiError = Error & { status?: number; detail?: unknown };
+
+export type CompanionModel = { id: string; label: string };
 
 export type CompanionSearchIn = "knowledge" | "memories";
 export type CompanionKnowledgeHit = { content: string; similarity: number | null; document_name: string | null };
@@ -4127,6 +4129,8 @@ export const companionsApi = {
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
       `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
     ),
+  models: () => apiFetch<{ models: CompanionModel[]; default: string | null }>(`${COMPANIONS}/models`),
+
   search: (id: string, body: { in: CompanionSearchIn; q: string; limit?: number; external_user_id?: string }) =>
     apiFetch<CompanionSearchResult>(`${COMPANIONS}/${id}/search`, { method: "POST", body: JSON.stringify(body) }),
 

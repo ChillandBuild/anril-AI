@@ -92,8 +92,15 @@ def fallback_line(language: str | None) -> str:
     return FALLBACK_LINES.get(language or "", FALLBACK_LINES["en"])
 
 
-async def _live_companion(tenant_id: str, companion_id: str, require_live: bool = False) -> tuple[dict, str]:
-    """The character, checked usable, plus the tenant's LLM provider name."""
+def _model_kw(model: str | None) -> dict:
+    """The model keyword for ai_reply, only when the Playground picked one. Live replies send none."""
+    return {"model": model} if model else {}
+
+
+async def _live_companion(tenant_id: str, companion_id: str, require_live: bool = False,
+                          model: str | None = None) -> tuple[dict, str]:
+    """The character, checked usable, plus the LLM provider name (the tenant's, or the
+    Playground's picked model's)."""
     companion = await store.get_companion(tenant_id, companion_id)
     if not companion:
         raise CompanionNotFound(companion_id)
@@ -102,7 +109,7 @@ async def _live_companion(tenant_id: str, companion_id: str, require_live: bool 
     if require_live and companion.get("status") != "live":
         raise CompanionNotLive(companion_id)
     try:
-        provider, _ = await asyncio.to_thread(ai_reply._resolve_provider, tenant_id)
+        provider, _ = await asyncio.to_thread(ai_reply._provider_for, tenant_id, model)
     except RuntimeError as exc:
         raise CompanionMisconfigured(str(exc)) from exc
     return companion, provider
@@ -121,13 +128,20 @@ async def _take_slot(companion_id: str) -> asyncio.Semaphore:
 async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
+    model: str | None = None, use_memory: bool = True,
 ) -> CompanionReply:
+    """model and use_memory are for the dashboard Playground only; the public API never sets them.
+    use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
+    nothing saved. It shows how the character answers a stranger."""
     tools = tools or []
     app_tools.validate_tools(tools)
-    companion, provider = await _live_companion(tenant_id, companion_id, require_live)
+    companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
     sem = await _take_slot(companion_id)
     try:
-        return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools)
+        if not use_memory:
+            return await _reply_without_memory(companion, tenant_id, message, model)
+        return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools,
+                            model)
     finally:
         sem.release()
 
@@ -142,7 +156,9 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
         turn = await store.take_pending_turn(tenant_id, turn_id)
         if not turn:
             raise TurnExpired(turn_id)
-        companion, provider = await _live_companion(tenant_id, turn["companion_id"], require_live)
+        state = turn["messages"]
+        model = state.get("model")   # set only by a Playground turn (owner-test person)
+        companion, provider = await _live_companion(tenant_id, turn["companion_id"], require_live, model)
         conversation = await store.get_conversation(tenant_id, turn["conversation_id"])
         if not conversation:
             raise TurnExpired(turn_id)
@@ -150,14 +166,13 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
             person = await store.find_end_user(tenant_id, external_user_id)
             if not person or person["id"] != conversation.get("end_user_id"):
                 raise TurnExpired(turn_id)
-        state = turn["messages"]
         tools = [AppTool(**t) for t in turn.get("tools") or []]
         extra, log = app_tools.round_messages(
             provider, state.get("assistant_text") or "", state["calls"], results, {t.name for t in tools})
         return await _run_rounds(
             companion, provider, tenant_id, conversation, state["user_message"],
             state["prompt"] + extra, tools, int(turn["round"]) + 1, state.get("tool_log", []) + log,
-            time.monotonic(),
+            time.monotonic(), model=model,
         )
     finally:
         sem.release()
@@ -179,8 +194,31 @@ async def _memory(provider, tenant_id: str, companion_id: str, end_user_id: str,
         return ""
 
 
+async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
+                                model: str | None) -> CompanionReply:
+    """One stateless reply: books only, no facts, no history, and no DB write at all (no person,
+    no conversation), so it can run beside the normal reply without racing it."""
+    started = time.monotonic()
+    kb_context = await _knowledge(tenant_id, message, companion.get("knowledge_tag_id"))
+    mood = companion.get("default_mood") or "calm"
+    prompt = build_messages(companion, mood, kb_context, "", [], message)
+    raw = None
+    try:
+        raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
+                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(model))
+    except Exception as exc:
+        logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
+    text, new_mood = parse_mood(raw or "", mood)
+    text = text.strip()
+    if not text:
+        text, new_mood = fallback_line(companion.get("language")), mood
+    logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
+                int((time.monotonic() - started) * 1000))
+    return CompanionReply(status="done", text=text, mood=new_mood)
+
+
 async def _reply(companion: dict, provider: str, tenant_id: str, external_user_id: str, message: str,
-                 display_name: str | None, tools: list[AppTool]) -> CompanionReply:
+                 display_name: str | None, tools: list[AppTool], model: str | None = None) -> CompanionReply:
     started = time.monotonic()
     companion_id = companion["id"]
     person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name)
@@ -200,7 +238,8 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     mood = _mood(conversation, companion)
     prompt = build_messages(companion, mood, kb_context, memory_context, history, message)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
-    return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started)
+    return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
+                             model=model)
 
 
 def _provider(companion: dict):
@@ -213,7 +252,7 @@ def _mood(conversation: dict, companion: dict) -> str:
 
 async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversation: dict, user_message: str,
                       prompt: list[dict], tools: list[AppTool], round_no: int, tool_log: list[dict],
-                      started: float) -> CompanionReply:
+                      started: float, *, model: str | None = None) -> CompanionReply:
     """One LLM round. Either pauses for app tools (status tool_call) or finishes the reply."""
     companion_id = companion["id"]
     use_tools = bool(tools) and round_no < MAX_ROUNDS
@@ -223,13 +262,13 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         if use_tools:
             raw, raw_calls = await ai_reply._llm_chat_with_tools(
                 prompt, app_tools.to_llm_tools(tools), max_tokens=LLM_MAX_TOKENS,
-                tenant_id=tenant_id, purpose=LLM_PURPOSE,
+                tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(model),
             )
             calls = app_tools.normalize_calls(raw_calls)
         else:
             raw = await ai_reply._llm_chat(
                 prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
-                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE,
+                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(model),
             )
     except Exception as exc:
         logger.warning("companion %s: LLM call failed on round %d (%s)", companion_id, round_no, type(exc).__name__)
@@ -241,10 +280,12 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         # and go straight to the next round instead of handing the app nothing to run.
         extra, log = app_tools.round_messages(provider, raw or "", calls, [], known)
         return await _run_rounds(companion, provider, tenant_id, conversation, user_message,
-                                 prompt + extra, tools, round_no + 1, tool_log + log, started)
+                                 prompt + extra, tools, round_no + 1, tool_log + log, started, model=model)
     if calls:
         state = {"prompt": prompt, "calls": calls, "assistant_text": raw or "",
                  "user_message": user_message, "tool_log": tool_log}
+        if model:
+            state["model"] = model
         turn_id = await store.create_pending_turn(
             tenant_id, companion_id, conversation["id"], state, [t.model_dump() for t in tools], round_no)
         logger.info("companion %s: paused for %d tool call(s) on round %d (llm %dms)",

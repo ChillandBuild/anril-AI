@@ -2,7 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { companionsApi, type Companion, type CompanionAppTool, type CompanionReply, type CompanionToolCall } from "@/lib/api";
+import {
+  companionsApi,
+  type Companion,
+  type CompanionAppTool,
+  type CompanionModel,
+  type CompanionReply,
+  type CompanionToolCall,
+} from "@/lib/api";
 import { chatErrorText, formatMs, formatToolCall, parseToolOutput, toolNameError } from "@/components/agents/playground";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, INPUT } from "@/components/agents/ui";
 
@@ -24,7 +31,21 @@ export function PlaygroundChat({ character }: { character: Companion }) {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingTools | null>(null);
   const [tools, setTools] = useState<CompanionAppTool[]>([]);
+  const [models, setModels] = useState<CompanionModel[]>([]);
+  const [liveModel, setLiveModel] = useState<string | null>(null);
+  const [model, setModel] = useState("");   // "" = the business's live model
+  const [compare, setCompare] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    companionsApi
+      .models()
+      .then((r) => {
+        setModels(r.models);
+        setLiveModel(r.default);
+      })
+      .catch(() => setModels([]));   // the picker just hides; chat still works on the live model
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -36,7 +57,14 @@ export function PlaygroundChat({ character }: { character: Companion }) {
     setPending(null);
   }, [character.id]);
 
-  const handle = (reply: CompanionReply, started: number) => {
+  const handle = (reply: CompanionReply, started: number, label?: string) => {
+    if (label) {
+      setBubbles((b) => [
+        ...b,
+        { kind: "reply", text: reply.text ?? "", mood: reply.mood, ms: performance.now() - started, model: reply.model ?? null, label },
+      ]);
+      return;
+    }
     if (reply.status === "tool_call" && reply.turn_id) {
       setPending({ turnId: reply.turn_id, calls: reply.tool_calls, started });
       return;
@@ -55,13 +83,17 @@ export function PlaygroundChat({ character }: { character: Companion }) {
     setBusy(true);
     setBubbles((b) => [...b, { kind: "user", text: message }]);
     const started = performance.now();
-    try {
-      handle(await companionsApi.testChat(character.id, message, { tools }), started);
-    } catch (err) {
-      setBubbles((b) => [...b, { kind: "error", text: chatErrorText(err) }]);
-    } finally {
-      setBusy(false);
-    }
+    const picked = model || undefined;
+    // Compare: the same message again, without memory, in parallel. Shown second, labelled.
+    const [main, bare] = await Promise.allSettled([
+      companionsApi.testChat(character.id, message, { tools, model: picked }),
+      compare ? companionsApi.testChat(character.id, message, { model: picked, use_memory: false }) : Promise.resolve(null),
+    ]);
+    if (main.status === "fulfilled") handle(main.value, started);
+    else setBubbles((b) => [...b, { kind: "error", text: chatErrorText(main.reason) }]);
+    if (bare.status === "fulfilled" && bare.value) handle(bare.value, started, "Without memory");
+    else if (bare.status === "rejected") setBubbles((b) => [...b, { kind: "error", text: `Without memory: ${chatErrorText(bare.reason)}` }]);
+    setBusy(false);
   };
 
   const answerTools = async (results: { id: string; output: unknown }[]) => {
@@ -77,7 +109,8 @@ export function PlaygroundChat({ character }: { character: Companion }) {
     }
   };
 
-  const last = [...bubbles].reverse().find((b) => b.kind === "reply") as Extract<Bubble, { kind: "reply" }> | undefined;
+  const last = [...bubbles].reverse().find((b) => b.kind === "reply" && !b.label) as Extract<Bubble, { kind: "reply" }> | undefined;
+  const liveLabel = models.find((m) => m.id === liveModel)?.label;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -109,8 +142,34 @@ export function PlaygroundChat({ character }: { character: Companion }) {
           {busy && !pending && <div className="text-xs text-ink-muted">{character.name} is typing…</div>}
           <div ref={endRef} />
         </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-subtle px-3 pt-3 text-xs text-ink-secondary">
+          {models.length > 0 && (
+            <label className="flex items-center gap-1.5">
+              <span>Model</span>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="rounded-lg border border-border bg-white px-2 py-1 text-xs text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+              >
+                <option value="">{liveLabel ? `${liveLabel} (live)` : "Live model"}</option>
+                {models
+                  .filter((m) => m.id !== liveModel)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-1.5" title="Also answer without remembered facts or chat history, side by side">
+            <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
+            Compare without memory
+          </label>
+          {model && <span className="text-ink-muted">Test chat only; live replies keep the live model.</span>}
+        </div>
         <form
-          className="flex items-end gap-2 border-t border-border-subtle p-3"
+          className="flex items-end gap-2 p-3"
           onSubmit={(e) => {
             e.preventDefault();
             void send();

@@ -88,11 +88,11 @@ Example: Knowledge, "lagna" → "Dasha periods explained.pdf · match 0.88"; Mem
 - Files: backend/app/services/knowledge_service.py, backend/app/routes/companions.py, backend/tests/test_companion_search.py, frontend/components/agents/PlaygroundSearch.tsx
 - Deps: 4
 
-### - [ ] Task 10: Model picker and compare without memory (M)
+### - [x] Task 10: Model picker and compare without memory (M)
 Example: pick Gemini 3.1 Flash, tick Compare → two bubbles, the second labelled "Without memory".
-- [ ] _llm_chat / _llm_chat_with_tools accept keyword-only model=None; test-chat accepts model (allow-list of providers the tenant has keys for) and use_memory=false.
-- [ ] Test proves generate_reply and the public companion routes never pass model.
-- [ ] Composer bar: model select + Compare checkbox (second call with use_memory=false).
+- [x] _llm_chat / _llm_chat_with_tools accept keyword-only model=None; test-chat accepts model (allow-list of providers the tenant has keys for) and use_memory=false.
+- [x] Test proves generate_reply and the public companion routes never pass model.
+- [x] Composer bar: model select + Compare checkbox (second call with use_memory=false).
 - Files: backend/app/services/ai_reply.py, backend/app/companion/engine.py, backend/app/routes/companions.py, backend/tests/test_companion_test_chat_model.py, frontend/components/agents/PlaygroundChat.tsx
 - Deps: 4
 
