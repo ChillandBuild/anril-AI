@@ -17,9 +17,15 @@
   .cell:nth-child(3n + 1) { border-left: 1px solid var(--line); }
   .cell:nth-child(2n + 1) { border-left: 0; }
 }
+.hint { display: none; }
 @media (max-width: 640px) {
-  .grid { grid-template-columns: minmax(0, 1fr); }
-  .cell, .cell:nth-child(n) { border-left: 0; }
+  .hint { display: block; margin: 0; padding: 12px 20px 0; font: 600 0.8rem var(--sans); color: var(--muted); }
+  .grid {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    padding: 12px 20px 20px; scroll-padding-inline: 20px; scrollbar-width: none; border-bottom: 1px solid var(--line);
+  }
+  .grid::-webkit-scrollbar { display: none; }
+  .cell, .cell:nth-child(n) { flex: 0 0 84%; scroll-snap-align: start; border: 1px solid var(--line); padding: 20px 18px; gap: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   :global([data-site][data-motion="on"]) .cell .b1, :global([data-site][data-motion="on"]) .cell .b2 { animation: none; }

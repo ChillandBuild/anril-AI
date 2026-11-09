@@ -24,7 +24,8 @@ export function ModulePicker() {
 
   return (
     <div className={s.wrap}>
-      <ul className={s.grid} aria-label="Modules">
+      <p className={s.hint} aria-hidden="true">Swipe sideways to see each module →</p>
+      <ul className={s.grid} aria-label="Modules" tabIndex={0}>
         {MODULES.map((mod, i) => {
           const on = picked.includes(mod.id);
           return (

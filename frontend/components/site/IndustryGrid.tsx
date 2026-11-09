@@ -8,7 +8,9 @@ import s from "./IndustryGrid.module.css";
 /** The six trades in an even grid, each with one example conversation that plays in as it scrolls into view. */
 export function IndustryGrid() {
   return (
-    <ul className={s.grid} aria-label="Industries">
+    <>
+    <p className={s.hint} aria-hidden="true">Swipe sideways to see each industry →</p>
+    <ul className={s.grid} aria-label="Industries" tabIndex={0}>
       {INDUSTRIES.map((i, idx) => (
         <li key={i.id} id={i.id} className={s.cell} data-reveal style={{ "--rd": `${(idx % 3) * 90}ms` } as React.CSSProperties}>
           <h2 className={s.title}>{i.name}</h2>
@@ -33,5 +35,6 @@ export function IndustryGrid() {
         </li>
       ))}
     </ul>
+    </>
   );
 }

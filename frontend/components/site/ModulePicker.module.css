@@ -35,4 +35,14 @@
 }
 .quote:hover { background: #13284A; }
 .quote:active { transform: scale(0.97); }
+.hint { display: none; }
+@media (max-width: 640px) {
+  .hint { display: block; margin: 0; padding: 12px 20px 0; font: 600 0.8rem var(--sans); color: var(--muted); }
+  .grid {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    padding: 12px 20px 20px; scroll-padding-inline: 20px; scrollbar-width: none;
+  }
+  .grid::-webkit-scrollbar { display: none; }
+  .card { flex: 0 0 86%; scroll-snap-align: start; border: 1px solid var(--line); padding: 20px 18px; gap: 12px; }
+}
 @media (prefers-reduced-motion: reduce) { .card, .toggle, .box, .quote { transition: none; } }
