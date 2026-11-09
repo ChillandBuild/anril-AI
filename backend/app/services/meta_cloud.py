@@ -233,6 +233,8 @@ _PAGE_GRANT_SCOPES = (
     "pages_manage_engagement",
     "pages_read_user_content",
     "pages_manage_posts",
+    "pages_manage_ads",
+    "leads_retrieval",
     "instagram_basic",
     "instagram_manage_messages",
     "instagram_manage_comments",

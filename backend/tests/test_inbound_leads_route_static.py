@@ -18,8 +18,9 @@ def test_inbound_route_filters_to_messaging_channels_and_origin():
     assert '.in_("source", list(INBOUND_SOURCES))' in src
     assert 'origin == "ad"' in src
     assert 'origin == "organic"' in src
-    assert '.not_.is_("ad_campaign_id", "null")' in src
-    assert '.is_("ad_campaign_id", "null")' in src
+    # Instant form leads are ad leads without an ad_campaigns row.
+    assert '.or_("ad_campaign_id.not.is.null,source.eq.meta_form")' in src
+    assert '.is_("ad_campaign_id", "null").neq("source", "meta_form")' in src
     assert '.eq("segment", segment)' in src
     assert '"origin"' in src
     assert "filename=inbound_leads.csv" in src

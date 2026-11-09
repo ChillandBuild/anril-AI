@@ -108,6 +108,12 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Every ad that ran in the dates you picked, with the numbers exactly as Meta reports them.",
     };
   }
+  if (pathname?.startsWith("/dashboard/meta-ads/instant-forms")) {
+    return {
+      title: "Meta Ads / Instant forms",
+      description: "Leads from your Facebook and Instagram instant forms, with every answer, and the WhatsApp message each one gets.",
+    };
+  }
   if (pathname?.startsWith("/dashboard/meta-ads")) {
     return {
       title: "Meta Ads / Messaging ads",
@@ -423,10 +429,16 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
             {([
               { href: "/dashboard/meta-ads", label: "Messaging ads" },
               { href: "/dashboard/meta-ads/all-ads", label: "All ads" },
+              { href: "/dashboard/meta-ads/instant-forms", label: "Instant forms" },
             ] as const).map((view) => {
-              const active = view.href === "/dashboard/meta-ads/all-ads"
-                ? pathname.startsWith("/dashboard/meta-ads/all-ads")
-                : !pathname.startsWith("/dashboard/meta-ads/all-ads");
+              // Exactly one tab is active: Instant forms, then All ads, else Messaging ads.
+              const inForms = pathname.startsWith("/dashboard/meta-ads/instant-forms");
+              const inAllAds = pathname.startsWith("/dashboard/meta-ads/all-ads");
+              const active = view.href === "/dashboard/meta-ads/instant-forms"
+                ? inForms
+                : view.href === "/dashboard/meta-ads/all-ads"
+                  ? inAllAds
+                  : !inForms && !inAllAds;
               return (
                 <Link
                   key={view.href}

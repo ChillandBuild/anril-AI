@@ -1,4 +1,4 @@
-"""The 25 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 26 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -29,6 +29,7 @@ RETRY_CLASS: dict[str, str] = {
     "scheduler-runs-prune": "B",
     "private-send-meta-reconcile": "B",
     "crm-cutoff-sweep": "A",
+    "instant-forms-catch-up": "A",
     "call-alert-summary": "C",
     "brain-weekly-digest": "C",
 }
@@ -84,6 +85,15 @@ async def silence_nudge(timestamp: int) -> None:
 def assignment_sweep(timestamp: int) -> None:
     from app.services.assignment import sweep_unassigned_leads
     sweep_unassigned_leads()
+
+
+# Class A: each lead's template is claimed pending -> sending, so a re-run or an
+# overlap with the live webhook never sends twice.
+@queue_app.periodic(cron="*/30 * * * *", periodic_id="instant-forms-catch-up")
+@queue_app.task(name="instant-forms-catch-up", queue="messages")
+async def instant_forms_catch_up(timestamp: int) -> None:
+    from app.services.meta_lead_forms import catch_up_all
+    await catch_up_all()
 
 
 @queue_app.periodic(cron="*/30 * * * *", periodic_id="recycle-contacts")

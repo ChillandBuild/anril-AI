@@ -37,6 +37,7 @@ CHANNEL_LABELS = {
     "telegram": "Telegram",
     "indiamart": "IndiaMART",
     "justdial": "JustDial",
+    "meta_form": "Instant form",
 }
 
 SEGMENT_LABELS = {
@@ -97,10 +98,11 @@ def _fetch_inbound_leads(
             .in_("source", list(INBOUND_SOURCES))
             .is_("deleted_at", "null")
         )
+        # Instant form leads are ad leads without an ad_campaigns row.
         if origin == "ad":
-            q = q.not_.is_("ad_campaign_id", "null")
+            q = q.or_("ad_campaign_id.not.is.null,source.eq.meta_form")
         elif origin == "organic":
-            q = q.is_("ad_campaign_id", "null")
+            q = q.is_("ad_campaign_id", "null").neq("source", "meta_form")
         if segment:
             q = q.eq("segment", segment)
         if ad_campaign_id:
@@ -189,7 +191,7 @@ def _enrich(
             "name": lead.get("name") or "—",
             "source": src,
             "channel_label": CHANNEL_LABELS.get(src, src.title()),
-            "origin": "ad" if lead.get("ad_campaign_id") else "organic",
+            "origin": "ad" if lead.get("ad_campaign_id") or lead.get("source") == "meta_form" else "organic",
             "score": lead.get("score", 5),
             "segment": lead.get("segment", "C"),
             "segment_label": SEGMENT_LABELS.get(lead.get("segment", "C"), "—"),

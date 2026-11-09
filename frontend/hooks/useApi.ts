@@ -19,6 +19,12 @@ import {
   TrackedAd,
   AdBreakdownKey,
   AdBreakdownResponse,
+  InstantFormDetail,
+  InstantFormLeadsResponse,
+  InstantFormRange,
+  InstantFormsOverview,
+  InstantFormsStatus,
+  InstantFormTemplateOption,
 } from "@/lib/api";
 
 import { fetchNotes } from "@/app/dashboard/telecalling/lib/notes-api";
@@ -330,4 +336,41 @@ export function useAllNotes(enabled = true, fallbackData?: { data: NoteWithLead[
   );
 }
 
+export function useInstantFormsStatus(enabled = true) {
+  return useSWR<InstantFormsStatus>(enabled ? "instant-forms/status" : null, () => api.instantForms.status(), defaultConfig);
+}
 
+export function useInstantFormsOverview(range: InstantFormRange | null) {
+  return useSWR<InstantFormsOverview>(
+    range ? `instant-forms/overview:${range.date_from ?? ""}:${range.date_to ?? ""}` : null,
+    () => api.instantForms.overview(range!),
+    defaultConfig,
+  );
+}
+
+export function useInstantForm(formId: string | null, range: InstantFormRange) {
+  return useSWR<InstantFormDetail>(
+    formId ? `instant-forms/form:${formId}:${range.date_from ?? ""}:${range.date_to ?? ""}` : null,
+    () => api.instantForms.form(formId!, range),
+    defaultConfig,
+  );
+}
+
+export function useInstantFormLeads(
+  formId: string | null,
+  params: InstantFormRange & { search?: string; page?: number; limit?: number },
+) {
+  return useSWR<InstantFormLeadsResponse>(
+    formId ? `instant-forms/leads:${formId}:${JSON.stringify(params)}` : null,
+    () => api.instantForms.leads(formId!, params),
+    defaultConfig,
+  );
+}
+
+export function useInstantFormTemplates(enabled = true) {
+  return useSWR<{ data: InstantFormTemplateOption[] }>(
+    enabled ? "instant-forms/templates" : null,
+    () => api.instantForms.templates(),
+    defaultConfig,
+  );
+}

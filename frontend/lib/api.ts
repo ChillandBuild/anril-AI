@@ -896,8 +896,8 @@ export interface AnalyticsOverview {
   ai_handled_today: number;
   by_segment: Record<"A" | "B" | "C" | "D", number>;
   by_segment_today: Record<"A" | "B" | "C" | "D", number>;
-  channel_breakdown: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; website?: number; api?: number; store?: number };
-  channel_breakdown_today: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; website?: number; api?: number; store?: number };
+  channel_breakdown: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
+  channel_breakdown_today: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
   total_leads: number;
   ad_attributed_leads: number;
   ad_attributed_leads_today: number;
@@ -1168,7 +1168,7 @@ export interface AnalyticsOverviewExtended {
   converted_today: number;
   ai_handled_today: number;
   by_segment: Record<"A" | "B" | "C" | "D", number>;
-  channel_breakdown: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; website?: number; api?: number; store?: number };
+  channel_breakdown: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
   total_leads: number;
 }
 
@@ -1237,7 +1237,7 @@ export interface TelecallingAnalyticsExtended {
 export interface FunnelAnalyticsExtended {
   total_leads: number;
   by_segment: { A: number; B: number; C: number; D: number };
-  by_source: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; website?: number; api?: number; store?: number };
+  by_source: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
   leads_this_week: number;
   avg_score: number | null;
   score_histogram: { range: string; count: number }[];
@@ -3449,6 +3449,33 @@ export const api = {
     },
     privateSend: () => apiFetch<PrivateSendStatus>("/api/v1/auto-messages/private-send"),
   },
+  instantForms: {
+    status: () => apiFetch<InstantFormsStatus>("/api/v1/instant-forms/status"),
+    /** Subscribe the Page to new leads, copy its forms, import past leads in the background. */
+    connect: () => apiFetch<{ forms: number; importing: boolean }>("/api/v1/instant-forms/connect", { method: "POST" }),
+    /** Re-read the forms and pick up any lead from the last two days. */
+    sync: () => apiFetch<{ forms: number }>("/api/v1/instant-forms/sync", { method: "POST" }),
+    overview: (range: InstantFormRange) =>
+      apiFetch<InstantFormsOverview>(`/api/v1/instant-forms/overview${instantFormsQuery(range)}`),
+    form: (formId: string, range: InstantFormRange) =>
+      apiFetch<InstantFormDetail>(`/api/v1/instant-forms/forms/${encodeURIComponent(formId)}${instantFormsQuery(range)}`),
+    leads: (formId: string, params: InstantFormRange & { search?: string; page?: number; limit?: number }) =>
+      apiFetch<InstantFormLeadsResponse>(
+        `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/leads${instantFormsQuery(params)}`,
+      ),
+    templates: () => apiFetch<{ data: InstantFormTemplateOption[] }>("/api/v1/instant-forms/templates"),
+    setTemplate: (formId: string, templateId: string | null, variables: InstantFormVariable[]) =>
+      apiFetch<{ template_id: string | null; template_variables: InstantFormVariable[] }>(
+        `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/template`,
+        { method: "PUT", body: JSON.stringify({ template_id: templateId, variables }) },
+      ),
+    /** Send, or retry, the form's template to one lead. */
+    sendTemplate: (rowId: string) =>
+      apiFetch<{ status: string; template_status: InstantFormTemplateStatus; template_error: string | null }>(
+        `/api/v1/instant-forms/leads/${encodeURIComponent(rowId)}/send-template`,
+        { method: "POST" },
+      ),
+  },
   marketplace: {
     status: () => apiFetch<Record<"indiamart" | "justdial", MarketplaceStatus>>("/api/v1/marketplace/status"),
     getWelcomeTemplate: () => apiFetch<{ template_id: string | null }>("/api/v1/marketplace/welcome-template"),
@@ -3717,6 +3744,131 @@ export interface MetaBreakdown {
   label: string;
 }
 
+// ── Meta Instant Forms (lead ads) ──────────────────────────────────────────
+
+/** "ready": forms can be read. "needs_permission": Meta hasn't granted leads_retrieval /
+ * pages_manage_ads to Anril yet, or the Page was connected before they were added. */
+export type InstantFormsState = "no_page" | "needs_permission" | "needs_reconnect" | "error" | "ready";
+
+export interface InstantFormsStatus {
+  state: InstantFormsState;
+  page_id: string | null;
+  /** Meta sends new leads to Anril the moment they're submitted. */
+  subscribed: boolean;
+  message: string | null;
+  forms: number;
+}
+
+export interface InstantFormStats {
+  leads: number;
+  with_phone: number;
+  template_sent: number;
+  template_failed: number;
+  /** Wrote back on WhatsApp after the template. */
+  replied: number;
+  from_ads: number;
+  /** Live from Meta for the ads that brought these leads; null when Meta can't say. */
+  spend: number | null;
+  cost_per_lead: number | null;
+}
+
+export interface InstantFormSummary extends InstantFormStats {
+  form_id: string;
+  name: string;
+  status: string | null;
+  created_at: string | null;
+  questions: number;
+  template_id: string | null;
+  template_name: string | null;
+  last_lead_at: string | null;
+}
+
+export interface InstantFormsOverview {
+  date_from: string;
+  date_to: string;
+  spend_available: boolean;
+  totals: InstantFormStats;
+  forms: InstantFormSummary[];
+}
+
+export interface InstantFormQuestion {
+  key: string;
+  label: string | null;
+  type: string | null;
+}
+
+export type InstantFormVariable =
+  | { source: "field"; field: string }
+  | { source: "text"; text: string };
+
+export interface InstantFormDetail {
+  form_id: string;
+  name: string;
+  status: string | null;
+  locale: string | null;
+  created_at: string | null;
+  synced_at: string | null;
+  questions: InstantFormQuestion[];
+  template_id: string | null;
+  template_variables: InstantFormVariable[];
+  date_from: string;
+  date_to: string;
+  spend_available: boolean;
+  stats: InstantFormStats;
+}
+
+export type InstantFormTemplateStatus =
+  | "pending" | "sending" | "sent" | "failed" | "no_template" | "no_phone" | "skipped_old";
+
+export interface InstantFormLead {
+  id: string;
+  leadgen_id: string;
+  meta_created_at: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  /** Meta's field_data: one entry per question, keyed by question key. */
+  answers: { name: string; values: string[] }[];
+  ad_id: string | null;
+  ad_name: string | null;
+  adset_name: string | null;
+  campaign_name: string | null;
+  platform: string | null;
+  is_organic: boolean;
+  /** The Anril lead it became; null for leads imported from before the connection. */
+  lead_id: string | null;
+  received_via: "webhook" | "catch_up" | "import";
+  template_status: InstantFormTemplateStatus;
+  template_error: string | null;
+  template_sent_at: string | null;
+  replied: boolean;
+}
+
+export interface InstantFormLeadsResponse {
+  data: InstantFormLead[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface InstantFormTemplateOption {
+  id: string;
+  name: string;
+  language: string;
+  body_text: string;
+  /** Number of {{n}} blanks in the body. */
+  blanks: number;
+  /** IMAGE / VIDEO / DOCUMENT header sent with the file saved on the template; null = no media. */
+  header_media_type: "IMAGE" | "VIDEO" | "DOCUMENT" | "TEXT" | null;
+  header_media_url: string | null;
+  header_text: string | null;
+}
+
+export interface InstantFormRange {
+  date_from?: string;
+  date_to?: string;
+}
+
 export interface MetaFieldCatalog {
   fields: MetaField[];
   breakdowns: MetaBreakdown[];
@@ -3796,3 +3948,12 @@ export interface SyncStartInfo {
 }
 
 export { API_URL };
+
+function instantFormsQuery(params: InstantFormRange & { search?: string; page?: number; limit?: number }): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}

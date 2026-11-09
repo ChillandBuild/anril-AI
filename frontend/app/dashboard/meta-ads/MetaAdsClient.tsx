@@ -2,15 +2,24 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { AdPerformanceTab } from "./AdPerformanceTab";
 import { AllAdsTab } from "./AllAdsTab";
+import { InstantFormDetail } from "./InstantFormDetail";
+import { InstantFormsTab } from "./InstantFormsTab";
 
-const VIEWS: { view: "whatsapp" | "all"; href: string; label: string }[] = [
+const VIEWS: { view: "whatsapp" | "all" | "forms"; href: string; label: string }[] = [
   { view: "whatsapp", href: "/dashboard/meta-ads", label: "Messaging ads" },
   { view: "all", href: "/dashboard/meta-ads/all-ads", label: "All ads" },
+  { view: "forms", href: "/dashboard/meta-ads/instant-forms", label: "Instant forms" },
 ];
 
-/** The Messaging ads / All ads switch lives in the app header (components/AppHeader.tsx);
+/** The Messaging ads / All ads / Instant forms switch lives in the app header (components/AppHeader.tsx);
  * the header hides its tabs on phones, so a copy shows here below the md breakpoint. */
-export function MetaAdsClient({ view = "whatsapp" }: { view?: "whatsapp" | "all" }) {
+export function MetaAdsClient({
+  view = "whatsapp",
+  formId,
+}: {
+  view?: "whatsapp" | "all" | "forms";
+  formId?: string;
+}) {
   return (
     <div>
       <nav aria-label="Meta ads views" className="mb-4 flex gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:hidden">
@@ -28,7 +37,13 @@ export function MetaAdsClient({ view = "whatsapp" }: { view?: "whatsapp" | "all"
           </Link>
         ))}
       </nav>
-      {view === "all" ? <AllAdsTab /> : <AdPerformanceTab />}
+      {view === "forms" ? (
+        formId ? <InstantFormDetail formId={formId} /> : <InstantFormsTab />
+      ) : view === "all" ? (
+        <AllAdsTab />
+      ) : (
+        <AdPerformanceTab />
+      )}
     </div>
   );
 }

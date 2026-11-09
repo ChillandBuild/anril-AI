@@ -35,6 +35,12 @@ const CHANNEL_CONFIG: Record<string, { label: string; color: string; bg: string;
     bg: "bg-blue-50 border-blue-200",
     dot: "bg-blue-500",
   },
+  meta_form: {
+    label: "Instant form",
+    color: "text-violet-700",
+    bg: "bg-violet-50 border-violet-200",
+    dot: "bg-violet-500",
+  },
   telegram: {
     label: "Telegram",
     color: "text-sky-700",
@@ -60,6 +66,7 @@ const SOURCE_OPTIONS = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "instagram", label: "Instagram" },
   { value: "facebook", label: "Facebook" },
+  { value: "meta_form", label: "Instant form" },
   { value: "telegram", label: "Telegram" },
   { value: "indiamart", label: "IndiaMART" },
   { value: "justdial", label: "JustDial" },

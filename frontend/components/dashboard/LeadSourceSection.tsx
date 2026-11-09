@@ -4,6 +4,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   instagram: "Instagram",
   facebook: "Facebook",
+  meta_form: "Instant form",
   telegram: "Telegram",
   upload: "Upload",
   manual: "Manual",

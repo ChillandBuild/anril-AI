@@ -109,6 +109,13 @@ function SourceBadge({ source }: { source: string }) {
       </span>
     );
   }
+  if (source === "meta_form") {
+    return (
+      <span className="inline-flex items-center gap-1 text-violet-700 font-semibold font-label text-xs">
+        📝 Instant form
+      </span>
+    );
+  }
   if (source === "indiamart" || source === "justdial") {
     return (
       <span className="inline-flex items-center gap-1 text-amber-700 font-semibold font-label text-xs">
@@ -128,6 +135,7 @@ const CHANNEL_BADGE: Record<string, string> = {
   instagram: "IG",
   telegram: "TG",
   facebook: "FB",
+  meta_form: "IF",
   indiamart: "IM",
   justdial: "JD",
 };

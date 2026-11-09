@@ -21,6 +21,7 @@ from app.routes import intake
 from app.routes import call_review
 from app.routes.marketplace_intake import public_router as marketplace_public_router
 from app.routes import marketplace_intake
+from app.routes import instant_forms
 from app.routes import deals, business_details
 from app.routes import brain
 from app.routes import brain_sandbox
@@ -445,6 +446,7 @@ app.include_router(brain_sandbox.operator_router, prefix="/api/v1/operator", tag
 app.include_router(chat_handovers.router, prefix="/api/v1/chat-handovers", tags=["chat-handovers"], dependencies=_auth)
 app.include_router(tags.router, prefix="/api/v1/broadcast-tags", tags=["broadcast-tags"], dependencies=_auth)
 app.include_router(inbound_leads.router, prefix="/api/v1/inbound-leads", tags=["inbound-leads"], dependencies=_auth)
+app.include_router(instant_forms.router, prefix="/api/v1/instant-forms", tags=["instant-forms"], dependencies=_auth)
 app.include_router(reengagement.router, prefix="/api/v1/reengagement", tags=["reengagement"], dependencies=_auth)
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"], dependencies=_auth)
 app.include_router(assignment_log.router, prefix="/api/v1/assignment-log", tags=["assignment-log"], dependencies=_auth)

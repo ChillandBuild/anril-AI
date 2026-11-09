@@ -1,6 +1,6 @@
 """Pure logic for inbound lead reporting. No DB, no network — unit-testable."""
 
-INBOUND_SOURCES = ("whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial")
+INBOUND_SOURCES = ("whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form")
 
 
 def is_inbound_lead(lead: dict) -> bool:
@@ -9,8 +9,9 @@ def is_inbound_lead(lead: dict) -> bool:
 
 
 def lead_origin(lead: dict) -> str:
-    """'ad' when an ad campaign is attributed, else 'organic'."""
-    return "ad" if lead.get("ad_campaign_id") else "organic"
+    """'ad' when an ad campaign is attributed or the lead came from a Meta
+    Instant form (a lead ad), else 'organic'."""
+    return "ad" if lead.get("ad_campaign_id") or lead.get("source") == "meta_form" else "organic"
 
 
 def aggregate_inbound(leads: list[dict], days_iso: list[str], today_iso: str) -> dict:

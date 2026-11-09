@@ -135,6 +135,17 @@ async def facebook_webhook(tenant_id: str, request: Request, background_tasks: B
                 f"not {tenant_id} (URL) — skipping entry"
             )
             continue
+        # Instant form (lead ad) submissions arrive as `changes`, carrying ids
+        # only. Unlike messages, they need the Page to be this tenant's own
+        # connected Page: the lead is then read with that Page's token.
+        for change in entry.get("changes", []) or []:
+            if change.get("field") != "leadgen":
+                continue
+            if owner_tenant != tenant_id:
+                logger.warning(f"Facebook leadgen for unregistered page {page_id} on tenant {tenant_id} — skipping")
+                continue
+            from app.services.meta_lead_forms import process_leadgen_event
+            background_tasks.add_task(process_leadgen_event, tenant_id, page_id, change.get("value") or {})
         messaging = entry.get("messaging", [])
         for event in messaging:
             # Ignore echo messages (sent by our page)

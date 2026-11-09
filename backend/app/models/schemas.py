@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 # --- Enums as Literals ---
-SourceType = Literal["whatsapp", "instagram", "facebook", "telegram", "upload", "csv", "manual", "indiamart", "justdial", "website", "api", "store"]
+SourceType = Literal["whatsapp", "instagram", "facebook", "telegram", "upload", "csv", "manual", "indiamart", "justdial", "website", "api", "store", "meta_form"]
 SegmentType = Literal["A", "B", "C", "D"]
 DirectionType = Literal["inbound", "outbound"]
 PlatformType = Literal["instagram", "facebook", "google"]

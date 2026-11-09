@@ -2,7 +2,7 @@ import type { Lead } from "@/lib/api";
 
 // Mirrors _MESSAGE_LEAD_SOURCES in backend/app/routes/calls.py: marketplace enquiries are
 // fresh buyer intent, so they sit with message leads above cold uploads.
-const MESSAGE_LEAD_SOURCES = new Set(["whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial"]);
+const MESSAGE_LEAD_SOURCES = new Set(["whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form"]);
 const SEGMENT_RANK: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
 
 export type LeadQueueSection = "messages" | "upload";

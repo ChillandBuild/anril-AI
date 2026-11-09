@@ -1,4 +1,4 @@
-"""M2: the 25 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
+"""M2: the 26 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
 
 Run with:
     cd backend && python -m pytest tests/test_queue_tasks.py -q -p no:cacheprovider
@@ -21,7 +21,7 @@ FIRES = 30
 MESSAGES = {
     "scheduled-broadcasts", "reengagement-rules", "silence-nudge", "callback-notifications",
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
-    "call-alert-summary", "brain-weekly-digest",
+    "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
 CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile"}
@@ -59,6 +59,7 @@ CALLEES = {
     "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
     "private-send-meta-reconcile": ("app.services.private_send.process_meta_reconcile", True, False),
     "crm-cutoff-sweep": ("app.services.call_ai_pipeline.sweep_crm_cutoff", True, False),
+    "instant-forms-catch-up": ("app.services.meta_lead_forms.catch_up_all", True, False),
     "call-alert-summary": ("app.services.call_alerts.send_morning_summaries", False, True),
     "brain-weekly-digest": ("app.services.brain_digest.send_weekly_digests", False, True),
 }
@@ -74,7 +75,7 @@ EVERY = {
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
     "scheduled-templates": 60, "sms-send": 60, "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
-    "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "ad-insights-sync": 3600,
+    "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "instant-forms-catch-up": 1800, "ad-insights-sync": 3600,
     "token-health-check": 4 * 3600, "number-quality-sync": 4 * 3600,
 }
 AT_IST = {
@@ -105,7 +106,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 25
+    assert len(_periodic()) == 26
 
 
 def test_task_name_matches_periodic_id():
@@ -157,7 +158,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (15, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (16, 4, 6)
 
 
 def test_sync_and_async_split():

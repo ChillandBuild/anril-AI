@@ -113,8 +113,9 @@ class _Query:
         self.op, self.payload = "update", payload
         return self
 
-    def upsert(self, payload: dict | list[dict], on_conflict: str = "id"):
+    def upsert(self, payload: dict | list[dict], on_conflict: str = "id", ignore_duplicates: bool = False):
         self.op, self.payload, self._conflict = "upsert", payload, [c.strip() for c in on_conflict.split(",")]
+        self._ignore_duplicates = ignore_duplicates
         return self
 
     def delete(self):
@@ -256,6 +257,8 @@ class _Query:
             written = []
             for p in payloads:
                 existing = [r for r in self.db.rows(self.name) if all(r.get(c) == p.get(c) for c in self._conflict)]
+                if existing and getattr(self, "_ignore_duplicates", False):
+                    continue  # ON CONFLICT DO NOTHING: PostgREST returns no row for it
                 if existing:
                     existing[0].update(p)
                     written.append(dict(existing[0]))

@@ -97,7 +97,7 @@ class CustomBroadcastRequest(LeadFilters):
     message: str
 
 
-INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial')
+INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form')
 
 
 def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None):
@@ -148,7 +148,7 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     if f.source_filter == "inbound":
         query = query.in_("source", list(INBOUND_SOURCES))
     elif f.source_filter == "organic":
-        query = query.in_("source", list(INBOUND_SOURCES)).is_("ad_campaign_id", "null")
+        query = query.in_("source", list(INBOUND_SOURCES)).is_("ad_campaign_id", "null").neq("source", "meta_form")
     elif f.source_filter == "meta_ads":
         query = query.in_("source", list(INBOUND_SOURCES)).not_.is_("ad_campaign_id", "null")
         if f.ad_campaign_id:
@@ -668,7 +668,7 @@ async def export_assigned_leads(
         ad_campaign_name = campaign_map.get(ad_campaign_id, {}).get("campaign_name", "") if ad_campaign_id else ""
         channel = campaign_map.get(ad_campaign_id, {}).get("platform", l.get("source", "")) if ad_campaign_id else l.get("source", "")
         
-        lead_type = "inbound" if l.get("source") in ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial') and not broadcast_id else "outbound"
+        lead_type = "inbound" if l.get("source") in INBOUND_SOURCES and not broadcast_id else "outbound"
         
         rows.append({
             "name": l.get("name") or "",
