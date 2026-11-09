@@ -16,3 +16,4 @@ here (one line).
 | eli5 | Explain in very plain words with an everyday comparison |
 | continue.. | Carry on with the last thing you proposed |
 | propose everything | Agents suggest, he decides; nothing gets built without his tick |
+| Aira → Anril | The WhatsApp sales product is now called Anril in everything user-facing (2026-11-09). Code, tables and old docs still say Aira. The companion product is "Anril Agents". |
