@@ -409,11 +409,59 @@ canvas {
 
 :root { --sidebar-width: 256px; }
 
-/* Product rail (components/nav/ProductRail.tsx): the 56px strip left of the
-   sidebar on lg+ screens. --shell-left is where the header and page content
-   start: rail + sidebar. Below lg both are hidden, so the rail is 0. */
-:root { --product-rail-width: 0px; --shell-left: calc(var(--product-rail-width) + var(--sidebar-width)); }
-@media (min-width: 1024px) { :root { --product-rail-width: 56px; } }
+/* --shell-left is where the header and page content start on lg+ screens. */
+:root { --shell-left: var(--sidebar-width); }
+
+/* Sales | Agents switch (components/nav/ProductSwitch.tsx, SidebarProductSwitch).
+   Each sidebar paints its own colour (.sb-anril navy, .sb-agents light grey).
+   A click sets data-product on <html> at once, before the next page loads, so
+   the old sidebar fades to the new colour, its menu fades out, and the pill
+   slides; data-product-anim scopes those transitions to the switch itself.
+   ClientLayout keeps data-product in step with the URL. */
+.sb-anril { background-color: var(--navy); }
+.sb-agents { background-color: #f5f5f5; box-shadow: inset -1px 0 0 #ededed; }
+:root[data-product="agents"] .sb-anril { background-color: #f5f5f5; }
+:root[data-product="anril"] .sb-agents { background-color: var(--navy); box-shadow: none; }
+:root[data-product="agents"] .sb-anril > :not(.product-switch-row),
+:root[data-product="anril"] .sb-agents > :not(.product-switch-row) { opacity: 0; pointer-events: none; }
+:root[data-product-anim] :is(.sb-anril, .sb-agents) { transition: background-color 0.26s ease, box-shadow 0.26s ease; }
+:root[data-product-anim] :is(.sb-anril, .sb-agents) > * { transition: opacity 0.14s ease; }
+:root[data-product="agents"][data-product-anim] .sb-agents > :not(.product-switch-row),
+:root[data-product="anril"][data-product-anim] .sb-anril > :not(.product-switch-row) { animation: sb-menu-in 0.24s 0.04s ease-out both; }
+@keyframes sb-menu-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.product-switch {
+  --ps-track: rgba(255, 255, 255, 0.08); --ps-fg: rgba(255, 255, 255, 0.62); --ps-fg-on: var(--navy);
+  position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 12px;
+  background-color: var(--ps-track); transition: background-color 0.26s ease;
+}
+.product-switch[data-on="agents"], :root[data-product="agents"] .product-switch {
+  --ps-track: #e8e8e8; --ps-fg: #6b7280; --ps-fg-on: #16202c;
+}
+:root[data-product="anril"] .product-switch {
+  --ps-track: rgba(255, 255, 255, 0.08); --ps-fg: rgba(255, 255, 255, 0.62); --ps-fg-on: var(--navy);
+}
+.ps-pill {
+  position: absolute; top: 3px; left: 3px; width: calc(50% - 3px); height: calc(100% - 6px);
+  border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.product-switch[data-on="agents"] .ps-pill, :root[data-product="agents"] .ps-pill { transform: translateX(100%); }
+:root[data-product="anril"] .ps-pill { transform: none; }
+.ps-btn { position: relative; z-index: 1; color: var(--ps-fg); transition: color 0.2s ease; }
+.ps-btn[aria-pressed="true"] { color: var(--ps-fg-on); }
+:root[data-product="agents"] .ps-btn[data-product="agents"], :root[data-product="anril"] .ps-btn[data-product="anril"] { color: var(--ps-fg-on); }
+:root[data-product="agents"] .ps-btn[data-product="anril"], :root[data-product="anril"] .ps-btn[data-product="agents"] { color: var(--ps-fg); }
+/* Folded to the 64px strip: the two buttons stack and the pill slides down. */
+.sidebar-shell[data-rail]:not([data-peek]) .product-switch { grid-template-columns: 1fr; }
+.sidebar-shell[data-rail]:not([data-peek]) .ps-pill { width: calc(100% - 6px); height: calc(50% - 3px); }
+.sidebar-shell[data-rail]:not([data-peek]) .ps-lbl { display: none; }
+.sidebar-shell[data-rail]:not([data-peek]) .product-switch[data-on="agents"] .ps-pill,
+:root[data-product="agents"] .sidebar-shell[data-rail]:not([data-peek]) .ps-pill { transform: translateY(100%); }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-product-anim] :is(.sb-anril, .sb-agents), :root[data-product-anim] :is(.sb-anril, .sb-agents) > *,
+  .product-switch, .ps-pill, .ps-btn { transition: none; animation: none !important; }
+}
 
 /* Sidebar fold (components/nav/useSidebarRail.ts). Wide pages fold it to a
    64px icon strip; data-sidebar-rail on <html> narrows --sidebar-width for
