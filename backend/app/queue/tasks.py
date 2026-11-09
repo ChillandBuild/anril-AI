@@ -1,4 +1,4 @@
-"""The 26 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 27 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST

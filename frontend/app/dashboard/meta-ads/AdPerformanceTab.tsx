@@ -50,6 +50,7 @@ import {
   type ReportLevel,
 } from "./reportControls";
 import { AdDetailPanel } from "./AdDetailPanel";
+import { MESSAGING_TOTAL_RULES, TotalLabel } from "./TotalLabel";
 
 type MetricKey =
   | "delivery_status"
@@ -1074,7 +1075,7 @@ export function AdPerformanceTab() {
                 <tfoot>
                   <tr className="border-t-2 border-[#e2e8f0] bg-[#f8fafc] font-bold">
                     <td className="sticky left-0 z-10 bg-[#f8fafc] px-4 py-3 text-sm">
-                      Total <span className="ml-1.5 font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
+                      <TotalLabel rules={MESSAGING_TOTAL_RULES} /> <span className="ml-1.5 font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
                     </td>
                     {selectedMetrics.map((metric) => (
                       <td key={metric.key} className={cn(

@@ -1,4 +1,4 @@
-"""M2: the 26 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
+"""M2: the 27 scheduled jobs as Procrastinate periodic tasks (SPEC.md section 5).
 
 Run with:
     cd backend && python -m pytest tests/test_queue_tasks.py -q -p no:cacheprovider
@@ -109,7 +109,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 26
+    assert len(_periodic()) == 27
 
 
 def test_task_name_matches_periodic_id():
@@ -162,7 +162,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (16, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (17, 4, 6)
 
 
 def test_sync_and_async_split():
