@@ -200,7 +200,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                 className="hidden sm:flex items-center gap-x-6 rounded-t-2xl bg-surface-subtle/60 px-5 py-2.5 font-label text-[11px] font-semibold uppercase tracking-wider text-ink-muted"
               >
                 <span className="shrink-0 sm:w-60">Channel</span>
-                <span className="w-[300px] shrink-0">Assign by</span>
+                <span className="sm:w-[320px] xl:w-[440px] shrink-0">Assign by</span>
                 <span className="flex-1">Segments</span>
                 <span className="w-9 shrink-0 text-right">On</span>
               </li>
@@ -233,20 +233,26 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                     {rule.enabled && (
                       <>
                         {/* Assign by */}
-                        <div role="group" aria-label={`${row.label} assign by`} className="order-3 sm:order-2 flex gap-1 p-1 bg-surface-subtle border border-border rounded-xl w-fit">
+                        <div
+                          role="radiogroup"
+                          aria-label={`${row.label} assign by`}
+                          className="order-3 sm:order-2 flex flex-wrap items-center gap-x-5 gap-y-2 sm:w-[320px] xl:w-[440px] xl:flex-nowrap shrink-0"
+                        >
                           {MODES.map((m) => {
                             const active = rule.mode === m.value;
                             return (
                               <button
                                 key={m.value}
                                 type="button"
-                                aria-pressed={active}
+                                role="radio"
+                                aria-checked={active}
                                 disabled={controlsDisabled}
                                 onClick={() => setRule(row.key, { mode: m.value })}
-                                className={`whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg font-label text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-55 ${
-                                  active ? "bg-white text-ink shadow-sm border border-border/50" : "text-ink-muted hover:text-ink"
+                                className={`inline-flex items-center gap-2 font-label text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+                                  active ? "font-semibold text-ink" : "font-medium text-ink-muted hover:text-ink"
                                 }`}
                               >
+                                <TickMark checked={active} size="sm" />
                                 <span className="sm:hidden">{m.short}</span>
                                 <span className="hidden sm:inline">{m.label}</span>
                               </button>
@@ -256,7 +262,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
 
                         {/* Segments */}
                         {!isUpload && (
-                          <div role="group" aria-label={`${row.label} segments`} className="order-4 sm:order-3 flex flex-wrap items-center gap-2">
+                          <div role="group" aria-label={`${row.label} segments`} className="order-4 sm:order-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                             {SEGMENTS.map((seg) => {
                               const active = segments.includes(seg.key);
                               return (
@@ -267,8 +273,8 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                                   aria-checked={active}
                                   disabled={controlsDisabled}
                                   onClick={() => toggleSegment(row.key, seg.key)}
-                                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-                                    active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
+                                  className={`inline-flex items-center gap-2 font-label text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+                                    active ? "font-semibold text-ink" : "font-medium text-ink-muted hover:text-ink"
                                   }`}
                                 >
                                   <TickMark checked={active} size="sm" />
