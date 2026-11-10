@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.db.supabase import get_supabase
 from app.services import assignment, brain
-from app.services.ai_reply import _TRIGGER_REASONS, _provider_and_native_model
+from app.services.ai_reply import _TRIGGER_REASONS, _provider_and_native_model, reply_model_or_default
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,7 @@ MASTER_PROMPT_KEY = "default_master_prompt"
 
 # provider (as returned by ai_reply._provider_and_native_model) -> (label, stored key)
 PROVIDER_KEYS = {
-    "sarvam": ("Sarvam", "sarvam_api_key"),
     "gemini": ("Gemini", "gemini_api_key"),
-    "openai": ("OpenAI", "openai_api_key"),
-    "groq": ("Groq", "groq_api_key"),
     "jina": ("Jina (embeddings)", "jina_api_key"),
 }
 _SETTING_KEYS = (
@@ -105,11 +102,10 @@ def _master_prompt_row(db) -> dict:
 
 def _needed_providers(model: str, retrieval_mode: str) -> set[str]:
     needed: set[str] = set()
-    if model:
-        try:
-            needed.add(_provider_and_native_model(model)[0])
-        except RuntimeError:
-            logger.warning("operator brain: unrecognised reply model %r", model)
+    try:
+        needed.add(_provider_and_native_model(model)[0])
+    except RuntimeError:
+        logger.warning("operator brain: unrecognised reply model %r", model)
     if retrieval_mode in ("semantic", "hybrid"):
         needed.add("jina")
     return needed
@@ -133,18 +129,13 @@ def operator_rows(db, tenant_id: str) -> list[dict]:
     """Master prompt, reply model, language mode, retrieval mode, provider keys. Each is
     {key, label, state, detail, href, section}; key values are never included."""
     settings = _tenant_settings(db, tenant_id)
-    model = settings.get("ai_reply_model", "")
+    model = reply_model_or_default(settings.get("ai_reply_model"))
     language = settings.get("reply_language_mode") or DEFAULT_LANGUAGE_MODE
     retrieval = (settings.get("kb_retrieval_mode") or DEFAULT_RETRIEVAL_MODE).lower()
     link = {"href": f"/operator/client/{tenant_id}", "section": "config"}
-    model_row = (
-        _row("reply_model", "Reply model", "ok", model, **link)
-        if model
-        else _row("reply_model", "Reply model", "missing", "Not chosen: Anril cannot reply until one is set", **link)
-    )
     return [
         _master_prompt_row(db),
-        model_row,
+        _row("reply_model", "Reply model", "ok", model, **link),
         _row("language_mode", "Language mode", "ok", language, **link),
         _row("retrieval_mode", "Knowledge retrieval mode", "ok", retrieval, **link),
         *_provider_key_rows(settings, _needed_providers(model, retrieval), tenant_id),

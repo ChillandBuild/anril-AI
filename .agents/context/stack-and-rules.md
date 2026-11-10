@@ -6,7 +6,7 @@
 | Backend | FastAPI, Python 3.11+, Pydantic v2 | backend/app/ |
 | DB | Supabase (PostgreSQL + Realtime) | — |
 | Frontend | Next.js 14 App Router, TypeScript, Tailwind | frontend/app/dashboard/ |
-| AI | Replies: per-tenant operator choice of Sarvam / Groq / Gemini / OpenAI (`ai_reply_model`, no default); Gemini 3.1 Flash-Lite for STT, doc digitization, call analysis; Gemini TTS for voice replies; Groq for scoring/coaching/digests/tuning/briefs/compaction | services/ai_reply.py, services/{sarvam,groq,gemini,openai}_client.py |
+| AI | Gemini only (2026-11-10). Replies: per-tenant `ai_reply_model`, one of `google/gemini-3.1-flash-lite` (default) or `google/gemini-3.5-flash-lite`, with one retry on the other model when Google fails; Gemini 3.1 Flash-Lite for STT, doc digitization, call analysis, scoring, compaction, tuning; Gemini TTS for voice replies; Jina for knowledge-search embeddings | services/ai_reply.py, services/gemini_client.py, services/embeddings.py |
 | WhatsApp | Meta Cloud API Direct | — |
 | Voice | TeleCMI click-to-call + recording | services/telecmi_client.py |
 | Payments | Razorpay Payment Links API | services/payment_razorpay.py |
@@ -16,7 +16,7 @@
 ## Provider Decisions (Locked)
 - **WhatsApp**: Meta Cloud API Direct.
 - **Voice**: TeleCMI (click-to-call + recording).
-- **AI providers (per-workload, updated 2026-07-18)**: WhatsApp AI replies route to the tenant's explicit `ai_reply_model` choice — Sarvam, Groq, Gemini, or OpenAI as **equal peers**, no hardcoded default (operator picks per tenant, same contract as provider keys). STT (voice notes + call recordings), knowledge doc digitization, TeleCMI call evaluation (v4, 2026-09-28), lead scoring, conversation compaction and AI tuning run on Gemini 3.1 Flash-Lite; voice-reply TTS on Gemini. Groq survives only as a tenant-selectable reply model (updated 2026-09-28). Every provider key is strictly per-tenant (see subsystem-notes) — never add a platform-key fallback.
+- **AI providers (updated 2026-11-10)**: Gemini is the only LLM provider; the Sarvam, OpenAI and Groq chat clients were deleted. WhatsApp and companion replies run on the tenant's `ai_reply_model`: `google/gemini-3.1-flash-lite` (`DEFAULT_REPLY_MODEL`, used when none or a removed model is stored) or `google/gemini-3.5-flash-lite`. On a 429, 5xx or network error the call is retried once on the other model with the same key (`ai_reply._gemini_call`); a 4xx (bad key, bad request) is not retried, and a Playground model pick never falls back. Both settings PATCH routes reject any other model id. STT, doc digitization, call evaluation, scoring, compaction and tuning run on Gemini 3.1 Flash-Lite; voice-reply TTS on Gemini; knowledge embeddings on Jina. Every provider key is strictly per-tenant (see subsystem-notes) — never add a platform-key fallback. Old `sarvam_api_key` / `openai_api_key` / `groq_api_key` rows may still sit in `app_settings` (unused, still masked as secrets).
 - **Payments**: Razorpay (Payment Links API — no SDK, direct httpx/httpx-async calls).
   Two ways a tenant connects (added 2026-10-30): pasted keys (`razorpay_key_id/_secret/_webhook_secret`,
   webhook `/api/v1/intake/razorpay-webhook`) or **Connect with Razorpay** OAuth

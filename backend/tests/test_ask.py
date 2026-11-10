@@ -76,12 +76,12 @@ class AskRouteTests(unittest.TestCase):
 
     @patch("app.services.ai_reply._llm_chat_with_tools", new_callable=AsyncMock)
     def test_no_provider_configured_is_a_clean_400_not_500(self, mock_classify):
-        mock_classify.side_effect = RuntimeError("ai_reply_model not configured for this client")
+        mock_classify.side_effect = RuntimeError("gemini_api_key not configured for this client")
 
         res = self.client.post("/api/v1/ask", json={"question": "How many leads today?"})
 
         self.assertEqual(res.status_code, 400)
-        self.assertIn("Connect an AI provider", res.json()["detail"])
+        self.assertIn("Add a Gemini API key", res.json()["detail"])
 
     def test_blank_question_is_400(self):
         res = self.client.post("/api/v1/ask", json={"question": "   "})

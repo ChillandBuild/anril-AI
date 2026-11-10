@@ -15,8 +15,7 @@ import httpx
 READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 READ_ONLY_RPC_PREFIXES = ("match_", "keyword_match_", "search_")
 TOKEN_METER_MODULES = (
-    "app.services.token_meter", "app.services.gemini_client", "app.services.groq_client",
-    "app.services.openai_client", "app.services.sarvam_client",
+    "app.services.token_meter", "app.services.gemini_client",
 )
 
 blocked: list[str] = []

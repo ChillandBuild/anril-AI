@@ -86,27 +86,33 @@ class TestOperatorRows:
         return {r["key"]: r for r in operator_brain.operator_rows(db, T1)}
 
     def test_provider_key_values_never_leave_the_service(self, db, client, quiet_settings):
-        for key in ("sarvam_api_key", "openai_api_key", "jina_api_key"):
+        for key in ("gemini_api_key", "jina_api_key", "sarvam_api_key", "openai_api_key", "groq_api_key"):
             db.add("app_settings", tenant_id=T1, key=key, value=SECRET)
-        db.add("app_settings", tenant_id=T1, key="ai_reply_model", value="openai/gpt-5-mini")
+        db.add("app_settings", tenant_id=T1, key="ai_reply_model", value="google/gemini-3.5-flash-lite")
         res = client.get(f"/api/v1/operator/clients/{T1}/brain")
         assert SECRET not in res.text
         rows = {r["key"]: r for r in res.json()["operator_rows"]}
-        assert rows["key_openai"]["state"] == "ok" and rows["key_openai"]["detail"] == "Present"
-        assert rows["key_groq"]["state"] == "off"
+        assert rows["key_gemini"]["state"] == "ok" and rows["key_gemini"]["detail"] == "Present"
+        # Keys for providers Aira no longer calls may still sit in the DB; they get no row.
+        assert not {"key_sarvam", "key_openai", "key_groq"} & set(rows)
+
+    def test_reply_model_defaults_to_flash_lite_when_none_or_a_removed_one_is_stored(self, db):
+        assert self._rows(db)["reply_model"]["detail"] == "google/gemini-3.1-flash-lite"
+        db.add("app_settings", tenant_id=T1, key="ai_reply_model", value="openai/gpt-5-mini")
+        row = self._rows(db)["reply_model"]
+        assert row["state"] == "ok" and row["detail"] == "google/gemini-3.1-flash-lite"
 
     def test_missing_key_the_client_needs_is_flagged(self, db):
-        db.add("app_settings", tenant_id=T1, key="ai_reply_model", value="google/gemini-2.5-flash")
         rows = self._rows(db)
-        assert rows["key_gemini"]["state"] == "missing"
+        assert rows["key_gemini"]["state"] == "missing"  # needed even when no model was picked
         assert rows["key_jina"]["state"] == "missing"  # semantic retrieval is the default
 
     def test_settings_of_another_tenant_do_not_leak(self, db):
-        db.add("app_settings", tenant_id=T2, key="ai_reply_model", value="openai/gpt-5-mini")
-        db.add("app_settings", tenant_id=T2, key="openai_api_key", value=SECRET)
+        db.add("app_settings", tenant_id=T2, key="ai_reply_model", value="google/gemini-3.5-flash-lite")
+        db.add("app_settings", tenant_id=T2, key="gemini_api_key", value=SECRET)
         rows = self._rows(db)
-        assert rows["reply_model"]["state"] == "missing"
-        assert rows["key_openai"]["state"] == "off"
+        assert "3.5" not in json.dumps(rows["reply_model"])
+        assert rows["key_gemini"]["state"] == "missing"
 
     def test_master_prompt_row_gives_length_and_date_never_the_text(self, db):
         db.add("platform_defaults", key="default_master_prompt", value="You are Aira. " * 10, updated_at="2026-07-19T10:00:00+00:00")

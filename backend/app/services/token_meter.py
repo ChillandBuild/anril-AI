@@ -7,7 +7,7 @@ tenant_token_usage via the atomic increment_token_usage() RPC
 Same contract as entitlements.meter(): TRACK-ONLY and best-effort — this must
 never raise, block, cap, or break the AI call it is metering. Callers must not
 branch on it. Called from inside the provider client wrappers
-(groq/gemini/openai/sarvam_client.py) so call sites keep their signatures.
+(gemini_client.py) so call sites keep their signatures.
 """
 import logging
 
@@ -49,15 +49,3 @@ def record_tokens(
             f"token metering failed (tenant={tenant_id}, purpose={purpose}, "
             f"provider={provider}, model={model}): {e}"
         )
-
-
-def record_groq_sdk(tenant_id: str | None, purpose: str, model: str, resp) -> None:
-    """Same as record_tokens, but reads token counts off a raw groq-sdk
-    ChatCompletion response (resp.usage.prompt_tokens/completion_tokens) --
-    for the several call sites that use get_groq_client() directly instead
-    of groq_client.groq_chat_completion()."""
-    usage = getattr(resp, "usage", None)
-    record_tokens(
-        tenant_id, purpose, "groq", model,
-        getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None),
-    )

@@ -64,9 +64,7 @@ _SETTING_KEYS: list[tuple[str, bool]] = [
     ("meta_app_secret", True),
     ("telecmi_app_id", False), ("telecmi_user_id", False), ("telecmi_secret", True),
     ("telecmi_callerid", False), ("telecmi_webhook_secret", True), ("telecmi_recording_base_url", False),
-    ("sarvam_api_key", True), ("groq_api_key", True),
-    ("gemini_api_key", True), ("openai_api_key", True),
-    ("jina_api_key", True),
+    ("gemini_api_key", True), ("jina_api_key", True),
     ("ai_reply_model", False),
     ("telegram_bot_token", True),
     ("instagram_page_id", False), ("instagram_access_token", True),
@@ -1345,7 +1343,7 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
 
     # Platform-wide, read-only here: this is the same text for every client, shown so
     # an operator can see what the assistant is running on without leaving the page.
-    from app.services.ai_reply import get_master_prompt
+    from app.services.ai_reply import get_master_prompt, reply_model_or_default
     master_prompt = get_master_prompt()
 
     return {
@@ -1355,11 +1353,8 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
         "credentials_status": {
             "whatsapp": cred_status(["meta_phone_number_id", "meta_access_token", "meta_waba_id", "meta_webhook_verify_token"]),
             "telecalling": cred_status(["telecmi_app_id", "telecmi_secret", "telecmi_callerid"]),
-            "ai": cred_status(["sarvam_api_key"]),
-            "ai_sarvam": cred_status(["sarvam_api_key"]),
+            "ai": cred_status(["gemini_api_key"]),
             "ai_gemini": cred_status(["gemini_api_key"]),
-            "ai_openai": cred_status(["openai_api_key"]),
-            "ai_groq": cred_status(["groq_api_key"]),
             "ai_jina": cred_status(["jina_api_key"]),
             "telegram": cred_status(["telegram_bot_token"]),
             "instagram": cred_status(["instagram_page_id", "instagram_access_token"]),
@@ -1378,7 +1373,7 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
             "ai_media_recommendations_enabled": settings_map.get("ai_media_recommendations_enabled") == "true",
             "catalog_ai_max_images_ceiling": float_setting("catalog_ai_max_images_ceiling", 5),
             "kb_retrieval_mode": settings_map.get("kb_retrieval_mode", "semantic") or "semantic",
-            "ai_reply_model": settings_map.get("ai_reply_model"),
+            "ai_reply_model": reply_model_or_default(settings_map.get("ai_reply_model")),
             "reply_language_mode": settings_map.get("reply_language_mode", "mirror") or "mirror",
             "deal_idle_close_days": clamp_deal_idle_close_days(settings_map.get(DEAL_IDLE_CLOSE_DAYS_KEY)),
         },
@@ -1427,6 +1422,10 @@ def update_client_config(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         normalized[DEAL_IDLE_CLOSE_DAYS_KEY] = str(days)
+    if "ai_reply_model" in normalized:
+        from app.services.ai_reply import REPLY_MODELS
+        if normalized["ai_reply_model"] not in REPLY_MODELS:
+            raise HTTPException(status_code=400, detail="Unknown reply model. Pick one from the list.")
 
     db = get_supabase()
     tenant = db.table("tenants").select("id").eq("id", tenant_id).maybe_single().execute()

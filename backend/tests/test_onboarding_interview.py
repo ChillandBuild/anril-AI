@@ -78,12 +78,12 @@ class InterviewDraftRouteTests(unittest.TestCase):
 
     @patch("app.services.ai_reply._llm_chat", new_callable=AsyncMock)
     def test_no_provider_configured_returns_clean_400_not_500(self, mock_llm_chat):
-        mock_llm_chat.side_effect = RuntimeError("ai_reply_model not configured for this client")
+        mock_llm_chat.side_effect = RuntimeError("gemini_api_key not configured for this client")
 
         res = self.client.post("/api/v1/onboarding/interview/draft", json=ANSWERS_PAYLOAD)
 
         self.assertEqual(res.status_code, 400)
-        self.assertIn("Connect an AI provider", res.json()["detail"])
+        self.assertIn("Add a Gemini API key", res.json()["detail"])
 
     @patch("app.services.ai_reply._llm_chat", new_callable=AsyncMock)
     def test_malformed_json_from_the_model_returns_502_not_500(self, mock_llm_chat):

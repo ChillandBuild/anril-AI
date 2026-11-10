@@ -23,62 +23,46 @@ from app.services.entitlements import meter, check_quota
 logger = logging.getLogger(__name__)
 
 from app.config_dynamic import get_setting, require_tenant_setting
-from app.services.sarvam_client import sarvam_chat_completion, sarvam_chat_completion_with_tools
 from app.services.gemini_client import gemini_chat_completion, gemini_chat_completion_with_tools
-from app.services.openai_client import openai_chat_completion, openai_chat_completion_with_tools
-from app.services.groq_client import groq_chat_completion, groq_chat_completion_with_tools
 
-# Each entry: stored ai_reply_model prefix -> (provider name, native-model-id prefix to
-# strip). Sarvam has no prefix since its native IDs ("sarvam-30b") are used directly.
-_PROVIDER_PREFIXES: list[tuple[str, str]] = [
-    ("google/", "gemini"),
-    ("openai/", "openai"),
-    ("groq/", "groq"),
-]
-
-def _resolve_reply_model(tenant_id: str | None) -> str:
-    """No silent fallback -- every tenant must explicitly pick a reply model in the
-    operator console. Raises if unset, same as the per-provider API key requirement
-    below (operator decision, see decisions/log.md)."""
-    return require_tenant_setting("ai_reply_model", tenant_id)
-
-
-def _provider_and_native_model(model: str) -> tuple[str, str]:
-    if model.startswith("sarvam"):
-        return "sarvam", model
-    for prefix, provider in _PROVIDER_PREFIXES:
-        if model.startswith(prefix):
-            return provider, model[len(prefix):]
-    raise RuntimeError(f"Unrecognized reply model '{model}'")
-
+# Replies run on Gemini only (operator decision 2026-11-10, see decisions/log.md). A stored
+# ai_reply_model keeps its "google/" prefix; the part after it is Gemini's own model id.
+_GEMINI_PREFIX = "google/"
 
 # The reply models a tenant can pick (same list as the operator console's REPLY_MODELS).
 REPLY_MODELS: dict[str, str] = {
-    "sarvam-30b": "Sarvam 30B",
-    "sarvam-105b": "Sarvam 105B",
     "google/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-    "google/gemini-3.5-flash": "Gemini 3.5 Flash",
-    "openai/gpt-5.4-nano-2026-03-17": "GPT-5.4 Nano",
-    "openai/gpt-5-nano-2025-08-07": "GPT-5 Nano",
-    "groq/llama-3.3-70b-versatile": "Llama 3.3 70B",
-    "groq/qwen/qwen3-32b": "Qwen 3 32B",
+    "google/gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
 }
+DEFAULT_REPLY_MODEL = "google/gemini-3.1-flash-lite"
+
+
+def reply_model_or_default(stored: str | None) -> str:
+    """A stored ai_reply_model. No pick, or a pick since removed from REPLY_MODELS, is the default."""
+    return stored if stored in REPLY_MODELS else DEFAULT_REPLY_MODEL
+
+
+def _resolve_reply_model(tenant_id: str | None) -> str:
+    return reply_model_or_default(get_setting("ai_reply_model", tenant_id=tenant_id))
+
+
+def _provider_and_native_model(model: str) -> tuple[str, str]:
+    if model in REPLY_MODELS:
+        return "gemini", model[len(_GEMINI_PREFIX):]
+    raise RuntimeError(f"Unrecognized reply model '{model}'")
 
 
 def available_reply_models(tenant_id: str | None) -> list[dict]:
-    """The models this tenant could switch to: those whose provider API key is set. Used only
-    by the Agents Playground model picker; live replies always use ai_reply_model."""
-    out = []
-    for model_id, label in REPLY_MODELS.items():
-        provider, _ = _provider_and_native_model(model_id)
-        if get_setting(f"{provider}_api_key", tenant_id=tenant_id):
-            out.append({"id": model_id, "label": label})
-    return out
+    """The models this tenant could switch to: all of them once the Gemini key is set. Used
+    only by the Agents Playground model picker; live replies always use ai_reply_model."""
+    if not get_setting("gemini_api_key", tenant_id=tenant_id):
+        return []
+    return [{"id": model_id, "label": label} for model_id, label in REPLY_MODELS.items()]
 
 
 def _provider_for(tenant_id: str | None, model: str | None) -> tuple[str, str]:
     """(provider, native_model): the tenant's ai_reply_model, or an explicit model override
-    (Playground only), whose provider key must still be set for this tenant."""
+    (Playground only). Either way the tenant's own Gemini key must be set."""
     if not model:
         return _resolve_provider(tenant_id)
     provider, native_model = _provider_and_native_model(model)
@@ -87,13 +71,40 @@ def _provider_for(tenant_id: str | None, model: str | None) -> tuple[str, str]:
 
 
 def _resolve_provider(tenant_id: str | None) -> tuple[str, str]:
-    """Resolves (provider, native_model) for this tenant's selected ai_reply_model, and
-    enforces that the tenant has explicitly configured that provider's API key. No
-    fallback to a platform-wide key for any provider, including Sarvam -- every client's
-    keys are configured independently in the operator console (see decisions/log.md)."""
+    """Resolves (provider, native_model) for this tenant's ai_reply_model, and enforces that
+    the tenant has configured its own Gemini key. No fallback to a platform-wide key --
+    every client's key is configured independently in the operator console (see
+    decisions/log.md)."""
     provider, native_model = _provider_and_native_model(_resolve_reply_model(tenant_id))
     require_tenant_setting(f"{provider}_api_key", tenant_id)
     return provider, native_model
+
+
+def _google_side_failure(exc: Exception) -> bool:
+    """True when Google itself is struggling (rate limit, server error, timeout), so the
+    other Gemini model may still answer. A bad key or a bad request fails the same on both."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
+def _other_reply_model(native_model: str) -> str | None:
+    others = (m[len(_GEMINI_PREFIX):] for m in REPLY_MODELS)
+    return next((m for m in others if m != native_model), None)
+
+
+async def _gemini_call(call, native_model: str, *, fallback: bool, **kwargs):
+    """One Gemini call. With fallback on, a Google-side failure is retried once on the other
+    reply model, using the same tenant key."""
+    try:
+        return await call(model=native_model, **kwargs)
+    except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+        other = _other_reply_model(native_model)
+        if not (fallback and other and _google_side_failure(exc)):
+            raise
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
+        logger.warning("Gemini %s failed (%s); retrying once on %s", native_model, status, other)
+        return await call(model=other, **kwargs)
 
 
 async def _llm_chat(
@@ -107,19 +118,14 @@ async def _llm_chat(
 ) -> str:
     # purpose/temperature are overridable for non-reply callers (knowledge auto-sort
     # meters under "knowledge_sort" and needs near-deterministic output).
-    # model: Agents Playground test chat only. Live replies never pass it.
-    provider, native_model = _provider_for(tenant_id, model)
-    kwargs = dict(
-        messages=messages, model=native_model, temperature=temperature, max_tokens=max_tokens,
+    # model: Agents Playground test chat only, and it never falls back: a test of one
+    # model must not be answered by the other. Live replies never pass it.
+    _provider, native_model = _provider_for(tenant_id, model)
+    return await _gemini_call(
+        gemini_chat_completion, native_model, fallback=model is None,
+        messages=messages, temperature=temperature, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
     )
-    if provider == "sarvam":
-        return await sarvam_chat_completion(**kwargs)
-    if provider == "gemini":
-        return await gemini_chat_completion(**kwargs)
-    if provider == "openai":
-        return await openai_chat_completion(**kwargs)
-    return await groq_chat_completion(**kwargs)
 
 
 async def _llm_complete(prompt: str, max_tokens: int = 300, tenant_id: str | None = None) -> str:
@@ -130,22 +136,15 @@ async def _llm_chat_with_tools(
     messages: list[dict], tools: list[dict], max_tokens: int = 300, tenant_id: str | None = None,
     *, purpose: str = "ai_reply", model: str | None = None,
 ) -> tuple[str, list[dict]]:
-    """Tool-calling counterpart to _llm_chat -- routes catalog-recommendation replies
-    through the tenant's selected ai_reply_model instead of hardcoding Sarvam.
-    purpose is overridable so other callers (the companion) meter under their own name.
-    model: Agents Playground test chat only. Live replies never pass it."""
-    provider, native_model = _provider_for(tenant_id, model)
-    kwargs = dict(
-        messages=messages, tools=tools, model=native_model, max_tokens=max_tokens,
+    """Tool-calling counterpart to _llm_chat -- catalog-recommendation replies on the
+    tenant's ai_reply_model. purpose is overridable so other callers (the companion) meter
+    under their own name. model: Agents Playground test chat only (no fallback, as above)."""
+    _provider, native_model = _provider_for(tenant_id, model)
+    return await _gemini_call(
+        gemini_chat_completion_with_tools, native_model, fallback=model is None,
+        messages=messages, tools=tools, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
     )
-    if provider == "sarvam":
-        return await sarvam_chat_completion_with_tools(**kwargs)
-    if provider == "gemini":
-        return await gemini_chat_completion_with_tools(**kwargs)
-    if provider == "openai":
-        return await openai_chat_completion_with_tools(**kwargs)
-    return await groq_chat_completion_with_tools(**kwargs)
 
 
 def _resolve_campaign(db, lead_id: str) -> tuple[str | None, str | None]:

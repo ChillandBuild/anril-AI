@@ -34,14 +34,14 @@ class OperatorClientConfigTests(unittest.TestCase):
                     {"key": "ai_auto_reply_enabled", "value": "true"},
                     {"key": "ai_voice_reply_enabled", "value": "true"},
                     {"key": "ai_voice_reply_speaker", "value": "Kore"},
-                    {"key": "sarvam_api_key", "value": "client-sarvam-key"},
+                    {"key": "gemini_api_key", "value": "client-gemini-key"},
                     {"key": "telegram_bot_token", "value": "123:abc"},
                     {"key": "instagram_page_id", "value": "ig-page"},
                     {"key": "instagram_access_token", "value": "ig-token"},
                     {"key": "facebook_page_id", "value": "fb-page"},
                     {"key": "facebook_access_token", "value": "fb-token"},
                     {"key": "kb_retrieval_mode", "value": "hybrid"},
-                    {"key": "ai_reply_model", "value": "openai/gpt-5-mini"}
+                    {"key": "ai_reply_model", "value": "google/gemini-3.5-flash-lite"}
                 ]
             elif name == "tenant_subscriptions":
                 tbl.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
@@ -63,7 +63,7 @@ class OperatorClientConfigTests(unittest.TestCase):
         self.assertEqual(body["settings"]["ai_voice_reply_enabled"], True)
         self.assertEqual(body["settings"]["ai_voice_reply_speaker"], "Kore")
         self.assertEqual(body["settings"]["kb_retrieval_mode"], "hybrid")
-        self.assertEqual(body["settings"]["ai_reply_model"], "openai/gpt-5-mini")
+        self.assertEqual(body["settings"]["ai_reply_model"], "google/gemini-3.5-flash-lite")
         self.assertEqual(body["credentials_status"]["ai"], "configured")
         self.assertEqual(body["credentials_status"]["telegram"], "configured")
         self.assertEqual(body["credentials_status"]["instagram"], "configured")
@@ -73,11 +73,10 @@ class OperatorClientConfigTests(unittest.TestCase):
         self.assertEqual(body["voice_usage"]["text_to_speech"], 5)
 
     @patch("app.routes.operator.get_supabase")
-    def test_get_client_config_reports_null_ai_reply_model_when_unconfigured(self, mock_get_db):
-        """No silent fallback -- an unconfigured tenant's config must report null, not a
-        hardcoded model, so the operator console's picker correctly shows nothing selected
-        rather than falsely claiming a model the operator never chose (operator decision,
-        see decisions/log.md)."""
+    def test_get_client_config_reports_the_default_reply_model_when_unconfigured(self, mock_get_db):
+        """A tenant with no stored model replies on the default (ai_reply.DEFAULT_REPLY_MODEL),
+        so the console picker shows that model selected: what it shows is what runs
+        (operator decision 2026-11-10, see decisions/log.md)."""
         db = MagicMock()
 
         def table(name):
@@ -101,7 +100,7 @@ class OperatorClientConfigTests(unittest.TestCase):
         res = self.client.get("/api/v1/operator/clients/tenant-1/config")
         self.assertEqual(res.status_code, 200)
         body = res.json()
-        self.assertIsNone(body["settings"]["ai_reply_model"])
+        self.assertEqual(body["settings"]["ai_reply_model"], "google/gemini-3.1-flash-lite")
         # Regression: a tenant that has never touched ai_auto_reply_enabled (no row, or a
         # row seeded with value=NULL at onboarding) must display as enabled, matching the
         # backend gate's own default (ai_reply.generate_reply only disables on the literal

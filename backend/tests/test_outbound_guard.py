@@ -137,17 +137,14 @@ class TestDryRunBlocking:
         # Test all allowed AI providers
         for url in [
             "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent",
-            "https://api.sarvam.ai/generation",
-            "https://api.openai.com/v1/chat/completions",
             "https://api.jina.ai/v1/embeddings",
-            "https://api.groq.com/openai/v1/chat/completions",
         ]:
             response = client.post(url, json={"text": "test"})
             assert response.status_code == 200
             assert response.json()["real"] is True
 
         # All requests should be sent to the transport
-        assert len(requests_sent) == 5
+        assert len(requests_sent) == 2
 
         uninstall_outbound_guard()
         client.close()

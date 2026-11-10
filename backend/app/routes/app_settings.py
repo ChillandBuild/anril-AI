@@ -456,6 +456,10 @@ async def update_settings(
         raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
     if any(_operator_only(k) for k in payload.updates):
         raise HTTPException(status_code=403, detail="SMS settings are managed by Anril")
+    if "ai_reply_model" in payload.updates:
+        from app.services.ai_reply import REPLY_MODELS
+        if payload.updates["ai_reply_model"] not in REPLY_MODELS:
+            raise HTTPException(status_code=400, detail="Unknown reply model. Pick one from the list.")
     description = _checked_owner_description(payload.updates, ctx)
 
     db = get_supabase()

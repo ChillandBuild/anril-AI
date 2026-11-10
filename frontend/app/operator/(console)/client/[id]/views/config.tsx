@@ -29,40 +29,21 @@ const IDLE_CLOSE_DAYS_DEFAULT = 30;
 
 type MediaRecommendationSettingKey = "ai_media_recommendations_enabled" | "catalog_ai_max_images_ceiling";
 
-type ReplyModelId =
-  | "sarvam-30b"
-  | "sarvam-105b"
-  | "google/gemini-3.1-flash-lite"
-  | "google/gemini-3.5-flash"
-  | "openai/gpt-5.4-nano-2026-03-17"
-  | "openai/gpt-5-nano-2025-08-07"
-  | "groq/llama-3.3-70b-versatile"
-  | "groq/qwen/qwen3-32b";
+type ReplyModelId = "google/gemini-3.1-flash-lite" | "google/gemini-3.5-flash-lite";
 
-type AiProviderKey = "sarvam" | "gemini" | "openai" | "groq" | "jina";
+type AiProviderKey = "gemini" | "jina";
 
-// Each provider is integrated directly (no OpenRouter middleman) and requires its own
-// API key configured per client -- there is no platform-wide fallback key for any
-// provider, including Sarvam and Jina. If a client hasn't had a provider's key set up
-// here, that provider's models (or, for Jina, knowledge-base/catalog search) simply
-// won't work for them.
+// Replies run on Gemini only; Jina does knowledge-base and catalog search. Each needs its
+// own API key per client -- there is no platform-wide fallback key. (Same model list as
+// REPLY_MODELS in backend/app/services/ai_reply.py.)
 const AI_PROVIDERS: { key: AiProviderKey; label: string; credKey: string; settingKey: string }[] = [
-  { key: "sarvam", label: "Sarvam", credKey: "ai_sarvam", settingKey: "sarvam_api_key" },
   { key: "gemini", label: "Gemini", credKey: "ai_gemini", settingKey: "gemini_api_key" },
-  { key: "openai", label: "OpenAI", credKey: "ai_openai", settingKey: "openai_api_key" },
-  { key: "groq", label: "Groq", credKey: "ai_groq", settingKey: "groq_api_key" },
   { key: "jina", label: "Jina", credKey: "ai_jina", settingKey: "jina_api_key" },
 ];
 
-const REPLY_MODELS: { id: ReplyModelId; label: string; provider: AiProviderKey; costTier: "$" | "$$" | "$$$"; desc: string }[] = [
-  { id: "sarvam-30b", label: "Sarvam 30B", provider: "sarvam", costTier: "$", desc: "Sarvam's compact model, Tamil/Hindi/Hinglish support." },
-  { id: "sarvam-105b", label: "Sarvam 105B", provider: "sarvam", costTier: "$$", desc: "Sarvam's flagship model. Stronger reasoning, same Indic-language focus as the 30B." },
-  { id: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", provider: "gemini", costTier: "$", desc: "Cheap and fast, good general quality." },
-  { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", provider: "gemini", costTier: "$$", desc: "Newer generation, stronger reasoning than Flash Lite." },
-  { id: "openai/gpt-5.4-nano-2026-03-17", label: "GPT-5.4 Nano", provider: "openai", costTier: "$", desc: "Cheapest OpenAI tier, fast responses." },
-  { id: "openai/gpt-5-nano-2025-08-07", label: "GPT-5 Nano", provider: "openai", costTier: "$", desc: "Previous-generation nano tier." },
-  { id: "groq/llama-3.3-70b-versatile", label: "Llama 3.3 70B", provider: "groq", costTier: "$", desc: "Cheapest option overall. Fast, strong in English, weaker on Indic-language nuance. Tamil isn't in Llama's officially supported language list." },
-  { id: "groq/qwen/qwen3-32b", label: "Qwen 3 32B", provider: "groq", costTier: "$", desc: "Live-tested for Tanglish -- handles Tamil-English code-mixing well, including tool calls. Slightly slower than Llama (runs a hidden reasoning pass first)." },
+const REPLY_MODELS: { id: ReplyModelId; label: string; provider: AiProviderKey; desc: string }[] = [
+  { id: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", provider: "gemini", desc: "The default. Cheap and fast, good general quality." },
+  { id: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite", provider: "gemini", desc: "The newer Flash Lite generation." },
 ];
 
 // Keys already surfaced as their own checkbox in the client sidebar (see ../sidebar.tsx's
@@ -179,7 +160,7 @@ const CRED_LABELS: Record<string, string> = {
 // compatibility but shown elsewhere instead of the generic Messaging Channels grid --
 // per-provider AI keys render inside the AI Integrations section, and telecalling status
 // is already covered by the Calling Provider card above.
-const CRED_KEYS_HANDLED_ELSEWHERE = new Set(["ai", "ai_sarvam", "ai_gemini", "ai_openai", "ai_groq", "ai_jina", "telecalling"]);
+const CRED_KEYS_HANDLED_ELSEWHERE = new Set(["ai", "ai_gemini", "ai_jina", "telecalling"]);
 
 function statusBadge(status: string) {
   switch (status) {
@@ -219,7 +200,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
   const [voiceReplySaving, setVoiceReplySaving] = useState(false);
   const [voiceSettingSaving, setVoiceSettingSaving] = useState<VoiceSettingKey | null>(null);
   const [mediaRecommendationSaving, setMediaRecommendationSaving] = useState<MediaRecommendationSettingKey | null>(null);
-  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<AiProviderKey, string>>({ sarvam: "", gemini: "", openai: "", groq: "", jina: "" });
+  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<AiProviderKey, string>>({ gemini: "", jina: "" });
   const [apiKeySaving, setApiKeySaving] = useState<AiProviderKey | null>(null);
   const [replyModelSaving, setReplyModelSaving] = useState<ReplyModelId | null>(null);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
@@ -1045,7 +1026,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
           AI Integrations
         </h3>
         <p className="mb-4 text-xs leading-relaxed text-ink-muted">
-          Each provider is integrated directly and needs its own API key for this client — there is no shared platform key. A provider&apos;s models won&apos;t work for this client until its key is added below. The highlighted model is what currently generates auto-replies, reengagement messages, and product-recommendation replies.
+          Replies run on Gemini, with this client&apos;s own API key — there is no shared platform key. The highlighted model generates auto-replies, reengagement messages, and product-recommendation replies. If Google fails on that model, the same message is tried once on the other one.
         </p>
         <div className="flex flex-col gap-5">
           {AI_PROVIDERS.map((providerMeta) => {
@@ -1118,7 +1099,6 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 text-[11px] font-medium text-ink-muted">{option.costTier}</p>
                         <p className="mt-1 text-xs leading-relaxed text-ink-muted">{option.desc}</p>
                       </button>
                     );

@@ -205,11 +205,11 @@ def test_purpose_param_is_keyword_only_and_defaults_to_ai_reply():
 def test_purpose_reaches_the_provider(monkeypatch):
     seen = {}
 
-    async def groq(**kw):
+    async def gemini(**kw):
         seen.update(kw)
         return "", []
-    monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("groq", "m"))
-    monkeypatch.setattr(ai_reply, "groq_chat_completion_with_tools", groq)
+    monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("gemini", "m"))
+    monkeypatch.setattr(ai_reply, "gemini_chat_completion_with_tools", gemini)
     asyncio.run(ai_reply._llm_chat_with_tools([], [], tenant_id="t1"))
     assert seen["purpose"] == "ai_reply"
     asyncio.run(ai_reply._llm_chat_with_tools([], [], tenant_id="t1", purpose="companion_reply"))

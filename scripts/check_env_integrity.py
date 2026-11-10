@@ -36,7 +36,7 @@ STDLIB = [
 # Third-party packages whose absence breaks the backend.
 BACKEND = [
     "fastapi", "starlette", "pydantic", "pydantic_core", "httpx", "httpcore",
-    "anyio", "supabase", "postgrest", "groq", "pytest", "pygments", "pptx",
+    "anyio", "supabase", "postgrest", "pytest", "pygments", "pptx",
     "pandas", "cffi", "typing_extensions", "certifi", "charset_normalizer",
 ]
 

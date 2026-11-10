@@ -16,10 +16,7 @@ logger = logging.getLogger(__name__)
 # Safe hosts that are never blocked, even in dry_run
 _SAFE_HOSTS = frozenset({
     "generativelanguage.googleapis.com",
-    "api.sarvam.ai",
-    "api.openai.com",
     "api.jina.ai",
-    "api.groq.com",
     "localhost",
     "127.0.0.1",
 })

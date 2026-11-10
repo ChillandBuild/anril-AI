@@ -17,9 +17,7 @@ _SETTING_KEYS: list[tuple[str, bool]] = [
     ("meta_app_secret", True),
     ("telecmi_user_id", False), ("telecmi_secret", True),
     ("telecmi_callerid", False), ("telecmi_recording_base_url", False),
-    ("sarvam_api_key", True), ("groq_api_key", True),
-    ("gemini_api_key", True), ("openai_api_key", True),
-    ("jina_api_key", True),
+    ("gemini_api_key", True), ("jina_api_key", True),
     ("ai_reply_model", False),
     ("telegram_bot_token", True),
     ("instagram_page_id", False), ("instagram_access_token", True),
@@ -220,9 +218,8 @@ do not invent products, promises, or policies they did not mention."""
 
 @router.post("/interview/draft")
 async def interview_draft(payload: InterviewDraftPayload, tenant_id: str = Depends(get_tenant_id)):
-    """Runs on the tenant's OWN configured AI provider -- never a shared
-    platform key (see _resolve_provider's docstring: no fallback, ever).
-    A tenant with no provider connected yet gets a clear 400, not a 500."""
+    """Runs on the tenant's OWN Gemini key -- never a shared platform key (see
+    _resolve_provider's docstring). A tenant with no key yet gets a clear 400, not a 500."""
     if not payload.answers:
         raise HTTPException(status_code=400, detail="At least one answer is required")
 
@@ -246,7 +243,7 @@ async def interview_draft(payload: InterviewDraftPayload, tenant_id: str = Depen
     except RuntimeError:
         raise HTTPException(
             status_code=400,
-            detail="Connect an AI provider (Sarvam, Groq, Gemini or OpenAI) in Settings before running the interview.",
+            detail="Add a Gemini API key in Settings before running the interview.",
         )
 
     cleaned = raw.strip()

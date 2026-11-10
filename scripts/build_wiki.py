@@ -39,7 +39,7 @@ FILE_OVERRIDE = {
     "backend/app/routes/assignment_log.py": "Assignment Log & Leaderboard",
     "backend/app/routes/calls.py": "Calls API (TeleCMI dialer)",
     "backend/app/routes/callers.py": "Callers CRUD & Coaching",
-    "backend/app/services/ai_reply.py": "AI Reply Pipeline (Groq)",
+    "backend/app/services/ai_reply.py": "AI Reply Pipeline (Gemini)",
     "backend/app/services/knowledge_service.py": "Knowledge Base (pgvector RAG)",
     "backend/app/services/automation_engine.py": "Bot Flow / Automation Engine",
     "backend/app/services/scoring_engine.py": "Score Engine v2 & Segmentation",

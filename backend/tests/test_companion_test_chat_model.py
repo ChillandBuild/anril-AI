@@ -60,7 +60,7 @@ def test_public_companion_routes_never_pass_model_or_use_memory():
 
 @pytest.fixture
 def spy(env, monkeypatch):  # noqa: F811
-    """Records the kwargs of every LLM call. Gemini and Groq keys are set; OpenAI and Sarvam aren't."""
+    """Records the kwargs of every LLM call. The Gemini key is set; the tenant runs 3.1 Flash Lite."""
     seen = []
 
     async def plain(messages, max_tokens=300, tenant_id=None, **kw):
@@ -73,9 +73,9 @@ def spy(env, monkeypatch):  # noqa: F811
 
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", plain)
     monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", with_tools)
-    keys_set = {"gemini_api_key", "groq_api_key", "ai_reply_model"}
+    keys_set = {"gemini_api_key", "ai_reply_model"}
     monkeypatch.setattr(ai_reply, "get_setting", lambda key, fallback=None, tenant_id=None:
-                        ("groq/llama-3.3-70b-versatile" if key == "ai_reply_model" else "k") if key in keys_set else None)
+                        ("google/gemini-3.1-flash-lite" if key == "ai_reply_model" else "k") if key in keys_set else None)
     monkeypatch.setattr(ai_reply, "require_tenant_setting", lambda key, tenant_id:
                         ai_reply.get_setting(key, tenant_id=tenant_id) or (_ for _ in ()).throw(RuntimeError(key)))
     return seen
@@ -83,7 +83,7 @@ def spy(env, monkeypatch):  # noqa: F811
 
 def test_public_chat_never_passes_a_model(env, spy):  # noqa: F811
     body = {"companion_id": env.live["id"], "user_id": "48213", "message": "hi"}
-    for extra in ({"model": "google/gemini-3.5-flash"}, {"use_memory": False}):
+    for extra in ({"model": "google/gemini-3.5-flash-lite"}, {"use_memory": False}):
         assert env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={**body, **extra}).status_code == 422
     assert spy == []
     r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=body)
@@ -95,27 +95,33 @@ def test_public_chat_never_passes_a_model(env, spy):  # noqa: F811
 def test_models_lists_only_providers_with_keys(env, spy):  # noqa: F811
     body = env.client.get(f"{DASH}/models").json()
     ids = [m["id"] for m in body["models"]]
-    assert ids == ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash",
-                   "groq/llama-3.3-70b-versatile", "groq/qwen/qwen3-32b"]
-    assert body["default"] == "groq/llama-3.3-70b-versatile"
+    assert ids == ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash-lite"]
+    assert body["default"] == "google/gemini-3.1-flash-lite"
+
+
+def test_models_is_empty_without_a_gemini_key(env, spy, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(ai_reply, "get_setting", lambda key, fallback=None, tenant_id=None: None)
+    body = env.client.get(f"{DASH}/models").json()
+    assert body["models"] == [] and body["default"] == "google/gemini-3.1-flash-lite"
 
 
 def test_test_chat_uses_the_picked_model(env, spy):  # noqa: F811
     r = env.client.post(f"{DASH}/{env.live['id']}/test-chat",
-                        json={"message": "hi", "model": "google/gemini-3.5-flash"})
+                        json={"message": "hi", "model": "google/gemini-3.5-flash-lite"})
     assert r.status_code == 200
-    assert spy[-1]["model"] == "google/gemini-3.5-flash"
-    assert r.json()["model"] == "Gemini 3.5 Flash"
+    assert spy[-1]["model"] == "google/gemini-3.5-flash-lite"
+    assert r.json()["model"] == "Gemini 3.5 Flash Lite"
 
 
 def test_test_chat_without_a_model_uses_the_live_one(env, spy):  # noqa: F811
     r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi"})
     assert r.status_code == 200 and "model" not in spy[-1]
-    assert r.json()["model"] == "Llama 3.3 70B"
+    assert r.json()["model"] == "Gemini 3.1 Flash Lite"
 
 
-@pytest.mark.parametrize("model", ["openai/gpt-5-nano-2025-08-07", "sarvam-30b", "anthropic/x", "google/../etc"])
-def test_test_chat_refuses_models_without_a_key(env, spy, model):  # noqa: F811
+@pytest.mark.parametrize("model", ["openai/gpt-5-nano-2025-08-07", "sarvam-30b", "groq/llama-3.3-70b-versatile",
+                                   "google/gemini-3.5-flash", "anthropic/x", "google/../etc"])
+def test_test_chat_refuses_models_off_the_list(env, spy, model):  # noqa: F811
     r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi", "model": model})
     assert r.status_code == 422 and spy == []
 
@@ -140,22 +146,22 @@ def test_a_tool_turn_keeps_the_picked_model_through_continue(env, spy):  # noqa:
     env.state["script"] = [("", [call()]), ("[mood: warm] Ungal lagnam Kumbham.", [])]
     first = env.client.post(f"{DASH}/{env.live['id']}/test-chat",
                             json={"message": "En jathagam", "tools": [GET_CHART.model_dump()],
-                                  "model": "google/gemini-3.5-flash"}).json()
+                                  "model": "google/gemini-3.5-flash-lite"}).json()
     assert first["status"] == "tool_call"
     done = env.client.post(f"{DASH}/test-chat/continue",
                            json={"turn_id": first["turn_id"], "results": [{"id": "call_1", "output": CHART}]})
     assert done.status_code == 200
-    assert [c.get("model") for c in spy] == ["google/gemini-3.5-flash", "google/gemini-3.5-flash"]
+    assert [c.get("model") for c in spy] == ["google/gemini-3.5-flash-lite", "google/gemini-3.5-flash-lite"]
 
 
 def test_llm_chat_without_model_resolves_the_tenant_model(monkeypatch):
     seen = {}
-    monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("groq", "llama-live"))
+    monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("gemini", "gemini-live"))
 
-    async def groq(**kw):
+    async def gemini(**kw):
         seen.update(kw)
         return "ok"
-    monkeypatch.setattr(ai_reply, "groq_chat_completion", groq)
+    monkeypatch.setattr(ai_reply, "gemini_chat_completion", gemini)
     import asyncio
     assert asyncio.run(ai_reply._llm_chat([{"role": "user", "content": "x"}], tenant_id="t1")) == "ok"
-    assert seen["model"] == "llama-live"
+    assert seen["model"] == "gemini-live"

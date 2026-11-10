@@ -270,7 +270,7 @@ def test_twenty_turns_of_exactly_one_thousand_characters_are_accepted(guard_db, 
 
 def test_missing_reply_model_returns_409(guard_db, monkeypatch):
     def _unset(tenant_id):
-        raise RuntimeError("ai_reply_model not configured for this client")
+        raise RuntimeError("gemini_api_key not configured for this client")
     monkeypatch.setattr(ai_reply, "_resolve_provider", _unset)
     chat = AsyncMock()
     monkeypatch.setattr(ai_reply, "_llm_chat", chat)

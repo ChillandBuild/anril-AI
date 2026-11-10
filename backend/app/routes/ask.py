@@ -178,7 +178,7 @@ async def ask_question(payload: AskPayload, ctx: dict = Depends(require_analytic
     except RuntimeError:
         raise HTTPException(
             status_code=400,
-            detail="Connect an AI provider (Sarvam, Groq, Gemini or OpenAI) in Settings before asking a question.",
+            detail="Add a Gemini API key in Settings before asking a question.",
         )
 
     if not tool_calls:
