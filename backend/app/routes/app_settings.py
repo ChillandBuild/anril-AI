@@ -18,6 +18,7 @@ from app.services.assignment import (
     save_inbox_config, save_telecalling_config,
     _INBOX_CONFIG_DEFAULT, _TELECALLING_CONFIG_DEFAULT,
 )
+from app.services.assignment_rules import get_channel_rules, legacy_fields, validate_channel_rules
 from app.services import astro_bridge, razorpay_oauth
 from app.services.intake import get_intake_config, save_intake_config
 from app.services.numbers_pool import normalize_phone_number
@@ -181,6 +182,7 @@ class TelecallingConfigUpdate(BaseModel):
     recycle_max_retries: int | None = None
     recycle_start_hour: int | None = None
     recycle_end_hour: int | None = None
+    channel_rules: dict | None = None
 
 
 
@@ -2036,7 +2038,8 @@ async def get_ai_auto_reply_state(tenant_id: str = Depends(get_tenant_id)):
 @router.get("/telecalling-config")
 async def get_telecalling_config_route(ctx: dict = Depends(require_settings_read)):
     tenant_id = ctx["tenant_id"]
-    return get_telecalling_config(tenant_id)
+    cfg = get_telecalling_config(tenant_id)
+    return {**cfg, "channel_rules": get_channel_rules(cfg)}
 
 
 @router.patch("/telecalling-config")
@@ -2044,6 +2047,15 @@ async def patch_telecalling_config(payload: TelecallingConfigUpdate, ctx: dict =
     tenant_id = ctx["tenant_id"]
     current = get_telecalling_config(tenant_id)
     patch = payload.model_dump(exclude_none=True)
+    if "channel_rules" in patch:
+        try:
+            rules_in = validate_channel_rules(patch["channel_rules"])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        merged_rules = {**get_channel_rules(current), **rules_in}
+        patch["channel_rules"] = merged_rules
+        # The derived legacy fields overwrite any segments/assignment_mode sent alongside.
+        patch.update(legacy_fields(merged_rules))
     valid_segs = {"A", "B", "C"}
     if "segments" in patch:
         bad = [s for s in patch["segments"] if s not in valid_segs]
@@ -2062,7 +2074,7 @@ async def patch_telecalling_config(payload: TelecallingConfigUpdate, ctx: dict =
     merged = {**current, **patch}
     merged.pop("eval_daily_cap", None)
     save_telecalling_config(tenant_id, merged)
-    return merged
+    return {**merged, "channel_rules": get_channel_rules(merged)}
 
 
 def _walk_packages(nodes: list[dict]):

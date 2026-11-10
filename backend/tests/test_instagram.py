@@ -88,7 +88,7 @@ async def test_instagram_webhook_new_lead():
          patch("app.routes.instagram.verify_meta_signature", return_value=True), \
          patch("app.routes.instagram.resolve_tenant_for_page", return_value="tenant-123"), \
          patch("app.routes.instagram.record_stage_event") as mock_record_event, \
-         patch("app.services.assignment.auto_assign_lead") as mock_auto_assign, \
+         patch("app.services.assignment.assign_by_rule") as mock_auto_assign, \
          patch("app.services.conversation_state.get_or_create_state", return_value={"message_count": 0}), \
          patch("app.services.context_builder.build_scorer_context", return_value="context block"):
 

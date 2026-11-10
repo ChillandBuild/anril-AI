@@ -27,7 +27,10 @@ from app.services.call_wrapup import (
 from app.services.deals import DealError
 from app.services.wrapup_apply import apply_wrapup
 from app.services.telecmi_client import initiate_click2call
-from app.services.assignment import get_telecalling_config, record_assignment_event
+from app.services.assignment import (
+    get_telecalling_config, get_upload_pending, qualifying_unassigned_leads, record_assignment_event, remove_upload_pending,
+)
+from app.services.assignment_rules import any_mode, get_channel_rules, resolve_row
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.attendance import mark_activity_today
 
@@ -1214,6 +1217,25 @@ async def retry_ai(call_log_id: UUID, background_tasks: BackgroundTasks, ctx: di
     return {"ok": True}
 
 
+def _open_unassigned_query(db, tenant_id: str):
+    """Unassigned leads a telecaller can still call. Shared by the pool and the pending-upload lookup."""
+    return (
+        db.table("leads")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .is_("assigned_to", "null")
+        .neq("segment", "D")
+        .is_("converted_at", "null")
+        .is_("deleted_at", "null")
+        .neq("do_not_call", True)
+        .neq("call_status", "converted")
+        .neq("call_status", "not_interested")
+        .neq("call_status", "dnc")
+        .neq("call_status", "disqualified")
+        .neq("call_status", "unreachable")
+    )
+
+
 @router.get("/next-lead")
 async def next_lead(
     caller_id: UUID | None = Query(None),
@@ -1227,11 +1249,11 @@ async def next_lead(
 
     db = get_supabase()
 
-    # 1. Fetch telecalling config segments
+    # 1. Fetch telecalling config and the per-row rules
     cfg = get_telecalling_config(tenant_id)
     if not cfg.get("enabled"):
         raise HTTPException(status_code=404, detail="Telecalling is not enabled")
-    segments = cfg.get("segments", ["A"])
+    rules = get_channel_rules(cfg)
 
     # 1b. Shift-hour gate — reject if caller is outside their shift
     shift_mode = cfg.get("shift_mode", "common")
@@ -1262,31 +1284,36 @@ async def next_lead(
         if not in_shift:
             return {"lead": None, "reason": "outside_shift_hours"}
 
-    # 2. Pull unassigned hot leads in telecalling_config.segments (default ['A']), not D, not converted, sorted by score desc.
-    unassigned_res = (
-        db.table("leads")
-        .select("*")
-        .eq("tenant_id", tenant_id)
-        .is_("assigned_to", "null")
-        .in_("segment", segments)
-        .neq("segment", "D")
-        .is_("converted_at", "null")
-        .is_("deleted_at", "null")
-        .neq("do_not_call", True)
-        .neq("call_status", "converted")
-        .neq("call_status", "not_interested")
-        .neq("call_status", "dnc")
-        .neq("call_status", "disqualified")
-        .neq("call_status", "unreachable")
-        .order("segment")
-        .order("last_inbound_at", desc=True, nullsfirst=False)
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
-    )
+    # 2. Pool: unassigned open leads whose row rule is in pull mode and allows the lead's segment,
+    # plus pending telecalling-upload leads when the upload row is in pull mode. Sorted below.
+    # One query per pull row, filtered by its sources and segments in the database.
+    pull_leads = qualifying_unassigned_leads(db, tenant_id, rules, {"pull"}, "*", limit_per_row=200, newest_first=True)
+    # lead id -> segments recorded on the claim event (the row rule's segments; [] for upload)
+    pool_leads: dict[str, dict] = {}
+    pool_matched: dict[str, list[str]] = {}
+    for lead in pull_leads:
+        if lead.get("segment") == "D" or lead.get("call_status") == "not_interested":
+            continue
+        row = resolve_row(lead.get("source"))
+        if row is None:
+            continue
+        rule = rules[row]
+        pool_leads[lead["id"]] = lead
+        pool_matched[lead["id"]] = rule.get("segments", [])
 
-    if unassigned_res.data:
-        candidate_ids = [lead["id"] for lead in unassigned_res.data]
+    pending_upload_ids: set[str] = set()
+    if rules["upload"].get("enabled") and rules["upload"].get("mode") == "pull":
+        # Oldest pending first; a claim removes its id from pending, so the next pull reaches the rest.
+        pending_ids = get_upload_pending(db, tenant_id)[:200]
+        if pending_ids:
+            pending_res = _open_unassigned_query(db, tenant_id).in_("id", pending_ids).execute()
+            for lead in pending_res.data or []:
+                pool_leads[lead["id"]] = lead
+                pool_matched[lead["id"]] = []
+                pending_upload_ids.add(lead["id"])
+
+    if pool_leads:
+        candidate_ids = list(pool_leads.keys())
         inbound_res = (
             db.table("messages")
             .select("lead_id, created_at")
@@ -1302,7 +1329,7 @@ async def next_lead(
             if lid not in last_inbound_map:
                 last_inbound_map[lid] = msg["created_at"]
 
-        candidates = sorted(unassigned_res.data, key=lambda lead: _call_queue_sort_key(lead, {}, last_inbound_map))
+        candidates = sorted(pool_leads.values(), key=lambda lead: _call_queue_sort_key(lead, {}, last_inbound_map))
         caller_name = None
         caller_res = db.table("callers").select("name").eq("id", resolved_caller_id).eq("tenant_id", tenant_id).maybe_single().execute()
         if caller_res and caller_res.data:
@@ -1333,9 +1360,11 @@ async def next_lead(
                     reason="call_next",
                     method="pull",
                     score=lead.get("score"),
-                    matched_segments=segments,
+                    matched_segments=pool_matched.get(lead["id"], []),
                     db=db,
                 )
+                if lead["id"] in pending_upload_ids:
+                    remove_upload_pending(db, tenant_id, [lead["id"]])
                 return {**claim.data[0], "_source": "pool"}
 
     # 3. Fall back to caller's own assigned leads, sorted by least-recently-called
@@ -1399,7 +1428,7 @@ async def next_lead(
 async def get_assignment_mode(ctx: dict = Depends(get_tenant_and_role)):
     cfg = get_telecalling_config(ctx["tenant_id"])
     return {
-        "mode": cfg.get("assignment_mode", "push"),
+        "mode": "pull" if any_mode(get_channel_rules(cfg), "pull") else "push",
         "enabled": cfg.get("enabled", False),
         "calling_provider": cfg.get("calling_provider", "telecmi"),
     }

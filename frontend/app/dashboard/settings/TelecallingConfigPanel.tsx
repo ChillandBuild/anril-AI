@@ -4,15 +4,17 @@ import { Phone, Smartphone, RadioTower } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { SaveButton, SaveStatus, SectionFooter, SectionLoadGate, SettingsSection, type SectionLoadState } from "./SettingsSection";
-import { CheckField, TickMark } from "@/components/ui/controls";
+import { CheckField, SwitchPill, TickMark } from "@/components/ui/controls";
+
+type AssignMode = "auto" | "pull" | "available";
+type ChannelRule = { enabled: boolean; mode: AssignMode; segments?: string[] };
+type RowKey = "whatsapp" | "instagram" | "facebook" | "telegram" | "meta_form" | "other" | "upload";
 
 type TelecallingConfig = {
   enabled: boolean;
   calling_provider?: "telecmi" | "sim_basic";
-  segments: string[];
-  channels: string[];
   max_call_attempts?: number;
-  assignment_mode?: "push" | "pull";
+  channel_rules?: Partial<Record<RowKey, ChannelRule>>;
   recycle_enabled?: boolean;
   recycle_delay_hours?: number;
   recycle_max_retries?: number;
@@ -20,24 +22,49 @@ type TelecallingConfig = {
   recycle_end_hour?: number;
 };
 
+// Legacy fields the server still accepts. The panel never sends them.
+const LEGACY_KEYS = ["calling_provider", "channels", "segments", "assignment_mode"] as const;
+
 const DEFAULT: TelecallingConfig = {
   enabled: false,
   calling_provider: "telecmi",
-  segments: ["A"],
-  channels: ["whatsapp"],
   max_call_attempts: 4,
-  assignment_mode: "push",
 };
 
-const SEGMENT_LABELS: Record<string, string> = {
-  A: "Hot",
-  B: "Warm",
-  C: "Cold",
-};
+const SEGMENTS = [
+  { key: "A", label: "Hot" },
+  { key: "B", label: "Warm" },
+  { key: "C", label: "Cold" },
+];
 
-const CHANNEL_LABELS: Record<string, string> = {
-  whatsapp: "WhatsApp",
-};
+const ROWS: { key: RowKey; label: string; hint?: string }[] = [
+  { key: "whatsapp", label: "WhatsApp", hint: "Also covers broadcast imports and leads added by hand" },
+  { key: "instagram", label: "Instagram" },
+  { key: "facebook", label: "Facebook" },
+  { key: "telegram", label: "Telegram" },
+  { key: "meta_form", label: "Instant forms" },
+  { key: "other", label: "Other sources", hint: "IndiaMART, JustDial, website and API" },
+  { key: "upload", label: "Telecalling uploads", hint: "Every uploaded row counts" },
+];
+
+const MODES: { value: AssignMode; label: string; short: string; help: string }[] = [
+  { value: "auto", label: "Auto assign", short: "Auto", help: "Round robin. Telecallers take turns, one after another." },
+  { value: "pull", label: "Pull", short: "Pull", help: "Leads wait in a shared list. Telecallers press “Call next”." },
+  {
+    value: "available",
+    label: "Available telecallers",
+    short: "Available",
+    help: "Only telecallers on shift and not logged out. If nobody is on shift, online telecallers are asked to take the waiting leads.",
+  },
+];
+
+/** The rule for a row, falling back to the default when the loaded data has none. */
+function ruleFor(cfg: TelecallingConfig, row: RowKey): ChannelRule {
+  const stored = cfg.channel_rules?.[row];
+  if (stored) return stored;
+  if (row === "upload") return { enabled: true, mode: "auto" };
+  return { enabled: true, mode: "auto", segments: row === "other" ? ["A", "B", "C"] : ["A"] };
+}
 
 function toggle<T>(arr: T[], item: T): T[] {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
@@ -57,13 +84,9 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/settings/telecalling-config`, { headers: auth });
       if (res.ok) {
-        const data = await res.json();
-        const sanitizedData = {
-          ...data,
-          channels: data.channels ? data.channels.filter((c: string) => c === "whatsapp") : ["whatsapp"]
-        };
-        setConfig(sanitizedData);
-        setDraft(sanitizedData);
+        const data: TelecallingConfig = await res.json();
+        setConfig(data);
+        setDraft(data);
         setLoadState("ready");
         return;
       }
@@ -77,20 +100,34 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
 
+  function setRule(row: RowKey, patch: Partial<ChannelRule>) {
+    const channel_rules = Object.fromEntries(
+      ROWS.map((r) => [r.key, ruleFor(draft, r.key)]),
+    ) as Record<RowKey, ChannelRule>;
+    channel_rules[row] = { ...channel_rules[row], ...patch };
+    setDraft({ ...draft, channel_rules });
+  }
+
+  function toggleSegment(row: RowKey, seg: string) {
+    const current = ruleFor(draft, row).segments ?? [];
+    const next = toggle(current, seg);
+    setRule(row, { segments: SEGMENTS.map((s) => s.key).filter((k) => next.includes(k)) });
+  }
+
   async function handleSave() {
     if (!canManage || loadState !== "ready") return;
     setSaveState("saving");
     try {
       const auth = await getAuthHeaders();
-      const clientEditableDraft = { ...draft };
-      delete clientEditableDraft.calling_provider;
+      const clientEditableDraft: Record<string, unknown> = { ...draft };
+      for (const key of LEGACY_KEYS) delete clientEditableDraft[key];
       const res = await fetch(`${API_URL}/api/v1/settings/telecalling-config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify(clientEditableDraft),
       });
       if (!res.ok) throw new Error("Save failed");
-      const saved = await res.json();
+      const saved: TelecallingConfig = await res.json();
       setConfig(saved);
       setDraft(saved);
       setSaveState("saved");
@@ -100,26 +137,141 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
     }
   }
 
+  const controlsDisabled = !canManage || !draft.enabled;
+  const visibleRows = ROWS.filter((r) => r.key !== "upload" || hasUpload);
+
   return (
     <SettingsSection
       id="telecalling-assignment"
       icon={Phone}
       accent="amber"
       title="Telecalling Assignment"
-      description="Automatically assign leads to telecallers when they enter a qualifying segment."
+      description="Decide how leads from each channel reach your telecallers."
       status={loadState === "ready" ? { label: draft.enabled ? "Enabled" : "Disabled", tone: draft.enabled ? "on" : "off" } : undefined}
       dirty={isDirty}
     >
       <SectionLoadGate state={loadState} onRetry={load}>
         <div className="space-y-6">
-          {/* Master toggle */}
-          <CheckField
-            checked={draft.enabled}
-            disabled={!canManage}
-            onChange={(v) => setDraft({ ...draft, enabled: v })}
-            label="Enable Auto-Assign to Telecallers"
-            description="Automatically assign qualifying leads to the active telecaller with fewest leads on segment change"
-          />
+          {/* Master switch */}
+          <div
+            className={`flex items-center gap-4 rounded-xl border p-3.5 ${
+              draft.enabled ? "border-primary/25 bg-primary-light/50" : "border-border bg-white"
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-label text-sm font-semibold text-ink">Telecaller assignment</div>
+              <div className="mt-0.5 font-body text-xs text-ink-muted">
+                Turn off to stop all automatic assignment. Telecallers can still pick leads by hand.
+              </div>
+            </div>
+            <SwitchPill
+              size="md"
+              on={draft.enabled}
+              disabled={!canManage}
+              onChange={(v) => setDraft({ ...draft, enabled: v })}
+              aria-label="Telecaller assignment"
+            />
+          </div>
+
+          {/* Per-channel rules */}
+          <div>
+            <div className="font-label text-sm font-semibold text-ink mb-1">How each channel is assigned</div>
+            <div className="font-body text-xs text-ink-muted mb-3">
+              Switch a channel off and its leads are never assigned automatically. You can still assign them by hand from Leads.
+            </div>
+            <ul
+              className={`rounded-2xl border border-border divide-y divide-border-subtle bg-white transition-opacity duration-200 ${
+                draft.enabled ? "" : "opacity-50"
+              }`}
+            >
+              {visibleRows.map((row) => {
+                const rule = ruleFor(draft, row.key);
+                const segments = rule.segments ?? [];
+                const isUpload = row.key === "upload";
+                return (
+                  <li key={row.key} className="px-4 py-3.5 space-y-3">
+                    <div className="flex items-center gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-label text-sm font-semibold text-ink">{row.label}</div>
+                        {row.hint && <div className="font-body text-xs text-ink-muted">{row.hint}</div>}
+                      </div>
+                      <SwitchPill
+                        size="sm"
+                        on={rule.enabled}
+                        disabled={controlsDisabled}
+                        onChange={(v) => setRule(row.key, { enabled: v })}
+                        aria-label={`${row.label} assignment`}
+                      />
+                    </div>
+
+                    {rule.enabled && (
+                      <div className="space-y-3">
+                        {/* Assign by */}
+                        <div>
+                          <div role="group" aria-label={`${row.label} assign by`} className="flex gap-1 p-1 bg-surface-subtle border border-border rounded-xl w-fit">
+                            {MODES.map((m) => {
+                              const active = rule.mode === m.value;
+                              return (
+                                <button
+                                  key={m.value}
+                                  type="button"
+                                  aria-pressed={active}
+                                  disabled={controlsDisabled}
+                                  onClick={() => setRule(row.key, { mode: m.value })}
+                                  className={`whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg font-label text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-55 ${
+                                    active ? "bg-white text-ink shadow-sm border border-border/50" : "text-ink-muted hover:text-ink"
+                                  }`}
+                                >
+                                  <span className="sm:hidden">{m.short}</span>
+                                  <span className="hidden sm:inline">{m.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="font-body text-[11px] text-ink-muted mt-1.5">
+                            {MODES.find((m) => m.value === rule.mode)?.help}
+                          </p>
+                        </div>
+
+                        {/* Segments */}
+                        {!isUpload && (
+                          <div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-label text-xs font-semibold text-ink-secondary mr-1">Segments</span>
+                              {SEGMENTS.map((seg) => {
+                                const active = segments.includes(seg.key);
+                                return (
+                                  <button
+                                    key={seg.key}
+                                    type="button"
+                                    role="checkbox"
+                                    aria-checked={active}
+                                    disabled={controlsDisabled}
+                                    onClick={() => toggleSegment(row.key, seg.key)}
+                                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
+                                      active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
+                                    }`}
+                                  >
+                                    <TickMark checked={active} size="sm" />
+                                    <span>{seg.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {segments.length === 0 && (
+                              <p className="mt-1.5 font-body text-xs text-amber-700">
+                                Pick at least one, or no lead from here is assigned.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
 
           {/* Calling Provider */}
           <div>
@@ -148,98 +300,6 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Segments */}
-          <div>
-            <div className="font-label text-sm font-semibold text-ink mb-1">Segments to Assign</div>
-            <div className="font-body text-xs text-ink-muted mb-2">Which lead segments are worked by telecallers (auto-assigned in Push mode, pooled for Call Next in Pull mode)</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(SEGMENT_LABELS).map(([seg, label]) => {
-                const active = draft.segments.includes(seg);
-                return (
-                  <button
-                    key={seg}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={active}
-                    disabled={!canManage}
-                    onClick={() => setDraft({ ...draft, segments: toggle(draft.segments, seg) })}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-                      active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
-                    }`}
-                  >
-                    <TickMark checked={active} size="sm" />
-                    <span className="font-label text-sm font-semibold text-ink">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Channels */}
-          <div>
-            <div className="font-label text-sm font-semibold text-ink mb-1">Channels</div>
-            <div className="font-body text-xs text-ink-muted mb-2">Which channels feed into the telecalling queue (typically WhatsApp only)</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(CHANNEL_LABELS).map(([ch, label]) => {
-                const active = draft.channels.includes(ch);
-                return (
-                  <button
-                    key={ch}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={active}
-                    disabled={!canManage}
-                    onClick={() => setDraft({ ...draft, channels: toggle(draft.channels, ch) })}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-                      active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
-                    }`}
-                  >
-                    <TickMark checked={active} size="sm" />
-                    <span className="font-label text-sm font-semibold text-ink">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-
-          {/* Assignment Mode */}
-          <div>
-            <div className="font-label text-sm font-semibold text-ink mb-1">Assignment Mode</div>
-            <div className="font-body text-xs text-ink-muted mb-2">Choose how leads are distributed to telecallers</div>
-            <div className="flex gap-2 p-1 bg-surface-subtle border border-border rounded-xl w-fit">
-              <button
-                type="button"
-                onClick={() => setDraft({ ...draft, assignment_mode: "push" })}
-                className={`px-4 py-2 rounded-lg font-label text-xs font-bold transition-all ${
-                  (draft.assignment_mode ?? "push") === "push"
-                    ? "bg-white text-ink shadow-sm border border-border/50"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                Push (Auto-Assign)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDraft({ ...draft, assignment_mode: "pull" })}
-                className={`px-4 py-2 rounded-lg font-label text-xs font-bold transition-all ${
-                  draft.assignment_mode === "pull"
-                    ? "bg-white text-ink shadow-sm border border-border/50"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                Pull (Shark Tank)
-              </button>
-            </div>
-            <p className="font-body text-[11px] text-ink-muted mt-2 max-w-md">
-              {(draft.assignment_mode ?? "push") === "push" ? (
-                <span><strong>Push</strong> — leads auto-assign to callers by round-robin.</span>
-              ) : (
-                <span><strong>Pull</strong> — leads wait in a shared pool; callers grab the next one with &quot;Call Next&quot;.</span>
-              )}
-            </p>
           </div>
 
           {/* Contact Recycling — only visible when telecalling upload is enabled */}

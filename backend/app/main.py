@@ -14,7 +14,7 @@ from app.dependencies.auth import get_current_user
 import os
 from app.config import settings
 from app.db.supabase import current_route
-from app.routes import webhook, leads, messages, analytics, upload, segments, calls, callers, ai_tune, knowledge, system, follow_ups, numbers, incidents, lead_notes, voice_numbers, app_settings, templates, onboarding, team, media, todos, conversations, operator, chat_handovers, telegram, instagram, facebook, tags, inbound_leads, reengagement, notifications, assignment_log, call_scripts, telecalling_upload, push, subscriptions, catalog, rbac, feedback, ask, consistency
+from app.routes import webhook, leads, messages, analytics, upload, segments, calls, callers, ai_tune, knowledge, system, follow_ups, numbers, incidents, lead_notes, voice_numbers, app_settings, templates, onboarding, team, media, todos, conversations, operator, chat_handovers, telegram, instagram, facebook, tags, inbound_leads, reengagement, notifications, assignment_log, call_scripts, telecalling_upload, assignment_offers, push, subscriptions, catalog, rbac, feedback, ask, consistency
 from app.routes.calls import public_router as calls_public_router
 from app.routes.intake import public_router as intake_public_router
 from app.routes import intake
@@ -455,6 +455,7 @@ app.include_router(push.public_router, prefix="/api/v1/push", tags=["push-public
 app.include_router(push.router, prefix="/api/v1/push", tags=["push"], dependencies=_auth)
 app.include_router(call_scripts.router, prefix="/api/v1/call-scripts", tags=["call-scripts"], dependencies=_auth)
 app.include_router(telecalling_upload.router, prefix="/api/v1/telecalling-upload", tags=["telecalling-upload"], dependencies=_auth)
+app.include_router(assignment_offers.router, prefix="/api/v1/assignment-offers", tags=["assignment-offers"], dependencies=_auth)
 app.include_router(subscriptions.router, prefix="/api/v1/subscriptions", tags=["subscriptions"], dependencies=_auth)
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"], dependencies=_auth)
 app.include_router(companions.router, prefix="/api/v1/companions", tags=["companions"], dependencies=_auth)

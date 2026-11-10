@@ -116,22 +116,10 @@ def _add_note(db, tenant_id: str, lead_id: str, content: str) -> None:
 
 
 def _assign_now(lead_id: str, tenant_id: str, segment: str | None) -> None:
-    """Fresh buyer intent: skip the segment gate (a brand-new lead is always
-    Cold) but respect the tenant's telecalling on/off and pull mode."""
+    """IndiaMART/JustDial enquiries follow the 'Other sources' row; its default segments include Cold so a fresh enquiry is still assigned."""
     try:
-        from app.services.assignment import auto_assign_lead, get_telecalling_config
-        cfg = get_telecalling_config(tenant_id)
-        if not cfg.get("enabled") or cfg.get("assignment_mode") == "pull":
-            return
-        # create_inbound_lead's own maybe_assign_lead may already have placed
-        # it (if the tenant lists this marketplace as a channel).
-        current = (
-            get_supabase().table("leads").select("assigned_to").eq("id", lead_id).eq("tenant_id", tenant_id)
-            .maybe_single().execute()
-        )
-        if current and current.data and current.data.get("assigned_to"):
-            return
-        auto_assign_lead(lead_id, tenant_id, reason="marketplace_enquiry", segment=segment)
+        from app.services.assignment import maybe_assign_lead
+        maybe_assign_lead(lead_id, tenant_id, segment, None, reason="marketplace_enquiry")
     except Exception as e:
         logger.warning(f"marketplace: assignment failed for lead {lead_id}: {e}")
 

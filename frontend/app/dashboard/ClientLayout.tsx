@@ -12,6 +12,7 @@ import { CalendarPanel } from "@/components/CalendarPanel";
 import { SessionTracker } from "@/components/SessionTracker";
 import { AppHeader } from "@/components/AppHeader";
 import { ClaimBanner } from "@/components/ClaimBanner";
+import { WaitingLeadsPrompt } from "@/components/WaitingLeadsPrompt";
 import { MobileDashboardNav } from "@/components/MobileDashboardNav";
 import { MoreMenu } from "@/components/MoreMenu";
 import { API_URL, getAuthHeaders } from "@/lib/api";
@@ -170,6 +171,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                     <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
                   </Suspense>
                   <ClaimBanner />
+                  <WaitingLeadsPrompt />
                   <div className={isCallReviewPage
                     ? "w-full min-w-0 max-w-none"
                     : isMetaAds

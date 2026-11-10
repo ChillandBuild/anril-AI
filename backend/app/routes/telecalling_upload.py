@@ -11,7 +11,9 @@ from fastapi.responses import Response
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, require_owner
-from app.services.assignment import get_telecalling_config, record_assignment_event
+from app.services.assignment import add_upload_pending, assign_upload_batch, get_telecalling_config
+from app.services.assignment_rules import get_channel_rules
+from app.services.call_wrapup import CLOSED_LEAD_STATUSES
 from app.services.segmentation import new_lead_score_and_segment
 
 logger = logging.getLogger(__name__)
@@ -44,156 +46,6 @@ def _normalize_phone(raw: str) -> str | None:
     if 8 <= len(digits_only) <= 15:
         return f"+{digits_only}"
     return None
-
-
-def _round_robin_assign_leads(
-    db,
-    lead_ids: list[str],
-    tenant_id: str,
-    segments: list[str],
-) -> list[dict]:
-    if not lead_ids:
-        return []
-
-    owner = (
-        db.table("tenant_users")
-        .select("user_id")
-        .eq("tenant_id", tenant_id)
-        .eq("role", "owner")
-        .limit(1)
-        .execute()
-    )
-    owner_user_id = (owner.data[0] if owner.data else {}).get("user_id")
-
-    query = (
-        db.table("callers")
-        .select("id,name,user_id,shift_start_hour,shift_end_hour")
-        .eq("tenant_id", tenant_id)
-        .eq("active", True)
-    )
-    if owner_user_id:
-        query = query.neq("user_id", owner_user_id)
-    callers_result = query.execute()
-    callers = callers_result.data or []
-    if not callers:
-        return []
-
-    from app.services.assignment import get_telecalling_config
-    cfg = get_telecalling_config(tenant_id)
-    shift_mode = cfg.get("shift_mode", "common")
-    common_start = cfg.get("shift_start_hour", 9)
-    common_end = cfg.get("shift_end_hour", 19)
-
-    from datetime import datetime, timezone, timedelta
-    now_utc = datetime.now(timezone.utc)
-    now_ist = now_utc + timedelta(hours=5, minutes=30)
-    current_hour = now_ist.hour
-
-    in_shift_callers = []
-    for caller in callers:
-        if shift_mode == "individual":
-            start_h = caller.get("shift_start_hour")
-            end_h = caller.get("shift_end_hour")
-            if start_h is None:
-                start_h = common_start
-            if end_h is None:
-                end_h = common_end
-        else:
-            start_h = common_start
-            if caller.get("shift_start_hour") is not None:
-                start_h = caller.get("shift_start_hour")
-            end_h = common_end
-            if caller.get("shift_end_hour") is not None:
-                end_h = caller.get("shift_end_hour")
-
-        if start_h <= end_h:
-            is_in_shift = (start_h <= current_hour < end_h)
-        else:
-            is_in_shift = (current_hour >= start_h or current_hour < end_h)
-
-        if is_in_shift:
-            in_shift_callers.append(caller)
-
-    # Fallback to all active callers if no one is in shift
-    if not in_shift_callers:
-        logger.info(f"No in-shift callers for CSV upload tenant {tenant_id} at hour {current_hour} IST. Falling back to all active callers.")
-        in_shift_callers = callers
-
-    callers = in_shift_callers
-    load: dict[str, int] = {}
-    for caller in callers:
-        res = (
-            db.table("leads")
-            .select("id", count="exact")
-            .eq("tenant_id", tenant_id)
-            .eq("assigned_to", caller["id"])
-            .neq("segment", "D")
-            .is_("converted_at", "null")
-            .neq("do_not_call", True)
-            .neq("call_status", "converted")
-            .neq("call_status", "dnc")
-            .neq("call_status", "disqualified")
-            .neq("call_status", "unreachable")
-            .execute()
-        )
-        load[caller["id"]] = res.count or 0
-
-    caller_map = {c["id"]: c for c in callers}
-    assignments: list[dict] = []
-    now = datetime.now(timezone.utc).isoformat()
-
-    for lead_id in lead_ids:
-        best_id = min(load, key=lambda cid: load[cid])
-        best = caller_map[best_id]
-
-        db.table("leads").update({
-            "assigned_to": best_id,
-            "assigned_at": now,
-        }).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
-
-        record_assignment_event(
-            lead_id,
-            tenant_id=tenant_id,
-            segment=None,
-            caller_id=best_id,
-            caller_name=best.get("name"),
-            reason="telecalling_upload",
-            method="round-robin",
-            matched_segments=segments,
-            db=db,
-        )
-
-        load[best_id] += 1
-
-        assignments.append({
-            "lead_id": lead_id,
-            "caller_id": best_id,
-            "caller_name": best.get("name"),
-        })
-
-    # Group assignment counts per caller and send a consolidated notification
-    caller_counts: dict[str, int] = {}
-    for a in assignments:
-        cid = a["caller_id"]
-        caller_counts[cid] = caller_counts.get(cid, 0) + 1
-
-    from app.services.notify import notify_user
-    for cid, count in caller_counts.items():
-        c_item = caller_map.get(cid)
-        if c_item and c_item.get("user_id"):
-            try:
-                notify_user(
-                    tenant_id,
-                    c_item["user_id"],
-                    "lead_assigned",
-                    "New leads assigned",
-                    f"You've been assigned {count} new leads from telecalling upload.",
-                    db=db,
-                )
-            except Exception:
-                logger.exception("Failed to send telecalling upload notification to caller")
-
-    return assignments
 
 
 @router.post("/upload")
@@ -276,7 +128,7 @@ async def upload_telecalling_contacts(
     all_upload_phones = list(rows_by_phone.keys())
     all_leads = (
         db.table("leads")
-        .select("id,phone,name,assigned_to")
+        .select("id,phone,name,assigned_to,do_not_call,call_status,converted_at")
         .in_("phone", all_upload_phones)
         .eq("tenant_id", tenant_id)
         .is_("deleted_at", "null")
@@ -286,17 +138,36 @@ async def upload_telecalling_contacts(
     for ld in (all_leads.data or []):
         lead_by_phone[ld["phone"]] = ld
 
-    unassigned_ids = [ld["id"] for ld in lead_by_phone.values() if not ld.get("assigned_to")]
+    # Closed leads (converted, DNC, unreachable, ...) are never handed to a telecaller again.
+    unassigned_ids = [
+        ld["id"] for ld in lead_by_phone.values()
+        if not ld.get("assigned_to")
+        and not ld.get("do_not_call")
+        and ld.get("call_status") not in CLOSED_LEAD_STATUSES
+        and not ld.get("converted_at")
+    ]
 
     cfg = get_telecalling_config(tenant_id)
-    cfg_segments = cfg.get("segments", ["A"])
-
-    assignments = _round_robin_assign_leads(db, unassigned_ids, tenant_id, cfg_segments)
-    assignment_map = {a["lead_id"]: a for a in assignments}
+    upload_rule = get_channel_rules(cfg)["upload"]
 
     # Map all caller IDs to names (for capturing existing assignments in the snapshot)
     all_callers_res = db.table("callers").select("id,name").eq("tenant_id", tenant_id).execute()
     all_caller_map = {c["id"]: c["name"] for c in (all_callers_res.data or [])}
+
+    assignments: list[dict] = []
+    # Telecalling or the upload row off: nothing is assigned.
+    if not cfg.get("enabled") or not upload_rule.get("enabled"):
+        pass
+    elif upload_rule.get("mode") == "pull":
+        if unassigned_ids:
+            add_upload_pending(db, tenant_id, unassigned_ids)
+    else:
+        # One pass for the whole file: callers and turn order read once, one summary notification each.
+        assignments, still_pending = assign_upload_batch(db, tenant_id, unassigned_ids, cfg)
+        if still_pending:
+            add_upload_pending(db, tenant_id, still_pending)
+
+    assignment_map = {a["lead_id"]: a for a in assignments}
 
     snapshot: list[dict] = []
     for phone in all_upload_phones:
