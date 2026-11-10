@@ -37,20 +37,35 @@ const SEGMENTS = [
   { key: "C", label: "Cold" },
 ];
 
-const ROWS: { key: RowKey; label: string; hint?: string }[] = [
-  { key: "whatsapp", label: "WhatsApp", hint: "Also covers broadcast imports and leads added by hand" },
-  { key: "instagram", label: "Instagram" },
-  { key: "facebook", label: "Facebook" },
-  { key: "telegram", label: "Telegram" },
-  { key: "meta_form", label: "Instant forms" },
-  { key: "other", label: "Other sources", hint: "IndiaMART, JustDial, website and API" },
-  { key: "upload", label: "Telecalling uploads", hint: "Every uploaded row counts" },
+const ROWS: { key: RowKey; label: string; hint?: string; badge: string; tone: string }[] = [
+  { key: "whatsapp", label: "WhatsApp", hint: "Also covers broadcast imports and leads added by hand", badge: "WA", tone: "bg-emerald-50 text-emerald-700" },
+  { key: "instagram", label: "Instagram", badge: "IG", tone: "bg-pink-50 text-pink-700" },
+  { key: "facebook", label: "Facebook", badge: "FB", tone: "bg-blue-50 text-blue-700" },
+  { key: "telegram", label: "Telegram", badge: "TG", tone: "bg-sky-50 text-sky-700" },
+  { key: "meta_form", label: "Instant forms", badge: "IF", tone: "bg-amber-50 text-amber-700" },
+  { key: "other", label: "Other sources", hint: "IndiaMART, JustDial, website and API", badge: "OS", tone: "bg-violet-50 text-violet-700" },
+  { key: "upload", label: "Telecalling uploads", hint: "Every uploaded row counts", badge: "UP", tone: "bg-slate-100 text-slate-700" },
 ];
 
-const MODES: { value: AssignMode; label: string; short: string }[] = [
-  { value: "auto", label: "Auto assign", short: "Auto" },
-  { value: "pull", label: "Pull", short: "Pull" },
-  { value: "available", label: "Available telecallers", short: "Available" },
+const MODES: { value: AssignMode; label: string; short: string; note: string }[] = [
+  {
+    value: "auto",
+    label: "Auto assign",
+    short: "Auto",
+    note: "Telecallers take turns, one after another (round robin).",
+  },
+  {
+    value: "pull",
+    label: "Pull",
+    short: "Pull",
+    note: "Leads wait in a shared list. Telecallers press “Call next”.",
+  },
+  {
+    value: "available",
+    label: "Available telecallers",
+    short: "Available",
+    note: "Only people on shift and not logged out. If nobody is on shift, online telecallers are asked to take the waiting leads.",
+  },
 ];
 
 /** The rule for a row, falling back to the default when the loaded data has none. */
@@ -171,23 +186,46 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
           {/* Per-channel rules */}
           <div>
             <div className="font-label text-sm font-semibold text-ink mb-1">How each channel is assigned</div>
-            <div className="font-body text-xs text-ink-muted mb-3">
+            <div className="font-body text-xs text-ink-muted mb-4">
               Switch a channel off and its leads are never assigned automatically.
             </div>
             <ul
-              className={`rounded-2xl border border-border divide-y divide-border-subtle bg-white transition-opacity duration-200 ${
+              className={`overflow-hidden rounded-2xl border border-border divide-y divide-border-subtle bg-white transition-opacity duration-200 ${
                 draft.enabled ? "" : "opacity-50"
               }`}
             >
+              {/* Column headers (desktop only) */}
+              <li
+                aria-hidden
+                className="hidden sm:flex items-center gap-x-6 rounded-t-2xl bg-surface-subtle/60 px-5 py-2.5 font-label text-[11px] font-semibold uppercase tracking-wider text-ink-muted"
+              >
+                <span className="shrink-0 sm:w-60">Channel</span>
+                <span className="w-[300px] shrink-0">Assign by</span>
+                <span className="flex-1">Segments</span>
+                <span className="w-9 shrink-0 text-right">On</span>
+              </li>
               {visibleRows.map((row) => {
                 const rule = ruleFor(draft, row.key);
                 const segments = rule.segments ?? [];
                 const isUpload = row.key === "upload";
                 return (
-                  <li key={row.key} className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <div className="order-1 min-w-0 flex-1 sm:flex-none sm:w-36 sm:shrink-0">
-                      <div className="font-label text-sm font-semibold text-ink">{row.label}</div>
-                      {row.hint && <div className="font-body text-[11px] leading-tight text-ink-muted">{row.hint}</div>}
+                  <li
+                    key={row.key}
+                    className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 transition-colors hover:bg-surface-subtle/60"
+                  >
+                    <div className="order-1 min-w-0 flex-1 sm:flex-none sm:w-60 sm:shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div
+                          aria-hidden
+                          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl font-label text-[11px] font-bold ${row.tone}`}
+                        >
+                          {row.badge}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-label text-sm font-semibold text-ink">{row.label}</div>
+                          {row.hint && <div className="font-body text-xs leading-snug text-ink-muted">{row.hint}</div>}
+                        </div>
+                      </div>
                     </div>
 
                     {!rule.enabled && <span className="order-1 font-body text-xs text-ink-muted">Off</span>}
@@ -218,7 +256,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
 
                         {/* Segments */}
                         {!isUpload && (
-                          <div role="group" aria-label={`${row.label} segments`} className="order-4 sm:order-3 flex flex-wrap items-center gap-1.5">
+                          <div role="group" aria-label={`${row.label} segments`} className="order-4 sm:order-3 flex flex-wrap items-center gap-2">
                             {SEGMENTS.map((seg) => {
                               const active = segments.includes(seg.key);
                               return (
@@ -229,7 +267,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                                   aria-checked={active}
                                   disabled={controlsDisabled}
                                   onClick={() => toggleSegment(row.key, seg.key)}
-                                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
+                                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
                                     active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
                                   }`}
                                 >
@@ -261,11 +299,14 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                 );
               })}
             </ul>
-            <p className="mt-2 font-body text-[11px] text-ink-muted leading-relaxed">
-              <span className="font-semibold text-ink-secondary">Auto assign</span>: telecallers take turns (round robin).{" "}
-              <span className="font-semibold text-ink-secondary">Pull</span>: leads wait in a shared list for “Call next”.{" "}
-              <span className="font-semibold text-ink-secondary">Available telecallers</span>: only people on shift and not logged out; if nobody is on shift, online telecallers are asked to take the waiting leads.
-            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {MODES.map((m) => (
+                <div key={m.value} className="rounded-xl border border-border bg-surface-subtle/60 px-3.5 py-3">
+                  <div className="font-label text-xs font-bold text-ink">{m.label}</div>
+                  <p className="mt-1 font-body text-[11px] leading-relaxed text-ink-muted">{m.note}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Calling Provider */}
