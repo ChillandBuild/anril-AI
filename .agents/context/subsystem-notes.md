@@ -1096,3 +1096,12 @@ Catalogue was removed from the Nira config on 2026-09-06 for this reason.
 - The Anril sidebar is `position: fixed; left: 0`, and everything else lines up against it through `--sidebar-width`: `app/globals.css`, `app/dashboard/ClientLayout.tsx` (main `lg:ml-[var(--sidebar-width)]`), `components/AppHeader.tsx` (fixed header `lg:left-...`), `components/sidebar.tsx`, `components/nav/useSidebarRail.ts` (fold to a 64px strip + hover peek that pushes the page), `app/dashboard/conversations/page.tsx` (the inbox renders its own layout and hides the header).
 - **Trap:** anything new on the left edge (the planned Anril Agents product rail) must shift all six, or the header/inbox overlaps it or leaves a gap. Screenshot Dashboard, Conversations, Meta Ads and a folded sidebar before and after.
 - Naming clash: `useSidebarRail` is the *folded sidebar*, not a product switcher. Call the new one `ProductRail`.
+
+## Companion memory: today recap and diary (2026-11-10, migration 255)
+- **The recap shows only on its own IST day.** `memory_card.day_context()` checks `recap_day == ist_today()`. A recap left over from yesterday is ignored in the prompt and is not passed to the next day run (`_sweep_pair` starts from "").
+- **The diary pass is driven by conversations, not watermarks.** The same-day refresh moves the watermark, so `_due_pairs` can skip a pair whose day still needs a diary line. `_diary_pass` reads `active_conversations` since yesterday's IST midnight instead. Don't "simplify" it onto `_due_pairs`.
+- **A chat at 01:00 IST belongs to that new day**, so it gets its diary line the following night.
+- **One refresh per pair is guarded in-process only** (`memory_refresh._running`). Across two Render processes, or a day run overlapping the 02:00 sweep, the worst case is one duplicate fact. Accepted.
+- **A failed day run does not count as a failed night.** `_sweep_pair(mode="day")` returns "failed" without `record_failure`; the night sweep reads the same messages again.
+- **Forget-me wipes the diary and the recap too** (`store.forget_memory`). `_close_day` re-checks after its AI call (newest message gone, or recap gone on a recap-only day) and writes nothing.
+- **No text is logged** in the refresh, sweep or diary code: only ids, counts and exception class names.

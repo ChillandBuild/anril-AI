@@ -642,14 +642,109 @@ async def reset_watermarks(tenant_id: str, companion_id: str) -> None:
 
 
 async def forget_memory(tenant_id: str, end_user_id: str) -> None:
-    """'Forget me' for the card engine: every fact and watermark of this person, all characters."""
+    """'Forget me' for the card engine: every fact, diary line and watermark (with its recap) of
+    this person, all characters."""
     def _q():
         db = get_supabase()
         (db.table("companion_memory_facts").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
+        (db.table("companion_memory_diary").delete()
+         .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
         (db.table("companion_memory_state").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
     await asyncio.to_thread(_q)
+
+
+# --- same-day recap and diary lines (migration 255) --------------------------------------------
+
+async def get_recap(tenant_id: str, companion_id: str, end_user_id: str) -> dict | None:
+    """{"text", "day", "through"} of this pair's "earlier today" note, or None when there is none."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_state").select("today_recap, recap_day, recap_through")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    if not rows or not rows[0].get("today_recap"):
+        return None
+    row = rows[0]
+    return {"text": row["today_recap"], "day": str(row.get("recap_day") or "")[:10] or None,
+            "through": row.get("recap_through")}
+
+
+async def set_recap(tenant_id: str, companion_id: str, end_user_id: str, text: str, day: str,
+                    through: str) -> None:
+    """Replaces the pair's recap. The watermark and failure count on the same row are left alone."""
+    row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+           "today_recap": text, "recap_day": day, "recap_through": through, "updated_at": _now()}
+
+    def _q():
+        (get_supabase().table("companion_memory_state")
+         .upsert(row, on_conflict="companion_id,end_user_id").execute())
+    await asyncio.to_thread(_q)
+
+
+async def clear_recap(tenant_id: str, companion_id: str, end_user_id: str) -> None:
+    def _q():
+        (get_supabase().table("companion_memory_state")
+         .update({"today_recap": None, "recap_day": None, "recap_through": None, "updated_at": _now()})
+         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id).execute())
+    await asyncio.to_thread(_q)
+
+
+async def has_diary(tenant_id: str, companion_id: str, end_user_id: str, day: str) -> bool:
+    def _q():
+        return (
+            get_supabase().table("companion_memory_diary").select("day")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .eq("day", day).limit(1).execute().data
+        )
+    return bool(await asyncio.to_thread(_q))
+
+
+async def upsert_diary(tenant_id: str, companion_id: str, end_user_id: str, day: str, text: str) -> None:
+    row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+           "day": day, "text": text, "updated_at": _now()}
+
+    def _q():
+        (get_supabase().table("companion_memory_diary")
+         .upsert(row, on_conflict="companion_id,end_user_id,day").execute())
+    await asyncio.to_thread(_q)
+
+
+async def recent_diary(tenant_id: str, companion_id: str, end_user_id: str, before_day: str,
+                       limit: int = 5) -> list[dict]:
+    """This pair's diary lines from days before `before_day`, newest first."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_diary").select("day, text")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .lt("day", before_day).order("day", desc=True).limit(limit).execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def prune_diary(tenant_id: str, companion_id: str, end_user_id: str, before_day: str) -> None:
+    """Deletes this pair's diary lines older than `before_day` (the 90-day window)."""
+    def _q():
+        (get_supabase().table("companion_memory_diary").delete()
+         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+         .lt("day", before_day).execute())
+    await asyncio.to_thread(_q)
+
+
+async def messages_between(tenant_id: str, companion_id: str, end_user_id: str, start: str, end: str,
+                           limit: int) -> list[dict]:
+    """The latest `limit` messages of this pair with start < created_at < end, oldest first."""
+    def _q():
+        return (
+            get_supabase().table("companion_messages").select("id, role, content, created_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .gt("created_at", start).lt("created_at", end)
+            .order("created_at", desc=True).limit(limit).execute().data
+        )
+    return list(reversed(await asyncio.to_thread(_q) or []))
 
 
 # --- the memory sweep (system job: reads across tenants, but every per-pair query filters tenant_id)

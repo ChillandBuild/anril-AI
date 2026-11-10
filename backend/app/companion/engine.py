@@ -1,10 +1,10 @@
 """reply(): one companion turn, end to end. The public entry point other modules call.
 
-Flow (spec §3.7): load the character → take a load slot → person + conversation →
+Flow: load the character → take a load slot → person + conversation →
 knowledge, memory and history in parallel → build the prompt → LLM → read the mood tag →
 save the reply and mood → return it.
 
-App-run tools (spec §3.6): if the LLM asks for one of the app's tools, the turn is saved as a
+App-run tools: if the LLM asks for one of the app's tools, the turn is saved as a
 pending turn and reply() returns status "tool_call". The app runs the tool and calls
 continue_reply(turn_id, results); the load slot is free while it does. At most 3 LLM rounds:
 round 3 goes without tools, so the AI has to answer.
@@ -17,7 +17,7 @@ import os
 import time
 import weakref
 
-from app.companion import store, tools as app_tools
+from app.companion import memory_refresh, store, tools as app_tools
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.prompt import build_messages, parse_mood
@@ -315,6 +315,10 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
             tenant_id, companion_id, conversation["end_user_id"], user_message, text)
     except Exception as exc:
         logger.warning("companion %s: memory record failed (%s)", companion_id, type(exc).__name__)
+    try:
+        memory_refresh.schedule(companion, conversation["end_user_id"])  # background; Level 2 only
+    except Exception as exc:
+        logger.warning("companion %s: memory refresh not scheduled (%s)", companion_id, type(exc).__name__)
 
     logger.info("companion %s: reply done (llm %dms, total %dms)", companion_id, llm_ms,
                 int((time.monotonic() - started) * 1000))
