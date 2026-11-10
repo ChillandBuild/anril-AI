@@ -47,15 +47,10 @@ const ROWS: { key: RowKey; label: string; hint?: string }[] = [
   { key: "upload", label: "Telecalling uploads", hint: "Every uploaded row counts" },
 ];
 
-const MODES: { value: AssignMode; label: string; short: string; help: string }[] = [
-  { value: "auto", label: "Auto assign", short: "Auto", help: "Round robin. Telecallers take turns, one after another." },
-  { value: "pull", label: "Pull", short: "Pull", help: "Leads wait in a shared list. Telecallers press “Call next”." },
-  {
-    value: "available",
-    label: "Available telecallers",
-    short: "Available",
-    help: "Only telecallers on shift and not logged out. If nobody is on shift, online telecallers are asked to take the waiting leads.",
-  },
+const MODES: { value: AssignMode; label: string; short: string }[] = [
+  { value: "auto", label: "Auto assign", short: "Auto" },
+  { value: "pull", label: "Pull", short: "Pull" },
+  { value: "available", label: "Available telecallers", short: "Available" },
 ];
 
 /** The rule for a row, falling back to the default when the loaded data has none. */
@@ -177,7 +172,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
           <div>
             <div className="font-label text-sm font-semibold text-ink mb-1">How each channel is assigned</div>
             <div className="font-body text-xs text-ink-muted mb-3">
-              Switch a channel off and its leads are never assigned automatically. You can still assign them by hand from Leads.
+              Switch a channel off and its leads are never assigned automatically.
             </div>
             <ul
               className={`rounded-2xl border border-border divide-y divide-border-subtle bg-white transition-opacity duration-200 ${
@@ -189,12 +184,69 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                 const segments = rule.segments ?? [];
                 const isUpload = row.key === "upload";
                 return (
-                  <li key={row.key} className="px-4 py-3.5 space-y-3">
-                    <div className="flex items-center gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-label text-sm font-semibold text-ink">{row.label}</div>
-                        {row.hint && <div className="font-body text-xs text-ink-muted">{row.hint}</div>}
-                      </div>
+                  <li key={row.key} className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="order-1 min-w-0 flex-1 sm:flex-none sm:w-36 sm:shrink-0">
+                      <div className="font-label text-sm font-semibold text-ink">{row.label}</div>
+                      {row.hint && <div className="font-body text-[11px] leading-tight text-ink-muted">{row.hint}</div>}
+                    </div>
+
+                    {!rule.enabled && <span className="order-1 font-body text-xs text-ink-muted">Off</span>}
+
+                    {rule.enabled && (
+                      <>
+                        {/* Assign by */}
+                        <div role="group" aria-label={`${row.label} assign by`} className="order-3 sm:order-2 flex gap-1 p-1 bg-surface-subtle border border-border rounded-xl w-fit">
+                          {MODES.map((m) => {
+                            const active = rule.mode === m.value;
+                            return (
+                              <button
+                                key={m.value}
+                                type="button"
+                                aria-pressed={active}
+                                disabled={controlsDisabled}
+                                onClick={() => setRule(row.key, { mode: m.value })}
+                                className={`whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg font-label text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-55 ${
+                                  active ? "bg-white text-ink shadow-sm border border-border/50" : "text-ink-muted hover:text-ink"
+                                }`}
+                              >
+                                <span className="sm:hidden">{m.short}</span>
+                                <span className="hidden sm:inline">{m.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Segments */}
+                        {!isUpload && (
+                          <div role="group" aria-label={`${row.label} segments`} className="order-4 sm:order-3 flex flex-wrap items-center gap-1.5">
+                            {SEGMENTS.map((seg) => {
+                              const active = segments.includes(seg.key);
+                              return (
+                                <button
+                                  key={seg.key}
+                                  type="button"
+                                  role="checkbox"
+                                  aria-checked={active}
+                                  disabled={controlsDisabled}
+                                  onClick={() => toggleSegment(row.key, seg.key)}
+                                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
+                                    active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
+                                  }`}
+                                >
+                                  <TickMark checked={active} size="sm" />
+                                  <span>{seg.label}</span>
+                                </button>
+                              );
+                            })}
+                            {segments.length === 0 && (
+                              <span className="font-body text-[11px] text-amber-700">Pick one</span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <div className="order-2 sm:order-5 ml-auto">
                       <SwitchPill
                         size="sm"
                         on={rule.enabled}
@@ -203,74 +255,17 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                         aria-label={`${row.label} assignment`}
                       />
                     </div>
-
-                    {rule.enabled && (
-                      <div className="space-y-3">
-                        {/* Assign by */}
-                        <div>
-                          <div role="group" aria-label={`${row.label} assign by`} className="flex gap-1 p-1 bg-surface-subtle border border-border rounded-xl w-fit">
-                            {MODES.map((m) => {
-                              const active = rule.mode === m.value;
-                              return (
-                                <button
-                                  key={m.value}
-                                  type="button"
-                                  aria-pressed={active}
-                                  disabled={controlsDisabled}
-                                  onClick={() => setRule(row.key, { mode: m.value })}
-                                  className={`whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg font-label text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-55 ${
-                                    active ? "bg-white text-ink shadow-sm border border-border/50" : "text-ink-muted hover:text-ink"
-                                  }`}
-                                >
-                                  <span className="sm:hidden">{m.short}</span>
-                                  <span className="hidden sm:inline">{m.label}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <p className="font-body text-[11px] text-ink-muted mt-1.5">
-                            {MODES.find((m) => m.value === rule.mode)?.help}
-                          </p>
-                        </div>
-
-                        {/* Segments */}
-                        {!isUpload && (
-                          <div>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-label text-xs font-semibold text-ink-secondary mr-1">Segments</span>
-                              {SEGMENTS.map((seg) => {
-                                const active = segments.includes(seg.key);
-                                return (
-                                  <button
-                                    key={seg.key}
-                                    type="button"
-                                    role="checkbox"
-                                    aria-checked={active}
-                                    disabled={controlsDisabled}
-                                    onClick={() => toggleSegment(row.key, seg.key)}
-                                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-label font-semibold text-ink transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-                                      active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
-                                    }`}
-                                  >
-                                    <TickMark checked={active} size="sm" />
-                                    <span>{seg.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {segments.length === 0 && (
-                              <p className="mt-1.5 font-body text-xs text-amber-700">
-                                Pick at least one, or no lead from here is assigned.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Phone: name + switch on the first line, options below. */}
+                    <div aria-hidden className="order-2 basis-full h-0 sm:hidden" />
                   </li>
                 );
               })}
             </ul>
+            <p className="mt-2 font-body text-[11px] text-ink-muted leading-relaxed">
+              <span className="font-semibold text-ink-secondary">Auto assign</span>: telecallers take turns (round robin).{" "}
+              <span className="font-semibold text-ink-secondary">Pull</span>: leads wait in a shared list for “Call next”.{" "}
+              <span className="font-semibold text-ink-secondary">Available telecallers</span>: only people on shift and not logged out; if nobody is on shift, online telecallers are asked to take the waiting leads.
+            </p>
           </div>
 
           {/* Calling Provider */}
