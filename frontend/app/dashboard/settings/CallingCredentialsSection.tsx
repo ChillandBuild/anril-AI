@@ -7,10 +7,10 @@ import {
   SaveButton, SaveStatus, SectionFooter, SettingsSection,
 } from "./SettingsSection";
 
-// TeleCMI credentials for click-to-call telecalling. Lives inside Connect
-// Channels (its own "Calling (TeleCMI)" section) rather than a separate nav
+// TeleCMI credentials for click-to-call telecalling. Lives on the Telecalling
+// behaviour page (its own "Calling (TeleCMI)" section) rather than a separate nav
 // entry — the caller decides whether to render this at all, gated on
-// hasTelecmiConfig (see connect-channels/page.tsx).
+// hasTelecmiConfig (see telecalling-behavior/page.tsx).
 
 type FieldDef = {
   key: string; label: string; placeholder?: string; secret: boolean;
