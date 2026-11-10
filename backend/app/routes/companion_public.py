@@ -16,12 +16,13 @@ business, 20/min per person.
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.companion import engine, keys, store
 from app.companion.models import AppTool, ToolResult
@@ -86,11 +87,26 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _zone(value: str | None) -> str | None:
+    """Optional IANA zone of the person ("Asia/Kolkata", "America/Toronto"): "today" for their memory."""
+    if value is None or not value.strip():
+        return None
+    from app.companion.memory_card import valid_zone
+    zone = valid_zone(value)
+    if not zone:
+        raise ValueError("timezone must be an IANA zone name like 'Asia/Kolkata'")
+    return zone
+
+
+Timezone = Annotated[str | None, Field(None, max_length=64), AfterValidator(_zone)]
+
+
 class ServerChatIn(_Body):
     companion_id: UUID
     user_id: str = UserId
     message: str = Message
     display_name: str | None = Field(None, max_length=100)
+    timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
 
 
@@ -110,6 +126,7 @@ class WidgetAuthIn(_Body):
 class WidgetChatIn(WidgetAuthIn):
     message: str = Message
     display_name: str | None = Field(None, max_length=100)
+    timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
 
 
@@ -210,7 +227,7 @@ async def _run(call, kind: str, log: dict) -> JSONResponse:
 
 @public_router.post("/chat")
 async def server_chat(body: ServerChatIn, request: Request):
-    """{"companion_id", "user_id", "message", "display_name"?, "tools"?} → the reply, or
+    """{"companion_id", "user_id", "message", "display_name"?, "timezone"?, "tools"?} → the reply, or
     status "tool_call" with a turn_id: run the tools and POST /chat/continue."""
     log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
 
@@ -219,7 +236,8 @@ async def server_chat(body: ServerChatIn, request: Request):
         _check_person(tenant_id, body.user_id)
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
-                                    display_name=body.display_name, tools=body.tools, require_live=True)
+                                    display_name=body.display_name, tools=body.tools, require_live=True,
+                                    timezone_name=body.timezone)
         return result.model_dump()
     return await _run(call, "chat", log)
 
@@ -272,7 +290,8 @@ async def widget_chat(body: WidgetChatIn, request: Request):
         _check_person(tenant_id, body.user_id)
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
-                                    display_name=body.display_name, tools=body.tools, require_live=True)
+                                    display_name=body.display_name, tools=body.tools, require_live=True,
+                                    timezone_name=body.timezone)
         return result.model_dump()
     return await _run(call, "widget_chat", log)
 

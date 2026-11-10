@@ -1,0 +1,87 @@
+{
+ "id": "en-01", "language": "en", "timezone": "Asia/Kolkata", "person": "Rohan Mehta",
+ "theme": "job interview",
+ "days": [
+  {"date": "2026-10-05", "messages": [
+   ["09:10", "user", "hi aira good morning"],
+   ["09:10", "assistant", "Good morning Rohan! How's your Sunday starting?"],
+   ["09:12", "user", "lazy. had idli for breakfast, mom made sambar also"],
+   ["09:13", "assistant", "Idli with sambar on a Sunday sounds perfect. Any plans today?"],
+   ["09:15", "user", "got a call from Zoho HR yesterday. interview on 8th for software developer trainee role"],
+   ["09:15", "assistant", "Rohan, that's big! Zoho in Chennai? How are you feeling about it?"],
+   ["09:17", "user", "yes Chennai office. nervous but excited. my friend Arjun said just do leetcode easy and medium problems daily"],
+   ["09:18", "assistant", "Arjun's advice is solid. Small daily practice beats cramming. Which topics worry you most?"],
+   ["09:20", "user", "arrays and strings mostly. also they said there will be a round on basic DBMS"],
+   ["09:21", "assistant", "Then maybe two easy problems a day plus one DBMS topic. Doable in 3 days."],
+   ["09:25", "user", "ok will do that. tonight rewatching Leo with friends, need some break also"],
+   ["09:26", "assistant", "Good, a break helps the brain. Enjoy the movie!"]
+  ]},
+  {"date": "2026-10-08", "messages": [
+   ["08:30", "user", "aira its today"],
+   ["08:30", "assistant", "Today is the big day! How did you sleep?"],
+   ["08:32", "user", "barely 4 hrs. interview is at 3pm at Zoho, technical round first"],
+   ["08:33", "assistant", "4 hours is okay, adrenaline will carry you. Have you eaten?"],
+   ["08:35", "user", "no. will have dosa at the hostel mess later"],
+   ["08:36", "assistant", "Please eat properly before 3pm. Empty stomach makes nerves worse."],
+   ["10:15", "user", "revising pointers and joins now. its raining so heavy here"],
+   ["10:16", "assistant", "Rain and revision, cozy at least. Leave early for the office, traffic will be bad."],
+   ["11:40", "user", "auto booked for 1pm. wearing the blue shirt mom ironed"],
+   ["11:41", "assistant", "Blue shirt is a lucky choice. Breathe slowly, you know this stuff."],
+   ["13:00", "user", "leaving now"],
+   ["13:01", "assistant", "All the best Rohan! Message me after."],
+   ["18:45", "user", "back at hostel. so tired"],
+   ["18:46", "assistant", "You must be. Eat something and rest. Want to talk about it?"],
+   ["19:30", "user", "had biryani for dinner, roommate treated me"],
+   ["19:31", "assistant", "Biryani after a long day is well deserved."],
+   ["20:50", "user", "watching IPL highlights now lol"],
+   ["20:51", "assistant", "Good way to switch off. Sleep early tonight."]
+  ]},
+  {"date": "2026-10-12", "messages": [
+   ["10:05", "user", "hey aira"],
+   ["10:05", "assistant", "Hey Rohan! How is the weekend going?"],
+   ["10:07", "user", "still waiting for the result. HR said they will mail by 20th"],
+   ["10:08", "assistant", "Waiting is the hardest part. Try keeping yourself busy."],
+   ["10:10", "user", "yeah. cleaning my room today, so much dust"],
+   ["10:11", "assistant", "A clean room feels like a fresh start. Put on some music!"],
+   ["10:15", "user", "playing Anirudh songs only. its the weather also, so cloudy"],
+   ["10:16", "assistant", "Anirudh and clouds, perfect mood. Any lunch plan?"],
+   ["10:20", "user", "pongal and vada from the canteen"],
+   ["10:21", "assistant", "Sounds good. Ping me when you take a break."]
+  ]},
+  {"date": "2026-10-17", "messages": [
+   ["19:00", "user", "aira i have news"],
+   ["19:00", "assistant", "Tell me! Good news?"],
+   ["19:02", "user", "got the mail from Zoho. i am selected! offer letter attached, 6.5 LPA"],
+   ["19:02", "assistant", "ROHAN! Congratulations, that's amazing! All that prep paid off."],
+   ["19:05", "user", "i called mom and she started crying lol. dad said treat for everyone"],
+   ["19:06", "assistant", "That's so sweet. Where will you take everyone for the treat?"],
+   ["19:08", "user", "some biryani place near home, maybe saturday"],
+   ["19:09", "assistant", "You deserve a big biryani. Also tell Arjun thanks for the leetcode tip."],
+   ["19:12", "user", "haha yes will do. joining date is december"],
+   ["19:13", "assistant", "Perfect, two months to relax and prepare. Proud of you."]
+  ]},
+  {"date": "2026-10-28", "messages": [
+   ["20:10", "user", "hi aira, bored today"],
+   ["20:10", "assistant", "Hi Rohan! What did you do today?"],
+   ["20:12", "user", "just slept and ate lol. mom made fish fry"],
+   ["20:13", "assistant", "That's a proper holiday. Was the fish fry good?"],
+   ["20:15", "user", "super. also started watching a new series on hotstar"],
+   ["20:16", "assistant", "Nice, what's it about?"],
+   ["20:18", "user", "some crime thing, too many twists. will tell you if its good"],
+   ["20:19", "assistant", "Please do. I like a good twist."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-01-p1", "kind": "same_day", "at": "2026-10-08T21:30", "ask": "it went okay i think", "expect": "Understands this refers to the Zoho interview earlier that day and responds supportively about it, not asking what went okay", "any": ["Zoho", "interview"], "none": []},
+  {"id": "en-01-p2", "kind": "recall", "at": "2026-11-09T10:00", "ask": "which company did i interview with again?", "expect": "Says Zoho", "any": ["Zoho"], "none": []},
+  {"id": "en-01-p3", "kind": "recall", "at": "2026-11-09T10:05", "ask": "what happened with that interview in the end?", "expect": "Says Rohan was selected and got an offer from Zoho", "any": ["selected", "offer", "cleared", "got the job"], "none": []},
+  {"id": "en-01-p4", "kind": "recall", "at": "2026-11-09T10:10", "ask": "which city is that office in? i forgot", "expect": "Says Chennai", "any": ["Chennai"], "none": []},
+  {"id": "en-01-p5", "kind": "recall", "at": "2026-11-09T10:15", "ask": "which friend gave me prep advice?", "expect": "Says Arjun", "any": ["Arjun"], "none": []},
+  {"id": "en-01-p6", "kind": "false", "at": "2026-11-09T10:20", "ask": "what's my sister's name again?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-01-s1", "query": "that thing Arjun recommended for practice", "day": "2026-10-05", "any": ["leetcode", "Arjun"]},
+  {"id": "en-01-s2", "query": "what time was I meeting the hiring folks?", "day": "2026-10-08", "any": ["3pm", "Zoho"]},
+  {"id": "en-01-s3", "query": "how much was the package they promised", "day": "2026-10-17", "any": ["6.5", "LPA", "offer"]}
+ ]
+}

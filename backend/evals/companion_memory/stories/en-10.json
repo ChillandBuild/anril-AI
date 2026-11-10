@@ -1,0 +1,924 @@
+{
+ "id": "en-10",
+ "language": "en",
+ "timezone": "America/Toronto",
+ "person": "Tanvi Joshi",
+ "theme": "person living abroad, one very long day",
+ "days": [
+  {
+   "date": "2026-10-01",
+   "messages": [
+    [
+     "19:00",
+     "user",
+     "hi aira! new here, my friend told me to try you"
+    ],
+    [
+     "19:00",
+     "assistant",
+     "Hi! Glad you're here. Tell me about yourself."
+    ],
+    [
+     "19:02",
+     "user",
+     "i am Tanvi, from Pune but now doing MSc statistics at University of Toronto. only 1 month here"
+    ],
+    [
+     "19:03",
+     "assistant",
+     "Welcome to Toronto, Tanvi! How's the first month been?"
+    ],
+    [
+     "19:05",
+     "user",
+     "cold already lol. i share a flat near Kensington Market with a girl called Priyal"
+    ],
+    [
+     "19:06",
+     "assistant",
+     "Kensington is fun. Good food around?"
+    ],
+    [
+     "19:08",
+     "user",
+     "so many tacos and patties. jerk chicken patty is my favourite now"
+    ],
+    [
+     "19:09",
+     "assistant",
+     "A Toronto classic. Do you miss Indian food?"
+    ],
+    [
+     "19:11",
+     "user",
+     "badly. dosa batter from the Indian grocery on Gerrard, making dosa tonight"
+    ],
+    [
+     "19:12",
+     "assistant",
+     "Enjoy your dosa. Gerrard India Bazaar sounds like a lifesaver."
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-12",
+   "messages": [
+    [
+     "17:30",
+     "user",
+     "its Thanksgiving here today, Maya invited me to her house in Mississauga"
+    ],
+    [
+     "17:31",
+     "assistant",
+     "Lovely! Is this your first Canadian Thanksgiving?"
+    ],
+    [
+     "17:33",
+     "user",
+     "yes! her mom made turkey, mashed potatoes and pumpkin pie"
+    ],
+    [
+     "17:34",
+     "assistant",
+     "A proper feast. What did you think of the turkey?"
+    ],
+    [
+     "17:36",
+     "user",
+     "bit dry honestly but the pie was amazing. i brought gulab jamun, they loved it"
+    ],
+    [
+     "17:37",
+     "assistant",
+     "Gulab jamun at Thanksgiving, that's a win."
+    ],
+    [
+     "17:39",
+     "user",
+     "her dad asked so many questions about Diwali lol"
+    ],
+    [
+     "17:40",
+     "assistant",
+     "People are curious about it. Did you tell him about the lamps and sweets?"
+    ],
+    [
+     "17:42",
+     "user",
+     "yes and promised him sweets next month"
+    ],
+    [
+     "17:43",
+     "assistant",
+     "A good way to make friends."
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-22",
+   "messages": [
+    [
+     "07:12",
+     "user",
+     "aira i overslept, alarm didnt ring"
+    ],
+    [
+     "07:12",
+     "assistant",
+     "Oh no, how late are you? What's on this morning?"
+    ],
+    [
+     "07:14",
+     "user",
+     "40 min late. today is going to be a mess, i can feel it"
+    ],
+    [
+     "07:14",
+     "assistant",
+     "One step at a time. What are the must-dos today?"
+    ],
+    [
+     "07:16",
+     "user",
+     "ok listing. 1) my biometrics appointment at 4:15pm at the Service Canada centre on Yonge for my study permit extension. cannot miss it at all"
+    ],
+    [
+     "07:16",
+     "assistant",
+     "Got it, 4:15pm biometrics on Yonge. Do you have the appointment letter and passport ready?"
+    ],
+    [
+     "07:18",
+     "user",
+     "letter printed yes, passport in my bag. 2) stats assignment due 11:59pm 3) meeting with Prof. Whitfield at 11"
+    ],
+    [
+     "07:18",
+     "assistant",
+     "That's a full day. Eat something before you rush out."
+    ],
+    [
+     "07:20",
+     "user",
+     "no time. grabbing a Tim Hortons double double on the way"
+    ],
+    [
+     "07:20",
+     "assistant",
+     "Tim's it is. Wear a warm jacket, how cold is it?"
+    ],
+    [
+     "07:22",
+     "user",
+     "3 degrees and raining. ugh"
+    ],
+    [
+     "07:22",
+     "assistant",
+     "Layer up and take an umbrella."
+    ],
+    [
+     "07:25",
+     "user",
+     "umbrella flipped inside out at the door lol"
+    ],
+    [
+     "07:25",
+     "assistant",
+     "Welcome to October in Toronto. Hood up then!"
+    ],
+    [
+     "07:41",
+     "user",
+     "streetcar 504 is delayed 15 min, standing at King"
+    ],
+    [
+     "07:41",
+     "assistant",
+     "Is there a bus alternative or a short walk to the subway?"
+    ],
+    [
+     "07:43",
+     "user",
+     "walking to St Andrew station now, wet shoes"
+    ],
+    [
+     "07:43",
+     "assistant",
+     "Sorry about that. Dry socks in your bag?"
+    ],
+    [
+     "07:45",
+     "user",
+     "no lol"
+    ],
+    [
+     "07:45",
+     "assistant",
+     "Next time keep a spare pair in the lab. For now keep moving."
+    ],
+    [
+     "08:30",
+     "user",
+     "reached campus. coffee spilled on my notes though"
+    ],
+    [
+     "08:30",
+     "assistant",
+     "Oh no. Are the notes salvageable?"
+    ],
+    [
+     "08:32",
+     "user",
+     "half. the intro page is soggy"
+    ],
+    [
+     "08:32",
+     "assistant",
+     "Take a photo before it dries, so you still have a copy."
+    ],
+    [
+     "08:35",
+     "user",
+     "good idea doing it"
+    ],
+    [
+     "08:36",
+     "assistant",
+     "And breathe, you have a long day but you've handled worse."
+    ],
+    [
+     "09:10",
+     "user",
+     "library now. trying to finish the code for the assignment"
+    ],
+    [
+     "09:10",
+     "assistant",
+     "How far along is it?"
+    ],
+    [
+     "09:12",
+     "user",
+     "regression part done, the plots are broken"
+    ],
+    [
+     "09:12",
+     "assistant",
+     "What's the error?"
+    ],
+    [
+     "09:14",
+     "user",
+     "matplotlib says figure size invalid, idk why"
+    ],
+    [
+     "09:14",
+     "assistant",
+     "Check if you passed figsize as a tuple, like (8, 5), not a string."
+    ],
+    [
+     "09:16",
+     "user",
+     "omg yes that was it. thanks"
+    ],
+    [
+     "09:16",
+     "assistant",
+     "Plots saved. One thing fixed."
+    ],
+    [
+     "09:50",
+     "user",
+     "Prof. Whitfield just emailed, moved the meeting to 10:30, so soon"
+    ],
+    [
+     "09:50",
+     "assistant",
+     "Do you need anything ready for him?"
+    ],
+    [
+     "09:52",
+     "user",
+     "my draft chapter 2. printing it now"
+    ],
+    [
+     "09:52",
+     "assistant",
+     "Good. Bring a pen for his comments."
+    ],
+    [
+     "10:25",
+     "user",
+     "waiting outside his office"
+    ],
+    [
+     "10:25",
+     "assistant",
+     "Take a deep breath. He just wants progress, not perfection."
+    ],
+    [
+     "11:35",
+     "user",
+     "that went... not great. he said chapter 2 needs restructuring, a lot of rewriting"
+    ],
+    [
+     "11:35",
+     "assistant",
+     "That's frustrating after all your effort. Did he say what to change?"
+    ],
+    [
+     "11:37",
+     "user",
+     "move the literature review to the start, cut 2000 words, redo the methods section"
+    ],
+    [
+     "11:37",
+     "assistant",
+     "Those are concrete fixes, which is better than vague comments. Do you have a deadline?"
+    ],
+    [
+     "11:39",
+     "user",
+     "2 weeks. so stressed"
+    ],
+    [
+     "11:39",
+     "assistant",
+     "Two weeks is workable. Do the assignment first, then break chapter 2 into small tasks."
+    ],
+    [
+     "12:20",
+     "user",
+     "lunch with Maya at the cafeteria. paneer wrap, 9 dollars, so overpriced"
+    ],
+    [
+     "12:20",
+     "assistant",
+     "Campus prices. At least it's with Maya. How's she?"
+    ],
+    [
+     "12:22",
+     "user",
+     "she got her internship at RBC! so happy for her but also a bit jealous lol"
+    ],
+    [
+     "12:22",
+     "assistant",
+     "Both feelings are normal. Her win doesn't take anything from you."
+    ],
+    [
+     "12:25",
+     "user",
+     "true. she offered to read chapter 2 later"
+    ],
+    [
+     "12:25",
+     "assistant",
+     "Take that offer, a second pair of eyes helps a lot."
+    ],
+    [
+     "13:05",
+     "user",
+     "my laptop is at 8% and charger is at home"
+    ],
+    [
+     "13:05",
+     "assistant",
+     "Any charging spots in the library?"
+    ],
+    [
+     "13:07",
+     "user",
+     "found a socket. but its a tiny desk, so cramped"
+    ],
+    [
+     "13:07",
+     "assistant",
+     "Fine for now. Save your work often."
+    ],
+    [
+     "13:40",
+     "user",
+     "also landlord emailed, rent going up by 100 dollars from january"
+    ],
+    [
+     "13:40",
+     "assistant",
+     "Ugh, that's a lot on top of everything. Is it allowed by your lease?"
+    ],
+    [
+     "13:42",
+     "user",
+     "not sure. will check the lease tonight"
+    ],
+    [
+     "13:42",
+     "assistant",
+     "Good plan. Ontario has rent rules, worth checking the exact notice period."
+    ],
+    [
+     "14:10",
+     "user",
+     "assignment: 2 hours of work left i think"
+    ],
+    [
+     "14:10",
+     "assistant",
+     "Then pick a quiet corner and put your phone away."
+    ],
+    [
+     "14:12",
+     "user",
+     "ok phone on silent"
+    ],
+    [
+     "14:12",
+     "assistant",
+     "See you in a bit."
+    ],
+    [
+     "14:55",
+     "user",
+     "question, should i include residual plots or is it extra"
+    ],
+    [
+     "14:55",
+     "assistant",
+     "Include one, it shows you checked assumptions. Keep it small."
+    ],
+    [
+     "14:57",
+     "user",
+     "ok"
+    ],
+    [
+     "14:57",
+     "assistant",
+     "Good luck with the last part."
+    ],
+    [
+     "15:20",
+     "user",
+     "finished writing the conclusion"
+    ],
+    [
+     "15:20",
+     "assistant",
+     "Nice. Leave the final proofreading for tonight."
+    ],
+    [
+     "15:22",
+     "user",
+     "yes. need to leave for Yonge soon"
+    ],
+    [
+     "15:22",
+     "assistant",
+     "Leave by 3:40, subway plus walking, with buffer."
+    ],
+    [
+     "15:45",
+     "user",
+     "leaving now. cant chat until later, wish me luck"
+    ],
+    [
+     "15:45",
+     "assistant",
+     "Good luck, Tanvi. Don't forget your passport and letter."
+    ],
+    [
+     "18:20",
+     "user",
+     "back home. so drained"
+    ],
+    [
+     "18:20",
+     "assistant",
+     "You must be. Have you had anything to eat?"
+    ],
+    [
+     "18:22",
+     "user",
+     "no. making maggi, only thing i can handle"
+    ],
+    [
+     "18:22",
+     "assistant",
+     "Maggi is perfect comfort food."
+    ],
+    [
+     "18:25",
+     "user",
+     "roommate Priyal left the kitchen so messy, dishes everywhere"
+    ],
+    [
+     "18:25",
+     "assistant",
+     "Ugh, that's annoying when you're already tired. Will you talk to her?"
+    ],
+    [
+     "18:27",
+     "user",
+     "tomorrow. today no energy"
+    ],
+    [
+     "18:27",
+     "assistant",
+     "Fair. One battle at a time."
+    ],
+    [
+     "18:50",
+     "user",
+     "mom called from Pune, she asked if i was eating properly lol"
+    ],
+    [
+     "18:50",
+     "assistant",
+     "Moms can sense it. What did you tell her?"
+    ],
+    [
+     "18:52",
+     "user",
+     "said yes. did not tell her about chapter 2"
+    ],
+    [
+     "18:52",
+     "assistant",
+     "Maybe tell her soon, she'd want to support you."
+    ],
+    [
+     "18:54",
+     "user",
+     "maybe after submission"
+    ],
+    [
+     "18:54",
+     "assistant",
+     "That's okay too."
+    ],
+    [
+     "19:30",
+     "user",
+     "ok sitting down for the assignment final checks"
+    ],
+    [
+     "19:30",
+     "assistant",
+     "Remember to export the plots at a high resolution."
+    ],
+    [
+     "19:35",
+     "user",
+     "doing. also my eyes hurt"
+    ],
+    [
+     "19:35",
+     "assistant",
+     "Take a 5 minute break, look out of the window."
+    ],
+    [
+     "19:45",
+     "user",
+     "its dark already at 6pm, so depressing, daylight saving ends soon"
+    ],
+    [
+     "19:45",
+     "assistant",
+     "The early dark is a lot to get used to. Maybe a lamp or vitamin D?"
+    ],
+    [
+     "19:48",
+     "user",
+     "dad mailed vitamin D lol"
+    ],
+    [
+     "19:48",
+     "assistant",
+     "Dads send practical care."
+    ],
+    [
+     "20:30",
+     "user",
+     "found a typo in my regression table"
+    ],
+    [
+     "20:30",
+     "assistant",
+     "Good catch. Correct it and recheck the numbers next to it."
+    ],
+    [
+     "20:32",
+     "user",
+     "fixed. phew"
+    ],
+    [
+     "20:32",
+     "assistant",
+     "Great."
+    ],
+    [
+     "21:15",
+     "user",
+     "Maya sent me chapter 2 comments already, super quick"
+    ],
+    [
+     "21:15",
+     "assistant",
+     "Maya is a star. What did she say?"
+    ],
+    [
+     "21:17",
+     "user",
+     "that my intro is too long. same as Prof."
+    ],
+    [
+     "21:17",
+     "assistant",
+     "So the cut is right. Do that after the assignment."
+    ],
+    [
+     "21:40",
+     "user",
+     "checking the lease now, i think they need 90 days notice for increases"
+    ],
+    [
+     "21:40",
+     "assistant",
+     "If so, a January increase might not be valid. Worth a polite email."
+    ],
+    [
+     "21:42",
+     "user",
+     "will mail the landlord tomorrow"
+    ],
+    [
+     "21:42",
+     "assistant",
+     "Sounds good."
+    ],
+    [
+     "22:10",
+     "user",
+     "uploading to Quercus now"
+    ],
+    [
+     "22:10",
+     "assistant",
+     "Check the file name and the format before pressing submit."
+    ],
+    [
+     "22:13",
+     "user",
+     "pdf, correct name"
+    ],
+    [
+     "22:13",
+     "assistant",
+     "Good. Submit it."
+    ],
+    [
+     "22:20",
+     "user",
+     "submitted! confirmation email came"
+    ],
+    [
+     "22:20",
+     "assistant",
+     "Done, Tanvi! That's one big thing off your list."
+    ],
+    [
+     "22:22",
+     "user",
+     "yes finally. eating ice cream out of the tub"
+    ],
+    [
+     "22:22",
+     "assistant",
+     "You've earned the tub."
+    ],
+    [
+     "23:10",
+     "user",
+     "watching Brooklyn 99 to switch off"
+    ],
+    [
+     "23:10",
+     "assistant",
+     "Good choice. Terry loves yogurt."
+    ],
+    [
+     "23:40",
+     "user",
+     "ok sleeping now. long day"
+    ],
+    [
+     "23:40",
+     "assistant",
+     "Good night, Tanvi. You did all of it."
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-30",
+   "messages": [
+    [
+     "20:00",
+     "user",
+     "halloween plans! going to a party in Queen West tomorrow"
+    ],
+    [
+     "20:00",
+     "assistant",
+     "Fun! Are you dressing up?"
+    ],
+    [
+     "20:02",
+     "user",
+     "Wednesday Addams. black dress, braids. ordered the braids wig online"
+    ],
+    [
+     "20:03",
+     "assistant",
+     "That's an easy and great costume. Practise the blank stare."
+    ],
+    [
+     "20:05",
+     "user",
+     "lol doing it in the mirror now. also chapter 2 rewrite is 60 percent done"
+    ],
+    [
+     "20:06",
+     "assistant",
+     "Good progress. A Halloween break is deserved."
+    ],
+    [
+     "20:08",
+     "user",
+     "yes. also landlord replied, he cancelled the rent hike. 90 days rule worked"
+    ],
+    [
+     "20:09",
+     "assistant",
+     "That's great news, Tanvi. Your lease check paid off."
+    ]
+   ]
+  },
+  {
+   "date": "2026-11-06",
+   "messages": [
+    [
+     "18:45",
+     "user",
+     "aira first snow today!! tiny flurries but still"
+    ],
+    [
+     "18:45",
+     "assistant",
+     "First snow, how exciting! How did it feel?"
+    ],
+    [
+     "18:47",
+     "user",
+     "magical for 5 mins and then my feet froze lol"
+    ],
+    [
+     "18:48",
+     "assistant",
+     "Winter boots are next on the shopping list."
+    ],
+    [
+     "18:50",
+     "user",
+     "yes Priyal says go to Winners for boots, cheap"
+    ],
+    [
+     "18:51",
+     "assistant",
+     "Winners is a good call. Look for ones with grip."
+    ],
+    [
+     "18:53",
+     "user",
+     "ok. also clocks went back, its dark at 5pm now"
+    ],
+    [
+     "18:54",
+     "assistant",
+     "That's tough. Maybe a lamp and a warm drink in the evenings."
+    ]
+   ]
+  }
+ ],
+ "probes": [
+  {
+   "id": "en-10-p1",
+   "kind": "same_day",
+   "at": "2026-10-22T23:55",
+   "ask": "it went okay i think",
+   "expect": "Understands this refers to the study permit biometrics appointment that was never debriefed, and asks or responds about it",
+   "any": [
+    "biometrics",
+    "appointment",
+    "permit"
+   ],
+   "none": []
+  },
+  {
+   "id": "en-10-p2",
+   "kind": "recall",
+   "at": "2026-11-09T10:00",
+   "ask": "what was that appointment i had on the crazy day?",
+   "expect": "Says the biometrics appointment for the study permit extension at Service Canada on Yonge",
+   "any": [
+    "biometrics",
+    "study permit",
+    "Service Canada"
+   ],
+   "none": []
+  },
+  {
+   "id": "en-10-p3",
+   "kind": "recall",
+   "at": "2026-11-09T10:05",
+   "ask": "what did my professor say about my thesis chapter?",
+   "expect": "Says Prof. Whitfield wanted chapter 2 restructured, literature review moved to the start and cut",
+   "any": [
+    "chapter 2",
+    "restructur",
+    "rewrite",
+    "literature review",
+    "Whitfield"
+   ],
+   "none": []
+  },
+  {
+   "id": "en-10-p4",
+   "kind": "recall",
+   "at": "2026-11-09T10:10",
+   "ask": "who got the internship, and where?",
+   "expect": "Says Maya got an internship at RBC",
+   "any": [
+    "Maya",
+    "RBC"
+   ],
+   "none": []
+  },
+  {
+   "id": "en-10-p5",
+   "kind": "recall",
+   "at": "2026-11-09T10:15",
+   "ask": "what happened with my landlord and the rent?",
+   "expect": "Says the landlord announced a 100 dollar rent hike from January and later cancelled it after Tanvi cited the 90 day notice rule",
+   "any": [
+    "rent",
+    "100",
+    "cancel",
+    "90"
+   ],
+   "none": []
+  },
+  {
+   "id": "en-10-p6",
+   "kind": "false",
+   "at": "2026-11-09T10:20",
+   "ask": "what's my sister's name again?",
+   "expect": "Says it doesn't know / wasn't told; invents no name",
+   "any": [],
+   "none": []
+  }
+ ],
+ "search": [
+  {
+   "id": "en-10-s1",
+   "query": "where am I studying and what's my course?",
+   "day": "2026-10-01",
+   "any": [
+    "Toronto",
+    "statistics"
+   ]
+  },
+  {
+   "id": "en-10-s2",
+   "query": "what did my guide want changed in my draft",
+   "day": "2026-10-22",
+   "any": [
+    "literature review",
+    "2000",
+    "methods",
+    "chapter 2"
+   ]
+  },
+  {
+   "id": "en-10-s3",
+   "query": "who hosted me for the long weekend feast with the pie",
+   "day": "2026-10-12",
+   "any": [
+    "Maya",
+    "Thanksgiving",
+    "Mississauga"
+   ]
+  }
+ ]
+}

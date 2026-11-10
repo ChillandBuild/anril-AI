@@ -38,7 +38,11 @@ class FakeSupabase:
         self.tables: dict[str, list[dict]] = {}
         self._clock = itertools.count(1)
         self.storage = MagicMock()
-        self.rpc_handlers: dict = {}
+        self.rpc_handlers: dict = {
+            "claim_memory_pair": lambda p: _claim_memory_pair(self, p),
+            "companion_day_context": lambda p: _companion_day_context(self, p),
+            "match_memory_chunks": lambda p: _match_memory_chunks(self, p),
+        }
 
     def table(self, name: str) -> "_Query":
         return _Query(self, name)
@@ -307,3 +311,80 @@ class _Query:
         if self._single:
             return SimpleNamespace(data=rows[0] if rows else None, count=total)
         return SimpleNamespace(data=rows, count=total)
+
+
+# --- stand-ins for the companion memory SQL functions (migration 256) ------------------------------
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _claim_memory_pair(db: "FakeSupabase", p: dict) -> bool:
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(seconds=p["p_seconds"])).isoformat()
+    rows = [r for r in db.rows("companion_memory_state")
+            if r["companion_id"] == p["p_companion"] and r["end_user_id"] == p["p_end_user"]]
+    if not rows:
+        db.add("companion_memory_state", tenant_id=p["p_tenant"], companion_id=p["p_companion"],
+               end_user_id=p["p_end_user"], busy_until=until, failures=0, last_message_at=None)
+        return True
+    row = rows[0]
+    busy = row.get("busy_until")
+    if row["tenant_id"] != p["p_tenant"] or (busy and datetime.fromisoformat(busy) >= now):
+        return False
+    row["busy_until"] = until
+    return True
+
+
+def _companion_day_context(db: "FakeSupabase", p: dict) -> dict:
+    key = (p["p_tenant"], p["p_companion"], p["p_end_user"])
+    state = next((r for r in db.rows("companion_memory_state")
+                  if (r["tenant_id"], r["companion_id"], r["end_user_id"]) == key), {})
+    diary = sorted((r for r in db.rows("companion_memory_diary")
+                    if (r["tenant_id"], r["companion_id"], r["end_user_id"]) == key
+                    and str(r["day"]) < p["p_before_day"]), key=lambda r: str(r["day"]), reverse=True)
+    return {"recap": state.get("today_recap"), "recap_day": state.get("recap_day"),
+            "diary": [{"day": r["day"], "text": r["text"]} for r in diary[:p["p_days"]]]}
+
+
+def _vector(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [float(x) for x in value.strip("[]").split(",") if x]
+    return list(value)
+
+
+def _cosine(a, b) -> float:
+    num = sum(x * y for x, y in zip(a, b))
+    den = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+    return num / den if den else 0.0
+
+
+def _word_sim(query: str, text: str) -> float:
+    """A rough stand-in for pg_trgm word_similarity: the share of query words found in the text."""
+    words = [w for w in query.casefold().split() if len(w) > 2]
+    hay = text.casefold()
+    return sum(w in hay for w in words) / len(words) if words else 0.0
+
+
+def _match_memory_chunks(db: "FakeSupabase", p: dict) -> list[dict]:
+    mine = [r for r in db.rows("companion_memory_chunks")
+            if r["tenant_id"] == p["p_tenant"] and r["end_user_id"] == p["p_end_user"]
+            and r["companion_id"] in p["p_companions"]]
+    out = []
+    q = _vector(p.get("p_embedding"))
+    if q is not None:
+        scored = [(r, _cosine(q, _vector(r["embedding"]))) for r in mine if r.get("embedding") is not None]
+        for r, score in sorted(scored, key=lambda t: -t[1])[:p["p_count"]]:
+            out.append({**{k: r[k] for k in ("id", "companion_id", "kind", "day", "text")},
+                        "source": "vector", "score": score})
+    if p.get("p_query"):
+        scored = [(r, _word_sim(p["p_query"], r["text"])) for r in mine]
+        for r, score in sorted(scored, key=lambda t: -t[1])[:p["p_count"]]:
+            if score > 0:
+                out.append({**{k: r[k] for k in ("id", "companion_id", "kind", "day", "text")},
+                            "source": "trigram", "score": score})
+    return out

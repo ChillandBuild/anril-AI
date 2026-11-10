@@ -1,0 +1,70 @@
+{
+ "id": "ta-en-07", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Kavitha", "theme": "festival",
+ "days": [
+  {"date": "2026-10-05", "messages": [
+   ["19:00", "user", "Aira, Deepavali ku innum oru maasam dhaan irukku, plan panna aarambichuten"],
+   ["19:01", "assistant", "Wow Kavitha, enna plan? Veetula enna special?"],
+   ["19:04", "user", "en akka Priya Bangalore la irundhu family oda varaanga, 3 kuzhandhaigal"],
+   ["19:05", "assistant", "Nalla vishayam! Kuzhandhaigal vandha veedu jolly ah irukkum."],
+   ["19:08", "user", "aama, adhirasam um murukku um naane pannalam nu irukken"],
+   ["19:09", "assistant", "Homemade adhirasam na super. Recipe theriyuma?"],
+   ["19:12", "user", "amma kita kekkanum. mazhai vera adikkuthu pa"],
+   ["19:13", "assistant", "Mazhai nerathula ellaam kashtam dhaan."],
+   ["19:16", "user", "sari, thanks Aira. saapadu time"],
+   ["19:17", "assistant", "Bye Kavitha!"]
+  ]},
+  {"date": "2026-10-10", "messages": [
+   ["16:30", "user", "innaiku T. Nagar Pothys poyirundhen, pattu saree paakka"],
+   ["16:31", "assistant", "Kootam romba irundhucha?"],
+   ["16:34", "user", "romba kootam pa. maroon colour saree vaangiten, 6500 rupees"],
+   ["16:35", "assistant", "Maroon na festival ku super. Pidichirukkaa?"],
+   ["16:38", "user", "aama romba pidichi, amma ku orange colour edukkanum next time"],
+   ["16:39", "assistant", "Nalla idea."]
+  ]},
+  {"date": "2026-10-18", "messages": [
+   ["20:00", "user", "kuzhandhaigaluku new dress vaangi anupanum, akka size sonnaanga"],
+   ["20:01", "assistant", "Parcel ah anupreengala illa neril kudukka pora?"],
+   ["20:04", "user", "neril dhaan, Deepavali ku 3 naal munnaadi varuvaanga"],
+   ["20:05", "assistant", "Sari, appo ready ah irukkalaam."],
+   ["20:08", "user", "aama, ipo oru padam paakren"],
+   ["20:09", "assistant", "Enjoy Kavitha."]
+  ]},
+  {"date": "2026-10-26", "messages": [
+   ["19:20", "user", "Aira, adhirasam try panninen, romba kadinam aachu"],
+   ["19:21", "assistant", "Aiyo, maavu paadham kammiya irukkalaam. Vellam paagu seri irundhucha?"],
+   ["19:24", "user", "paagu romba kaichitten pola. next time amma kita pakkam irundhu seiren"],
+   ["19:25", "assistant", "Sari, practice pannunga, nalla aagidum."],
+   ["19:28", "user", "ok, ipo murukku seyya poren"],
+   ["19:29", "assistant", "All the best!"]
+  ]},
+  {"date": "2026-11-02", "messages": [
+   ["18:00", "user", "pattasu vaanganum, Sivakasi crackers shop la 2000 ku vaangi vechuruken"],
+   ["18:01", "assistant", "Kuzhandhaigaluku safe ah vedikka sollunga."],
+   ["18:04", "user", "aama, sparklers um flowerpot um dhaan adhigam"],
+   ["18:05", "assistant", "Nalla choice, safe ah irukkum."],
+   ["18:08", "user", "sari, naalaiku vegetable market poganum, bye"],
+   ["18:09", "assistant", "Bye Kavitha!"]
+  ]},
+  {"date": "2026-11-06", "messages": [
+   ["21:00", "user", "akka family vandhutaanga, veedu full ah kalagalaa irukku"],
+   ["21:01", "assistant", "Wow Kavitha, enjoy pannunga!"],
+   ["21:04", "user", "Priya akka kuzhandhaigal Aadhi um Meera um romba sutti"],
+   ["21:05", "assistant", "Haha, kuzhandhaigal irundha veedu jollydhaan."],
+   ["21:08", "user", "ok ok, thoongaren, good night"],
+   ["21:09", "assistant", "Good night Kavitha!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-07-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "Deepavali ku yaaru veetuku vandhaanga nu sonnen?", "expect": "Says her sister Priya's family from Bangalore", "any": ["Priya", "akka", "Bangalore", "பிரியா"], "none": []},
+  {"id": "ta-en-07-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "naan Deepavali ku enna colour saree vaangiten nyabagam irukka?", "expect": "Says maroon saree", "any": ["maroon", "Maroon", "மெரூன்"], "none": []},
+  {"id": "ta-en-07-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "saree enga vaangiten, evlo aachu?", "expect": "Says Pothys in T. Nagar, 6500 rupees", "any": ["Pothys", "T. Nagar", "T Nagar", "6500", "6,500"], "none": []},
+  {"id": "ta-en-07-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "palagaram edhu seiya try panninen? epdi vandhuchu?", "expect": "Says adhirasam, it came out hard", "any": ["adhirasam", "Adhirasam", "athirasam", "அதிரசம்"], "none": []},
+  {"id": "ta-en-07-p5", "kind": "false", "at": "2026-11-09T10:20", "ask": "en annan peru enna? nyabagam irukka?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
+  {"id": "ta-en-07-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "akka kuzhandhaigal peru enna?", "expect": "Says Aadhi and Meera", "any": ["Aadhi", "Adhi", "Meera", "மீரா"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-07-s1", "query": "pattu dress shopping pona naal pathi sollu", "day": "2026-10-10", "any": ["Pothys", "saree"]},
+  {"id": "ta-en-07-s2", "query": "Priya akka varraanga nu sonnen la, appo edhaachum plan sonnen", "day": "2026-10-05", "any": ["Priya", "adhirasam"]},
+  {"id": "ta-en-07-s3", "query": "sweet seiyumbodhu kadinam aachu nu solliyirundhen", "day": "2026-10-26", "any": ["adhirasam", "kadinam"]}
+ ]
+}

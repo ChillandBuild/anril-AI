@@ -1924,3 +1924,22 @@ Backend: 27/27 `test_expert_handoff.py` (4 new), full suite 864/864 (same 2 pre-
 - **Mem0 shelved:** Tamil text breaks its BM25 search (mem0 #4884), the Gemini path has open bugs (#6393), it only adds memories (no dated close like our `valid_to`), the graph store was removed, and switching would lose the dated facts we already have. Revisit only if those are fixed.
 - **Cost:** a light-chatter pair costs about 2 extra AI calls a day (one refresh at most, one diary line).
 - **Tests:** 21 new in `tests/test_companion_memory_recap_diary.py`; 274 companion tests pass; full suite 5245 passed, 1 failed (`test_inbound_leads_route_static.py::test_ad_performance_export_headers_match_table_labels`, Meta ads export headers, unrelated). Not smoke-tested on the live chat. No owner UI for the diary yet.
+
+## 2026-11-11 — Companion memory v2: the person's own day, safe parallel runs, long-term search, forget-that, owner Diary tab (migration 256)
+
+- **Plan:** `MEMORY_V2_PLAN.md` (16 flaws of the 255 design, all fixed). Notes and traps: subsystem-notes.md § "Companion memory: recap, diary, search, forget-that".
+- **Migration 256** (`256_companion_memory_v2.sql`), applied live through Supabase MCP on 2026-11-11 after the tests passed, and checked: `companion_end_users.timezone`, `companions.timezone` (default Asia/Kolkata); state columns `diary_through`, `day_retry_after`, `busy_until`, `search_backfilled_at`, `forget_pending`; diary line limit 300 → 600 (one check constraint left); new `companion_memory_chunks` (vector(768) + text), RLS on, no policies, anon/authenticated have no grants; RPCs `claim_memory_pair`, `companion_day_context`, `match_memory_chunks`, execute for service_role only. Purely additive: safe under the code deployed before it.
+- **Embedding bake-off** (`backend/evals/companion_memory/`, 30 synthetic people, 10 each en / ta / ta-en, 81 search queries + 30 no-answer asks). Score = mean of hit@5 and MRR@20:
+
+  | config | en | ta | ta-en | all |
+  |---|---|---|---|---|
+  | gemini (vector only) | 0.93 / 0.73 | 1.00 / 0.86 | 0.93 / 0.86 | **0.882** |
+  | gemini + gated trigram | 0.93 / 0.73 | 1.00 / 0.86 | 0.93 / 0.82 | 0.876 |
+  | gemini + every trigram | 0.87 / 0.64 | 1.00 / 0.82 | 0.90 / 0.82 | 0.833 |
+  | jina v5 (best: gated) | 0.93 / 0.67 | 0.91 / 0.78 | 0.90 / 0.72 | 0.816 |
+
+  **Gemini Embedding 2 wins** (the rule: Jina had to beat Gemini by more than 0.02). **Fusion "gated"**: trigram hits count only at or above their floor. Fusing every trigram hit pushed the right piece down (0.833); gated ties vector-only on hit@5 in every language and is kept because it still finds exact names/numbers when the 2 s query embedding fails. Floors: vector 0.70 (keeps 77% of right pieces, lets 10% of no-answer asks through), trigram 0.47.
+- **Probe results** (180 asks, Astro Tamil's reply model as character and judge, code *before* the review fixes): 168/180 pass after correcting a substring false alarm, recall 117/125, changed 7/7, same-day 9/9, forget 7/9, no-answer 28/30, memory build p50 887 ms / p95 1220 ms. 7 of the misses were the character reciting a phone/OTP/bank number found in a search piece; search pieces now drop secret-naming lines and turn long numbers into [number] (tests in `test_companion_memory_v2.py` § F). **Not re-measured on the fixed code:** the fresh run hit 402 Payment Required on Astro Tamil's Gemini key.
+- **Deviations from the plan:** no HNSW index (each search is one person's rows, ranked exactly; an approximate index filtered afterwards drops matches). The search backfill is a one-time job deferred by hand after deploy (`companion-search-backfill`, 50-minute runs, defer again until left=0); forget-that indexes an un-backfilled pair itself first.
+- **Client apps must send `timezone`** (IANA name) with chat messages; without it the character's zone, then Asia/Kolkata, is used.
+- **Tests:** 34 in `test_companion_memory_v2.py`; 160 memory + queue tests pass; full suite 5290 passed, 1 failed (`test_inbound_leads_route_static.py::test_ad_performance_export_headers_match_table_labels`, unrelated). Diary tab type-checked and linted, not visually checked; not smoke-tested on the live chat.

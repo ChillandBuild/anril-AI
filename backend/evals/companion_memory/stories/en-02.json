@@ -1,0 +1,95 @@
+{
+ "id": "en-02", "language": "en", "timezone": "Asia/Kolkata", "person": "Divya Nair",
+ "theme": "exam",
+ "days": [
+  {"date": "2026-10-02", "messages": [
+   ["21:00", "user", "hi aira. so tired today"],
+   ["21:00", "assistant", "Hi Divya! Long day? What happened?"],
+   ["21:02", "user", "college till 5 then lab. first year MBBS is no joke"],
+   ["21:03", "assistant", "That sounds heavy. Did you eat something at least?"],
+   ["21:05", "user", "had parotta from the hostel mess, kind of dry lol"],
+   ["21:06", "assistant", "Dry parotta is a crime. Any good thing today?"],
+   ["21:08", "user", "Dr. Prasad announced the anatomy exam is on 19th october. he is so strict, everyone is scared"],
+   ["21:09", "assistant", "Oof, so about 2.5 weeks. Does he give the portion list?"],
+   ["21:11", "user", "yes, upper limb and thorax. i am scared of upper limb, so many nerves"],
+   ["21:12", "assistant", "Nerves are tough but you can learn them in small pieces. Want a plan?"],
+   ["21:14", "user", "later. watching a Malayalam movie now, Premam, never gets old"],
+   ["21:15", "assistant", "Premam is a classic. Enjoy, and sleep on time."]
+  ]},
+  {"date": "2026-10-10", "messages": [
+   ["19:30", "user", "aira i cannot remember the brachial plexus at all"],
+   ["19:30", "assistant", "It trips everyone first time. Have you tried a mnemonic?"],
+   ["19:32", "user", "Randy Travis Drinks Cold Beer. that one. still gets mixed up"],
+   ["19:33", "assistant", "Roots, trunks, divisions, cords, branches. Draw it five times from memory, it sticks."],
+   ["19:35", "user", "ok drawing now. my hand hurts lol"],
+   ["19:36", "assistant", "Short sessions then. 25 minutes, 5 minute break."],
+   ["19:40", "user", "ok. also its raining so power cut, using torch"],
+   ["19:41", "assistant", "Careful with your eyes in that light. Phone torch or the emergency lamp?"],
+   ["19:43", "user", "emergency lamp. warden is strict about candles"],
+   ["19:44", "assistant", "Good. Hostel rules exist for a reason."]
+  ]},
+  {"date": "2026-10-16", "messages": [
+   ["18:00", "user", "3 days left. Meera and I are revising in the college library tomorrow, whole day"],
+   ["18:01", "assistant", "Revising together helps. Who quizzes whom?"],
+   ["18:03", "user", "we take turns. she is better at thorax, me at the lower limb"],
+   ["18:04", "assistant", "Nice split. Pack some snacks too."],
+   ["18:06", "user", "will take peanut chikki. mom sent a box from Kochi"],
+   ["18:07", "assistant", "Mom's box from Kochi is the best revision fuel."],
+   ["18:10", "user", "yes! anyway feeling more confident now"],
+   ["18:11", "assistant", "Good to hear. Keep the last two days light, no new topics."]
+  ]},
+  {"date": "2026-10-19", "messages": [
+   ["07:30", "user", "exam day. anatomy paper at 10am. i feel sick"],
+   ["07:31", "assistant", "Nerves, Divya, not illness. Sip some water and eat something light."],
+   ["07:35", "user", "had two idlis and tea. hands are cold"],
+   ["07:36", "assistant", "Cold hands are normal on exam mornings. Slow breaths, in for 4, out for 6."],
+   ["07:40", "user", "ok doing it. Meera just texted she cant find her hall ticket lol"],
+   ["07:41", "assistant", "Hope she finds it quickly. Do you have yours?"],
+   ["07:43", "user", "yes in my bag, checked 5 times"],
+   ["07:44", "assistant", "Perfect. Go, you know more than you think."],
+   ["09:40", "user", "outside the hall now"],
+   ["09:41", "assistant", "You've got this. Phone off, deep breath."],
+   ["13:15", "user", "done. omg that was long. 3 hours"],
+   ["13:16", "assistant", "Done is done! How are you feeling?"],
+   ["13:20", "user", "going for lunch with Meera, chicken biryani at the canteen"],
+   ["13:21", "assistant", "You've earned that biryani. Rest this afternoon."],
+   ["17:30", "user", "slept 3 hours straight, woke up so confused"],
+   ["17:31", "assistant", "Your brain needed it. Any plans tonight?"],
+   ["19:50", "user", "just chilling, hostel girls ordering pizza"],
+   ["19:51", "assistant", "Pizza night sounds perfect."]
+  ]},
+  {"date": "2026-10-26", "messages": [
+   ["20:00", "user", "heyy. new week and new chapters. physiology now"],
+   ["20:00", "assistant", "Back to the grind already? How's physiology?"],
+   ["20:03", "user", "so many graphs. but at least less nerves than before lol"],
+   ["20:04", "assistant", "Ha, small mercies. Any weekend fun?"],
+   ["20:06", "user", "went to Marine Drive, no wait, I mean the beach near college, ate sundal"],
+   ["20:07", "assistant", "Sundal by the beach is a great evening."],
+   ["20:09", "user", "yes and watched sunset. it was so pretty"],
+   ["20:10", "assistant", "Lovely. Send me a pic next time."]
+  ]},
+  {"date": "2026-11-04", "messages": [
+   ["12:20", "user", "aira results are out!!"],
+   ["12:20", "assistant", "Tell me, how did it go?"],
+   ["12:22", "user", "i got 68 out of 100 in anatomy. passed!! Meera got 72"],
+   ["12:23", "assistant", "Divya, that's brilliant! 68 in Dr. Prasad's paper is no small thing."],
+   ["12:25", "user", "mom is so happy, she is calling all relatives lol"],
+   ["12:26", "assistant", "Of course she is. Treat yourself today."],
+   ["12:28", "user", "going to get a mango milkshake with Meera"],
+   ["12:29", "assistant", "Mango milkshake is the right call. Congratulations again!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-02-p1", "kind": "same_day", "at": "2026-10-19T21:00", "ask": "it went okay i think", "expect": "Understands this refers to the anatomy exam written that morning and responds about it, not asking what went okay", "any": ["anatomy", "exam", "paper"], "none": []},
+  {"id": "en-02-p2", "kind": "recall", "at": "2026-11-09T11:00", "ask": "what subject was my exam in?", "expect": "Says anatomy", "any": ["anatomy", "Anatomy"], "none": []},
+  {"id": "en-02-p3", "kind": "recall", "at": "2026-11-09T11:05", "ask": "which topic did i find the hardest to remember?", "expect": "Says the brachial plexus / nerves of the upper limb", "any": ["brachial", "plexus", "nerves", "upper limb"], "none": []},
+  {"id": "en-02-p4", "kind": "recall", "at": "2026-11-09T11:10", "ask": "how did my marks come out?", "expect": "Says she got 68 out of 100 and passed", "any": ["68", "passed"], "none": []},
+  {"id": "en-02-p5", "kind": "recall", "at": "2026-11-09T11:15", "ask": "who did i revise with in the library?", "expect": "Says Meera", "any": ["Meera"], "none": []},
+  {"id": "en-02-p6", "kind": "false", "at": "2026-11-09T11:20", "ask": "what's my brother's college called again?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-02-s1", "query": "that trick for remembering the nerve network", "day": "2026-10-10", "any": ["Randy", "mnemonic", "plexus"]},
+  {"id": "en-02-s2", "query": "who is the scary professor I told you about", "day": "2026-10-02", "any": ["Prasad"]},
+  {"id": "en-02-s3", "query": "Meera and I split the portions how", "day": "2026-10-16", "any": ["thorax", "lower limb", "Meera"]}
+ ]
+}

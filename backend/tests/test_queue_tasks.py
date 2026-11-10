@@ -24,7 +24,7 @@ MESSAGES = {
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
-COMPANION = {"companion-memory"}
+COMPANION = {"companion-memory", "companion-diary"}
 CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
@@ -64,6 +64,7 @@ CALLEES = {
     "call-alert-summary": ("app.services.call_alerts.send_morning_summaries", False, True),
     "brain-weekly-digest": ("app.services.brain_digest.send_weekly_digests", False, True),
     "companion-memory": ("app.companion.memory_sweep.run_memory_sweep", True, False),
+    "companion-diary": ("app.companion.memory_sweep.run_diary_job", True, False),
 }
 
 
@@ -82,6 +83,7 @@ EVERY = {
 }
 AT_IST = {
     "companion-memory": (["02:00"], None),
+    "companion-diary": ([f"{h:02d}:35" for h in range(24)], None),  # hourly at :05 UTC
     "numbers-pool-sync": (["06:00", "18:00"], None),
     "send-log-prune": (["03:00"], None),
     "scheduler-runs-prune": (["03:15"], None),
@@ -109,7 +111,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 27
+    assert len(_periodic()) == 28
 
 
 def test_task_name_matches_periodic_id():
@@ -162,7 +164,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (17, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (18, 4, 6)
 
 
 def test_sync_and_async_split():
@@ -218,7 +220,7 @@ async def test_scheduled_broadcasts_sets_the_heartbeat_for_the_ready_check():
 
 # sms-send is class A (a sweep), but two overlapping copies can both build the same
 # campaign when a build runs past BUILD_STALE (10 min), so it is locked too.
-ONE_AT_A_TIME = CLASS_C | {"sms-send", "companion-memory"}
+ONE_AT_A_TIME = CLASS_C | {"sms-send", "companion-memory", "companion-diary", "companion-search-backfill"}
 
 
 @pytest.mark.parametrize("job_id", sorted(ONE_AT_A_TIME))

@@ -1,0 +1,70 @@
+{
+ "id": "ta-en-06", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Divyabharathi", "theme": "relationship",
+ "days": [
+  {"date": "2026-10-02", "messages": [
+   ["21:00", "user", "Aira, en boyfriend Arun kooda innaiku sandai pochu"],
+   ["21:01", "assistant", "Aiyo, enna aachu Divya? Sollunga."],
+   ["21:04", "user", "naan birthday ku call pannala nu avan kobam. aana naan office la busy ah irundhen"],
+   ["21:05", "assistant", "Rendu perum thappu puriyala nu thonudhu. Avan ippo enna sonnaan?"],
+   ["21:08", "user", "phone cut pannitaan. rmba kashtama irukku"],
+   ["21:09", "assistant", "Sari Divya, konjam shant aagi, naalaiku pesalaam."],
+   ["21:12", "user", "aama paakalam. ipo saapadu romba ishtam illa"],
+   ["21:13", "assistant", "Konjam saapdunga, vayiru kaaya vendaam."],
+   ["21:15", "user", "ok ok, curd rice saapten"],
+   ["21:16", "assistant", "Nalla choice."]
+  ]},
+  {"date": "2026-10-03", "messages": [
+   ["19:00", "user", "Arun innum pesala. naan sorry nu msg panninen"],
+   ["19:01", "assistant", "Sorry sonnadhu nalla step Divya."],
+   ["19:04", "user", "seen pannitaan, reply illa"],
+   ["19:05", "assistant", "Konjam time kudunga, avan kobam kuraiyanum."],
+   ["19:08", "user", "aama, mazhai vera, mood off"],
+   ["19:09", "assistant", "Tea kudichu relax aagunga."]
+  ]},
+  {"date": "2026-10-05", "messages": [
+   ["20:30", "user", "Arun call pannan, namma rendu perum pesi sari aagitom!"],
+   ["20:31", "assistant", "Nalla vishayam Divya! Enna sonnan?"],
+   ["20:34", "user", "avanum sorry sonnan. weekend la Besant Nagar beach ku pogalam nu"],
+   ["20:35", "assistant", "Super plan. Sandhoshama irukku."],
+   ["20:38", "user", "aama haha. ipo saapadu, pizza vaangalam"],
+   ["20:39", "assistant", "Celebration pizza!"]
+  ]},
+  {"date": "2026-10-11", "messages": [
+   ["18:00", "user", "beach ku poyirundhom, Arun oru chinna gift kuduthaan, silver bracelet"],
+   ["18:01", "assistant", "Wow, romba sweet! Pidichirukka?"],
+   ["18:04", "user", "aama, romba pidichurukku. sundal um saapitom"],
+   ["18:05", "assistant", "Perfect evening."],
+   ["18:08", "user", "sari, ipo veetuku vandhuten, bye"],
+   ["18:09", "assistant", "Bye Divya!"]
+  ]},
+  {"date": "2026-10-19", "messages": [
+   ["22:00", "user", "Aira, en best friend Nandhini ku engagement fix aagiduchu"],
+   ["22:01", "assistant", "Super! Eppo function?"],
+   ["22:04", "user", "next month, Pondicherry la. naan saree vaanganum"],
+   ["22:05", "assistant", "Saree shopping na romba jolly. Edhu colour?"],
+   ["22:08", "user", "green pidikkum, paakalam"],
+   ["22:09", "assistant", "Nalla choice, green ku suits aagum."]
+  ]},
+  {"date": "2026-10-27", "messages": [
+   ["20:00", "user", "innaiku office la meeting romba late aayiduchu"],
+   ["20:01", "assistant", "Tired ah irukeenga pola. Saapteengala?"],
+   ["20:04", "user", "illa, ipo dhaan saapadu, rasam sadham"],
+   ["20:05", "assistant", "Seri, saapitu rest edunga."],
+   ["20:08", "user", "ok, good night"],
+   ["20:09", "assistant", "Good night Divya!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-06-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "en boyfriend peru enna nyabagam irukka?", "expect": "Says Arun", "any": ["Arun", "அருண்"], "none": []},
+  {"id": "ta-en-06-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "naanga edhukku sandai pottom nu sonnen?", "expect": "Says the fight was because she did not call on his birthday", "any": ["birthday", "call"], "none": []},
+  {"id": "ta-en-06-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "Arun enakku enna gift kuduthaan?", "expect": "Says a silver bracelet", "any": ["bracelet", "silver", "பிரேஸ்லெட்"], "none": []},
+  {"id": "ta-en-06-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "en best friend ku enna function nu sonnen? edhu ooru la?", "expect": "Says Nandhini's engagement in Pondicherry", "any": ["Nandhini", "Nandini", "Pondicherry", "engagement"], "none": []},
+  {"id": "ta-en-06-p5", "kind": "false", "at": "2026-11-09T10:20", "ask": "en appa peru enna? sollu pakkalam", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
+  {"id": "ta-en-06-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "naanga sari aana pinnadi enga poyirundhom?", "expect": "Says they went to Besant Nagar beach", "any": ["Besant", "beach"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-06-s1", "query": "Arun phone cut pannina naal enna nadandhadhu", "day": "2026-10-02", "any": ["Arun", "birthday"]},
+  {"id": "ta-en-06-s2", "query": "gift kuduthanga la, oru ornament, adhu pathi sonnen", "day": "2026-10-11", "any": ["bracelet", "silver"]},
+  {"id": "ta-en-06-s3", "query": "ennoda toli ku kalyana ellam nichayam aachu nu sonnen la", "day": "2026-10-19", "any": ["Nandhini", "engagement"]}
+ ]
+}

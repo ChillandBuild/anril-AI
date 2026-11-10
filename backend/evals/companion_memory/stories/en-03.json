@@ -1,0 +1,87 @@
+{
+ "id": "en-03", "language": "en", "timezone": "Asia/Kolkata", "person": "Sneha Reddy",
+ "theme": "family health",
+ "days": [
+  {"date": "2026-10-03", "messages": [
+   ["16:10", "user", "aira i am so stressed"],
+   ["16:10", "assistant", "I'm here Sneha. What happened?"],
+   ["16:12", "user", "amma had severe stomach pain since morning. we took her to Yashoda hospital in Hyderabad"],
+   ["16:13", "assistant", "Oh no. Is she okay now? Did the doctors see her?"],
+   ["16:15", "user", "yes Dr. Lakshmi checked. scan shows gallstones, they are saying surgery"],
+   ["16:16", "assistant", "That sounds scary but gallbladder surgery is very common and usually goes well. When is it?"],
+   ["16:18", "user", "tomorrow morning 8am. she is admitted already"],
+   ["16:19", "assistant", "Are you at the hospital with her?"],
+   ["16:21", "user", "yes with appa. my Padma aunty is coming to stay the night"],
+   ["16:22", "assistant", "Good that family is around. Have you eaten anything?"],
+   ["16:24", "user", "only chai. canteen food here is bad"],
+   ["16:25", "assistant", "Please try to eat something proper, even a sandwich. You need strength too."]
+  ]},
+  {"date": "2026-10-04", "messages": [
+   ["13:30", "user", "surgery is done. she is in the recovery room"],
+   ["13:31", "assistant", "Thank God. Did the doctor say how it went?"],
+   ["13:33", "user", "Dr. Lakshmi said all good, laparoscopic so small cuts. she will stay 2 days"],
+   ["13:34", "assistant", "That's great news. Small cuts mean quicker recovery."],
+   ["13:36", "user", "yes. i finally ate, appa bought idli from outside"],
+   ["13:37", "assistant", "Good. How's your appa holding up?"],
+   ["13:39", "user", "he is quiet, keeps checking on her. but relieved"],
+   ["13:40", "assistant", "He's just worried. A quiet cup of tea together might help."],
+   ["13:42", "user", "yes will do. Padma aunty is bringing home food tonight"],
+   ["13:43", "assistant", "Home food will lift everyone's mood."]
+  ]},
+  {"date": "2026-10-07", "messages": [
+   ["19:00", "user", "amma came home today! doctor discharged her"],
+   ["19:01", "assistant", "Wonderful! How is she feeling at home?"],
+   ["19:03", "user", "a little weak, sleeping a lot. i made her rasam and rice"],
+   ["19:04", "assistant", "Rasam rice is perfect for a weak stomach. Did she like it?"],
+   ["19:06", "user", "she said too much pepper lol, so she is back to normal"],
+   ["19:07", "assistant", "Complaining about pepper is a very good sign!"],
+   ["19:09", "user", "haha true. also i have to submit my project at college on friday"],
+   ["19:10", "assistant", "Busy week. Can your cousin help with home so you can work?"],
+   ["19:12", "user", "yes Padma aunty is staying 3 more days"],
+   ["19:13", "assistant", "That should help you a lot."]
+  ]},
+  {"date": "2026-10-12", "messages": [
+   ["11:00", "user", "we went for the follow up check today. Dr. Lakshmi said healing is perfect"],
+   ["11:01", "assistant", "That's lovely to hear. Any food rules for her?"],
+   ["11:03", "user", "no fried or oily food for a month. she is sad because she loves bonda"],
+   ["11:04", "assistant", "A month isn't forever. Maybe baked or steamed versions, so she doesn't feel left out."],
+   ["11:06", "user", "good idea, will try air fryer. we got one from my cousin in Diwali last year"],
+   ["11:07", "assistant", "Perfect use for it."],
+   ["11:09", "user", "also asked her to walk 15 min daily in the evening"],
+   ["11:10", "assistant", "Gentle walks are great for recovery."]
+  ]},
+  {"date": "2026-10-20", "messages": [
+   ["21:00", "user", "hey. long day, project presentation done finally"],
+   ["21:00", "assistant", "Congrats Sneha! How did it go?"],
+   ["21:02", "user", "sir liked it. he asked two tough questions though"],
+   ["21:03", "assistant", "Tough questions mean he took it seriously."],
+   ["21:05", "user", "ok. also amma is walking to the temple now by herself. feeling relieved"],
+   ["21:06", "assistant", "That's a big step. You must be so relieved."],
+   ["21:08", "user", "yes. watching Ponniyin Selvan again tonight, can't stop"],
+   ["21:09", "assistant", "Great pick. Enjoy it!"]
+  ]},
+  {"date": "2026-11-02", "messages": [
+   ["18:30", "user", "heyy aira, it's getting cold in Hyderabad finally"],
+   ["18:30", "assistant", "Nice, cold weather and chai. Anything planned this week?"],
+   ["18:32", "user", "nothing, just exams approaching in 2 weeks"],
+   ["18:33", "assistant", "Do you want a study timetable?"],
+   ["18:35", "user", "later maybe. got a haircut today, cut too short lol"],
+   ["18:36", "assistant", "It'll grow back. Was the barber a stranger?"],
+   ["18:38", "user", "new salon near my college. never again"],
+   ["18:39", "assistant", "Lesson learned. Stick to your usual one."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-03-p1", "kind": "recall", "at": "2026-11-09T09:00", "ask": "how's my mom doing now?", "expect": "Knows mom had gallbladder surgery in early October and has recovered at home, walking again", "any": ["surgery", "gallbladder", "recover", "better", "walking"], "none": []},
+  {"id": "en-03-p2", "kind": "recall", "at": "2026-11-09T09:05", "ask": "which hospital was she admitted to?", "expect": "Says Yashoda hospital", "any": ["Yashoda"], "none": []},
+  {"id": "en-03-p3", "kind": "recall", "at": "2026-11-09T09:10", "ask": "what was the surgeon's name again?", "expect": "Says Dr. Lakshmi", "any": ["Lakshmi"], "none": []},
+  {"id": "en-03-p4", "kind": "recall", "at": "2026-11-09T09:15", "ask": "what did the doctor say she should avoid eating?", "expect": "Says fried or oily food for a month", "any": ["fried", "oily", "oil"], "none": []},
+  {"id": "en-03-p5", "kind": "recall", "at": "2026-11-09T09:20", "ask": "who stayed with us at the hospital that night?", "expect": "Says Padma aunty", "any": ["Padma"], "none": []},
+  {"id": "en-03-p6", "kind": "false", "at": "2026-11-09T09:25", "ask": "what does my dad do for work again?", "expect": "Says it doesn't know / wasn't told; invents no job", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-03-s1", "query": "where did they admit her when the pain started?", "day": "2026-10-03", "any": ["Yashoda"]},
+  {"id": "en-03-s2", "query": "what is the sweet thing she is not allowed to snack on", "day": "2026-10-12", "any": ["bonda", "fried", "oily"]},
+  {"id": "en-03-s3", "query": "Padma, who was she again?", "day": "2026-10-03", "any": ["Padma", "aunty"]}
+ ]
+}

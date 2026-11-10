@@ -23,6 +23,8 @@ def env(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     monkeypatch.setattr(card, "ist_today", lambda now=None: (now or NOW).astimezone(card.IST).date())
+    real_local_today = card.local_today
+    monkeypatch.setattr(card, "local_today", lambda now, zone: real_local_today(now or NOW, zone))
     state = {"calls": [], "answers": []}
 
     async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
@@ -66,7 +68,8 @@ def state_row(env):
 def test_trait_rule_is_in_every_extraction_prompt():
     night, _ = card.build_extraction_prompt("ta-en", [], [{"role": "user", "content": "hi"}])
     assert "big Vijay fan" in night[0]["content"]
-    assert "TODAY'S RECAP" not in night[1]["content"] and night[1]["content"].endswith("JSON list now.")
+    assert "TODAY'S RECAP" not in night[1]["content"] and night[1]["content"].endswith("JSON object now.")
+    assert '"forget"' in night[0]["content"]
 
 
 def test_day_mode_prompt_carries_the_current_recap_and_asks_for_an_object():
@@ -117,7 +120,9 @@ def test_day_run_failure_counts_no_failed_night_and_keeps_the_watermark(env):
     env.chat(("user", "hi", 5), ("assistant", "hello", 5))
     env.state["answers"].append(RuntimeError("gemini down"))
     out = run(memory_sweep._sweep_pair(env.companion, "karthik", None, 0, at(5), NOW, mode="day"))
-    assert out == "failed" and env.db.rows("companion_memory_state") == []
+    row = state_row(env)
+    assert out == "failed" and row.get("last_message_at") is None and not row.get("failures")
+    assert row["day_retry_after"] == (NOW + memory_sweep.DAY_RETRY).isoformat()  # cool-down (#4)
 
 
 def test_a_plain_list_answer_in_day_mode_keeps_the_old_recap(env):
@@ -130,9 +135,14 @@ def test_a_plain_list_answer_in_day_mode_keeps_the_old_recap(env):
 
 # --- the trigger after each reply -------------------------------------------------------------
 
-def test_refresh_runs_only_when_unread_messages_outgrow_history(env, monkeypatch):
+@pytest.fixture
+def frozen_refresh(monkeypatch):
     monkeypatch.setattr(memory_refresh, "datetime", type("D", (), {"now": staticmethod(lambda tz=None: NOW)}))
-    env.chat(*[("user", f"msg {i}", 60 - i) for i in range(10)])
+
+
+def test_refresh_runs_before_a_message_leaves_the_window(env, frozen_refresh):
+    """#11: history 10 → the refresh runs at 8 unread, so nothing slides out unread."""
+    env.chat(*[("user", f"msg {i}", 60 - i) for i in range(7)])
     assert run(memory_refresh._refresh(env.companion, "karthik")) == "not_needed"
     assert env.state["calls"] == []
     env.chat(("user", "Interview at Infosys 3 pm", 40))
@@ -141,30 +151,78 @@ def test_refresh_runs_only_when_unread_messages_outgrow_history(env, monkeypatch
     assert len(env.state["calls"]) == 1 and state_row(env)["recap_day"] == TODAY
 
 
-def test_schedule_ignores_level1_and_runs_one_refresh_per_pair(monkeypatch):
+def test_a_low_history_still_waits_for_two_messages(env, frozen_refresh):
+    """#13: history 2 → trigger floor 2, at most one AI call per 2 messages."""
+    assert memory_refresh.trigger_at(2) == 2 and memory_refresh.trigger_at(10) == 8
+    assert memory_refresh.trigger_at(None) == 8
+    env.companion["history_messages"] = 2
+    env.chat(("user", "hi", 30))
+    assert run(memory_refresh._refresh(env.companion, "karthik")) == "not_needed"
+
+
+def test_a_failed_refresh_cools_down_for_30_minutes(env, frozen_refresh):
+    """#4: no same-day retry on every message after a failure."""
+    env.chat(*[("user", f"msg {i}", 60 - i) for i in range(8)])
+    env.state["answers"].append(RuntimeError("gemini down"))
+    assert run(memory_refresh._refresh(env.companion, "karthik")) == "failed"
+    env.chat(("user", "one more", 1))
+    assert run(memory_refresh._refresh(env.companion, "karthik")) == "cooling_down"
+    assert len(env.state["calls"]) == 1
+
+
+def test_forget_words_trigger_at_once_in_three_languages(env, frozen_refresh):
+    for text in ("please forget that", "adha marandhudu", "அதை மறந்துவிடு", "Maranthudu da"):
+        assert memory_refresh.wants_forget(text), text
+    assert not memory_refresh.wants_forget("Interview went okay")
+    env.chat(("user", "forget that I failed the exam", 30), ("assistant", "Sari", 30))
+    env.state["answers"].append('{"ops": [], "forget": ["failed the exam"], "recap": "- talked"}')
+    env.state["answers"].append('{"remove": []}')
+    env.state["answers"].append('{"lines": []}')
+    assert run(memory_refresh._refresh(env.companion, "karthik", force=True)) == "ok"
+
+
+def test_two_refreshes_of_one_pair_never_run_together(env, frozen_refresh):
+    """#12: the database claim, not an in-process set, keeps one run per pair."""
+    env.chat(*[("user", f"msg {i}", 60 - i) for i in range(8)])
+    gate = {}
+
+    async def slow_llm(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4):
+        await gate["event"].wait()
+        return DAY_ANSWER
+    card.ai_reply._llm_chat = slow_llm
+
+    async def main():
+        gate["event"] = asyncio.Event()
+        first = asyncio.create_task(memory_refresh._refresh(env.companion, "karthik"))
+        await asyncio.sleep(0.05)
+        second = await memory_refresh._refresh(env.companion, "karthik")
+        gate["event"].set()
+        return await first, second
+    assert run(main()) == ("ok", "busy")
+    assert state_row(env)["busy_until"] is None  # released
+
+
+def test_schedule_ignores_level1_and_passes_the_forget_flag(monkeypatch):
     started = []
 
-    async def fake_refresh(companion, end_user_id):
-        started.append(end_user_id)
-        await asyncio.sleep(0.01)
+    async def fake_refresh(companion, end_user_id, force=False):
+        started.append((companion["id"], force))
         return "ok"
     monkeypatch.setattr(memory_refresh, "_refresh", fake_refresh)
 
     async def main():
         memory_refresh.schedule({"id": "c1", "memory_level": 1}, "karthik")
-        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik")
-        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik")  # already running
-        assert ("c2", "karthik") in memory_refresh._running
+        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik", "hi")
+        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik", "forget that")
         await asyncio.gather(*memory_refresh._tasks)
-        assert ("c2", "karthik") not in memory_refresh._running and not memory_refresh._tasks
     run(main())
-    assert started == ["karthik"]
+    assert started == [("c2", False), ("c2", True)] and not memory_refresh._tasks
 
 
 def test_the_reply_does_not_wait_for_the_refresh(monkeypatch):
     gate = None
 
-    async def slow_refresh(companion, end_user_id):
+    async def slow_refresh(companion, end_user_id, force=False):
         await gate.wait()
         return "ok"
     monkeypatch.setattr(memory_refresh, "_refresh", slow_refresh)
@@ -210,41 +268,43 @@ def test_recent_days_are_capped_at_whole_lines_and_exclude_today(env):
 def test_diary_written_for_yesterday_with_three_user_messages(env):
     env.chat(*[(r, f"{r} {i}", 60 - i) for i in range(3) for r in ("user", "assistant")], base=YDAY_NOON)
     env.state["answers"].append('{"diary": "Infosys interview went okay, waiting for result"}')
-    counts = run(memory_sweep._diary_pass(NOW))
+    counts = run(memory_sweep.run_diary_job(NOW))
     assert counts == {"diary": 1}
     rows = env.db.rows("companion_memory_diary")
     assert [(r["day"], r["text"]) for r in rows] == [(YESTERDAY, "Infosys interview went okay, waiting for result")]
-    assert run(memory_sweep._diary_pass(NOW)) == {} and len(env.state["calls"]) == 1  # once per day
+    assert run(memory_sweep.run_diary_job(NOW)) == {} and len(env.state["calls"]) == 1  # once per day
 
 
 def test_a_hi_ok_day_writes_no_diary_and_makes_no_ai_call(env):
     env.chat(("user", "hi", 30), ("assistant", "hello", 30), ("user", "ok", 20), base=YDAY_NOON)
-    assert run(memory_sweep._diary_pass(NOW)) == {} and env.state["calls"] == []
+    assert run(memory_sweep.run_diary_job(NOW)) == {} and env.state["calls"] == []
 
 
-def test_diary_uses_the_recap_plus_only_later_messages_and_clears_the_recap(env):
+def test_diary_reads_every_message_of_the_day_not_the_recap_and_clears_the_recap(env):
+    """#1/#2: the diary no longer depends on the recap; it reads the whole local day."""
     cid = env.companion["id"]
-    env.chat(("user", "covered by recap", 120), base=YDAY_NOON)
+    env.chat(("user", "morning chat", 300), ("user", "covered by recap", 120), base=YDAY_NOON)
     env.chat(("user", "after the recap", 10), base=YDAY_NOON)
     run(store.set_recap("t1", cid, "karthik", "- Interview at Infosys 3 pm", YESTERDAY, at(60, YDAY_NOON)))
     env.state["answers"].append('{"diary": "interview day"}')
-    assert run(memory_sweep._diary_pass(NOW)) == {"diary": 1}
+    assert run(memory_sweep.run_diary_job(NOW)) == {"diary": 1}
     sent = env.state["calls"][0]["user"]
-    assert "Interview at Infosys 3 pm" in sent and "after the recap" in sent and "covered by recap" not in sent
-    assert state_row(env)["today_recap"] is None
+    assert all(t in sent for t in ("morning chat", "covered by recap", "after the recap"))
+    assert "RECAP" not in sent
+    assert state_row(env)["today_recap"] is None and state_row(env)["diary_through"] == YESTERDAY
 
 
 def test_todays_recap_survives_the_diary_pass(env):
     env.chat(("user", "chat at 01:00 IST today", 60))
     run(store.set_recap("t1", env.companion["id"], "karthik", "- today's note", TODAY, at(60)))
-    run(memory_sweep._diary_pass(NOW))
+    run(memory_sweep.run_diary_job(NOW))
     assert state_row(env)["today_recap"] == "- today's note"
 
 
 def test_sensitive_or_empty_diary_is_not_saved(env):
     env.chat(*[("user", f"u{i}", 60 - i) for i in range(3)], base=YDAY_NOON)
     env.state["answers"].append('{"diary": "his OTP was 482913"}')
-    assert run(memory_sweep._diary_pass(NOW)) == {}
+    assert run(memory_sweep.run_diary_job(NOW)) == {}
     assert env.db.rows("companion_memory_diary") == []
 
 
@@ -254,26 +314,30 @@ def test_diary_older_than_90_days_is_pruned(env):
     run(store.upsert_diary("t1", cid, "karthik", "2026-08-20", "kept"))
     env.chat(*[("user", f"u{i}", 60 - i) for i in range(3)], base=YDAY_NOON)
     env.state["answers"].append('{"diary": "a day"}')
-    run(memory_sweep._diary_pass(NOW))
+    run(memory_sweep.run_diary_job(NOW))
     assert sorted(r["text"] for r in env.db.rows("companion_memory_diary")) == ["a day", "kept"]
 
 
-def test_a_failed_diary_call_is_counted_and_does_not_stop_the_sweep(env):
+def test_a_failed_diary_call_is_retried_next_hour(env):
+    """#3: a 429 at 03:00 no longer loses the day; diary_through stays and the next hour writes it."""
     env.chat(*[("user", f"u{i}", 60 - i) for i in range(3)], base=YDAY_NOON)
     env.state["answers"].append(RuntimeError("gemini down"))
-    assert run(memory_sweep._diary_pass(NOW)) == {"diary_failed": 1}
+    assert run(memory_sweep.run_diary_job(NOW)) == {"diary_failed": 1}
+    assert state_row(env)["diary_through"] == "2026-11-08"  # empty 7/8 Nov closed; 9 Nov waits
+    env.state["answers"].append('{"diary": "a day"}')
+    assert run(memory_sweep.run_diary_job(NOW + timedelta(hours=1))) == {"diary": 1}
+    assert [r["text"] for r in env.db.rows("companion_memory_diary")] == ["a day"]
 
 
-def test_forget_me_during_a_recap_only_diary_call_writes_nothing(env, monkeypatch):
-    cid = env.companion["id"]
-    env.chat(("user", "all covered", 120), base=YDAY_NOON)
-    run(store.set_recap("t1", cid, "karthik", "- Interview at Infosys 3 pm", YESTERDAY, at(100, YDAY_NOON)))
+def test_forget_me_during_the_diary_call_writes_nothing(env, monkeypatch):
+    env.chat(*[("user", f"u{i}", 60 - i) for i in range(3)], base=YDAY_NOON)
 
     async def forget_mid_call(*args, **kwargs):
+        env.db.tables["companion_messages"].clear()  # forget_end_user ran meanwhile
         await store.forget_memory("t1", "karthik")
         return "interview day"
     monkeypatch.setattr(card, "write_diary", forget_mid_call)
-    assert run(memory_sweep._diary_pass(NOW)) == {"forgotten": 1}
+    assert run(memory_sweep.run_diary_job(NOW)) == {"forgotten": 1}
     assert env.db.rows("companion_memory_diary") == []
 
 

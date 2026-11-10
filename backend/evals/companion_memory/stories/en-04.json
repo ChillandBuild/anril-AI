@@ -1,0 +1,83 @@
+{
+ "id": "en-04", "language": "en", "timezone": "Asia/Kolkata", "person": "Vikram Iyer",
+ "theme": "moving city (changed fact)",
+ "days": [
+  {"date": "2026-10-02", "messages": [
+   ["22:10", "user", "hi aira, home late again"],
+   ["22:10", "assistant", "Hi Vikram. Another late one at work?"],
+   ["22:12", "user", "yeah Infosys deadlines. then 1.5 hrs in Bangalore traffic from office to Koramangala"],
+   ["22:13", "assistant", "Bangalore traffic sounds exhausting. Did you eat dinner?"],
+   ["22:15", "user", "swiggy biryani, yet again lol"],
+   ["22:16", "assistant", "Biryani never lets you down. Any weekend plans?"],
+   ["22:18", "user", "meeting college friends at Toit on saturday"],
+   ["22:19", "assistant", "Nice. Something with a bit of beer and no deadlines."],
+   ["22:21", "user", "haha exactly. also its raining again, cold weather"],
+   ["22:22", "assistant", "Rain and Bangalore, a classic. Stay warm."]
+  ]},
+  {"date": "2026-10-06", "messages": [
+   ["21:30", "user", "aira just finished watching Kantara chapter 1. wow"],
+   ["21:30", "assistant", "Ooh, how was it? Worth the hype?"],
+   ["21:32", "user", "climax was goosebumps. rishab shetty is a legend"],
+   ["21:33", "assistant", "I've heard the climax is wild. Did you watch in a theatre?"],
+   ["21:35", "user", "yes PVR with my cousin. popcorn was 450 rs, insane"],
+   ["21:36", "assistant", "Theatre popcorn pricing is highway robbery."],
+   ["21:38", "user", "true. anyway got a recruiter call today from Persistent Systems, Pune"],
+   ["21:39", "assistant", "Interesting! Are you thinking of changing jobs?"],
+   ["21:41", "user", "maybe. current salary is stuck. lets see"],
+   ["21:42", "assistant", "No harm in hearing them out."]
+  ]},
+  {"date": "2026-10-11", "messages": [
+   ["20:00", "user", "got the offer from Persistent. 14 LPA, Pune office"],
+   ["20:01", "assistant", "Vikram, congrats! That's a big jump. What are you thinking?"],
+   ["20:03", "user", "i think i will take it. also my parents are in Nashik so Pune is just 4 hours from them"],
+   ["20:04", "assistant", "So a better job and closer to family. That's a strong case."],
+   ["20:06", "user", "yes. told my manager, he was upset but fine"],
+   ["20:07", "assistant", "That's a brave conversation. How did you feel after?"],
+   ["20:09", "user", "relieved honestly. going out for dosa now"],
+   ["20:10", "assistant", "Celebrate with dosa. Good choice."]
+  ]},
+  {"date": "2026-10-18", "messages": [
+   ["19:20", "user", "packing day. Agarwal packers came, truck is loaded"],
+   ["19:21", "assistant", "Big day! Are you leaving Bangalore tonight?"],
+   ["19:23", "user", "tomorrow morning by car. last night here, sad actually"],
+   ["19:24", "assistant", "Seven years of memories is a lot. Anything you'll miss?"],
+   ["19:26", "user", "the filter coffee at the corner shop and my gym friends"],
+   ["19:27", "assistant", "Say goodbye to the coffee uncle. Safe drive tomorrow."],
+   ["19:29", "user", "will do. will message from Pune"],
+   ["19:30", "assistant", "Looking forward to hearing about the new place."]
+  ]},
+  {"date": "2026-10-25", "messages": [
+   ["18:40", "user", "hey aira, finally settled in Pune. rented a flat in Baner"],
+   ["18:41", "assistant", "Welcome to Pune! How's Baner?"],
+   ["18:43", "user", "nice, lots of cafes. weather is so much better than Bangalore these days"],
+   ["18:44", "assistant", "Sounds great. How's the flat?"],
+   ["18:46", "user", "2bhk, balcony faces the hills. mom is visiting next week"],
+   ["18:47", "assistant", "Mom's visit will make it feel like home. Will she cook?"],
+   ["18:49", "user", "obviously. she already sent me a list of groceries to buy lol"],
+   ["18:50", "assistant", "Ha, classic mom."]
+  ]},
+  {"date": "2026-11-05", "messages": [
+   ["21:15", "user", "first week at Persistent done. team is nice"],
+   ["21:16", "assistant", "Good start! Any good colleagues?"],
+   ["21:18", "user", "my lead Sameer is chill. lunch at 1 sharp every day lol"],
+   ["21:19", "assistant", "A lunch-on-time lead is a good lead."],
+   ["21:21", "user", "also tried misal pav near office, spicy!"],
+   ["21:22", "assistant", "Pune misal is serious business. Did you finish it?"],
+   ["21:24", "user", "barely. water finished 2 bottles lol"],
+   ["21:25", "assistant", "Ha, welcome to Maharashtrian spice levels."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-04-p1", "kind": "changed", "at": "2026-11-09T10:00", "ask": "where am i staying these days?", "expect": "Says Pune (Baner), not Bangalore", "any": ["Pune", "Baner"], "none": []},
+  {"id": "en-04-p2", "kind": "changed", "at": "2026-11-09T10:05", "ask": "which company am i working at now?", "expect": "Says Persistent Systems, not Infosys", "any": ["Persistent"], "none": []},
+  {"id": "en-04-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "which area of Bangalore did i live in before moving?", "expect": "Says Koramangala", "any": ["Koramangala"], "none": []},
+  {"id": "en-04-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "why did i move again?", "expect": "Says for the better paying Persistent job and to be closer to parents in Nashik", "any": ["job", "offer", "Nashik", "parents", "salary"], "none": []},
+  {"id": "en-04-p5", "kind": "recall", "at": "2026-11-09T10:20", "ask": "who helped with shifting my things?", "expect": "Says Agarwal packers", "any": ["Agarwal", "packers"], "none": []},
+  {"id": "en-04-p6", "kind": "false", "at": "2026-11-09T10:25", "ask": "what's my roommate's name? i keep forgetting what i told you", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-04-s1", "query": "which neighbourhood was I renting in earlier?", "day": "2026-10-02", "any": ["Koramangala"]},
+  {"id": "en-04-s2", "query": "how much money did the other firm offer me", "day": "2026-10-11", "any": ["14", "LPA"]},
+  {"id": "en-04-s3", "query": "who did the shifting of my furniture", "day": "2026-10-18", "any": ["Agarwal", "packers"]}
+ ]
+}

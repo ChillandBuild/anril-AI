@@ -1,0 +1,79 @@
+{
+ "id": "en-05", "language": "en", "timezone": "Asia/Kolkata", "person": "Ananya Das",
+ "theme": "pet",
+ "days": [
+  {"date": "2026-10-03", "messages": [
+   ["18:00", "user", "hi aira! just back from walking Biscuit"],
+   ["18:00", "assistant", "Hi Ananya! Who's Biscuit?"],
+   ["18:02", "user", "my dog!! labrador, 3 years old. golden color, super lazy but loves food"],
+   ["18:03", "assistant", "A lazy food-loving lab, sounds adorable. Where do you walk him?"],
+   ["18:05", "user", "the park near our apartment in Kolkata, Salt Lake. he chases only his tennis ball, ignores other dogs"],
+   ["18:06", "assistant", "Loyal to the ball. Does he bring it back?"],
+   ["18:08", "user", "nope, he just stares at me until i throw it again lol"],
+   ["18:09", "assistant", "Smart boy, you're the ball launcher."],
+   ["18:11", "user", "haha true. i need to cook dinner, making luchi and aloo dum"],
+   ["18:12", "assistant", "Luchi and aloo dum, now I'm hungry. Enjoy!"]
+  ]},
+  {"date": "2026-10-09", "messages": [
+   ["08:15", "user", "aira biscuit vomited twice this morning and refuses breakfast"],
+   ["08:15", "assistant", "Oh no. Is he drinking water? Any other symptoms?"],
+   ["08:17", "user", "very little water. he is lying in the corner, very dull"],
+   ["08:18", "assistant", "That sounds worth a vet visit today. Is there a clinic nearby?"],
+   ["08:20", "user", "yes Dr. Mehra, 10 mins away. calling now"],
+   ["08:21", "assistant", "Good. Please tell him what he ate yesterday."],
+   ["11:30", "user", "back from vet. Dr. Mehra said stomach infection, maybe from the street food scraps he ate on the walk"],
+   ["11:31", "assistant", "Poor Biscuit. What's the treatment?"],
+   ["11:33", "user", "2 tablets, 5 days. only boiled rice and boiled chicken, and ORS water. no biscuits or treats for a week"],
+   ["11:34", "assistant", "No biscuits for Biscuit, hard rule. He should perk up soon."],
+   ["11:36", "user", "lol yes. he is looking at me like i betrayed him"],
+   ["11:37", "assistant", "Dramatic dog. Keep a close eye today."],
+   ["15:20", "user", "he ate a little rice! small win"],
+   ["15:21", "assistant", "Great sign, let him eat slowly in small portions."],
+   ["21:30", "user", "he is sleeping next to me now. looks better"],
+   ["21:31", "assistant", "Glad to hear. Get some rest too."]
+  ]},
+  {"date": "2026-10-16", "messages": [
+   ["07:10", "user", "biscuit is back to normal!! stole a roti from the plate today"],
+   ["07:10", "assistant", "That's the old Biscuit. Healthy dogs steal rotis."],
+   ["07:12", "user", "ha. walking at 6am every day now, park is so nice in this weather"],
+   ["07:13", "assistant", "Early morning walks suit him. Any new friends?"],
+   ["07:15", "user", "a beagle named Coco. biscuit still ignores her lol"],
+   ["07:16", "assistant", "Coco is probably heartbroken."],
+   ["07:18", "user", "haha. off to office now, work from home on friday"],
+   ["07:19", "assistant", "Have a good day, tell Biscuit I said hi."]
+  ]},
+  {"date": "2026-10-24", "messages": [
+   ["20:20", "user", "aira what should i watch tonight"],
+   ["20:20", "assistant", "What mood are you in? Funny or thriller?"],
+   ["20:22", "user", "something light. i liked Panchayat"],
+   ["20:23", "assistant", "Maybe Gullak? Same warm small-town vibe."],
+   ["20:25", "user", "ooh yes. will try. also durga puja shopping done finally, bought a red saree"],
+   ["20:26", "assistant", "Red saree for Puja, lovely. Pandal hopping planned?"],
+   ["20:28", "user", "yes with friends, then phuchka of course"],
+   ["20:29", "assistant", "Phuchka is mandatory."]
+  ]},
+  {"date": "2026-11-03", "messages": [
+   ["19:45", "user", "hi aira. cold wave starting in Kolkata, finally some winter"],
+   ["19:45", "assistant", "Winter in Kolkata is the best time. Sweaters out?"],
+   ["19:47", "user", "yes bought a tiny sweater for biscuit also, he looks so funny"],
+   ["19:48", "assistant", "A lab in a sweater, send me a pic if you can."],
+   ["19:50", "user", "haha okay. he hates it, keeps shaking it off"],
+   ["19:51", "assistant", "He'll get used to it. Maybe with a treat?"],
+   ["19:53", "user", "yes treats are allowed again, only the doctor-approved ones"],
+   ["19:54", "assistant", "Good rule, Dr. Mehra would be proud."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-05-p1", "kind": "recall", "at": "2026-11-09T09:00", "ask": "what's my dog's name?", "expect": "Says Biscuit", "any": ["Biscuit"], "none": []},
+  {"id": "en-05-p2", "kind": "recall", "at": "2026-11-09T09:05", "ask": "what was wrong with him when he got sick?", "expect": "Says a stomach infection with vomiting, from eating street scraps", "any": ["stomach", "infection", "vomit"], "none": []},
+  {"id": "en-05-p3", "kind": "recall", "at": "2026-11-09T09:10", "ask": "what did the vet say i should feed him?", "expect": "Says boiled rice and boiled chicken with ORS, no treats", "any": ["rice", "chicken", "boiled", "ORS"], "none": []},
+  {"id": "en-05-p4", "kind": "recall", "at": "2026-11-09T09:15", "ask": "what was the vet's name?", "expect": "Says Dr. Mehra", "any": ["Mehra"], "none": []},
+  {"id": "en-05-p5", "kind": "recall", "at": "2026-11-09T09:20", "ask": "which breed is he again?", "expect": "Says labrador", "any": ["labrador", "Labrador", "lab"], "none": []},
+  {"id": "en-05-p6", "kind": "false", "at": "2026-11-09T09:25", "ask": "what's my cat called again?", "expect": "Says it doesn't know / wasn't told; invents no name; does not assume a cat", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-05-s1", "query": "what does the pup chase in the park?", "day": "2026-10-03", "any": ["tennis ball", "ball"]},
+  {"id": "en-05-s2", "query": "what did the animal doctor suggest for his tummy trouble", "day": "2026-10-09", "any": ["rice", "chicken", "ORS"]},
+  {"id": "en-05-s3", "query": "Coco, who is that?", "day": "2026-10-16", "any": ["beagle", "Coco"]}
+ ]
+}

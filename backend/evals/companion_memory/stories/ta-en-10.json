@@ -1,0 +1,906 @@
+{
+ "id": "ta-en-10",
+ "language": "ta-en",
+ "timezone": "Europe/London",
+ "person": "Prabhakaran",
+ "theme": "living abroad (London), one very long day",
+ "days": [
+  {
+   "date": "2026-10-05",
+   "messages": [
+    [
+     "19:30",
+     "user",
+     "Hi Aira, naan London la irukken, Ilford la oru flat share la. Coimbatore irundhu vandhu 2 varusham aachu"
+    ],
+    [
+     "19:31",
+     "assistant",
+     "Hi Prabhakaran! London life epdi irukku?"
+    ],
+    [
+     "19:34",
+     "user",
+     "romba cold ah irukku pa, ippave jacket poduren. velai Canary Wharf la, data analyst"
+    ],
+    [
+     "19:35",
+     "assistant",
+     "Canary Wharf la data analyst, nalla role. Tube la dhaan poreengala?"
+    ],
+    [
+     "19:38",
+     "user",
+     "aama, Central line, Elizabeth line. daily 50 min aagum"
+    ],
+    [
+     "19:39",
+     "assistant",
+     "Long commute dhaan. Podcast ketkalama?"
+    ],
+    [
+     "19:42",
+     "user",
+     "Tamil podcast ketpen. ipo dinner ku sambar sadham, amma recipe"
+    ],
+    [
+     "19:43",
+     "assistant",
+     "Ammavoda recipe na veetu nyabagam varum."
+    ],
+    [
+     "19:46",
+     "user",
+     "aama romba miss panren. sari bye"
+    ],
+    [
+     "19:47",
+     "assistant",
+     "Bye Prabhakaran!"
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-10",
+   "messages": [
+    [
+     "14:00",
+     "user",
+     "Aira, innaiku Sunday roast saapten, pub la. roast chicken vera level"
+    ],
+    [
+     "14:01",
+     "assistant",
+     "Sunday roast London la famous. Pidichirukka?"
+    ],
+    [
+     "14:04",
+     "user",
+     "aama, ana saapadu la uppu kammi. naan rasam podanum pola irundhuchu"
+    ],
+    [
+     "14:05",
+     "assistant",
+     "Haha, Tamil taste dhaan vera. Rasam ku thanni jeera uppu sernthu seiyalaam."
+    ],
+    [
+     "14:08",
+     "user",
+     "ok, ipo friends oda park la football"
+    ],
+    [
+     "14:09",
+     "assistant",
+     "Nalla plan, enjoy."
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-15",
+   "messages": [
+    [
+     "06:40",
+     "user",
+     "Aira, kaalaila alarm adikkala, 6:40 ku ezhundhen. romba late!"
+    ],
+    [
+     "06:41",
+     "assistant",
+     "Aiyo, seekiram ready aagunga Prabhakaran. Tea mattum kudichittu kilambunga."
+    ],
+    [
+     "06:45",
+     "user",
+     "innaiku 4:30 ku Croydon la Home Office visa biometrics appointment, passport eduthuttu poganum"
+    ],
+    [
+     "06:46",
+     "assistant",
+     "Important naal. Passport, letter, photo ellam bag la vechutteengala?"
+    ],
+    [
+     "06:54",
+     "user",
+     "aama, folder la vechiruken. aana office la innaiku sprint release vera"
+    ],
+    [
+     "06:55",
+     "assistant",
+     "Rendu periya vishayam ore naal la. Plan pannitu, step by step ah paarpom."
+    ],
+    [
+     "07:01",
+     "user",
+     "manager Dan 11 manikku meeting kuptrukaan, deadline pathi"
+    ],
+    [
+     "07:02",
+     "assistant",
+     "Meeting ku points ready panni vechukonga, parava illa."
+    ],
+    [
+     "07:25",
+     "user",
+     "toast saapten, tea kooda. ipo Ilford station ku odren"
+    ],
+    [
+     "07:26",
+     "assistant",
+     "Oodunga, train miss aagama."
+    ],
+    [
+     "07:36",
+     "user",
+     "train 12 min late nu board la irukku, mazhai vera"
+    ],
+    [
+     "07:37",
+     "assistant",
+     "Mazhai la late aana kashtam dhaan. Umbrella iruka?"
+    ],
+    [
+     "08:03",
+     "user",
+     "illa, marandhutten. nanaiyaren ipo"
+    ],
+    [
+     "08:04",
+     "assistant",
+     "Hood potukonga, office poi dry aagalam."
+    ],
+    [
+     "08:11",
+     "user",
+     "Elizabeth line la kootam romba, nikkave edam illa"
+    ],
+    [
+     "08:12",
+     "assistant",
+     "Rush hour la ippadi dhaan. Konjam podcast ketu adjust pannunga."
+    ],
+    [
+     "08:48",
+     "user",
+     "podcast kettu odala, phone la signal illa underground la"
+    ],
+    [
+     "08:49",
+     "assistant",
+     "Paravala, konjam oru breathing exercise pannunga."
+    ],
+    [
+     "09:02",
+     "user",
+     "office vandhuten, 9:50. laptop on pannen, update pannudhu pa"
+    ],
+    [
+     "09:03",
+     "assistant",
+     "Laptop update ah! Dan meeting munnadi mudinjirum nu nambalam."
+    ],
+    [
+     "09:34",
+     "user",
+     "update 30 min aagum nu sollidhu. enna panrathu, meeting ku notes ellam laptop la"
+    ],
+    [
+     "09:35",
+     "assistant",
+     "IT team ku chat pannunga, illana phone la notes paarunga."
+    ],
+    [
+     "09:39",
+     "user",
+     "IT kita sonnen, spare laptop tharuvaanga nu sonnaanga"
+    ],
+    [
+     "09:40",
+     "assistant",
+     "Nalladhu, sikkiram vaangunga."
+    ],
+    [
+     "09:48",
+     "user",
+     "spare laptop la data sync aaguthu, slow"
+    ],
+    [
+     "09:49",
+     "assistant",
+     "Sync mudiyara varaikum konjam wait pannunga."
+    ],
+    [
+     "09:55",
+     "user",
+     "meeting ku 5 min irukku, kai nadungudhu"
+    ],
+    [
+     "09:56",
+     "assistant",
+     "Nalla moochu vidunga. Neenga prepare panniteenga, adhu dhaan mukkiyam."
+    ],
+    [
+     "10:19",
+     "user",
+     "meeting la Dan sonnaan, dashboard la 2 numbers thappa irukku nu"
+    ],
+    [
+     "10:20",
+     "assistant",
+     "Aiyo. Edhu number nu sonnaana? Fix pannalam."
+    ],
+    [
+     "10:30",
+     "user",
+     "revenue la 3% difference, yesterday night dhaan naan push panninen"
+    ],
+    [
+     "10:31",
+     "assistant",
+     "Romba common issue, query la filter check pannalam."
+    ],
+    [
+     "10:57",
+     "user",
+     "aama, join la duplicate irukku pola. 2 hours la fix pannanum nu sonnaan"
+    ],
+    [
+     "10:58",
+     "assistant",
+     "Seri, lunch munnaadi priority ah paarunga."
+    ],
+    [
+     "11:05",
+     "user",
+     "coffee vaangi vandhen, 3.80 pound, romba costly"
+    ],
+    [
+     "11:06",
+     "assistant",
+     "London coffee price na ippadi dhaan, paavam."
+    ],
+    [
+     "11:42",
+     "user",
+     "duplicate record pidichuten, SQL la distinct poten"
+    ],
+    [
+     "11:43",
+     "assistant",
+     "Super! Re-run panni paarunga."
+    ],
+    [
+     "11:56",
+     "user",
+     "run panren, 15 min aagum nu irukku, cluster slow"
+    ],
+    [
+     "11:57",
+     "assistant",
+     "Wait pannunga, adhukulla konjam thanni kudinga."
+    ],
+    [
+     "12:28",
+     "user",
+     "thanni kudichen. amma 'saapteengala' nu WhatsApp pannirukkaanga"
+    ],
+    [
+     "12:29",
+     "assistant",
+     "Ammaku reply pannunga, avanga kavalai padradhu normal."
+    ],
+    [
+     "12:33",
+     "user",
+     "ammaku 'busy, aprm call' nu sonnen. tension la vayiru valikkudhu"
+    ],
+    [
+     "12:34",
+     "assistant",
+     "Konjam biscuit saappudunga, empty stomach la tension jaasthi aagum."
+    ],
+    [
+     "12:42",
+     "user",
+     "query result vandhuduchu, numbers sariya iruku ipo"
+    ],
+    [
+     "12:43",
+     "assistant",
+     "Vaazhthukkal! Dan ku share pannunga."
+    ],
+    [
+     "12:49",
+     "user",
+     "Dan 'good job' nu sonnaan. 1 manikku lunch"
+    ],
+    [
+     "12:50",
+     "assistant",
+     "Super Prabhakaran, nalla recovery."
+    ],
+    [
+     "13:13",
+     "user",
+     "lunch queue romba, sandwich dhaan vaanga mudiyum"
+    ],
+    [
+     "13:14",
+     "assistant",
+     "Paravala, ethavadhu saapdunga. Veg ah non-veg ah?"
+    ],
+    [
+     "13:24",
+     "user",
+     "cheese sandwich. romba dry ah irukku"
+    ],
+    [
+     "13:25",
+     "assistant",
+     "Konjam juice kudinga, adhu helpa irukkum."
+    ],
+    [
+     "13:51",
+     "user",
+     "lunch break la landlord ku mail vandhuruku, rent 150 pound jaasthi nu"
+    ],
+    [
+     "13:52",
+     "assistant",
+     "Aiyo, adhu kashtam dhaan. Contract la clause irukka?"
+    ],
+    [
+     "13:59",
+     "user",
+     "irukku, 2 months notice kuduthu dhaan maatha mudiyum nu. aana avan solran adhukku munnaadi"
+    ],
+    [
+     "14:00",
+     "assistant",
+     "Romba legal vishayam, Citizens Advice la check pannalam."
+    ],
+    [
+     "14:36",
+     "user",
+     "aama, evening paakalam. ipo release meeting irukku 2 manikku"
+    ],
+    [
+     "14:37",
+     "assistant",
+     "Seri, focus pannunga."
+    ],
+    [
+     "14:50",
+     "user",
+     "release la ellaarum irukkaanga, Priya from QA bug list vechirukkaa"
+    ],
+    [
+     "14:51",
+     "assistant",
+     "Nalladhu, one by one ah pesunga."
+    ],
+    [
+     "15:22",
+     "user",
+     "12 bugs nu list. 3 critical"
+    ],
+    [
+     "15:23",
+     "assistant",
+     "Critical kitta modha pannalam. Pazhaya log paarunga."
+    ],
+    [
+     "15:27",
+     "user",
+     "critical fix pannen, 2 irukku innum. 3:15 aaguthu"
+    ],
+    [
+     "15:28",
+     "assistant",
+     "Neram kammiya irukku pola, manager kitta sollitteengala?"
+    ],
+    [
+     "15:36",
+     "user",
+     "sollitten. Dan 'sari, nalaiku mudichukalam' nu sonnaan. thanks Aira"
+    ],
+    [
+     "15:37",
+     "assistant",
+     "Nalla decision. Neenga munnaadi kilambalaam."
+    ],
+    [
+     "15:43",
+     "user",
+     "kilambittu, ipo tube pidikka poren. kootam romba irukku"
+    ],
+    [
+     "15:44",
+     "assistant",
+     "Careful ah poga, bag paathukonga."
+    ],
+    [
+     "16:07",
+     "user",
+     "Central line la signal failure nu announce panraanga, 20 min delay"
+    ],
+    [
+     "16:08",
+     "assistant",
+     "Aiyo, vera route iruka?"
+    ],
+    [
+     "16:18",
+     "user",
+     "bus pidikkalam, but traffic irukkum. romba bayama irukku late aagidumo nu"
+    ],
+    [
+     "16:19",
+     "assistant",
+     "Uber eduthukalamaa? Time thaan mukkiyam."
+    ],
+    [
+     "16:45",
+     "user",
+     "Uber 25 pound. pochu, edukkaren"
+    ],
+    [
+     "16:46",
+     "assistant",
+     "Seri, adhu ok. Safe ah poga."
+    ],
+    [
+     "16:53",
+     "user",
+     "traffic la stuck ah irukken, Stratford pakkam"
+    ],
+    [
+     "16:54",
+     "assistant",
+     "Konjam relax ah iruunga, driver kitta ETA kelunga."
+    ],
+    [
+     "17:30",
+     "user",
+     "ETA 4:20 nu kaatuthu. appadi dhaan irukkum nu nambren"
+    ],
+    [
+     "17:31",
+     "assistant",
+     "Nalla irukkum, paravala."
+    ],
+    [
+     "17:44",
+     "user",
+     "vandhuten, 4:15 ku. queue romba perusa irukku"
+    ],
+    [
+     "17:45",
+     "assistant",
+     "Sari, ready aagunga. Document kayila vechukonga."
+    ],
+    [
+     "18:16",
+     "user",
+     "security check mudinjuduchu, kai nadunguthu"
+    ],
+    [
+     "18:17",
+     "assistant",
+     "Nalla breath edunga, ellaam okay aagidum."
+    ],
+    [
+     "18:21",
+     "user",
+     "ulla poiten, 40 min wait aagum nu sonnaanga"
+    ],
+    [
+     "18:22",
+     "assistant",
+     "Seri, konjam wait pannunga."
+    ],
+    [
+     "18:30",
+     "user",
+     "5:10 ku mudinjuduchu. fingerprints eduthaanga, photo um"
+    ],
+    [
+     "18:31",
+     "assistant",
+     "Super Prabhakaran! Perusa mudinjuduchu."
+    ],
+    [
+     "18:37",
+     "user",
+     "aama, romba relief aa irukku. result 3 vaaram la varum"
+    ],
+    [
+     "18:38",
+     "assistant",
+     "Nalladhu. Ipo veetuku poga?"
+    ],
+    [
+     "19:01",
+     "user",
+     "Uber 25 pound innum adhigam. tube pidikkalam, ipo clear nu sonnaanga"
+    ],
+    [
+     "19:02",
+     "assistant",
+     "Tube la poga, paisa save aagum."
+    ],
+    [
+     "19:12",
+     "user",
+     "tube la ukkara edam kidaichuduchu! Victoria line la"
+    ],
+    [
+     "19:13",
+     "assistant",
+     "Rest edunga, podcast ketkalam."
+    ],
+    [
+     "19:39",
+     "user",
+     "amma phone panraanga, ipo pesalama"
+    ],
+    [
+     "19:40",
+     "assistant",
+     "Pesunga, ammavuku sandhosham aagum."
+    ],
+    [
+     "19:47",
+     "user",
+     "amma kitta pesinen, 'appa ku BP kammi' nu sonnanga. Nalla news"
+    ],
+    [
+     "19:48",
+     "assistant",
+     "Nalladhu, ammavum nimmadhi aagirukkanga."
+    ],
+    [
+     "20:24",
+     "user",
+     "Ilford vandhuten. veetuku vaangi ponum, milk, ricela"
+    ],
+    [
+     "20:25",
+     "assistant",
+     "Tesco poi vaangikonga."
+    ],
+    [
+     "20:38",
+     "user",
+     "Tesco la queue illa, quick ah mudinjuduchu. 18 pound"
+    ],
+    [
+     "20:39",
+     "assistant",
+     "Nalla, ipo veetuku poga."
+    ],
+    [
+     "21:10",
+     "user",
+     "flatmate Jake kitchen la irukaan, pasta pannran"
+    ],
+    [
+     "21:11",
+     "assistant",
+     "Nalla irukku, vaasanai ah?"
+    ],
+    [
+     "21:15",
+     "user",
+     "aama. naan rasam sadham pannalam nu irukken, thoongara munnaadi"
+    ],
+    [
+     "21:16",
+     "assistant",
+     "Nalla idea, comfort food."
+    ],
+    [
+     "21:24",
+     "user",
+     "rasam vechitten, Jake smell paartu 'what is that' nu kekraan, haha"
+    ],
+    [
+     "21:25",
+     "assistant",
+     "Haha, indian flavour London la!"
+    ],
+    [
+     "21:31",
+     "user",
+     "avan ku konjam kuduthen, 'it's spicy' nu sonnaan, but nalla irukku nu sonnaan"
+    ],
+    [
+     "21:32",
+     "assistant",
+     "Nalla aachu, appo Tamil ku fan!"
+    ],
+    [
+     "21:55",
+     "user",
+     "ipo laptop la email paarthen, Dan 'tomorrow 9 sharp' nu mail"
+    ],
+    [
+     "21:56",
+     "assistant",
+     "Seri, nalaiku kaalaila time ku poga."
+    ],
+    [
+     "22:06",
+     "user",
+     "alarm 6:30 ku vechuten, innaiku madhiri late aaga koodadhu"
+    ],
+    [
+     "22:07",
+     "assistant",
+     "Nalla plan. Rest edunga."
+    ],
+    [
+     "22:33",
+     "user",
+     "evening varai tension. ipo dhaan konjam lite ah irukku"
+    ],
+    [
+     "22:34",
+     "assistant",
+     "Neenga romba nalla handle panneenga."
+    ],
+    [
+     "22:41",
+     "user",
+     "landlord mail ku reply pannanum, adhu innum balance"
+    ],
+    [
+     "22:42",
+     "assistant",
+     "Naalaiku paarkalam, ippo mind relax ku vidunga."
+    ],
+    [
+     "23:18",
+     "user",
+     "seri pa, thanks Aira, bore aadikaama pesinadhukku"
+    ],
+    [
+     "23:19",
+     "assistant",
+     "Welcome Prabhakaran, take care. Good night!"
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-18",
+   "messages": [
+    [
+     "20:10",
+     "user",
+     "Aira, nethu biometrics mudinjuduchu. result 3 vaaram la varum"
+    ],
+    [
+     "20:11",
+     "assistant",
+     "Nalladhu Prabhakaran, vaazhthukkal. Wait pannalaam."
+    ],
+    [
+     "20:14",
+     "user",
+     "aama pa, tension kammi aachu. ipo dhaan thookam varudhu"
+    ],
+    [
+     "20:15",
+     "assistant",
+     "Nalla rest edunga."
+    ],
+    [
+     "20:18",
+     "user",
+     "oru tea kudichuten, Yorkshire tea"
+    ],
+    [
+     "20:19",
+     "assistant",
+     "Nalla choice."
+    ]
+   ]
+  },
+  {
+   "date": "2026-10-26",
+   "messages": [
+    [
+     "18:00",
+     "user",
+     "Aira, nethu clock oru mani pinnaadi poiduchu, 4 manikke irutti poiduchu"
+    ],
+    [
+     "18:01",
+     "assistant",
+     "Aama, UK la clocks maara naal. Ungaluku boring ah irukkumbola."
+    ],
+    [
+     "18:04",
+     "user",
+     "romba. saayangalam 4:30 ku iruttu. romba depress ah irukku"
+    ],
+    [
+     "18:05",
+     "assistant",
+     "Light therapy lamp vangalam, konjam help pannum."
+    ],
+    [
+     "18:08",
+     "user",
+     "paakalam. ipo dinner ku egg curry panna poren"
+    ],
+    [
+     "18:09",
+     "assistant",
+     "Nalla idea, warm food help pannum."
+    ]
+   ]
+  },
+  {
+   "date": "2026-11-04",
+   "messages": [
+    [
+     "21:00",
+     "user",
+     "Aira, Deepavali ku veetuku call pannanum, 4 naal la"
+    ],
+    [
+     "21:01",
+     "assistant",
+     "Seri, video call la ellaraiyum paarunga."
+    ],
+    [
+     "21:04",
+     "user",
+     "aama, Wembley la oru Tamil kovil la celebration irukku, poganum"
+    ],
+    [
+     "21:05",
+     "assistant",
+     "Nalla plan, community oda kondaadalaam."
+    ],
+    [
+     "21:08",
+     "user",
+     "ok ok, good night"
+    ],
+    [
+     "21:09",
+     "assistant",
+     "Good night Prabhakaran!"
+    ]
+   ]
+  }
+ ],
+ "probes": [
+  {
+   "id": "ta-en-10-p1",
+   "kind": "recall",
+   "at": "2026-11-09T10:00",
+   "ask": "naan enga velai paakren nu sonnen? enna role?",
+   "expect": "Says Canary Wharf, data analyst",
+   "any": [
+    "Canary Wharf",
+    "data analyst",
+    "Data Analyst",
+    "analyst"
+   ],
+   "none": []
+  },
+  {
+   "id": "ta-en-10-p2",
+   "kind": "recall",
+   "at": "2026-11-09T10:05",
+   "ask": "London la edhu area la irukken?",
+   "expect": "Says Ilford",
+   "any": [
+    "Ilford",
+    "இல்ஃபோர்ட்"
+   ],
+   "none": []
+  },
+  {
+   "id": "ta-en-10-p3",
+   "kind": "recall",
+   "at": "2026-11-09T10:10",
+   "ask": "andha stress naal la kaalaila enga poganum nu sonnen? 4:30 ku?",
+   "expect": "Says Croydon for the visa/biometrics appointment",
+   "any": [
+    "Croydon",
+    "visa",
+    "biometric",
+    "Home Office"
+   ],
+   "none": []
+  },
+  {
+   "id": "ta-en-10-p4",
+   "kind": "false",
+   "at": "2026-11-09T10:15",
+   "ask": "en amma peru enna? nyabagam irukka?",
+   "expect": "Says it doesn't know / wasn't told; invents no name",
+   "any": [],
+   "none": []
+  },
+  {
+   "id": "ta-en-10-p5",
+   "kind": "same_day",
+   "at": "2026-10-15T23:45",
+   "ask": "ok ah pochu nu nenaikiren pa, innaiku",
+   "expect": "Recalls the 4:30 pm Croydon visa biometrics appointment mentioned early that day",
+   "any": [
+    "Croydon",
+    "visa",
+    "biometric"
+   ],
+   "none": []
+  },
+  {
+   "id": "ta-en-10-p6",
+   "kind": "recall",
+   "at": "2026-11-09T10:20",
+   "ask": "naan Deepavali ku enna plan sonnen?",
+   "expect": "Says a celebration at a Tamil temple in Wembley and a call home",
+   "any": [
+    "Wembley",
+    "kovil",
+    "temple",
+    "call"
+   ],
+   "none": []
+  }
+ ],
+ "search": [
+  {
+   "id": "ta-en-10-s1",
+   "query": "Sunday roast saapten, rasam vendum nu thonichu",
+   "day": "2026-10-10",
+   "any": [
+    "roast",
+    "rasam"
+   ]
+  },
+  {
+   "id": "ta-en-10-s2",
+   "query": "Prabhakaran Tube la office poguradhu epdi",
+   "day": "2026-10-05",
+   "any": [
+    "Central line",
+    "Elizabeth"
+   ]
+  },
+  {
+   "id": "ta-en-10-s3",
+   "query": "landlord pathi sonnen la, rent adhigam aagum nu",
+   "day": "2026-10-15",
+   "any": [
+    "landlord",
+    "rent"
+   ]
+  }
+ ]
+}

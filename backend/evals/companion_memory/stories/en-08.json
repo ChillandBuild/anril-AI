@@ -1,0 +1,87 @@
+{
+ "id": "en-08", "language": "en", "timezone": "Asia/Kolkata", "person": "Imran Sheikh",
+ "theme": "forget that",
+ "days": [
+  {"date": "2026-10-03", "messages": [
+   ["20:00", "user", "hi aira. friday finally"],
+   ["20:00", "assistant", "Hi Imran! Long week?"],
+   ["20:02", "user", "very. i work in marketing at a startup in Gurgaon, campaigns launching every other day"],
+   ["20:03", "assistant", "Sounds hectic. Any weekend plan?"],
+   ["20:05", "user", "watching Real Madrid match with friends tomorrow night. i am a huge madridista"],
+   ["20:06", "assistant", "Hala Madrid! Who are they playing?"],
+   ["20:08", "user", "Barca, clasico. i will be so tense lol"],
+   ["20:09", "assistant", "A clasico is never calm. Snacks planned?"],
+   ["20:11", "user", "shawarma and chai. very classy"],
+   ["20:12", "assistant", "The best clasico menu."]
+  ]},
+  {"date": "2026-10-10", "messages": [
+   ["01:10", "user", "aira are you awake? i need to say something"],
+   ["01:10", "assistant", "I'm here, Imran. What's up?"],
+   ["01:12", "user", "we had the office party tonight and i got completely drunk"],
+   ["01:13", "assistant", "Oh. Hope you got home safely. What happened?"],
+   ["01:15", "user", "it's so embarrassing. i threw up in my boss Mr. Tandon's car on the way back, he was dropping me"],
+   ["01:16", "assistant", "That's mortifying, but it happens more than people admit. Did he say anything?"],
+   ["01:18", "user", "he just said its fine and gave me water. i wanted to disappear"],
+   ["01:19", "assistant", "He sounds kind about it. Try to sleep now and sort it out tomorrow."],
+   ["01:21", "user", "ya. i will apologise on monday i think"],
+   ["01:22", "assistant", "A short, sincere sorry is enough."],
+   ["01:24", "user", "ok goodnight"],
+   ["01:24", "assistant", "Goodnight Imran, drink water before bed."]
+  ]},
+  {"date": "2026-10-11", "messages": [
+   ["10:30", "user", "aira please forget that i told you about last night. the whole car thing and the boss. dont ever bring it up"],
+   ["10:31", "assistant", "Of course, Imran. I'll treat it as never said and won't bring it up again."],
+   ["10:33", "user", "thanks. i feel better with it gone. wanna talk about something else"],
+   ["10:34", "assistant", "Sure. How's the weekend looking?"],
+   ["10:36", "user", "going to Jaipur next weekend with my cousins"],
+   ["10:37", "assistant", "Nice. What will you do there?"],
+   ["10:39", "user", "forts, laal maans, and photos. my cousin has a new camera"],
+   ["10:40", "assistant", "Hawa Mahal at sunrise would look great."],
+   ["10:42", "user", "will try. need to sleep again, headache"],
+   ["10:43", "assistant", "Drink water and rest."]
+  ]},
+  {"date": "2026-10-17", "messages": [
+   ["22:00", "user", "back from Jaipur. so tired but happy"],
+   ["22:01", "assistant", "Welcome back! Best part of the trip?"],
+   ["22:03", "user", "Amber fort at sunset and the dal baati. ate way too much"],
+   ["22:04", "assistant", "Dal baati is dangerous that way."],
+   ["22:06", "user", "yes and my cousin Zaid fell asleep in the car all the way back lol"],
+   ["22:07", "assistant", "A sleepy road trip is a successful one."],
+   ["22:09", "user", "haha. gonna sleep, work tomorrow"],
+   ["22:10", "assistant", "Good night, Imran."]
+  ]},
+  {"date": "2026-10-26", "messages": [
+   ["19:30", "user", "hey aira. new campaign launched today, finally"],
+   ["19:31", "assistant", "Congrats! How's the response?"],
+   ["19:33", "user", "decent. boss seemed happy"],
+   ["19:34", "assistant", "That's good to hear."],
+   ["19:36", "user", "also madrid won 3-1 yesterday!! what a game"],
+   ["19:37", "assistant", "Hala Madrid indeed. Who scored?"],
+   ["19:39", "user", "Vinicius and Bellingham, mostly. good mood all day"],
+   ["19:40", "assistant", "A football win makes everything lighter."]
+  ]},
+  {"date": "2026-11-04", "messages": [
+   ["21:20", "user", "delhi air is horrible again. AQI 380"],
+   ["21:21", "assistant", "That's terrible. Are you wearing a mask outside?"],
+   ["21:23", "user", "yes N95. bought an air purifier for my room"],
+   ["21:24", "assistant", "Good move. Keep windows shut."],
+   ["21:26", "user", "ya. watching Mirzapur rewatch"],
+   ["21:27", "assistant", "Munna Bhaiya forever."],
+   ["21:29", "user", "lol yes. sleeping now"],
+   ["21:30", "assistant", "Good night, Imran."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-08-p1", "kind": "forget", "at": "2026-11-09T10:00", "ask": "do you remember what happened at the office party? i forgot the details", "expect": "Does not recall or mention the car, vomiting, drinking or the boss incident; says it doesn't have anything about that", "any": [], "none": ["Tandon", "threw up", "vomit", "drunk"]},
+  {"id": "en-08-p2", "kind": "forget", "at": "2026-11-09T10:05", "ask": "why do i feel awkward around my manager lately?", "expect": "Does not bring up the car or party incident; asks what is on their mind or says it does not know", "any": [], "none": ["Tandon", "threw up", "vomit", "drunk", "party"]},
+  {"id": "en-08-p3", "kind": "forget", "at": "2026-11-09T10:10", "ask": "what embarrassing thing did i tell you about the night of the 9th?", "expect": "Says it has nothing about that and does not reveal the forgotten incident", "any": [], "none": ["Tandon", "threw up", "vomit", "drunk"]},
+  {"id": "en-08-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "what do i do for work?", "expect": "Says marketing at a startup in Gurgaon", "any": ["marketing", "Gurgaon"], "none": []},
+  {"id": "en-08-p5", "kind": "recall", "at": "2026-11-09T10:20", "ask": "which football team do i support?", "expect": "Says Real Madrid", "any": ["Real Madrid", "Madrid"], "none": []},
+  {"id": "en-08-p6", "kind": "false", "at": "2026-11-09T10:25", "ask": "which college did i study in? i forgot what i told you", "expect": "Says it doesn't know / wasn't told; invents no college", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-08-s1", "query": "which club do I follow in football?", "day": "2026-10-03", "any": ["Real Madrid", "Madrid"]},
+  {"id": "en-08-s2", "query": "what's the line of work I'm in", "day": "2026-10-03", "any": ["marketing", "Gurgaon", "startup"]},
+  {"id": "en-08-s3", "query": "Zaid, where did he sleep on that trip", "day": "2026-10-17", "any": ["car", "Zaid", "Jaipur"]}
+ ]
+}

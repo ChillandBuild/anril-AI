@@ -121,3 +121,50 @@ def test_business_scope_hides_private_characters_facts_from_the_owner(env):
     import asyncio
     seen = asyncio.run(visible_facts("t1", env.j["id"], karthik["id"]))
     assert "feels low at night" in [f["text"] for f in seen]
+
+
+# --- Diary tab (migration 256) -------------------------------------------------------------------
+
+def _karthik(env):
+    return next(r for r in env.db.rows("companion_end_users") if r["external_user_id"] == "astro-123")["id"]
+
+
+def test_owner_sees_and_deletes_diary_lines_and_the_today_note(env, caplog):
+    import asyncio
+    caplog.set_level(logging.DEBUG)
+    cid, eu = env.j["id"], _karthik(env)
+    asyncio.run(store.upsert_diary("t1", cid, eu, "2026-11-09", "Interview prep, nervous"))
+    asyncio.run(store.upsert_diary("t1", cid, eu, "2026-11-08", "Watched Leo again"))
+    asyncio.run(store.upsert_chunks([{"tenant_id": "t1", "companion_id": cid, "end_user_id": eu, "kind": "diary",
+                                      "source_key": "2026-11-09", "day": "2026-11-09",
+                                      "text": "Interview prep, nervous", "embedding": None}]))
+    asyncio.run(store.set_recap("t1", cid, eu, "- interview at 3 pm", "2026-11-10", "2026-11-10T05:00:00+00:00"))
+    c, url = env.client, f"{BASE}/{cid}/people/astro-123"
+    body = c.get(f"{url}/diary").json()
+    assert body["today"] == {"day": "2026-11-10", "text": "- interview at 3 pm"}
+    assert [d["day"] for d in body["days"]] == ["2026-11-09", "2026-11-08"]
+    assert c.delete(f"{url}/diary/2026-11-09").status_code == 204
+    assert env.db.rows("companion_memory_chunks") == []  # its search piece went too
+    assert c.delete(f"{url}/diary/2026-11-09").status_code == 404
+    assert c.delete(f"{url}/diary/not-a-day").status_code == 422
+    assert c.delete(f"{url}/recap").status_code == 204
+    assert c.delete(f"{url}/recap").status_code == 404
+    body = c.get(f"{url}/diary").json()
+    assert body == {"today": None, "days": [{"day": "2026-11-08", "text": "Watched Leo again"}]}
+    assert "Interview prep" not in caplog.text and "interview at 3" not in caplog.text
+
+
+def test_diary_unknown_person_is_empty_and_mode_b_is_403(env):
+    cid = env.j["id"]
+    assert env.client.get(f"{BASE}/{cid}/people/nobody/diary").json() == {"today": None, "days": []}
+    row = next(r for r in env.db.rows("companions") if r["id"] == cid)
+    row["privacy_mode"] = "B"
+    url = f"{BASE}/{cid}/people/astro-123"
+    assert env.client.get(f"{url}/diary").status_code == 403
+    assert env.client.delete(f"{url}/diary/2026-11-09").status_code == 403
+    assert env.client.delete(f"{url}/recap").status_code == 403
+
+
+def test_diary_of_another_tenants_character_is_404(env):
+    other = env.db.add("companions", tenant_id="t2", name="Other", status="live", privacy_mode="A")
+    assert env.client.get(f"{BASE}/{other['id']}/people/astro-123/diary").status_code == 404

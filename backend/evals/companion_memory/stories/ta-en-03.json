@@ -1,0 +1,72 @@
+{
+ "id": "ta-en-03", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Vigneshwaran", "theme": "family health",
+ "days": [
+  {"date": "2026-10-03", "messages": [
+   ["06:50", "user", "Aira, appa ku nethu night nenju vali vandhuduchu. Kovai Medical Center la admit pannirukom"],
+   ["06:51", "assistant", "Aiyyo Vignesh, ipo appa epdi irukkanga? Doctor enna sonnanga?"],
+   ["06:55", "user", "Dr. Ramesh paathaanga. Heart la blockage irukku nu sonnanga, angiogram edukkanum"],
+   ["06:56", "assistant", "Purinjidhu. Doctor kitta ellam clear ah kelunga. Neenga strong ah irukkanum."],
+   ["07:05", "user", "amma pakkathula dhaan irukanga, romba azhuranga"],
+   ["07:06", "assistant", "Amma ku ungalaala dhaan dhairiyam. Neenga saapteengala?"],
+   ["07:10", "user", "illa, canteen la oru idli vaangi sapden"],
+   ["07:11", "assistant", "Konjam saapdunga, thembu venum."],
+   ["13:20", "user", "lunch ku curd rice parcel vaangi vandhen. veliya mazhai"],
+   ["13:21", "assistant", "Mazhai la careful. Appa vukku ipo enna nilamai?"],
+   ["13:24", "user", "stable ah irukkaar. nurse sonnanga rest edukanum nu"],
+   ["13:25", "assistant", "Nalladhu. Neengalum konjam rest edunga."]
+  ]},
+  {"date": "2026-10-04", "messages": [
+   ["09:00", "user", "angiogram aagiduchu. 2 blockage irukku, naalaiku angioplasty panraanga"],
+   ["09:01", "assistant", "Seri Vignesh, doctor nalla paathukuvaanga. Neenga dhairiyama irunga."],
+   ["09:05", "user", "aama, Dr. Ramesh romba nalla pesuranga, naan konjam nimmadhi"],
+   ["09:06", "assistant", "Nalla doctor kidaichadhu oru help dhaan."]
+  ]},
+  {"date": "2026-10-06", "messages": [
+   ["11:30", "user", "Aira, angioplasty nalla mudinjuduchu. 2 stents podirukanga"],
+   ["11:31", "assistant", "Romba nalla news Vignesh! Appa ipo epdi irukaanga?"],
+   ["11:34", "user", "ICU la irukkaar, naalaiku ward ku maathuvanga"],
+   ["11:35", "assistant", "Nalladhu. Appa recover aagurar."],
+   ["11:38", "user", "aama, idhe nimmadhi. ipo dhaan thookam varudhu"],
+   ["11:39", "assistant", "Konjam rest edunga."]
+  ]},
+  {"date": "2026-10-09", "messages": [
+   ["16:00", "user", "appa discharge aayiten. veetuku vandhaachu"],
+   ["16:01", "assistant", "Super! Veetula irukkradhu appa ku nalla irukkum."],
+   ["16:03", "user", "doctor oru maasam heavy work vendaam nu sonnaanga, daily 20 min walk"],
+   ["16:04", "assistant", "Seri, atha follow pannalaam. Medicines time ku kudukanum."],
+   ["16:07", "user", "aama, amma alarm vechirukanga"],
+   ["16:08", "assistant", "Nalla idea."],
+   ["16:10", "user", "ipo dhaan nimmadhiya saapden, rasam sadham"],
+   ["16:11", "assistant", "Rasam sadham nalla comfort food."]
+  ]},
+  {"date": "2026-10-15", "messages": [
+   ["19:00", "user", "appa ipo thinamum kaalaila walk poraar, 20 min"],
+   ["19:01", "assistant", "Romba nalla progress! Face la colour vandhuchaa?"],
+   ["19:04", "user", "aama, sirikkaraar kooda. innaiku TV la cricket paathaar"],
+   ["19:05", "assistant", "Super, ippadi poga poga normal aagidum."],
+   ["19:08", "user", "sari Aira, naan office velai mudikkanum"],
+   ["19:09", "assistant", "Sari Vignesh, all the best!"]
+  ]},
+  {"date": "2026-10-22", "messages": [
+   ["21:30", "user", "innaiku checkup poyirundhom. Dr. Ramesh sonnaanga, everything normal"],
+   ["21:31", "assistant", "Romba nimmadhi aana news Vignesh!"],
+   ["21:33", "user", "aama pa, next review oru maasam kazhichu"],
+   ["21:34", "assistant", "Seri, medicine miss pannama paaarkalam."],
+   ["21:37", "user", "okay good night Aira"],
+   ["21:38", "assistant", "Good night Vignesh!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-03-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "appa ipo epdi irukaanga? nyabagam irukka enna aachu?", "expect": "Recalls the father had heart blockage, angioplasty, and is recovering well and walking", "any": ["heart", "angioplasty", "stent", "blockage", "walk"], "none": []},
+  {"id": "ta-en-03-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "appa ya edhu hospital la admit pannom nu sonnen?", "expect": "Says Kovai Medical Center", "any": ["Kovai Medical", "KMCH", "Kovai"], "none": []},
+  {"id": "ta-en-03-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "andha doctor peru enna? nalla pesuvaanga nu sonnen la", "expect": "Says Dr. Ramesh", "any": ["Ramesh", "ரமேஷ்"], "none": []},
+  {"id": "ta-en-03-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "appa ku ethana stent potaanga?", "expect": "Says 2 stents", "any": ["2", "two", "rendu", "இரண்டு"], "none": []},
+  {"id": "ta-en-03-p5", "kind": "false", "at": "2026-11-09T10:20", "ask": "en thambi peru enna sollu", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
+  {"id": "ta-en-03-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "doctor appa ku daily enna panna sonnaanga?", "expect": "Says daily 20 minute walk", "any": ["walk", "20", "நடை"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-03-s1", "query": "KMCH la heart prachanai nu sonnen la appo enna aachu", "day": "2026-10-03", "any": ["Kovai Medical Center", "blockage"]},
+  {"id": "ta-en-03-s2", "query": "stents podra operation nadandha naal epdi irundhen", "day": "2026-10-06", "any": ["stents", "angioplasty"]},
+  {"id": "ta-en-03-s3", "query": "Dr. Ramesh ku thanks sollanum nu ninaichen", "day": "2026-10-04", "any": ["Ramesh"]}
+ ]
+}

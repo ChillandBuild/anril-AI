@@ -22,3 +22,23 @@ def _no_live_astro_settings(monkeypatch):
     from app.services import astro_bridge
 
     monkeypatch.setattr(astro_bridge, "get_setting", lambda key, fallback=None, tenant_id=None: fallback)
+
+
+def fake_embedding(text: str) -> list[float]:
+    """A deterministic 768-dim bag-of-words vector: texts sharing words point the same way."""
+    import hashlib
+    vec = [0.0] * 768
+    for word in text.casefold().replace("|", " ").replace(":", " ").split():
+        vec[int(hashlib.md5(word.encode()).hexdigest(), 16) % 768] += 1.0
+    return vec
+
+
+@pytest.fixture(autouse=True)
+def _no_live_memory_embeddings(monkeypatch):
+    """Companion memory search embeds text with the tenant's Gemini/Jina key. Tests never call out:
+    embed() gives fake_embedding vectors (a test about embedding failures patches it again)."""
+    from app.companion import memory_embed
+
+    async def embed(texts, kind, tenant_id, model=None, retries=True):
+        return [fake_embedding(t) for t in texts]
+    monkeypatch.setattr(memory_embed, "embed", embed)

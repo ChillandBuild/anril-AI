@@ -1,0 +1,73 @@
+{
+ "id": "en-06", "language": "en", "timezone": "Asia/Kolkata", "person": "Aditya Kulkarni",
+ "theme": "relationship",
+ "days": [
+  {"date": "2026-10-04", "messages": [
+   ["21:00", "user", "hey aira, how are you"],
+   ["21:00", "assistant", "Hi Aditya! I'm good. How was your Saturday?"],
+   ["21:02", "user", "nice. spent the afternoon with my girlfriend Neha, we have been together 2 years now"],
+   ["21:03", "assistant", "Two years, that's lovely. What did you two do?"],
+   ["21:05", "user", "just coffee at Bandra and walked at Carter road. she is a graphic designer, always sketching when we sit"],
+   ["21:06", "assistant", "Sounds like a perfect date. Does she show you the sketches?"],
+   ["21:08", "user", "sometimes. she drew a tiny dog on my napkin lol"],
+   ["21:09", "assistant", "That's very sweet. Keep that napkin!"],
+   ["21:11", "user", "already did. anyway, dinner time. mom made puran poli leftover"],
+   ["21:12", "assistant", "Puran poli leftovers are the best kind of leftovers."]
+  ]},
+  {"date": "2026-10-09", "messages": [
+   ["22:30", "user", "aira i messed up"],
+   ["22:30", "assistant", "What happened, Aditya?"],
+   ["22:32", "user", "we had a movie plan today, i cancelled last minute for the India Pakistan cricket match with friends"],
+   ["22:33", "assistant", "Oh. Did you tell her before or after she'd already got ready?"],
+   ["22:35", "user", "after. she was waiting at the theatre already. she is very angry, not replying"],
+   ["22:36", "assistant", "I understand why she's upset. Waiting at the theatre alone hurts. Did you say sorry?"],
+   ["22:38", "user", "texted sorry but she left me on read"],
+   ["22:39", "assistant", "Give her some space tonight, then apologize properly in person or on a call."],
+   ["22:41", "user", "yeah. i feel terrible. India won at least lol, but doesnt feel nice"],
+   ["22:42", "assistant", "Winning feels hollow when someone you love is hurt. Sleep on it."]
+  ]},
+  {"date": "2026-10-14", "messages": [
+   ["19:10", "user", "we made up! went to her place with a sketchbook as a gift"],
+   ["19:11", "assistant", "That's a thoughtful sorry. How did she react?"],
+   ["19:13", "user", "she cried a little then laughed. said i owe her 3 movies now"],
+   ["19:14", "assistant", "Three movies, with no cricket cancellations."],
+   ["19:16", "user", "deal. taking her to Bandra on sunday again, her favourite cafe"],
+   ["19:17", "assistant", "A lovely plan. Phone on silent this time."],
+   ["19:19", "user", "haha yes. also my phone battery died so i charged it all day"],
+   ["19:20", "assistant", "Perfect. Enjoy the date."]
+  ]},
+  {"date": "2026-10-22", "messages": [
+   ["20:00", "user", "heyy. busy week at office, quarter end"],
+   ["20:01", "assistant", "Hope you're getting some rest. What do you work on?"],
+   ["20:03", "user", "i am in sales for an insurance firm. targets every month lol"],
+   ["20:04", "assistant", "Quarter ends are intense. Anything keeping you going?"],
+   ["20:06", "user", "chai and vada pav from the stall downstairs"],
+   ["20:07", "assistant", "A strong combination."],
+   ["20:09", "user", "also bought tickets to watch a movie with Neha on saturday. one of the three"],
+   ["20:10", "assistant", "One down, two to go."]
+  ]},
+  {"date": "2026-11-02", "messages": [
+   ["21:40", "user", "hi aira, mumbai finally cooler in the evenings"],
+   ["21:40", "assistant", "Nice, a bit of relief at last. Any plans?"],
+   ["21:42", "user", "going for a trek to Lonavala this weekend with the gang"],
+   ["21:43", "assistant", "Sounds fun. Check the weather first."],
+   ["21:45", "user", "will do. packing snacks, wafers and a lot of chocolate"],
+   ["21:46", "assistant", "Trek snacks list sorted."],
+   ["21:48", "user", "yes. gotta sleep now, 6am start tomorrow"],
+   ["21:49", "assistant", "Good night, Aditya."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-06-p1", "kind": "recall", "at": "2026-11-09T09:00", "ask": "what's my girlfriend's name?", "expect": "Says Neha", "any": ["Neha"], "none": []},
+  {"id": "en-06-p2", "kind": "recall", "at": "2026-11-09T09:05", "ask": "what did we fight about that time?", "expect": "Says Aditya cancelled the movie plan at the last minute for the cricket match", "any": ["cricket", "match", "cancel", "movie"], "none": []},
+  {"id": "en-06-p3", "kind": "recall", "at": "2026-11-09T09:10", "ask": "what did i give her to say sorry?", "expect": "Says a sketchbook", "any": ["sketchbook", "sketch"], "none": []},
+  {"id": "en-06-p4", "kind": "recall", "at": "2026-11-09T09:15", "ask": "what does she do for work?", "expect": "Says she is a graphic designer", "any": ["designer", "graphic", "design"], "none": []},
+  {"id": "en-06-p5", "kind": "recall", "at": "2026-11-09T09:20", "ask": "how long have we been together now?", "expect": "Says about two years (as of early October)", "any": ["2 years", "two years", "2 year", "two year"], "none": []},
+  {"id": "en-06-p6", "kind": "false", "at": "2026-11-09T09:25", "ask": "what's my brother's name again?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-06-s1", "query": "Neha's profession, what was it?", "day": "2026-10-04", "any": ["designer", "graphic"]},
+  {"id": "en-06-s2", "query": "why was she so furious with me that night", "day": "2026-10-09", "any": ["cricket", "match", "movie", "cancel"]},
+  {"id": "en-06-s3", "query": "what gift did I take to patch things up", "day": "2026-10-14", "any": ["sketchbook"]}
+ ]
+}

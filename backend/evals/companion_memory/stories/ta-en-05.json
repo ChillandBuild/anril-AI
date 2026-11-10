@@ -1,0 +1,70 @@
+{
+ "id": "ta-en-05", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Aravind", "theme": "pet",
+ "days": [
+  {"date": "2026-10-03", "messages": [
+   ["18:00", "user", "Aira, naan en naai Simba kooda evening walk poyittu vandhen"],
+   ["18:01", "assistant", "Simba ah! Cute name. Enna breed?"],
+   ["18:03", "user", "Labrador, 2 vayasu aaguthu. romba naughty, chappal ellam kadichuduvaan"],
+   ["18:04", "assistant", "Haha, Lab na appidi dhaan. Chappal kaapaathanum."],
+   ["18:07", "user", "aama, nethu en shoe ah kadichi vittan"],
+   ["18:08", "assistant", "Aiyo! Chew toys vaangi kodunga."],
+   ["18:11", "user", "paakalam. ipo dinner ku dosa, mazhai vera vara maadhiri irukku"],
+   ["18:12", "assistant", "Dosa nalla choice. Mazhai varaama irukkattum."]
+  ]},
+  {"date": "2026-10-07", "messages": [
+   ["07:40", "user", "Aira, Simba innaiku saappadave illa, vomit pannitaan"],
+   ["07:41", "assistant", "Aiyo, avan epdi irukkan ipo? Active ah irukkana?"],
+   ["07:44", "user", "romba dull ah paduthirukkan, thanni kooda kudikkala"],
+   ["07:45", "assistant", "Thanni kudikkaama irundha vet kitta kaattanum. Innaikku kootitu poga mudiyuma?"],
+   ["07:48", "user", "aama, Anna Nagar la Pet Care clinic irukku, 10 manikku kootitu poren"],
+   ["07:49", "assistant", "Sari, appointment eduthuteengala? Nalla decision."]
+  ]},
+  {"date": "2026-10-08", "messages": [
+   ["12:00", "user", "vet Dr. Lakshmi paathaanga. stomach infection nu sonnaanga, injection potaanga"],
+   ["12:01", "assistant", "Seri, ipo Simba epdi irukkan?"],
+   ["12:03", "user", "konjam better. 5 naal medicine kudukanum, rice and curd mattum, bisket kodukka koodadhu nu sonnaanga"],
+   ["12:04", "assistant", "Seri, vet sonnadha follow pannunga. Thanni nalla kudikka vaikkanum."],
+   ["12:07", "user", "aama. innaiku office kku leave potten"],
+   ["12:08", "assistant", "Nalla decision, Simba kooda irukkalam."],
+   ["12:11", "user", "ok, medicine time aachu poren"],
+   ["12:12", "assistant", "Sari, take care."]
+  ]},
+  {"date": "2026-10-13", "messages": [
+   ["19:00", "user", "Simba full recover aayitaan. kaalaila 2 km odinom"],
+   ["19:01", "assistant", "Super! Romba nimmadhi. Appetite normal ah?"],
+   ["19:03", "user", "aama, innaiku chicken ah kuduthen, romba aasai ah saapitaan"],
+   ["19:04", "assistant", "Konjam konjama kudunga, ottu ketu poiduradhu."],
+   ["19:07", "user", "sari, thanks Aira"],
+   ["19:08", "assistant", "Welcome Aravind!"]
+  ]},
+  {"date": "2026-10-20", "messages": [
+   ["21:00", "user", "innaiku friends oda padam paathen, Simba veetla thaniya irundhaan"],
+   ["21:01", "assistant", "Padam epdi irundhuchu?"],
+   ["21:03", "user", "mokkai pa, aana popcorn nalla irundhuchu"],
+   ["21:04", "assistant", "Haha! Simba edhaachum kadichi vachiruparaa?"],
+   ["21:06", "user", "aama, oru cushion ah kizhichi vachitaan"],
+   ["21:07", "assistant", "Lab ah vachu ellam sagichukanum."]
+  ]},
+  {"date": "2026-10-28", "messages": [
+   ["20:00", "user", "Aira, nethu mazhai la Simba kooda nanainjen"],
+   ["20:01", "assistant", "Haha, Simba ku mazhai pidikkumaa?"],
+   ["20:03", "user", "romba pidikkum, thanni la vilaiyadinaan"],
+   ["20:04", "assistant", "Nalla jolly. Neenga fever illamal irukeengala?"],
+   ["20:07", "user", "illa pa, sari, saapadu time. bye"],
+   ["20:08", "assistant", "Bye Aravind!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-05-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "en naai peru enna? marandhutten pa", "expect": "Says the dog is named Simba", "any": ["Simba", "சிம்பா"], "none": []},
+  {"id": "ta-en-05-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "vet enna advice sonnaanga nyabagam irukka, avanuku saapadu pathi?", "expect": "Says rice and curd only, no biscuits, medicine for 5 days", "any": ["rice", "curd", "thayir", "sadham", "bisket", "biscuit"], "none": []},
+  {"id": "ta-en-05-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "Simba ku enna aachu appo? edhachum health issue irundhucha?", "expect": "Says Simba had a stomach infection / vomiting and recovered", "any": ["stomach", "infection", "vomit", "sick"], "none": []},
+  {"id": "ta-en-05-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "en naai enna breed? vet peru enna?", "expect": "Says Labrador and Dr. Lakshmi", "any": ["Labrador", "Lab", "Lakshmi", "லட்சுமி"], "none": []},
+  {"id": "ta-en-05-p5", "kind": "false", "at": "2026-11-09T10:20", "ask": "en poonai peru enna sollu", "expect": "Says it doesn't know / wasn't told about a cat; invents no name", "any": [], "none": []},
+  {"id": "ta-en-05-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "vet clinic enga irukku nu sonnen?", "expect": "Says Pet Care clinic in Anna Nagar", "any": ["Anna Nagar", "Pet Care", "அண்ணா நகர்"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-05-s1", "query": "Simba saapdama dull ah irundhan, appo naan enna panninen", "day": "2026-10-07", "any": ["Simba", "vomit"]},
+  {"id": "ta-en-05-s2", "query": "doctor injection potu medicine sonnadhu", "day": "2026-10-08", "any": ["Lakshmi", "injection"]},
+  {"id": "ta-en-05-s3", "query": "shoe kadicha kutti naughty pathi pesinen la", "day": "2026-10-03", "any": ["chappal", "shoe"]}
+ ]
+}

@@ -7,6 +7,7 @@ Remembered facts (Level 2 memory) are readable here only for characters in priva
 """
 import asyncio
 import logging
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -221,7 +222,7 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     if engine_switched:
         # The new engine relearns from each person's latest messages; the old engine's facts stay
-        # until forget-me or a manual delete (spec §3.7).
+        # until forget-me or a manual delete.
         await store.reset_watermarks(tenant_id, str(companion_id))
     return row
 
@@ -393,3 +394,32 @@ async def delete_person_fact(companion_id: UUID, fact_id: UUID, external_user_id
     if not await memory.forget_fact(tenant_id, str(companion_id), external_user_id, str(fact_id)):
         raise HTTPException(status_code=404, detail="Fact not found")
     logger.info("companion %s: owner deleted one remembered fact", companion_id)
+
+
+@router.get("/{companion_id}/people/{external_user_id}/diary")
+async def list_person_diary(companion_id: UUID, external_user_id: str = ExternalUserId,
+                            ctx: dict = Depends(require_companions_manage)):
+    """The Diary tab (privacy mode A only): "earlier today" plus one line per past day."""
+    tenant_id = ctx["tenant_id"]
+    await _readable_character(tenant_id, companion_id)
+    return await memory.list_diary(tenant_id, str(companion_id), external_user_id)
+
+
+@router.delete("/{companion_id}/people/{external_user_id}/diary/{day}", status_code=204)
+async def delete_person_diary_day(companion_id: UUID, day: date, external_user_id: str = ExternalUserId,
+                                  ctx: dict = Depends(require_companions_manage)):
+    tenant_id = ctx["tenant_id"]
+    await _readable_character(tenant_id, companion_id)
+    if not await memory.forget_diary_day(tenant_id, str(companion_id), external_user_id, day.isoformat()):
+        raise HTTPException(status_code=404, detail="Diary line not found")
+    logger.info("companion %s: owner deleted one diary line", companion_id)
+
+
+@router.delete("/{companion_id}/people/{external_user_id}/recap", status_code=204)
+async def delete_person_recap(companion_id: UUID, external_user_id: str = ExternalUserId,
+                              ctx: dict = Depends(require_companions_manage)):
+    tenant_id = ctx["tenant_id"]
+    await _readable_character(tenant_id, companion_id)
+    if not await memory.forget_recap(tenant_id, str(companion_id), external_user_id):
+        raise HTTPException(status_code=404, detail="Nothing from today to delete")
+    logger.info("companion %s: owner deleted the earlier-today note", companion_id)

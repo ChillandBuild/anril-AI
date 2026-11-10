@@ -4090,6 +4090,12 @@ export interface CompanionMemoryFact {
 
 export type CompanionMemoryScope = "character" | "business";
 
+/** The Diary tab: the "earlier today" note and one line per past day (newest first). */
+export interface CompanionDiary {
+  today: { day: string | null; text: string } | null;
+  days: { day: string; text: string }[];
+}
+
 export interface CompanionOverview {
   characters: number;
   live_characters: number;
@@ -4191,6 +4197,14 @@ export const companionsApi = {
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
       `${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory`,
     ),
+  personDiary: (id: string, externalUserId: string) =>
+    apiFetch<CompanionDiary>(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/diary`),
+  deleteDiaryDay: (id: string, externalUserId: string, day: string) =>
+    apiFetchNoContent(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/diary/${day}`, {
+      method: "DELETE",
+    }),
+  deleteRecap: (id: string, externalUserId: string) =>
+    apiFetchNoContent(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/recap`, { method: "DELETE" }),
   requests: (params: { kind?: CompanionRequestKind | ""; status?: "ok" | "error" | ""; days?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.kind) query.set("kind", params.kind);

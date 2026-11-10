@@ -2,11 +2,13 @@
 Level 2 = facts about the person, kept by an engine behind this same protocol: 'card' (ours,
 memory_card.py) or 'mem0' (memory_mem0.py, later). Facts are written by the every-minute sweep
 (memory_sweep.py), never on the reply path, so record_turn stays a no-op for every engine."""
+from datetime import date, timedelta
 from typing import Protocol
 
 
 class MemoryProvider(Protocol):
-    async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str) -> str: ...
+    async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str,
+                          *, companion: dict | None = None, person: dict | None = None) -> str: ...
     async def record_turn(self, tenant_id: str, companion_id: str, end_user_id: str,
                           user_msg: str, reply: str) -> None: ...
     async def forget(self, tenant_id: str, end_user_id: str) -> None: ...
@@ -15,7 +17,8 @@ class MemoryProvider(Protocol):
 class Level1History:
     """Level 1: no extra memory beyond the last 10 messages, so every hook is a no-op."""
 
-    async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str) -> str:
+    async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str,
+                          *, companion: dict | None = None, person: dict | None = None) -> str:
         return ""
 
     async def record_turn(self, tenant_id: str, companion_id: str, end_user_id: str,
@@ -42,7 +45,7 @@ def forget_providers() -> list[MemoryProvider]:
     return [MemoryCard()]
 
 
-# --- seeing and forgetting facts (spec §3.6). Card engine only until Mem0 lands. ----------------
+# --- seeing and forgetting facts. Card engine only until Mem0 lands. ----------------
 
 async def _owner_visible(tenant_id: str, companion_id: str, end_user_id: str) -> tuple[list[dict], dict]:
     """What the BUSINESS may see through this character: the facts it can see under the current
@@ -87,6 +90,76 @@ async def forget_fact(tenant_id: str, companion_id: str, external_user_id: str, 
     if not person:
         return False
     facts, _ = await _owner_visible(tenant_id, companion_id, person["id"])
-    if fact_id not in {str(f["id"]) for f in facts}:
+    fact = next((f for f in facts if str(f["id"]) == fact_id), None)
+    if fact is None:
         return False
-    return await store.delete_fact(tenant_id, fact_id)
+    if not await store.delete_fact(tenant_id, fact_id):
+        return False
+    from app.companion import memory_search
+    await memory_search.drop_facts(tenant_id, person["id"], [fact_id])  # its own search piece, always
+    _forget_everywhere(tenant_id, companion_id, person["id"], fact["text"])
+    return True
+
+
+async def list_diary(tenant_id: str, companion_id: str, external_user_id: str) -> dict:
+    """The owner's Diary tab: this character's "earlier today" note and its diary lines about the
+    person (newest first, the 90 days kept). Empty for an unknown person or a Level 1 character."""
+    from app.companion import store
+    from app.companion.memory_sweep import DIARY_KEEP
+
+    person = await store.find_end_user(tenant_id, external_user_id)
+    if not person:
+        return {"today": None, "days": []}
+    since = (date.today() - DIARY_KEEP - timedelta(days=1)).isoformat()
+    recap = await store.get_recap(tenant_id, companion_id, person["id"])
+    rows = await store.diary_since(tenant_id, companion_id, person["id"], since)
+    return {"today": {"day": recap["day"], "text": recap["text"]} if recap else None,
+            "days": [{"day": str(r["day"])[:10], "text": r["text"]} for r in rows]}
+
+
+async def forget_diary_day(tenant_id: str, companion_id: str, external_user_id: str, day: str) -> bool:
+    """The owner deletes one diary line; its search piece goes with it. False if there was none."""
+    from app.companion import store
+
+    person = await store.find_end_user(tenant_id, external_user_id)
+    if not person or not await store.delete_diary(tenant_id, companion_id, person["id"], day):
+        return False
+    await store.delete_chunks(tenant_id, person["id"], companion_id=companion_id, kind="diary", source_keys=[day])
+    return True
+
+
+async def forget_recap(tenant_id: str, companion_id: str, external_user_id: str) -> bool:
+    """The owner deletes the "earlier today" note. False if there was none."""
+    from app.companion import store
+
+    person = await store.find_end_user(tenant_id, external_user_id)
+    if not person or not await store.get_recap(tenant_id, companion_id, person["id"]):
+        return False
+    await store.clear_recap(tenant_id, companion_id, person["id"])
+    return True
+
+
+_cleanups: set = set()  # strong refs to running cleanups
+
+
+def _forget_everywhere(tenant_id: str, companion_id: str, end_user_id: str, text: str) -> None:
+    """The owner deleted a fact: the same 'forget that' cleanup runs in the background (search
+    pieces, diary lines, recaps). Never fails the delete."""
+    import asyncio
+    import logging
+
+    from app.companion import memory_forget
+
+    async def run():
+        try:
+            await memory_forget.forget_or_queue(tenant_id, companion_id, end_user_id, [text])
+        except Exception as exc:
+            logging.getLogger(__name__).warning("companion memory: owner forget cleanup failed (%s)",
+                                                type(exc).__name__)
+
+    try:
+        task = asyncio.get_running_loop().create_task(run())
+    except RuntimeError:
+        return
+    _cleanups.add(task)
+    task.add_done_callback(_cleanups.discard)

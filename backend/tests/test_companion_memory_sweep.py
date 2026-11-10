@@ -228,7 +228,7 @@ def test_forget_me_during_the_ai_call_writes_nothing(env, monkeypatch):
         return '[{"op":"add","section":"life","text":"interview at Zoho"}]'
     monkeypatch.setattr(memory_card.ai_reply, "_llm_chat", llm_while_forgetting)
     assert sweep() == {"forgotten": 1}
-    assert facts(env) == [] and env.db.rows("companion_memory_state") == []
+    assert facts(env) == [] and all(r.get("last_message_at") is None for r in env.db.rows("companion_memory_state"))
 
 
 def test_a_retried_batch_does_not_duplicate_facts(env):

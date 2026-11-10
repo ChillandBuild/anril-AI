@@ -2,15 +2,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { Lock, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { companionsApi, type ApiError, type CompanionMemoryFact, type CompanionPerson } from "@/lib/api";
+import {
+  companionsApi,
+  type ApiError,
+  type CompanionDiary,
+  type CompanionMemoryFact,
+  type CompanionPerson,
+} from "@/lib/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SECTION_LABEL, layoutMemoryGraph } from "@/components/agents/memoryGraph";
 import { BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
 
 /**
  * One person's memory for one character. Example: Karthik (48213) on
- * Jothidar AI: 4 facts as a list or a graph; delete one fact, or "Delete
- * this person" to wipe their chats and facts with every character.
+ * Jothidar AI: 4 facts as a list or a graph, and the Diary tab (the
+ * "earlier today" note plus one line per past day); delete one fact or
+ * diary line, or "Delete this person" to wipe their chats and memory with
+ * every character.
  */
 export function PersonMemory({
   characterId,
@@ -24,7 +32,7 @@ export function PersonMemory({
   const [facts, setFacts] = useState<CompanionMemoryFact[] | null>(null);
   const [error, setError] = useState("");
   const [privateReason, setPrivateReason] = useState("");
-  const [view, setView] = useState<"list" | "graph">("list");
+  const [view, setView] = useState<"list" | "diary" | "graph">("list");
   const [confirmForget, setConfirmForget] = useState(false);
   const [busy, setBusy] = useState(false);
   const name = person.display_name || person.external_user_id;
@@ -85,12 +93,10 @@ export function PersonMemory({
         </div>
       ) : facts === null && !error ? (
         <LoadingRows rows={3} />
-      ) : facts && facts.length === 0 ? (
-        <p className="text-sm text-ink-secondary">Nothing remembered about {name} yet.</p>
       ) : facts ? (
         <>
           <div role="tablist" aria-label="View" className="flex gap-1">
-            {(["list", "graph"] as const).map((v) => (
+            {(["list", "diary", "graph"] as const).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -103,7 +109,15 @@ export function PersonMemory({
               </button>
             ))}
           </div>
-          {view === "list" ? <FactList facts={facts} onDelete={deleteFact} /> : <FactGraph name={name} facts={facts} />}
+          {view === "diary" ? (
+            <DiaryView characterId={characterId} externalUserId={person.external_user_id} name={name} />
+          ) : facts.length === 0 ? (
+            <p className="text-sm text-ink-secondary">No facts remembered about {name} yet.</p>
+          ) : view === "list" ? (
+            <FactList facts={facts} onDelete={deleteFact} />
+          ) : (
+            <FactGraph name={name} facts={facts} />
+          )}
         </>
       ) : null}
 
@@ -142,6 +156,133 @@ function FactList({ facts, onDelete }: { facts: CompanionMemoryFact[]; onDelete:
         </li>
       ))}
     </ul>
+  );
+}
+
+/** "2026-11-09" → "9 Nov 2026", read as a calendar day (never shifted by the viewer's timezone). */
+function dayLabel(day: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day ?? "");
+  if (!m) return "—";
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// The diary job clears the note within an hour of the person's midnight; until then it is yesterday's.
+function recapLabel(day: string | null): string {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return !day || day === today ? "Earlier today" : `So far on ${dayLabel(day)}`;
+}
+
+type DiaryTarget = { kind: "today" } | { kind: "day"; day: string };
+
+/** The character's own diary about this person: what it re-reads before each reply. */
+function DiaryView({ characterId, externalUserId, name }: { characterId: string; externalUserId: string; name: string }) {
+  const [diary, setDiary] = useState<CompanionDiary | null>(null);
+  const [error, setError] = useState("");
+  const [target, setTarget] = useState<DiaryTarget | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    setError("");
+    setDiary(null);
+    companionsApi
+      .personDiary(characterId, externalUserId)
+      .then(setDiary)
+      .catch((e: ApiError) => setError(e.message || "Could not load the diary."));
+  }, [characterId, externalUserId]);
+  useEffect(load, [load]);
+
+  const remove = async () => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      if (target.kind === "today") {
+        await companionsApi.deleteRecap(characterId, externalUserId);
+        setDiary((d) => (d ? { ...d, today: null } : d));
+      } else {
+        await companionsApi.deleteDiaryDay(characterId, externalUserId, target.day);
+        setDiary((d) => (d ? { ...d, days: d.days.filter((x) => x.day !== target.day) } : d));
+      }
+      setTarget(null);
+    } catch (e) {
+      setError((e as Error).message || "Could not delete it.");
+      setTarget(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (error) return <ErrorNote message={error} onRetry={load} />;
+  if (!diary) return <LoadingRows rows={3} />;
+  if (!diary.today && diary.days.length === 0) {
+    return (
+      <p className="text-sm text-ink-secondary">
+        No diary about {name} yet. A line is written after each day with at least 3 messages from them.
+      </p>
+    );
+  }
+  return (
+    <>
+      <ul className="divide-y divide-border-subtle">
+        {diary.today && (
+          <DiaryRow
+            label={recapLabel(diary.today.day)}
+            text={diary.today.text}
+            multiline
+            onDelete={() => setTarget({ kind: "today" })}
+            deleteLabel="Delete the note from earlier today"
+          />
+        )}
+        {diary.days.map((d) => (
+          <DiaryRow
+            key={d.day}
+            label={dayLabel(d.day)}
+            text={d.text}
+            onDelete={() => setTarget({ kind: "day", day: d.day })}
+            deleteLabel={`Delete the diary line for ${dayLabel(d.day)}`}
+          />
+        ))}
+      </ul>
+      <ConfirmModal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        onConfirm={remove}
+        tone="danger"
+        title={target?.kind === "today" ? "Delete the note from earlier today?" : `Delete the line for ${target?.kind === "day" ? dayLabel(target.day) : ""}?`}
+        description={`The character won't see it again before replying to ${name}. The chat messages themselves stay. It can't be undone.`}
+        confirmLabel="Delete"
+        loading={busy}
+        loadingLabel="Deleting…"
+      />
+    </>
+  );
+}
+
+function DiaryRow({
+  label,
+  text,
+  multiline = false,
+  onDelete,
+  deleteLabel,
+}: {
+  label: string;
+  text: string;
+  multiline?: boolean;
+  onDelete: () => void;
+  deleteLabel: string;
+}) {
+  return (
+    <li className="flex items-start gap-3 py-2.5">
+      <span className="mt-0.5 w-24 shrink-0 text-xs font-medium text-ink-muted">{label}</span>
+      <p className={cn("min-w-0 flex-1 text-sm text-ink", multiline && "whitespace-pre-line")}>{text}</p>
+      <button type="button" onClick={onDelete} aria-label={deleteLabel} className="rounded-lg p-1.5 text-ink-muted hover:bg-danger/5 hover:text-danger">
+        <Trash2 size={14} aria-hidden="true" />
+      </button>
+    </li>
   );
 }
 

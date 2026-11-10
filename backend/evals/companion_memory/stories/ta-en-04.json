@@ -1,0 +1,74 @@
+{
+ "id": "ta-en-04", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Tamilselvi", "theme": "moving city (changed fact)",
+ "days": [
+  {"date": "2026-10-01", "messages": [
+   ["20:00", "user", "Hi Aira, naan Madurai la dhaan irukken, amma appa kooda. Inniku office la romba velai"],
+   ["20:01", "assistant", "Hi Tamilselvi! Madurai la irundhu velai paakureenga. Enna velai nu sollunga?"],
+   ["20:04", "user", "oru bank la clerk dhaan. Meenakshi amman kovil pakkathula dhaan veedu"],
+   ["20:05", "assistant", "Kovil pakkathula veedu na romba nalla area."],
+   ["20:08", "user", "aama, kaalaila kovil mani satham ketkum. jigarthanda kudikka poren ipo"],
+   ["20:09", "assistant", "Madurai jigarthanda! Nalla choice."],
+   ["20:11", "user", "haha aama, romba chill ah irukku"],
+   ["20:12", "assistant", "Enjoy pannunga!"]
+  ]},
+  {"date": "2026-10-04", "messages": [
+   ["19:30", "user", "innaiku mazhai pa, bus eruga mudiyala"],
+   ["19:31", "assistant", "Mazhai la bus pidikkaradhu kashtam dhaan. Eppadi veetuku vandheenga?"],
+   ["19:34", "user", "auto pidichen, 150 rupees. romba costly"],
+   ["19:35", "assistant", "Aiyo, mazhai nerathula auto rate varum."],
+   ["19:38", "user", "saapadu ku parotta salna, ammavoda kai pakkuvam"],
+   ["19:39", "assistant", "Ammavoda saapadu na super."],
+   ["19:41", "user", "aama good night"],
+   ["19:42", "assistant", "Good night Tamilselvi!"]
+  ]},
+  {"date": "2026-10-10", "messages": [
+   ["21:00", "user", "Aira, bank transfer aagiduchu, Chennai branch ku poganum, next month"],
+   ["21:01", "assistant", "Wow, Chennai ku transfer ah? Ungaluku sandhosham ah, bayama?"],
+   ["21:04", "user", "rendume. Madurai vittu poga manasu illa, aana promotion um irukku"],
+   ["21:05", "assistant", "Mixed feelings dhaan. Adhu normal."],
+   ["21:08", "user", "ammavum appavum ipo Madurai la dhaan irupaanga"],
+   ["21:09", "assistant", "Sari, weekends la visit pannalaam."],
+   ["21:12", "user", "aama pa, saapadu saapden poren"],
+   ["21:13", "assistant", "Sari, take care."]
+  ]},
+  {"date": "2026-10-18", "messages": [
+   ["18:30", "user", "veedu paathen, Velachery la. oru PG maadhiri dhaan"],
+   ["18:31", "assistant", "Velachery nalla area, metro um irukku."],
+   ["18:34", "user", "aama, 12000 rent. rmba high ah irukku"],
+   ["18:35", "assistant", "Chennai la rent high dhaan, konjam negotiate pannalaam."],
+   ["18:38", "user", "paakalam. ipo saapadu paakren"],
+   ["18:39", "assistant", "Sari, enjoy!"]
+  ]},
+  {"date": "2026-10-25", "messages": [
+   ["20:10", "user", "Aira, naan Chennai ku vandhuten! Velachery la dhaan stay panren ipo"],
+   ["20:11", "assistant", "Welcome to Chennai Tamilselvi! Veedu set aagiducha?"],
+   ["20:14", "user", "konjam konjama. amma kudutha mixie vandhuruku, but gas connection innum varala"],
+   ["20:15", "assistant", "Seekiram sariyagidum. Saapadu epdi?"],
+   ["20:18", "user", "hotel la dhaan saapadu. Madurai saapadu mari illa"],
+   ["20:19", "assistant", "Hotel saapadu konjam kashtam dhaan."],
+   ["20:22", "user", "aama miss panren. sari neram aachu, good night"],
+   ["20:23", "assistant", "Good night, take care!"]
+  ]},
+  {"date": "2026-11-02", "messages": [
+   ["19:50", "user", "Chennai la office new team romba nalla irukanga"],
+   ["19:51", "assistant", "Super Tamilselvi! Settle aaguringala?"],
+   ["19:54", "user", "aama, innaiku lunch ku ellarum sernthu saapdom"],
+   ["19:55", "assistant", "Nalla start. Friends aagidum."],
+   ["19:58", "user", "ok ok, nalaiku kaalaila naalu manikku train irukku, bye"],
+   ["19:59", "assistant", "Bye, rest edunga."]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-04-p1", "kind": "changed", "at": "2026-11-09T10:00", "ask": "ipo naan enga stay panren?", "expect": "Says Chennai (Velachery), not Madurai, as the current city", "any": ["Chennai", "Velachery", "சென்னை"], "none": []},
+  {"id": "ta-en-04-p2", "kind": "changed", "at": "2026-11-09T10:05", "ask": "naan enga irundhu vandhen? munnadi enga irundhen?", "expect": "Says previously lived in Madurai", "any": ["Madurai", "மதுரை"], "none": []},
+  {"id": "ta-en-04-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "enna velai panren nu sonnen? edhu la?", "expect": "Says works at a bank as a clerk", "any": ["bank", "Bank", "clerk"], "none": []},
+  {"id": "ta-en-04-p4", "kind": "recall", "at": "2026-11-09T10:15", "ask": "amma appa ipo enga irukaanga?", "expect": "Says parents are still in Madurai", "any": ["Madurai", "மதுரை"], "none": []},
+  {"id": "ta-en-04-p5", "kind": "false", "at": "2026-11-09T10:20", "ask": "en thangachi peru enna nyabagam irukka?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
+  {"id": "ta-en-04-p6", "kind": "changed", "at": "2026-11-10T08:30", "ask": "naan ipo edhu area la irukken? veedu rent evlo?", "expect": "Says Velachery in Chennai, rent 12000", "any": ["Velachery", "12000", "12,000"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-04-s1", "query": "kovil mani satham ketkura veedu pathi sonnen la", "day": "2026-10-01", "any": ["Meenakshi", "kovil"]},
+  {"id": "ta-en-04-s2", "query": "transfer varudhu nu manasu kashtama irundhadhu, appo enna sonnen", "day": "2026-10-10", "any": ["transfer", "promotion"]},
+  {"id": "ta-en-04-s3", "query": "mazhai la auto pidichu romba selavu aanadhu", "day": "2026-10-04", "any": ["auto", "150"]}
+ ]
+}

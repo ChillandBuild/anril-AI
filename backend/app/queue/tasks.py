@@ -1,4 +1,4 @@
-"""The 27 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 28 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -33,6 +33,7 @@ RETRY_CLASS: dict[str, str] = {
     "call-alert-summary": "C",
     "brain-weekly-digest": "C",
     "companion-memory": "A",
+    "companion-diary": "A",
 }
 
 
@@ -247,10 +248,28 @@ def brain_weekly_digest(timestamp: int) -> None:
 @queue_app.periodic(cron="30 20 * * *", periodic_id="companion-memory")  # 02:00 IST
 @queue_app.task(name="companion-memory", **_one_at_a_time("companion-memory"), queue="companion")
 async def companion_memory(timestamp: int) -> None:
-    """Aira Companion Level 2 memory card: turns the day's chat messages into facts, nightly
-    (spec 2026-11-09 §3.2). Locked so a long night (up to 500 pairs) never runs twice at once."""
+    """Aira Companion Level 2 memory card: turns the day's chat messages into facts, nightly.
+    Locked so a long night (up to 500 pairs) never runs twice at once. Diary lines: companion-diary."""
     from app.companion.memory_sweep import run_memory_sweep
     await run_memory_sweep()
+
+
+@queue_app.periodic(cron="5 * * * *", periodic_id="companion-diary")  # hourly, :05
+@queue_app.task(name="companion-diary", **_one_at_a_time("companion-diary"), queue="companion")
+async def companion_diary(timestamp: int) -> None:
+    """Aira Companion Level 2: one diary line per finished local day of each person (their own
+    timezone), retried hourly when an AI call fails; also fills search vectors that failed earlier."""
+    from app.companion.memory_sweep import run_diary_job
+    await run_diary_job()
+
+
+@queue_app.task(name="companion-search-backfill", **_one_at_a_time("companion-search-backfill"),
+                queue="companion")
+async def companion_search_backfill() -> None:
+    """One-time (defer by hand after migration 256): indexes old chat history for long-term memory
+    search. Stops after 50 minutes; defer again until its log shows left=0."""
+    from app.companion.memory_sweep import run_search_backfill
+    await run_search_backfill()
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="rescue-stalled")

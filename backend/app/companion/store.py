@@ -101,12 +101,16 @@ def _parse_ts(value: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-async def find_or_create_end_user(tenant_id: str, external_user_id: str, display_name: str | None = None) -> dict:
-    """One row per person per business. first_seen_at / forgotten_at are never sent, so they survive."""
+async def find_or_create_end_user(tenant_id: str, external_user_id: str, display_name: str | None = None,
+                                  timezone_name: str | None = None) -> dict:
+    """One row per person per business. first_seen_at / forgotten_at are never sent, so they survive.
+    timezone_name (an IANA zone the API already validated) is saved when the app sends one."""
     payload = {"tenant_id": tenant_id, "external_user_id": external_user_id, "last_seen_at": _now()}
     name = (display_name or "").strip()[:100]
     if name:
         payload["display_name"] = name
+    if timezone_name:
+        payload["timezone"] = timezone_name
 
     def _q():
         return (
@@ -642,8 +646,8 @@ async def reset_watermarks(tenant_id: str, companion_id: str) -> None:
 
 
 async def forget_memory(tenant_id: str, end_user_id: str) -> None:
-    """'Forget me' for the card engine: every fact, diary line and watermark (with its recap) of
-    this person, all characters."""
+    """'Forget me' for the card engine: every fact, diary line, search piece and watermark (with its
+    recap) of this person, all characters."""
     def _q():
         db = get_supabase()
         (db.table("companion_memory_facts").delete()
@@ -651,6 +655,8 @@ async def forget_memory(tenant_id: str, end_user_id: str) -> None:
         (db.table("companion_memory_diary").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
         (db.table("companion_memory_state").delete()
+         .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
+        (db.table("companion_memory_chunks").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
     await asyncio.to_thread(_q)
 
@@ -754,7 +760,7 @@ async def level2_companions() -> list[dict]:
     def _q():
         return (
             get_supabase().table("companions")
-            .select("id, tenant_id, language, memory_level, memory_engine")
+            .select("id, tenant_id, language, memory_level, memory_engine, timezone, history_messages")
             .eq("memory_level", 2).order("created_at").execute().data
         )
     return await asyncio.to_thread(_q) or []
@@ -767,6 +773,14 @@ async def memory_states(tenant_id: str, companion_id: str) -> dict[str, tuple[st
         get_supabase().table("companion_memory_state").select("end_user_id, last_message_at, failures")
         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).order("end_user_id")))
     return {r["end_user_id"]: (r.get("last_message_at"), r.get("failures") or 0) for r in rows}
+
+
+async def memory_states_full(tenant_id: str, companion_id: str) -> list[dict]:
+    """Every state row of this character (paged past 1000 rows)."""
+    return await fetch_all_rows(lambda: (
+        get_supabase().table("companion_memory_state")
+        .select("end_user_id, last_message_at, updated_at, search_backfilled_at")
+        .eq("tenant_id", tenant_id).eq("companion_id", companion_id).order("end_user_id")))
 
 
 async def active_conversations(tenant_id: str, companion_id: str, since: str) -> list[dict]:
@@ -799,6 +813,209 @@ async def messages_after(tenant_id: str, companion_id: str, end_user_id: str, af
             return q.gt("created_at", after).order("created_at").limit(limit).execute().data
         return list(reversed(q.order("created_at", desc=True).limit(limit).execute().data or []))
     return await asyncio.to_thread(_q) or []
+
+
+# --- memory v2 (migration 256): pair state, claims, day context, search chunks ------------------
+
+async def get_state(tenant_id: str, companion_id: str, end_user_id: str) -> dict:
+    """The pair's companion_memory_state row ({} when there is none)."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_state").select("*")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else {}
+
+
+async def update_state(tenant_id: str, companion_id: str, end_user_id: str, fields: dict) -> None:
+    """Sets some columns of the pair's state row, creating the row when it is missing."""
+    row = {"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
+           **fields, "updated_at": _now()}
+
+    def _q():
+        (get_supabase().table("companion_memory_state")
+         .upsert(row, on_conflict="companion_id,end_user_id").execute())
+    await asyncio.to_thread(_q)
+
+
+async def claim_pair(tenant_id: str, companion_id: str, end_user_id: str, seconds: int) -> bool:
+    """One memory run per pair at a time, across every server process (claim_memory_pair)."""
+    def _q():
+        return get_supabase().rpc("claim_memory_pair", {
+            "p_tenant": tenant_id, "p_companion": companion_id, "p_end_user": end_user_id,
+            "p_seconds": seconds}).execute().data
+    return bool(await asyncio.to_thread(_q))
+
+
+async def release_pair(tenant_id: str, companion_id: str, end_user_id: str) -> None:
+    def _q():
+        (get_supabase().table("companion_memory_state").update({"busy_until": None})
+         .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id).execute())
+    await asyncio.to_thread(_q)
+
+
+async def day_context_rows(tenant_id: str, companion_id: str, end_user_id: str, before_day: str,
+                           days: int) -> dict:
+    """{"recap", "recap_day", "diary": [{"day", "text"}, newest first]} in one round trip."""
+    def _q():
+        return get_supabase().rpc("companion_day_context", {
+            "p_tenant": tenant_id, "p_companion": companion_id, "p_end_user": end_user_id,
+            "p_before_day": before_day, "p_days": days}).execute().data
+    return await asyncio.to_thread(_q) or {}
+
+
+async def person_timezone(tenant_id: str, end_user_id: str) -> str | None:
+    """The zone the person's app last sent (companion_end_users.timezone), or None."""
+    def _q():
+        return (
+            get_supabase().table("companion_end_users").select("timezone")
+            .eq("tenant_id", tenant_id).eq("id", end_user_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0].get("timezone") if rows else None
+
+
+async def messages_page(tenant_id: str, companion_id: str, end_user_id: str, start: str, end: str,
+                        limit: int) -> list[dict]:
+    """The first `limit` messages of this pair with start < created_at < end, oldest first.
+    Page on by passing the last message's created_at as the next `start`."""
+    def _q():
+        return (
+            get_supabase().table("companion_messages").select("id, role, content, created_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .gt("created_at", start).lt("created_at", end).order("created_at").limit(limit).execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def messages_before(tenant_id: str, companion_id: str, end_user_id: str, before: str,
+                          limit: int) -> list[dict]:
+    """The `limit` messages just before `before`, oldest first (the overlap of a search window)."""
+    def _q():
+        return (
+            get_supabase().table("companion_messages").select("id, role, content, created_at")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .lt("created_at", before).order("created_at", desc=True).limit(limit).execute().data
+        )
+    return list(reversed(await asyncio.to_thread(_q) or []))
+
+
+async def diary_since(tenant_id: str, companion_id: str, end_user_id: str, since_day: str) -> list[dict]:
+    """This pair's diary lines from `since_day` on, newest first."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_diary").select("day, text")
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .gte("day", since_day).order("day", desc=True).execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def person_diary(tenant_id: str, end_user_id: str, since_day: str) -> list[dict]:
+    """This person's diary lines with every character of the tenant from `since_day` on."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_diary").select("companion_id, day, text")
+            .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id)
+            .gte("day", since_day).order("day").execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def person_recaps(tenant_id: str, end_user_id: str) -> list[dict]:
+    """This person's "earlier today" recaps with every character of the tenant."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_state").select("companion_id, today_recap, recap_day")
+            .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute().data
+        )
+    return [r for r in (await asyncio.to_thread(_q) or []) if r.get("today_recap")]
+
+
+async def delete_diary(tenant_id: str, companion_id: str, end_user_id: str, day: str) -> bool:
+    def _q():
+        return (
+            get_supabase().table("companion_memory_diary").delete()
+            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+            .eq("day", day).execute().data
+        )
+    return bool(await asyncio.to_thread(_q))
+
+
+async def upsert_chunks(rows: list[dict]) -> None:
+    """Search pieces; a row with the same (character, person, kind, source_key) is replaced."""
+    if not rows:
+        return
+
+    def _q():
+        (get_supabase().table("companion_memory_chunks")
+         .upsert(rows, on_conflict="companion_id,end_user_id,kind,source_key").execute())
+    await asyncio.to_thread(_q)
+
+
+async def delete_chunks(tenant_id: str, end_user_id: str, *, companion_id: str | None = None,
+                        kind: str | None = None, source_keys: list[str] | None = None,
+                        ids: list[str] | None = None) -> None:
+    def _q():
+        q = (get_supabase().table("companion_memory_chunks").delete()
+             .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id))
+        if companion_id:
+            q = q.eq("companion_id", companion_id)
+        if kind:
+            q = q.eq("kind", kind)
+        if source_keys is not None:
+            q = q.in_("source_key", source_keys)
+        if ids is not None:
+            q = q.in_("id", ids)
+        q.execute()
+    if (source_keys is not None and not source_keys) or (ids is not None and not ids):
+        return
+    await asyncio.to_thread(_q)
+
+
+async def match_chunks(tenant_id: str, companion_ids: list[str], end_user_id: str,
+                       embedding: list[float] | None, query: str, count: int) -> list[dict]:
+    """match_memory_chunks: rows tagged source 'vector' or 'trigram' with their score."""
+    from app.services.embeddings import to_pgvector
+
+    def _q():
+        return get_supabase().rpc("match_memory_chunks", {
+            "p_tenant": tenant_id, "p_companions": companion_ids, "p_end_user": end_user_id,
+            "p_embedding": to_pgvector(embedding) if embedding else None, "p_query": query,
+            "p_count": count}).execute().data
+    return await asyncio.to_thread(_q) or []
+
+
+async def chunks_missing_embedding(tenant_id: str, limit: int) -> list[dict]:
+    """This business's search pieces whose embedding failed earlier, oldest first (the hourly job
+    fills them in with the business's own key)."""
+    def _q():
+        return (
+            get_supabase().table("companion_memory_chunks").select("id, tenant_id, text")
+            .eq("tenant_id", tenant_id).is_("embedding", "null").order("created_at").limit(limit).execute().data
+        )
+    return await asyncio.to_thread(_q) or []
+
+
+async def set_chunk_embedding(tenant_id: str, chunk_id: str, embedding: list[float]) -> None:
+    from app.services.embeddings import to_pgvector
+
+    def _q():
+        (get_supabase().table("companion_memory_chunks").update({"embedding": to_pgvector(embedding)})
+         .eq("tenant_id", tenant_id).eq("id", chunk_id).execute())
+    await asyncio.to_thread(_q)
+
+
+async def get_fact(tenant_id: str, fact_id: str) -> dict | None:
+    def _q():
+        return (
+            get_supabase().table("companion_memory_facts").select("*")
+            .eq("tenant_id", tenant_id).eq("id", fact_id).limit(1).execute().data
+        )
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
 
 
 # --- chat API secret keys (migration 250). Only the SHA-256 of a key is ever stored. -------------
@@ -889,3 +1106,47 @@ async def companion_tenant(companion_id: str) -> str | None:
         )
     rows = await asyncio.to_thread(_q)
     return rows[0]["tenant_id"] if rows else None
+
+
+# --- "forget that": compare-and-set rewrites and the retry queue (migration 256) -------------------
+
+async def replace_diary_if(tenant_id: str, companion_id: str, end_user_id: str, day: str, old: str,
+                           new: str | None) -> bool:
+    """Rewrites (or deletes, new=None) one diary line only if it still reads `old`, so a line the
+    diary job rewrote meanwhile is never overwritten with a stale copy. True if a row changed."""
+    def _q():
+        q = get_supabase().table("companion_memory_diary")
+        q = q.update({"text": new, "updated_at": _now()}) if new else q.delete()
+        return (q.eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+                .eq("day", day).eq("text", old).execute().data)
+    return bool(await asyncio.to_thread(_q))
+
+
+async def replace_recap_if(tenant_id: str, companion_id: str, end_user_id: str, old: str,
+                           new: str | None) -> bool:
+    """Rewrites (or clears, new=None) the "earlier today" note only if it still reads `old`."""
+    fields = {"today_recap": new, "updated_at": _now()} if new else {
+        "today_recap": None, "recap_day": None, "recap_through": None, "updated_at": _now()}
+
+    def _q():
+        return (get_supabase().table("companion_memory_state").update(fields)
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+                .eq("today_recap", old).execute().data)
+    return bool(await asyncio.to_thread(_q))
+
+
+async def queue_forget(tenant_id: str, companion_id: str, end_user_id: str, items: list[str],
+                       tries: int) -> None:
+    """A "forget that" cleanup that failed: the hourly job tries it again. The items are kept only
+    until the cleanup succeeds (or gives up); forget-me deletes the whole state row."""
+    await update_state(tenant_id, companion_id, end_user_id,
+                       {"forget_pending": {"items": items[:10], "tries": tries}})
+
+
+async def pending_forgets(tenant_id: str) -> list[dict]:
+    """This business's pairs with a "forget that" cleanup waiting."""
+    def _q():
+        return (get_supabase().table("companion_memory_state")
+                .select("companion_id, end_user_id, forget_pending")
+                .eq("tenant_id", tenant_id).not_.is_("forget_pending", "null").limit(200).execute().data)
+    return await asyncio.to_thread(_q) or []

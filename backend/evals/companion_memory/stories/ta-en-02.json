@@ -1,0 +1,72 @@
+{
+ "id": "ta-en-02", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Meenakshi", "theme": "exam",
+ "days": [
+  {"date": "2026-10-06", "messages": [
+   ["07:30", "user", "Aira good morning, innaiku 2 manikku Operating Systems exam, bayama irukku"],
+   ["07:31", "assistant", "Good morning Meenakshi! Operating Systems exam ah. Ethanai chapters padichirukeenga?"],
+   ["07:34", "user", "4 units padichen, aana deadlock unit rmba confusing ah iruku"],
+   ["07:35", "assistant", "Deadlock ku banker's algorithm oru dhadava paathukalam, short ah."],
+   ["07:38", "user", "sari paakren. amma pongal pannirukanga breakfast ku"],
+   ["07:39", "assistant", "Pongal ah! Sambar um irukka?"],
+   ["07:41", "user", "aama sambar vadai um. romba nalla irukku"],
+   ["07:42", "assistant", "Enjoy pannunga, nalla saapdunga."],
+   ["09:15", "user", "hostel friend Janani call pannina, avalum bayandhu irukka"],
+   ["09:16", "assistant", "Rendu perum ore nerathula tension. Konjam sirichu pesunga, kammi aagum."],
+   ["09:20", "user", "aama, avlo jokes sonna. ipo konjam better"],
+   ["09:21", "assistant", "Nalladhu! Konjam revision pannitu relax aagunga."],
+   ["12:10", "user", "lunch saapten, sambar rice. ipo veliya mazhai varra mathiri irukku"],
+   ["12:11", "assistant", "Umbrella eduthuttu poganum, exam hall ku."],
+   ["12:15", "user", "sari pa, bye"],
+   ["12:16", "assistant", "Bye Meenakshi, all the best!"],
+   ["19:45", "user", "dinner ku chapathi kurma. tv la oru comedy padam paakren"],
+   ["19:46", "assistant", "Nalla time pass, enjoy pannunga."]
+  ]},
+  {"date": "2026-10-07", "messages": [
+   ["10:00", "user", "Aira, nethu exam konjam kashtama irundhuchu. 3 questions marandhutten"],
+   ["10:01", "assistant", "Aiyo, paravala Meenakshi. Mudinja varaikkum nalla ezhudhi irupeenga."],
+   ["10:04", "user", "result 10 naal la varum nu sir sonnanga"],
+   ["10:05", "assistant", "Ok, wait pannalam. Adhukulla next subject la focus pannunga."],
+   ["10:08", "user", "aama, ipo thookam varudhu"],
+   ["10:09", "assistant", "Nalla rest edunga."]
+  ]},
+  {"date": "2026-10-12", "messages": [
+   ["18:00", "user", "inniku friends oda beach ku poyirundhom, Marina"],
+   ["18:01", "assistant", "Nalla plan! Sundal saapteengala?"],
+   ["18:03", "user", "aama sundal, ice cream rmba saapten"],
+   ["18:04", "assistant", "Enjoy! Alai paathu relax ah irundheengala?"],
+   ["18:07", "user", "aama pa, romba nalla irundhuchu"],
+   ["18:08", "assistant", "Super Meenakshi."]
+  ]},
+  {"date": "2026-10-16", "messages": [
+   ["13:00", "user", "Aira OS exam result vandhuduchu! 82 marks"],
+   ["13:01", "assistant", "Super Meenakshi, 82 romba nalla mark. Congratulations!"],
+   ["13:03", "user", "naan 60 dhaan expect pannen. deadlock question ku full marks"],
+   ["13:04", "assistant", "Hard work payan koduthuduchu. Banker's algorithm help pannuchu pola."],
+   ["13:07", "user", "aama haha. ipo treat ku friends kooptu iruken"],
+   ["13:08", "assistant", "Treat ku enna plan? Pizza ah?"],
+   ["13:10", "user", "no pa, parotta salna kadai"],
+   ["13:11", "assistant", "Haha, local favourite!"]
+  ]},
+  {"date": "2026-10-24", "messages": [
+   ["20:00", "user", "padam paakalama nu yosikiren. edhaachum recommend pannu"],
+   ["20:01", "assistant", "Light ah comedy paakalama? Illa thriller ah?"],
+   ["20:03", "user", "comedy dhaan, romba stress ah irukku lab record vera"],
+   ["20:04", "assistant", "Sari, comedy paaththutu naalaiku record ezhudhalam."],
+   ["20:06", "user", "ok ok. good night"],
+   ["20:07", "assistant", "Good night Meenakshi!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-02-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "naan edhu subject exam ezhudhinen nyabagam irukka?", "expect": "Says Operating Systems", "any": ["Operating Systems", "OS", "operating system"], "none": []},
+  {"id": "ta-en-02-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "en result la evlo mark vandhuchu nu sonnen?", "expect": "Says 82 marks", "any": ["82"], "none": []},
+  {"id": "ta-en-02-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "andha exam la edhu unit kashtam nu sonnen?", "expect": "Says the deadlock unit", "any": ["deadlock", "Deadlock", "டெட்லாக்"], "none": []},
+  {"id": "ta-en-02-p4", "kind": "false", "at": "2026-11-09T10:15", "ask": "en appa enna velai pannraanga nu sonnen?", "expect": "Says it doesn't know / wasn't told; invents no job", "any": [], "none": []},
+  {"id": "ta-en-02-p5", "kind": "same_day", "at": "2026-10-06T21:00", "ask": "ok ah pochu nu nenaikiren pa, innaiku", "expect": "Recalls the 2 pm Operating Systems exam mentioned earlier today", "any": ["Operating Systems", "OS", "exam"], "none": []},
+  {"id": "ta-en-02-p6", "kind": "recall", "at": "2026-11-10T08:00", "ask": "en hostel friend peru enna? exam ku munna phone panninaanga la", "expect": "Says Janani", "any": ["Janani", "ஜனனி"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-02-s1", "query": "Marina beach pona naal pathi sollu", "day": "2026-10-12", "any": ["Marina", "beach"]},
+  {"id": "ta-en-02-s2", "query": "marks epdi vandhuchu, treat enga poneno", "day": "2026-10-16", "any": ["82", "treat"]},
+  {"id": "ta-en-02-s3", "query": "Janani kooda pesinadhu, bayam kammi aanadhu epdi?", "day": "2026-10-06", "any": ["Janani"]}
+ ]
+}

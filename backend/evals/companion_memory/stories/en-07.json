@@ -1,0 +1,83 @@
+{
+ "id": "en-07", "language": "en", "timezone": "Asia/Kolkata", "person": "Meenakshi Raman",
+ "theme": "festival",
+ "days": [
+  {"date": "2026-10-06", "messages": [
+   ["19:00", "user", "hi aira, diwali is on 8th november this year!"],
+   ["19:00", "assistant", "Hi Meenakshi! That's about a month away. Excited?"],
+   ["19:02", "user", "so excited. this year everyone is coming to our house in Chennai. appa wants a big celebration"],
+   ["19:03", "assistant", "A full house, lovely. Who all are coming?"],
+   ["19:05", "user", "my Paati from Madurai and cousin Kavya, they will stay for 4 days from 5th nov"],
+   ["19:06", "assistant", "Paati and Kavya for four days. You'll have a lot of chatting and eating."],
+   ["19:08", "user", "yes!! Kavya and i will do rangoli together like every year"],
+   ["19:09", "assistant", "Rangoli duo. Any colour theme?"],
+   ["19:11", "user", "not decided. maybe peacock design. i will watch youtube videos"],
+   ["19:12", "assistant", "A peacock rangoli will look stunning."]
+  ]},
+  {"date": "2026-10-14", "messages": [
+   ["20:30", "user", "aira i am dead tired. went to T Nagar for diwali shopping with amma"],
+   ["20:31", "assistant", "T Nagar before Diwali must be crazy. Did you get what you wanted?"],
+   ["20:33", "user", "got a green pattu pavadai for me and a mustard kurta for appa. Pothys was so crowded"],
+   ["20:34", "assistant", "Green pattu and a mustard kurta, nice colours. How much time did it take?"],
+   ["20:36", "user", "5 hours! amma wanted to check every single saree even though she was not buying"],
+   ["20:37", "assistant", "Ha, saree browsing is its own sport."],
+   ["20:39", "user", "true. we had filter coffee at Saravana Bhavan after. needed it badly"],
+   ["20:40", "assistant", "You earned that coffee."],
+   ["20:42", "user", "yes. going to sleep, feet are hurting"],
+   ["20:43", "assistant", "Rest well, tomorrow's another day."]
+  ]},
+  {"date": "2026-10-21", "messages": [
+   ["18:15", "user", "snack planning day with amma. we are making murukku, adhirasam and rava laddu"],
+   ["18:16", "assistant", "That's a proper Diwali menu. Who makes what?"],
+   ["18:18", "user", "amma does adhirasam, i do the murukku. my murukku always breaks lol"],
+   ["18:19", "assistant", "Maybe the dough needs a bit more rice flour. Try pressing slower."],
+   ["18:21", "user", "ok will try. also appa says only green crackers, no loud ones because the neighbour has a baby"],
+   ["18:22", "assistant", "That's considerate. Sparklers and flower pots are still fun."],
+   ["18:24", "user", "yes we bought phuljhari and chakra only"],
+   ["18:25", "assistant", "A calm, pretty Diwali then."]
+  ]},
+  {"date": "2026-10-30", "messages": [
+   ["21:00", "user", "update: Paati is arriving on 5th evening by train, Kavya with her parents by car"],
+   ["21:01", "assistant", "Do you need to arrange anything for the pickup?"],
+   ["21:03", "user", "appa will go to Egmore station. i am cleaning the guest room"],
+   ["21:04", "assistant", "Good division of labour."],
+   ["21:06", "user", "yes. also exams just finished today so i am free now!"],
+   ["21:07", "assistant", "Congratulations on finishing exams. Time to celebrate."],
+   ["21:09", "user", "going to watch Amaran again with friends tomorrow"],
+   ["21:10", "assistant", "Great movie night. Enjoy."]
+  ]},
+  {"date": "2026-11-06", "messages": [
+   ["22:00", "user", "Paati and Kavya reached. house is so noisy and i love it"],
+   ["22:01", "assistant", "That sounds wonderful. What did you all eat tonight?"],
+   ["22:03", "user", "idiyappam and kurma. Paati scolded me for being thin lol"],
+   ["22:04", "assistant", "Paati's love language is food and scolding."],
+   ["22:06", "user", "true. kavya and i started the rangoli base for sunday"],
+   ["22:07", "assistant", "Which design did you finalize?"],
+   ["22:09", "user", "the peacock one yes"],
+   ["22:10", "assistant", "It's going to look great."]
+  ]},
+  {"date": "2026-11-08", "messages": [
+   ["22:30", "user", "diwali done. such a good day"],
+   ["22:30", "assistant", "Happy Diwali, Meenakshi! How did it go?"],
+   ["22:32", "user", "oil bath at 4am, new dress, rangoli came out nice, everyone said so"],
+   ["22:33", "assistant", "Perfect. Did the murukku survive?"],
+   ["22:35", "user", "lol half of them broke but still tasted good"],
+   ["22:36", "assistant", "Broken murukku tastes the same."],
+   ["22:38", "user", "paati gave me 500 rupees as diwali gift. i am rich"],
+   ["22:39", "assistant", "Spend wisely, millionaire."]
+  ]}
+ ],
+ "probes": [
+  {"id": "en-07-p1", "kind": "recall", "at": "2026-11-09T09:00", "ask": "who all came to stay with us for the festival?", "expect": "Says Paati and cousin Kavya", "any": ["Paati", "Kavya"], "none": []},
+  {"id": "en-07-p2", "kind": "recall", "at": "2026-11-09T09:05", "ask": "which shop did we go to for clothes?", "expect": "Says Pothys in T Nagar", "any": ["Pothys", "T Nagar"], "none": []},
+  {"id": "en-07-p3", "kind": "recall", "at": "2026-11-09T09:10", "ask": "what sweets and snacks did we plan to make?", "expect": "Mentions murukku, adhirasam and/or rava laddu", "any": ["murukku", "adhirasam", "laddu"], "none": []},
+  {"id": "en-07-p4", "kind": "recall", "at": "2026-11-09T09:15", "ask": "what did appa say about crackers?", "expect": "Says only green or quiet crackers because the neighbour has a baby", "any": ["green", "baby", "loud"], "none": []},
+  {"id": "en-07-p5", "kind": "recall", "at": "2026-11-09T09:20", "ask": "which rangoli design did kavya and i go for?", "expect": "Says the peacock design", "any": ["peacock"], "none": []},
+  {"id": "en-07-p6", "kind": "false", "at": "2026-11-09T09:25", "ask": "what's my sister's name again?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []}
+ ],
+ "search": [
+  {"id": "en-07-s1", "query": "where did amma and I go for new clothes", "day": "2026-10-14", "any": ["T Nagar", "Pothys"]},
+  {"id": "en-07-s2", "query": "which fried snack of mine always breaks", "day": "2026-10-21", "any": ["murukku"]},
+  {"id": "en-07-s3", "query": "when is the grandmother's train coming", "day": "2026-10-30", "any": ["Paati", "5th", "Egmore"]}
+ ]
+}

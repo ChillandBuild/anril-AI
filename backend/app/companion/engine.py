@@ -128,11 +128,12 @@ async def _take_slot(companion_id: str) -> asyncio.Semaphore:
 async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
-    model: str | None = None, use_memory: bool = True,
+    model: str | None = None, use_memory: bool = True, timezone_name: str | None = None,
 ) -> CompanionReply:
     """model and use_memory are for the dashboard Playground only; the public API never sets them.
     use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
-    nothing saved. It shows how the character answers a stranger."""
+    nothing saved. It shows how the character answers a stranger.
+    timezone_name: the person's IANA zone from their app (validated by the API), saved on the person."""
     tools = tools or []
     app_tools.validate_tools(tools)
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
@@ -141,7 +142,7 @@ async def reply(
         if not use_memory:
             return await _reply_without_memory(companion, tenant_id, message, model)
         return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools,
-                            model)
+                            model, timezone_name)
     finally:
         sem.release()
 
@@ -186,9 +187,11 @@ async def _knowledge(tenant_id: str, message: str, tag_id: str | None) -> str:
         return ""
 
 
-async def _memory(provider, tenant_id: str, companion_id: str, end_user_id: str, message: str) -> str:
+async def _memory(provider, tenant_id: str, companion: dict, person: dict, message: str) -> str:
+    companion_id = companion["id"]
     try:
-        return await provider.context_for(tenant_id, companion_id, end_user_id, message) or ""
+        return await provider.context_for(tenant_id, companion_id, person["id"], message,
+                                          companion=companion, person=person) or ""
     except Exception as exc:
         logger.warning("companion %s: memory lookup failed (%s)", companion_id, type(exc).__name__)
         return ""
@@ -218,10 +221,11 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
 
 
 async def _reply(companion: dict, provider: str, tenant_id: str, external_user_id: str, message: str,
-                 display_name: str | None, tools: list[AppTool], model: str | None = None) -> CompanionReply:
+                 display_name: str | None, tools: list[AppTool], model: str | None = None,
+                 timezone_name: str | None = None) -> CompanionReply:
     started = time.monotonic()
     companion_id = companion["id"]
-    person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name)
+    person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name)
     conversation = await store.open_conversation(
         tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm")
     memory = _provider(companion)
@@ -229,7 +233,7 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     # History is read before this message is saved, so the prompt doesn't carry it twice.
     kb_context, memory_context, history = await asyncio.gather(
         _knowledge(tenant_id, message, companion.get("knowledge_tag_id")),
-        _memory(memory, tenant_id, companion_id, person["id"], message),
+        _memory(memory, tenant_id, companion, person, message),
         store.recent_messages(tenant_id, companion_id, person["id"],
                              limit=companion.get("history_messages") or HISTORY_LIMIT),
     )
@@ -316,7 +320,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     except Exception as exc:
         logger.warning("companion %s: memory record failed (%s)", companion_id, type(exc).__name__)
     try:
-        memory_refresh.schedule(companion, conversation["end_user_id"])  # background; Level 2 only
+        memory_refresh.schedule(companion, conversation["end_user_id"], user_message)  # background; Level 2 only
     except Exception as exc:
         logger.warning("companion %s: memory refresh not scheduled (%s)", companion_id, type(exc).__name__)
 

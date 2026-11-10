@@ -1,0 +1,80 @@
+{
+ "id": "ta-en-01", "language": "ta-en", "timezone": "Asia/Kolkata", "person": "Saravanan", "theme": "job interview",
+ "days": [
+  {"date": "2026-10-02", "messages": [
+   ["08:10", "user", "good morning Aira! innaiku 3 manikku Zoho interview iruku, romba nervous ah irukku"],
+   ["08:11", "assistant", "Good morning Saravanan! Zoho interview ah, super. Nervous aagradhu normal dhaan. Epdi prepare panni irukkeenga?"],
+   ["08:13", "user", "nethu night full ah DSA problems solve panninen, aana thookam sariya illa"],
+   ["08:14", "assistant", "Paravala, one day la ellam yeduthukka mudiyadhu. Lighta breakfast saapdunga, brain ku help aagum."],
+   ["08:20", "user", "amma idli sambar pannirukanga, saapten. mazhai veliya pozhiyudhu pa"],
+   ["08:21", "assistant", "Mazhai nerathula idli sambar na best combo! Chennai la mazhai romba vandhirukka?"],
+   ["08:25", "user", "aama rathri full ah peiyudhu, road la thanni nikkudhu"],
+   ["08:26", "assistant", "Careful ah poga venum pola. Bus la ah poreenga?"],
+   ["10:40", "user", "bore adikudhu, ipo dhaan resume ah oru dhadava paathen"],
+   ["10:41", "assistant", "Nalladhu. Resume la ulla projects pathi pesa ready ah irunga, adhu dhaan avanga kekkuvanga."],
+   ["13:05", "user", "lunch ku curd rice saapten, light ah irukkattum nu"],
+   ["13:06", "assistant", "Nalla decision. Konjam walk pannunga, mind calm aagum."],
+   ["19:30", "user", "Aira, dinner ku dosa. appuram Sun TV la serial paakren"],
+   ["19:31", "assistant", "Enjoy pannunga! Serial la ipo enna nadakudhu?"],
+   ["19:35", "user", "oru mami romba sandai podranga, comedy ah irukku"],
+   ["19:36", "assistant", "Haha, nalla time pass. Rest edunga Saravanan."]
+  ]},
+  {"date": "2026-10-03", "messages": [
+   ["09:00", "user", "Aira, nethu interview nalla pochu. Taramani office la dhaan, Associate Software Developer role"],
+   ["09:01", "assistant", "Super Saravanan! Evlo nalla pochu nu sollunga, enna kettanga?"],
+   ["09:04", "user", "oru coding round, appuram two technical rounds. HR 10 naal la result solluvanga nu sonnaanga"],
+   ["09:05", "assistant", "Paravala, 10 naal wait pannanum. Adhukulla relax ah irunga."],
+   ["09:08", "user", "aama pa. ipo mazhai nindhuduchu, veliya poi tea kudikka poren"],
+   ["09:09", "assistant", "Poitu vaanga, tea ku shop la bun um saapdunga!"],
+   ["18:20", "user", "evening cricket match paathen, India jeichuduchu"],
+   ["18:21", "assistant", "Nalla news! Ungaluku sema mood irukkum."]
+  ]},
+  {"date": "2026-10-05", "messages": [
+   ["12:30", "user", "innaiku lunch ku biryani vaangi vandhen, Anjappar la"],
+   ["12:31", "assistant", "Biryani na enna spl. Chicken ah mutton ah?"],
+   ["12:33", "user", "chicken dhaan, rmba spicy ah irundhuchu"],
+   ["12:34", "assistant", "Spicy biryani ku thayir pachadi thevai. Thanni nalla kudinga."],
+   ["12:40", "user", "sari pa, thookam varudhu. nap poren"],
+   ["12:41", "assistant", "Nalla rest edunga Saravanan!"]
+  ]},
+  {"date": "2026-10-09", "messages": [
+   ["21:00", "user", "Aira innaiku friend oda oru padam paathen, theatre la"],
+   ["21:01", "assistant", "Nalla irundhucha padam? Enna genre?"],
+   ["21:03", "user", "action thriller, climax semma. aana interval la popcorn romba costly"],
+   ["21:04", "assistant", "Theatre popcorn pricing oru dhani level dhaan."],
+   ["21:06", "user", "sari nalla thookam varudhu, good night"],
+   ["21:07", "assistant", "Good night Saravanan, sweet dreams!"]
+  ]},
+  {"date": "2026-10-14", "messages": [
+   ["11:00", "user", "Aira!! Zoho la irundhu mail vandhuchu, naan select aayiten!"],
+   ["11:01", "assistant", "Vaaazhthukkal Saravanan! Romba periya vishayam, congratulations!"],
+   ["11:03", "user", "offer letter attach panni irukkanga. December 2 join pannanum"],
+   ["11:04", "assistant", "Super da. Family kitta sollitingala?"],
+   ["11:06", "user", "ippo dhaan amma kitta sonnen, kanneer vittanga happy ah"],
+   ["11:07", "assistant", "Aww, nalla moment. Neenga kasthappattadhuku payan kidaichuduchu."],
+   ["11:10", "user", "inniku saayangalam sweet vaangi sapdanum"],
+   ["11:11", "assistant", "Kandippa! Celebration ku jangri ah gulab jamun ah?"]
+  ]},
+  {"date": "2026-10-20", "messages": [
+   ["20:15", "user", "romba naal aachu pesi, bore adikudhu"],
+   ["20:16", "assistant", "Hi Saravanan! Enna panreenga ippo?"],
+   ["20:18", "user", "oru course paakren, Docker nu. adhu rmba confusing ah irukku"],
+   ["20:19", "assistant", "Docker first la confusing dhaan, containers pathi simple ah puriya vechuralaam."],
+   ["20:21", "user", "okay, naalaiku paakalam. ipo saapadu time"],
+   ["20:22", "assistant", "Sari, saapadu mudichitu vaanga!"]
+  ]}
+ ],
+ "probes": [
+  {"id": "ta-en-01-p1", "kind": "recall", "at": "2026-11-09T10:00", "ask": "Aira, naan edhu company la interview ku poitu vandhen nu nyabagam irukka?", "expect": "Says the interview was at Zoho", "any": ["Zoho", "சோஹோ"], "none": []},
+  {"id": "ta-en-01-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "en job la epo join pannanum nu sonnen? marandhuten", "expect": "Says joining date is December 2", "any": ["December 2", "Dec 2", "2nd December", "2 December", "டிசம்பர் 2"], "none": []},
+  {"id": "ta-en-01-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "andha interview office enga irukku, edhu area nu theriyuma?", "expect": "Says the office is in Taramani, Chennai", "any": ["Taramani", "Tharamani", "தரமணி", "Chennai"], "none": []},
+  {"id": "ta-en-01-p4", "kind": "false", "at": "2026-11-09T10:15", "ask": "en akka peru enna nyabagam irukka?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
+  {"id": "ta-en-01-p5", "kind": "same_day", "at": "2026-10-02T22:00", "ask": "ok ah pochu nu nenaikiren, innaiku", "expect": "Recalls the 3 pm Zoho interview mentioned earlier today", "any": ["Zoho", "interview"], "none": []},
+  {"id": "ta-en-01-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "en role enna nu sonnen interview ku?", "expect": "Says Associate Software Developer", "any": ["Associate Software Developer", "Software Developer", "developer"], "none": []}
+ ],
+ "search": [
+  {"id": "ta-en-01-s1", "query": "Zoho pathi naan enna sonnen nu marandhuten", "day": "2026-10-03", "any": ["Zoho"]},
+  {"id": "ta-en-01-s2", "query": "mundhaiku nervous ah irundhen la appo edhuku nervous?", "day": "2026-10-02", "any": ["interview"]},
+  {"id": "ta-en-01-s3", "query": "result eppo varum nu HR solliruvanga nu sonnen la", "day": "2026-10-03", "any": ["10 naal", "HR"]}
+ ]
+}
