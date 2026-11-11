@@ -576,7 +576,9 @@ first review that has already been applied.
 - **Prove the real Bulk9 calls.** Run one real Add Entity (name + ID only, no `screenshot_links`) for a tenant with a key; if Bulk9 refuses, Add Entity needs proof files back. Then a first real send once a template is approved and the account has credit. Only reads (wallet, template/sender lists) are proven live (2026-11-04).
 - **Browser QA not done** for the 2026-11-04 SMS pages (Dashboard, Send SMS steps + pinned preview, Delivery Reports, Address Book Send SMS buttons, inline forms).
 - **Check sticky side effects** of `ClientLayout` `overflow-x-clip`: Call Review header (`sticky top-14`) and Subscriptions cart bar (`sticky bottom-0`) may now actually pin.
-- **No contact-id audience:** Address Book contacts outside any group reach Send SMS only as pasted numbers (no names for {#var#}).
+- **No contact-id audience:** Address Book contacts outside any group reach Send SMS only as typed numbers, so their saved names don't fill {#var#}; the user has to type values per number ("Type for each number", 2026-11-12).
+- **Browser QA not done for the Type numbers table** (2026-11-12): layout, Excel paste in a real browser, red-cell marking. Option discussed but not decided: hide Phone for typed numbers.
+- **WhatsApp OTP (proposed 2026-11-12, not started):** one Anril OTP API (WhatsApp, SMS, or WhatsApp-then-SMS) with Anril-made hashed codes, attempt limits and one history. Needs the interview first (who calls it, fallback rules, limits); touches API keys → security review.
 - `frontend/lib/brand-guard.test.ts` still fails on `LeadsClient.tsx` (`#25D366`).
 
 ### Research notes (2026-10-22/23, before the build)

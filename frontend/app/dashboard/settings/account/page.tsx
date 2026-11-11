@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Crown, Lock, UserCircle } from "lucide-react";
+import { Building2, Crown, Lock, MapPin, Receipt, UserCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api, BusinessProfile } from "@/lib/api";
 import { PasskeySettings } from "@/app/dashboard/profile/PasskeySettings";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
-import { SaveButton, SaveStatus, SectionFooter, SettingsAccordion, SettingsSection, SwitchPill } from "../SettingsSection";
+import {
+  Fact,
+  Facts,
+  SaveButton,
+  SaveStatus,
+  SectionFooter,
+  SettingsAccordion,
+  SettingsSection,
+  SummaryHint,
+  SwitchPill,
+} from "../SettingsSection";
 import { useSettingsForm } from "../SettingsFormContext";
 import ChangePasswordCard from "../ChangePasswordCard";
 import { AiraLoader } from "@/components/AiraLoader";
@@ -94,7 +104,7 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <SettingsAccordion defaultOpenId="profile">
+    <SettingsAccordion>
 
       <SettingsSection
         id="profile"
@@ -102,6 +112,13 @@ export default function AccountSettingsPage() {
         accent="violet"
         title="Your profile"
         description="Who's signed in, and since when."
+        summary={
+          <Facts>
+            <Fact icon={UserCircle}>{fullName}</Fact>
+            {email && <Fact>{email}</Fact>}
+            {tenantName && <Fact icon={Building2}>{tenantName}</Fact>}
+          </Facts>
+        }
       >
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--primary-950)] to-primary text-sm font-bold text-white shadow-md shadow-primary/20">
@@ -155,6 +172,20 @@ export default function AccountSettingsPage() {
           title="Business details"
           description="Your legal name, address and GSTIN, used on the monthly export for your auditor."
           dirty={isDirty}
+          summary={
+            isLoading ? undefined : profile.legal_name.trim() ? (
+              <Facts>
+                <Fact icon={Building2}>{profile.legal_name}</Fact>
+                {profile.city.trim() && <Fact icon={MapPin}>{profile.city}</Fact>}
+                <Fact icon={Receipt} mono={!!profile.gstin}>
+                  {profile.gstin ? `GSTIN ${profile.gstin}` : "No GSTIN"}
+                </Fact>
+                <Fact>{profile.prices_include_gst ? "Prices include GST" : "GST added at checkout"}</Fact>
+              </Facts>
+            ) : (
+              <SummaryHint>Not filled in yet. Your auditor&apos;s monthly export uses these details.</SummaryHint>
+            )
+          }
         >
           {isLoading ? (
             <AiraLoader inline className="min-h-[120px]" />

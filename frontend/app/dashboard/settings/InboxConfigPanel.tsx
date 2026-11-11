@@ -1,9 +1,20 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { Inbox } from "lucide-react";
+import { Inbox, MessagesSquare, UserCheck, Zap } from "lucide-react";
+import { toast } from "sonner";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { SaveButton, SaveStatus, SectionFooter, SectionLoadGate, SettingsSection, type SectionLoadState } from "./SettingsSection";
-import { CheckField, TickMark } from "@/components/ui/controls";
+import {
+  Fact,
+  Facts,
+  SaveButton,
+  SaveStatus,
+  SectionFooter,
+  SectionLoadGate,
+  SettingsSection,
+  SummaryHint,
+  type SectionLoadState,
+} from "./SettingsSection";
+import { CheckField, SwitchPill, TickMark } from "@/components/ui/controls";
 
 type InboxConfig = {
   enabled: boolean;
@@ -65,6 +76,35 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
   useEffect(() => { load(); }, [load]);
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
+  const [toggling, setToggling] = useState(false);
+
+  /** The header switch saves right away: the saved config with only `enabled` changed. */
+  async function quickToggle(on: boolean) {
+    if (!canManage || loadState !== "ready") return;
+    setToggling(true);
+    try {
+      const auth = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/settings/inbox-config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ ...config, enabled: on }),
+      });
+      if (!res.ok) throw new Error(`Couldn't turn inbox escalation ${on ? "on" : "off"}`);
+      const saved: InboxConfig = await res.json();
+      setConfig(saved);
+      setDraft((d) => ({ ...d, enabled: saved.enabled }));
+      toast.success(`Inbox escalation turned ${on ? "on" : "off"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save");
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  const activeTriggers = Object.entries(TRIGGER_LABELS).filter(([k, t]) => t.always || config.triggers.includes(k)).length;
+  const channelNames = Object.entries(CHANNEL_LABELS)
+    .filter(([ch]) => config.channels.includes(ch))
+    .map(([, label]) => label);
 
   async function handleSave() {
     if (!canManage || loadState !== "ready") return;
@@ -94,20 +134,43 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
       accent="violet"
       title="Inbox Escalation"
       description="Configure when AI escalates leads to the omnichannel inbox for human follow-up."
-      status={loadState === "ready" ? { label: draft.enabled ? "Enabled" : "Disabled", tone: draft.enabled ? "on" : "off" } : undefined}
+      status={loadState === "ready" ? { label: config.enabled ? "Enabled" : "Disabled", tone: config.enabled ? "on" : "off" } : undefined}
       dirty={isDirty}
+      headerAction={
+        loadState === "ready" ? (
+          <SwitchPill
+            on={config.enabled}
+            size="sm"
+            loading={toggling}
+            disabled={!canManage}
+            aria-label="Inbox escalation on or off"
+            onChange={quickToggle}
+          />
+        ) : undefined
+      }
+      summary={
+        loadState !== "ready" ? undefined : config.enabled ? (
+          <Facts>
+            <Fact icon={Zap}>
+              {activeTriggers} of {Object.keys(TRIGGER_LABELS).length} triggers
+            </Fact>
+            <Fact icon={MessagesSquare}>{channelNames.length ? channelNames.join(" · ") : "No channels"}</Fact>
+            <Fact icon={UserCheck}>{config.auto_assign_enabled ? "Auto-assign on" : "Auto-assign off"}</Fact>
+          </Facts>
+        ) : (
+          <SummaryHint>Off. No handovers are created automatically.</SummaryHint>
+        )
+      }
     >
       <SectionLoadGate state={loadState} onRetry={load}>
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Master toggles */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <CheckField
-              checked={draft.enabled}
-              disabled={!canManage}
-              onChange={(v) => setDraft({ ...draft, enabled: v })}
-              label="Enable Inbox Escalation"
-              description="Master switch — off means no handovers are created automatically"
-            />
+          {!config.enabled && (
+            <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
+              Escalation is off, so no handovers are created automatically. Turn it on with the switch above.
+            </p>
+          )}
+          <div>
             <CheckField
               checked={draft.auto_assign_enabled}
               disabled={!canManage}
@@ -163,7 +226,7 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
 
         </div>
 
-        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={draft.enabled ? "Escalation is live" : "Escalation is off"} />}>
+        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={config.enabled ? "Escalation is live" : "Escalation is off"} />}>
           <SaveButton state={saveState} dirty={isDirty} disabled={!canManage} onClick={handleSave} />
         </SectionFooter>
       </SectionLoadGate>

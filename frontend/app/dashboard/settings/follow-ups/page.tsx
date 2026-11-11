@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowRight,
   Bell,
@@ -16,8 +17,11 @@ import {
 import { useSettingsForm } from "../SettingsFormContext";
 import { parseSilenceDelays } from "../parseSilenceDelays";
 import {
+  Fact,
+  Facts,
   SaveButton,
   SaveStatus,
+  SummaryHint,
   SectionFooter,
   SettingsAccordion,
   SettingsSection,
@@ -77,7 +81,7 @@ function formatTime12h(timeStr: string): string {
 }
 
 export default function FollowUpsSettingsPage() {
-  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave } =
+  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave, saveValues } =
     useSettingsForm();
 
   const stored = (key: string) => {
@@ -85,7 +89,26 @@ export default function FollowUpsSettingsPage() {
     return !s || s === "Not set" ? SILENCE_NUDGE_DEFAULTS[key] : s;
   };
   const value = (key: string) => drafts[key] ?? stored(key);
-  const enabled = value(SILENCE_NUDGE_KEYS.enabled) === "true";
+  // On/off is the card's header switch, which saves right away, so it always
+  // reads the saved value. The summary shows saved timing too.
+  const enabled = stored(SILENCE_NUDGE_KEYS.enabled) === "true";
+  const savedReminders = stored(SILENCE_NUDGE_KEYS.delays)
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const [toggling, setToggling] = useState(false);
+
+  async function toggle(next: boolean) {
+    setToggling(true);
+    try {
+      await saveValues({ [SILENCE_NUDGE_KEYS.enabled]: next ? "true" : "false" });
+      toast.success(`Quiet-lead follow-ups turned ${next ? "on" : "off"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't turn follow-ups ${next ? "on" : "off"}`);
+    } finally {
+      setToggling(false);
+    }
+  }
   const dirty = Object.values(SILENCE_NUDGE_KEYS).some(
     (key) => drafts[key] !== undefined && drafts[key] !== stored(key)
   );
@@ -134,51 +157,39 @@ export default function FollowUpsSettingsPage() {
         description="After the AI answers, if the lead stays silent, send one short message about what they were discussing. Never sent while your team has taken over the chat, or during a paid consultation."
         status={{ label: enabled ? "On" : "Off", tone: enabled ? "on" : "off" }}
         dirty={dirty}
+        headerAction={
+          <SwitchPill
+            on={enabled}
+            size="sm"
+            loading={toggling}
+            disabled={!canManageSettings}
+            aria-label="Quiet-lead follow-ups on or off"
+            onChange={toggle}
+          />
+        }
+        summary={
+          enabled ? (
+            <Facts>
+              <Fact icon={Bell}>
+                {savedReminders.length === 1 ? "1 follow-up" : `${savedReminders.length} follow-ups`}:{" "}
+                {savedReminders.map(formatDuration).join(", ")}
+              </Fact>
+              <Fact icon={Shield}>Max {stored(SILENCE_NUDGE_KEYS.cap)} per lead a day</Fact>
+              <Fact icon={Moon}>
+                Quiet {formatTime12h(stored(SILENCE_NUDGE_KEYS.quietStart))}–{formatTime12h(stored(SILENCE_NUDGE_KEYS.quietEnd))} IST
+              </Fact>
+            </Facts>
+          ) : (
+            <SummaryHint>Off. No follow-up is sent when a lead goes quiet.</SummaryHint>
+          )
+        }
       >
         <div className="space-y-6">
-          {/* Master Enable Card */}
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-gradient-to-r from-surface-subtle via-white to-surface-subtle p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center gap-3.5">
-              <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                  enabled
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-surface-mid text-ink-muted"
-                }`}
-              >
-                <Zap className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display text-sm font-bold text-ink">
-                    Quiet-Lead Follow-up Automation
-                  </h3>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-wider ${
-                      enabled
-                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                        : "bg-stone-100 text-stone-600 ring-1 ring-stone-200"
-                    }`}
-                  >
-                    {enabled ? "Active" : "Paused"}
-                  </span>
-                </div>
-                <p className="mt-0.5 font-body text-xs text-ink-muted">
-                  Sends friendly, contextual follow-ups automatically if a customer stops responding.
-                </p>
-              </div>
-            </div>
-            <SwitchPill
-              on={enabled}
-              disabled={!canManageSettings}
-              onChange={(next) =>
-                setDrafts((d) => ({
-                  ...d,
-                  [SILENCE_NUDGE_KEYS.enabled]: next ? "true" : "false",
-                }))
-              }
-            />
-          </div>
+          {!enabled && (
+            <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
+              Follow-ups are off. Turn them on with the switch above to set the timing.
+            </p>
+          )}
 
           {enabled && (
             <div className="space-y-6">
@@ -552,7 +563,10 @@ export default function FollowUpsSettingsPage() {
               dirty={dirty && delaysValid && capValid}
               disabled={!canManageSettings}
               onClick={() =>
-                handleSave("automations_silence", Object.values(SILENCE_NUDGE_KEYS))
+                handleSave(
+                  "automations_silence",
+                  Object.values(SILENCE_NUDGE_KEYS).filter((k) => k !== SILENCE_NUDGE_KEYS.enabled)
+                )
               }
             />
           </SectionFooter>

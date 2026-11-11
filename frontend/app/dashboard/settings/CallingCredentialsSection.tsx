@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import { Phone, Eye, EyeOff } from "lucide-react";
+import { Phone, Eye, EyeOff, Hash, KeyRound } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { useSettingsForm, CLEAR_SECRET } from "./SettingsFormContext";
 import {
-  SaveButton, SaveStatus, SectionFooter, SettingsSection,
+  Fact, Facts, SaveButton, SaveStatus, SectionFooter, SettingsSection, SummaryHint,
 } from "./SettingsSection";
 
 // TeleCMI credentials for click-to-call telecalling. Lives on the Telecalling
@@ -139,6 +139,12 @@ export function CallingCredentialsSection() {
     return draft !== stored;
   });
   const secretMap = Object.fromEntries(VOICE_SECTION.fields.map(f => [f.key, f.secret]));
+  const shown = (key: string) => {
+    const v = settingFor(key)?.display_value;
+    return v && v !== "Not set" ? v : null;
+  };
+  const appId = shown("telecmi_app_id");
+  const callerId = shown("telecmi_callerid");
 
   return (
     <SettingsSection
@@ -149,6 +155,16 @@ export function CallingCredentialsSection() {
         description={VOICE_SECTION.description}
         status={{ label: voiceConfigured ? "Configured" : "Not configured", tone: voiceConfigured ? "on" : "warn" }}
         dirty={dirty}
+        summary={
+          voiceConfigured ? (
+            <Facts>
+              {appId && <Fact icon={KeyRound} mono>App ID {appId}</Fact>}
+              {callerId && <Fact icon={Hash} mono>Caller ID {callerId}</Fact>}
+            </Facts>
+          ) : (
+            <SummaryHint tone="warn">Add your App ID, App Secret and Caller ID to start calling.</SummaryHint>
+          )
+        }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {VOICE_SECTION.fields.map((field) => {

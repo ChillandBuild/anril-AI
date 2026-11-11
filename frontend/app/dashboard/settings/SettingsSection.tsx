@@ -216,7 +216,7 @@ export function SettingsSection({
   return (
     <section
       className={cn(
-        "group/section relative overflow-hidden rounded-2xl border bg-white transition-all duration-300 sm:rounded-3xl",
+        "group/section relative overflow-hidden rounded-2xl border bg-white transition-all duration-300",
         open
           ? "border-primary/20 shadow-[0_2px_4px_rgba(28,25,23,0.03),0_18px_40px_-24px_rgba(28,25,23,0.28)]"
           : "border-border/70 shadow-[0_1px_2px_rgba(28,25,23,0.03)] hover:border-border hover:shadow-[0_2px_4px_rgba(28,25,23,0.04),0_14px_32px_-24px_rgba(28,25,23,0.25)]"
@@ -234,7 +234,7 @@ export function SettingsSection({
 
       <div
         className={cn(
-          "flex w-full items-start gap-3 p-4 transition-colors duration-200 sm:gap-4 sm:p-6",
+          "flex w-full items-start gap-3 px-4 py-3 transition-colors duration-200 sm:px-5 sm:py-3.5",
           open ? "bg-white" : "hover:bg-surface-subtle/70"
         )}
       >
@@ -244,29 +244,29 @@ export function SettingsSection({
         aria-expanded={open}
         aria-controls={panelId}
         className={cn(
-          "-m-1.5 flex min-w-0 flex-1 items-start gap-3.5 rounded-xl p-1.5 text-left sm:gap-4",
+          "-m-1 flex min-w-0 flex-1 items-start gap-3 rounded-xl p-1 text-left",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         )}
       >
         <span
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1 transition-all duration-300 sm:h-11 sm:w-11",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 transition-all duration-300",
             a.tile,
             a.glow
           )}
         >
-          <Icon size={18} className={a.icon} strokeWidth={2} />
+          <Icon size={15} className={a.icon} strokeWidth={2} />
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <h2 className="font-display text-[0.9375rem] font-bold tracking-[-0.02em] text-ink sm:text-base">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="font-display text-sm font-bold tracking-[-0.015em] text-ink">
               {title}
             </h2>
             {status && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset",
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-px font-label text-[9.5px] font-bold uppercase tracking-wider ring-1 ring-inset",
                   STATUS_STYLES[status.tone]
                 )}
               >
@@ -284,7 +284,7 @@ export function SettingsSection({
               </span>
             )}
             {dirty && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-px font-label text-[9.5px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
                 Unsaved
               </span>
@@ -292,13 +292,13 @@ export function SettingsSection({
           </span>
           <span
             className={cn(
-              "mt-1 block max-w-2xl font-body text-[13px] leading-relaxed text-ink-secondary sm:text-sm",
-              !open && "line-clamp-2"
+              "mt-0.5 block max-w-2xl font-body text-[12.5px] leading-snug text-ink-secondary",
+              !open && "line-clamp-1"
             )}
           >
             {description}
           </span>
-          {summary && !open && <span className="mt-2.5 block">{summary}</span>}
+          {summary && !open && <span className="mt-2 block">{summary}</span>}
         </span>
       </button>
 
@@ -310,14 +310,14 @@ export function SettingsSection({
           aria-hidden
           onClick={onToggle}
           className={cn(
-            "mt-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-all duration-300",
+            "mt-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-all duration-300",
             open
               ? "border-primary/25 bg-primary-light text-primary"
               : "border-border/80 bg-surface-subtle text-ink-muted group-hover/section:border-primary/25 group-hover/section:text-primary"
           )}
         >
           <ChevronDown
-            size={16}
+            size={14}
             className={cn("transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]", open && "rotate-180")}
           />
         </span>
@@ -340,7 +340,7 @@ export function SettingsSection({
             open ? "visible opacity-100" : "invisible opacity-0"
           )}
         >
-          <div className="border-t border-border-subtle px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6">{children}</div>
+          <div className="border-t border-border-subtle px-4 py-4 sm:px-5 sm:py-5">{children}</div>
         </div>
       </div>
     </section>
@@ -360,7 +360,7 @@ export function SectionFooter({
   status?: React.ReactNode;
 }) {
   return (
-    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-5">
+    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
       <div className="min-h-[20px] flex items-center">{status}</div>
       {children}
     </div>
@@ -473,4 +473,57 @@ export function SectionLoadGate({
     );
   }
   return <>{children}</>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Collapsed-card summary
+ *
+ * Pass these as a section's `summary` so a closed card says what is set
+ * ("3 of 6 events", "After 5 min", the template name) without opening it.
+ * They render inside the header <button>, so they are spans only: no block
+ * elements, nothing interactive.
+ * ------------------------------------------------------------------ */
+
+export function Facts({ children }: { children: React.ReactNode }) {
+  return <span className="flex flex-wrap items-center gap-1">{children}</span>;
+}
+
+export function Fact({
+  icon: Icon,
+  mono = false,
+  children,
+}: {
+  icon?: LucideIcon;
+  mono?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border border-border-subtle bg-surface-subtle px-1.5 py-px text-[11px] text-ink-secondary",
+        mono ? "font-mono font-medium" : "font-body font-semibold"
+      )}
+    >
+      {Icon && <Icon size={11} className="shrink-0 text-ink-muted" />}
+      {children}
+    </span>
+  );
+}
+
+export function SummaryHint({ tone = "muted", children }: { tone?: "muted" | "warn"; children: React.ReactNode }) {
+  return (
+    <span className={cn("block font-body text-[11.5px]", tone === "warn" ? "font-semibold text-amber-700" : "text-ink-muted")}>
+      {children}
+    </span>
+  );
+}
+
+/** Divider label that groups cards on one page (e.g. by where an alert arrives). */
+export function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 px-1 pt-2 first:pt-0">
+      <span className="font-label text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">{children}</span>
+      <span aria-hidden className="h-px flex-1 bg-border-subtle" />
+    </div>
+  );
 }

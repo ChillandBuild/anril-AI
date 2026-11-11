@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FlaskConical, RefreshCw, Store } from "lucide-react";
+import { CheckCircle2, CircleDashed, FlaskConical, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, MarketplaceStatus, WabaTemplate, api, getAuthHeaders } from "@/lib/api";
-import { SettingsSection } from "../SettingsSection";
+import { Fact, Facts, SettingsSection } from "../SettingsSection";
 import { CopyButton, timeAgo } from "./ui";
 
 type ProviderId = "indiamart" | "justdial";
@@ -277,6 +277,24 @@ export default function MarketplaceLeadsSection({ canManage = true }: { canManag
       title="IndiaMART & JustDial"
       description="Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call list."
       status={status ? { label: connectedCount ? `${connectedCount} connected` : "Not connected", tone: connectedCount ? "on" : "warn" } : undefined}
+      summary={
+        status ? (
+          <Facts>
+            {PROVIDERS.map((p) => {
+              const st = status[p.id];
+              return st?.connected ? (
+                <Fact key={p.id} icon={CheckCircle2}>
+                  {p.label} · {st.leads_this_month} {st.leads_this_month === 1 ? "lead" : "leads"} this month
+                </Fact>
+              ) : (
+                <Fact key={p.id} icon={CircleDashed}>
+                  {p.label} · not connected
+                </Fact>
+              );
+            })}
+          </Facts>
+        ) : undefined
+      }
     >
       <div className="space-y-4">
         <WelcomeTemplatePicker canManage={canManage} />

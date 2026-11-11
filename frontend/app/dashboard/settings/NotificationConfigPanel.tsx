@@ -1,10 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Bell, Clock, FileText, MessageSquareText, Moon, Siren, Users, X } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api, NotificationConfig, Caller, WabaTemplate } from "@/lib/api";
 import {
+  Fact,
+  Facts,
+  GroupLabel,
+  SummaryHint,
   SaveButton,
   SaveStatus,
   SectionFooter,
@@ -196,6 +199,7 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
             on={cfg.push_enabled}
             loading={toggling.push}
             disabled={!canManage}
+            size="sm"
             aria-label="Push notifications on or off"
             onChange={(v) => quickToggle("push", v)}
           />
@@ -478,7 +482,7 @@ function WhatsAppAlertCard({
       {SEGMENTS.filter((s) => block.target_segments.includes(s)).map((s) => (
         <span
           key={s}
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold ${SEGMENT_STYLES[s]}`}
+          className={`inline-flex items-center rounded-full border px-1.5 py-px font-mono text-[10.5px] font-semibold ${SEGMENT_STYLES[s]}`}
         >
           {s} · {SEGMENT_LABELS[s]}
         </span>
@@ -531,6 +535,7 @@ function WhatsAppAlertCard({
           on={block.enabled}
           loading={toggling}
           disabled={!canManage}
+          size="sm"
           aria-label={switchLabel}
           onChange={onToggle}
         />
@@ -778,44 +783,6 @@ function PhoneRecipients({
         </p>
       )}
     </div>
-  );
-}
-
-/** Divider label that groups cards by where the alert arrives. */
-function GroupLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 px-1 pb-0.5 pt-3 first:pt-0">
-      <span className="font-label text-[11px] font-bold uppercase tracking-wider text-ink-muted">{children}</span>
-      <span aria-hidden className="h-px flex-1 bg-border-subtle" />
-    </div>
-  );
-}
-
-/* The collapsed-card summary renders inside the header <button>, so these
-   are spans only (no block elements, nothing interactive). */
-
-function Facts({ children }: { children: React.ReactNode }) {
-  return <span className="flex flex-wrap items-center gap-1.5">{children}</span>;
-}
-
-function Fact({ icon: Icon, mono = false, children }: { icon: LucideIcon; mono?: boolean; children: React.ReactNode }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-subtle px-2 py-0.5 text-xs text-ink-secondary ${
-        mono ? "font-mono font-medium" : "font-body font-semibold"
-      }`}
-    >
-      <Icon size={12} className="shrink-0 text-ink-muted" />
-      {children}
-    </span>
-  );
-}
-
-function SummaryHint({ tone = "muted", children }: { tone?: "muted" | "warn"; children: React.ReactNode }) {
-  return (
-    <span className={`block font-body text-xs ${tone === "warn" ? "font-semibold text-amber-700" : "text-ink-muted"}`}>
-      {children}
-    </span>
   );
 }
 
