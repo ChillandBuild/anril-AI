@@ -1,4 +1,4 @@
-"""The 28 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 30 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -34,6 +34,8 @@ RETRY_CLASS: dict[str, str] = {
     "brain-weekly-digest": "C",
     "companion-memory": "A",
     "companion-diary": "A",
+    "companion-kb-ingest": "A",
+    "companion-kb-learning": "A",
 }
 
 
@@ -270,6 +272,25 @@ async def companion_search_backfill() -> None:
     search. Stops after 50 minutes; defer again until its log shows left=0."""
     from app.companion.memory_sweep import run_search_backfill
     await run_search_backfill()
+
+
+@queue_app.periodic(cron="* * * * *", periodic_id="companion-kb-ingest")
+@queue_app.task(name="companion-kb-ingest", **_one_at_a_time("companion-kb-ingest"), queue="companion")
+async def companion_kb_ingest(timestamp: int) -> None:
+    """Anril Agents knowledge base: reads the next pages of every unfinished book, in a 45-second
+    time box (a 320-page scan takes many runs). Locked: one copy at a time, so a slow run never
+    piles up and at most one of the 4 worker slots is ever busy reading books."""
+    from app.companion.kb import ingest
+    await ingest.run_pending()
+
+
+@queue_app.periodic(cron="0 21 * * *", periodic_id="companion-kb-learning")  # 02:30 IST
+@queue_app.task(name="companion-kb-learning", **_one_at_a_time("companion-kb-learning"), queue="companion")
+async def companion_kb_learning(timestamp: int) -> None:
+    """Anril Agents knowledge base: turns the day's question log into learned shortcuts and the
+    owner's gap list, nightly, half an hour after the memory sweep."""
+    from app.companion.kb import learning
+    await learning.run_nightly()
 
 
 @queue_app.periodic(cron="* * * * *", periodic_id="rescue-stalled")

@@ -4024,6 +4024,10 @@ export interface Companion {
   language: string;
   rules: string[];
   knowledge_tag_id: string | null;
+  /** The collection of books this character reads (Anril Agents knowledge base). */
+  knowledge_collection_id?: string | null;
+  /** True: when no book covers the question, the character may answer from its own general knowledge and says it is its own reading. False: it says its material does not cover this. */
+  own_reasoning?: boolean;
   memory_level: 1 | 2;
   memory_engine: "card" | "mem0";
   history_messages: number;
@@ -4076,6 +4080,10 @@ export interface CompanionReply {
   message_id: string | null;
   /** The model that answered (test chat only). */
   model?: string | null;
+  /** Where the answer came from. Missing is the same as null. */
+  basis?: "primary" | "book" | "own" | "chat" | null;
+  /** The passages the answer relied on. Missing is the same as []. */
+  sources?: { document: string; page_from: number; page_to: number }[];
 }
 
 export interface CompanionMemoryFact {
@@ -4144,7 +4152,17 @@ export type CompanionRequestLog = {
 };
 
 export type CompanionSearchIn = "knowledge" | "memories";
-export type CompanionKnowledgeHit = { content: string; similarity: number | null; document_name: string | null };
+export type CompanionKnowledgeHit = {
+  document: string;
+  page_from: number;
+  page_to: number;
+  heading_path: string;
+  text: string;
+  /** 1 = the main resource, 2 = another book. */
+  tier: 1 | 2;
+  /** The judge's mark, a whole number from 0 to 3. */
+  score: number;
+};
 export type CompanionMemoryHit = {
   text: string;
   section: CompanionMemoryFact["section"];
@@ -4154,7 +4172,7 @@ export type CompanionMemoryHit = {
   display_name: string | null;
 };
 export type CompanionSearchResult =
-  | { in: "knowledge"; results: CompanionKnowledgeHit[] }
+  | { in: "knowledge"; results: CompanionKnowledgeHit[]; needs_docs: boolean }
   | { in: "memories"; results: CompanionMemoryHit[] };
 
 const COMPANIONS = "/api/v1/companions";
@@ -4235,6 +4253,188 @@ export const companionsApi = {
   deleteFact: (id: string, externalUserId: string, factId: string) =>
     apiFetchNoContent(`${COMPANIONS}/${id}/people/${encodeURIComponent(externalUserId)}/memory/${factId}`, {
       method: "DELETE",
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Anril Agents knowledge base: collections of books, read page by page.
+// Backend: routes/companion_kb.py. Example: Astrotamil's "Jothidar books"
+// collection holds "Book 3.pdf", 320 pages, read by Jothidar AI.
+// ---------------------------------------------------------------------------
+
+export type KbCollection = {
+  id: string;
+  name: string;
+  book_count: number;
+  page_count: number;
+  pages_ok: number;
+  read_by: { id: string; name: string }[];
+  created_at: string;
+  updated_at: string;
+};
+export type KbDocStatus = "processing" | "ready" | "ready_with_gaps" | "failed";
+export type KbDocument = {
+  id: string;
+  collection_id: string;
+  collection_name: string;
+  title: string;
+  file_type: string;
+  size_bytes: number;
+  tier: 1 | 2;
+  page_count: number;
+  status: KbDocStatus;
+  source: "upload" | "sales_copy" | "owner_answers";
+  error: string | null;
+  pages_ok: number;
+  pages_failed: number;
+  pages_pending: number;
+  failed_pages: number[];
+  created_at: string;
+  updated_at: string;
+};
+export type KbPage = {
+  page_no: number;
+  status: "pending" | "ok" | "failed";
+  method: "text_layer" | "ocr" | null;
+  attempts: number;
+  char_count: number;
+  error: string | null;
+  updated_at: string;
+  /** Only on getPage, not on listPages. */
+  text?: string | null;
+};
+export type KbPassage = {
+  id: string;
+  seq: number;
+  heading_path: string;
+  text: string;
+  page_from: number;
+  page_to: number;
+  tier: 1 | 2;
+};
+export type KbLimits = { max_bytes: number; accepted_types: string[] };
+export type KbUploadTicket = { draft_id: string; upload_url: string; token: string; path: string; file_type: string };
+export type KbSalesDocument = { id: string; name: string; file_type: string; created_at: string };
+export type KbShortcut = {
+  id: string;
+  topic: string;
+  document_id: string;
+  document_title: string;
+  pages: { page_from: number; page_to: number }[];
+  uses: number;
+  companion_id: string;
+  companion_name: string;
+  created_at: string;
+};
+export type KbGap = {
+  id: string;
+  topic: string;
+  ask_count: number;
+  last_asked_at: string;
+  companion_id: string;
+  companion_name: string;
+};
+
+const COMPANION_KB = "/api/v1/companion-kb";
+
+/**
+ * POST a JSON body to a route that answers with no result we read (204 or a small ack).
+ * apiFetchNoContent drops the JSON content type, so a body-carrying POST needs this.
+ * Same auth and same errors as apiFetch.
+ */
+async function kbPostJsonNoResult(path: string, body: unknown): Promise<void> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
+    const err = await res.json().catch(() => ({ detail: "Request failed" }));
+    const error = new Error(errorDetailText(err.detail, "Request failed")) as ApiError;
+    error.status = res.status;
+    throw error;
+  }
+}
+
+export const companionKbApi = {
+  listCollections: () => apiFetch<KbCollection[]>(`${COMPANION_KB}/collections`),
+  /** 409 = the name is taken. */
+  createCollection: (name: string) =>
+    apiFetch<KbCollection>(`${COMPANION_KB}/collections`, { method: "POST", body: JSON.stringify({ name }) }),
+  renameCollection: (id: string, name: string) =>
+    apiFetch<KbCollection>(`${COMPANION_KB}/collections/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  /** 409 = the collection still has books; the error text is meant for the owner. */
+  deleteCollection: (id: string) => apiFetchNoContent(`${COMPANION_KB}/collections/${id}`, { method: "DELETE" }),
+
+  limits: () => apiFetch<KbLimits>(`${COMPANION_KB}/limits`),
+
+  listDocuments: (opts: { collectionId?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (opts.collectionId) query.set("collection_id", opts.collectionId);
+    if (opts.limit) query.set("limit", String(opts.limit));
+    const qs = query.toString();
+    return apiFetch<KbDocument[]>(`${COMPANION_KB}/documents${qs ? `?${qs}` : ""}`);
+  },
+  getDocument: (id: string) => apiFetch<KbDocument>(`${COMPANION_KB}/documents/${id}`),
+  /** Per-page status, no text. */
+  listPages: (id: string) => apiFetch<KbPage[]>(`${COMPANION_KB}/documents/${id}/pages`),
+  /** One page, with its text. */
+  getPage: (id: string, pageNo: number) => apiFetch<KbPage>(`${COMPANION_KB}/documents/${id}/pages/${pageNo}`),
+  listPassages: (id: string) => apiFetch<KbPassage[]>(`${COMPANION_KB}/documents/${id}/passages`),
+
+  /** Step 1 of an upload: get a ticket, then uploadToTicket(), then registerDocument(). */
+  createUpload: (name: string, sizeBytes: number) =>
+    apiFetch<KbUploadTicket>(`${COMPANION_KB}/uploads`, {
+      method: "POST",
+      body: JSON.stringify({ name, size_bytes: sizeBytes }),
+    }),
+  registerDocument: (body: { draft_id: string; collection_id: string; tier: 1 | 2; title?: string }) =>
+    apiFetch<KbDocument>(`${COMPANION_KB}/documents`, { method: "POST", body: JSON.stringify(body) }),
+  updateDocument: (id: string, body: { tier?: 1 | 2; title?: string }) =>
+    apiFetch<KbDocument>(`${COMPANION_KB}/documents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteDocument: (id: string) => apiFetchNoContent(`${COMPANION_KB}/documents/${id}`, { method: "DELETE" }),
+  retryDocument: (id: string) =>
+    apiFetch<{ requeued: number }>(`${COMPANION_KB}/documents/${id}/retry`, { method: "POST" }),
+
+  listSalesDocuments: () => apiFetch<KbSalesDocument[]>(`${COMPANION_KB}/sales-documents`),
+  addFromSales: (body: { sales_document_id: string; collection_id: string; tier: 1 | 2 }) =>
+    apiFetch<KbDocument>(`${COMPANION_KB}/documents/from-sales`, { method: "POST", body: JSON.stringify(body) }),
+
+  listShortcuts: (collectionId: string) =>
+    apiFetch<KbShortcut[]>(`${COMPANION_KB}/collections/${collectionId}/shortcuts`),
+  deleteShortcut: (id: string) => apiFetchNoContent(`${COMPANION_KB}/shortcuts/${id}`, { method: "DELETE" }),
+
+  listGaps: (collectionId: string) => apiFetch<KbGap[]>(`${COMPANION_KB}/collections/${collectionId}/gaps`),
+  answerGap: (id: string, answer: string) => kbPostJsonNoResult(`${COMPANION_KB}/gaps/${id}/answer`, { answer }),
+  dismissGap: (id: string) => apiFetchNoContent(`${COMPANION_KB}/gaps/${id}/dismiss`, { method: "POST" }),
+
+  /**
+   * Sends the file straight to storage (a signed upload URL), not through the
+   * backend. The URL carries the permission, so no Authorization header.
+   * XMLHttpRequest, not fetch, so progress can be reported.
+   */
+  uploadToTicket: (ticket: KbUploadTicket, file: File, onProgress?: (fraction: number) => void) =>
+    new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", ticket.upload_url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress?.(1);
+          resolve();
+        } else {
+          reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+      xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again."));
+      xhr.onabort = () => reject(new Error("Upload cancelled."));
+      xhr.send(file);
     }),
 };
 

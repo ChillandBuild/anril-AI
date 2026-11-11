@@ -27,18 +27,32 @@ export function linesToList(text: string): string[] {
 
 const EDITABLE: (keyof CompanionInput)[] = [
   "name", "industry", "role", "backstory", "speaking_style", "sample_lines", "goals", "temperament",
-  "default_mood", "language", "rules", "knowledge_tag_id", "memory_level", "memory_engine",
+  "default_mood", "language", "rules", "memory_level", "memory_engine",
   "history_messages", "privacy_mode", "status",
 ];
 
+/** A character saved before the switch existed has no value: it answers from its own reasoning (on). */
+export function ownReasoningOn(c: Companion): boolean {
+  return c.own_reasoning ?? true;
+}
+
+/** The book collection a character reads, or null for "No books". */
+export function collectionIdOf(c: Companion): string | null {
+  return c.knowledge_collection_id ?? null;
+}
+
 /**
  * Only the fields the owner changed, for the PATCH. Example: Jothidar AI with
- * default mood calm → warm gives { default_mood: "warm" }.
+ * default mood calm → warm gives { default_mood: "warm" }. Picking "No books" on a
+ * character that read a collection gives { knowledge_collection_id: null }.
  */
 export function changedFields(original: Companion, draft: Companion): CompanionInput {
   const out: Record<string, unknown> = {};
   for (const key of EDITABLE) {
     if (JSON.stringify(original[key]) !== JSON.stringify(draft[key])) out[key] = draft[key];
   }
+  // Missing means "No books" / "on", so an untouched older character sends nothing.
+  if (collectionIdOf(original) !== collectionIdOf(draft)) out.knowledge_collection_id = collectionIdOf(draft);
+  if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
   return out as CompanionInput;
 }

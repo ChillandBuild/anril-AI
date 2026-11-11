@@ -147,12 +147,18 @@ async def open_conversation(tenant_id: str, companion_id: str, end_user_id: str,
 
 
 async def save_message(tenant_id: str, conversation: dict, role: str, content: str,
-                       *, mood: str | None = None, tool_calls: list[dict] | None = None) -> dict:
+                       *, mood: str | None = None, tool_calls: list[dict] | None = None,
+                       basis: str | None = None, sources: list[dict] | None = None) -> dict:
+    """basis / sources: where an assistant reply came from ("book", [{"document": "Book 7", ...}]).
+    Left out of the row when empty, so a character with no collection writes the same row as before."""
     row = {
         "tenant_id": tenant_id, "companion_id": conversation["companion_id"],
         "conversation_id": conversation["id"], "end_user_id": conversation["end_user_id"],
         "role": role, "content": content[:MAX_CONTENT], "mood": mood, "tool_calls": tool_calls,
     }
+    if basis:
+        row["basis"] = basis
+        row["sources"] = sources or []
     count = conversation["message_count"] + 1  # read-modify-write: fine for v1, not atomic
     now = _now()
 

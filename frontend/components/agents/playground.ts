@@ -1,4 +1,5 @@
-import type { ApiError, CompanionToolCall } from "@/lib/api";
+import type { ApiError, CompanionReply, CompanionToolCall } from "@/lib/api";
+import { pageSpanText } from "@/components/agents/collectionRows";
 
 /** How a tool call reads in the chat: get_chart({"dob":"1990-04-12"}), long args cut at 80 chars. */
 export function formatToolCall(call: CompanionToolCall): string {
@@ -39,8 +40,22 @@ export function toolNameError(name: string, taken: string[]): string {
   return "";
 }
 
-/** Knowledge search score as a percent. 0.8234 → "82% match"; missing → "". */
-export function scoreLabel(similarity: number | null | undefined): string {
-  if (similarity === null || similarity === undefined || Number.isNaN(similarity)) return "";
-  return `${Math.round(Math.max(0, Math.min(1, similarity)) * 100)}% match`;
+/** Knowledge search mark, 0 to 3. 3 → "Match 3 of 3"; missing → "". */
+export function scoreLabel(score: number | null | undefined): string {
+  if (score === null || score === undefined || Number.isNaN(score)) return "";
+  return `Match ${Math.max(0, Math.min(3, Math.round(score)))} of 3`;
+}
+
+/** "Book 7, pp. 212-213" or "Main resource, p. 12": the owner's title, then the pages. */
+export function sourceText(s: { document: string; page_from: number; page_to: number }): string {
+  return `${s.document}, ${pageSpanText(s.page_from, s.page_to)}`;
+}
+
+/** The line under a test-chat answer. primary/book → "From Main resource, p. 12; Book 7, pp. 212-213"; own → a note; chat/none → "". */
+export function replySourceLine(basis: CompanionReply["basis"], sources: CompanionReply["sources"]): string {
+  if (basis === "own") return "Own reading, not from the books";
+  if ((basis === "primary" || basis === "book") && sources && sources.length > 0) {
+    return `From ${sources.map(sourceText).join("; ")}`;
+  }
+  return "";
 }

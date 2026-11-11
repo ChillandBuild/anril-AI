@@ -34,7 +34,9 @@ class CompanionSettings(_CardFields):
     default_mood: Mood = "calm"
     language: Language = "ta-en"
     rules: list[Rule] = Field(default_factory=list, max_length=30)
-    knowledge_tag_id: UUID | None = None
+    knowledge_tag_id: UUID | None = None     # old Anril Sales books tag: still accepted, no longer read
+    knowledge_collection_id: UUID | None = None   # the collection of books this character reads
+    own_reasoning: bool = True               # False = "documents only": no answer when no book covers it
     memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
     memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
     history_messages: int = Field(10, ge=2, le=50)   # recent messages every reply reads
@@ -56,6 +58,8 @@ class CompanionUpdate(_CardFields):
     language: Language | None = None
     rules: list[Rule] | None = Field(None, max_length=30)
     knowledge_tag_id: UUID | None = None
+    knowledge_collection_id: UUID | None = None
+    own_reasoning: bool | None = None
     memory_level: Literal[1, 2] | None = None
     memory_engine: Literal["card", "mem0"] | None = None
     history_messages: int | None = Field(None, ge=2, le=50)
@@ -63,10 +67,11 @@ class CompanionUpdate(_CardFields):
     status: Literal["draft", "live", "paused"] | None = None
 
     def changes(self) -> dict:
-        """Fields the caller actually sent. Only knowledge_tag_id may be sent as null (clears the tag);
-        a null for any other field is ignored, since those columns are NOT NULL."""
+        """Fields the caller actually sent. Only knowledge_tag_id and knowledge_collection_id may be sent
+        as null (clears them); a null for any other field is ignored, since those columns are NOT NULL."""
         sent = self.model_dump(mode="json", exclude_unset=True)
-        return {k: v for k, v in sent.items() if v is not None or k == "knowledge_tag_id"}
+        clearable = ("knowledge_tag_id", "knowledge_collection_id")
+        return {k: v for k, v in sent.items() if v is not None or k in clearable}
 
 
 class AppTool(_CardFields):
@@ -90,8 +95,18 @@ class ToolResult(_CardFields):
         return v
 
 
+class ReplySource(BaseModel):
+    """One passage a reply relied on, e.g. Book 7, pages 212 to 212."""
+    document: str            # the title the owner gave
+    page_from: int
+    page_to: int
+
+
 class CompanionReply(BaseModel):
-    """What reply() returns. 'done' carries the text; 'tool_call' (T6) carries a turn_id."""
+    """What reply() returns. 'done' carries the text; 'tool_call' (T6) carries a turn_id.
+
+    basis says where the answer came from: 'primary' (main resource), 'book', 'own' (the character's
+    own reasoning) or 'chat' (small talk). None for a character with no collection, and on tool_call."""
     status: Literal["done", "tool_call"]
     text: str | None = None
     mood: str | None = None
@@ -99,6 +114,8 @@ class CompanionReply(BaseModel):
     tool_calls: list[dict] = Field(default_factory=list)
     conversation_id: str | None = None   # None only for the Playground's "without memory" reply
     message_id: str | None = None
+    basis: Literal["primary", "book", "own", "chat"] | None = None
+    sources: list[ReplySource] = Field(default_factory=list)
 
 
 class MemoryFact(BaseModel):

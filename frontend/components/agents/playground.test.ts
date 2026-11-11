@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMs, formatToolCall, parseToolOutput, scoreLabel, toolNameError } from "./playground";
+import { formatMs, formatToolCall, parseToolOutput, replySourceLine, scoreLabel, sourceText, toolNameError } from "./playground";
 
 describe("formatToolCall", () => {
   it("shows name and args", () => {
@@ -39,10 +39,38 @@ describe("toolNameError", () => {
 });
 
 describe("scoreLabel", () => {
-  it("shows similarity as a clamped percent", () => {
-    expect(scoreLabel(0.8234)).toBe("82% match");
-    expect(scoreLabel(1.2)).toBe("100% match");
-    expect(scoreLabel(-0.1)).toBe("0% match");
+  it("shows the judge's 0 to 3 mark plainly, clamped", () => {
+    expect(scoreLabel(3)).toBe("Match 3 of 3");
+    expect(scoreLabel(0)).toBe("Match 0 of 3");
+    expect(scoreLabel(5)).toBe("Match 3 of 3");
+    expect(scoreLabel(-1)).toBe("Match 0 of 3");
     expect(scoreLabel(null)).toBe("");
+  });
+});
+
+describe("sourceText", () => {
+  it("gives the title and the page or page range", () => {
+    expect(sourceText({ document: "Book 7", page_from: 212, page_to: 213 })).toBe("Book 7, pp. 212-213");
+    expect(sourceText({ document: "Main resource", page_from: 12, page_to: 12 })).toBe("Main resource, p. 12");
+  });
+});
+
+describe("replySourceLine", () => {
+  const sources = [
+    { document: "Main resource", page_from: 12, page_to: 12 },
+    { document: "Book 7", page_from: 212, page_to: 213 },
+  ];
+  it("lists the sources for a book answer", () => {
+    expect(replySourceLine("primary", sources)).toBe("From Main resource, p. 12; Book 7, pp. 212-213");
+    expect(replySourceLine("book", [sources[1]])).toBe("From Book 7, pp. 212-213");
+  });
+  it("says an own answer is not from the books", () => {
+    expect(replySourceLine("own", [])).toBe("Own reading, not from the books");
+  });
+  it("shows nothing for chat, null, missing, or a book answer with no sources", () => {
+    expect(replySourceLine("chat", sources)).toBe("");
+    expect(replySourceLine(null, sources)).toBe("");
+    expect(replySourceLine(undefined, undefined)).toBe("");
+    expect(replySourceLine("book", [])).toBe("");
   });
 });

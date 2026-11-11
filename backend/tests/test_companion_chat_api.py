@@ -66,11 +66,11 @@ def env(monkeypatch):
     async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
         return "[mood: warm] Vanakkam Karthik!"
 
-    async def kb(tenant_id, query=None, campaign_tag_id=None):
-        return ""
+    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+        return None
     monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", with_tools)
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", plain)
-    monkeypatch.setattr(engine, "get_knowledge_context", kb)
+    monkeypatch.setattr(engine.kb_search, "search", kb)
     monkeypatch.setattr(companions, "record_audit_event", lambda db, **kw: state["audit"].append(kw))
     for limiter in (companion_public._ip_limiter, companion_public._tenant_limiter,
                     companion_public._person_limiter, companions._key_limiter):

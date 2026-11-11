@@ -10,12 +10,12 @@ import {
   type CompanionReply,
   type CompanionToolCall,
 } from "@/lib/api";
-import { chatErrorText, formatMs, formatToolCall, parseToolOutput, toolNameError } from "@/components/agents/playground";
+import { chatErrorText, formatMs, formatToolCall, parseToolOutput, replySourceLine, toolNameError } from "@/components/agents/playground";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, INPUT } from "@/components/agents/ui";
 
 type Bubble =
   | { kind: "user"; text: string }
-  | { kind: "reply"; text: string; mood: string | null; ms: number; model: string | null; label?: string }
+  | { kind: "reply"; text: string; mood: string | null; ms: number; model: string | null; label?: string; basis?: CompanionReply["basis"]; sources?: CompanionReply["sources"] }
   | { kind: "error"; text: string };
 
 type PendingTools = { turnId: string; calls: CompanionToolCall[]; started: number };
@@ -61,7 +61,7 @@ export function PlaygroundChat({ character }: { character: Companion }) {
     if (label) {
       setBubbles((b) => [
         ...b,
-        { kind: "reply", text: reply.text ?? "", mood: reply.mood, ms: performance.now() - started, model: reply.model ?? null, label },
+        { kind: "reply", text: reply.text ?? "", mood: reply.mood, ms: performance.now() - started, model: reply.model ?? null, label, basis: reply.basis ?? null, sources: reply.sources ?? [] },
       ]);
       return;
     }
@@ -72,7 +72,7 @@ export function PlaygroundChat({ character }: { character: Companion }) {
     setPending(null);
     setBubbles((b) => [
       ...b,
-      { kind: "reply", text: reply.text ?? "", mood: reply.mood, ms: performance.now() - started, model: reply.model ?? null },
+      { kind: "reply", text: reply.text ?? "", mood: reply.mood, ms: performance.now() - started, model: reply.model ?? null, basis: reply.basis ?? null, sources: reply.sources ?? [] },
     ]);
   };
 
@@ -131,6 +131,7 @@ export function PlaygroundChat({ character }: { character: Companion }) {
               <div key={i} className="max-w-[80%] space-y-1">
                 {b.label && <div className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">{b.label}</div>}
                 <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">{b.text}</div>
+                {replySourceLine(b.basis, b.sources) && <div className="px-1 text-xs text-ink-secondary">{replySourceLine(b.basis, b.sources)}</div>}
               </div>
             ) : (
               <div key={i} role="alert" className="max-w-[80%] rounded-xl border border-danger/20 bg-danger/5 px-3.5 py-2 text-sm text-danger">

@@ -23,7 +23,7 @@ from app.routes.marketplace_intake import public_router as marketplace_public_ro
 from app.routes import marketplace_intake
 from app.routes import instant_forms
 from app.routes import deals, business_details
-from app.routes import companions, companion_public
+from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
@@ -459,6 +459,7 @@ app.include_router(assignment_offers.router, prefix="/api/v1/assignment-offers",
 app.include_router(subscriptions.router, prefix="/api/v1/subscriptions", tags=["subscriptions"], dependencies=_auth)
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"], dependencies=_auth)
 app.include_router(companions.router, prefix="/api/v1/companions", tags=["companions"], dependencies=_auth)
+app.include_router(companion_kb.router, prefix="/api/v1/companion-kb", tags=["companion-kb"], dependencies=_auth)
 # Public companion chat API: secret key or signed user id, checked in each handler (no login).
 app.include_router(companion_public.public_router, prefix="/api/v1/companion", tags=["companion-public"])
 

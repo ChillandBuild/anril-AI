@@ -1,124 +1,207 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { api, companionsApi, type ApiError, type Companion } from "@/lib/api";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
+import { companionKbApi, type KbCollection, type KbDocument } from "@/lib/api";
 import { ImportCard } from "@/components/agents/ImportCard";
-import { docState, tagRows, type KnowledgeDocLite, type KnowledgeTag } from "@/components/agents/knowledgeRows";
+import { anyReading, docState, docStateLabel, failedPagesText, pagesText } from "@/components/agents/knowledgeRows";
 import { CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
+import { usePolling } from "@/components/agents/collectionUi";
+import { bookHref, processingBooks, recentBooks } from "@/components/agents/uploadQueue";
 
-const POLL_MS = 3000;
+export default function AgentsUploadPage() {
+  // useSearchParams needs a Suspense boundary so the page can still be built ahead of time.
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows rows={4} /></div>}>
+      <UploadPage />
+    </Suspense>
+  );
+}
 
-export default function AgentsKnowledgePage() {
-  const [tags, setTags] = useState<KnowledgeTag[] | null>(null);
-  const [docs, setDocs] = useState<KnowledgeDocLite[]>([]);
-  const [characters, setCharacters] = useState<Companion[]>([]);
-  const [error, setError] = useState("");
-  const [watching, setWatching] = useState<string[]>([]);
+function UploadPage() {
+  const preselect = useSearchParams().get("collection");
+  const [collections, setCollections] = useState<KbCollection[] | null>(null);
+  const [collectionsError, setCollectionsError] = useState("");
+  const [docs, setDocs] = useState<KbDocument[] | null>(null);
+  const [docsError, setDocsError] = useState("");
+  const alive = useRef(true);
+  const docsSeq = useRef(0);
 
-  const load = useCallback(() => {
-    setError("");
-    Promise.all([api.knowledge.listCampaignTags(), api.knowledge.listDocuments(), companionsApi.list()])
-      .then(([t, d, c]) => {
-        setTags(t);
-        setDocs(d);
-        setCharacters(c);
-      })
-      .catch((e: ApiError) =>
-        setError(
-          e.status === 403
-            ? "Your role can't open documents. Ask the owner to give it Knowledge access too."
-            : e.message || "Could not load your documents.",
-        ),
-      );
-  }, []);
-  useEffect(load, [load]);
-
-  // Poll only while a file we just imported is still being read.
-  const processing = watching.filter((id) => {
-    const doc = docs.find((d) => d.id === id);
-    return !doc || docState(doc) === "processing";
-  });
   useEffect(() => {
-    if (processing.length === 0) return;
-    const timer = setInterval(() => {
-      api.knowledge.listDocuments().then(setDocs).catch(() => undefined);
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [processing.length]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
-  if (error) return <div className="mx-auto max-w-5xl p-4 sm:p-6"><ErrorNote message={error} onRetry={load} /></div>;
-  if (tags === null) return <div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows rows={4} /></div>;
+  const loadCollections = useCallback(() => {
+    setCollectionsError("");
+    companionKbApi
+      .listCollections()
+      .then((c) => alive.current && setCollections(c))
+      .catch((e: Error) => alive.current && setCollectionsError(e.message || "Could not load your collections."));
+  }, []);
 
-  const defaultTag = characters.find((c) => c.status === "live" && c.knowledge_tag_id)?.knowledge_tag_id ?? characters.find((c) => c.knowledge_tag_id)?.knowledge_tag_id ?? null;
-  const rows = tagRows(tags, docs, characters);
-  const watched = watching.map((id) => docs.find((d) => d.id === id)).filter(Boolean) as KnowledgeDocLite[];
+  // Only the newest answer is kept, so a slow older request cannot overwrite a newer list.
+  const fetchDocs = useCallback(async () => {
+    const mine = ++docsSeq.current;
+    const list = await companionKbApi.listDocuments();
+    if (alive.current && mine === docsSeq.current) setDocs(list);
+  }, []);
+
+  /** quiet = refresh in the background: keep the list on screen and ignore a failed refresh. */
+  const loadDocs = useCallback(
+    (quiet = false) => {
+      if (!quiet) setDocsError("");
+      fetchDocs().catch((e: Error) => {
+        if (alive.current && !quiet) setDocsError(e.message || "Could not load your books.");
+      });
+    },
+    [fetchDocs],
+  );
+
+  useEffect(() => {
+    loadCollections();
+    loadDocs();
+  }, [loadCollections, loadDocs]);
+
+  // Poll while any book is being read. Driven by the fetched list, so it also works after a reload.
+  const reading = docs ? anyReading(docs) : false;
+  usePolling(fetchDocs, reading);
+
+  const onChanged = useCallback(() => {
+    loadDocs(true);
+    // Book counts in the collection list change too.
+    companionKbApi
+      .listCollections()
+      .then((c) => alive.current && setCollections(c))
+      .catch(() => undefined);
+  }, [loadDocs]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
-      <ImportCard
-        tags={tags}
-        defaultTagId={defaultTag}
-        onUploaded={(ids) => {
-          setWatching((w) => [...ids, ...w]);
-          api.knowledge.listDocuments().then(setDocs).catch(() => undefined);
-        }}
-      />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <ImportCard
+          collections={collections}
+          collectionsError={collectionsError}
+          onRetryCollections={loadCollections}
+          initialCollectionId={preselect}
+          onCollectionCreated={(c) => setCollections((prev) => (prev ? [...prev, c] : [c]))}
+          onChanged={onChanged}
+        />
+        <ProcessingList docs={docs} error={docsError} onRetry={() => loadDocs()} />
+      </div>
+      <RecentList docs={docs} error={docsError} onRetry={() => loadDocs()} />
+    </div>
+  );
+}
 
-      {watching.length > 0 && (
-        <section className={CARD} aria-labelledby="processing-title" aria-live="polite">
-          <h2 id="processing-title" className="mb-2 text-sm font-semibold text-ink">
-            {processing.length > 0 ? `Processing ${processing.length} file${processing.length > 1 ? "s" : ""}` : "Imported"}
-          </h2>
-          <ul className="space-y-1.5 text-sm">
-            {watched.map((d) => {
+function ProcessingList({ docs, error, onRetry }: { docs: KbDocument[] | null; error: string; onRetry: () => void }) {
+  const rows = docs ? processingBooks(docs) : [];
+  return (
+    <section className={CARD} aria-labelledby="processing-title">
+      <h2 id="processing-title" className="mb-3 text-sm font-semibold text-ink">
+        Processing
+      </h2>
+      <p className="sr-only" role="status">
+        {docs && !error ? (rows.length > 0 ? `${rows.length} ${rows.length === 1 ? "book" : "books"} being read` : "No books being read") : ""}
+      </p>
+      {error ? (
+        <ErrorNote message={error} onRetry={onRetry} />
+      ) : docs === null ? (
+        <LoadingRows rows={2} />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-ink-secondary">Nothing is being read right now. Drop a file on the left to start.</p>
+      ) : (
+        <ul className="space-y-3">
+          {rows.map((d) => {
+            const pct = d.page_count > 0 ? Math.round((100 * (d.pages_ok + d.pages_failed)) / d.page_count) : 0;
+            return (
+              <li key={d.id} className="text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <Link href={bookHref(d)} className="min-w-0 truncate font-medium text-ink underline-offset-2 hover:underline">
+                    {d.title}
+                  </Link>
+                  <span className="text-xs text-ink-secondary">{d.collection_name}</span>
+                </div>
+                <p className="text-ink-secondary">{pagesText(d)}</p>
+                <div
+                  role="progressbar"
+                  aria-label={`Reading ${d.title}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={pct}
+                  className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-mid"
+                >
+                  <div className="h-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function RecentList({ docs, error, onRetry }: { docs: KbDocument[] | null; error: string; onRetry: () => void }) {
+  const rows = docs ? recentBooks(docs) : [];
+  return (
+    <section className={`${CARD} p-0`} aria-labelledby="recent-title">
+      <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-4">
+        <h2 id="recent-title" className="text-sm font-semibold text-ink">
+          Recently added
+        </h2>
+        <Link href="/dashboard/agents/collections" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
+          See all collections
+        </Link>
+      </div>
+      <div className="px-5 pb-5">
+        {error ? (
+          <ErrorNote message={error} onRetry={onRetry} />
+        ) : docs === null ? (
+          <LoadingRows rows={3} />
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-ink-secondary">No books yet. Drop a file above, pick a collection and press Import.</p>
+        ) : (
+          <ul className="divide-y divide-border-subtle">
+            {rows.map((d) => {
               const state = docState(d);
+              const gaps = failedPagesText(d.failed_pages);
+              const note = state === "gaps" || state === "failed" ? [gaps, d.error].filter(Boolean).join(". ") : "";
               return (
-                <li key={d.id} className="flex items-center gap-2">
-                  {state === "processing" ? (
-                    <Loader2 size={14} className="animate-spin text-ink-muted" aria-hidden="true" />
-                  ) : state === "failed" ? (
-                    <XCircle size={14} className="text-danger" aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 size={14} className="text-success" aria-hidden="true" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{d.name}</span>
-                  <span className={state === "failed" ? "text-danger" : "text-ink-muted"}>
-                    {state === "processing" ? "Reading…" : state === "failed" ? d.error_message || "Failed" : "Ready"}
-                  </span>
+                <li key={d.id}>
+                  <Link href={bookHref(d)} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-surface-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-ink">{d.title}</span>
+                      <span className="block truncate text-xs text-ink-secondary">
+                        {d.collection_name}, added {formatDate(d.created_at)}
+                      </span>
+                      <span className="block text-xs text-ink-secondary">{pagesText(d)}</span>
+                      {note && <span className={state === "failed" ? "block text-xs text-danger" : "block text-xs text-amber-700"}>{note}</span>}
+                    </span>
+                    <span
+                      className={
+                        state === "failed"
+                          ? "shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
+                          : state === "gaps"
+                            ? "shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                            : state === "ready"
+                              ? "shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
+                              : "shrink-0 rounded-full bg-surface-mid px-2 py-0.5 text-xs font-medium text-ink-secondary"
+                      }
+                    >
+                      {docStateLabel(state)}
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-ink-muted" aria-hidden="true" />
+                  </Link>
                 </li>
               );
             })}
           </ul>
-        </section>
-      )}
-
-      <section className={`${CARD} overflow-x-auto p-0`} aria-labelledby="tags-title">
-        <h2 id="tags-title" className="px-5 pt-4 text-sm font-semibold text-ink">Tags your characters read</h2>
-        {rows.length === 0 ? (
-          <p className="px-5 pb-5 pt-2 text-sm text-ink-secondary">No tagged documents yet. Import one above, then pick its tag on a character&apos;s Knowledge tab.</p>
-        ) : (
-          <table className="mt-2 w-full min-w-[520px] text-left text-sm">
-            <thead className="border-y border-border-subtle text-xs uppercase tracking-wide text-ink-muted">
-              <tr>
-                <th scope="col" className="px-5 py-2.5 font-medium">Tag</th>
-                <th scope="col" className="px-5 py-2.5 font-medium">Files</th>
-                <th scope="col" className="px-5 py-2.5 font-medium">Read by</th>
-                <th scope="col" className="px-5 py-2.5 font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-border-subtle last:border-0">
-                  <td className="px-5 py-3 font-medium text-ink">{r.name}</td>
-                  <td className="px-5 py-3 text-ink-secondary">{r.files}</td>
-                  <td className="px-5 py-3 text-ink-secondary">{r.readBy.length ? r.readBy.join(", ") : "No character yet"}</td>
-                  <td className="px-5 py-3 text-ink-secondary">{formatDate(r.updated)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }

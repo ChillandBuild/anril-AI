@@ -9,6 +9,10 @@ export const BTN_PRIMARY =
   "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50";
 export const BTN_SECONDARY =
   "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-white px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-mid disabled:cursor-not-allowed disabled:opacity-50";
+export const BTN_DANGER =
+  "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-danger px-4 text-sm font-semibold text-white transition-colors hover:bg-danger/90 disabled:cursor-not-allowed disabled:opacity-50";
+export const BTN_ROW_DANGER =
+  "inline-flex min-h-8 items-center justify-center gap-1.5 rounded-xl border border-danger/40 bg-white px-3 text-[13px] font-medium text-danger transition-colors hover:bg-danger/5 disabled:cursor-not-allowed disabled:opacity-50";
 export const INPUT =
   "w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15";
 
@@ -50,7 +54,7 @@ export function Field({
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-ink-muted">{hint}</p>
+        <p className="text-xs text-ink-secondary">{hint}</p>
       ) : null}
     </div>
   );

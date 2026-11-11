@@ -17,12 +17,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.companion import engine, install, keys, memory, store
+from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
 from app.routes.auto_messages import _SlidingWindow
-from app.services import ai_reply, knowledge_service
+from app.services import ai_reply
 from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ async def _check_tag(tenant_id: str, tag_id: str | None) -> None:
         raise HTTPException(status_code=422, detail="That books tag isn't one of your tags")
 
 
+async def _check_collection(tenant_id: str, collection_id: str | None) -> None:
+    if collection_id and not await kb_store.collection_belongs_to_tenant(tenant_id, collection_id):
+        raise HTTPException(status_code=422, detail="That collection isn't one of your collections")
+
+
 @router.get("")
 async def list_companions(ctx: dict = Depends(require_companions_manage)):
     return {"companions": await store.list_companions(ctx["tenant_id"])}
@@ -46,6 +52,8 @@ async def list_companions(ctx: dict = Depends(require_companions_manage)):
 async def create_companion(payload: CompanionSettings, ctx: dict = Depends(require_companions_manage)):
     tenant_id = ctx["tenant_id"]
     await _check_tag(tenant_id, str(payload.knowledge_tag_id) if payload.knowledge_tag_id else None)
+    await _check_collection(
+        tenant_id, str(payload.knowledge_collection_id) if payload.knowledge_collection_id else None)
     try:
         return await store.create_companion(tenant_id, payload)
     except store.DuplicateCompanionName:
@@ -214,6 +222,7 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
     engine_switched = changes.get("memory_engine", current.get("memory_engine", "card")) != \
         current.get("memory_engine", "card")
     await _check_tag(tenant_id, changes.get("knowledge_tag_id"))
+    await _check_collection(tenant_id, changes.get("knowledge_collection_id"))
     try:
         row = await store.update_companion(tenant_id, str(companion_id), changes)
     except store.DuplicateCompanionName:
@@ -338,19 +347,23 @@ async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
     }
 
 
+_SEARCH_MAX = 20
+
+
 class SearchIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
     in_: Literal["knowledge", "memories"] = Field(alias="in")
     q: str = Field(min_length=1, max_length=500)
-    limit: int = Field(5, ge=1, le=knowledge_service.SEARCH_MAX)
+    limit: int = Field(5, ge=1, le=_SEARCH_MAX)
     external_user_id: str | None = Field(None, min_length=1, max_length=200)
 
 
 @router.post("/{companion_id}/search")
 async def search(companion_id: UUID, payload: SearchIn, ctx: dict = Depends(require_companions_manage)):
-    """The Playground "Search" tab: what a character would find. Knowledge returns chunks with a
-    similarity score from the character's books tag; memories returns word-matched facts this
-    character learned (privacy mode A only), no score. The query text is never logged."""
+    """The Playground "Search" tab: what a character would find. Knowledge returns the passages the
+    character's collection gives for this question (book, pages, the judge's 0-3 score); memories
+    returns word-matched facts this character learned (privacy mode A only), no score. The query
+    text is never logged."""
     tenant_id = ctx["tenant_id"]
     q = payload.q.strip()
     if not q:
@@ -359,12 +372,20 @@ async def search(companion_id: UUID, payload: SearchIn, ctx: dict = Depends(requ
         row = await store.get_companion(tenant_id, str(companion_id))
         if not row:
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        collection_id = row.get("knowledge_collection_id")
+        if not collection_id:      # this character reads no collection: nothing to find
+            return {"in": "knowledge", "results": [], "needs_docs": True}
         try:
-            results = await knowledge_service.search_chunks(tenant_id, q, row.get("knowledge_tag_id"), payload.limit)
+            found = await kb_search.search(tenant_id, collection_id, q, [], companion_id=str(companion_id))
         except Exception as exc:
             logger.warning("companion %s: knowledge search failed (%s)", companion_id, type(exc).__name__)
+            found = None
+        if found is None or found.failed:
             raise HTTPException(status_code=502, detail="Knowledge search isn't available right now. Try again.")
-        return {"in": "knowledge", "results": results}
+        results = [{"document": p.document_title, "page_from": p.page_from, "page_to": p.page_to,
+                    "heading_path": p.heading_path, "text": p.text, "tier": p.tier, "score": p.score}
+                   for p in found.passages[:payload.limit]]
+        return {"in": "knowledge", "results": results, "needs_docs": found.needs_docs}
     await _readable_character(tenant_id, companion_id)
     end_user_id = None
     if payload.external_user_id:

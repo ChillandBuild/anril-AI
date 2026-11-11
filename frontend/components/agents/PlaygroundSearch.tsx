@@ -10,7 +10,7 @@ import {
   type CompanionSearchResult,
 } from "@/lib/api";
 import { SECTION_LABEL } from "@/components/agents/memoryGraph";
-import { scoreLabel } from "@/components/agents/playground";
+import { scoreLabel, sourceText } from "@/components/agents/playground";
 import { BTN_PRIMARY, CARD, INPUT, formatDate } from "@/components/agents/ui";
 
 const SOURCES: { id: CompanionSearchIn; label: string; hint: string }[] = [
@@ -20,7 +20,7 @@ const SOURCES: { id: CompanionSearchIn; label: string; hint: string }[] = [
 
 /**
  * See what a character would find. Example: Jothidar AI, Knowledge, "Kumbham rasi this week" →
- * 3 passages from "Rasi palan.pdf" with an 82% match on top. Memories, "Zoho" → Karthik's
+ * 3 passages from "Rasi palan" with "Match 3 of 3" on top. Memories, "Zoho" → Karthik's
  * "Interview at Zoho on 20 Nov".
  */
 export function PlaygroundSearch({ character }: { character: Companion }) {
@@ -120,7 +120,11 @@ export function PlaygroundSearch({ character }: { character: Companion }) {
           {result.results.length === 0 ? (
             <p className="text-sm text-ink-secondary">
               {result.in === "knowledge"
-                ? `Nothing in ${character.name}'s books matches that.`
+                ? !character.knowledge_collection_id
+                  ? `${character.name} has no collection yet. Pick one in the character's Knowledge tab.`
+                  : !result.needs_docs
+                    ? "That message did not need the books."
+                    : `Nothing in ${character.name}'s books matches that.`
                 : `${character.name} doesn't remember anything with those words.`}
             </p>
           ) : result.in === "knowledge" ? (
@@ -128,10 +132,11 @@ export function PlaygroundSearch({ character }: { character: Companion }) {
               {result.results.map((hit, i) => (
                 <li key={i} className="rounded-xl border border-border-subtle px-3 py-2.5">
                   <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-ink-muted">
-                    <span className="truncate">{hit.document_name ?? "Document"}</span>
-                    <span className="shrink-0 font-medium tabular-nums text-primary">{scoreLabel(hit.similarity)}</span>
+                    <span className="truncate">{sourceText(hit)}</span>
+                    <span className="shrink-0 font-medium tabular-nums text-primary">{scoreLabel(hit.score)}</span>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm text-ink">{hit.content}</p>
+                  {hit.heading_path && <p className="mb-1 text-xs text-ink-muted">{hit.heading_path}</p>}
+                  <p className="whitespace-pre-wrap text-sm text-ink">{hit.text}</p>
                 </li>
               ))}
             </ol>

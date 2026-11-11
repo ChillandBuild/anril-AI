@@ -1,13 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { api, companionsApi, type ApiError, type Companion, type CompanionStatus } from "@/lib/api";
-import { LANGUAGES, MOODS, changedFields, linesToList } from "@/components/agents/characterForm";
+import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionStatus, type KbCollection } from "@/lib/api";
+import { LANGUAGES, MOODS, changedFields, collectionIdOf, linesToList, ownReasoningOn } from "@/components/agents/characterForm";
 import { saveErrorMessage } from "@/components/agents/formErrors";
 import { BTN_PRIMARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
 
 type Tab = "persona" | "memory" | "knowledge";
-type Tag = { id: string; name: string; color?: string };
 type Errors = Record<string, string>;
 
 const TABS: { id: Tab; label: string }[] = [
@@ -18,8 +18,9 @@ const TABS: { id: Tab; label: string }[] = [
 
 /**
  * Edit one character. Example: the Astrotamil owner opens Jothidar AI, sets
- * default mood to warm, picks the "astrology books" tag, sets Live, Save →
- * one PATCH with just those three fields.
+ * default mood to warm, picks the "Astrology books" collection, sets Live, Save →
+ * one PATCH with just those three fields. Switching "Answer from its own reasoning"
+ * off sends just { own_reasoning: false }.
  */
 export function CharacterEditor({ initial }: { initial: Companion }) {
   const [saved, setSaved] = useState(initial);
@@ -133,7 +134,7 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
 const MEMORY_FIELDS = new Set(["memory_level", "memory_engine", "history_messages", "privacy_mode"]);
 function tabOf(field: string): Tab {
   if (MEMORY_FIELDS.has(field)) return "memory";
-  if (field === "knowledge_tag_id") return "knowledge";
+  if (field === "knowledge_collection_id" || field === "own_reasoning") return "knowledge";
   return "persona";
 }
 
@@ -260,41 +261,80 @@ function MemoryTab({ draft, set, errors }: TabProps) {
   );
 }
 
+function bookCount(n: number): string {
+  return `${n} ${n === 1 ? "book" : "books"}`;
+}
+
 function KnowledgeTab({ draft, set, errors }: TabProps) {
-  const [tags, setTags] = useState<Tag[] | null>(null);
+  const [collections, setCollections] = useState<KbCollection[] | null>(null);
   const [loadError, setLoadError] = useState("");
-  useEffect(() => {
-    api.knowledge
-      .listCampaignTags()
-      .then(setTags)
-      .catch((e: ApiError) =>
-        setLoadError(e.status === 403 ? "Your role can't list tags. Ask the owner to pick the tag." : e.message || "Could not load tags."),
-      );
+  const load = useCallback(() => {
+    setLoadError("");
+    companionKbApi
+      .listCollections()
+      .then(setCollections)
+      .catch((e: ApiError) => setLoadError(e.message || "Could not load the collections."));
   }, []);
+  useEffect(load, [load]);
+
+  const current = collectionIdOf(draft);
+  const loading = collections === null && !loadError;
   return (
-    <div className="max-w-md space-y-3">
-      <Field
-        id="knowledge_tag_id"
-        label="Books tag"
-        hint="The character reads only documents with this tag. Upload them on the Knowledge page."
-        error={errors.knowledge_tag_id || loadError}
-      >
-        <select
-          id="knowledge_tag_id"
-          value={draft.knowledge_tag_id ?? ""}
-          disabled={tags === null}
-          onChange={(e) => set("knowledge_tag_id", e.target.value || null)}
-          className={INPUT}
+    <div className="max-w-md space-y-5">
+      <div className="space-y-1.5">
+        <Field
+          id="knowledge_collection_id"
+          label="Collection"
+          hint="The character reads only the books in this collection. Add books on the Knowledge page."
+          error={errors.knowledge_collection_id}
         >
-          <option value="">No books</option>
-          {draft.knowledge_tag_id && tags && !tags.some((t) => t.id === draft.knowledge_tag_id) && (
-            <option value={draft.knowledge_tag_id}>Current tag</option>
-          )}
-          {(tags ?? []).map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-      </Field>
+          <select
+            id="knowledge_collection_id"
+            value={current ?? ""}
+            disabled={loading}
+            onChange={(e) => set("knowledge_collection_id", e.target.value || null)}
+            className={INPUT}
+          >
+            <option value="">No books</option>
+            {current && !(collections ?? []).some((c) => c.id === current) && <option value={current}>Current collection</option>}
+            {(collections ?? []).map((c) => (
+              <option key={c.id} value={c.id}>{c.name} ({bookCount(c.book_count)})</option>
+            ))}
+          </select>
+        </Field>
+        {loading && <p className="text-xs text-ink-muted">Loading collections…</p>}
+        {loadError && (
+          <p role="alert" className="text-xs text-danger">
+            Could not load the collections. {loadError}{" "}
+            <button type="button" onClick={load} className="font-medium underline underline-offset-2">Retry</button>
+          </p>
+        )}
+        {collections && collections.length === 0 && (
+          <p className="text-xs text-ink-muted">
+            No collections yet.{" "}
+            <Link href="/dashboard/agents/collections" className="font-medium text-primary underline underline-offset-2">Create one</Link>
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="own_reasoning" className="flex items-start gap-3 text-sm font-medium text-ink">
+          <input
+            id="own_reasoning"
+            type="checkbox"
+            role="switch"
+            checked={ownReasoningOn(draft)}
+            onChange={(e) => set("own_reasoning", e.target.checked)}
+            aria-describedby="own_reasoning-hint"
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-subtle accent-primary"
+          />
+          Answer from its own reasoning when no book covers the question
+        </label>
+        <p id="own_reasoning-hint" className="pl-7 text-xs text-ink-muted">
+          Off = documents only. The character says politely that its material does not cover the question.
+        </p>
+        {errors.own_reasoning && <p role="alert" className="pl-7 text-xs text-danger">{errors.own_reasoning}</p>}
+      </div>
     </div>
   );
 }

@@ -17,10 +17,10 @@ def env(monkeypatch):
     async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
         return next(replies)
 
-    async def kb(tenant_id, query=None, campaign_tag_id=None):
-        return ""
+    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+        return None
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", llm)
-    monkeypatch.setattr(engine, "get_knowledge_context", kb)
+    monkeypatch.setattr(engine.kb_search, "search", kb)
 
     def character(tenant, name):
         return fake.add("companions", tenant_id=tenant, name=name, industry="general", status="live",

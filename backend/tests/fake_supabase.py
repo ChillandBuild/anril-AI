@@ -32,6 +32,24 @@ _CASCADES = {
 }
 _SET_NULL = {"knowledge_reviews": "replaces_document_id"}
 
+# Anril Agents knowledge base (migration 257): parent table -> [(child table, column)], ON DELETE CASCADE.
+_KB_CASCADES = {
+    "companion_kb_collections": [("companion_kb_chunks", "collection_id"),
+                                 ("companion_kb_chunk_questions", "collection_id")],
+    "companion_kb_documents": [("companion_kb_pages", "document_id"), ("companion_kb_chunks", "document_id"),
+                               ("companion_kb_shortcuts", "document_id")],   # migration 260
+    "companion_kb_chunks": [("companion_kb_chunk_questions", "chunk_id")],
+}
+
+
+def _kb_cascade(db: "FakeSupabase", table: str, ids: set) -> None:
+    """Deletes the child rows of `ids` the way the real foreign keys do, all the way down."""
+    for child, column in _KB_CASCADES.get(table, []):
+        gone = {r["id"] for r in db.rows(child) if r.get(column) in ids}
+        db.tables[child] = [r for r in db.rows(child) if r.get(column) not in ids]
+        if gone:
+            _kb_cascade(db, child, gone)
+
 
 class FakeSupabase:
     def __init__(self):
@@ -42,6 +60,8 @@ class FakeSupabase:
             "claim_memory_pair": lambda p: _claim_memory_pair(self, p),
             "companion_day_context": lambda p: _companion_day_context(self, p),
             "match_memory_chunks": lambda p: _match_memory_chunks(self, p),
+            "match_companion_kb_chunks": lambda p: _match_companion_kb_chunks(self, p),
+            "companion_kb_question_tenants": lambda p: _companion_kb_question_tenants(self, p),
         }
 
     def table(self, name: str) -> "_Query":
@@ -60,6 +80,60 @@ class FakeSupabase:
 
     def _stamp(self) -> str:
         return f"2026-01-01T00:00:{next(self._clock):012d}"
+
+
+class FakeStorage:
+    """In-memory stand-in for supabase.storage. Opt in with `db.storage = FakeStorage()` (the default
+    stays a MagicMock, which older tests assert on). `files` is keyed by (bucket, path) so a test can
+    check a file is there or gone. Set `fail_remove = True` to make every remove() raise."""
+
+    def __init__(self):
+        self.files: dict[tuple[str, str], bytes] = {}
+        self.fail_remove = False
+
+    def from_(self, bucket: str) -> "_FakeBucket":
+        return _FakeBucket(self, bucket)
+
+
+class _FakeBucket:
+    def __init__(self, storage: FakeStorage, bucket: str):
+        self.storage, self.bucket = storage, bucket
+
+    def upload(self, path: str, file, file_options: dict | None = None):
+        if not isinstance(file, (bytes, bytearray)):
+            with open(file, "rb") as fh:
+                file = fh.read()
+        self.storage.files[(self.bucket, path)] = bytes(file)
+        return SimpleNamespace(path=path)
+
+    def download(self, path: str, options=None, query_params=None) -> bytes:
+        try:
+            return self.storage.files[(self.bucket, path)]
+        except KeyError:
+            raise Exception(f"storage: object not found: {path}") from None
+
+    def remove(self, paths: list[str]) -> list[dict]:
+        if self.storage.fail_remove:
+            raise Exception("storage: remove failed")
+        return [{"name": p} for p in paths if self.storage.files.pop((self.bucket, p), None) is not None]
+
+    def list(self, path: str | None = None, options=None) -> list[dict]:
+        prefix = f"{path.strip('/')}/" if path else ""
+        return [{"name": p[len(prefix):], "metadata": {"size": len(data)}}
+                for (bucket, p), data in sorted(self.storage.files.items())
+                if bucket == self.bucket and p.startswith(prefix) and "/" not in p[len(prefix):]]
+
+    def copy(self, from_path: str, to_path: str) -> dict:
+        self.storage.files[(self.bucket, to_path)] = self.download(from_path)
+        return {"Key": f"{self.bucket}/{to_path}"}
+
+    def create_signed_upload_url(self, path: str, options=None) -> dict:
+        url = f"https://fake.storage/object/upload/sign/{self.bucket}/{path}?token=fake-token"
+        return {"signed_url": url, "signedUrl": url, "token": "fake-token", "path": path}
+
+    def create_signed_url(self, path: str, expires_in: int, options=None) -> dict:
+        url = f"https://fake.storage/object/sign/{self.bucket}/{path}?token=fake-token"
+        return {"signedURL": url, "signedUrl": url}
 
 
 class _Query:
@@ -122,8 +196,9 @@ class _Query:
         self._ignore_duplicates = ignore_duplicates
         return self
 
-    def delete(self):
+    def delete(self, *, count=None, returning="representation"):
         self.op = "delete"
+        self._minimal = returning == "minimal"     # like PostgREST: the count comes back, the rows do not
         return self
 
     def eq(self, column, value):
@@ -289,7 +364,17 @@ class _Query:
 
         if self.op == "delete":
             ids = {r["id"] for r in matched}
+            if self.name == "companion_kb_collections" and any(
+                    r.get("collection_id") in ids for r in self.db.rows("companion_kb_documents")):
+                # companion_kb_documents.collection_id is ON DELETE RESTRICT.
+                raise Exception('23503: update or delete on table "companion_kb_collections" violates foreign key')
             self.db.tables[self.name] = [r for r in self.db.rows(self.name) if r not in matched]
+            if self.name in _KB_CASCADES:
+                _kb_cascade(self.db, self.name, ids)
+            if self.name == "companion_kb_collections":
+                for r in self.db.rows("companions"):
+                    if r.get("knowledge_collection_id") in ids:
+                        r["knowledge_collection_id"] = None
             if self.name == "knowledge_documents":
                 for child, (column, _) in _CASCADES.items():
                     self.db.tables[child] = [r for r in self.db.rows(child) if r.get(column) not in ids]
@@ -297,13 +382,16 @@ class _Query:
                     for r in self.db.rows(child):
                         if r.get(column) in ids:
                             r[column] = None
+            if getattr(self, "_minimal", False):
+                return SimpleNamespace(data=[], count=len(matched))
             return SimpleNamespace(data=[dict(r) for r in matched], count=len(matched))
 
         rows = [dict(r) for r in matched]
         for column, desc in reversed(self._order):  # stable sorts, last key first
             nullsfirst = self._nullsfirst.get(column, desc)
             rows.sort(key=lambda r, c=column, n=nullsfirst, d=desc: (
-                (r.get(c) is not None) if n != d else (r.get(c) is None), r.get(c) or ""), reverse=desc)
+                (r.get(c) is not None) if n != d else (r.get(c) is None),
+                r.get(c) if r.get(c) is not None else ""), reverse=desc)
         total = len(rows)  # like PostgREST count=exact: the total before limit / range
         rows = rows[self._offset:]
         if self._limit is not None:
@@ -388,3 +476,52 @@ def _match_memory_chunks(db: "FakeSupabase", p: dict) -> list[dict]:
                 out.append({**{k: r[k] for k in ("id", "companion_id", "kind", "day", "text")},
                             "source": "trigram", "score": score})
     return out
+
+
+# --- stand-in for match_companion_kb_chunks (migration 258) ----------------------------------------
+
+def _match_companion_kb_chunks(db: "FakeSupabase", p: dict) -> list[dict]:
+    """Same scope as the SQL function (one business, one collection, one tier) and the same
+    "source" lists, with simple scoring: shared words for "words", a key term inside the text for
+    "trigram", cosine for the vector lists when both sides have numbers. One row per (passage, list)."""
+    titles = {d["id"]: d.get("title") for d in db.rows("companion_kb_documents") if d["tenant_id"] == p["p_tenant"]}
+    scope = [r for r in db.rows("companion_kb_chunks")
+             if r["tenant_id"] == p["p_tenant"] and r["collection_id"] == p["p_collection"]
+             and r["tier"] == p["p_tier"] and r["document_id"] in titles]
+    out: list[dict] = []
+
+    def emit(source: str, scored: list[tuple[dict, float]]) -> None:
+        for r, score in sorted((t for t in scored if t[1] > 0), key=lambda t: -t[1])[:p["p_count"]]:
+            out.append({"id": r["id"], "document_id": r["document_id"], "document_title": titles[r["document_id"]],
+                        "tier": r["tier"], "heading_path": r.get("heading_path") or "", "text": r["text"],
+                        "page_from": r["page_from"], "page_to": r["page_to"], "source": source, "score": score})
+
+    for source, key in (("vector_en", "p_embedding_en"), ("vector_ta", "p_embedding_ta")):
+        q = _vector(p.get(key))
+        if q is not None:
+            emit(source, [(r, _cosine(q, _vector(r["embedding"]))) for r in scope
+                          if r.get("embedding") is not None and r.get("embedding_model") == p["p_model"]])
+    query = f"{p.get('p_query_en') or ''} {p.get('p_query_ta') or ''}"
+    emit("words", [(r, _word_sim(query, r["text"])) for r in scope])
+    terms = [t.casefold() for t in p.get("p_terms") or [] if len(t.strip()) >= 3]
+    emit("trigram", [(r, 1.0 if any(t in r["text"].casefold() for t in terms) else 0.0) for r in scope])
+    if p["p_tier"] == 1:
+        ids = {r["id"]: r for r in scope}
+        best: dict[str, float] = {}
+        for cq in db.rows("companion_kb_chunk_questions"):
+            if (cq["tenant_id"] != p["p_tenant"] or cq.get("chunk_id") not in ids or cq.get("embedding") is None
+                    or cq.get("embedding_model") != p["p_model"]):
+                continue
+            for key in ("p_embedding_en", "p_embedding_ta"):
+                q = _vector(p.get(key))
+                if q is not None:
+                    best[cq["chunk_id"]] = max(best.get(cq["chunk_id"], 0.0), _cosine(q, _vector(cq["embedding"])))
+        emit("question", [(ids[i], score) for i, score in best.items()])
+    return out
+
+
+# --- stand-in for companion_kb_question_tenants (migration 260) ------------------------------------
+
+def _companion_kb_question_tenants(db: "FakeSupabase", _p: dict) -> list[dict]:
+    """SELECT DISTINCT tenant_id FROM companion_kb_question_log."""
+    return [{"tenant_id": t} for t in sorted({r["tenant_id"] for r in db.rows("companion_kb_question_log")})]
