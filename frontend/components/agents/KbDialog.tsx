@@ -7,7 +7,7 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * A small dialog for the knowledge pages (delete a book, add from Anril Sales, type an answer).
+ * A small dialog for the knowledge pages (delete a file, add from Anril Sales, type an answer).
  * Rendered in a portal so a card's overflow cannot clip it. Tab stays inside, Escape closes,
  * and focus goes back to whatever opened it.
  */

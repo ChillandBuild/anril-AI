@@ -23,7 +23,7 @@ export default function CharacterPage() {
   useEffect(load, [load]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <Link href="/dashboard/agents/characters" className="inline-flex items-center gap-1 text-sm text-ink-secondary hover:text-primary">
         <ArrowLeft size={14} aria-hidden="true" /> All characters
       </Link>

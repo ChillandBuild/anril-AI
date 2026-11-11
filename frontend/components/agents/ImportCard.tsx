@@ -20,9 +20,9 @@ import {
 const ROW = "flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle px-5 py-4";
 
 /**
- * The upload card: drop files, pick a collection, say if it is a book or the main resource, Import.
- * Example: drop "Book 7.pdf", pick "Astrology books", press Import. The file goes straight to storage,
- * then is registered as a book there and starts being read. One file failing never stops the others.
+ * The upload card: drop files, pick a collection, say if it is a regular file or the main resource, Import.
+ * Example: drop "Returns policy.pdf", pick "Product guides", press Import. The file goes straight to storage,
+ * then is registered as a file there and starts being read. One file failing never stops the others.
  */
 export function ImportCard({
   collections,
@@ -39,7 +39,7 @@ export function ImportCard({
   /** From ?collection=<id> in the address. */
   initialCollectionId: string | null;
   onCollectionCreated: (c: KbCollection) => void;
-  /** A book was added: the page refreshes its lists. */
+  /** A file was added: the page refreshes its lists. */
   onChanged: () => void;
 }) {
   const hintId = useId();
@@ -150,7 +150,7 @@ export function ImportCard({
   return (
     <section className={cn(CARD, "p-0")} aria-labelledby="import-title">
       <h2 id="import-title" className="sr-only">
-        Upload books
+        Upload files
       </h2>
 
       <div className="space-y-3 p-5">
@@ -184,7 +184,7 @@ export function ImportCard({
                   "rounded-md border px-1.5 py-0.5 font-mono text-[11px] text-ink-secondary",
                   c.later ? "border-dashed border-border-subtle text-ink-secondary" : "border-border",
                 )}
-                title={c.later ? "Video comes after books work" : undefined}
+                title={c.later ? "Video support comes later" : undefined}
               >
                 {c.label}
                 {c.later ? " (later)" : ""}
@@ -310,7 +310,7 @@ export function ImportCard({
             </p>
           ) : (
             <p id={hintId} className="text-xs text-ink-secondary">
-              Books go into this collection. A character reads one collection.
+              Files go into this collection. A character reads one collection.
             </p>
           )}
         </div>
@@ -349,7 +349,7 @@ export function ImportCard({
         <div role="radiogroup" aria-labelledby={`${hintId}-tier`} className="inline-flex rounded-xl border border-border p-0.5">
           {(
             [
-              [2, "A book"],
+              [2, "A regular file"],
               [1, "The main resource"],
             ] as const
           ).map(([value, label]) => (

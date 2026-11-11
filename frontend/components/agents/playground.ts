@@ -51,9 +51,9 @@ export function sourceText(s: { document: string; page_from: number; page_to: nu
   return `${s.document}, ${pageSpanText(s.page_from, s.page_to)}`;
 }
 
-/** The line under a test-chat answer. primary/book → "From Main resource, p. 12; Book 7, pp. 212-213"; own → a note; chat/none → "". */
+/** The line under a test-chat answer. primary/file → "From Main resource, p. 12; Book 7, pp. 212-213"; own → a note; chat/none → "". */
 export function replySourceLine(basis: CompanionReply["basis"], sources: CompanionReply["sources"]): string {
-  if (basis === "own") return "Own reading, not from the books";
+  if (basis === "own") return "Own reasoning, not from your files";
   if ((basis === "primary" || basis === "book") && sources && sources.length > 0) {
     return `From ${sources.map(sourceText).join("; ")}`;
   }

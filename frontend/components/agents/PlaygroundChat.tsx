@@ -22,8 +22,8 @@ type PendingTools = { turnId: string; calls: CompanionToolCall[]; started: numbe
 
 /**
  * Chat with one character as the Test person. Example: the owner types
- * "Kalyanam eppo nadakkum?" and Jothidar AI answers; if it asks the app for
- * get_chart(...), the owner types the chart by hand or skips.
+ * "Which plan am I on?" and Maya answers; if it asks the app for
+ * get_account(...), the owner types the answer by hand or skips.
  */
 export function PlaygroundChat({ character }: { character: Companion }) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
@@ -120,7 +120,7 @@ export function PlaygroundChat({ character }: { character: Companion }) {
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
           {bubbles.length === 0 && !pending && (
-            <p className="py-10 text-center text-sm text-ink-muted">Say hello to {character.name}, e.g. &ldquo;Vanakkam! Kalyanam eppo nadakkum?&rdquo;</p>
+            <p className="py-10 text-center text-sm text-ink-muted">Say hello to {character.name}, e.g. &ldquo;Hi! What can you help me with?&rdquo;</p>
           )}
           {bubbles.map((b, i) =>
             b.kind === "user" ? (
@@ -244,7 +244,7 @@ function ToolAnswer({ calls, busy, onAnswer }: { calls: CompanionToolCall[]; bus
             rows={2}
             value={answers[c.id] ?? ""}
             onChange={(e) => setAnswers((a) => ({ ...a, [c.id]: e.target.value }))}
-            placeholder='Type what your app would answer, e.g. {"lagna": "Kumbham"}'
+            placeholder='Type what your app would answer, e.g. {"plan": "Pro"}'
             className={cn(INPUT, "font-mono text-xs")}
           />
         </div>

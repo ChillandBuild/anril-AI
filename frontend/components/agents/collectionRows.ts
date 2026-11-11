@@ -5,12 +5,12 @@ import { failedPagesText } from "./knowledgeRows";
 
 export type CollectionTab = "books" | "shortcuts" | "gaps";
 export const COLLECTION_TABS: { id: CollectionTab; label: string }[] = [
-  { id: "books", label: "Books" },
+  { id: "books", label: "Files" },
   { id: "shortcuts", label: "Learned shortcuts" },
   { id: "gaps", label: "Missing answers" },
 ];
 
-/** "?tab=gaps" -> "gaps". Anything unknown (or missing) is the Books tab. */
+/** "?tab=gaps" -> "gaps". Anything unknown (or missing) is the Files tab. */
 export function parseTab(value: string | null | undefined): CollectionTab {
   return COLLECTION_TABS.find((t) => t.id === value)?.id ?? "books";
 }
@@ -28,10 +28,10 @@ export function nextTabIndex(current: number, key: string, count: number): numbe
   return null;
 }
 
-/** "3 books", "1 book", "No books yet". */
+/** "3 files", "1 file", "No files yet". */
 export function booksText(count: number): string {
-  if (count <= 0) return "No books yet";
-  return count === 1 ? "1 book" : `${count} books`;
+  if (count <= 0) return "No files yet";
+  return count === 1 ? "1 file" : `${count} files`;
 }
 
 /** "212 of 320 pages read", "No pages yet" for an empty collection. */
@@ -46,7 +46,7 @@ export function readByText(readBy: { name: string }[]): string {
   return readBy.map((c) => c.name).join(", ");
 }
 
-/** A collection can only be deleted while it holds no books. */
+/** A collection can only be deleted while it holds no files. */
 export function canDeleteCollection(c: Pick<KbCollection, "book_count">): boolean {
   return c.book_count === 0;
 }
@@ -64,14 +64,14 @@ export function sortBooks<T extends Pick<KbDocument, "tier">>(docs: T[]): T[] {
     .map((x) => x.doc);
 }
 
-/** Retry is offered when some pages failed or the whole book failed. */
+/** Retry is offered when some pages failed or the whole file failed. */
 export function needsRetry(doc: Pick<KbDocument, "pages_failed" | "status">): boolean {
   return doc.pages_failed > 0 || doc.status === "failed";
 }
 
 /**
- * What went wrong with a book, in words. "Could not read pages 3-5, 9" when pages failed,
- * else the book's own error, else null. A book that failed outright with an error and
+ * What went wrong with a file, in words. "Could not read pages 3-5, 9" when pages failed,
+ * else the file's own error, else null. A file that failed outright with an error and
  * with failed pages shows both.
  */
 export function problemText(doc: Pick<KbDocument, "failed_pages" | "error" | "status">): string | null {
@@ -81,13 +81,13 @@ export function problemText(doc: Pick<KbDocument, "failed_pages" | "error" | "st
   return parts.length > 0 ? parts.join(". ") : null;
 }
 
-/** The button that flips a book between main resource (tier 1) and ordinary book (tier 2). */
+/** The button that flips a file between main resource (tier 1) and regular file (tier 2). */
 export function tierToggle(tier: 1 | 2): { label: string; next: 1 | 2 } {
-  return tier === 1 ? { label: "Make an ordinary book", next: 2 } : { label: "Make main resource", next: 1 };
+  return tier === 1 ? { label: "Make a regular file", next: 2 } : { label: "Make main resource", next: 1 };
 }
 
 export function tierLabel(tier: 1 | 2): string {
-  return tier === 1 ? "Main resource" : "Book";
+  return tier === 1 ? "Main resource" : "Regular file";
 }
 
 export function sourceLabel(source: KbDocument["source"]): string {

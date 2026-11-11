@@ -219,7 +219,7 @@ export function CollectionPicker({
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
                 {c.book_count > 0 && (
                   <span className="text-xs text-ink-secondary">
-                    {c.book_count} {c.book_count === 1 ? "book" : "books"}
+                    {c.book_count} {c.book_count === 1 ? "file" : "files"}
                   </span>
                 )}
                 {c.id === value && <Check size={14} className="text-primary" aria-label="Picked" />}

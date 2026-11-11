@@ -15,7 +15,7 @@ function timeLabel(iso: string): string {
   return d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-/** Every call to the public API. Example: "9 Nov 10:42 · Chat (widget) · Jothidar AI · 48213 · 200 · 1.4 s". */
+/** Every call to the public API. Example: "9 Nov 10:42 · Chat (widget) · Maya · 48213 · 200 · 1.4 s". */
 export default function RequestsPage() {
   const [kind, setKind] = useState<CompanionRequestKind | "">("");
   const [status, setStatus] = useState<"ok" | "error" | "">("");
@@ -37,7 +37,7 @@ export default function RequestsPage() {
   const max = barMax(bars);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-2">
         <label>
           <span className="sr-only">Kind</span>

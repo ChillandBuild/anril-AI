@@ -15,7 +15,7 @@ import { BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/compo
 
 /**
  * One person's memory for one character. Example: Karthik (48213) on
- * Jothidar AI: 4 facts as a list or a graph, and the Diary tab (the
+ * Maya: 4 facts as a list or a graph, and the Diary tab (the
  * "earlier today" note plus one line per past day); delete one fact or
  * diary line, or "Delete this person" to wipe their chats and memory with
  * every character.

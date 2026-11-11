@@ -7,8 +7,8 @@ import { askedText } from "./collectionRows";
 import { BTN_ROW, EmptyNote, errorText, useListHeading } from "./collectionUi";
 
 /**
- * The Missing answers tab. Example: "Rahu and Saturn in the 7th house for Kumbha lagna",
- * asked 6 times this month, read by Guru. The owner types an answer or dismisses it.
+ * The Missing answers tab. Example: "Do you ship to Singapore?",
+ * asked 6 times this month, read by Maya. The owner types an answer or dismisses it.
  */
 export function GapList({ collectionId }: { collectionId: string }) {
   const [rows, setRows] = useState<KbGap[] | null>(null);
@@ -72,7 +72,7 @@ export function GapList({ collectionId }: { collectionId: string }) {
             </button>
           }
         >
-          Nothing missing. Questions your books cannot answer show up here after 5 asks.
+          Nothing missing. Questions your files cannot answer show up here after 5 asks.
         </EmptyNote>
       </>
     );
@@ -97,7 +97,7 @@ export function GapList({ collectionId }: { collectionId: string }) {
               <p className="text-sm text-ink-secondary">
                 {askedText(g.ask_count)} · {g.companion_name}
               </p>
-              <p className="text-sm text-ink-secondary">Not in your books.</p>
+              <p className="text-sm text-ink-secondary">Not in your files.</p>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <button type="button" className={BTN_ROW} disabled={busyId === g.id} onClick={() => setAnswering(g)} aria-label={`Type an answer: ${g.topic}`}>

@@ -44,11 +44,11 @@ export default function MemoriesPage() {
   useEffect(load, [load]);
   useEffect(() => setOpen(null), [selected?.id]);
 
-  if (listError) return <div className="mx-auto max-w-6xl p-4 sm:p-6"><ErrorNote message={listError} /></div>;
-  if (characters === null) return <div className="mx-auto max-w-6xl p-4 sm:p-6"><LoadingRows /></div>;
+  if (listError) return <div className="w-full p-4 sm:p-6"><ErrorNote message={listError} /></div>;
+  if (characters === null) return <div className="w-full p-4 sm:p-6"><LoadingRows /></div>;
   if (!selected) {
     return (
-      <div className="mx-auto max-w-6xl p-4 sm:p-6">
+      <div className="w-full p-4 sm:p-6">
         <div className={`${CARD} text-sm text-ink-secondary`}>
           Make a character first on <Link href="/dashboard/agents/characters" className="text-primary underline">Characters</Link>.
         </div>
@@ -57,7 +57,7 @@ export default function MemoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <CharacterSelect characters={characters} value={selected.id} onChange={select} />
         <label className="relative min-w-[220px] flex-1 sm:max-w-xs">

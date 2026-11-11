@@ -3,7 +3,7 @@ import type { Companion } from "@/lib/api";
 import { changedFields, collectionIdOf, linesToList, nextDraftName, ownReasoningOn } from "./characterForm";
 
 const jothidar: Companion = {
-  id: "c1", name: "Jothidar AI", industry: "astrology", role: "Family astrologer", backstory: "", speaking_style: "",
+  id: "c1", name: "Maya", industry: "general", role: "Support guide", backstory: "", speaking_style: "",
   sample_lines: ["Vanakkam!"], goals: [], temperament: "", default_mood: "calm", language: "ta-en", rules: [],
   knowledge_tag_id: null, knowledge_collection_id: null, own_reasoning: true, memory_level: 2, memory_engine: "card", history_messages: 10, privacy_mode: "A", status: "draft",
 };

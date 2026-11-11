@@ -16,7 +16,7 @@ const CENTER = SIZE / 2;
 
 /**
  * Person in the middle, one node per section that has facts, facts fanned
- * around their section. Example: Karthik → Life → "lagnam Kumbham".
+ * around their section. Example: Karthik → Life → "prefers email".
  */
 export function layoutMemoryGraph(personLabel: string, facts: CompanionMemoryFact[]): { nodes: GraphNode[]; edges: GraphEdge[]; size: number } {
   const nodes: GraphNode[] = [{ id: "person", kind: "person", label: personLabel, x: CENTER, y: CENTER }];

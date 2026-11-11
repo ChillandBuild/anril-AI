@@ -34,7 +34,7 @@ const col = (id: string, name: string): KbCollection => ({
 const doc = (id: string, created_at: string, status: KbDocument["status"] = "ready"): KbDocument => ({
   id,
   collection_id: "c1",
-  collection_name: "Astrology books",
+  collection_name: "Product guides",
   title: id,
   file_type: "pdf",
   size_bytes: 1,
@@ -163,10 +163,10 @@ describe("itemStatusText and counts", () => {
 });
 
 describe("collection picker helpers", () => {
-  const cols = [col("a", "Astrology books"), col("r", "Remedies")];
+  const cols = [col("a", "Product guides"), col("r", "Remedies")];
   it("filters by typed text", () => {
     expect(filterCollections(cols, "")).toHaveLength(2);
-    expect(filterCollections(cols, "  astro ").map((c) => c.id)).toEqual(["a"]);
+    expect(filterCollections(cols, "  product ").map((c) => c.id)).toEqual(["a"]);
     expect(filterCollections(cols, "zzz")).toEqual([]);
   });
   it("offers Create only for a new name", () => {

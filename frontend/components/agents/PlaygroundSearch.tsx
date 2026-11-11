@@ -14,13 +14,13 @@ import { scoreLabel, sourceText } from "@/components/agents/playground";
 import { BTN_PRIMARY, CARD, INPUT, formatDate } from "@/components/agents/ui";
 
 const SOURCES: { id: CompanionSearchIn; label: string; hint: string }[] = [
-  { id: "knowledge", label: "Knowledge", hint: "The book passages this character would read for a question." },
+  { id: "knowledge", label: "Knowledge", hint: "The passages from your files this character would read for a question." },
   { id: "memories", label: "Memories", hint: "Facts this character remembers, matched word by word." },
 ];
 
 /**
- * See what a character would find. Example: Jothidar AI, Knowledge, "Kumbham rasi this week" →
- * 3 passages from "Rasi palan" with "Match 3 of 3" on top. Memories, "Zoho" → Karthik's
+ * See what a character would find. Example: Maya, Knowledge, "refund policy" →
+ * 3 passages from "Returns policy" with "Match 3 of 3" on top. Memories, "Zoho" → Karthik's
  * "Interview at Zoho on 20 Nov".
  */
 export function PlaygroundSearch({ character }: { character: Companion }) {
@@ -88,7 +88,7 @@ export function PlaygroundSearch({ character }: { character: Companion }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             maxLength={500}
-            placeholder={source === "knowledge" ? "e.g. Kumbham rasi this week" : "e.g. Zoho interview"}
+            placeholder={source === "knowledge" ? "e.g. refund policy" : "e.g. Zoho interview"}
             className={INPUT}
           />
         </label>
@@ -123,8 +123,8 @@ export function PlaygroundSearch({ character }: { character: Companion }) {
                 ? !character.knowledge_collection_id
                   ? `${character.name} has no collection yet. Pick one in the character's Knowledge tab.`
                   : !result.needs_docs
-                    ? "That message did not need the books."
-                    : `Nothing in ${character.name}'s books matches that.`
+                    ? "That message did not need your files."
+                    : `Nothing in ${character.name}'s files matches that.`
                 : `${character.name} doesn't remember anything with those words.`}
             </p>
           ) : result.in === "knowledge" ? (

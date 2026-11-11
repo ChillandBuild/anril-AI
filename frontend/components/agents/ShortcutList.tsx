@@ -7,8 +7,8 @@ import { usedText } from "./collectionRows";
 import { BTN_ROW, ConfirmDialog, EmptyNote, errorText, useListHeading } from "./collectionUi";
 
 /**
- * The Learned shortcuts tab. Example: "What is Sade Sati and how long does it last?",
- * goes straight to "Book 3, p. 88", used 14 times, read by Guru.
+ * The Learned shortcuts tab. Example: "How long does a refund take?",
+ * goes straight to "Returns policy, p. 8", used 14 times, read by Maya.
  */
 export function ShortcutList({ collectionId }: { collectionId: string }) {
   const [rows, setRows] = useState<KbShortcut[] | null>(null);
@@ -97,7 +97,7 @@ export function ShortcutList({ collectionId }: { collectionId: string }) {
         >
           <p className="font-medium text-ink">{deleting.topic}</p>
           <p>
-            Characters go back to searching all the books for this question. The topic will not be learned again, even if people keep
+            Characters go back to searching all the files for this question. The topic will not be learned again, even if people keep
             asking it.
           </p>
           <p className="font-medium text-ink">This cannot be undone.</p>

@@ -41,7 +41,7 @@ const PASSAGE_STEP = 100;
 
 export default function BookPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows /></div>}>
+    <Suspense fallback={<div className="w-full p-4 sm:p-6"><LoadingRows /></div>}>
       <BookView />
     </Suspense>
   );
@@ -83,7 +83,7 @@ function BookView() {
       })
       .catch((e) => {
         if (isNotFound(e)) setMissing(true);
-        else setError(errorText(e, "Could not load this book."));
+        else setError(errorText(e, "Could not load this file."));
       });
   }, [fetchDoc]);
   useEffect(() => {
@@ -130,9 +130,9 @@ function BookView() {
 
   if (missing) {
     return (
-      <div className="mx-auto max-w-5xl p-4 sm:p-6">
+      <div className="w-full p-4 sm:p-6">
         <NotFoundNote
-          message="This book does not exist, or it was deleted."
+          message="This file does not exist, or it was deleted."
           backHref={collectionHref(collectionId)}
           backLabel="Back to the collection"
         />
@@ -141,7 +141,7 @@ function BookView() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <Link href={backHref} className="inline-block text-sm text-ink-secondary hover:text-primary hover:underline">
         &lsaquo; {doc?.collection_name ?? "Collection"}
       </Link>
@@ -162,13 +162,13 @@ function BookView() {
               <StatePill state={docState(doc)} label={docStateLabel(docState(doc))} />
             </div>
             <button type="button" className={`${BTN_ROW_DANGER} shrink-0`} onClick={() => setConfirmDelete(true)} disabled={busy}>
-              Delete book
+              Delete file
             </button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <section className={`${CARD} min-w-0 p-0`}>
-              <Tabs label="Book" tabs={BOOK_TABS} active={tab} onChange={setTab}>
+              <Tabs label="File" tabs={BOOK_TABS} active={tab} onChange={setTab}>
                 {(id) =>
                   id === "pages" ? (
                     <PagesPanel doc={doc} refreshKey={refreshKey} busy={busy} onRetry={() => act(() => companionKbApi.retryDocument(doc.id), "Retrying the failed pages.")} />
@@ -204,7 +204,7 @@ function BookView() {
                   type="button"
                   className={BTN_ROW}
                   disabled={busy}
-                  onClick={() => act(() => companionKbApi.updateDocument(doc.id, { tier: tierToggle(doc.tier).next }), "Book updated.")}
+                  onClick={() => act(() => companionKbApi.updateDocument(doc.id, { tier: tierToggle(doc.tier).next }), "File updated.")}
                 >
                   {tierToggle(doc.tier).label}
                 </button>
@@ -216,7 +216,7 @@ function BookView() {
           {confirmDelete && (
             <ConfirmDialog
               title={`Delete "${doc.title}"?`}
-              confirmLabel="Delete book"
+              confirmLabel="Delete file"
               onClose={() => setConfirmDelete(false)}
               onConfirm={async () => {
                 await companionKbApi.deleteDocument(doc.id);
@@ -413,7 +413,7 @@ function PageText({ docId, page }: { docId: string; page: KbPage | null }) {
   );
 }
 
-/** The pieces search looks through. Cut to 100 at a time so a big book stays quick. */
+/** The pieces search looks through. Cut to 100 at a time so a big file stays quick. */
 function PassagesPanel({ doc, refreshKey }: { doc: KbDocument; refreshKey: number }) {
   const [rows, setRows] = useState<KbPassage[] | null>(null);
   const [error, setError] = useState("");
@@ -451,7 +451,7 @@ function PassagesPanel({ doc, refreshKey }: { doc: KbDocument; refreshKey: numbe
     );
   }
   if (rows.length === 0) {
-    return <EmptyNote>{doc.status === "processing" ? "Passages appear here as pages are read." : "No passages were made from this book."}</EmptyNote>;
+    return <EmptyNote>{doc.status === "processing" ? "Passages appear here as pages are read." : "No passages were made from this file."}</EmptyNote>;
   }
 
   const more = showingText(Math.min(limit, rows.length), rows.length);

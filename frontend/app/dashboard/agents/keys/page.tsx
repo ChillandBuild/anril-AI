@@ -7,7 +7,7 @@ import { CopyButton } from "@/components/agents/CodeBlock";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
 
 /**
- * Secret keys for the business's server. Example: Astrotamil creates a key,
+ * Secret keys for the business's server. Example: a business creates a key,
  * copies acs_live_… into ANRIL_COMPANION_KEY on their server; the full key
  * is shown once, then only its prefix.
  */
@@ -65,7 +65,7 @@ export default function KeysPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-secondary">
           {keys ? `${active} of ${maxActive} active keys.` : " "}

@@ -36,14 +36,14 @@ export function ownReasoningOn(c: Companion): boolean {
   return c.own_reasoning ?? true;
 }
 
-/** The book collection a character reads, or null for "No books". */
+/** The collection a character reads, or null for "No files". */
 export function collectionIdOf(c: Companion): string | null {
   return c.knowledge_collection_id ?? null;
 }
 
 /**
- * Only the fields the owner changed, for the PATCH. Example: Jothidar AI with
- * default mood calm → warm gives { default_mood: "warm" }. Picking "No books" on a
+ * Only the fields the owner changed, for the PATCH. Example: Maya with
+ * default mood calm → warm gives { default_mood: "warm" }. Picking "No files" on a
  * character that read a collection gives { knowledge_collection_id: null }.
  */
 export function changedFields(original: Companion, draft: Companion): CompanionInput {
@@ -51,7 +51,7 @@ export function changedFields(original: Companion, draft: Companion): CompanionI
   for (const key of EDITABLE) {
     if (JSON.stringify(original[key]) !== JSON.stringify(draft[key])) out[key] = draft[key];
   }
-  // Missing means "No books" / "on", so an untouched older character sends nothing.
+  // Missing means "No files" / "on", so an untouched older character sends nothing.
   if (collectionIdOf(original) !== collectionIdOf(draft)) out.knowledge_collection_id = collectionIdOf(draft);
   if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
   return out as CompanionInput;

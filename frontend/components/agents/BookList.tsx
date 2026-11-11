@@ -19,8 +19,8 @@ import {
 const BOOK_LIMIT = 200;
 
 /**
- * The Books tab of one collection. Example: "Book 7", 319 of 320 pages, "Could not read page 200",
- * Retry / Make main resource / Delete. Refreshes every 3 seconds while any book is being read.
+ * The Files tab of one collection. Example: "Returns policy", 319 of 320 pages, "Could not read page 200",
+ * Retry / Make main resource / Delete. Refreshes every 3 seconds while any file is being read.
  */
 export function BookList({ collectionId }: { collectionId: string }) {
   const [docs, setDocs] = useState<KbDocument[] | null>(null);
@@ -30,7 +30,7 @@ export function BookList({ collectionId }: { collectionId: string }) {
   const [deleting, setDeleting] = useState<KbDocument | null>(null);
   const [status, setStatus] = useState("");
   const seq = useRef(0);
-  const { heading, focusHeading } = useListHeading("Books");
+  const { heading, focusHeading } = useListHeading("Files");
 
   // Only the newest answer is kept, so a slow older request cannot overwrite a newer list.
   const fetchDocs = useCallback(async () => {
@@ -41,7 +41,7 @@ export function BookList({ collectionId }: { collectionId: string }) {
 
   const load = useCallback(() => {
     setError("");
-    fetchDocs().catch((e) => setError(errorText(e, "Could not load the books.")));
+    fetchDocs().catch((e) => setError(errorText(e, "Could not load the files.")));
   }, [fetchDocs]);
   useEffect(load, [load]);
 
@@ -95,11 +95,11 @@ export function BookList({ collectionId }: { collectionId: string }) {
         <EmptyNote
           action={
             <Link href={importHref(collectionId)} className={BTN_PRIMARY}>
-              Import a book
+              Import a file
             </Link>
           }
         >
-          No books in this collection yet. Press Import to add one.
+          No files in this collection yet. Press Import to add one.
         </EmptyNote>
       </>
     );
@@ -174,12 +174,12 @@ export function BookList({ collectionId }: { collectionId: string }) {
           );
         })}
       </ul>
-      {docs.length >= BOOK_LIMIT && <p className="px-5 py-3 text-sm text-ink-secondary">Showing the newest {BOOK_LIMIT} books.</p>}
+      {docs.length >= BOOK_LIMIT && <p className="px-5 py-3 text-sm text-ink-secondary">Showing the newest {BOOK_LIMIT} files.</p>}
 
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.title}"?`}
-          confirmLabel="Delete book"
+          confirmLabel="Delete file"
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
             await companionKbApi.deleteDocument(deleting.id);

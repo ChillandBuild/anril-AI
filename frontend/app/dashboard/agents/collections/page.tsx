@@ -29,10 +29,10 @@ export default function CollectionsPage() {
   const refresh = () => companionKbApi.listCollections().then(setCollections);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       {heading}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-ink-secondary">A collection is a group of books. A character reads one collection.</p>
+        <p className="text-sm text-ink-secondary">A collection is a group of files. A character reads one collection.</p>
         <button type="button" onClick={() => setDialog({ kind: "create" })} className={`${BTN_PRIMARY} shrink-0`} disabled={collections === null}>
           <Plus size={16} aria-hidden="true" />
           New collection
@@ -55,7 +55,7 @@ export default function CollectionsPage() {
               </button>
             }
           >
-            No collections yet. Make one, then import books into it.
+            No collections yet. Make one, then import files into it.
           </EmptyNote>
         </div>
       ) : collections ? (
@@ -85,7 +85,7 @@ export default function CollectionsPage() {
                       className={cn(BTN_ROW_DANGER, !canDelete && "cursor-not-allowed opacity-50 hover:bg-white")}
                       aria-disabled={canDelete ? undefined : "true"}
                       aria-describedby={canDelete ? undefined : hintId}
-                      title={canDelete ? undefined : "Delete its books first"}
+                      title={canDelete ? undefined : "Delete its files first"}
                       onClick={() => {
                         if (canDelete) setDialog({ kind: "delete", collection: c });
                       }}
@@ -95,7 +95,7 @@ export default function CollectionsPage() {
                     </button>
                     {!canDelete && (
                       <span id={hintId} className="w-full text-xs text-ink-secondary sm:text-right">
-                        Delete its books first.
+                        Delete its files first.
                       </span>
                     )}
                   </div>
@@ -109,7 +109,7 @@ export default function CollectionsPage() {
       {dialog?.kind === "create" && (
         <NameDialog
           title="New collection"
-          intro="A collection is a group of books. A character reads one collection."
+          intro="A collection is a group of files. A character reads one collection."
           initial=""
           submitLabel="Create"
           onClose={() => setDialog(null)}
@@ -148,7 +148,7 @@ export default function CollectionsPage() {
             focusHeading();
           }}
         >
-          <p>This collection has no books in it.</p>
+          <p>This collection has no files in it.</p>
           <p className="font-medium text-ink">This cannot be undone.</p>
         </ConfirmDialog>
       )}

@@ -3,7 +3,7 @@ import type { CompanionMemoryFact } from "@/lib/api";
 import { layoutMemoryGraph } from "./memoryGraph";
 
 const fact = (id: string, section: CompanionMemoryFact["section"], text: string): CompanionMemoryFact => ({
-  id, section, text, valid_from: null, valid_to: null, status: "active", learned_by: "Jothidar AI",
+  id, section, text, valid_from: null, valid_to: null, status: "active", learned_by: "Maya",
 });
 
 describe("layoutMemoryGraph", () => {

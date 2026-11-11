@@ -7,8 +7,8 @@ import { toggleId } from "@/components/agents/uploadQueue";
 
 /**
  * "Add from Anril Sales": tick files already uploaded to Anril Sales and copy them into the
- * chosen collection. The Sales copy is not changed. Example: tick "Porutham guide.pdf",
- * press Add, and it appears under Processing in "Astrology books".
+ * chosen collection. The Sales copy is not changed. Example: tick "Pricing sheet.pdf",
+ * press Add, and it appears under Processing in "Product guides".
  */
 export function SalesPicker({
   open,
@@ -89,7 +89,7 @@ export function SalesPicker({
   return (
     <KbDialog open={open} title="Add from Anril Sales" onClose={adding ? () => undefined : onClose} footer={footer}>
       <p className="mb-3 text-ink-secondary">
-        Copies a file you already uploaded to Anril Sales into &ldquo;{collectionName}&rdquo; as {tier === 1 ? "the main resource" : "a book"}. The Sales
+        Copies a file you already uploaded to Anril Sales into &ldquo;{collectionName}&rdquo; as {tier === 1 ? "the main resource" : "a regular file"}. The Sales
         copy is not changed.
       </p>
 
@@ -106,7 +106,7 @@ export function SalesPicker({
           <legend className="sr-only">Anril Sales files</legend>
           <ul className="space-y-1">
             {docs.map((d) => {
-              const unreadable = d.file_type === "";   // an old file type the books reader cannot open
+              const unreadable = d.file_type === "";   // an old file type the file reader cannot open
               return (
               <li key={d.id}>
                 <label className={`flex min-h-10 items-center gap-3 rounded-lg px-2 py-1.5 ${unreadable ? "opacity-60" : "cursor-pointer hover:bg-surface-mid"}`}>

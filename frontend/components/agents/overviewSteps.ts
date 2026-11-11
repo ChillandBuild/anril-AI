@@ -3,7 +3,7 @@ import type { CompanionOverview } from "@/lib/api";
 export type SetupStep = { id: "live" | "key" | "seen"; title: string; detail: string; done: boolean; href: string; action: string };
 
 /**
- * The three setup steps. Example: Astrotamil has Jothidar AI live and a key,
+ * The three setup steps. Example: a business has Maya live and a key,
  * but no site call yet → steps 1 and 2 done, step 3 points at Install.
  */
 export function setupSteps(o: CompanionOverview): SetupStep[] {

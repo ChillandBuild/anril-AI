@@ -51,15 +51,15 @@ describe("nextTabIndex", () => {
 
 describe("collection rows", () => {
   it("says how many books and pages", () => {
-    expect(booksText(0)).toBe("No books yet");
-    expect(booksText(1)).toBe("1 book");
-    expect(booksText(17)).toBe("17 books");
+    expect(booksText(0)).toBe("No files yet");
+    expect(booksText(1)).toBe("1 file");
+    expect(booksText(17)).toBe("17 files");
     expect(collectionPagesText({ pages_ok: 212, page_count: 320 })).toBe("212 of 320 pages read");
     expect(collectionPagesText({ pages_ok: 0, page_count: 0 })).toBe("No pages yet");
   });
   it("names the characters that read a collection", () => {
     expect(readByText([])).toBe("No character reads this yet");
-    expect(readByText([{ name: "Jothidar AI" }, { name: "Guru" }])).toBe("Jothidar AI, Guru");
+    expect(readByText([{ name: "Maya" }, { name: "Arjun" }])).toBe("Maya, Arjun");
   });
   it("lets only an empty collection be deleted", () => {
     expect(canDeleteCollection({ book_count: 0 })).toBe(true);
@@ -97,7 +97,7 @@ describe("book rows", () => {
   });
   it("flips the tier", () => {
     expect(tierToggle(2)).toEqual({ label: "Make main resource", next: 1 });
-    expect(tierToggle(1)).toEqual({ label: "Make an ordinary book", next: 2 });
+    expect(tierToggle(1)).toEqual({ label: "Make a regular file", next: 2 });
   });
   it("labels where a book came from", () => {
     expect(sourceLabel("upload")).toBe("Uploaded");

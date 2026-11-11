@@ -29,8 +29,8 @@ export default function AgentsOverviewPage() {
   }, []);
   useEffect(load, [load]);
 
-  if (error) return <div className="mx-auto max-w-5xl p-4 sm:p-6"><ErrorNote message={error} onRetry={load} /></div>;
-  if (!overview) return <div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows rows={4} /></div>;
+  if (error) return <div className="w-full p-4 sm:p-6"><ErrorNote message={error} onRetry={load} /></div>;
+  if (!overview) return <div className="w-full p-4 sm:p-6"><LoadingRows rows={4} /></div>;
 
   const steps = setupSteps(overview);
   const allDone = steps.every((s) => s.done);
@@ -42,7 +42,7 @@ export default function AgentsOverviewPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       {!overview.model_ready && (
         <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />

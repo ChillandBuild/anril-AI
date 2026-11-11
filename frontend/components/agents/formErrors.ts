@@ -1,7 +1,7 @@
 import type { ApiError } from "@/lib/api";
 
 /**
- * Per-field messages from a FastAPI 422. Example: renaming Jothidar AI to an
+ * Per-field messages from a FastAPI 422. Example: renaming Maya to an
  * 81-character name gives { name: "String should have at most 80 characters" }.
  * loc looks like ["body", "name"] or ["body", "sample_lines", 2]: the field is
  * the first string after "body".

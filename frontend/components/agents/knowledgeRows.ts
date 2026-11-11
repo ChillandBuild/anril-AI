@@ -2,7 +2,7 @@ import type { KbDocument, KbPage } from "@/lib/api";
 
 export type KbDocState = "reading" | "ready" | "gaps" | "failed";
 
-/** Where a book is: still reading, ready, ready with some pages failed, or failed. */
+/** Where a file is: still reading, ready, ready with some pages failed, or failed. */
 export function docState(doc: Pick<KbDocument, "status">): KbDocState {
   if (doc.status === "ready") return "ready";
   if (doc.status === "ready_with_gaps") return "gaps";
@@ -92,7 +92,7 @@ export function fileTypeOf(name: string): string | null {
   return KB_ACCEPT.split(",").includes(`.${ext}`) ? ext : null;
 }
 
-/** True while any book is still being read; the page polls while this is true. */
+/** True while any file is still being read; the page polls while this is true. */
 export function anyReading(docs: Pick<KbDocument, "status">[]): boolean {
   return docs.some((d) => d.status === "processing");
 }

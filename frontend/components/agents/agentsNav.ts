@@ -41,8 +41,8 @@ export const AGENTS_NAV: readonly { title: string | null; items: readonly Agents
     items: [
       { href: "/dashboard/agents/characters", label: "Characters", icon: UserRound, description: "Each character has its own persona, memory and knowledge. Click one to edit it." },
       { href: "/dashboard/agents/memories", label: "Memories", icon: Share2, description: "What each character has learned about each person." },
-      { href: "/dashboard/agents/knowledge", label: "Upload", icon: Upload, description: "Add books for your characters. Every page is read, and you can see which ones were not." },
-      { href: "/dashboard/agents/collections", label: "Collections", icon: Library, description: "Groups of books. A character reads one collection." },
+      { href: "/dashboard/agents/knowledge", label: "Upload", icon: Upload, description: "Add files for your characters. Every page is read, and you can see which ones were not." },
+      { href: "/dashboard/agents/collections", label: "Collections", icon: Library, description: "Groups of files. A character reads one collection." },
     ],
   },
   {

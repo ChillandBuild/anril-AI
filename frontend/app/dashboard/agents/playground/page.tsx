@@ -12,7 +12,7 @@ export default function PlaygroundPage() {
   const [tab, setTab] = useState<"chat" | "search">("chat");
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       {error ? (
         <ErrorNote message={error} />
       ) : characters === null ? (

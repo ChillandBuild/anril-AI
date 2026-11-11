@@ -14,7 +14,7 @@ const LIST_HREF = "/dashboard/agents/collections";
 
 export default function CollectionPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows /></div>}>
+    <Suspense fallback={<div className="w-full p-4 sm:p-6"><LoadingRows /></div>}>
       <CollectionView />
     </Suspense>
   );
@@ -60,14 +60,14 @@ function CollectionView() {
 
   if (missing) {
     return (
-      <div className="mx-auto max-w-5xl p-4 sm:p-6">
+      <div className="w-full p-4 sm:p-6">
         <NotFoundNote message="This collection does not exist, or it was deleted." backHref={LIST_HREF} backLabel="Back to collections" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <Link href={LIST_HREF} className="inline-block text-sm text-ink-secondary hover:text-primary hover:underline">
         &lsaquo; Collections
       </Link>

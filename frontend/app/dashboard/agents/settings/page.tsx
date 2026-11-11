@@ -8,12 +8,12 @@ const OPTIONS: { value: CompanionMemoryScope; title: string; example: string }[]
   {
     value: "character",
     title: "This character only",
-    example: "Karthik tells Jothidar AI his lagna is Kumbham. Only Jothidar AI remembers it.",
+    example: "Karthik tells Maya he prefers email. Only Maya remembers it.",
   },
   {
     value: "business",
     title: "Whole business",
-    example: "Karthik tells Jothidar AI his lagna is Kumbham. Every one of your characters remembers it.",
+    example: "Karthik tells Maya he prefers email. Every one of your characters remembers it.",
   },
 ];
 
@@ -52,7 +52,7 @@ export default function AgentsSettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       {error && <ErrorNote message={error} onRetry={scope === null ? load : undefined} />}
       {scope === null && !error ? (
         <LoadingRows rows={2} />

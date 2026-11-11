@@ -34,11 +34,11 @@ export default function InstallPage() {
     };
   }, [selected]);
 
-  if (listError) return <div className="mx-auto max-w-4xl p-4 sm:p-6"><ErrorNote message={listError} /></div>;
-  if (characters === null) return <div className="mx-auto max-w-4xl p-4 sm:p-6"><LoadingRows /></div>;
+  if (listError) return <div className="w-full p-4 sm:p-6"><ErrorNote message={listError} /></div>;
+  if (characters === null) return <div className="w-full p-4 sm:p-6"><LoadingRows /></div>;
   if (characters.length === 0) {
     return (
-      <div className="mx-auto max-w-4xl p-4 sm:p-6">
+      <div className="w-full p-4 sm:p-6">
         <div className={`${CARD} text-sm text-ink-secondary`}>
           Make a character first on <Link href="/dashboard/agents/characters" className="text-primary underline">Characters</Link>.
         </div>
@@ -47,7 +47,7 @@ export default function InstallPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <CharacterSelect characters={characters} value={selected?.id ?? ""} onChange={select} />
 
       {error && <ErrorNote message={error} />}

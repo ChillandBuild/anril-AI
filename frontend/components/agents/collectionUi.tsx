@@ -168,7 +168,7 @@ export function MainResourceBadge() {
   return <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-dark">Main resource</span>;
 }
 
-/** "That is not here": an unknown collection or book. */
+/** "That is not here": an unknown collection or file. */
 export function NotFoundNote({ message, backHref, backLabel }: { message: string; backHref: string; backLabel: string }) {
   return (
     <div className="rounded-2xl border border-border-subtle bg-white px-5 py-10 text-center" role="status">
@@ -331,7 +331,7 @@ export function NameDialog({
             value={name}
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
-            placeholder="For example: Astrology books"
+            placeholder="For example: Product guides"
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${inputId}-error` : undefined}
             autoComplete="off"

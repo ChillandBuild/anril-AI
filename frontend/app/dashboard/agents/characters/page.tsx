@@ -35,7 +35,7 @@ export default function CharactersPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-end">
         <button type="button" onClick={create} disabled={creating || characters === null} className={BTN_PRIMARY}>
           <Plus size={16} aria-hidden="true" />
@@ -51,7 +51,7 @@ export default function CharactersPage() {
         <div className={`${CARD} py-12 text-center`} role="status">
           <UserRound className="mx-auto text-ink-muted" size={28} aria-hidden="true" />
           <h2 className="mt-2 text-sm font-semibold text-ink">No characters yet</h2>
-          <p className="mt-1 text-sm text-ink-secondary">A character is the AI person your customers chat with, like Jothidar AI.</p>
+          <p className="mt-1 text-sm text-ink-secondary">A character is the AI person your customers chat with, like Maya, your support assistant.</p>
         </div>
       ) : characters ? (
         <div className={`${CARD} overflow-x-auto p-0`}>

@@ -1,7 +1,7 @@
 import type { KbCollection, KbDocument, KbUploadTicket } from "@/lib/api";
 import { KB_TYPE_CHIPS, fileTypeOf, tooLargeMessage } from "@/components/agents/knowledgeRows";
 
-/** Pure helpers for the Upload page: file checks, the upload steps, the collection list, recent books. */
+/** Pure helpers for the Upload page: file checks, the upload steps, the collection list, recent files. */
 
 /** "Book 7.pdf" -> "Book 7". A name with no extension, or only a leading dot, is kept whole. */
 export function titleFromFileName(name: string): string {
@@ -60,7 +60,7 @@ export type UploadApi = {
 };
 
 /**
- * One file, three steps: ask for a ticket, send the file, register it as a book.
+ * One file, three steps: ask for a ticket, send the file, register it as a file.
  * Throws the first error; the caller shows it on that file only.
  */
 export async function uploadOne(
@@ -154,19 +154,19 @@ export function defaultIndex(matchCount: number, createOffered: boolean): number
 
 // ---- lists on the page ----
 
-/** Books being read, oldest first so a row does not jump when a newer one is added. */
+/** Files being read, oldest first so a row does not jump when a newer one is added. */
 export function processingBooks(docs: KbDocument[]): KbDocument[] {
   return docs
     .filter((d) => d.status === "processing")
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-/** The newest books, any status. */
+/** The newest files, any status. */
 export function recentBooks(docs: KbDocument[], count = 5): KbDocument[] {
   return [...docs].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, count);
 }
 
-/** Link to one book's screen. */
+/** Link to one file's screen. */
 export function bookHref(doc: Pick<KbDocument, "collection_id" | "id">): string {
   return `/dashboard/agents/collections/${doc.collection_id}/${doc.id}`;
 }

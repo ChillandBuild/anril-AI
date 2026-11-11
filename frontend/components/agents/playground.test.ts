@@ -65,7 +65,7 @@ describe("replySourceLine", () => {
     expect(replySourceLine("book", [sources[1]])).toBe("From Book 7, pp. 212-213");
   });
   it("says an own answer is not from the books", () => {
-    expect(replySourceLine("own", [])).toBe("Own reading, not from the books");
+    expect(replySourceLine("own", [])).toBe("Own reasoning, not from your files");
   });
   it("shows nothing for chat, null, missing, or a book answer with no sources", () => {
     expect(replySourceLine("chat", sources)).toBe("");

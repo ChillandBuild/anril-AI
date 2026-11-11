@@ -13,7 +13,7 @@ import { bookHref, processingBooks, recentBooks } from "@/components/agents/uplo
 export default function AgentsUploadPage() {
   // useSearchParams needs a Suspense boundary so the page can still be built ahead of time.
   return (
-    <Suspense fallback={<div className="mx-auto max-w-5xl p-4 sm:p-6"><LoadingRows rows={4} /></div>}>
+    <Suspense fallback={<div className="w-full p-4 sm:p-6"><LoadingRows rows={4} /></div>}>
       <UploadPage />
     </Suspense>
   );
@@ -55,7 +55,7 @@ function UploadPage() {
     (quiet = false) => {
       if (!quiet) setDocsError("");
       fetchDocs().catch((e: Error) => {
-        if (alive.current && !quiet) setDocsError(e.message || "Could not load your books.");
+        if (alive.current && !quiet) setDocsError(e.message || "Could not load your files.");
       });
     },
     [fetchDocs],
@@ -66,13 +66,13 @@ function UploadPage() {
     loadDocs();
   }, [loadCollections, loadDocs]);
 
-  // Poll while any book is being read. Driven by the fetched list, so it also works after a reload.
+  // Poll while any file is being read. Driven by the fetched list, so it also works after a reload.
   const reading = docs ? anyReading(docs) : false;
   usePolling(fetchDocs, reading);
 
   const onChanged = useCallback(() => {
     loadDocs(true);
-    // Book counts in the collection list change too.
+    // File counts in the collection list change too.
     companionKbApi
       .listCollections()
       .then((c) => alive.current && setCollections(c))
@@ -80,7 +80,7 @@ function UploadPage() {
   }, [loadDocs]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <ImportCard
           collections={collections}
@@ -105,7 +105,7 @@ function ProcessingList({ docs, error, onRetry }: { docs: KbDocument[] | null; e
         Processing
       </h2>
       <p className="sr-only" role="status">
-        {docs && !error ? (rows.length > 0 ? `${rows.length} ${rows.length === 1 ? "book" : "books"} being read` : "No books being read") : ""}
+        {docs && !error ? (rows.length > 0 ? `${rows.length} ${rows.length === 1 ? "file" : "files"} being read` : "No files being read") : ""}
       </p>
       {error ? (
         <ErrorNote message={error} onRetry={onRetry} />
@@ -163,7 +163,7 @@ function RecentList({ docs, error, onRetry }: { docs: KbDocument[] | null; error
         ) : docs === null ? (
           <LoadingRows rows={3} />
         ) : rows.length === 0 ? (
-          <p className="text-sm text-ink-secondary">No books yet. Drop a file above, pick a collection and press Import.</p>
+          <p className="text-sm text-ink-secondary">No files yet. Drop a file above, pick a collection and press Import.</p>
         ) : (
           <ul className="divide-y divide-border-subtle">
             {rows.map((d) => {

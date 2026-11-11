@@ -17,8 +17,8 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 /**
- * Edit one character. Example: the Astrotamil owner opens Jothidar AI, sets
- * default mood to warm, picks the "Astrology books" collection, sets Live, Save →
+ * Edit one character. Example: the owner opens Maya, sets
+ * default mood to warm, picks the "Product guides" collection, sets Live, Save →
  * one PATCH with just those three fields. Switching "Answer from its own reasoning"
  * off sends just { own_reasoning: false }.
  */
@@ -187,14 +187,14 @@ function PersonaTab({ draft, set, errors }: TabProps) {
   );
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {text("name", "Name", "What customers see, e.g. Jothidar AI.")}
+      {text("name", "Name", "What customers see, e.g. Maya.")}
       <Field id="industry" label="Industry" error={errors.industry}>
         <select id="industry" value={draft.industry} onChange={(e) => set("industry", e.target.value as Companion["industry"])} className={INPUT}>
           <option value="general">General</option>
           <option value="astrology">Astrology</option>
         </select>
       </Field>
-      <div className="md:col-span-2">{text("role", "Role", "One line, e.g. Family astrologer who reads birth charts.")}</div>
+      <div className="md:col-span-2">{text("role", "Role", "One line, e.g. Friendly guide who answers product questions.")}</div>
       <div className="md:col-span-2">{area("backstory", "Backstory", "Who they are, in a few sentences.")}</div>
       <div className="md:col-span-2">{area("speaking_style", "Speaking style", "How they talk, e.g. warm, short sentences, Tanglish.")}</div>
       <div className="md:col-span-2">
@@ -261,8 +261,8 @@ function MemoryTab({ draft, set, errors }: TabProps) {
   );
 }
 
-function bookCount(n: number): string {
-  return `${n} ${n === 1 ? "book" : "books"}`;
+function fileCount(n: number): string {
+  return `${n} ${n === 1 ? "file" : "files"}`;
 }
 
 function KnowledgeTab({ draft, set, errors }: TabProps) {
@@ -285,7 +285,7 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
         <Field
           id="knowledge_collection_id"
           label="Collection"
-          hint="The character reads only the books in this collection. Add books on the Knowledge page."
+          hint="The character reads only the files in this collection. Add files on the Upload page."
           error={errors.knowledge_collection_id}
         >
           <select
@@ -295,10 +295,10 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
             onChange={(e) => set("knowledge_collection_id", e.target.value || null)}
             className={INPUT}
           >
-            <option value="">No books</option>
+            <option value="">No files</option>
             {current && !(collections ?? []).some((c) => c.id === current) && <option value={current}>Current collection</option>}
             {(collections ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name} ({bookCount(c.book_count)})</option>
+              <option key={c.id} value={c.id}>{c.name} ({fileCount(c.book_count)})</option>
             ))}
           </select>
         </Field>
@@ -328,7 +328,7 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
             aria-describedby="own_reasoning-hint"
             className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-subtle accent-primary"
           />
-          Answer from its own reasoning when no book covers the question
+          Answer from its own reasoning when no file covers the question
         </label>
         <p id="own_reasoning-hint" className="pl-7 text-xs text-ink-muted">
           Off = documents only. The character says politely that its material does not cover the question.

@@ -4004,7 +4004,7 @@ function instantFormsQuery(params: InstantFormRange & { search?: string; page?: 
 
 // ---------------------------------------------------------------------------
 // Anril Agents (companion characters). Backend: routes/companions.py, behind
-// companions.manage. Example: Astrotamil's "Jothidar AI" character.
+// companions.manage. Example: a business's "Maya" support character.
 // ---------------------------------------------------------------------------
 
 export type CompanionMood = "calm" | "warm" | "happy" | "concerned" | "encouraging" | "serious";
@@ -4057,7 +4057,7 @@ export interface CompanionInstall {
   snippets: { html: string; python: string; node: string; curl: string };
 }
 
-/** A tool the business's own app runs, e.g. Astrotamil's get_chart. Sent with each message, never stored. */
+/** A tool the business's own app runs, e.g. a business's get_account. Sent with each message, never stored. */
 export interface CompanionAppTool {
   name: string;
   description: string;
@@ -4257,9 +4257,9 @@ export const companionsApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Anril Agents knowledge base: collections of books, read page by page.
-// Backend: routes/companion_kb.py. Example: Astrotamil's "Jothidar books"
-// collection holds "Book 3.pdf", 320 pages, read by Jothidar AI.
+// Anril Agents knowledge base: collections of files, read page by page.
+// Backend: routes/companion_kb.py. Example: a "Product guides"
+// collection holds "Returns policy.pdf", 32 pages, read by Maya.
 // ---------------------------------------------------------------------------
 
 export type KbCollection = {
