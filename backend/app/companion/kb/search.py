@@ -24,7 +24,7 @@ Only counts are logged here, never the message, the queries or the topic.
 import asyncio
 import logging
 
-from app.companion import memory_embed
+from app.companion import memory_embed, playground
 from app.companion.kb import judge as kb_judge
 from app.companion.kb import learning, rewrite as kb_rewrite, store_search
 from app.companion.kb.types import KbResult, Passage
@@ -70,6 +70,11 @@ def fuse(rows: list[dict], count: int) -> list[Passage]:
         for rank, chunk_id in enumerate(ranked, start=1):
             total[chunk_id] = total.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
     order = sorted(total, key=lambda i: (-total[i], i))
+    ov = playground.current()
+    if ov is not None:   # the Playground shows each passage's meaning score
+        meaning = lists.get("meaning", {})
+        for i in order[:count]:
+            ov.kb_scores[i] = {"meaning": meaning.get(i), "rrf": total[i]}
     return [_passage(by_id[i]) for i in order[:count]]
 
 
@@ -113,16 +118,48 @@ async def _shortcut(tenant_id: str, collection_id: str, companion_id: str | None
     return shortcut, passages[:SHORTCUT_PASSAGES]
 
 
-def _passing(passages: list[Passage], scores: list[int], keep: int) -> list[Passage]:
-    """The passages at the pass mark, best score first (search order breaks a tie), at most `keep`."""
-    marked = [Passage(**{**p.__dict__, "score": s}) for p, s in zip(passages, scores) if s >= kb_judge.PASS_MARK]
+def _passing(passages: list[Passage], scores: list[int | None], keep: int) -> list[Passage]:
+    """The passages at the pass mark, best score first (search order breaks a tie), at most `keep`.
+    A None score means the judge was switched off (Playground only): the passage passes, score 0."""
+    ov = playground.current()
+    mark = ov.judge_min if ov is not None and ov.judge_min is not None else kb_judge.PASS_MARK
+    keep = ov.results if ov is not None and ov.results else keep
+    marked = [Passage(**{**p.__dict__, "score": s or 0}) for p, s in zip(passages, scores) if s is None or s >= mark]
     return sorted(marked, key=lambda p: -p.score)[:keep]
+
+
+async def _judge(tenant_id: str, question: str, passages: list[Passage]) -> list[int | None] | None:
+    """The judge's 0-3 marks, or a None per passage when the Playground switched the judge off."""
+    ov = playground.current()
+    if ov is not None and not ov.rerank:
+        return [None] * len(passages)
+    return await kb_judge.judge(tenant_id, question, [p.__dict__ for p in passages])
+
+
+def _record(step: str, passages: list[Passage], scores: list[int | None], kept: list[Passage]) -> None:
+    """Playground only: every passage the judge looked at, kept or dropped."""
+    ov = playground.current()
+    if ov is None:
+        return
+    kept_ids = {p.id for p in kept}
+    for p, s in zip(passages, scores):
+        ov.kb_candidates.append({
+            "id": p.id, "document": p.document_title, "page_from": p.page_from, "page_to": p.page_to,
+            "heading_path": p.heading_path, "text": p.text, "tier": p.tier, "step": step,
+            "score": s, "meaning": (ov.kb_scores.get(p.id) or {}).get("meaning"), "kept": p.id in kept_ids})
 
 
 async def _search(tenant_id: str, collection_id: str, message: str, history: list[dict] | None,
                   companion_id: str | None) -> KbResult:
-    rw = await kb_rewrite.rewrite(tenant_id, message, history)
+    ov = playground.current()
+    rw = (kb_rewrite.fallback_rewrite(message) if ov is not None and not ov.rewrite
+          else await kb_rewrite.rewrite(tenant_id, message, history))
+    if ov is not None:
+        ov.rewritten = None if not ov.rewrite else {
+            "english": rw.english_query, "tamil": rw.tamil_query, "terms": list(rw.key_terms),
+            "needs_docs": rw.needs_docs}
     if not rw.needs_docs:
+        playground.note("Knowledge: small talk, nothing searched")
         return KbResult(needs_docs=False)
 
     vectors = await _embed(tenant_id, rw)
@@ -138,11 +175,14 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
     shortcut, shortcut_passages = await _shortcut(tenant_id, collection_id, companion_id, topic_vector,
                                                   {p.id for p in main})
     judged = main + shortcut_passages
-    scores = await kb_judge.judge(tenant_id, question, [p.__dict__ for p in judged])
+    scores = await _judge(tenant_id, question, judged)
     if scores is None:
         return KbResult(failed=True)
     kept_main = _passing(main, scores[:len(main)], STEP_A_KEEP)
     kept_shortcut = _passing(shortcut_passages, scores[len(main):], STEP_B_KEEP)
+    _record("main", main, scores[:len(main)], kept_main)
+    _record("shortcut", shortcut_passages, scores[len(main):], kept_shortcut)
+    playground.note(f"Knowledge: main files {len(main)} candidates, kept {len(kept_main)}")
     tried = dict(shortcut_id=shortcut["id"] if shortcut else None, shortcut_hit=bool(kept_shortcut))
     logger.info("companion kb: step A candidates=%d kept=%d shortcut_passages=%d shortcut_kept=%d",
                 len(main), len(kept_main), len(shortcut_passages), len(kept_shortcut))
@@ -153,10 +193,12 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
     turned_down = {p.id for p in shortcut_passages}
     books = [p for p in await candidates(tenant_id, collection_id, TIER_BOOKS, rw, STEP_B_CANDIDATES,
                                          vectors=vectors) if p.id not in turned_down]
-    scores = await kb_judge.judge(tenant_id, question, [p.__dict__ for p in books])
+    scores = await _judge(tenant_id, question, books)
     if scores is None:
         return KbResult(failed=True)
     kept = _passing(books, scores, STEP_B_KEEP)
+    _record("books", books, scores, kept)
+    playground.note(f"Knowledge: other files {len(books)} candidates, kept {len(kept)}")
     logger.info("companion kb: step B candidates=%d kept=%d", len(books), len(kept))
     return KbResult(passages=tuple(kept), **found, **tried)
 

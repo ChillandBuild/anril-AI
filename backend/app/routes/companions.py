@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.companion import engine, install, keys, memory, store
+from app.companion import engine, install, keys, memory, memory_search, playground, store
 from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
@@ -93,7 +93,8 @@ async def list_models(ctx: dict = Depends(require_companions_manage)):
     """The Playground model picker: models whose API key this business has, plus the live one."""
     tenant_id = ctx["tenant_id"]
     models = await asyncio.to_thread(ai_reply.available_reply_models, tenant_id)
-    return {"models": models, "default": await asyncio.to_thread(_tenant_model_id, tenant_id)}
+    return {"models": models, "default": await asyncio.to_thread(_tenant_model_id, tenant_id),
+            "playground_defaults": playground.live_defaults()}
 
 
 @router.get("/requests")
@@ -236,11 +237,31 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
     return row
 
 
+_SEARCH_MAX = 20
+
+
+class PlaygroundSettings(BaseModel):
+    """The Playground's search / memory settings. Left out, every one is what live chat uses."""
+    model_config = ConfigDict(extra="forbid")
+    sources: Literal["all", "memories", "knowledge"] = "all"
+    results: int | None = Field(None, ge=1, le=_SEARCH_MAX)
+    memory_floor: float | None = Field(None, ge=0.0, le=1.0)
+    judge_min: int | None = Field(None, ge=0, le=3)
+    rerank: bool = True
+    rewrite: bool = True
+    memory_card: bool = True
+    mode: Literal["auto", "agentic"] = "auto"
+
+    def overrides(self) -> playground.Overrides:
+        return playground.Overrides(**self.model_dump())
+
+
 class TestChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     tools: list[AppTool] = Field(default_factory=list)
     model: str | None = Field(None, max_length=100)   # Playground picker; must be one the tenant has a key for
     use_memory: bool = True                           # False = the "Compare without memory" reply
+    settings: PlaygroundSettings | None = None        # Playground settings panel; None = live behaviour
 
 
 class ContinueIn(BaseModel):
@@ -287,14 +308,16 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
         allowed = {m["id"] for m in await asyncio.to_thread(ai_reply.available_reply_models, tenant_id)}
         if payload.model not in allowed:
             raise HTTPException(status_code=422, detail="That model isn't set up for your business")
+    ov = (payload.settings or PlaygroundSettings()).overrides()
     try:
-        result = await engine.reply(
-            str(companion_id), tenant_id, f"owner-test:{ctx['user_id']}", message,
-            tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory)
+        with playground.use(ov):
+            result = await engine.reply(
+                str(companion_id), tenant_id, f"owner-test:{ctx['user_id']}", message,
+                tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory)
     except _EXPECTED as exc:
         raise _http_error(exc)
     model = payload.model or (await asyncio.to_thread(_tenant_model_id, tenant_id))
-    return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model or "", model)}
+    return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model or "", model), "trace": ov.trace}
 
 
 
@@ -347,54 +370,94 @@ async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
     }
 
 
-_SEARCH_MAX = 20
-
-
 class SearchIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
-    in_: Literal["knowledge", "memories"] = Field(alias="in")
+    in_: Literal["knowledge", "memories", "all"] = Field(alias="in")
     q: str = Field(min_length=1, max_length=500)
     limit: int = Field(5, ge=1, le=_SEARCH_MAX)
     external_user_id: str | None = Field(None, min_length=1, max_length=200)
+    settings: PlaygroundSettings | None = None
+
+
+def _memory_row(hit: dict) -> dict:
+    return {"kind": hit["kind"], "day": str(hit.get("day") or "")[:10] or None,
+            "text": memory_search._hit_text(hit), "meaning": round(hit["vector"], 3) or None,
+            "words": round(hit["trigram"], 3) or None, "kept": hit["kept"]}
 
 
 @router.post("/{companion_id}/search")
 async def search(companion_id: UUID, payload: SearchIn, ctx: dict = Depends(require_companions_manage)):
-    """The Playground "Search" tab: what a character would find. Knowledge returns the passages the
-    character's collection gives for this question (book, pages, the judge's 0-3 score); memories
-    returns word-matched facts this character learned (privacy mode A only), no score. The query
-    text is never logged."""
+    """The Playground "Search" tab: what a character would find, with the settings panel applied.
+
+    knowledge: every passage the judge looked at (document, pages, meaning score, judge 0-3 or None
+    with the judge off, kept). memories: with a person, the meaning + word search live chat uses,
+    including pieces below the strictness floor (kept False); without one, word-matched facts
+    across everyone (memory_mode "words"). Privacy mode B hides memories. The query is never logged."""
     tenant_id = ctx["tenant_id"]
     q = payload.q.strip()
     if not q:
         raise HTTPException(status_code=422, detail="Type something to search for")
-    if payload.in_ == "knowledge":
-        row = await store.get_companion(tenant_id, str(companion_id))
-        if not row:
-            raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    row = await store.get_companion(tenant_id, str(companion_id))
+    if not row:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    # results stays None unless the owner changed it, so default settings keep live's 3 / 4 passages.
+    ov = (payload.settings or PlaygroundSettings()).overrides()
+    out: dict = {"in": payload.in_, "knowledge": [], "memories": [], "rewritten": None, "needs_docs": True,
+                 "no_collection": False, "knowledge_error": False, "memory_mode": None, "memories_hidden": None}
+
+    if payload.in_ in ("knowledge", "all"):
+        found = None
         collection_id = row.get("knowledge_collection_id")
         if not collection_id:      # this character reads no collection: nothing to find
-            return {"in": "knowledge", "results": [], "needs_docs": True}
-        try:
-            found = await kb_search.search(tenant_id, collection_id, q, [], companion_id=str(companion_id))
-        except Exception as exc:
-            logger.warning("companion %s: knowledge search failed (%s)", companion_id, type(exc).__name__)
-            found = None
-        if found is None or found.failed:
-            raise HTTPException(status_code=502, detail="Knowledge search isn't available right now. Try again.")
-        results = [{"document": p.document_title, "page_from": p.page_from, "page_to": p.page_to,
-                    "heading_path": p.heading_path, "text": p.text, "tier": p.tier, "score": p.score}
-                   for p in found.passages[:payload.limit]]
-        return {"in": "knowledge", "results": results, "needs_docs": found.needs_docs}
-    await _readable_character(tenant_id, companion_id)
-    end_user_id = None
-    if payload.external_user_id:
-        person = await store.find_end_user(tenant_id, payload.external_user_id)
-        if not person or person.get("forgotten_at"):
-            raise HTTPException(status_code=404, detail="No one with that user id has talked to your characters")
-        end_user_id = person["id"]
-    results = await store.search_facts(tenant_id, str(companion_id), q, payload.limit, end_user_id)
-    return {"in": "memories", "results": results}
+            out["no_collection"] = True
+        else:
+            with playground.use(ov):
+                try:
+                    found = await kb_search.search(tenant_id, collection_id, q, [], companion_id=str(companion_id))
+                except Exception as exc:
+                    logger.warning("companion %s: knowledge search failed (%s)", companion_id, type(exc).__name__)
+                    found = None
+            if (found is None or found.failed) and payload.in_ == "knowledge":
+                raise HTTPException(status_code=502, detail="Knowledge search isn't available right now. Try again.")
+            if found is None or found.failed:      # "all": the memories still show
+                out["knowledge_error"] = True
+                found = None
+        if found is not None:
+            out["needs_docs"] = found.needs_docs
+            out["rewritten"] = ov.rewritten
+            # Normally kb-search recorded every passage it judged; if it recorded none (a shortcut-only
+            # result, or a stubbed search) the passages it returned are shown as kept.
+            candidates = ov.kb_candidates or [
+                {"document": p.document_title, "page_from": p.page_from, "page_to": p.page_to,
+                 "heading_path": p.heading_path, "text": p.text, "tier": p.tier, "step": "main",
+                 "score": p.score, "meaning": None, "kept": True} for p in found.passages[:payload.limit]]
+            out["knowledge"] = sorted(({k: v for k, v in c.items() if k != "id"} for c in candidates),
+                                      key=lambda c: (not c["kept"], -(c["score"] or 0), -(c["meaning"] or 0)))
+
+    if payload.in_ in ("memories", "all"):
+        if row.get("privacy_mode") == "B":
+            if payload.in_ == "memories":
+                raise HTTPException(status_code=403, detail=_PRIVATE)
+            out["memories_hidden"] = "private"
+        elif payload.external_user_id:
+            person = await store.find_end_user(tenant_id, payload.external_user_id)
+            if not person or person.get("forgotten_at"):
+                raise HTTPException(status_code=404, detail="No one with that user id has talked to your characters")
+            with playground.use(ov):
+                await memory_search.search(tenant_id, str(companion_id), person["id"], q, with_recent=False)
+            # With memory scope "business" the search also reads other characters' pieces (as chat does).
+            # What a privacy-mode-B character learned is never shown to the owner.
+            private = {str(c["id"]) for c in await store.list_companions(tenant_id) if c.get("privacy_mode") == "B"}
+            hits = [h for h in ov.memory_candidates if str(h.get("companion_id")) not in private]
+            kept = [_memory_row(h) for h in hits if h["kept"]][:payload.limit]
+            out["memories"] = kept + [_memory_row(h) for h in hits if not h["kept"]]
+            out["memory_mode"] = "meaning"
+        else:
+            facts = await store.search_facts(tenant_id, str(companion_id), q, payload.limit)
+            out["memories"] = [{**f, "kind": "fact", "day": str(f.get("learned_at") or "")[:10] or None,
+                                "meaning": None, "words": None, "kept": True} for f in facts]
+            out["memory_mode"] = "words"
+    return out
 
 
 @router.get("/{companion_id}/people/{external_user_id}/memory")

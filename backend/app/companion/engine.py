@@ -18,7 +18,7 @@ import os
 import time
 import weakref
 
-from app.companion import memory_refresh, store, tools as app_tools
+from app.companion import memory_refresh, memory_search, playground, store, tools as app_tools
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
@@ -241,17 +241,107 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     # first because the book search needs it: "and what about Rahu?" only makes sense with the turn before.
     history = await store.recent_messages(tenant_id, companion_id, person["id"],
                                           limit=companion.get("history_messages") or HISTORY_LIMIT)
+    ov = playground.current()   # None on the live path
+    agentic = ov is not None and ov.mode == "agentic"
+    with_kb = ov is None or (not agentic and ov.sources != "memories")
     kb, memory_context = await asyncio.gather(
-        _knowledge(tenant_id, companion, message, history),
+        _knowledge(tenant_id, companion, message, history) if with_kb else _no_kb(),
         _memory(memory, tenant_id, companion, person, message),
     )
     await store.save_message(tenant_id, conversation, "user", message)
 
     mood = _mood(conversation, companion)
+    if agentic:
+        return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
+                              memory_context, mood, tools, started, model, ov)
     prompt = build_messages(companion, mood, kb, memory_context, history, message)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb)
+
+
+async def _no_kb() -> None:
+    return None
+
+
+# ---- Agentic mode (Playground only) -----------------------------------------------------------
+# Round 1 offers the model two search tools and nothing has been searched yet. If it calls them,
+# we run the searches here (never handed to the app), rebuild the prompt with what was found, and
+# round 2 is the normal reply path, so the [used: n] label and app tools work as in auto mode.
+# Example: "how did it go?" -> search_memory("interview") -> "Interview at Zoho on 20 Nov" -> the
+# reply asks about Zoho. "hi" -> no tool call -> round 1's text is the reply, no search at all.
+
+_QUERY = {"type": "object", "properties": {"query": {"type": "string", "description": "What to look for, in a few words"}},
+          "required": ["query"]}
+SEARCH_MEMORY = AppTool(name="search_memory", parameters=_QUERY, description=(
+    "Search what this person told you in earlier conversations. Use it when the answer depends on "
+    "their past: what they bought, said, planned or asked before."))
+SEARCH_KNOWLEDGE = AppTool(name="search_knowledge", parameters=_QUERY, description=(
+    "Search your files (policies, product details, documents). Use it for factual questions your "
+    "files may answer."))
+AGENTIC_NOTE = (
+    "\n\n[SEARCH TOOLS]\nYour files and older conversations have NOT been searched for this message yet; "
+    "'none found' above only means that. Call search_knowledge for questions your files may answer and "
+    "search_memory when the answer depends on what this person said before. For small talk, just reply.")
+
+
+async def _agentic(companion: dict, provider: str, tenant_id: str, conversation: dict, person: dict,
+                   message: str, history: list[dict], memory_context: str, mood: str, tools: list[AppTool],
+                   started: float, model: str | None, ov: "playground.Overrides") -> CompanionReply:
+    offered = [t for t in (SEARCH_MEMORY, SEARCH_KNOWLEDGE)
+               if ov.sources == "all" or (ov.sources == "memories") == (t is SEARCH_MEMORY)]
+    if not companion.get("knowledge_collection_id"):
+        offered = [t for t in offered if t is not SEARCH_KNOWLEDGE]
+    if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
+        ov.note("Agentic: no search tool to offer, replied as usual")
+        prompt = build_messages(companion, mood, None, memory_context, history, message)
+        return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
+                                 started, model=model)
+    search_names = {t.name for t in offered}
+    # The app's own tools are offered too (search tool names win a clash). An app-tool call here is not
+    # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
+    app_offered = [t for t in tools if t.name not in search_names]
+    prompt = build_messages(companion, mood, None, memory_context, history, message)
+    prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
+    llm_started = time.monotonic()
+    raw, calls, wants_app = None, [], False
+    try:
+        raw, raw_calls = await ai_reply._llm_chat_with_tools(
+            prompt, app_tools.to_llm_tools(offered + app_offered), max_tokens=LLM_MAX_TOKENS,
+            tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(model))
+        normalized = app_tools.normalize_calls(raw_calls)
+        calls = [c for c in normalized if c["name"] in search_names]
+        wants_app = any(c["name"] in {t.name for t in app_offered} for c in normalized)
+    except Exception as exc:
+        logger.warning("companion %s: agentic round failed (%s)", companion["id"], type(exc).__name__)
+    llm_ms = int((time.monotonic() - llm_started) * 1000)
+    if not calls and not wants_app:
+        ov.note(f"Round 1: answered without searching ({llm_ms} ms)")
+        return await _finish(companion, tenant_id, conversation, message, raw, [], started, llm_ms, None)
+    if wants_app:
+        ov.note("Round 1: asked for an app tool; it is offered again in round 2")
+
+    kb, found, log = None, [], []
+    for call in calls:
+        query = str(call["args"].get("query") or message)[:500]
+        if call["name"] == SEARCH_KNOWLEDGE.name and kb is None:
+            kb = await _knowledge(tenant_id, companion, query, history)
+            ov.note(f'Round 1: called search_knowledge("{query}") -> {len(kb.passages) if kb else 0} passages')
+        elif call["name"] == SEARCH_MEMORY.name:
+            hits = await memory_search.search(tenant_id, companion["id"], person["id"], query, with_recent=False)
+            block = memory_search.render_hits(hits, shown=memory_context)
+            if block:
+                found.append(block)
+            ov.note(f'Round 1: called search_memory("{query}") -> {len(hits)} hits')
+        log.append({"name": call["name"], "args": call["args"], "ok": True})
+    context = "\n".join(part for part in [memory_context] + found if part)
+    prompt = build_messages(companion, mood, kb, context, history, message)
+    reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
+                              model=model, kb=kb)
+    total = int((time.monotonic() - started) * 1000)
+    ov.note(f"Round 2: reply written ({total} ms total)" if reply.status == "done"
+            else f"Round 2: paused for app tools ({total} ms so far)")
+    return reply
 
 
 def _provider(companion: dict):
@@ -355,8 +445,10 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     except Exception as exc:
         logger.warning("companion %s: memory refresh not scheduled (%s)", companion_id, type(exc).__name__)
 
-    if kb is not None and basis:
+    if kb is not None and basis and not playground.changes_search():
         # Background, never raises: the question log keeps only the topic, never the person or the message.
+        # A Playground reply with changed search settings is left out: a stricter judge would log
+        # "missing answers" and shortcut misses that live chat never had.
         kb_learning.schedule_log(tenant_id, companion_id, kb, basis, sources)
 
     logger.info("companion %s: reply done (llm %dms, total %dms, basis %s)", companion_id, llm_ms,

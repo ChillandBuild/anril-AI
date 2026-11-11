@@ -4071,6 +4071,8 @@ export interface CompanionReply {
   basis?: "primary" | "book" | "own" | "chat" | null;
   /** The passages the answer relied on. Missing is the same as []. */
   sources?: { document: string; page_from: number; page_to: number }[];
+  /** What was searched for this reply, one plain line per step (test chat only). Example: "Memory card: 6 lines". */
+  trace?: string[];
 }
 
 export interface CompanionMemoryFact {
@@ -4118,6 +4120,30 @@ export type ApiError = Error & { status?: number; detail?: unknown };
 
 export type CompanionModel = { id: string; label: string };
 
+/** Where a Playground search or chat looks. */
+export type PlaygroundSources = "all" | "memories" | "knowledge";
+
+/**
+ * The Playground's search and memory settings, sent with test chats and searches.
+ * A field left out means "what live chat does". Example: { memory_floor: 0.6, rerank: false }.
+ */
+export type PlaygroundSettings = {
+  sources?: PlaygroundSources;
+  /** 1 to 20 */
+  results?: number;
+  /** 0 to 1: lowest meaning score a memory needs to be kept. */
+  memory_floor?: number;
+  /** 0 to 3: lowest judge mark a knowledge passage needs to be kept. */
+  judge_min?: number;
+  rerank?: boolean;
+  rewrite?: boolean;
+  memory_card?: boolean;
+  mode?: "auto" | "agentic";
+};
+
+/** What live chat uses today, so the panel can say "Live chat uses 0.70". */
+export type PlaygroundDefaults = Required<PlaygroundSettings>;
+
 export type CompanionRequestKind = "chat" | "chat_continue" | "widget_session" | "widget_chat" | "widget_continue";
 export type CompanionRequestRow = {
   id: number;
@@ -4138,7 +4164,7 @@ export type CompanionRequestLog = {
   capped: boolean;
 };
 
-export type CompanionSearchIn = "knowledge" | "memories";
+export type CompanionSearchIn = PlaygroundSources;
 export type CompanionKnowledgeHit = {
   document: string;
   page_from: number;
@@ -4146,21 +4172,47 @@ export type CompanionKnowledgeHit = {
   heading_path: string;
   text: string;
   /** 1 = the main resource, 2 = another book. */
-  tier: 1 | 2;
-  /** The judge's mark, a whole number from 0 to 3. */
-  score: number;
+  tier: number;
+  step: "main" | "shortcut" | "books";
+  /** The judge's mark 0 to 3. null = the judge was off. */
+  score: number | null;
+  /** Meaning match 0 to 1. null = not measured. */
+  meaning: number | null;
+  /** false = the judge (or the cut-off) dropped it. */
+  kept: boolean;
 };
 export type CompanionMemoryHit = {
+  kind: "messages" | "diary" | "fact";
+  day: string | null;
   text: string;
-  section: CompanionMemoryFact["section"];
-  status: "active" | "closed";
-  learned_at: string | null;
-  external_user_id: string;
-  display_name: string | null;
+  meaning: number | null;
+  /** Word-match score, used when no person was given. */
+  words: number | null;
+  /** false = below the strictness floor. */
+  kept: boolean;
+  section?: string;
+  /** Words mode (no person given) still says whose fact it is, and whether it is closed. */
+  external_user_id?: string;
+  display_name?: string | null;
+  status?: "active" | "closed";
 };
-export type CompanionSearchResult =
-  | { in: "knowledge"; results: CompanionKnowledgeHit[]; needs_docs: boolean }
-  | { in: "memories"; results: CompanionMemoryHit[] };
+export type CompanionSearchResult = {
+  in: CompanionSearchIn;
+  /** false = small talk, nothing was searched. */
+  needs_docs: boolean;
+  /** true = the character has no collection to read. */
+  no_collection: boolean;
+  rewritten: { english: string; tamil: string; terms: string[]; needs_docs: boolean } | null;
+  /** Kept first. */
+  knowledge: CompanionKnowledgeHit[];
+  /** Kept first, then below-floor. */
+  memories: CompanionMemoryHit[];
+  /** "words" = no person given: plain word match on facts across everyone. */
+  memory_mode: "meaning" | "words" | null;
+  memories_hidden: "private" | null;
+  /** true = the knowledge side failed during an "all" search; memories still came back. */
+  knowledge_error?: boolean;
+};
 
 const COMPANIONS = "/api/v1/companions";
 
@@ -4187,7 +4239,11 @@ export const companionsApi = {
 
   install: (id: string) => apiFetch<CompanionInstall>(`${COMPANIONS}/${id}/install`),
 
-  testChat: (id: string, message: string, opts: { tools?: CompanionAppTool[]; model?: string; use_memory?: boolean } = {}) =>
+  testChat: (
+    id: string,
+    message: string,
+    opts: { tools?: CompanionAppTool[]; model?: string; use_memory?: boolean; settings?: PlaygroundSettings } = {},
+  ) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
       method: "POST",
       body: JSON.stringify({ message, ...opts }),
@@ -4219,9 +4275,13 @@ export const companionsApi = {
     return apiFetch<CompanionRequestLog>(`${COMPANIONS}/requests${qs ? `?${qs}` : ""}`);
   },
 
-  models: () => apiFetch<{ models: CompanionModel[]; default: string | null }>(`${COMPANIONS}/models`),
+  models: () =>
+    apiFetch<{ models: CompanionModel[]; default: string | null; playground_defaults?: PlaygroundDefaults }>(`${COMPANIONS}/models`),
 
-  search: (id: string, body: { in: CompanionSearchIn; q: string; limit?: number; external_user_id?: string }) =>
+  search: (
+    id: string,
+    body: { in: CompanionSearchIn; q: string; limit?: number; external_user_id?: string; settings?: PlaygroundSettings },
+  ) =>
     apiFetch<CompanionSearchResult>(`${COMPANIONS}/${id}/search`, { method: "POST", body: JSON.stringify(body) }),
 
   people: (id: string, params: { q?: string; limit?: number; offset?: number } = {}) => {

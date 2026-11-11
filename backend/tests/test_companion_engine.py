@@ -327,3 +327,124 @@ def test_history_messages_setting_sets_how_many_recent_messages_are_sent(env):
     env.db.rows("companions")[0].pop("history_messages")  # no setting → the default 10
     reply(env.jothidar["id"], "message 4")
     assert len(env.state["llm"][-1]["messages"][1:]) == 9  # all 8 earlier messages + the new one
+
+
+# --- Playground settings: sources, memory card, agentic mode (never on the live path) -------------
+
+from app.companion import memory_search, playground  # noqa: E402
+
+
+def reply_with(env, ov, cid=None, msg="7th house la guru?", **kw):
+    async def go():
+        with playground.use(ov):
+            return await engine.reply(cid or env.jothidar["id"], "t1", "48213", msg, **kw)
+    return asyncio.run(go())
+
+
+def _tool_round(env, monkeypatch, calls, text="[mood: calm] Hello!"):
+    """The agentic round 1: the model answers `text` and asks for `calls` [(name, query)]."""
+    seen = env.state.setdefault("tool_rounds", [])
+
+    async def fake_tools(messages, tools, max_tokens=300, tenant_id=None, *, purpose="ai_reply", **kw):
+        seen.append({"messages": messages, "tools": [t["function"]["name"] for t in tools]})
+        return text, [{"id": f"c{i}", "function": {"name": n, "arguments": f'{{"query": "{q}"}}'}}
+                      for i, (n, q) in enumerate(calls)]
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", fake_tools)
+    return seen
+
+
+def test_sources_memories_skips_the_knowledge_search(env):
+    reply_with(env, playground.Overrides(sources="memories"))
+    assert env.state["kb"] == []
+    assert "none found" in system_prompt(env.state["llm"][-1])
+
+
+def test_agentic_knowledge_tool_searches_with_the_models_query_then_replies_in_round_2(env, monkeypatch):
+    rounds = _tool_round(env, monkeypatch, [("search_knowledge", "guru in the seventh house")])
+    env.state["replies"] = ["[mood: warm] [used: 1] Guru helps partnership."]
+    ov = playground.Overrides(mode="agentic")
+    out = reply_with(env, ov)
+    assert rounds[0]["tools"] == ["search_memory", "search_knowledge"]
+    assert "[SEARCH TOOLS]" in rounds[0]["messages"][0]["content"]
+    assert [k["query"] for k in env.state["kb"]] == ["guru in the seventh house"]   # not searched before round 1
+    assert "Guru in the 7th house brings partnership." in system_prompt(env.state["llm"][-1])
+    assert out.text == "Guru helps partnership." and out.basis == "primary"
+    assert any(line.startswith('Round 1: called search_knowledge("guru in the seventh house") -> 2')
+               for line in ov.trace) and ov.trace[-1].startswith("Round 2: reply written")
+
+
+def test_agentic_without_a_tool_call_answers_in_one_round_and_searches_nothing(env, monkeypatch):
+    rounds = _tool_round(env, monkeypatch, [], text="[mood: warm] Vanakkam!")
+    ov = playground.Overrides(mode="agentic")
+    out = reply_with(env, ov, msg="vanakkam")
+    assert out.text == "Vanakkam!" and env.state["kb"] == [] and env.state["llm"] == [] and len(rounds) == 1
+    assert ov.trace[-1].startswith("Round 1: answered without searching")
+
+
+def test_agentic_memory_tool_searches_the_query_alone(env, monkeypatch):
+    _tool_round(env, monkeypatch, [("search_memory", "zoho interview")])
+    asked = []
+
+    async def fake_memory(tenant_id, companion_id, end_user_id, message, **kw):
+        asked.append((message, kw.get("with_recent")))
+        return [{"id": "m1", "kind": "fact", "day": "2026-11-05", "text": "Interview at Zoho on 20 Nov",
+                 "rrf": 1.0, "vector": 0.9, "trigram": 0.0}]
+    monkeypatch.setattr(memory_search, "search", fake_memory)
+    no_kb = playground.Overrides(mode="agentic", sources="memories")
+    reply_with(env, no_kb, msg="how did it go?")
+    assert asked == [("zoho interview", False)]
+    assert "Interview at Zoho on 20 Nov" in system_prompt(env.state["llm"][-1])
+
+
+def test_agentic_offers_no_knowledge_tool_to_a_character_without_a_collection(env, monkeypatch):
+    rounds = _tool_round(env, monkeypatch, [])
+    env.db.rows("companions")[1]["status"] = "live"
+    reply_with(env, playground.Overrides(mode="agentic"), cid=env.vastu["id"])
+    assert rounds[0]["tools"] == ["search_memory"]
+
+
+def test_memory_card_off_leaves_the_facts_out(env):
+    reply(env.jothidar["id"], "Vanakkam")
+    person = env.db.rows("companion_end_users")[0]
+    _level2(env)
+    asyncio.run(store.add_fact("t1", env.jothidar["id"], person["id"], "life", "lost job", "2026-10-01"))
+    ov = playground.Overrides(memory_card=False)
+    reply_with(env, ov)
+    assert "lost job" not in system_prompt(env.state["llm"][-1]) and "Memory card: off" in ov.trace
+    reply(env.jothidar["id"], "Hi")                                       # live: the card is back
+    assert "lost job" in system_prompt(env.state["llm"][-1])
+
+
+def test_test_chat_route_applies_settings_and_returns_the_trace(env, client):
+    url = f"/api/v1/companions/{env.jothidar['id']}/test-chat"
+    res = client.post(url, json={"message": "hi", "settings": {"sources": "memories"}})
+    assert res.status_code == 200 and isinstance(res.json()["trace"], list) and env.state["kb"] == []
+    plain = client.post(url, json={"message": "hi"})
+    assert plain.status_code == 200 and len(env.state["kb"]) == 1         # no settings: live behaviour
+    assert client.post(url, json={"message": "hi", "settings": {"mode": "x"}}).status_code == 422
+    assert playground.current() is None
+
+
+def test_agentic_offers_app_tools_in_round_1_and_hands_them_to_round_2(env, monkeypatch):
+    from app.companion.models import AppTool
+    rounds = _tool_round(env, monkeypatch, [("get_plan", "x")])
+    ov = playground.Overrides(mode="agentic")
+    reply_with(env, ov, tools=[AppTool(name="get_plan", description="The person's plan")])
+    assert rounds[0]["tools"] == ["search_memory", "search_knowledge", "get_plan"]
+    assert len(rounds) == 2 and rounds[1]["tools"] == ["get_plan"]          # round 2: the normal app-tool round
+    assert env.state["kb"] == []
+
+
+def test_agentic_with_nothing_to_search_replies_as_usual(env, monkeypatch):
+    rounds = _tool_round(env, monkeypatch, [])
+    env.db.rows("companions")[1]["status"] = "live"
+    out = reply_with(env, playground.Overrides(mode="agentic", sources="knowledge"), cid=env.vastu["id"])
+    assert rounds == [] and out.status == "done" and len(env.state["llm"]) == 1
+
+
+def test_changed_search_settings_do_not_feed_the_live_question_log(env):
+    env.state["replies"] = ["[mood: calm] [used: 1] Guru helps."] * 2          # a labelled reply is logged live
+    reply_with(env, playground.Overrides(judge_min=3))
+    assert env.state["logged"] == []
+    reply_with(env, playground.Overrides())                                  # defaults: still logged
+    assert len(env.state["logged"]) == 1

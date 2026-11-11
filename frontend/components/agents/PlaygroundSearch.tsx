@@ -1,51 +1,80 @@
 "use client";
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { FileText, PenLine, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   companionsApi,
   type ApiError,
   type Companion,
-  type CompanionSearchIn,
+  type CompanionKnowledgeHit,
+  type CompanionMemoryHit,
   type CompanionSearchResult,
+  type PlaygroundDefaults,
 } from "@/lib/api";
-import { SECTION_LABEL } from "@/components/agents/memoryGraph";
-import { scoreLabel, sourceText } from "@/components/agents/playground";
-import { BTN_PRIMARY, CARD, INPUT, formatDate } from "@/components/agents/ui";
+import {
+  NOTICE_KNOWLEDGE_ERROR,
+  NOTICE_NOTHING,
+  SEARCH_KEYS,
+  buildSearchView,
+  changedSettings,
+  documentLine,
+  judgePill,
+  meaningText,
+  resultCountText,
+  memoryPersonLine,
+  memoryScoreText,
+  memoryTag,
+  settingsToSend,
+  type ResultDisplay,
+} from "@/components/agents/playground";
+import { CharacterSelect } from "@/components/agents/CharacterSelect";
+import { Hero, PromptBox } from "@/components/agents/PlaygroundParts";
 
-const SOURCES: { id: CompanionSearchIn; label: string; hint: string }[] = [
-  { id: "knowledge", label: "Knowledge", hint: "The passages from your files this character would read for a question." },
-  { id: "memories", label: "Memories", hint: "Facts this character remembers, matched word by word." },
-];
+const PERSON_HINT =
+  "Add a person's user id to search their memories by meaning; without one, facts are matched word by word across everyone.";
 
 /**
- * See what a character would find. Example: Maya, Knowledge, "refund policy" →
- * 3 passages from "Returns policy" with "Match 3 of 3" on top. Memories, "Zoho" → Karthik's
- * "Interview at Zoho on 20 Nov".
+ * See what a character would find. Example: Maya, "Can I return my shoes?" -> a grey
+ * "Searched for: return policy for used shoes", 2 passages from "Returns policy.pdf"
+ * ("judge 3/3 · kept") and Karthik's memory "Bought running shoes" ("meaning 0.83").
  */
-export function PlaygroundSearch({ character }: { character: Companion }) {
-  const [source, setSource] = useState<CompanionSearchIn>("knowledge");
+export function PlaygroundSearch({
+  character,
+  characters,
+  onSelectCharacter,
+  settings,
+  live,
+  display,
+}: {
+  character: Companion;
+  characters: Companion[];
+  onSelectCharacter: (id: string) => void;
+  settings: PlaygroundDefaults;
+  live: PlaygroundDefaults;
+  display: ResultDisplay;
+}) {
   const [q, setQ] = useState("");
   const [person, setPerson] = useState("");
   const [result, setResult] = useState<CompanionSearchResult | null>(null);
+  const [ranWith, setRanWith] = useState<PlaygroundDefaults | null>(null);   // the settings that made `result`
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const run = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const run = async () => {
     const query = q.trim();
     if (!query || busy) return;
     setBusy(true);
     setError("");
     try {
-      setResult(
-        await companionsApi.search(character.id, {
-          in: source,
-          q: query,
-          limit: 10,
-          ...(source === "memories" && person.trim() ? { external_user_id: person.trim() } : {}),
-        }),
-      );
+      const res = await companionsApi.search(character.id, {
+        in: settings.sources,
+        q: query,
+        limit: settings.results,
+        ...(settings.sources !== "knowledge" && person.trim() ? { external_user_id: person.trim() } : {}),
+        settings: settingsToSend(settings, live, SEARCH_KEYS),
+      });
+      setResult(res);
+      setRanWith(settings);
     } catch (err) {
       setResult(null);
       setError((err as ApiError).message || "Search failed.");
@@ -54,112 +83,142 @@ export function PlaygroundSearch({ character }: { character: Companion }) {
     }
   };
 
-  const pick = (next: CompanionSearchIn) => {
-    setSource(next);
-    setResult(null);
-    setError("");
-  };
+  // The hidden-memories line names the strictness the search ran with, not the stepper's value now.
+  const view = result
+    ? buildSearchView(result, { showDropped: display.showDropped, strictness: (ranWith ?? settings).memory_floor })
+    : null;
+  const stale = !!ranWith && changedSettings(settings, ranWith).some((k) => SEARCH_KEYS.includes(k));
 
   return (
-    <section className={cn(CARD, "space-y-4")} aria-label={`Search what ${character.name} would find`}>
-      <div role="radiogroup" aria-label="Search in" className="flex gap-1">
-        {SOURCES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            role="radio"
-            aria-checked={source === s.id}
-            onClick={() => pick(s.id)}
-            className={cn(
-              "rounded-lg px-3 py-1.5 text-sm font-medium",
-              source === s.id ? "bg-primary/10 text-primary" : "text-ink-secondary hover:bg-surface-mid",
-            )}
-          >
-            {s.label}
-          </button>
-        ))}
+    <div>
+      {!result && !error && <Hero title={`Search across what ${character.name} knows`} />}
+      <div className={cn(result || error ? "mt-4" : "")}>
+        <PromptBox
+          id="playground-search"
+          label="Search text"
+          value={q}
+          onChange={setQ}
+          onSubmit={() => void run()}
+          maxLength={500}
+          placeholder={`Search what ${character.name} knows…`}
+          sendDisabled={busy || !q.trim()}
+          pickers={
+            <>
+              <CharacterSelect characters={characters} value={character.id} onChange={onSelectCharacter} inline />
+              <label className="inline-flex items-center gap-1.5 text-ink-secondary">
+                <User size={14} aria-hidden="true" />
+                <span className="sr-only">User id (optional)</span>
+                <input
+                  value={person}
+                  onChange={(e) => setPerson(e.target.value)}
+                  maxLength={200}
+                  placeholder="User id (optional)"
+                  className="w-40 rounded-md bg-transparent py-0.5 font-medium text-primary placeholder:font-normal placeholder:text-ink-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                />
+              </label>
+            </>
+          }
+        />
       </div>
-      <p className="text-xs text-ink-muted">{SOURCES.find((s) => s.id === source)?.hint}</p>
 
-      <form onSubmit={run} className="flex flex-wrap gap-2">
-        <label className="min-w-[200px] flex-1">
-          <span className="sr-only">Search text</span>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            maxLength={500}
-            placeholder={source === "knowledge" ? "e.g. refund policy" : "e.g. Zoho interview"}
-            className={INPUT}
-          />
-        </label>
-        {source === "memories" && (
-          <label className="w-full sm:w-44">
-            <span className="sr-only">User id (optional)</span>
-            <input
-              value={person}
-              onChange={(e) => setPerson(e.target.value)}
-              maxLength={200}
-              placeholder="User id (optional)"
-              className={INPUT}
-            />
-          </label>
-        )}
-        <button type="submit" disabled={busy || !q.trim()} className={BTN_PRIMARY}>
-          <Search size={14} aria-hidden="true" /> {busy ? "Searching…" : "Search"}
-        </button>
-      </form>
+      {!person.trim() && settings.sources !== "knowledge" && (
+        <p className="mx-auto mt-3 max-w-[720px] text-center text-[13px] text-ink-secondary">{PERSON_HINT}</p>
+      )}
+      {!result && !error && (
+        <p className="mx-auto mt-3 max-w-[720px] text-center text-[13px] text-ink-secondary">
+          Meaning + word search over {character.name}&apos;s files and what people told it.
+        </p>
+      )}
 
+      {busy && <p className="mx-auto mt-4 max-w-[720px] text-sm text-ink-muted">Searching…</p>}
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="mx-auto mt-4 max-w-[720px] text-sm text-danger">
           {error}
         </p>
       )}
 
-      {result && (
-        <div aria-live="polite">
-          {result.results.length === 0 ? (
-            <p className="text-sm text-ink-secondary">
-              {result.in === "knowledge"
-                ? !character.knowledge_collection_id
-                  ? `${character.name} has no collection yet. Pick one in the character's Knowledge tab.`
-                  : !result.needs_docs
-                    ? "That message did not need your files."
-                    : `Nothing in ${character.name}'s files matches that.`
-                : `${character.name} doesn't remember anything with those words.`}
+      {/* The one live region: a short count, announced after each search. */}
+      <p aria-live="polite" className={cn("mx-auto max-w-[720px] text-xs text-ink-muted", view && "mt-4")}>
+        {view ? resultCountText(view) : ""}
+      </p>
+      {result && view && (
+        <div className="mx-auto mt-2 flex max-w-[720px] flex-col gap-2.5">
+          {stale && <p className="text-xs text-ink-muted">Settings changed since this search. Search again to apply them.</p>}
+          {result.rewritten && <RewriteBox rewritten={result.rewritten} />}
+          {view.knowledgeError && <p className="text-center text-[13px] text-ink-secondary">{NOTICE_KNOWLEDGE_ERROR}</p>}
+          {view.knowledge.map((hit, i) => (
+            <KnowledgeRow key={`k${i}`} hit={hit} showDocs={display.showDocs} />
+          ))}
+          {view.memories.map((hit, i) => (
+            <MemoryRow key={`m${i}`} hit={hit} mode={result.memory_mode} />
+          ))}
+          {view.hiddenLine && <p className="text-center text-[13px] text-ink-secondary">{view.hiddenLine}</p>}
+          {view.notices.map((n) => (
+            <p key={n} className="text-center text-[13px] text-ink-secondary">
+              {n}
             </p>
-          ) : result.in === "knowledge" ? (
-            <ol className="space-y-2">
-              {result.results.map((hit, i) => (
-                <li key={i} className="rounded-xl border border-border-subtle px-3 py-2.5">
-                  <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-ink-muted">
-                    <span className="truncate">{sourceText(hit)}</span>
-                    <span className="shrink-0 font-medium tabular-nums text-primary">{scoreLabel(hit.score)}</span>
-                  </div>
-                  {hit.heading_path && <p className="mb-1 text-xs text-ink-muted">{hit.heading_path}</p>}
-                  <p className="whitespace-pre-wrap text-sm text-ink">{hit.text}</p>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <ul className="divide-y divide-border-subtle">
-              {result.results.map((hit, i) => (
-                <li key={i} className="flex items-start gap-3 py-2.5">
-                  <span className="mt-0.5 w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-ink-muted">
-                    {SECTION_LABEL[hit.section]}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={cn("text-sm text-ink", hit.status === "closed" && "text-ink-muted line-through")}>{hit.text}</p>
-                    <p className="text-xs text-ink-muted">
-                      {hit.display_name ? `${hit.display_name} (${hit.external_user_id})` : hit.external_user_id}
-                      {hit.learned_at ? ` · ${formatDate(hit.learned_at)}` : ""}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          ))}
+          {view.nothingPassed && (
+            <p className="text-center text-[13px] text-ink-secondary">{NOTICE_NOTHING}</p>
           )}
         </div>
       )}
-    </section>
+    </div>
+  );
+}
+
+/** "Searched for: “return policy for used shoes”", plus the Tamil version when it differs. */
+function RewriteBox({ rewritten }: { rewritten: NonNullable<CompanionSearchResult["rewritten"]> }) {
+  const tamil = rewritten.tamil && rewritten.tamil !== rewritten.english ? rewritten.tamil : "";
+  return (
+    <div className="rounded-[10px] bg-surface-mid px-2.5 py-2 text-[12.5px] text-ink-secondary">
+      <p className="flex items-start gap-1.5">
+        <PenLine size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <span>
+          Searched for: <b className="font-semibold text-ink">“{rewritten.english}”</b>
+        </span>
+      </p>
+      {tamil && <p className="pl-[19px]">Tamil: <b className="font-semibold text-ink">“{tamil}”</b></p>}
+    </div>
+  );
+}
+
+const TAG = "rounded-full bg-surface-mid px-2 py-px text-[11.5px]";
+const PILL_TONE = { ok: "bg-green-100 text-success", bad: "bg-rose-100 text-danger", neutral: "bg-surface-mid text-ink-secondary" } as const;
+
+function KnowledgeRow({ hit, showDocs }: { hit: CompanionKnowledgeHit; showDocs: boolean }) {
+  const pill = judgePill(hit.score, hit.kept);
+  const meaning = meaningText(hit.meaning);
+  return (
+    <article className={cn("rounded-xl border p-3", hit.kept ? "border-border" : "border-dashed border-border opacity-55")}>
+      <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-secondary">
+        <span className={TAG}>Knowledge</span>
+        {showDocs && (
+          <span className="inline-flex items-center gap-1">
+            <FileText size={13} aria-hidden="true" /> {documentLine(hit)}
+          </span>
+        )}
+        {meaning && <span className="font-mono">{meaning}</span>}
+        <span className={cn(TAG, PILL_TONE[pill.tone])}>{pill.text}</span>
+      </div>
+      {hit.heading_path && <p className="mb-1 text-xs text-ink-muted">{hit.heading_path}</p>}
+      <p className="whitespace-pre-wrap text-sm text-ink">{hit.text}</p>
+    </article>
+  );
+}
+
+function MemoryRow({ hit, mode }: { hit: CompanionMemoryHit; mode: CompanionSearchResult["memory_mode"] }) {
+  const score = memoryScoreText(hit, mode);
+  const person = memoryPersonLine(hit);
+  return (
+    <article className={cn("rounded-xl border p-3", hit.kept ? "border-border" : "border-dashed border-border opacity-55")}>
+      <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-secondary">
+        <span className={TAG}>{memoryTag(hit.kind)}</span>
+        {hit.day && <span>{hit.day}</span>}
+        {score && <span className="font-mono">{score}</span>}
+        {person && <span>{person}</span>}
+      </div>
+      <p className={cn("whitespace-pre-wrap text-sm text-ink", hit.status === "closed" && "text-ink-muted line-through")}>{hit.text}</p>
+    </article>
   );
 }

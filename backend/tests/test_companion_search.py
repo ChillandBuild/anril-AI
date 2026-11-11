@@ -1,5 +1,6 @@
-"""companion-dashboard T9 + kb-reply T18: the Playground "Search" tab. Knowledge returns the passages
-the character's collection gives (book, pages, the judge's score); memories returns word-matched
+"""companion-dashboard T9 + kb-reply T18 + Playground settings: the Playground "Search" tab. Knowledge
+returns the passages the character's collection gives (book, pages, the judge's score, kept or
+dropped); memories with a person run the live meaning + word search, without one they are word-matched
 facts (privacy mode A only). Tenant-filtered, limit capped at 20, query text never logged."""
 import logging
 
@@ -7,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.companion import store
+from app.companion import memory_embed, memory_search, store
 from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.kb.types import KbResult, Passage
 from app.routes import companions
@@ -61,19 +62,66 @@ def test_memories_word_match_best_first_and_skips_forgotten(env, caplog):
     assert r.status_code == 200
     body = r.json()
     assert body["in"] == "memories"
-    texts = [x["text"] for x in body["results"]]
+    assert body["memory_mode"] == "words"
+    texts = [x["text"] for x in body["memories"]]
     # "Interview at Zoho" matches 2 words, then the 1-word matches newest first. No forgotten
     # person, no other character's facts, no other tenant's.
     assert texts == ["Interview at Zoho on 20 Nov", "New job at Zoho", "Sister Meena studies in Chennai"]
-    assert body["results"][0]["external_user_id"] == "48213"
-    assert body["results"][0]["display_name"] == "Karthik"
-    assert "similarity" not in body["results"][0]
+    assert body["memories"][0]["external_user_id"] == "48213"
+    assert body["memories"][0]["display_name"] == "Karthik"
+    assert body["memories"][0]["kind"] == "fact" and body["memories"][0]["day"] == "2026-11-05"
     assert SECRET_Q not in caplog.text and "Zoho" not in caplog.text
 
 
-def test_memories_for_one_person(env):
-    r = _post(env, env.j["id"], **{"in": "memories", "q": "zoho", "external_user_id": "77001"})
-    assert [x["text"] for x in r.json()["results"]] == ["New job at Zoho"]
+def _chunks(monkeypatch, rows):
+    """match_memory_chunks returns these rows; the query embedding is a dummy vector."""
+    seen = {}
+
+    async def match(tenant_id, companions, end_user_id, embedding, query, count):
+        seen.update(tenant_id=tenant_id, end_user_id=end_user_id, query=query)
+        return rows
+
+    async def embed(texts, kind, tenant_id, **k):
+        seen["embedded"] = list(texts)
+        return [[0.1] * 4 for _ in texts]
+    monkeypatch.setattr(store, "match_chunks", match)
+    monkeypatch.setattr(memory_embed, "embed", embed)
+    return seen
+
+
+ROWS = [
+    {"id": "m1", "kind": "fact", "day": "2026-11-02", "text": "Bought running shoes size 9", "source": "vector", "score": 0.83},
+    {"id": "m2", "kind": "messages", "day": "2026-11-09", "text": "Person: the shoes hurt\nCharacter: sorry!",
+     "source": "vector", "score": 0.76},
+    {"id": "m3", "kind": "fact", "day": "2026-10-12", "text": "Lives in Coimbatore", "source": "vector", "score": 0.55},
+]
+
+
+def test_memories_for_one_person_use_the_live_meaning_search(env, monkeypatch):
+    seen = _chunks(monkeypatch, ROWS)
+    r = _post(env, env.j["id"], **{"in": "memories", "q": "shoe return", "external_user_id": "48213"})
+    body = r.json()
+    assert body["memory_mode"] == "meaning"
+    assert seen["embedded"] == ["shoe return"]                 # the typed text alone, no recent chat
+    assert [(m["text"], m["kept"]) for m in body["memories"]] == [
+        ("Bought running shoes size 9", True), ("the shoes hurt", True),   # only what the person said
+        ("Lives in Coimbatore", False)]                                    # below the live 0.70 floor
+    assert body["memories"][0]["meaning"] == 0.83 and body["memories"][1]["kind"] == "messages"
+
+
+def test_strictness_setting_moves_the_floor_for_this_request_only(env, monkeypatch):
+    _chunks(monkeypatch, ROWS)
+    body = {"in": "memories", "q": "shoes", "external_user_id": "48213"}
+    loose = _post(env, env.j["id"], **body, settings={"memory_floor": 0.5}).json()
+    assert [m["kept"] for m in loose["memories"]] == [True, True, True]
+    strict = _post(env, env.j["id"], **body, settings={"memory_floor": 0.8}).json()
+    assert [m["kept"] for m in strict["memories"]] == [True, False, False]
+    again = _post(env, env.j["id"], **body).json()             # no settings: the live floor again
+    assert [m["kept"] for m in again["memories"]] == [True, True, False]
+    assert memory_search.VECTOR_FLOOR == 0.70
+
+
+def test_memories_for_an_unknown_or_forgotten_person_404(env):
     assert _post(env, env.j["id"], **{"in": "memories", "q": "zoho", "external_user_id": "nobody"}).status_code == 404
     assert _post(env, env.j["id"], **{"in": "memories", "q": "zoho", "external_user_id": "99999"}).status_code == 404
 
@@ -102,10 +150,13 @@ def test_knowledge_searches_the_characters_collection_and_names_book_and_pages(e
     r = _post(env, env.j["id"], **{"in": "knowledge", "q": SECRET_Q, "limit": 1})
     assert r.status_code == 200
     assert calls == [("t1", "col-astro", SECRET_Q, [], env.j["id"])]       # the collection, not the old tag
-    assert r.json() == {"in": "knowledge", "needs_docs": True, "results": [
+    body = r.json()
+    assert body["in"] == "knowledge" and body["needs_docs"] is True and body["memories"] == []
+    assert body["knowledge"] == [
         {"document": "Main resource", "page_from": 12, "page_to": 12, "heading_path": "Seventh House > Saturn",
-         "text": "Saturn in the 7th delays marriage", "tier": 1, "score": 3}]}      # limit 1: Book 7 cut
-    assert len(_post(env, env.j["id"], **{"in": "knowledge", "q": SECRET_Q}).json()["results"]) == 2
+         "text": "Saturn in the 7th delays marriage", "tier": 1, "step": "main", "score": 3, "meaning": None,
+         "kept": True}]                                                       # limit 1: Book 7 cut
+    assert len(_post(env, env.j["id"], **{"in": "knowledge", "q": SECRET_Q}).json()["knowledge"]) == 2
     assert SECRET_Q not in caplog.text
 
 
@@ -113,8 +164,8 @@ def test_knowledge_small_talk_says_the_books_were_not_needed(env, monkeypatch):
     async def small_talk(*a, **k):
         return KbResult(needs_docs=False)
     monkeypatch.setattr(kb_search, "search", small_talk)
-    assert _post(env, env.j["id"], **{"in": "knowledge", "q": "vanakkam"}).json() == {
-        "in": "knowledge", "results": [], "needs_docs": False}
+    body = _post(env, env.j["id"], **{"in": "knowledge", "q": "vanakkam"}).json()
+    assert body["knowledge"] == [] and body["needs_docs"] is False
 
 
 def test_knowledge_works_in_privacy_mode_b_and_404s_other_tenant(env, monkeypatch):
@@ -124,8 +175,8 @@ def test_knowledge_works_in_privacy_mode_b_and_404s_other_tenant(env, monkeypatc
         calls.append(a)
         return KbResult()
     monkeypatch.setattr(kb_search, "search", nothing)
-    assert _post(env, env.private["id"], **{"in": "knowledge", "q": "rasi"}).json() == {
-        "in": "knowledge", "results": [], "needs_docs": True}
+    body = _post(env, env.private["id"], **{"in": "knowledge", "q": "rasi"}).json()
+    assert body["knowledge"] == [] and body["needs_docs"] is True
     assert len(calls) == 1
     assert _post(env, env.t2["id"], **{"in": "knowledge", "q": "rasi"}).status_code == 404
     assert len(calls) == 1                                   # another business's character: never searched
@@ -136,8 +187,8 @@ def test_knowledge_for_a_character_with_no_collection_is_empty_and_not_searched(
         raise AssertionError("must not search")
     monkeypatch.setattr(kb_search, "search", boom)
     loner = env.db.add("companions", tenant_id="t1", name="Loner", status="live", knowledge_tag_id="tag-astro")
-    assert _post(env, loner["id"], **{"in": "knowledge", "q": "rasi"}).json() == {
-        "in": "knowledge", "results": [], "needs_docs": True}
+    body = _post(env, loner["id"], **{"in": "knowledge", "q": "rasi"}).json()
+    assert body["knowledge"] == [] and body["no_collection"] is True
 
 
 @pytest.mark.parametrize("broken", ["raises", "failed"])
@@ -177,6 +228,10 @@ def test_character_collection_must_belong_to_the_business(env):
     {"in": "memories", "q": ""},
     {"in": "memories", "q": "x" * 501},
     {"in": "memories", "q": "x", "tenant_id": "t2"},
+    {"in": "memories", "q": "x", "settings": {"memory_floor": 1.5}},
+    {"in": "memories", "q": "x", "settings": {"judge_min": 4}},
+    {"in": "memories", "q": "x", "settings": {"mode": "magic"}},
+    {"in": "memories", "q": "x", "settings": {"unknown": 1}},
 ])
 def test_input_is_validated(env, body):
     assert _post(env, env.j["id"], **body).status_code == 422
@@ -186,3 +241,34 @@ def test_search_words():
     assert store.search_words("Karthik's job?  a JOB") == ["karthik", "job"]
     assert store.search_words("!!") == []
     assert len(store.search_words(" ".join(f"w{i}" for i in range(20)))) == 8
+
+
+def test_business_scope_never_shows_the_owner_what_a_private_character_learned(env, monkeypatch):
+    rows = [dict(ROWS[0], companion_id=env.j["id"]),
+            {"id": "p1", "companion_id": env.private["id"], "kind": "messages", "day": "2026-11-08",
+             "text": "Person: my secret diary line", "source": "vector", "score": 0.9}]
+    _chunks(monkeypatch, rows)
+    body = _post(env, env.j["id"], **{"in": "memories", "q": "diary", "external_user_id": "48213"}).json()
+    assert [m["text"] for m in body["memories"]] == ["Bought running shoes size 9"]
+
+
+def test_default_settings_keep_the_live_passage_counts(env, monkeypatch):
+    from app.companion import playground
+    seen = {}
+
+    async def fake_search(*a, **k):
+        seen["results"] = playground.current().results
+        return KbResult(passages=(MAIN,))
+    monkeypatch.setattr(kb_search, "search", fake_search)
+    _post(env, env.j["id"], **{"in": "knowledge", "q": "x", "limit": 5})
+    assert seen["results"] is None                                   # live 3 / 4, not the limit
+    _post(env, env.j["id"], **{"in": "knowledge", "q": "x", "settings": {"results": 2}})
+    assert seen["results"] == 2
+
+
+def test_all_keeps_memories_when_knowledge_fails(env, monkeypatch):
+    async def broken(*a, **k):
+        return KbResult(failed=True)
+    monkeypatch.setattr(kb_search, "search", broken)
+    r = _post(env, env.j["id"], **{"in": "all", "q": "zoho"})
+    assert r.status_code == 200 and r.json()["knowledge_error"] is True and r.json()["memories"]

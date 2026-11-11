@@ -280,3 +280,57 @@ def test_candidates_returns_the_fused_list_before_the_judge(fx):
     assert {p.id for p in found} == {"b87", "b88"} and all(p.score == 0 for p in found)
     assert fx.judge_calls == [] and len(fx.embed_calls) == 1
     assert run(search.candidates(B, "c1", 2, SADE_SATI, 20)) == []
+
+
+# --- Playground settings (playground.Overrides): only inside `with playground.use(...)` --------------
+
+from app.companion import playground  # noqa: E402
+
+
+def ask_with(ov, *a, **kw):
+    async def go():
+        with playground.use(ov):
+            return await search.search(A, "c1", *a or ("sani 7th house",), **kw)
+    return run(go())
+
+
+def test_playground_records_every_judged_passage_kept_or_dropped(fx):
+    fx.rewrite_result = SADE_SATI
+    fx.scores = {"m12": 1, "b87": 2, "b88": 3}
+    ov = playground.Overrides()
+    kb = ask_with(ov)
+    assert [(p.id, p.score) for p in kb.passages] == [("b88", 3), ("b87", 2)]     # same as live
+    seen = {(c["id"], c["step"], c["score"], c["kept"]) for c in ov.kb_candidates}
+    assert ("m12", "main", 1, False) in seen and ("b88", "books", 3, True) in seen and ("b87", "books", 2, True) in seen
+    assert all("meaning" in c for c in ov.kb_candidates)        # None here: the fixture chunks have no embedding
+    assert ov.rewritten["english"] == SADE_SATI.english_query and ov.trace
+
+
+def test_judge_minimum_and_judge_off(fx):
+    fx.scores = {"m12": 1}
+    loose = ask_with(playground.Overrides(judge_min=1))
+    assert [(p.id, p.score) for p in loose.passages] == [("m12", 1)]       # 1 now passes; step B skipped
+    calls_before = len(fx.judge_calls)
+    off = ask_with(playground.Overrides(rerank=False))
+    assert len(fx.judge_calls) == calls_before                            # no judge call at all
+    assert [(p.id, p.score) for p in off.passages] == [("m12", 0)]
+
+
+def test_rewrite_off_searches_the_message_as_typed(fx):
+    ov = playground.Overrides(rewrite=False)
+    ask_with(ov, "sani 7th house")
+    assert fx.rewrite_calls == [] and ov.rewritten is None
+    assert fx.embed_calls[0][0] == ["sani 7th house"]
+
+
+def test_results_setting_caps_kept_passages(fx):
+    fx.rewrite_result = SADE_SATI
+    fx.scores = {"b87": 3, "b88": 3, "b90": 3}
+    assert len(ask_with(playground.Overrides(results=1)).passages) == 1
+
+
+def test_live_search_ignores_settings_outside_the_playground(fx):
+    fx.scores = {"m12": 1}
+    with playground.use(playground.Overrides(judge_min=0)):
+        pass                                                              # set and reset
+    assert ask().passages == () and playground.current() is None

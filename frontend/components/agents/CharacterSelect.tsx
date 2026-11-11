@@ -54,12 +54,34 @@ export function CharacterSelect({
   value,
   onChange,
   className,
+  inline = false,
 }: {
   characters: Companion[];
   value: string;
   onChange: (id: string) => void;
   className?: string;
+  /** Plain teal text with no border, for a picker row under an input box (Playground). */
+  inline?: boolean;
 }) {
+  if (inline) {
+    return (
+      <label className={cn("flex items-center gap-1.5 text-sm text-ink-secondary", className)}>
+        <span className="sr-only">Character</span>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="cursor-pointer rounded-md bg-transparent py-0.5 font-semibold text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          {characters.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.status !== "live" ? ` (${c.status})` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
   return (
     <label className={cn("flex items-center gap-2 text-sm text-ink-secondary", className)}>
       <span className="shrink-0">Character</span>

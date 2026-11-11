@@ -3,6 +3,8 @@
 graded by a judge, (3) a report per language.
 
     cd backend && .venv/bin/python -m evals.companion_memory.run [--only en-01,ta-03] [--skip-replay]
+        [--memory-mode agentic]   # the Playground's Agentic mode: the model decides when to search
+                                  # (report: results/agentic.md, the auto report stays latest.md)
 
 Uses Astro Tamil's stored Gemini and Jina keys (read live, never printed). Writes nothing to the live
 database: every person runs on an in-memory database (sim.py). Replays are cached in the scratch
@@ -27,6 +29,7 @@ TENANT = "eba3ed94-277c-430f-a992-19bbe855e2f4"   # Astro Tamil: its keys and re
 UTC = timezone.utc
 CACHE = pathlib.Path(os.environ.get("EVAL_CACHE", "/tmp/companion_memory_eval"))
 PARALLEL = 6
+MEMORY_MODE = "auto"   # --memory-mode; "agentic" answers probes the way engine._agentic does
 RESULTS = pathlib.Path(__file__).parent / "results"
 
 
@@ -294,7 +297,7 @@ def _storage_has(tables: dict, terms: list[str]) -> list[str]:
 async def answer_probe(story: dict, rep: dict, probe: dict, model: str) -> dict:
     from app.companion import engine, store
     from app.companion.memory_card import MemoryCard
-    from app.companion.prompt import build_messages, parse_mood
+    from app.companion.prompt import build_messages, parse_mood, parse_used
     from app.services import ai_reply
     snap = rep["snapshots"][probe["id"]]
     db = sim.SimDB(_with_model_vectors(snap["tables"], model))
@@ -306,14 +309,20 @@ async def answer_probe(story: dict, rep: dict, probe: dict, model: str) -> dict:
     companion = db.rows("companions")[0]
     person = db.rows("companion_end_users")[0]
     started = _time.monotonic()
-    memory = await engine._memory(MemoryCard(), TENANT, companion, person, probe["ask"])
+    searched = None
+    if MEMORY_MODE == "agentic":
+        raw, memory, searched = await _agentic_reply(companion, person, probe, calls)
+    else:
+        memory = await engine._memory(MemoryCard(), TENANT, companion, person, probe["ask"])
     memory_ms = (_time.monotonic() - started) * 1000
-    history = await store.recent_messages(TENANT, companion["id"], person["id"], limit=10)
-    prompt = build_messages(companion, "calm", "", memory, history, probe["ask"])
-    sim.LABEL.set("reply")
-    raw = await ai_reply._llm_chat(prompt, max_tokens=engine.LLM_MAX_TOKENS, tenant_id=TENANT,
-                                   purpose=engine.LLM_PURPOSE, temperature=engine.LLM_TEMPERATURE)
-    reply, _ = parse_mood(raw or "", "calm")
+    if MEMORY_MODE != "agentic":
+        history = await store.recent_messages(TENANT, companion["id"], person["id"], limit=10)
+        prompt = build_messages(companion, "calm", None, memory, history, probe["ask"])  # no knowledge base here
+        sim.LABEL.set("reply")
+        raw = await ai_reply._llm_chat(prompt, max_tokens=engine.LLM_MAX_TOKENS, tenant_id=TENANT,
+                                       purpose=engine.LLM_PURPOSE, temperature=engine.LLM_TEMPERATURE)
+    reply, _ = parse_used(raw or "", 0)  # same order as engine.reply: [used: ...] first, then [mood: ...]
+    reply, _ = parse_mood(reply, "calm")
     sim.LABEL.set("judge")
     verdict_raw = await ai_reply._llm_chat(
         [{"role": "system", "content": JUDGE_RULES},
@@ -328,10 +337,44 @@ async def answer_probe(story: dict, rep: dict, probe: dict, model: str) -> dict:
     result = {"id": probe["id"], "kind": probe["kind"], "ask": probe["ask"], "expect": probe["expect"],
               "reply": reply, "memory": memory, "judge": verdict, "none_hit": none_hit, "any_hit": any_hit,
               "pass": bool(verdict.get("pass")) and not none_hit, "invented": bool(verdict.get("invented")),
-              "memory_ms": round(memory_ms, 1), "judged": bool(verdict), "calls": calls}
+              "memory_ms": round(memory_ms, 1), "judged": bool(verdict), "calls": calls, "searched": searched}
     if probe["kind"] == "forget":
         result["storage_left"] = _storage_has(snap["tables"], probe["none"])
     return result
+
+
+async def _agentic_reply(companion: dict, person: dict, probe: dict, calls: list) -> tuple:
+    """(raw reply, memory block shown, the search_memory query or None): the card only, then round 1
+    with the search_memory tool; a call runs the live memory search on the model's query and round 2
+    is the normal reply. Mirrors engine._agentic for a memory-only character."""
+    from app.companion import engine, memory_search, playground, store, tools as app_tools
+    from app.companion.memory_card import MemoryCard, local_today, zone_for
+    from app.companion.prompt import build_messages
+    from app.services import ai_reply
+    with playground.use(playground.Overrides(mode="agentic")):
+        memory = await engine._memory(MemoryCard(), TENANT, companion, person, probe["ask"])
+    history = await store.recent_messages(TENANT, companion["id"], person["id"], limit=10)
+    prompt = build_messages(companion, "calm", None, memory, history, probe["ask"])
+    prompt[0] = {**prompt[0], "content": prompt[0]["content"] + engine.AGENTIC_NOTE}
+    entry = {"label": "agentic_round1", "max_tokens": engine.LLM_MAX_TOKENS, "in": None, "out": None, "ok": False}
+    calls.append(entry)
+    raw, raw_calls = await ai_reply._llm_chat_with_tools(
+        prompt, app_tools.to_llm_tools([engine.SEARCH_MEMORY]), max_tokens=engine.LLM_MAX_TOKENS,
+        tenant_id=TENANT, purpose=engine.LLM_PURPOSE)
+    entry["ok"] = bool(raw or raw_calls)
+    wanted = [c for c in app_tools.normalize_calls(raw_calls) if c["name"] == engine.SEARCH_MEMORY.name]
+    if not wanted:
+        return raw, memory, None
+    query = str(wanted[0]["args"].get("query") or probe["ask"])[:500]
+    today = local_today(None, zone_for(companion, person.get("timezone")))
+    hits = await memory_search.search(TENANT, companion["id"], person["id"], query, today=today, with_recent=False)
+    found = memory_search.render_hits(hits, shown=memory, today=today)
+    memory = "\n".join(part for part in (memory, found) if part)
+    sim.LABEL.set("reply")
+    raw = await ai_reply._llm_chat(build_messages(companion, "calm", None, memory, history, probe["ask"]),
+                                   max_tokens=engine.LLM_MAX_TOKENS, tenant_id=TENANT,
+                                   purpose=engine.LLM_PURPOSE, temperature=engine.LLM_TEMPERATURE)
+    return raw, memory, query
 
 
 async def run_probes(stories: list[dict], replays: dict, model: str) -> list[dict]:
@@ -435,7 +478,11 @@ async def main() -> None:
     parser.add_argument("--only", default="")
     parser.add_argument("--skip-replay", action="store_true", help="use cached replays")
     parser.add_argument("--model", default="", help="force the probe model instead of the bake-off winner")
+    parser.add_argument("--memory-mode", choices=("auto", "agentic"), default="auto",
+                        help="agentic: the model calls search_memory when it decides to (Playground mode)")
     args = parser.parse_args()
+    global MEMORY_MODE
+    MEMORY_MODE = args.memory_mode
     sim.install()
     load_embeddings()
     paths = sorted(story_files.HERE.glob("*.json"))
@@ -460,13 +507,17 @@ async def main() -> None:
     probes = await run_probes(stories, replays, model)
     summary = summarize(stories, replays, bake, probes)
     summary["probe_model"] = model
+    summary["memory_mode"] = MEMORY_MODE
+    summary["agentic_searched"] = sum(1 for p in probes if p.get("searched"))
     summary["floors_used"] = {"vector": memory_search.VECTOR_FLOOR, "trigram": memory_search.TRIGRAM_FLOOR,
                               "fusion": memory_search.FUSION}
-    (CACHE / "probes.json").write_text(json.dumps(probes, ensure_ascii=False, indent=1, default=str))
-    (CACHE / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str))
+    suffix = "" if MEMORY_MODE == "auto" else "-agentic"
+    (CACHE / f"probes{suffix}.json").write_text(json.dumps(probes, ensure_ascii=False, indent=1, default=str))
+    (CACHE / f"summary{suffix}.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str))
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "latest.md").write_text(markdown(summary, probes), encoding="utf-8")
-    print(f"done in {_time.monotonic() - t0:.0f}s; report {RESULTS / 'latest.md'}", flush=True)
+    report = RESULTS / ("latest.md" if MEMORY_MODE == "auto" else "agentic.md")
+    report.write_text(markdown(summary, probes), encoding="utf-8")
+    print(f"done in {_time.monotonic() - t0:.0f}s; report {report}", flush=True)
 
 
 if __name__ == "__main__":

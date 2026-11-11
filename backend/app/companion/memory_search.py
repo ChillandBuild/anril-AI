@@ -16,7 +16,7 @@ import asyncio
 import logging
 from datetime import date
 
-from app.companion import memory_card, memory_embed, store
+from app.companion import memory_card, memory_embed, playground, store
 
 logger = logging.getLogger(__name__)
 
@@ -137,19 +137,30 @@ def fuse(rows: list[dict]) -> list[dict]:
                         key=lambda r: -float(r["score"]))
         for rank, r in enumerate(ranked, 1):
             hit = by_id.setdefault(str(r["id"]), {**{k: r[k] for k in ("id", "kind", "day", "text")},
+                                                  "companion_id": r.get("companion_id"),
                                                   "rrf": 0.0, "vector": 0.0, "trigram": 0.0})
             hit["rrf"] += 1.0 / (RRF_K + rank)
             hit[source] = max(hit[source], float(r["score"]))
-    passed = [h for h in by_id.values() if h["vector"] >= VECTOR_FLOOR or h["trigram"] >= TRIGRAM_FLOOR]
+    ov = playground.current()
+    floor = ov.memory_floor if ov is not None and ov.memory_floor is not None else VECTOR_FLOOR
+    passed = [h for h in by_id.values() if h["vector"] >= floor or h["trigram"] >= TRIGRAM_FLOOR]
+    if ov is not None:   # the Playground also shows what fell below the floor
+        kept = {h["id"] for h in passed}
+        ov.memory_candidates[:] = [{**h, "kept": h["id"] in kept}
+                                   for h in sorted(by_id.values(), key=lambda h: -h["rrf"])]
     return sorted(passed, key=lambda h: -h["rrf"])
 
 
 async def search(tenant_id: str, companion_id: str, end_user_id: str, message: str, *,
-                 today: date | None = None, model: str | None = None) -> list[dict]:
-    """Fused hits for this message ([] on any error: a reply never waits on a broken search)."""
+                 today: date | None = None, model: str | None = None, with_recent: bool = True) -> list[dict]:
+    """Fused hits for this message ([] on any error: a reply never waits on a broken search).
+    with_recent=False searches the text alone (the Playground's Search tab and the agentic tool,
+    whose query is already the question)."""
     try:
-        recent = await store.recent_messages(tenant_id, companion_id, end_user_id, limit=4)
-        before = [m["content"] for m in recent if m["role"] == "user"][-2:]
+        before = []
+        if with_recent:
+            recent = await store.recent_messages(tenant_id, companion_id, end_user_id, limit=4)
+            before = [m["content"] for m in recent if m["role"] == "user"][-2:]
         query = "\n".join(before + [message])
         companions = await scope_companions(tenant_id, companion_id)
         try:
@@ -162,10 +173,17 @@ async def search(tenant_id: str, companion_id: str, end_user_id: str, message: s
         if vector is None and not trigram:
             return []
         rows = await store.match_chunks(tenant_id, companions, end_user_id, vector, trigram, CANDIDATES)
-        return fuse(rows)
+        hits = fuse(rows)
+        playground.note(f"Memories: {len(rows)} candidates, {len(hits)} passed the floor")
+        return hits
     except Exception as exc:
         logger.warning("companion %s: memory search failed (%s)", companion_id, type(exc).__name__)
         return []
+
+
+def _max_hits() -> int:
+    ov = playground.current()
+    return ov.results if ov is not None and ov.results else MAX_HITS
 
 
 def _full_date(value) -> str:
@@ -204,6 +222,6 @@ def render_hits(hits: list[dict], *, shown: str = "", today: date | None = None)
         if len("\n".join([HEADER] + lines + [line])) > BLOCK_CAP:
             break
         lines.append(line)
-        if len(lines) == MAX_HITS:
+        if len(lines) == _max_hits():
             break
     return "\n".join([HEADER] + lines) if lines else ""

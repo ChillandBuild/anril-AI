@@ -553,6 +553,10 @@ async def day_context(tenant_id: str, companion_id: str, end_user_id: str, today
     return "\n".join(parts)
 
 
+async def _no_hits() -> list[dict]:
+    return []
+
+
 class MemoryCard:
     async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str,
                           *, companion: dict | None = None, person: dict | None = None) -> str:
@@ -560,15 +564,23 @@ class MemoryCard:
         companion / person (the engine has both) give the person's local today."""
         import asyncio
 
-        from app.companion import memory_search
+        from app.companion import memory_search, playground
 
         zone = zone_for(companion, (person or {}).get("timezone"))
         today = local_today(None, zone)
+        ov = playground.current()   # None on the live path: card, day context and search all run
+        searching = ov is None or (ov.mode == "auto" and ov.sources != "knowledge")
         facts, extra, hits = await asyncio.gather(
             visible_facts(tenant_id, companion_id, end_user_id),
             day_context(tenant_id, companion_id, end_user_id, today),
-            memory_search.search(tenant_id, companion_id, end_user_id, message, today=today))
+            memory_search.search(tenant_id, companion_id, end_user_id, message, today=today) if searching
+            else _no_hits())
         card = render(facts)
+        card_off = ov is not None and not ov.memory_card
+        if ov is not None:
+            ov.note("Memory card: off" if card_off else f"Memory card: {len(card.splitlines())} lines")
+        if card_off:   # nothing from the card reaches the prompt, so search hits are not deduped against it
+            card, extra = "", ""
         found = memory_search.render_hits(hits, shown=card + "\n" + extra, today=today)
         return "\n".join(part for part in (card, extra, found) if part)
 
