@@ -11,7 +11,7 @@ import mimetypes
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
@@ -414,7 +414,10 @@ async def credit_request(body: CreditBody, ctx: dict = Depends(manage_no_key)):
 async def campaign_fields(source: Literal["leads", "contacts", "numbers"] = "leads",
                           group_ids: Optional[str] = Query(None, max_length=2000),
                           ctx: dict = Depends(view_no_key)):
-    """Fields a {#var#} can be filled from. SMS contacts add their extra upload columns as col:<name>."""
+    """Fields a {#var#} can be filled from. SMS contacts add their extra upload columns as col:<name>.
+    Typed numbers have no name, so only Phone is offered for them."""
+    if source == "numbers":
+        return {"fields": [f for f in camp.FIELDS if f["key"] == "phone"]}
     fields = list(camp.FIELDS)
     gids = [g for g in (group_ids or "").split(",") if g.strip()][:camp.MAX_GROUPS]
     if source == "contacts" and gids:
@@ -429,8 +432,8 @@ async def campaign_fields(source: Literal["leads", "contacts", "numbers"] = "lea
 
 
 class VarSource(BaseModel):
-    source: Literal["field", "text"]
-    value: str = Field(max_length=200)
+    source: Literal["field", "text", "typed"]
+    value: str = Field("", max_length=200)
 
 
 class ManualSpec(BaseModel):
@@ -451,6 +454,8 @@ class PreviewBody(BaseModel):
     lead_ids: list[str] = Field(default_factory=list, max_length=camp.MAX_LEADS)
     group_ids: list[uuid.UUID] = Field(default_factory=list, max_length=camp.MAX_GROUPS)
     numbers: list[str] = Field(default_factory=list, max_length=camp.MAX_NUMBERS)
+    typed_values: list[Annotated[list[Annotated[str, Field(max_length=200)]], Field(max_length=20)]] = Field(
+        default_factory=list, max_length=camp.MAX_NUMBERS)
     consent_confirmed: bool = False
 
 
@@ -466,7 +471,8 @@ def _vmap(body: PreviewBody) -> list[dict]:
 
 def _audience(body: PreviewBody) -> camp.Audience:
     return camp.Audience(source=body.source, lead_ids=body.lead_ids, group_ids=[str(g) for g in body.group_ids],
-                         numbers=body.numbers, consent_confirmed=body.consent_confirmed)
+                         numbers=body.numbers, typed_values=body.typed_values,
+                         consent_confirmed=body.consent_confirmed)
 
 
 def _body_template(db, tid: str, body: PreviewBody) -> dict:

@@ -6,18 +6,18 @@ import { TelecallingConfigPanel } from "../TelecallingConfigPanel";
 
 export default function TelecallingBehaviorSettingsPage() {
   const { canManageSettings, hasTelecmiConfig } = useSettingsForm();
+  // One accordion for both cards so the shared rule applies: two or more
+  // sections start collapsed (with Expand all in the header); a lone
+  // assignment card opens. TeleCMI credentials only appear once the calling
+  // provider is TeleCMI.
   return (
-    <div className="space-y-6">
+    <SettingsAccordion>
       <TelecallingConfigPanel canManage={canManageSettings} />
-      {/* TeleCMI credentials live with the rest of telecalling. Collapsed by
-          default; only shown once the calling provider is TeleCMI. */}
       {hasTelecmiConfig && (
-        <SettingsAccordion startClosed>
-          <div id="calling">
-            <CallingCredentialsSection />
-          </div>
-        </SettingsAccordion>
+        <div id="calling">
+          <CallingCredentialsSection />
+        </div>
       )}
-    </div>
+    </SettingsAccordion>
   );
 }

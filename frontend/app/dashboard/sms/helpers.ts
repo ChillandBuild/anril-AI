@@ -190,24 +190,26 @@ export function countVars(message: string): number {
   return (message.match(VAR_RE) ?? []).length;
 }
 
-/** Every variable must have a field chosen or non-empty fixed text. */
+/** Every variable must have a field chosen, fixed text, or a value typed per number. */
 export function isVariableMapComplete(map: (SmsVarSource | null)[], varCount: number): boolean {
   if (map.length < varCount) return false;
   for (let i = 0; i < varCount; i++) {
     const v = map[i];
-    if (!v || !v.value || !v.value.trim()) return false;
+    if (!v) return false;
+    if (v.source !== "typed" && (!v.value || !v.value.trim())) return false;
   }
   return true;
 }
 
 /**
  * Drop mappings that point at a contact field the current audience no longer offers. Fixed-text
- * sources stay. Returns the same array when nothing changed, so it is safe in a state update.
+ * sources stay; "typed" stays unless the audience cannot type values (not Type numbers).
+ * Returns the same array when nothing changed, so it is safe in a state update.
  */
-export function pruneVarMap(map: (SmsVarSource | null)[], availableKeys: string[]): (SmsVarSource | null)[] {
+export function pruneVarMap(map: (SmsVarSource | null)[], availableKeys: string[], allowTyped = true): (SmsVarSource | null)[] {
   let changed = false;
   const next = map.map((v) => {
-    if (v && v.source === "field" && !availableKeys.includes(v.value)) {
+    if (v && ((v.source === "field" && !availableKeys.includes(v.value)) || (v.source === "typed" && !allowTyped))) {
       changed = true;
       return null;
     }
@@ -559,6 +561,8 @@ export function parseContactsSub(value: string | null | undefined): ContactsSub 
 }
 
 export const MAX_PASTED_NUMBERS = 5000;
+/** The Type numbers table holds at most this many rows; more belong in the Address Book. */
+export const MAX_TYPED_ROWS = 100;
 export const CONSENT_LABEL = "Everyone on this list agreed to get promotional SMS from us";
 export const CONSENT_HINT = "Leave this off and these contacts only get service SMS (like order updates and OTPs), never promotions.";
 
@@ -593,17 +597,26 @@ export function sendPrefill(search: string, stored: string | null): Partial<Numb
 export const MAX_LIST_GROUPS = 50;
 export const MAX_LIST_CONTACTS = 50_000;
 
+/** One line of the Type numbers table: a mobile number and the value typed for each variable. */
+export interface TypedRow {
+  phone: string;
+  /** Indexed by variable position. */
+  values: string[];
+}
+
 export interface NumbersState {
   mode: NumbersMode;
   /** Contact mode: typed or pasted numbers. */
   numbersText: string;
+  /** Type numbers with a value per number: the table rows. */
+  rows: TypedRow[];
   groupIds: string[];
   leadIds: string[];
   /** The promotional consent tick (Contact only). */
   consent: boolean;
 }
 
-export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", groupIds: [], leadIds: [], consent: false };
+export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", rows: [], groupIds: [], leadIds: [], consent: false };
 
 function sameList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
@@ -619,32 +632,123 @@ export function withNumbersChange(prev: NumbersState, patch: Partial<NumbersStat
   const audienceChanged =
     next.mode !== prev.mode ||
     next.numbersText !== prev.numbersText ||
+    // Only the table's numbers are the audience; editing a typed value keeps the tick.
+    !sameList(next.rows.map((r) => r.phone.trim()), prev.rows.map((r) => r.phone.trim())) ||
     !sameList(next.groupIds, prev.groupIds) ||
     !sameList(next.leadIds, prev.leadIds);
   return audienceChanged ? { ...next, consent: false } : next;
 }
 
-/** The loose numbers a Contact send carries. */
-export function looseNumbers(n: NumbersState): string[] {
-  return n.mode === "contact" ? parseNumbers(n.numbersText) : [];
+/** The loose numbers a Contact send carries (the table's phones when `typed`). */
+export function looseNumbers(n: NumbersState, typed = false): string[] {
+  if (n.mode !== "contact") return [];
+  if (typed) return n.rows.map((r) => r.phone.trim()).filter(Boolean);
+  return parseNumbers(n.numbersText);
 }
 
 /** Whether the numbers step has what it needs. Promotional + Contact also needs the consent tick. */
-export function numbersReady(n: NumbersState, promotional: boolean): boolean {
+export function numbersReady(n: NumbersState, promotional: boolean, typed = false): boolean {
   if (n.mode === "leads") return n.leadIds.length > 0;
   if (n.mode === "list") return n.groupIds.length > 0 && n.groupIds.length <= MAX_LIST_GROUPS;
-  const count = looseNumbers(n).length;
+  const count = looseNumbers(n, typed).length;
   if (count === 0 || count > MAX_PASTED_NUMBERS) return false;
+  if (typed && count > MAX_TYPED_ROWS) return false;
   return !promotional || n.consent;
 }
 
 /** The recipient fields of a preview/create request, per the API contract. */
-export function buildRecipients(n: NumbersState, promotional: boolean): SmsRecipients {
+export function buildRecipients(n: NumbersState, promotional: boolean, typed?: { varCount: number }): SmsRecipients {
   if (n.mode === "leads") return { source: "leads", lead_ids: n.leadIds };
   if (n.mode === "list") return { source: "contacts", group_ids: n.groupIds };
-  const out: SmsRecipients = { source: "numbers", numbers: looseNumbers(n) };
+  let out: SmsRecipients = { source: "numbers", numbers: looseNumbers(n) };
+  if (typed) {
+    const filled = n.rows.filter((r) => r.phone.trim());
+    out = {
+      source: "numbers",
+      numbers: filled.map((r) => r.phone.trim()),
+      typed_values: filled.map((r) => Array.from({ length: typed.varCount }, (_, i) => (r.values[i] ?? "").trim())),
+    };
+  }
   if (promotional) out.consent_confirmed = n.consent;
   return out;
+}
+
+/** Variable positions (below varCount) whose source is "typed", i.e. values typed per number. */
+export function typedVarIndexes(map: (SmsVarSource | null)[], varCount: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < varCount; i++) if (map[i]?.source === "typed") out.push(i);
+  return out;
+}
+
+/** The first problem in the Type numbers table, or null. Fully empty rows are ignored. */
+export function typedRowsProblem(rows: TypedRow[], typedIdx: number[]): string | null {
+  let count = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const phoneBlank = !row.phone.trim();
+    const blankAt = typedIdx.filter((i) => !(row.values[i] ?? "").trim());
+    if (phoneBlank && blankAt.length === typedIdx.length) continue;
+    count++;
+    if (phoneBlank) return `Add the mobile number on row ${r + 1}.`;
+    if (blankAt.length > 0) return `Fill Variable ${blankAt[0] + 1} on row ${r + 1}.`;
+  }
+  if (count > MAX_TYPED_ROWS) return `Up to ${MAX_TYPED_ROWS} numbers can be typed here. For more, upload them to the Address Book.`;
+  return null;
+}
+
+/** True when the picked template has a variable typed per number (Contact mode only). */
+export function usesTypedRows(input: SendFormInput): boolean {
+  return !input.manual && input.numbers.mode === "contact" && typedVarIndexes(input.varMap, templateVarCount(input.template)).length > 0;
+}
+
+/** Turn the numbers typed into Type numbers into table rows (one per number, no values yet). */
+export function seedTypedRows(numbersText: string): TypedRow[] {
+  const rows: TypedRow[] = parseNumbers(numbersText)
+    .slice(0, MAX_TYPED_ROWS)
+    .map((phone) => ({ phone, values: [] }));
+  return rows.length > 0 ? rows : [{ phone: "", values: [] }];
+}
+
+/** The phones in the table, one per line, for the plain numbers box. */
+export function rowsToNumbersText(rows: TypedRow[]): string {
+  return rows
+    .map((r) => r.phone.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Paste tab-separated rows (copied from Excel) into the table, starting at a cell. Columns are the
+ * phone, then each typed variable in order. Returns a new array; rows stop at MAX_TYPED_ROWS.
+ */
+export function pasteIntoRows(rows: TypedRow[], startRow: number, startCol: number, text: string, typedIdx: number[]): TypedRow[] {
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  const next: TypedRow[] = rows.map((r) => ({ phone: r.phone, values: [...r.values] }));
+  const columns = typedIdx.length + 1;
+  lines.forEach((line, r) => {
+    const target = startRow + r;
+    if (target >= MAX_TYPED_ROWS) return;
+    while (next.length <= target) next.push({ phone: "", values: [] });
+    line.split("\t").forEach((cell, c) => {
+      const col = startCol + c;
+      if (col >= columns) return;
+      const value = cell.trim();
+      if (col === 0) {
+        next[target].phone = value;
+        return;
+      }
+      const idx = typedIdx[col - 1];
+      while (next[target].values.length <= idx) next[target].values.push("");
+      next[target].values[idx] = value;
+    });
+  });
+  return next;
+}
+
+/** Whether a template reads like a one-time password message (the app should make OTPs itself). */
+export function looksLikeOtp(message: string): boolean {
+  return /\b(otp|one[\s-]?time password|verification code)\b/i.test(message);
 }
 
 /** Which fields endpoint feeds the {#var#} source dropdown for these numbers. */
@@ -719,9 +823,14 @@ export function sendFormProblem(input: SendFormInput): string | null {
     if (!input.template) return "Pick a template.";
     if (!isVariableMapComplete(input.varMap, templateVarCount(input.template))) return "Choose what fills each {#var#}.";
   }
-  if (!numbersReady(input.numbers, type === "promotional")) {
+  const typed = usesTypedRows(input);
+  if (typed) {
+    const rowProblem = typedRowsProblem(input.numbers.rows, typedVarIndexes(input.varMap, templateVarCount(input.template)));
+    if (rowProblem) return rowProblem;
+  }
+  if (!numbersReady(input.numbers, type === "promotional", typed)) {
     const n = input.numbers;
-    if (type === "promotional" && n.mode === "contact" && looseNumbers(n).length > 0 && !n.consent) {
+    if (type === "promotional" && n.mode === "contact" && looseNumbers(n, typed).length > 0 && !n.consent) {
       return "Tick the consent box to send promotional SMS to these numbers.";
     }
     return "Add who should get it.";
@@ -733,7 +842,11 @@ export function sendFormProblem(input: SendFormInput): string | null {
 export function buildSendRequest(input: SendFormInput): SmsCampaignPreviewRequest | null {
   if (sendFormProblem(input)) return null;
   const promotional = sendType(input) === "promotional";
-  const recipients = buildRecipients(input.numbers, promotional);
+  const recipients = buildRecipients(
+    input.numbers,
+    promotional,
+    usesTypedRows(input) ? { varCount: templateVarCount(input.template) } : undefined,
+  );
   if (input.manual) {
     const m = input.manual;
     return {

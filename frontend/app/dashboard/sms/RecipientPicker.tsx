@@ -1,7 +1,9 @@
 "use client";
 
+import type { ClipboardEvent } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { X } from "lucide-react";
 import { CheckTick } from "@/components/ui/controls";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -9,14 +11,17 @@ import { LeadPicker } from "./LeadPicker";
 import {
   MAX_LIST_GROUPS,
   MAX_PASTED_NUMBERS,
+  MAX_TYPED_ROWS,
   NUMBERS_MODE_LABELS,
   formatCount,
   friendlyError,
   parseNumbers,
+  pasteIntoRows,
   type NumbersMode,
   type NumbersState,
+  type TypedRow,
 } from "./helpers";
-import { ConsentCheck, Field, LoadError, Notice, Skeleton, textareaCls } from "./ui";
+import { ConsentCheck, Field, LoadError, Notice, Skeleton, inputCls, textareaCls } from "./ui";
 
 /** Whether this client has any Anril leads (the Leads mode is hidden when they have none). */
 export function useHasLeads(): boolean {
@@ -24,17 +29,23 @@ export function useHasLeads(): boolean {
   return (probe.data?.total ?? 0) > 0;
 }
 
-/** The ways to say who gets an SMS: Contact (typed), List (Address Book groups), Leads. */
+/**
+ * The ways to say who gets an SMS: Contact (typed), List (Address Book groups), Leads. With a
+ * variable typed per number (`typedVars`), Contact becomes a table with a value column per variable.
+ */
 export function NumbersPicker({
   value,
   onChange,
   promotional,
   showLeads,
+  typedVars,
 }: {
   value: NumbersState;
   onChange: (update: (prev: NumbersState) => NumbersState) => void;
   promotional: boolean;
   showLeads: boolean;
+  /** Variable positions typed per number (empty when none). */
+  typedVars: number[];
 }) {
   const set = (patch: Partial<NumbersState>) => onChange((prev) => ({ ...prev, ...patch }));
   const modes: NumbersMode[] = showLeads ? ["contact", "list", "leads"] : ["contact", "list"];
@@ -58,7 +69,12 @@ export function NumbersPicker({
         ))}
       </div>
 
-      {value.mode === "contact" && <NumbersBox value={value.numbersText} onChange={(numbersText) => set({ numbersText })} />}
+      {value.mode === "contact" &&
+        (typedVars.length > 0 ? (
+          <TypedNumbersTable rows={value.rows} typedVars={typedVars} onChange={(rows) => set({ rows })} />
+        ) : (
+          <NumbersBox value={value.numbersText} onChange={(numbersText) => set({ numbersText })} />
+        ))}
       {value.mode === "list" && <GroupPicker selected={new Set(value.groupIds)} onChange={(ids) => set({ groupIds: Array.from(ids) })} />}
       {value.mode === "leads" && <LeadPicker selected={new Set(value.leadIds)} onChange={(ids) => set({ leadIds: Array.from(ids) })} />}
 
@@ -120,6 +136,125 @@ function GroupPicker({ selected, onChange }: { selected: Set<string>; onChange: 
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+const cellCls = (bad: boolean) => cn(inputCls, "h-9 px-2.5", bad && "border-danger focus:ring-danger/20");
+
+/**
+ * Type numbers with a value per number: a table with the mobile number and one column per typed
+ * variable. Columns can be pasted in from Excel; rows are capped at MAX_TYPED_ROWS.
+ */
+function TypedNumbersTable({ rows, typedVars, onChange }: { rows: TypedRow[]; typedVars: number[]; onChange: (rows: TypedRow[]) => void }) {
+  const shown: TypedRow[] = rows.length > 0 ? rows : [{ phone: "", values: [] }];
+  const count = shown.filter((r) => r.phone.trim()).length;
+
+  /** Column 0 is the phone; column j is the value for typedVars[j - 1]. */
+  function write(r: number, col: number, text: string) {
+    onChange(
+      shown.map((row, i) => {
+        if (i !== r) return row;
+        if (col === 0) return { ...row, phone: text };
+        const idx = typedVars[col - 1];
+        const len = Math.max(row.values.length, idx + 1);
+        return { ...row, values: Array.from({ length: len }, (_, k) => (k === idx ? text : (row.values[k] ?? ""))) };
+      }),
+    );
+  }
+
+  /** A paste with tabs or lines is a block of cells (from Excel); a plain paste stays a normal paste. */
+  function paste(e: ClipboardEvent<HTMLInputElement>, r: number, col: number) {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes("\t") && !text.includes("\n")) return;
+    e.preventDefault();
+    onChange(pasteIntoRows(shown, r, col, text, typedVars));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto rounded-xl border border-[#e2e8f0]">
+        <table className="w-full min-w-[420px] text-left">
+          <thead className="bg-[#f8fafc] text-xs font-bold text-[#64748b]">
+            <tr>
+              <th scope="col" className="px-3 py-2">
+                Mobile number
+              </th>
+              {typedVars.map((i) => (
+                <th key={i} scope="col" className="px-3 py-2">
+                  Variable {i + 1}
+                </th>
+              ))}
+              <th scope="col" className="w-10 px-2 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#f1f5f9]">
+            {shown.map((row, r) => {
+              const phoneBad = !row.phone.trim() && typedVars.some((i) => (row.values[i] ?? "").trim());
+              return (
+                <tr key={r}>
+                  <td className="px-2 py-1.5">
+                    <input
+                      inputMode="tel"
+                      placeholder="9876543210"
+                      aria-label={`Mobile number, row ${r + 1}`}
+                      aria-invalid={phoneBad || undefined}
+                      className={cellCls(phoneBad)}
+                      value={row.phone}
+                      onChange={(e) => write(r, 0, e.target.value)}
+                      onPaste={(e) => paste(e, r, 0)}
+                    />
+                  </td>
+                  {typedVars.map((i, j) => {
+                    const bad = row.phone.trim() !== "" && !(row.values[i] ?? "").trim();
+                    return (
+                      <td key={i} className="px-2 py-1.5">
+                        <input
+                          aria-label={`Variable ${i + 1}, row ${r + 1}`}
+                          aria-invalid={bad || undefined}
+                          className={cellCls(bad)}
+                          value={row.values[i] ?? ""}
+                          maxLength={100}
+                          onChange={(e) => write(r, j + 1, e.target.value)}
+                          onPaste={(e) => paste(e, r, j + 1)}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-1.5 text-right">
+                    {shown.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label={`Remove row ${r + 1}`}
+                        onClick={() => onChange(shown.filter((_, k) => k !== r))}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-[#64748b] hover:bg-[#f1f5f9] hover:text-danger"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => onChange([...shown, { phone: "", values: [] }])}
+          disabled={shown.length >= MAX_TYPED_ROWS}
+          className="text-sm font-bold text-primary hover:underline disabled:opacity-40 disabled:no-underline"
+        >
+          + Add row
+        </button>
+        <Link href="/dashboard/sms/contacts" className="text-xs font-bold text-primary hover:underline">
+          For bigger lists, use the Address Book →
+        </Link>
+      </div>
+      <p className="text-xs text-[#64748b]">
+        {formatCount(count)} number{count === 1 ? "" : "s"} · up to {MAX_TYPED_ROWS}. Tip: copy the columns from Excel and paste them into the first box.
+      </p>
     </div>
   );
 }

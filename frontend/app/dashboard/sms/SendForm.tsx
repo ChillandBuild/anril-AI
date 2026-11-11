@@ -39,8 +39,12 @@ import {
   sendFormProblem,
   sendType,
   sendPrefill,
+  seedTypedRows,
+  rowsToNumbersText,
+  looksLikeOtp,
   smsSegments,
   templateVarCount,
+  typedVarIndexes,
   withNumbersChange,
   type NumbersState,
   type SendFormInput,
@@ -120,6 +124,9 @@ export function SendForm() {
   const savedMatch = isManual ? matchSavedTemplate(ready, manual.sender_id, manual.message) : null;
   const senders = useSWR(isManual ? "sms:senders" : null, () => api.sms.senders(), { revalidateOnFocus: false });
   const varCount = templateVarCount(template);
+  // Variables typed per number (Type numbers only): they show as a table in step 2.
+  const typedVars = isManual ? [] : typedVarIndexes(varMap, varCount);
+  const typedActive = numbers.mode === "contact" && typedVars.length > 0;
   const input: SendFormInput = { template, manual: isManual ? manual : null, varMap, numbers };
   const type = sendType(input);
   const promotional = type === "promotional";
@@ -165,10 +172,21 @@ export function SendForm() {
   }, [numbers.mode, hasLeads]);
 
   // Switching who gets the SMS changes which contact fields exist; forget mappings to fields that are gone.
+  // "Type for each number" only exists for Type numbers, so it is dropped for the other audiences.
   const offeredFields = fields.data?.fields;
   useEffect(() => {
-    if (offeredFields) setVarMap((m) => pruneVarMap(m, offeredFields.map((f) => f.key)));
-  }, [offeredFields]);
+    if (offeredFields) setVarMap((m) => pruneVarMap(m, offeredFields.map((f) => f.key), numbers.mode === "contact"));
+  }, [offeredFields, numbers.mode]);
+
+  // The table (Type numbers with a typed variable) and the plain numbers box hold the same phones:
+  // entering the table seeds it from the box; leaving it writes the table's phones back to the box.
+  const typedWasActive = useRef(typedActive);
+  useEffect(() => {
+    if (typedWasActive.current === typedActive) return;
+    typedWasActive.current = typedActive;
+    if (typedActive) setNumbers((n) => (n.rows.length === 0 ? withNumbersChange(n, { rows: seedTypedRows(n.numbersText) }) : n));
+    else setNumbers((n) => (n.rows.some((r) => r.phone.trim()) ? withNumbersChange(n, { numbersText: rowsToNumbersText(n.rows), rows: [] }) : n));
+  }, [typedActive]);
 
   // Auto-preview: 600 ms after the last change to a valid request, ask the server who gets it and
   // what it costs. A reply for an older request is dropped.
@@ -422,8 +440,22 @@ export function SendForm() {
               (fields.error && !fields.data ? (
                 <LoadError message={friendlyError(fields.error, "Couldn't load the contact fields.")} onRetry={() => void fields.mutate()} />
               ) : (
-                <VariableMapper varCount={varCount} varMap={varMap} fields={fields.data?.fields ?? []} onSet={setVar} />
+                <VariableMapper
+                  varCount={varCount}
+                  varMap={varMap}
+                  fields={fields.data?.fields ?? []}
+                  allowTyped={numbers.mode === "contact"}
+                  onSet={setVar}
+                />
               ))}
+            {template && looksLikeOtp(template.message) && (
+              <Notice tone="info">
+                This looks like an OTP message. Your app sends OTPs on its own and makes the code itself, so you don&apos;t type one here.{" "}
+                <Link href="/dashboard/sms/otp" className="font-bold underline">
+                  Set up OTP →
+                </Link>
+              </Notice>
+            )}
 
             {message && (template || isManual) && (
               <div>
@@ -445,6 +477,7 @@ export function SendForm() {
               }}
               promotional={promotional}
               showLeads={hasLeads}
+              typedVars={typedVars}
             />
           </Step>
 

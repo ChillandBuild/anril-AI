@@ -1846,7 +1846,8 @@ export interface SmsReportSummary {
   error: string | null;
 }
 export interface SmsTemplateList { templates: SmsTemplate[]; last_synced_at: string | null; error: string | null }
-export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string };
+/** "typed" = a value typed next to each number (the Type numbers table), so `value` stays "". */
+export type SmsVarSource = { source: "field"; value: string } | { source: "text"; value: string } | { source: "typed"; value: "" };
 export interface SmsPreviewExcluded { lead_id?: string | null; name: string | null; phone: string | null; reason: string }
 export interface SmsPreviewSample { lead_id?: string | null; name: string | null; content: string; segments: number; unicode: boolean }
 export interface SmsPreview {
@@ -1951,6 +1952,8 @@ export interface SmsRecipients {
   lead_ids?: string[];
   group_ids?: string[];
   numbers?: string[];
+  /** Aligned with `numbers`: each row's values, indexed by variable position. */
+  typed_values?: string[][];
   consent_confirmed?: boolean;
 }
 /** "Type my own" (Bulk9 route=dlt_manual): the exact approved text with every variable filled in. */

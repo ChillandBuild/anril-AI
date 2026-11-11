@@ -19,6 +19,14 @@ import {
   buildCurl,
   buildPython,
   EMPTY_NUMBERS,
+  MAX_TYPED_ROWS,
+  typedVarIndexes,
+  typedRowsProblem,
+  seedTypedRows,
+  rowsToNumbersText,
+  pasteIntoRows,
+  looksLikeOtp,
+  type TypedRow,
   buildRecipients,
   buildSendRequest,
   defaultSendName,
@@ -527,6 +535,100 @@ describe("pruneVarMap", () => {
   });
   it("makes the map incomplete so the form asks again", () => {
     expect(isVariableMapComplete(pruneVarMap([city], ["name"]), 1)).toBe(false);
+  });
+});
+
+describe("Type numbers table", () => {
+  const row = (phone: string, values: string[] = []): TypedRow => ({ phone, values });
+  const typed = { source: "typed" as const, value: "" as const };
+  const fixed = { source: "text" as const, value: "2 Nov" };
+  const tpl = { id: "t1", message: "Your code is {#var#} for {#var#}", template_type: "service" as const, var_count: 2 };
+  const withRows = (rows: TypedRow[]): SendFormInput => ({
+    template: tpl,
+    varMap: [typed, fixed],
+    numbers: { ...EMPTY_NUMBERS, rows },
+  });
+
+  it("finds the typed variable positions", () => {
+    expect(typedVarIndexes([{ source: "field", value: "name" }, typed, typed], 2)).toEqual([1]);
+    expect(typedVarIndexes([typed], 0)).toEqual([]);
+  });
+  it("counts a typed variable as complete and keeps it on prune", () => {
+    expect(isVariableMapComplete([typed], 1)).toBe(true);
+    expect(isVariableMapComplete([typed, null], 2)).toBe(false);
+    const m = [typed, fixed];
+    expect(pruneVarMap(m, [])).toBe(m);
+    expect(pruneVarMap(m, [], false)).toEqual([null, fixed]);
+  });
+  it("reports a blank phone or a blank value, naming the row", () => {
+    expect(typedRowsProblem([row("9876543210", ["", "Ravi"]), row("", ["", "Asha"])], [1])).toBe("Add the mobile number on row 2.");
+    expect(typedRowsProblem([row("9876543210", ["", "Ravi"]), row("9123456780", ["", " "])], [1])).toBe("Fill Variable 2 on row 2.");
+  });
+  it("ignores fully empty rows", () => {
+    expect(typedRowsProblem([row("", ["", ""]), row("9876543210", ["", "Ravi"]), row("")], [1])).toBeNull();
+    expect(typedRowsProblem([], [1])).toBeNull();
+  });
+  it("stops at the row limit", () => {
+    const rows = Array.from({ length: MAX_TYPED_ROWS + 1 }, (_, i) => row(String(9000000000 + i), ["Ravi"]));
+    expect(typedRowsProblem(rows, [0])).toBe("Up to 100 numbers can be typed here. For more, upload them to the Address Book.");
+  });
+  it("builds the request with one typed value list per number, padded to the variable count", () => {
+    expect(buildSendRequest(withRows([row("9876543210", ["Ravi"]), row("", []), row("9123456780", [" Asha "])]))).toEqual({
+      template_id: "t1",
+      variable_map: [typed, fixed],
+      source: "numbers",
+      numbers: ["9876543210", "9123456780"],
+      typed_values: [
+        ["Ravi", ""],
+        ["Asha", ""],
+      ],
+    });
+  });
+  it("gives the row message as the send problem", () => {
+    expect(sendFormProblem(withRows([row("", ["Ravi"])]))).toBe("Add the mobile number on row 1.");
+    expect(buildSendRequest(withRows([row("", ["Ravi"])]))).toBeNull();
+  });
+  it("counts the table phones as ready, and clears consent only when a number changes", () => {
+    expect(numbersReady({ ...EMPTY_NUMBERS, rows: [row("9876543210")] }, false, true)).toBe(true);
+    const ticked = { ...EMPTY_NUMBERS, rows: [row("9876543210")], consent: true };
+    expect(withNumbersChange(ticked, { rows: [row("9876543210", ["x"])] }).consent).toBe(true);
+    expect(withNumbersChange(ticked, { rows: [row("9123456780")] }).consent).toBe(false);
+    expect(withNumbersChange(ticked, { rows: [row("9876543210"), row("9123456780")] }).consent).toBe(false);
+  });
+  it("seeds rows from typed numbers, with one blank row when there are none", () => {
+    expect(seedTypedRows("9876543210\n9123456780")).toEqual([row("9876543210"), row("9123456780")]);
+    expect(seedTypedRows("")).toEqual([row("")]);
+  });
+  it("writes the phones back as plain numbers", () => {
+    expect(rowsToNumbersText([row(" 9876543210 ", ["x"]), row(""), row("9123456780")])).toBe("9876543210\n9123456780");
+  });
+  it("fills phone and one typed variable from a multi-line Excel paste", () => {
+    const out = pasteIntoRows([row("")], 0, 0, "9876543210\tRavi\r\n9123456780\tAsha\r\n", [1]);
+    expect(out).toEqual([row("9876543210", ["", "Ravi"]), row("9123456780", ["", "Asha"])]);
+  });
+  it("pastes from a middle row without changing the original rows", () => {
+    const before = [row("1"), row("2"), row("3")];
+    const out = pasteIntoRows(before, 1, 0, "9000000001\tX", [0]);
+    expect(out).toEqual([row("1"), row("9000000001", ["X"]), row("3")]);
+    expect(before[1]).toEqual(row("2"));
+  });
+  it("starts in a typed column and adds rows as needed", () => {
+    expect(pasteIntoRows([row("9876543210")], 0, 1, "Ravi\nAsha", [0])).toEqual([row("9876543210", ["Ravi"]), row("", ["Asha"])]);
+  });
+  it("ignores cells past the last column", () => {
+    expect(pasteIntoRows([row("")], 0, 0, "9876543210\tRavi\tExtra", [0])).toEqual([row("9876543210", ["Ravi"])]);
+  });
+  it("stops pasting at the row limit", () => {
+    const text = Array.from({ length: 150 }, (_, i) => String(9000000000 + i)).join("\n");
+    const out = pasteIntoRows([], 0, 0, text, []);
+    expect(out).toHaveLength(MAX_TYPED_ROWS);
+    expect(out[MAX_TYPED_ROWS - 1].phone).toBe("9000000099");
+  });
+  it("spots an OTP message but not a word that only contains otp", () => {
+    expect(looksLikeOtp("Your OTP is {#var#}")).toBe(true);
+    expect(looksLikeOtp("Enter this verification code: {#var#}")).toBe(true);
+    expect(looksLikeOtp("Hotpot offer")).toBe(false);
+    expect(looksLikeOtp("Hi {#var#}")).toBe(false);
   });
 });
 

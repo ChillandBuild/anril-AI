@@ -135,9 +135,11 @@ def _field_value(person: dict, key: str) -> str:
     return ""
 
 
-def validate_variable_map(variable_map: list[dict], template_text: str, allow_cols: bool = False) -> list[dict]:
+def validate_variable_map(variable_map: list[dict], template_text: str, allow_cols: bool = False,
+                          allow_typed: bool = False) -> list[dict]:
     """One VarSource per {#var#}, in order; field sources must be known fields (extra contact
-    columns only when the recipients are SMS contacts)."""
+    columns only when the recipients are SMS contacts). A typed source takes its value from each
+    typed number's own values (only when the recipients are typed numbers)."""
     n = var_count(template_text)
     if len(variable_map or []) != n:
         raise SmsError(f"This template has {n} variable(s); {len(variable_map or [])} given.")
@@ -153,6 +155,10 @@ def validate_variable_map(variable_map: list[dict], template_text: str, allow_co
             value = _clean_value(value)
             if not value:
                 raise SmsError("A fixed-text variable cannot be empty.")
+        elif source == "typed":
+            if not allow_typed:
+                raise SmsError("Typing a value for each number only works with typed numbers.")
+            value = ""
         else:
             raise SmsError("Each variable must be a field or fixed text.")
         clean.append({"source": source, "value": value})
@@ -196,10 +202,16 @@ def split_people(people: list[dict], template_type: str, variable_map: list[dict
             out(p, R_NOT_INDIAN)
             continue
         values, missing = [], None
-        for src in variable_map:
-            val = _field_value(p, src["value"]) if src["source"] == "field" else _clean_value(src["value"])
+        for i, src in enumerate(variable_map):
+            if src["source"] == "typed":
+                typed = p.get("typed") or []
+                val = _clean_value(typed[i] if i < len(typed) else "")
+                label = f"Variable {i + 1}"
+            else:
+                val = _field_value(p, src["value"]) if src["source"] == "field" else _clean_value(src["value"])
+                label = src["value"]
             if not val:
-                missing = src["value"]
+                missing = label
                 break
             values.append(val)
         if missing:
@@ -274,23 +286,30 @@ def load_people(db, tenant_id: str, audience: "Audience") -> list[dict]:
     if audience.source == "contacts":
         return [_contact_person(c) for c in load_contacts(db, tenant_id, audience.group_ids)]
     if audience.source == "numbers":
-        nums = [str(n).strip() for n in audience.numbers if str(n).strip()]
-        if not nums:
+        if audience.typed_values and len(audience.typed_values) != len(audience.numbers):
+            raise SmsError("Each number needs its own values.")
+        # Typed values are paired with the raw numbers first, so blank numbers can't shift them.
+        typed_all = audience.typed_values or [[] for _ in audience.numbers]
+        pairs = [(str(n).strip(), t) for n, t in zip(audience.numbers, typed_all) if str(n).strip()]
+        if not pairs:
             raise SmsError("Paste at least one number.")
-        if len(nums) > MAX_NUMBERS:
+        if len(pairs) > MAX_NUMBERS:
             raise SmsError(f"Paste at most {MAX_NUMBERS:,} numbers at a time.")
-        return [{"name": None, "phone": n, "opted_out": False, "consent": audience.consent_confirmed}
-                for n in nums]
+        return [{"name": None, "phone": n, "opted_out": False, "consent": audience.consent_confirmed,
+                 "typed": [str(v) for v in t]} for n, t in pairs]
     return [_lead_person(l) for l in load_leads(db, tenant_id, audience.lead_ids)]
 
 
 @dataclass
 class Audience:
-    """Who a campaign goes to. source: leads (lead_ids) | contacts (group_ids) | numbers (pasted)."""
+    """Who a campaign goes to. source: leads (lead_ids) | contacts (group_ids) | numbers (pasted).
+    typed_values = per-number values for {#var#}s typed in for each number, aligned with `numbers`
+    (typed_values[i][j] is the value of variable j for numbers[i]). Empty when none were typed."""
     source: str = "leads"
     lead_ids: list[str] = field(default_factory=list)
     group_ids: list[str] = field(default_factory=list)
     numbers: list[str] = field(default_factory=list)
+    typed_values: list[list[str]] = field(default_factory=list)
     consent_confirmed: bool = False
 
 
@@ -335,7 +354,8 @@ def _plan(db, tenant_id: str, template: dict, variable_map: list[dict], audience
     """(clean variable map, eligible, excluded) for this template + audience."""
     if template.get("kind") == "manual" and variable_map:
         raise SmsError("A message sent with DLT IDs has no variables.")
-    vmap = validate_variable_map(variable_map, template["message"], allow_cols=audience.source == "contacts")
+    vmap = validate_variable_map(variable_map, template["message"], allow_cols=audience.source == "contacts",
+                                 allow_typed=audience.source == "numbers")
     eligible, excluded = split_people(load_people(db, tenant_id, audience), template["template_type"], vmap)
     return vmap, eligible, excluded
 

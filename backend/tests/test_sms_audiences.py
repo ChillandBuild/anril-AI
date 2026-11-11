@@ -203,6 +203,57 @@ def test_promotional_to_pasted_numbers_needs_the_tick_and_records_who():
     assert db.rows("sms_messages")[0]["phone"] == "9876543210"
 
 
+TYPED_VMAP = [{"source": "typed", "value": ""}, {"source": "text", "value": "Gold"}]
+
+
+def test_typed_values_fill_each_number_and_are_saved_per_message():
+    db, _ = _setup()
+    t = _template(db)
+    aud = camp.Audience(source="numbers", numbers=["9876543210", "9876511111"],
+                        typed_values=[["Ravi", "x"], ["Meena", ""]])
+    out = camp.preview(db, T, t, TYPED_VMAP, audience=aud)
+    assert out["eligible_count"] == 2
+    assert {x["content"] for x in out["samples"]} == {"Hi Ravi, your plan is Gold", "Hi Meena, your plan is Gold"}
+    camp.create_campaign(db, T, "u1", name="x", template=t, variable_map=TYPED_VMAP, send_at=None,
+                         idempotency_key="typed-key-1", now=NOW, audience=aud)
+    assert sorted(m["variables"] for m in db.rows("sms_messages")) == [["Meena", "Gold"], ["Ravi", "Gold"]]
+
+
+def test_a_blank_typed_value_excludes_only_that_number():
+    db, _ = _setup()
+    aud = camp.Audience(source="numbers", numbers=["9876543210", "9876511111"], typed_values=[["Ravi"], [" "]])
+    out = camp.preview(db, T, _template(db), TYPED_VMAP, audience=aud)
+    assert out["eligible_count"] == 1
+    assert out["excluded"][0]["reason"] == camp.R_MISSING("Variable 1")
+
+
+def test_typed_values_must_come_one_list_per_number():
+    db, _ = _setup()
+    aud = camp.Audience(source="numbers", numbers=["9876543210", "9876511111"], typed_values=[["Ravi"]])
+    with pytest.raises(camp.SmsError, match="own values"):
+        camp.preview(db, T, _template(db), TYPED_VMAP, audience=aud)
+
+
+def test_typed_variable_is_only_for_typed_numbers():
+    db, g = _setup()
+    with pytest.raises(camp.SmsError, match="typed numbers"):
+        camp.preview(db, T, _template(db), TYPED_VMAP,
+                     audience=camp.Audience(source="contacts", group_ids=[g["id"]]))
+
+
+@pytest.mark.asyncio
+async def test_fields_for_typed_numbers_offer_only_phone():
+    out = await sms.campaign_fields(source="numbers", group_ids=None, ctx=CTX)
+    assert out["fields"] == [{"key": "phone", "label": "Phone"}]
+
+
+def test_typed_values_reach_the_audience_through_the_route():
+    body = sms.PreviewBody(source="numbers", template_id="x", numbers=["9876543210"], typed_values=[["Ravi"]],
+                           variable_map=[{"source": "typed"}])
+    assert body.variable_map[0].source == "typed"
+    assert sms._audience(body).typed_values == [["Ravi"]]
+
+
 # ---------------------------------------------------------------- Type my own (route=dlt_manual)
 
 MANUAL = {"sender_id": "kelir", "entity_id": "1701176655431156940", "dlt_template_id": "1707176655431156001",
