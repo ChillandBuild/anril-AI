@@ -1,32 +1,36 @@
 "use client";
-import { useState } from "react";
 import { MessagesSquare, Sparkles } from "lucide-react";
-import { toast } from "sonner";
 import { useSettingsForm } from "../SettingsFormContext";
-import { Fact, Facts, SettingsAccordion, SettingsSection, SummaryHint, SwitchPill } from "../SettingsSection";
+import {
+  Fact,
+  Facts,
+  SaveButton,
+  SaveStatus,
+  SectionFooter,
+  SettingsAccordion,
+  SettingsSection,
+  SummaryHint,
+  SwitchPill,
+} from "../SettingsSection";
 
 const AI_AUTO_REPLY_KEY = "ai_auto_reply_enabled";
 const AI_AUTO_REPLY_DEFAULT_ENABLED = true;
 
 export default function AutoReplySettingsPage() {
-  const { settingFor, canManageSettings, saveValues } = useSettingsForm();
-  const [saving, setSaving] = useState(false);
+  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave } = useSettingsForm();
 
   const stored = settingFor(AI_AUTO_REPLY_KEY)?.display_value;
-  const enabled = stored === "Not set" || !stored ? AI_AUTO_REPLY_DEFAULT_ENABLED : stored === "true";
-
-  // The card's switch is the only control, so it saves right away.
-  async function toggle(next: boolean) {
-    setSaving(true);
-    try {
-      await saveValues({ [AI_AUTO_REPLY_KEY]: next ? "true" : "false" });
-      toast.success(`AI auto-reply turned ${next ? "on" : "off"}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Couldn't turn AI auto-reply ${next ? "on" : "off"}`);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const enabled = drafts[AI_AUTO_REPLY_KEY] !== undefined
+    ? drafts[AI_AUTO_REPLY_KEY] === "true"
+    : (stored === "Not set" || !stored ? AI_AUTO_REPLY_DEFAULT_ENABLED : stored === "true");
+  const dirty = (() => {
+    const draft = drafts[AI_AUTO_REPLY_KEY];
+    if (draft === undefined) return false;
+    const storedNormalized = stored === "Not set" || !stored
+      ? (AI_AUTO_REPLY_DEFAULT_ENABLED ? "true" : "false")
+      : (stored === "true" ? "true" : "false");
+    return draft !== storedNormalized;
+  })();
 
   return (
     <SettingsAccordion>
@@ -37,14 +41,14 @@ export default function AutoReplySettingsPage() {
         title="AI Auto-Reply"
         description="Turn on automatic AI replies for inbound messages on WhatsApp, Instagram, Facebook and Telegram. Turning it off also pauses AI follow-ups. Voice delivery is controlled by your operator plan settings."
         status={{ label: enabled ? "On" : "Off", tone: enabled ? "on" : "off" }}
+        dirty={dirty}
         headerAction={
           <SwitchPill
             on={enabled}
             size="sm"
-            loading={saving}
             disabled={!canManageSettings}
             aria-label="AI auto-reply on or off"
-            onChange={toggle}
+            onChange={(next) => setDrafts((d) => ({ ...d, [AI_AUTO_REPLY_KEY]: next ? "true" : "false" }))}
           />
         }
         summary={
@@ -58,10 +62,20 @@ export default function AutoReplySettingsPage() {
         }
       >
         <p className="font-body text-xs leading-relaxed text-ink-muted">
-          {enabled
-            ? "AI replies to inbound messages on every channel. When you turn it off, messages sit in the inbox until a teammate answers them, and each lead's AI switch is greyed out."
-            : "AI replies are off. Inbound messages sit in the inbox until a teammate answers them, and each lead's AI switch is greyed out. Turn it on with the switch above."}
+          When off, inbound messages on every channel sit in the inbox until a teammate answers them, and each
+          lead&apos;s AI switch is greyed out.
         </p>
+
+        <SectionFooter
+          status={<SaveStatus state={saveStates.automations_ai ?? "idle"} dirty={dirty} idleLabel={enabled ? "AI replies are enabled" : "AI replies are disabled"} />}
+        >
+          <SaveButton
+            state={saveStates.automations_ai ?? "idle"}
+            dirty={dirty}
+            disabled={!canManageSettings}
+            onClick={() => handleSave("automations_ai", [AI_AUTO_REPLY_KEY])}
+          />
+        </SectionFooter>
       </SettingsSection>
     </SettingsAccordion>
   );

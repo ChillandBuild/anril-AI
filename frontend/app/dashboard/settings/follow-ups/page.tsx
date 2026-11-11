@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 import {
   ArrowRight,
   Bell,
@@ -81,7 +80,7 @@ function formatTime12h(timeStr: string): string {
 }
 
 export default function FollowUpsSettingsPage() {
-  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave, saveValues } =
+  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave } =
     useSettingsForm();
 
   const stored = (key: string) => {
@@ -89,26 +88,11 @@ export default function FollowUpsSettingsPage() {
     return !s || s === "Not set" ? SILENCE_NUDGE_DEFAULTS[key] : s;
   };
   const value = (key: string) => drafts[key] ?? stored(key);
-  // On/off is the card's header switch, which saves right away, so it always
-  // reads the saved value. The summary shows saved timing too.
-  const enabled = stored(SILENCE_NUDGE_KEYS.enabled) === "true";
-  const savedReminders = stored(SILENCE_NUDGE_KEYS.delays)
+  const enabled = value(SILENCE_NUDGE_KEYS.enabled) === "true";
+  const summaryReminders = value(SILENCE_NUDGE_KEYS.delays)
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-  const [toggling, setToggling] = useState(false);
-
-  async function toggle(next: boolean) {
-    setToggling(true);
-    try {
-      await saveValues({ [SILENCE_NUDGE_KEYS.enabled]: next ? "true" : "false" });
-      toast.success(`Quiet-lead follow-ups turned ${next ? "on" : "off"}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Couldn't turn follow-ups ${next ? "on" : "off"}`);
-    } finally {
-      setToggling(false);
-    }
-  }
   const dirty = Object.values(SILENCE_NUDGE_KEYS).some(
     (key) => drafts[key] !== undefined && drafts[key] !== stored(key)
   );
@@ -161,22 +145,23 @@ export default function FollowUpsSettingsPage() {
           <SwitchPill
             on={enabled}
             size="sm"
-            loading={toggling}
             disabled={!canManageSettings}
             aria-label="Quiet-lead follow-ups on or off"
-            onChange={toggle}
+            onChange={(next) =>
+              setDrafts((d) => ({ ...d, [SILENCE_NUDGE_KEYS.enabled]: next ? "true" : "false" }))
+            }
           />
         }
         summary={
           enabled ? (
             <Facts>
               <Fact icon={Bell}>
-                {savedReminders.length === 1 ? "1 follow-up" : `${savedReminders.length} follow-ups`}:{" "}
-                {savedReminders.map(formatDuration).join(", ")}
+                {summaryReminders.length === 1 ? "1 follow-up" : `${summaryReminders.length} follow-ups`}:{" "}
+                {summaryReminders.map(formatDuration).join(", ")}
               </Fact>
-              <Fact icon={Shield}>Max {stored(SILENCE_NUDGE_KEYS.cap)} per lead a day</Fact>
+              <Fact icon={Shield}>Max {value(SILENCE_NUDGE_KEYS.cap)} per lead a day</Fact>
               <Fact icon={Moon}>
-                Quiet {formatTime12h(stored(SILENCE_NUDGE_KEYS.quietStart))}–{formatTime12h(stored(SILENCE_NUDGE_KEYS.quietEnd))} IST
+                Quiet {formatTime12h(quietStart)}–{formatTime12h(quietEnd)} IST
               </Fact>
             </Facts>
           ) : (
@@ -187,7 +172,7 @@ export default function FollowUpsSettingsPage() {
         <div className="space-y-6">
           {!enabled && (
             <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
-              Follow-ups are off. Turn them on with the switch above to set the timing.
+              Follow-ups are off. Turn them on with the switch above to set the timing, then Save.
             </p>
           )}
 
@@ -563,10 +548,7 @@ export default function FollowUpsSettingsPage() {
               dirty={dirty && delaysValid && capValid}
               disabled={!canManageSettings}
               onClick={() =>
-                handleSave(
-                  "automations_silence",
-                  Object.values(SILENCE_NUDGE_KEYS).filter((k) => k !== SILENCE_NUDGE_KEYS.enabled)
-                )
+                handleSave("automations_silence", Object.values(SILENCE_NUDGE_KEYS))
               }
             />
           </SectionFooter>

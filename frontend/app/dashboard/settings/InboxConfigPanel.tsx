@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { Inbox, MessagesSquare, UserCheck, Zap } from "lucide-react";
-import { toast } from "sonner";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import {
   Fact,
@@ -76,34 +75,9 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
   useEffect(() => { load(); }, [load]);
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
-  const [toggling, setToggling] = useState(false);
-
-  /** The header switch saves right away: the saved config with only `enabled` changed. */
-  async function quickToggle(on: boolean) {
-    if (!canManage || loadState !== "ready") return;
-    setToggling(true);
-    try {
-      const auth = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/settings/inbox-config`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({ ...config, enabled: on }),
-      });
-      if (!res.ok) throw new Error(`Couldn't turn inbox escalation ${on ? "on" : "off"}`);
-      const saved: InboxConfig = await res.json();
-      setConfig(saved);
-      setDraft((d) => ({ ...d, enabled: saved.enabled }));
-      toast.success(`Inbox escalation turned ${on ? "on" : "off"}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save");
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  const activeTriggers = Object.entries(TRIGGER_LABELS).filter(([k, t]) => t.always || config.triggers.includes(k)).length;
+  const activeTriggers = Object.entries(TRIGGER_LABELS).filter(([k, t]) => t.always || draft.triggers.includes(k)).length;
   const channelNames = Object.entries(CHANNEL_LABELS)
-    .filter(([ch]) => config.channels.includes(ch))
+    .filter(([ch]) => draft.channels.includes(ch))
     .map(([, label]) => label);
 
   async function handleSave() {
@@ -134,28 +108,27 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
       accent="violet"
       title="Inbox Escalation"
       description="Configure when AI escalates leads to the omnichannel inbox for human follow-up."
-      status={loadState === "ready" ? { label: config.enabled ? "Enabled" : "Disabled", tone: config.enabled ? "on" : "off" } : undefined}
+      status={loadState === "ready" ? { label: draft.enabled ? "Enabled" : "Disabled", tone: draft.enabled ? "on" : "off" } : undefined}
       dirty={isDirty}
       headerAction={
         loadState === "ready" ? (
           <SwitchPill
-            on={config.enabled}
+            on={draft.enabled}
             size="sm"
-            loading={toggling}
             disabled={!canManage}
             aria-label="Inbox escalation on or off"
-            onChange={quickToggle}
+            onChange={(v) => setDraft({ ...draft, enabled: v })}
           />
         ) : undefined
       }
       summary={
-        loadState !== "ready" ? undefined : config.enabled ? (
+        loadState !== "ready" ? undefined : draft.enabled ? (
           <Facts>
             <Fact icon={Zap}>
               {activeTriggers} of {Object.keys(TRIGGER_LABELS).length} triggers
             </Fact>
             <Fact icon={MessagesSquare}>{channelNames.length ? channelNames.join(" · ") : "No channels"}</Fact>
-            <Fact icon={UserCheck}>{config.auto_assign_enabled ? "Auto-assign on" : "Auto-assign off"}</Fact>
+            <Fact icon={UserCheck}>{draft.auto_assign_enabled ? "Auto-assign on" : "Auto-assign off"}</Fact>
           </Facts>
         ) : (
           <SummaryHint>Off. No handovers are created automatically.</SummaryHint>
@@ -165,9 +138,9 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
       <SectionLoadGate state={loadState} onRetry={load}>
         <div className="space-y-5">
           {/* Master toggles */}
-          {!config.enabled && (
+          {!draft.enabled && (
             <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
-              Escalation is off, so no handovers are created automatically. Turn it on with the switch above.
+              Escalation is off, so no handovers are created automatically. Turn it on with the switch above, then Save.
             </p>
           )}
           <div>
@@ -226,7 +199,7 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
 
         </div>
 
-        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={config.enabled ? "Escalation is live" : "Escalation is off"} />}>
+        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={draft.enabled ? "Escalation is live" : "Escalation is off"} />}>
           <SaveButton state={saveState} dirty={isDirty} disabled={!canManage} onClick={handleSave} />
         </SectionFooter>
       </SectionLoadGate>

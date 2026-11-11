@@ -104,7 +104,9 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <SettingsAccordion>
+    <SettingsAccordion defaultOpenId="profile">
+      {/* Your profile always opens first here: an exception to the
+          "two or more sections start closed" rule. */}
 
       <SettingsSection
         id="profile"

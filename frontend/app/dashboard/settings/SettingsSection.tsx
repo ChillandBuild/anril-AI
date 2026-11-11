@@ -193,7 +193,7 @@ export function SettingsSection({
   defaultOpen?: boolean;
   /** What's currently set, shown under the description while collapsed. Phrasing content only (spans). */
   summary?: React.ReactNode;
-  /** A control beside the chevron (e.g. an on/off switch) that works without opening the section. */
+  /** A control beside the chevron (e.g. an on/off switch). It edits the draft; Save applies it. */
   headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -302,7 +302,12 @@ export function SettingsSection({
         </span>
       </button>
 
-        {headerAction && <div className="mt-1.5 flex shrink-0 items-center">{headerAction}</div>}
+        {/* Changing a header control opens a closed card, so its Save button is in view. */}
+        {headerAction && (
+          <div className="mt-1.5 flex shrink-0 items-center" onClickCapture={() => !open && onToggle()}>
+            {headerAction}
+          </div>
+        )}
 
         {/* Decorative twin of the header button: same toggle for mouse users,
             hidden from assistive tech so there is one accessible control. */}

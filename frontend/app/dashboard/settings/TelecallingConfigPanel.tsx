@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { Phone, Smartphone, RadioTower, Radio, Repeat, Users } from "lucide-react";
-import { toast } from "sonner";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import {
@@ -158,37 +157,10 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
     }
   }
 
-  const [toggling, setToggling] = useState(false);
-
-  /** The header switch saves right away: the saved config with only `enabled` changed. */
-  async function quickToggle(on: boolean) {
-    if (!canManage || loadState !== "ready") return;
-    setToggling(true);
-    try {
-      const auth = await getAuthHeaders();
-      const body: Record<string, unknown> = { ...config, enabled: on };
-      for (const key of LEGACY_KEYS) delete body[key];
-      const res = await fetch(`${API_URL}/api/v1/settings/telecalling-config`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`Couldn't turn telecalling assignment ${on ? "on" : "off"}`);
-      const saved: TelecallingConfig = await res.json();
-      setConfig(saved);
-      setDraft((d) => ({ ...d, enabled: saved.enabled }));
-      toast.success(`Telecalling assignment turned ${on ? "on" : "off"}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save");
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  const controlsDisabled = !canManage || !config.enabled;
+  const controlsDisabled = !canManage || !draft.enabled;
   const visibleRows = ROWS.filter((r) => r.key !== "upload" || hasUpload);
-  const savedOnRows = visibleRows.filter((r) => ruleFor(config, r.key).enabled);
-  const savedModes = MODES.filter((m) => savedOnRows.some((r) => ruleFor(config, r.key).mode === m.value)).map((m) => m.label);
+  const onRows = visibleRows.filter((r) => ruleFor(draft, r.key).enabled);
+  const modesInUse = MODES.filter((m) => onRows.some((r) => ruleFor(draft, r.key).mode === m.value)).map((m) => m.label);
 
   return (
     <SettingsSection
@@ -197,29 +169,28 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
       accent="amber"
       title="Telecalling Assignment"
       description="Decide how leads from each channel reach your telecallers."
-      status={loadState === "ready" ? { label: config.enabled ? "Enabled" : "Disabled", tone: config.enabled ? "on" : "off" } : undefined}
+      status={loadState === "ready" ? { label: draft.enabled ? "Enabled" : "Disabled", tone: draft.enabled ? "on" : "off" } : undefined}
       dirty={isDirty}
       headerAction={
         loadState === "ready" ? (
           <SwitchPill
-            on={config.enabled}
+            on={draft.enabled}
             size="sm"
-            loading={toggling}
             disabled={!canManage}
             aria-label="Telecalling assignment on or off"
-            onChange={quickToggle}
+            onChange={(v) => setDraft({ ...draft, enabled: v })}
           />
         ) : undefined
       }
       summary={
-        loadState !== "ready" ? undefined : config.enabled ? (
+        loadState !== "ready" ? undefined : draft.enabled ? (
           <Facts>
             <Fact icon={Radio}>
-              {savedOnRows.length} of {visibleRows.length} channels on
+              {onRows.length} of {visibleRows.length} channels on
             </Fact>
-            {savedModes.length > 0 && <Fact icon={Users}>{savedModes.join(" · ")}</Fact>}
-            {config.recycle_enabled && (
-              <Fact icon={Repeat}>Recycles no-answer leads after {config.recycle_delay_hours ?? 4} h</Fact>
+            {modesInUse.length > 0 && <Fact icon={Users}>{modesInUse.join(" · ")}</Fact>}
+            {draft.recycle_enabled && (
+              <Fact icon={Repeat}>Recycles no-answer leads after {draft.recycle_delay_hours ?? 4} h</Fact>
             )}
           </Facts>
         ) : (
@@ -229,9 +200,9 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
     >
       <SectionLoadGate state={loadState} onRetry={load}>
         <div className="space-y-6">
-          {!config.enabled && (
+          {!draft.enabled && (
             <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
-              Assignment is off. Telecallers can still pick leads by hand. Turn it on with the switch above.
+              Assignment is off. Telecallers can still pick leads by hand. Turn it on with the switch above, then Save.
             </p>
           )}
 
@@ -243,7 +214,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
             </div>
             <ul
               className={`overflow-hidden rounded-2xl border border-border divide-y divide-border-subtle bg-white transition-opacity duration-200 ${
-                config.enabled ? "" : "opacity-50"
+                draft.enabled ? "" : "opacity-50"
               }`}
             >
               {/* Column headers (desktop only) */}
@@ -467,7 +438,7 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
 
         </div>
 
-        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={config.enabled ? "Auto-assign is live" : "Auto-assign is off"} />}>
+        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={draft.enabled ? "Auto-assign is live" : "Auto-assign is off"} />}>
           <SaveButton state={saveState} dirty={isDirty} disabled={!canManage} onClick={handleSave} />
         </SectionFooter>
       </SectionLoadGate>

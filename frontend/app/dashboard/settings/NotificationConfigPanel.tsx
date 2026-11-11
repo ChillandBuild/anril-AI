@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Bell, Clock, FileText, MessageSquareText, Moon, Siren, Users, X } from "lucide-react";
-import { toast } from "sonner";
 import { api, NotificationConfig, Caller, WabaTemplate } from "@/lib/api";
 import {
   Fact,
@@ -50,12 +49,6 @@ type WhatsAppBlock = NotificationConfig["whatsapp_notifications"];
 /** Which card a save came from — only that card flashes "Saved". */
 type SectionKey = "push" | "lead" | "escalation";
 
-const TOGGLE_NAMES: Record<SectionKey, string> = {
-  push: "Push notifications",
-  lead: "WhatsApp lead notifications",
-  escalation: "WhatsApp escalation alerts",
-};
-
 const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
 /**
@@ -75,11 +68,6 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
     push: "idle",
     lead: "idle",
     escalation: "idle",
-  });
-  const [toggling, setToggling] = useState<Record<SectionKey, boolean>>({
-    push: false,
-    lead: false,
-    escalation: false,
   });
 
   useEffect(() => {
@@ -110,44 +98,6 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
       setTimeout(() => setStates((s) => ({ ...s, [key]: "idle" })), 2500);
     } catch {
       setStates((s) => ({ ...s, [key]: "idle" }));
-    }
-  }
-
-  /**
-   * The on/off switch in a card's header saves right away. It writes the
-   * last-saved config with only that one flag changed, so half-finished edits
-   * in any card stay unsaved drafts instead of riding along.
-   */
-  async function quickToggle(key: SectionKey, on: boolean) {
-    if (!saved || !canManage) return;
-    const payload: NotificationConfig =
-      key === "push"
-        ? { ...saved, push_enabled: on }
-        : key === "lead"
-        ? { ...saved, whatsapp_notifications: { ...saved.whatsapp_notifications, enabled: on } }
-        : { ...saved, whatsapp_escalation_notifications: { ...saved.whatsapp_escalation_notifications, enabled: on } };
-    setToggling((t) => ({ ...t, [key]: true }));
-    try {
-      const next = await api.notifications.saveConfig(payload);
-      setSaved(next);
-      setCfg((c) => {
-        if (!c) return next;
-        if (key === "push") return { ...c, push_enabled: next.push_enabled };
-        if (key === "lead")
-          return { ...c, whatsapp_notifications: { ...c.whatsapp_notifications, enabled: next.whatsapp_notifications.enabled } };
-        return {
-          ...c,
-          whatsapp_escalation_notifications: {
-            ...c.whatsapp_escalation_notifications,
-            enabled: next.whatsapp_escalation_notifications.enabled,
-          },
-        };
-      });
-      toast.success(`${TOGGLE_NAMES[key]} turned ${on ? "on" : "off"}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Couldn't turn ${TOGGLE_NAMES[key].toLowerCase()} ${on ? "on" : "off"}`);
-    } finally {
-      setToggling((t) => ({ ...t, [key]: false }));
     }
   }
 
@@ -197,11 +147,10 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         headerAction={
           <SwitchPill
             on={cfg.push_enabled}
-            loading={toggling.push}
             disabled={!canManage}
             size="sm"
             aria-label="Push notifications on or off"
-            onChange={(v) => quickToggle("push", v)}
+            onChange={(v) => patch({ push_enabled: v })}
           />
         }
         summary={
@@ -226,7 +175,7 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         <div className="space-y-4">
           {!cfg.push_enabled && (
             <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
-              Push is off. Turn it on with the switch above to send these alerts.
+              Push is off. Turn it on with the switch above, then Save.
             </p>
           )}
 
@@ -385,8 +334,6 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         state={states.lead}
         offHint="Off. Nobody is messaged on WhatsApp when a lead's segment changes."
         delayNote=""
-        toggling={toggling.lead}
-        onToggle={(v) => quickToggle("lead", v)}
         onSave={() => save("lead")}
         onChange={(next) => patch({ whatsapp_notifications: next })}
       />
@@ -408,8 +355,6 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         state={states.escalation}
         offHint="Off. Nobody is messaged on WhatsApp when a chat needs a human."
         delayNote=", skipped if claimed"
-        toggling={toggling.escalation}
-        onToggle={(v) => quickToggle("escalation", v)}
         onSave={() => save("escalation")}
         onChange={(next) => patch({ whatsapp_escalation_notifications: next })}
       />
@@ -438,8 +383,6 @@ function WhatsAppAlertCard({
   state,
   offHint,
   delayNote,
-  toggling,
-  onToggle,
   onSave,
   onChange,
 }: {
@@ -461,8 +404,6 @@ function WhatsAppAlertCard({
   offHint: string;
   /** Appended to the delay fact, e.g. ", skipped if claimed". */
   delayNote: string;
-  toggling: boolean;
-  onToggle: (on: boolean) => void;
   onSave: () => void;
   onChange: (next: WhatsAppBlock) => void;
 }) {
@@ -533,11 +474,10 @@ function WhatsAppAlertCard({
       headerAction={
         <SwitchPill
           on={block.enabled}
-          loading={toggling}
           disabled={!canManage}
           size="sm"
           aria-label={switchLabel}
-          onChange={onToggle}
+          onChange={(v) => onChange({ ...block, enabled: v })}
         />
       }
       summary={summary}
@@ -546,7 +486,7 @@ function WhatsAppAlertCard({
         <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
           {block.enabled
             ? switchHelp
-            : "This alert is off. Turn it on with the switch above to pick segments, numbers and a template."}
+            : "This alert is off. Turn it on with the switch above to pick segments, numbers and a template, then Save."}
         </p>
 
         {block.enabled && (
