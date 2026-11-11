@@ -1,9 +1,8 @@
-"""Group CSV export and the no-save number parser (routes in app/routes/sms_contacts.py)."""
-import io
+"""Group CSV export (route in app/routes/sms_contacts.py)."""
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from app.routes import sms_contacts as routes
 from tests.fake_supabase import FakeSupabase
@@ -27,11 +26,6 @@ def _group(db, tenant=A, name="VIP Clients"):
 
 def _contact(db, phone, gids, name=None, fields=None, tenant=A):
     return db.add("sms_contacts", tenant_id=tenant, phone=phone, name=name, fields=fields or {}, group_ids=gids)
-
-
-def _upload(text: str | bytes, name="nums.csv") -> UploadFile:
-    data = text.encode() if isinstance(text, str) else text
-    return UploadFile(file=io.BytesIO(data), filename=name)
 
 
 def _lines(resp) -> list[str]:
@@ -97,60 +91,6 @@ async def test_export_filename_is_sanitised_and_pages_past_1000(db):
     g2 = _group(db, name="!!!")
     assert (await routes.export_group(g2, ctx=CTX_A)).headers["content-disposition"] == \
         'attachment; filename="group.csv"'
-
-
-# ---------------------------------------------------------------- parse
-
-@pytest.mark.asyncio
-async def test_parse_returns_numbers_and_skipped_without_writing(db):
-    text = "name,mobile,city\nRavi,+91 98765 43210,Chennai\nAsha,0091 9123456780,x\nBad,12345,y\nDup,9876543210,z\n"
-    out = await routes.parse_numbers(_upload(text), phone_column=None, ctx=CTX_A)
-    assert out["numbers"] == ["9876543210", "9123456780"]
-    assert out["total"] == 2
-    assert out["phone_column"] == "mobile"
-    assert out["skipped_total"] == 2 and len(out["skipped"]) == 2
-    assert {s["row"] for s in out["skipped"]} == {4, 5}
-    assert db.tables == {}  # nothing was written (not even an empty table)
-
-
-@pytest.mark.asyncio
-async def test_parse_uses_chosen_phone_column(db):
-    text = "mobile,alt\n9876543210,9123456780\n"
-    out = await routes.parse_numbers(_upload(text), phone_column="alt", ctx=CTX_A)
-    assert out["numbers"] == ["9123456780"] and out["phone_column"] == "alt"
-
-
-@pytest.mark.asyncio
-async def test_parse_over_5000_numbers_is_400(db):
-    text = "mobile\n" + "\n".join(f"9{i:09d}" for i in range(5001)) + "\n"
-    with pytest.raises(HTTPException) as e:
-        await routes.parse_numbers(_upload(text), phone_column=None, ctx=CTX_A)
-    assert e.value.status_code == 400
-    assert e.value.detail == ("This file has 5,001 numbers. Send SMS takes up to 5,000 from a file — "
-                              "save it to the Address Book as a group and pick the group instead.")
-
-
-@pytest.mark.asyncio
-async def test_parse_exactly_5000_is_ok(db):
-    text = "mobile\n" + "\n".join(f"9{i:09d}" for i in range(5000)) + "\n"
-    out = await routes.parse_numbers(_upload(text), phone_column=None, ctx=CTX_A)
-    assert out["total"] == 5000
-
-
-@pytest.mark.asyncio
-async def test_parse_wrong_file_type_is_400(db):
-    with pytest.raises(HTTPException) as e:
-        await routes.parse_numbers(_upload("hello", "notes.txt"), phone_column=None, ctx=CTX_A)
-    assert e.value.status_code == 400
-    assert "csv" in e.value.detail
-
-
-@pytest.mark.asyncio
-async def test_parse_too_big_is_413(db):
-    big = b"a" * (routes.svc.MAX_BYTES + 1)
-    with pytest.raises(HTTPException) as e:
-        await routes.parse_numbers(_upload(big, "big.csv"), phone_column=None, ctx=CTX_A)
-    assert e.value.status_code == 413
 
 
 @pytest.mark.asyncio

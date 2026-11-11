@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { FileSpreadsheet } from "lucide-react";
 import { CheckTick } from "@/components/ui/controls";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -12,16 +10,13 @@ import {
   MAX_LIST_GROUPS,
   MAX_PASTED_NUMBERS,
   NUMBERS_MODE_LABELS,
-  excelSummary,
-  errorText,
   formatCount,
   friendlyError,
   parseNumbers,
-  skippedRowsCsv,
   type NumbersMode,
   type NumbersState,
 } from "./helpers";
-import { Btn, ConsentCheck, Field, FilePicker, LoadError, Notice, Skeleton, inputCls, saveCsv, textareaCls } from "./ui";
+import { ConsentCheck, Field, LoadError, Notice, Skeleton, textareaCls } from "./ui";
 
 /** Whether this client has any Anril leads (the Leads mode is hidden when they have none). */
 export function useHasLeads(): boolean {
@@ -29,7 +24,7 @@ export function useHasLeads(): boolean {
   return (probe.data?.total ?? 0) > 0;
 }
 
-/** The four ways to say who gets an SMS: Contact (typed), List (Address Book groups), Excel (upload), Leads. */
+/** The ways to say who gets an SMS: Contact (typed), List (Address Book groups), Leads. */
 export function NumbersPicker({
   value,
   onChange,
@@ -42,7 +37,7 @@ export function NumbersPicker({
   showLeads: boolean;
 }) {
   const set = (patch: Partial<NumbersState>) => onChange((prev) => ({ ...prev, ...patch }));
-  const modes: NumbersMode[] = showLeads ? ["contact", "list", "excel", "leads"] : ["contact", "list", "excel"];
+  const modes: NumbersMode[] = showLeads ? ["contact", "list", "leads"] : ["contact", "list"];
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="Where the numbers come from" className="flex flex-wrap border-b border-[#e9edf2]">
@@ -65,10 +60,9 @@ export function NumbersPicker({
 
       {value.mode === "contact" && <NumbersBox value={value.numbersText} onChange={(numbersText) => set({ numbersText })} />}
       {value.mode === "list" && <GroupPicker selected={new Set(value.groupIds)} onChange={(ids) => set({ groupIds: Array.from(ids) })} />}
-      {value.mode === "excel" && <ExcelUpload value={value} onChange={onChange} />}
       {value.mode === "leads" && <LeadPicker selected={new Set(value.leadIds)} onChange={(ids) => set({ leadIds: Array.from(ids) })} />}
 
-      {promotional && (value.mode === "contact" || value.mode === "excel") && (
+      {promotional && value.mode === "contact" && (
         <div className="space-y-2">
           <Notice tone="warn">This is a promotional SMS. These numbers need your confirmation before you can send.</Notice>
           <ConsentCheck checked={value.consent} onChange={(consent) => set({ consent })} />
@@ -141,79 +135,5 @@ function NumbersBox({ value, onChange }: { value: string; onChange: (next: strin
         {over ? `, too many. Remove ${formatCount(count - MAX_PASTED_NUMBERS)}.` : ""}
       </span>
     </Field>
-  );
-}
-
-/** Upload a .csv/.xlsx; the server reads the phone column and hands back the numbers. */
-function ExcelUpload({ value, onChange }: { value: NumbersState; onChange: (update: (prev: NumbersState) => NumbersState) => void }) {
-  const [column, setColumn] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-
-  async function read(f: File, phoneColumn: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api.sms.parseNumbers(f, phoneColumn.trim() || undefined);
-      onChange((prev) => ({
-        ...prev,
-        excelNumbers: r.numbers,
-        excel: { fileName: f.name, total: r.total, skipped_total: r.skipped_total, phone_column: r.phone_column, skipped: r.skipped },
-      }));
-    } catch (err) {
-      // The server's own message (for example "save it to the Address Book as a group first") is shown as sent.
-      setError(errorText(err, "Couldn't read that file."));
-      onChange((prev) => ({ ...prev, excelNumbers: [], excel: null }));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const info = value.excel;
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="w-full sm:w-80">
-          <FilePicker
-            label="Excel or CSV file"
-            accept=".csv,.xlsx"
-            file={file}
-            disabled={busy}
-            hint={`Up to ${formatCount(MAX_PASTED_NUMBERS)} numbers.`}
-            onChange={(f) => {
-              setFile(f);
-              if (f) void read(f, column);
-              else onChange((prev) => ({ ...prev, excelNumbers: [], excel: null }));
-            }}
-          />
-        </div>
-        <Field label="Phone column (optional)" hint="Only if it wasn't found">
-          <input className={`${inputCls} w-44`} value={column} placeholder="e.g. Mobile" onChange={(e) => setColumn(e.target.value)} />
-        </Field>
-        {file && (
-          <Btn variant="outline" busy={busy} onClick={() => void read(file, column)}>
-            Read again
-          </Btn>
-        )}
-      </div>
-      {error && <Notice tone="danger">{error}</Notice>}
-      {info && !error && (
-        <div className="space-y-1 rounded-xl bg-[#f8fafc] p-3.5">
-          <p className="flex items-center gap-2 text-sm font-bold text-[#0A1528]">
-            <FileSpreadsheet size={15} className="text-primary" /> {excelSummary(info)}
-          </p>
-          <p className="text-xs text-[#64748b]">
-            {info.fileName}
-            {info.phone_column ? ` · phone column "${info.phone_column}"` : ""}
-          </p>
-          {info.skipped.length > 0 && (
-            <Btn variant="link" className="text-xs" onClick={() => saveCsv(skippedRowsCsv(info.skipped), "skipped-rows.csv")}>
-              Download skipped rows
-            </Btn>
-          )}
-        </div>
-      )}
-    </div>
   );
 }

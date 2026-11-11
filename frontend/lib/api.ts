@@ -1802,13 +1802,6 @@ export interface SmsCreditRequest {
   created_at: string;
   done_at: string | null;
 }
-export interface SmsParsedNumbers {
-  numbers: string[];
-  total: number;
-  skipped: SmsSkippedRow[];
-  skipped_total: number;
-  phone_column: string | null;
-}
 export interface SmsBalance {
   sms_count: number;
   /** The client's own ₹ wallet at the rate their account manager set; null when Bulk9 didn't say. */
@@ -2155,12 +2148,6 @@ export const api = {
     creditRequests: () => apiFetch<{ items: SmsCreditRequest[] }>("/api/v1/sms/credit-requests"),
     requestCredit: (data: { amount: number; note?: string }) =>
       apiFetch<SmsCreditRequest>("/api/v1/sms/credit-requests", { method: "POST", body: JSON.stringify(data) }),
-    parseNumbers: (file: File, phoneColumn?: string) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      if (phoneColumn) fd.append("phone_column", phoneColumn);
-      return smsMultipart<SmsParsedNumbers>("/api/v1/sms/numbers/parse", fd);
-    },
     exportGroupCsv: async (groupId: string, groupName: string) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/sms/contact-groups/${encodeURIComponent(groupId)}/export.csv`, { headers });

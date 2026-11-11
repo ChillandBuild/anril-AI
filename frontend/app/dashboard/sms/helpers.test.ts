@@ -22,7 +22,6 @@ import {
   buildRecipients,
   buildSendRequest,
   defaultSendName,
-  excelSummary,
   numbersReady,
   sendFormProblem,
   withNumbersChange,
@@ -392,13 +391,10 @@ describe("recipients", () => {
     expect(numbersReady(n({ mode: "leads", leadIds: ["l1"] }), false)).toBe(true);
     expect(numbersReady(n({ mode: "contact", numbersText: "9876543210" }), false)).toBe(true);
   });
-  it("blocks promotional Contact and Excel numbers until consent is ticked", () => {
+  it("blocks promotional Contact numbers until consent is ticked", () => {
     const c = n({ mode: "contact", numbersText: "9876543210\n9123456780" });
     expect(numbersReady(c, true)).toBe(false);
     expect(numbersReady({ ...c, consent: true }, true)).toBe(true);
-    const x = n({ mode: "excel", excelNumbers: ["9876543210"] });
-    expect(numbersReady(x, true)).toBe(false);
-    expect(numbersReady({ ...x, consent: true }, true)).toBe(true);
   });
   it("does not ask for consent on a List (contacts carry their own)", () => {
     expect(numbersReady(n({ mode: "list", groupIds: ["g1"] }), true)).toBe(true);
@@ -436,20 +432,12 @@ describe("send form request", () => {
     expect(req).not.toHaveProperty("kind");
     expect(req).not.toHaveProperty("manual");
   });
-  it("sends Excel numbers exactly like pasted ones", () => {
-    const pasted = { ...base, template: svc, numbers: { ...EMPTY_NUMBERS, mode: "contact" as const, numbersText: "9876543210\n9123456780" } };
-    const excel = { ...pasted, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210", "9123456780"] } };
-    expect(buildSendRequest(excel)).toEqual(buildSendRequest(pasted));
-    expect(buildSendRequest(excel)).not.toBeNull();
-  });
-  it("needs the consent tick for promotional Contact and Excel, but not service", () => {
+  it("needs the consent tick for promotional Contact, but not service", () => {
     const promo: SendFormInput = { ...base, template: { ...tpl, message: "20% off", var_count: 0 }, numbers: { ...EMPTY_NUMBERS, numbersText: "9876543210" } };
     expect(buildSendRequest(promo)).toBeNull();
     expect(sendFormProblem(promo)).toMatch(/consent/i);
     const ticked = { ...promo, numbers: { ...promo.numbers, consent: true } };
     expect(buildSendRequest(ticked)).toMatchObject({ source: "numbers", consent_confirmed: true });
-    const excelPromo = { ...promo, numbers: { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210"] } };
-    expect(buildSendRequest(excelPromo)).toBeNull();
     expect(buildSendRequest({ ...promo, template: svc })).not.toBeNull();
   });
   it("waits for a template and for every template variable to be mapped", () => {
@@ -459,10 +447,6 @@ describe("send form request", () => {
   });
   it("names a send like SMS 3 Nov 18:05 in Indian time", () => {
     expect(defaultSendName(new Date("2026-11-03T12:35:00Z"))).toBe("SMS 3 Nov 18:05");
-  });
-  it("summarises an Excel read", () => {
-    expect(excelSummary({ total: 4120, skipped_total: 18 })).toBe("4,120 numbers · 18 skipped");
-    expect(excelSummary({ total: 1, skipped_total: 0 })).toBe("1 number");
   });
 });
 
@@ -517,16 +501,13 @@ describe("withNumbersChange (consent follows the audience)", () => {
   it("clears consent when the typed numbers change", () => {
     expect(withNumbersChange(ticked, { numbersText: "9123456780" })).toMatchObject({ numbersText: "9123456780", consent: false });
   });
-  it("clears consent on a new Excel read, a mode change, groups or leads", () => {
-    const x = { ...EMPTY_NUMBERS, mode: "excel" as const, excelNumbers: ["9876543210"], consent: true };
-    expect(withNumbersChange(x, { excelNumbers: ["9123456780"] }).consent).toBe(false);
-    expect(withNumbersChange(x, { excel: { fileName: "a.xlsx", total: 1, skipped_total: 0, phone_column: "A", skipped: [] } }).consent).toBe(false);
+  it("clears consent on a mode change, groups or leads", () => {
     expect(withNumbersChange(ticked, { mode: "list" }).consent).toBe(false);
     expect(withNumbersChange(ticked, { groupIds: ["g1"] }).consent).toBe(false);
     expect(withNumbersChange(ticked, { leadIds: ["l1"] }).consent).toBe(false);
   });
   it("keeps consent when a patch repeats the same values", () => {
-    expect(withNumbersChange(ticked, { excelNumbers: [], groupIds: [] }).consent).toBe(true);
+    expect(withNumbersChange(ticked, { leadIds: [], groupIds: [] }).consent).toBe(true);
   });
   it("drops an explicit consent:true that arrives with a changed audience", () => {
     expect(withNumbersChange(ticked, { numbersText: "9000000000", consent: true }).consent).toBe(false);

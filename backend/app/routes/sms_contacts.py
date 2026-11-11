@@ -21,7 +21,6 @@ from app.services import sms_campaigns as camp, sms_contacts as svc
 router = APIRouter()
 
 BAD_PHONE = "Enter a valid 10-digit Indian mobile number."
-PARSE_CAP = 5_000
 
 
 class ContactBody(BaseModel):
@@ -207,28 +206,3 @@ async def export_group(group_id: str, ctx: dict = Depends(view_no_key)):
     safe = re.sub(r"[^A-Za-z0-9 _-]", "", group.get("name") or "")[:60].strip() or "group"
     return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{safe}.csv"'})
-
-
-# ---------------------------------------------------------------- numbers from a file (no saving)
-
-@router.post("/numbers/parse")
-async def parse_numbers(file: UploadFile = File(...), phone_column: Optional[str] = Form(None),
-                        ctx: dict = Depends(manage_no_key)):
-    data, name = await _read_upload(file)
-
-    def parse():
-        headers, rows = svc.read_table(data, name)
-        contacts, skipped = svc.build_contacts(headers, rows, phone_column or None, None)
-        return contacts, skipped, phone_column or svc.detect_columns(headers)[0]
-
-    try:
-        contacts, skipped, chosen = await run_in_threadpool(parse)
-    except camp.SmsError as e:
-        # A bad file is a 400 here (the shared mapping would give 422).
-        raise HTTPException(400 if e.status == 422 else e.status, str(e))
-    numbers = [c["phone"] for c in contacts]  # build_contacts already de-duplicates, in file order
-    if len(numbers) > PARSE_CAP:
-        raise HTTPException(400, f"This file has {len(numbers):,} numbers. Send SMS takes up to {PARSE_CAP:,} from a "
-                                 "file \u2014 save it to the Address Book as a group and pick the group instead.")
-    return {"numbers": numbers, "total": len(numbers), "skipped": skipped[:svc.SKIPPED_SHOWN],
-            "skipped_total": len(skipped), "phone_column": chosen}

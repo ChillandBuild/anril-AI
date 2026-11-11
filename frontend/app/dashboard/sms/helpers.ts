@@ -569,8 +569,8 @@ export function parseNumbers(text: string): string[] {
 
 // ---- The one Send SMS form: numbers, template choice, request body ----
 
-export type NumbersMode = "contact" | "list" | "excel" | "leads";
-export const NUMBERS_MODE_LABELS: Record<NumbersMode, string> = { contact: "Type numbers", list: "Address Book", excel: "Excel", leads: "Leads" };
+export type NumbersMode = "contact" | "list" | "leads";
+export const NUMBERS_MODE_LABELS: Record<NumbersMode, string> = { contact: "Type numbers", list: "Address Book", leads: "Leads" };
 
 /** sessionStorage key the Address Book uses to hand picked contacts' numbers to Send SMS. */
 export const SEND_PREFILL_KEY = "sms:send-prefill";
@@ -593,23 +593,17 @@ export function sendPrefill(search: string, stored: string | null): Partial<Numb
 export const MAX_LIST_GROUPS = 50;
 export const MAX_LIST_CONTACTS = 50_000;
 
-/** What the server said about an uploaded file (kept so the summary survives switching modes). */
-export interface ExcelInfo { fileName: string; total: number; skipped_total: number; phone_column: string | null; skipped: SmsSkippedRow[] }
-
 export interface NumbersState {
   mode: NumbersMode;
   /** Contact mode: typed or pasted numbers. */
   numbersText: string;
-  /** Excel mode: numbers the server read from the uploaded file. */
-  excelNumbers: string[];
-  excel: ExcelInfo | null;
   groupIds: string[];
   leadIds: string[];
-  /** The promotional consent tick (Contact and Excel only). */
+  /** The promotional consent tick (Contact only). */
   consent: boolean;
 }
 
-export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", excelNumbers: [], excel: null, groupIds: [], leadIds: [], consent: false };
+export const EMPTY_NUMBERS: NumbersState = { mode: "contact", numbersText: "", groupIds: [], leadIds: [], consent: false };
 
 function sameList(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
@@ -617,7 +611,7 @@ function sameList(a: string[], b: string[]): boolean {
 
 /**
  * Apply a change to the numbers step. The promotional consent tick belongs to one specific audience,
- * so any change to who gets the SMS (mode, typed text, a new Excel read, groups, leads) clears it.
+ * so any change to who gets the SMS (mode, typed text, groups, leads) clears it.
  * A patch that only touches `consent` keeps it.
  */
 export function withNumbersChange(prev: NumbersState, patch: Partial<NumbersState>): NumbersState {
@@ -625,21 +619,17 @@ export function withNumbersChange(prev: NumbersState, patch: Partial<NumbersStat
   const audienceChanged =
     next.mode !== prev.mode ||
     next.numbersText !== prev.numbersText ||
-    next.excel !== prev.excel ||
-    !sameList(next.excelNumbers, prev.excelNumbers) ||
     !sameList(next.groupIds, prev.groupIds) ||
     !sameList(next.leadIds, prev.leadIds);
   return audienceChanged ? { ...next, consent: false } : next;
 }
 
-/** The loose numbers a Contact or Excel send carries. Excel numbers are sent exactly like pasted ones. */
+/** The loose numbers a Contact send carries. */
 export function looseNumbers(n: NumbersState): string[] {
-  if (n.mode === "contact") return parseNumbers(n.numbersText);
-  if (n.mode === "excel") return n.excelNumbers;
-  return [];
+  return n.mode === "contact" ? parseNumbers(n.numbersText) : [];
 }
 
-/** Whether the numbers step has what it needs. Promotional + Contact/Excel also needs the consent tick. */
+/** Whether the numbers step has what it needs. Promotional + Contact also needs the consent tick. */
 export function numbersReady(n: NumbersState, promotional: boolean): boolean {
   if (n.mode === "leads") return n.leadIds.length > 0;
   if (n.mode === "list") return n.groupIds.length > 0 && n.groupIds.length <= MAX_LIST_GROUPS;
@@ -731,7 +721,7 @@ export function sendFormProblem(input: SendFormInput): string | null {
   }
   if (!numbersReady(input.numbers, type === "promotional")) {
     const n = input.numbers;
-    if (type === "promotional" && (n.mode === "contact" || n.mode === "excel") && looseNumbers(n).length > 0 && !n.consent) {
+    if (type === "promotional" && n.mode === "contact" && looseNumbers(n).length > 0 && !n.consent) {
       return "Tick the consent box to send promotional SMS to these numbers.";
     }
     return "Add who should get it.";
@@ -779,12 +769,6 @@ export function defaultSendName(now: Date): string {
     p[part.type] = part.value;
   }
   return `SMS ${p.day} ${p.month} ${p.hour}:${p.minute}`;
-}
-
-/** "4,120 numbers · 18 skipped" after an Excel upload. */
-export function excelSummary(r: { total: number; skipped_total: number }): string {
-  const nums = `${formatCount(r.total)} number${r.total === 1 ? "" : "s"}`;
-  return r.skipped_total > 0 ? `${nums} · ${formatCount(r.skipped_total)} skipped` : nums;
 }
 
 /** CSV the client can download for rows an upload skipped. */
