@@ -136,6 +136,7 @@ export const NAV: readonly NavItem[] = [
       { label: "Telecaller software", href: "/telecaller-software" },
       { label: "Payments and orders", href: "/whatsapp-payments" },
       { label: "Social media and ads", href: "/social-media-ads" },
+      { label: "Website development", href: "/website-development" },
       { label: "All features", href: "/product" },
     ],
   },

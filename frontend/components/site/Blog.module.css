@@ -16,3 +16,8 @@
   .card h2 { font-size: 1.3rem; }
   .card p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }
+.tableWrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--line); }
+.table { border-collapse: collapse; min-width: 720px; width: 100%; font-size: 0.92rem; line-height: 1.4; }
+.table th, .table td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--body); }
+.table thead th { background: var(--grey); color: var(--navy); font-weight: 700; }
+.table tbody th { color: var(--navy); font-weight: 600; }

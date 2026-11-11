@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import ui from "@/components/site/site.module.css";
 import { ChannelFlow } from "@/components/site/ChannelFlow";
 import { DemoSection } from "@/components/site/DemoSection";
@@ -62,7 +63,19 @@ export default function NewHomePage() {
         <section className={ui.band} id="faq" aria-labelledby="faq-h">
           <Kicker>FAQ</Kicker>
           <h2 className={ui.secH} id="faq-h">Questions people ask</h2>
-          <Faq items={HOME_FAQ.map((f) => ({ q: f.q, a: f.a }))} />
+          <Faq
+            items={HOME_FAQ.map((f) => ({
+              q: f.q,
+              a:
+                f.q === "Do you build websites?" ? (
+                  <>
+                    {f.a} <Link prefetch={false} href="/website-development">See our website development page.</Link>
+                  </>
+                ) : (
+                  f.a
+                ),
+            }))}
+          />
         </section>
         <DemoSection />
       </Frame>

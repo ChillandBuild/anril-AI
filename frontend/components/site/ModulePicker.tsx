@@ -10,7 +10,7 @@ import s from "./ModulePicker.module.css";
 const MODULE_PRICE: Record<string, string> = {
   reach: "Plans start from ₹999 a month (plus GST)",
   engage: "Plans start from ₹999 a month (plus GST)",
-  calliq: "From ₹14,999 a year",
+  calliq: "CallIQ is priced by team size. Message us on WhatsApp for a quote.",
 };
 
 export function ModulePicker() {
