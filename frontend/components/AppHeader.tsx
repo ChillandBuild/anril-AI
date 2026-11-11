@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List, Plus, ScrollText, Send, ShieldCheck, TrendingUp, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
 import { MoreMenu } from "@/components/MoreMenu";
@@ -40,7 +41,159 @@ const SMS_TITLES: Record<string, { title: string; description: string }> = {
   otp: { title: "Smart OTP", description: "Send and check OTPs, and see their history." },
 };
 
+/* ------------------------------------------------------------------ *
+ * Header tabs
+ *
+ * Pages whose views switch with ?tab= pills in this header. One entry drives
+ * both the pills and the title: the header always reads "<Page> / <tab>", the
+ * way Meta Ads does. Adding a tab, or a new tabbed page, only needs an entry
+ * here; never hand-write the pills or the "/ tab" part of the title.
+ * The first tab is the default view and has no ?tab= in its URL.
+ *
+ * Route-based tabs (each tab is its own URL) can't use this map: give each
+ * route its own "<Page> / <tab>" title in getBaseRouteMetadata (see Meta Ads
+ * and Catalogue).
+ * ------------------------------------------------------------------ */
+
+type HeaderTab = { value: string; label: string; icon?: LucideIcon };
+type HeaderTabSet = {
+  tabs: HeaderTab[];
+  /** Old ?tab= values that still open a tab. */
+  aliases?: Record<string, string>;
+  /** Write ?tab= for the first tab too (these pages read it literally). */
+  explicitDefault?: boolean;
+  /** Tighter pills, for sets with many tabs. */
+  compact?: boolean;
+};
+
+const HEADER_TABS: Record<string, HeaderTabSet> = {
+  "/dashboard/outbound-leads": {
+    explicitDefault: true,
+    tabs: [
+      { value: "upload", label: "Broadcast Message" },
+      { value: "history", label: "Broadcast History" },
+      { value: "tags", label: "Tags" },
+      { value: "opted-out", label: "Opted-Out" },
+    ],
+  },
+  "/dashboard/telecalling/upload": {
+    explicitDefault: true,
+    tabs: [
+      { value: "upload", label: "Upload Contacts" },
+      { value: "history", label: "Upload History" },
+      { value: "scripts", label: "Scripts" },
+    ],
+  },
+  "/dashboard/numbers": {
+    tabs: [
+      { value: "pool", label: "Active Pool" },
+      { value: "activity", label: "Activity Log" },
+    ],
+  },
+  // Documents (RAG) is the default landing tab (2026-09-20). `?tab=ai-tune` is
+  // an old link that still opens the Description.
+  "/dashboard/knowledge": {
+    aliases: { "ai-tune": "description" },
+    tabs: [
+      { value: "documents", label: "Documents (RAG)" },
+      { value: "description", label: "Description" },
+    ],
+  },
+  "/dashboard/analytics": {
+    compact: true,
+    tabs: [
+      { value: "overview", label: "Overview" },
+      { value: "channels", label: "Channels" },
+      { value: "inbound", label: "Inbound" },
+      { value: "templates", label: "Templates" },
+    ],
+  },
+  // "Form answers" is hidden unless form intake is on (see AppHeader).
+  "/dashboard/deals": {
+    tabs: [
+      { value: "deals", label: "All deals" },
+      { value: "insights", label: "Insights" },
+      { value: "forms", label: "Form answers" },
+    ],
+  },
+  "/dashboard/team": {
+    tabs: [
+      { value: "performance", label: "Team & Performance", icon: TrendingUp },
+      { value: "log", label: "Assignment Log", icon: ClipboardList },
+    ],
+  },
+  "/dashboard/roles": {
+    tabs: [
+      { value: "roles", label: "Roles", icon: ShieldCheck },
+      { value: "users", label: "Users", icon: Users },
+      { value: "audit", label: "Audit Log", icon: ScrollText },
+    ],
+  },
+};
+
+function activeHeaderTab(set: HeaderTabSet, tabParam: string): HeaderTab {
+  const value = set.aliases?.[tabParam] ?? tabParam;
+  return set.tabs.find((t) => t.value === value) ?? set.tabs[0];
+}
+
+function HeaderTabSwitch({
+  pathname,
+  set,
+  hidden = [],
+  className = "mr-2",
+}: {
+  pathname: string;
+  set: HeaderTabSet;
+  hidden?: string[];
+  className?: string;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const active = activeHeaderTab(set, searchParams.get("tab") || "");
+
+  return (
+    <div className={cn("hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex", className)}>
+      {set.tabs
+        .filter((t) => !hidden.includes(t.value))
+        .map((t) => {
+          const Icon = t.icon;
+          const isActive = t.value === active.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => {
+                const params = new URLSearchParams(searchParams.toString());
+                if (t.value === set.tabs[0].value && !set.explicitDefault) params.delete("tab");
+                else params.set("tab", t.value);
+                const query = params.toString();
+                router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+              }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl py-1.5 font-label text-xs font-bold transition-all",
+                set.compact ? "px-2.5 xl:px-3" : "px-3",
+                isActive ? "bg-white text-primary shadow-sm" : "text-[#475569] hover:text-[#13284A]"
+              )}
+            >
+              {Icon && <Icon size={13} />}
+              {t.label}
+            </button>
+          );
+        })}
+    </div>
+  );
+}
+
+/** Route title, with "/ <active tab>" added for every page in HEADER_TABS. */
 function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
+  const meta = getBaseRouteMetadata(pathname, searchParams);
+  const set = HEADER_TABS[pathname];
+  if (!set) return meta;
+  return { ...meta, title: `${meta.title} / ${activeHeaderTab(set, searchParams.get("tab") || "").label}` };
+}
+
+function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   const tab = searchParams.get("tab") || "";
 
   const agentsMeta = agentsRouteMeta(pathname);
@@ -84,10 +237,8 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/team") {
-    let tabLabel = "Agent Performance";
-    if (tab === "log") tabLabel = "Assignment Log";
     return {
-      title: `Team Performance / ${tabLabel}`,
+      title: "Team",
       description: "Add and manage telecallers under your account.",
     };
   }
@@ -128,15 +279,8 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/knowledge") {
-    // Documents (RAG) is the default landing tab (2026-09-20). It used to be
-    // Description, back when a Description was the prerequisite for uploading;
-    // nothing gates an upload any more, and uploading is what clients come here
-    // to do. `?tab=description` opens the Description, and `?tab=ai-tune` is an
-    // old link that still lands there.
-    let tabLabel = "Documents (RAG)";
-    if (tab === "description" || tab === "ai-tune") tabLabel = "Description";
     return {
-      title: `Knowledge Base / ${tabLabel}`,
+      title: "Knowledge Base",
       description: "Upload documents and tune AI prompts to answer lead queries accurately.",
     };
   }
@@ -146,16 +290,17 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "What needs you, why customers reached a human, and what Anril knows.",
     };
   }
+  // Products | Services is a route-based header switch (CatalogueHeaderSwitch),
+  // so each route names its own tab.
   if (pathname === "/dashboard/catalog") {
-    // The Items / Media / AI Rules / Insights tabs sit in the page toolbar, so the title stays "Catalogue".
     return {
-      title: "Catalogue",
+      title: "Catalogue / Products",
       description: "Your products, prices and stock — what Anril can recommend and sell.",
     };
   }
   if (pathname === "/dashboard/services") {
     return {
-      title: "Catalogue",
+      title: "Catalogue / Services",
       description: "What you sell in chat: packages, prices, and the details Anril collects before sending the payment link.",
     };
   }
@@ -169,12 +314,8 @@ function getRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/numbers") {
-    // Mirror the header's own tab pills exactly -- the "WhatsApp Numbers /"
-    // prefix already carries the module name, so this segment names the tab.
-    let tabLabel = "Active Pool";
-    if (tab === "activity") tabLabel = "Activity Log";
     return {
-      title: `WhatsApp Numbers / ${tabLabel}`,
+      title: "WhatsApp Numbers",
       description: "Manage sender numbers and outbound routing.",
     };
   }
@@ -276,13 +417,9 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
   const { role, permissions } = useAuthRole();
   // Owners and managers get Call Review on this route; telecallers keep the notes page and its switchers.
   const isCallReview = pathname === "/dashboard/notes" && (role === "owner" || permissions.includes("team.manage"));
-  const { title, description } = isCallReview
-    ? { title: "Call Review", description: "Every telecaller's calls, scores and notes, lead by lead." }
-    : meta;
-
   const tab = searchParams.get("tab") || "";
   const leadSegment = searchParams.get("segment") || "A";
-  const rolesTab = (searchParams.get("tab") === "users" || searchParams.get("tab") === "audit") ? searchParams.get("tab")! : "roles";
+  const headerTabs = HEADER_TABS[pathname || ""];
   const [callingProvider, setCallingProvider] = useState<"telecmi" | "sim_basic">("telecmi");
 
   // Deals: "Form answers" tab only shows when form intake is switched on
@@ -292,6 +429,14 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
   // Notes switcher states
   const [notesPageMode, setNotesPageMode] = useState<"by_lead" | "all_notes">("by_lead");
   const [notesViewMode, setNotesViewMode] = useState<"grid" | "list">("grid");
+
+  // Notes' By Lead / All Notes switch is event-driven (NotesClient owns the
+  // state), so it can't sit in HEADER_TABS; name the mode in the title here.
+  const { title, description } = isCallReview
+    ? { title: "Call Review", description: "Every telecaller's calls, scores and notes, lead by lead." }
+    : pathname === "/dashboard/notes"
+    ? { ...meta, title: `${meta.title} / ${notesPageMode === "by_lead" ? "By Lead" : "All Notes"}` }
+    : meta;
 
   useEffect(() => {
     const updateTime = () => {
@@ -407,28 +552,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
         {(pathname === "/dashboard/catalog" || pathname === "/dashboard/services") && <CatalogueHeaderSwitch />}
 
-        {pathname === "/dashboard/outbound-leads" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["upload", "history", "tags", "opted-out"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("tab", t);
-                  router.replace(`/dashboard/outbound-leads?${params.toString()}`, { scroll: false });
-                }}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
-                  (tab === t || (t === "upload" && !tab))
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-[#475569] hover:text-[#13284A]"
-                )}
-              >
-                {t === "upload" ? "Broadcast Message" : t === "history" ? "Broadcast History" : t === "tags" ? "Tags" : "Opted-Out"}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Deals renders its own switch below, next to the New deal button. */}
+        {headerTabs && pathname !== "/dashboard/deals" && <HeaderTabSwitch pathname={pathname} set={headerTabs} />}
 
         {pathname?.startsWith("/dashboard/meta-ads") && (
           <nav aria-label="Meta ads views" className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
@@ -462,87 +587,6 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
           </nav>
         )}
 
-        {pathname === "/dashboard/numbers" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["pool", "activity"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  if (t === "pool") params.delete("tab");
-                  else params.set("tab", t);
-                  const qs = params.toString();
-                  router.replace(`/dashboard/numbers${qs ? `?${qs}` : ""}`, { scroll: false });
-                }}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
-                  (tab === t || (t === "pool" && tab !== "activity"))
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-[#475569] hover:text-[#13284A]"
-                )}
-              >
-                {t === "pool" ? "Active Pool" : "Activity Log"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {pathname === "/dashboard/knowledge" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["documents", "description"] as const).map((t) => {
-              // Documents (RAG) leads and is the canonical no-param URL; the
-              // Description follows it. `?tab=documents` stays valid for old links.
-              const isDescription = tab === "description" || tab === "ai-tune";
-              const isActive = t === "description" ? isDescription : !isDescription;
-              return (
-                <button
-                  key={t}
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams.toString());
-                    if (t === "documents") params.delete("tab");
-                    else params.set("tab", t);
-                    const qs = params.toString();
-                    router.replace(`/dashboard/knowledge${qs ? `?${qs}` : ""}`, { scroll: false });
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
-                    isActive
-                      ? "bg-white text-primary shadow-sm"
-                      : "text-[#475569] hover:text-[#13284A]"
-                  )}
-                >
-                  {t === "documents" ? "Documents (RAG)" : "Description"}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {pathname === "/dashboard/analytics" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["overview", "channels", "inbound", "templates"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  if (t === "overview") params.delete("tab");
-                  else params.set("tab", t);
-                  const query = params.toString();
-                  router.replace(`/dashboard/analytics${query ? `?${query}` : ""}`, { scroll: false });
-                }}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-xl font-label text-xs font-bold transition-all xl:px-3",
-                  (tab === t || (t === "overview" && !tab))
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-[#475569] hover:text-[#13284A]"
-                )}
-              >
-                {t === "overview" ? "Overview" : t === "channels" ? "Channels" : t === "inbound" ? "Inbound" : "Templates"}
-              </button>
-            ))}
-          </div>
-        )}
-
         {pathname === "/dashboard/leads" && tab !== "reengagement" && (
           <div className="mr-2 hidden items-center gap-2 md:flex">
             <button
@@ -574,29 +618,12 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
         {pathname === "/dashboard/deals" && (
           <div className="mr-2 hidden items-center gap-2 md:flex">
-            <div className="flex gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1">
-              {(["deals", "insights", ...(dealsFormsEnabled ? ["forms"] : [])] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams.toString());
-                    if (t === "deals") params.delete("tab");
-                    else params.set("tab", t);
-                    const query = params.toString();
-                    router.replace(`/dashboard/deals${query ? `?${query}` : ""}`, { scroll: false });
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
-                    (tab === t || (t === "deals" && tab !== "insights" && tab !== "forms"))
-                      ? "bg-white text-primary shadow-sm"
-                      : "text-[#475569] hover:text-[#13284A]"
-                  )}
-                >
-                  {t === "deals" ? "Deals" : t === "insights" ? "Insights" : "Form answers"}
-                </button>
-              ))}
-            </div>
+            <HeaderTabSwitch
+              pathname={pathname}
+              set={HEADER_TABS["/dashboard/deals"]}
+              hidden={dealsFormsEnabled ? [] : ["forms"]}
+              className=""
+            />
             {canManageDeals && tab !== "insights" && tab !== "forms" && (
               <button
                 type="button"
@@ -614,84 +641,9 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
           </div>
         )}
 
-        {pathname === "/dashboard/team" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["performance", "log"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  if (t === "performance") params.delete("tab");
-                  else params.set("tab", t);
-                  const query = params.toString();
-                  router.replace(`/dashboard/team${query ? `?${query}` : ""}`, { scroll: false });
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-label text-xs font-bold transition-all",
-                  (tab === t || (t === "performance" && !tab))
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-[#475569] hover:text-[#13284A]"
-                )}
-              >
-                {t === "performance" ? <TrendingUp size={13} /> : <ClipboardList size={13} />}
-                {t === "performance" ? "Team & Performance" : "Assignment Log"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {pathname === "/dashboard/roles" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["roles", "users", "audit"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  if (item === "roles") params.delete("tab");
-                  else params.set("tab", item);
-                  const query = params.toString();
-                  router.replace(`/dashboard/roles${query ? `?${query}` : ""}`, { scroll: false });
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-label text-xs font-bold capitalize transition-all",
-                  rolesTab === item ? "bg-white text-primary shadow-sm" : "text-[#475569] hover:text-[#13284A]",
-                )}
-              >
-                {item === "roles" ? <ShieldCheck size={13} /> : item === "users" ? <Users size={13} /> : <ScrollText size={13} />}
-                {item === "audit" ? "Audit Log" : item}
-              </button>
-            ))}
-          </div>
-        )}
-
         {pathname === "/dashboard/roles" && (
           <div className="hidden rounded-xl border border-border-subtle bg-white px-3 py-1.5 font-body text-xs font-semibold text-ink-muted shadow-sm md:block">
             Calling provider: <span className="text-ink">{callingProvider === "sim_basic" ? "SIM Basic" : "Cloud Telephony"}</span>
-          </div>
-        )}
-
-        {pathname === "/dashboard/telecalling/upload" && (
-          <div className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
-            {(["upload", "history", "scripts"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("tab", t);
-                  router.replace(`/dashboard/telecalling/upload?${params.toString()}`, { scroll: false });
-                }}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl font-label text-xs font-bold transition-all",
-                  (tab === t || (t === "upload" && !tab))
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-[#475569] hover:text-[#13284A]"
-                )}
-              >
-                {t === "upload" ? "Upload Contacts" : t === "history" ? "Upload History" : "Scripts"}
-              </button>
-            ))}
           </div>
         )}
 
