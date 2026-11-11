@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Bell, MessageSquareText, Siren, X } from "lucide-react";
+import { Bell, Clock, FileText, MessageSquareText, Moon, Siren, Users, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 import { api, NotificationConfig, Caller, WabaTemplate } from "@/lib/api";
 import {
   SaveButton,
@@ -45,6 +47,14 @@ type WhatsAppBlock = NotificationConfig["whatsapp_notifications"];
 /** Which card a save came from — only that card flashes "Saved". */
 type SectionKey = "push" | "lead" | "escalation";
 
+const TOGGLE_NAMES: Record<SectionKey, string> = {
+  push: "Push notifications",
+  lead: "WhatsApp lead notifications",
+  escalation: "WhatsApp escalation alerts",
+};
+
+const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
 /**
  * Owns the whole notification config but renders it as three independent
  * cards: push alerts, WhatsApp lead notifications, WhatsApp escalation
@@ -62,6 +72,11 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
     push: "idle",
     lead: "idle",
     escalation: "idle",
+  });
+  const [toggling, setToggling] = useState<Record<SectionKey, boolean>>({
+    push: false,
+    lead: false,
+    escalation: false,
   });
 
   useEffect(() => {
@@ -95,6 +110,44 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
     }
   }
 
+  /**
+   * The on/off switch in a card's header saves right away. It writes the
+   * last-saved config with only that one flag changed, so half-finished edits
+   * in any card stay unsaved drafts instead of riding along.
+   */
+  async function quickToggle(key: SectionKey, on: boolean) {
+    if (!saved || !canManage) return;
+    const payload: NotificationConfig =
+      key === "push"
+        ? { ...saved, push_enabled: on }
+        : key === "lead"
+        ? { ...saved, whatsapp_notifications: { ...saved.whatsapp_notifications, enabled: on } }
+        : { ...saved, whatsapp_escalation_notifications: { ...saved.whatsapp_escalation_notifications, enabled: on } };
+    setToggling((t) => ({ ...t, [key]: true }));
+    try {
+      const next = await api.notifications.saveConfig(payload);
+      setSaved(next);
+      setCfg((c) => {
+        if (!c) return next;
+        if (key === "push") return { ...c, push_enabled: next.push_enabled };
+        if (key === "lead")
+          return { ...c, whatsapp_notifications: { ...c.whatsapp_notifications, enabled: next.whatsapp_notifications.enabled } };
+        return {
+          ...c,
+          whatsapp_escalation_notifications: {
+            ...c.whatsapp_escalation_notifications,
+            enabled: next.whatsapp_escalation_notifications.enabled,
+          },
+        };
+      });
+      toast.success(`${TOGGLE_NAMES[key]} turned ${on ? "on" : "off"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't turn ${TOGGLE_NAMES[key].toLowerCase()} ${on ? "on" : "off"}`);
+    } finally {
+      setToggling((t) => ({ ...t, [key]: false }));
+    }
+  }
+
   if (!cfg || !saved) {
     return (
       <div className="space-y-2 sm:space-y-2.5">
@@ -118,8 +171,14 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
   const eventKeys = Object.keys(EVENT_LABELS);
   const activeEvents = eventKeys.filter((k) => cfg.events[k] ?? true).length;
 
+  const audienceLabel =
+    cfg.claimable_audience === "specific"
+      ? `${cfg.claimable_caller_ids.length} telecaller${cfg.claimable_caller_ids.length === 1 ? "" : "s"}`
+      : AUDIENCE_OPTIONS.find((o) => o.value === cfg.claimable_audience)?.label ?? "";
+
   return (
     <SettingsAccordion>
+      <GroupLabel>On phone and desktop</GroupLabel>
       <SettingsSection
         id="push-notifications"
         icon={Bell}
@@ -132,16 +191,40 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
             : { label: "Push off", tone: "off" }
         }
         dirty={pushDirty}
+        headerAction={
+          <SwitchPill
+            on={cfg.push_enabled}
+            loading={toggling.push}
+            disabled={!canManage}
+            aria-label="Push notifications on or off"
+            onChange={(v) => quickToggle("push", v)}
+          />
+        }
+        summary={
+          cfg.push_enabled ? (
+            <Facts>
+              <Fact icon={Bell}>
+                {activeEvents} of {eventKeys.length} events
+              </Fact>
+              <Fact icon={Clock}>Callbacks open to claim after {cfg.claimable_threshold_minutes} min</Fact>
+              <Fact icon={Users}>{audienceLabel}</Fact>
+              {cfg.quiet_hours.enabled && (
+                <Fact icon={Moon}>
+                  Quiet {hourLabel(cfg.quiet_hours.start_hour)}–{hourLabel(cfg.quiet_hours.end_hour)} IST
+                </Fact>
+              )}
+            </Facts>
+          ) : (
+            <SummaryHint>Off. Nobody gets phone or desktop pushes. The in-app bell still records everything.</SummaryHint>
+          )
+        }
       >
         <div className="space-y-4">
-          {/* Master switch */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface-subtle p-4">
-            <div className="min-w-0">
-              <p className="font-body text-sm font-semibold text-ink">Enable push notifications</p>
-              <p className="mt-0.5 font-body text-xs text-ink-muted">Master switch for all phone/desktop pushes.</p>
-            </div>
-            <SwitchPill on={cfg.push_enabled} disabled={!canManage} onChange={(v) => patch({ push_enabled: v })} />
-          </div>
+          {!cfg.push_enabled && (
+            <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
+              Push is off. Turn it on with the switch above to send these alerts.
+            </p>
+          )}
 
           {/* Per-event toggles */}
           <div className="space-y-2">
@@ -280,6 +363,7 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         </SectionFooter>
       </SettingsSection>
 
+      <GroupLabel>On WhatsApp</GroupLabel>
       <WhatsAppAlertCard
         id="whatsapp-lead-alerts"
         icon={MessageSquareText}
@@ -295,6 +379,10 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         canManage={canManage}
         dirty={leadDirty}
         state={states.lead}
+        offHint="Off. Nobody is messaged on WhatsApp when a lead's segment changes."
+        delayNote=""
+        toggling={toggling.lead}
+        onToggle={(v) => quickToggle("lead", v)}
         onSave={() => save("lead")}
         onChange={(next) => patch({ whatsapp_notifications: next })}
       />
@@ -314,6 +402,10 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
         canManage={canManage}
         dirty={escalationDirty}
         state={states.escalation}
+        offHint="Off. Nobody is messaged on WhatsApp when a chat needs a human."
+        delayNote=", skipped if claimed"
+        toggling={toggling.escalation}
+        onToggle={(v) => quickToggle("escalation", v)}
         onSave={() => save("escalation")}
         onChange={(next) => patch({ whatsapp_escalation_notifications: next })}
       />
@@ -340,6 +432,10 @@ function WhatsAppAlertCard({
   canManage,
   dirty,
   state,
+  offHint,
+  delayNote,
+  toggling,
+  onToggle,
   onSave,
   onChange,
 }: {
@@ -357,11 +453,50 @@ function WhatsAppAlertCard({
   canManage: boolean;
   dirty: boolean;
   state: SaveState;
+  /** Collapsed-card line shown while the alert is off. */
+  offHint: string;
+  /** Appended to the delay fact, e.g. ", skipped if claimed". */
+  delayNote: string;
+  toggling: boolean;
+  onToggle: (on: boolean) => void;
   onSave: () => void;
   onChange: (next: WhatsAppBlock) => void;
 }) {
   const selectedTemplate = approvedTemplates.find((t) => t.id === block.template_id) || null;
   const incomplete = block.enabled && (!block.template_id || block.recipient_phones.length === 0);
+  const delay = block.delay_minutes ?? 5;
+  const phones = block.recipient_phones;
+
+  const summary = !block.enabled ? (
+    <SummaryHint>{offHint}</SummaryHint>
+  ) : incomplete ? (
+    <SummaryHint tone="warn">Needs a message template and at least one number. Nothing is sent until both are set.</SummaryHint>
+  ) : block.target_segments.length === 0 ? (
+    <SummaryHint tone="warn">No segments picked, so nothing is sent. Open this card to pick at least one.</SummaryHint>
+  ) : (
+    <Facts>
+      {SEGMENTS.filter((s) => block.target_segments.includes(s)).map((s) => (
+        <span
+          key={s}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold ${SEGMENT_STYLES[s]}`}
+        >
+          {s} · {SEGMENT_LABELS[s]}
+        </span>
+      ))}
+      <Fact icon={Users} mono={phones.length === 1}>
+        {phones.length === 1 ? phones[0] : `${phones.length} numbers`}
+      </Fact>
+      <Fact icon={Clock}>
+        {delay === 0 ? "Sends right away" : `After ${delay} min`}
+        {delayNote}
+      </Fact>
+      {selectedTemplate && (
+        <Fact icon={FileText} mono>
+          {selectedTemplate.name}
+        </Fact>
+      )}
+    </Facts>
+  );
 
   function toggleSegment(segment: (typeof SEGMENTS)[number]) {
     const active = block.target_segments.includes(segment);
@@ -391,15 +526,23 @@ function WhatsAppAlertCard({
             }
       }
       dirty={dirty}
+      headerAction={
+        <SwitchPill
+          on={block.enabled}
+          loading={toggling}
+          disabled={!canManage}
+          aria-label={switchLabel}
+          onChange={onToggle}
+        />
+      }
+      summary={summary}
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface-subtle p-4">
-          <div className="min-w-0">
-            <p className="font-body text-sm font-semibold text-ink">{switchLabel}</p>
-            <p className="mt-0.5 font-body text-xs text-ink-muted">{switchHelp}</p>
-          </div>
-          <SwitchPill on={block.enabled} disabled={!canManage} onChange={(v) => onChange({ ...block, enabled: v })} />
-        </div>
+        <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
+          {block.enabled
+            ? switchHelp
+            : "This alert is off. Turn it on with the switch above to pick segments, numbers and a template."}
+        </p>
 
         {block.enabled && (
           <div className="space-y-4">
@@ -635,6 +778,44 @@ function PhoneRecipients({
         </p>
       )}
     </div>
+  );
+}
+
+/** Divider label that groups cards by where the alert arrives. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 px-1 pb-0.5 pt-3 first:pt-0">
+      <span className="font-label text-[11px] font-bold uppercase tracking-wider text-ink-muted">{children}</span>
+      <span aria-hidden className="h-px flex-1 bg-border-subtle" />
+    </div>
+  );
+}
+
+/* The collapsed-card summary renders inside the header <button>, so these
+   are spans only (no block elements, nothing interactive). */
+
+function Facts({ children }: { children: React.ReactNode }) {
+  return <span className="flex flex-wrap items-center gap-1.5">{children}</span>;
+}
+
+function Fact({ icon: Icon, mono = false, children }: { icon: LucideIcon; mono?: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-subtle px-2 py-0.5 text-xs text-ink-secondary ${
+        mono ? "font-mono font-medium" : "font-body font-semibold"
+      }`}
+    >
+      <Icon size={12} className="shrink-0 text-ink-muted" />
+      {children}
+    </span>
+  );
+}
+
+function SummaryHint({ tone = "muted", children }: { tone?: "muted" | "warn"; children: React.ReactNode }) {
+  return (
+    <span className={`block font-body text-xs ${tone === "warn" ? "font-semibold text-amber-700" : "text-ink-muted"}`}>
+      {children}
+    </span>
   );
 }
 

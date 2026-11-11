@@ -177,6 +177,8 @@ export function SettingsSection({
   status,
   dirty = false,
   defaultOpen = true,
+  summary,
+  headerAction,
   children,
 }: {
   /** Stable id — required for the group toolbar to drive this section. */
@@ -189,6 +191,10 @@ export function SettingsSection({
   /** Shows an "Unsaved" marker on the header so it survives collapsing. */
   dirty?: boolean;
   defaultOpen?: boolean;
+  /** What's currently set, shown under the description while collapsed. Phrasing content only (spans). */
+  summary?: React.ReactNode;
+  /** A control beside the chevron (e.g. an on/off switch) that works without opening the section. */
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const group = useContext(Ctx);
@@ -226,15 +232,20 @@ export function SettingsSection({
         )}
       />
 
+      <div
+        className={cn(
+          "flex w-full items-start gap-3 p-4 transition-colors duration-200 sm:gap-4 sm:p-6",
+          open ? "bg-white" : "hover:bg-surface-subtle/70"
+        )}
+      >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         aria-controls={panelId}
         className={cn(
-          "flex w-full items-start gap-3.5 p-4 text-left transition-colors duration-200 sm:gap-4 sm:p-6",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30",
-          open ? "bg-white" : "hover:bg-surface-subtle/70"
+          "-m-1.5 flex min-w-0 flex-1 items-start gap-3.5 rounded-xl p-1.5 text-left sm:gap-4",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         )}
       >
         <span
@@ -287,11 +298,19 @@ export function SettingsSection({
           >
             {description}
           </span>
+          {summary && !open && <span className="mt-2.5 block">{summary}</span>}
         </span>
+      </button>
 
+        {headerAction && <div className="mt-1.5 flex shrink-0 items-center">{headerAction}</div>}
+
+        {/* Decorative twin of the header button: same toggle for mouse users,
+            hidden from assistive tech so there is one accessible control. */}
         <span
+          aria-hidden
+          onClick={onToggle}
           className={cn(
-            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-300",
+            "mt-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-all duration-300",
             open
               ? "border-primary/25 bg-primary-light text-primary"
               : "border-border/80 bg-surface-subtle text-ink-muted group-hover/section:border-primary/25 group-hover/section:text-primary"
@@ -302,7 +321,7 @@ export function SettingsSection({
             className={cn("transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]", open && "rotate-180")}
           />
         </span>
-      </button>
+      </div>
 
       {/* grid-rows 0fr → 1fr animates to the content's natural height */}
       <div
