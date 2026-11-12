@@ -148,12 +148,12 @@ export default function AutoReplySettingsPage() {
         icon={Sparkles}
         accent="violet"
         title="Auto-Reply"
-        description="Choose what goes out automatically: AI replies in chats, and the template a new lead gets the moment they arrive. Your team's own messages are never blocked."
+        description="Control which messages are sent automatically: AI responses in conversations and welcome templates for new leads. Messages sent by your team are not affected."
         status={status}
         dirty={dirty}
         summary={
           status.tone === "off" ? (
-            <SummaryHint>Off. Nothing goes out automatically; messages wait for a teammate.</SummaryHint>
+            <SummaryHint>Paused. No automatic messages are sent; incoming messages are held for your team.</SummaryHint>
           ) : (
             <Facts>
               <Fact icon={MessagesSquare}>AI replies {aiOn ? "on" : "off"}</Fact>
@@ -171,8 +171,8 @@ export default function AutoReplySettingsPage() {
               on={aiOn}
               disabled={!canManageSettings || saving !== null}
               onChange={(next) => setMaster(AI_KEY, next)}
-              offText="No AI reply anywhere: no photo/video reply, no “typing…”, no AI follow-ups or nudges. Messages wait for a teammate."
-              onText="The AI replies on the channels and sources switched on below."
+              offText="AI responses are paused on all channels, including media acknowledgements, typing indicators, follow-ups and reminders. Incoming messages are held for your team."
+              onText="AI responds to incoming messages on the channels and lead sources enabled below."
             />
             <MasterCard
               icon={Send}
@@ -180,8 +180,8 @@ export default function AutoReplySettingsPage() {
               on={templatesOn}
               disabled={!canManageSettings || saving !== null}
               onChange={(next) => setMaster(TEMPLATE_KEY, next)}
-              offText="No welcome template to any new lead from any source. Leads are still added and assigned."
-              onText="New leads get their welcome template from the sources switched on below."
+              offText="Welcome templates are paused for all lead sources. New leads are still created and assigned."
+              onText="New leads receive a welcome template from the lead sources enabled below."
             />
           </div>
 
@@ -221,9 +221,11 @@ export default function AutoReplySettingsPage() {
           </div>
 
           <p className="mt-3 font-body text-xs leading-relaxed text-ink-muted">
-            A message goes out only when its switch above and its row are both on. AI replies for a lead source cover
-            that lead&apos;s later chats, so an IndiaMART lead writing on WhatsApp needs both rows on. Always sent:
-            your team&apos;s own messages, broadcasts, scheduled templates, STOP confirmations and payment messages.
+            An automatic message is sent only when both its master setting above and its source are enabled. AI
+            response settings for a lead source also apply to that lead&apos;s later conversations; for example, an
+            IndiaMART lead messaging on WhatsApp requires both WhatsApp and IndiaMART to be enabled. Messages sent by
+            your team, broadcasts, scheduled templates, opt-out confirmations and payment notifications are always
+            delivered.
           </p>
 
           <SectionFooter
