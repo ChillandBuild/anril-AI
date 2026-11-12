@@ -165,3 +165,23 @@ def test_ad_performance_csv_splits_messages_per_chat_app(client, db):
     assert cell["Instagram messages"] == "1"
     assert cell["Messenger messages"] == "0"
     assert header.index("WhatsApp messages") == header.index("Messages sent (Anril confirmed)") + 1
+
+
+def test_ad_performance_csv_has_the_schedule_and_meta_ratio_columns(client, db):
+    import csv
+    import io
+
+    db.rows("ad_creatives")[0]["meta_adset_id"] = "as1"
+    db.add("ad_sets", tenant_id="t1", meta_ad_account_id=ACCOUNT, meta_adset_id="as1",
+           start_time="2026-11-01T09:00:00+0530", end_time=None, meta_updated_at="2026-11-05T12:00:00+00:00")
+
+    res = client.get("/api/v1/inbound-leads/ad-performance/export")
+
+    assert res.status_code == 200
+    header, row = list(csv.reader(io.StringIO(res.content.decode("utf-8-sig"))))[:2]
+    cell = dict(zip(header, row))
+    assert cell["Schedule"] == "2026-11-01 – Ongoing"
+    assert cell["Last significant edit"] == "2026-11-05"
+    for label in ("Cost per messaging contact", "Cost per new messaging contact", "Messaging reply rate",
+                  "Messaging block rate", "Meta-to-Anril contact match rate"):
+        assert label in header

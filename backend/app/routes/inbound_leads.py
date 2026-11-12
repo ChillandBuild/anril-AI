@@ -751,6 +751,8 @@ AD_PERFORMANCE_EXPORT_COLUMNS = [
     ("creative_label", "Ad name"),
     ("delivery_status", "Delivery"),
     ("budget", "Budget"),
+    ("schedule", "Schedule"),
+    ("last_significant_edit", "Last significant edit"),
     ("impressions", "Impressions"),
     ("reach", "Reach"),
     ("frequency", "Frequency"),
@@ -765,8 +767,13 @@ AD_PERFORMANCE_EXPORT_COLUMNS = [
     ("meta_new_contacts", "New messaging contacts"),
     ("meta_conversations_replied", "Messaging conversations replied"),
     ("meta_blocks", "Messaging blocks"),
+    ("cost_per_messaging_contact", "Cost per messaging contact"),
+    ("cost_per_new_messaging_contact", "Cost per new messaging contact"),
     ("conversation_rate", "Message rate"),
     ("meta_conversation_rate", "Meta messaging contact rate"),
+    ("messaging_reply_rate", "Messaging reply rate"),
+    ("messaging_block_rate", "Messaging block rate"),
+    ("meta_anril_contact_match_rate", "Meta-to-Anril contact match rate"),
     ("attribution_gap", "Tracking difference"),
     ("clicked_no_message", "No message"),
     ("no_message_rate", "No-message rate"),
@@ -790,6 +797,13 @@ def _budget_label(row: dict) -> str:
     if row.get("lifetime_budget") is not None:
         return f"₹{round(row['lifetime_budget'])} lifetime{suffix}"
     return ""
+
+
+def _schedule_label(row: dict) -> str:
+    """The table's Schedule cell, as dates: '2026-11-01 – Ongoing', '2026-11-01 – 2026-11-30'."""
+    start = (row.get("schedule_start") or "")[:10] or "—"
+    end = (row.get("schedule_end") or "")[:10] or "Ongoing"
+    return f"{start} – {end}"
 
 
 @router.get("/ad-performance/export", dependencies=[Depends(require_meta_ads_view)])
@@ -835,6 +849,8 @@ async def ad_performance_export(
             **report_cells,
             "meta_ad_id": excel_text(r.get("meta_ad_id")),
             "delivery_status": delivery_label(r.get("delivery_status")),
+            "schedule": _schedule_label(r),
+            "last_significant_edit": (r.get("last_significant_edit") or "")[:10],
         }
         writer.writerow([
             _budget_label(r) if key == "budget"
