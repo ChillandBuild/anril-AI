@@ -39,6 +39,14 @@ _TAMIL_WORD = re.compile(r"[\u0B80-\u0BFF]+")
 _PRE_BASE_SIGNS = ("\u0BC6", "\u0BC7", "\u0BC8")     # ெ ே ை: drawn left of the letter, typed after it
 _UNMAPPED = ("\x00", "\ufffd")                        # a glyph the PDF font gave no letter for
 _PUNCT = set(string.punctuation)
+# Zero-width non-joiner (Thanjavur library PDFs put one after every ்), zero-width space, byte-order
+# mark. Invisible, but word search treats மூலம்+mark as another word than a typed மூலம். The
+# zero-width joiner stays: it can change how a letter is drawn.
+_INVISIBLE = dict.fromkeys(map(ord, "\u200c\u200b\ufeff"))
+
+
+def strip_invisible(text: str | None) -> str | None:
+    return text.translate(_INVISIBLE) if isinstance(text, str) else text
 
 
 def count_pages(path: str) -> int:
@@ -50,7 +58,7 @@ def read_page(path: str, page_no: int) -> tuple[str, set[str]]:
     """Text layer and font names of one page (1-based). ("", set()) when the page has no text."""
     with pdfplumber.open(path) as pdf:
         page = pdf.pages[page_no - 1]
-        text = page.extract_text() or ""
+        text = strip_invisible(page.extract_text() or "")    # also keeps the spot-check comparison fair
         fonts = {str(c["fontname"]) for c in page.chars if c.get("fontname")}
     if not text.strip():
         return "", set()

@@ -53,6 +53,13 @@ def _hand_made_pdf(text: str) -> bytes:
 
 # --- text_layer_ok ---
 
+def test_strip_invisible_drops_zero_width_marks_only():
+    # Zero-width non-joiner after ் (Thanjavur library PDFs), zero-width space, byte-order mark.
+    assert pages.strip_invisible("மூலம்\u200c, \u200bராசி\ufeff") == "மூலம், ராசி"
+    assert pages.strip_invisible("ஸ்ரீ\u200d") == "ஸ்ரீ\u200d"     # zero-width joiner can shape a letter: kept
+    assert pages.strip_invisible(None) is None
+
+
 def test_unicode_tamil_passes():
     assert len(TAMIL) > 60
     assert text_layer_ok(TAMIL, {"ABCDEF+Latha"})

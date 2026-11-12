@@ -19,6 +19,7 @@ embeddings come back as list[float].
 import asyncio
 from datetime import datetime, timezone
 
+from app.companion.kb.pages import strip_invisible
 from app.db.supabase import get_supabase
 from app.services.embeddings import to_pgvector
 from app.services.pagination import fetch_all_rows
@@ -116,8 +117,8 @@ async def match_chunks(tenant_id: str, collection_id: str, tier: int, *, model: 
         "p_tenant": tenant_id, "p_collection": collection_id, "p_tier": tier, "p_model": model,
         "p_embedding_en": to_pgvector(embedding_en) if embedding_en else None,
         "p_embedding_ta": to_pgvector(embedding_ta) if embedding_ta else None,
-        "p_query_en": query_en or "", "p_query_ta": query_ta or "",
-        "p_terms": list(terms or []), "p_count": count,
+        "p_query_en": strip_invisible(query_en or ""), "p_query_ta": strip_invisible(query_ta or ""),
+        "p_terms": [strip_invisible(term) for term in terms or []], "p_count": count,
     }
     return await _run(lambda: get_supabase().rpc("match_companion_kb_chunks", params))
 

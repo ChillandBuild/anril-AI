@@ -187,6 +187,15 @@ def test_save_page_counts_every_attempt(db, book):
         run(store.save_page(A, doc_id, 3, status="done"))
 
 
+def test_save_page_drops_invisible_marks(db, book):
+    """Thanjavur library PDFs put a zero-width non-joiner after every ் (pulli). Saved as is,
+    word search never matched a typed மூலம் (live, 12 Nov 2026: 50 passages held it, 0 hits)."""
+    page = run(store.save_page(A, book["doc_id"], 3, status="ok", method="text_layer",
+                               text="மூலம்\u200c, அத்தத்தில்\u200c\u200b\ufeff 45"))
+    assert page["text"] == "மூலம், அத்தத்தில் 45"
+    assert page["char_count"] == len("மூலம், அத்தத்தில் 45")
+
+
 def test_save_page_trims_a_long_error(db, book):
     page = run(store.save_page(A, book["doc_id"], 3, status="failed", error="e" * 900))
     assert len(page["error"]) == 500
@@ -255,6 +264,14 @@ def test_nul_characters_never_reach_the_database(db, book):
     assert (rows[0]["heading_path"], rows[0]["text"]) == ("Chapter", "Remedies")
     added = run(store.add_chunk(A, book["doc_id"], heading_path="To\x00pic", text="An\x00swer"))
     assert (added["heading_path"], added["text"]) == ("Topic", "Answer")
+
+
+def test_invisible_marks_never_reach_passages(db, book):
+    rows = run(store.replace_chunks(A, book["doc_id"], [
+        {"heading_path": "படலம்\u200c", "text": "மூலம்\u200c நட்சத்திரம்\u200b", "page_from": 1, "page_to": 1}]))
+    assert (rows[0]["heading_path"], rows[0]["text"]) == ("படலம்", "மூலம் நட்சத்திரம்")
+    added = run(store.add_chunk(A, book["doc_id"], heading_path="\ufeffகேள்வி", text="பதில்\u200c"))
+    assert (added["heading_path"], added["text"]) == ("கேள்வி", "பதில்")
 
 
 def test_a_book_id_used_twice_is_a_typed_error(db, book, monkeypatch):

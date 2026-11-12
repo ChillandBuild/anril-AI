@@ -76,6 +76,22 @@ def test_match_chunks_finds_the_passage_with_its_title_and_list_name(world):
     assert all(r["document_title"] == "Book 3" and r["tier"] == 2 for r in rows)
 
 
+def test_match_chunks_sends_queries_without_invisible_marks(world, monkeypatch):
+    # A line pasted from a Thanjavur library PDF carries a zero-width non-joiner after every ்;
+    # saved passages have them stripped, so the query must match that.
+    sent, real = {}, ss.get_supabase
+
+    class Spy:
+        def rpc(self, name, params):
+            sent.update(params)
+            return real().rpc(name, params)
+
+    monkeypatch.setattr(ss, "get_supabase", lambda: Spy())
+    run(ss.match_chunks(A, "c1", 2, model="gemini", embedding_en=None, embedding_ta=None,
+                        query_en="Moolam\u200b", query_ta="மூலம்\u200c பலன்", terms=["மூலம்\u200c"], count=5))
+    assert (sent["p_query_en"], sent["p_query_ta"], sent["p_terms"]) == ("Moolam", "மூலம் பலன்", ["மூலம்"])
+
+
 def test_match_chunks_is_scoped_to_tier_collection_and_tenant(world):
     assert {r["id"] for r in match(A, tier=1, terms=("saturn",))} == {"m12"}
     assert match(B) == []                      # tenant B asks with tenant A's collection id
