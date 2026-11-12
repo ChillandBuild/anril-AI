@@ -2,12 +2,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, Check, CheckCircle2, FileText, Loader2, UploadCloud, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { companionKbApi, type KbCollection, type KbLimits } from "@/lib/api";
+import { UploadCancelledError, companionKbApi, type KbCollection, type KbLimits } from "@/lib/api";
 import { KB_ACCEPT, KB_TYPE_CHIPS, fileSizeText } from "@/components/agents/knowledgeRows";
 import { CollectionPicker } from "@/components/agents/CollectionPicker";
 import { SalesPicker } from "@/components/agents/SalesPicker";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ErrorNote, INPUT, LoadingRows } from "@/components/agents/ui";
 import {
+  CANCELLED_TEXT,
   importLabel,
   isBusy,
   itemStatusText,
@@ -58,6 +59,8 @@ export function ImportCard({
   const alive = useRef(true);
   // Always the latest list, so an Import that is already running can see a file that was removed.
   const itemsRef = useRef<UploadItem[]>([]);
+  /** One per file that is uploading, so its Cancel can stop just that file. */
+  const cancels = useRef(new Map<string, AbortController>());
   itemsRef.current = items;
 
   useEffect(() => {
@@ -103,15 +106,24 @@ export function ImportCard({
 
   const runItem = async (item: UploadItem, target: { collectionId: string; tier: 1 | 2 }) => {
     patch(item.id, { status: "uploading", progress: 0, error: "", collectionId: target.collectionId, tier: target.tier });
+    const controller = new AbortController();
+    cancels.current.set(item.id, controller);
     try {
       await uploadOne(companionKbApi, item.file, target, {
         onStep: (s) => patch(item.id, { status: s }),
         onProgress: (f) => patch(item.id, { progress: f }),
+        signal: controller.signal,
       });
       patch(item.id, { status: "done", progress: 1 });
       if (alive.current) onChanged();
     } catch (e) {
-      patch(item.id, { status: "error", error: (e as Error).message || "Upload failed. Please try again." });
+      if (e instanceof UploadCancelledError) {
+        patch(item.id, { status: "staged", progress: 0, error: CANCELLED_TEXT });
+      } else {
+        patch(item.id, { status: "error", error: (e as Error).message || "Upload failed. Please try again." });
+      }
+    } finally {
+      cancels.current.delete(item.id);
     }
   };
 
@@ -243,6 +255,16 @@ export function ImportCard({
                   {item.status === "error" && (
                     <button type="button" onClick={() => retry(item)} disabled={busy} className="shrink-0 text-xs font-medium text-primary underline underline-offset-2 disabled:opacity-50" aria-label={`Retry ${item.file.name}`}>
                       Retry
+                    </button>
+                  )}
+                  {item.status === "uploading" && (
+                    <button
+                      type="button"
+                      onClick={() => cancels.current.get(item.id)?.abort()}
+                      className="shrink-0 text-xs font-medium text-ink-secondary underline underline-offset-2 hover:text-danger"
+                      aria-label={`Cancel upload of ${item.file.name}`}
+                    >
+                      Cancel
                     </button>
                   )}
                   {(item.status === "staged" || item.status === "error" || item.status === "done") && (

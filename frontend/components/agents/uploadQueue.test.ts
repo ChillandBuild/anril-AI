@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { KbCollection, KbDocument, KbUploadTicket } from "@/lib/api";
+import { UploadCancelledError, type KbCollection, type KbDocument, type KbUploadTicket } from "@/lib/api";
 import {
+  CANCELLED_TEXT,
   bookHref,
   canCreateCollection,
   checkFile,
@@ -137,11 +138,37 @@ describe("uploadOne", () => {
     await expect(uploadOne(api, new File(["x"], "a.pdf"), { collectionId: "c1", tier: 2 })).rejects.toThrow("Upload failed");
     expect(register).not.toHaveBeenCalled();
   });
+  it("Cancel while sending: passes the signal on, throws UploadCancelledError, never registers", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const api = fakeApi({
+      uploadToTicket: vi.fn(async (_t, _f, _p, signal?: AbortSignal) => {
+        seen = signal;
+        controller.abort();                      // the person presses Cancel at 40%
+        throw new UploadCancelledError();
+      }),
+    });
+    const register = vi.spyOn(api, "registerDocument");
+    const run = uploadOne(api, new File(["x"], "01 Kumaraswamiyam.pdf"), { collectionId: "c1", tier: 2 }, { signal: controller.signal });
+    await expect(run).rejects.toBeInstanceOf(UploadCancelledError);
+    expect(seen).toBe(controller.signal);
+    expect(register).not.toHaveBeenCalled();
+  });
+  it("Cancel pressed just as the file finished sending: still not registered", async () => {
+    const controller = new AbortController();
+    const api = fakeApi({ uploadToTicket: vi.fn(async () => controller.abort()) });
+    const register = vi.spyOn(api, "registerDocument");
+    await expect(
+      uploadOne(api, new File(["x"], "a.pdf"), { collectionId: "c1", tier: 2 }, { signal: controller.signal }),
+    ).rejects.toBeInstanceOf(UploadCancelledError);
+    expect(register).not.toHaveBeenCalled();
+  });
 });
 
 describe("itemStatusText and counts", () => {
   it("says what is happening to a file", () => {
     expect(itemStatusText({ status: "staged", progress: 0, error: "" })).toBe("Ready to import");
+    expect(itemStatusText({ status: "staged", progress: 0, error: CANCELLED_TEXT })).toBe("Upload cancelled. Press Import to try again.");
     expect(itemStatusText({ status: "uploading", progress: 0.404, error: "" })).toBe("Uploading 40%");
     expect(itemStatusText({ status: "registering", progress: 1, error: "" })).toBe("Saving");
     expect(itemStatusText({ status: "done", progress: 1, error: "" })).toBe("Added. Reading starts now.");

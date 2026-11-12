@@ -1,4 +1,4 @@
-import type { KbCollection, KbDocument, KbUploadTicket } from "@/lib/api";
+import { UploadCancelledError, type KbCollection, type KbDocument, type KbUploadTicket } from "@/lib/api";
 import { KB_TYPE_CHIPS, fileTypeOf, tooLargeMessage } from "@/components/agents/knowledgeRows";
 
 /** Pure helpers for the Upload page: file checks, the upload steps, the collection list, recent files. */
@@ -55,23 +55,29 @@ export type UploadStep = "uploading" | "registering";
 /** The calls the upload needs. companionKbApi satisfies this; tests pass fakes. */
 export type UploadApi = {
   createUpload: (name: string, sizeBytes: number) => Promise<KbUploadTicket>;
-  uploadToTicket: (ticket: KbUploadTicket, file: File, onProgress?: (fraction: number) => void) => Promise<void>;
+  uploadToTicket: (ticket: KbUploadTicket, file: File, onProgress?: (fraction: number) => void, signal?: AbortSignal) => Promise<void>;
   registerDocument: (body: { draft_id: string; collection_id: string; tier: 1 | 2; title?: string }) => Promise<KbDocument>;
 };
 
 /**
  * One file, three steps: ask for a ticket, send the file, register it as a file.
  * Throws the first error; the caller shows it on that file only.
+ * Aborting hooks.signal before the file is registered throws UploadCancelledError and saves nothing.
  */
 export async function uploadOne(
   api: UploadApi,
   file: File,
   target: { collectionId: string; tier: 1 | 2 },
-  hooks: { onStep?: (step: UploadStep) => void; onProgress?: (fraction: number) => void } = {},
+  hooks: { onStep?: (step: UploadStep) => void; onProgress?: (fraction: number) => void; signal?: AbortSignal } = {},
 ): Promise<KbDocument> {
+  const stopIfCancelled = () => {
+    if (hooks.signal?.aborted) throw new UploadCancelledError();
+  };
   hooks.onStep?.("uploading");
   const ticket = await api.createUpload(file.name, file.size);
-  await api.uploadToTicket(ticket, file, hooks.onProgress);
+  stopIfCancelled();
+  await api.uploadToTicket(ticket, file, hooks.onProgress, hooks.signal);
+  stopIfCancelled();
   hooks.onStep?.("registering");
   return api.registerDocument({
     draft_id: ticket.draft_id,
@@ -87,6 +93,7 @@ export type UploadItem = {
   status: "staged" | "uploading" | "registering" | "done" | "error";
   /** 0 to 1 while uploading. */
   progress: number;
+  /** The failure, or on a staged file the note "Upload cancelled. …" after Cancel. */
   error: string;
   /** Fixed when Import is pressed, so Retry goes to the same place. */
   collectionId: string | null;
@@ -97,7 +104,7 @@ export type UploadItem = {
 export function itemStatusText(item: Pick<UploadItem, "status" | "progress" | "error">): string {
   switch (item.status) {
     case "staged":
-      return "Ready to import";
+      return item.error || "Ready to import";
     case "uploading":
       return `Uploading ${Math.round(Math.min(1, Math.max(0, item.progress)) * 100)}%`;
     case "registering":
@@ -108,6 +115,9 @@ export function itemStatusText(item: Pick<UploadItem, "status" | "progress" | "e
       return item.error || "Could not upload this file.";
   }
 }
+
+/** Shown on a file after Cancel; it is staged again, so Import sends it. */
+export const CANCELLED_TEXT = "Upload cancelled. Press Import to try again.";
 
 export function stagedCount(items: Pick<UploadItem, "status">[]): number {
   return items.filter((i) => i.status === "staged").length;
