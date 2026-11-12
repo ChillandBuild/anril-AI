@@ -1137,6 +1137,16 @@ export interface TelecallingAnalytics {
   quality_avg?: number | null;
 }
 
+/** One row of Settings > Auto-Reply (backend automation_guards.SOURCES). ai/template: has that switch. */
+export interface AutoReplySource {
+  key: string;
+  label: string;
+  group: "channel" | "lead";
+  hint: string;
+  ai: boolean;
+  template: boolean;
+}
+
 export interface TelecallingConfig {
   enabled?: boolean;
   calling_provider?: "telecmi" | "sim_basic";
@@ -3028,6 +3038,8 @@ export const api = {
   settings: {
     getAiAutoReply: () =>
       apiFetch<{ enabled: boolean }>(`/api/v1/settings/ai-auto-reply`),
+    getAutoReplySources: () =>
+      apiFetch<{ sources: AutoReplySource[] }>(`/api/v1/settings/auto-reply-sources`),
     getTelecallingConfig: () =>
       apiFetch<TelecallingConfig>(`/api/v1/settings/telecalling-config`),
   },
@@ -4464,10 +4476,16 @@ export const companionKbApi = {
    * Sends the file straight to storage (a signed upload URL), not through the
    * backend. The URL carries the permission, so no Authorization header.
    * XMLHttpRequest, not fetch, so progress can be reported.
+   * Aborting `signal` stops the upload and rejects with UploadCancelledError.
    */
-  uploadToTicket: (ticket: KbUploadTicket, file: File, onProgress?: (fraction: number) => void) =>
+  uploadToTicket: (ticket: KbUploadTicket, file: File, onProgress?: (fraction: number) => void, signal?: AbortSignal) =>
     new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new UploadCancelledError());
+        return;
+      }
       const xhr = new XMLHttpRequest();
+      signal?.addEventListener("abort", () => xhr.abort(), { once: true });
       xhr.open("PUT", ticket.upload_url);
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
       xhr.upload.onprogress = (e) => {
@@ -4483,10 +4501,18 @@ export const companionKbApi = {
       };
       xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
       xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again."));
-      xhr.onabort = () => reject(new Error("Upload cancelled."));
+      xhr.onabort = () => reject(new UploadCancelledError());
       xhr.send(file);
     }),
 };
+
+/** The person pressed Cancel while a knowledge file was uploading. Not a failure: nothing was saved. */
+export class UploadCancelledError extends Error {
+  constructor() {
+    super("Upload cancelled.");
+    this.name = "UploadCancelledError";
+  }
+}
 
 /** For 204 responses (no JSON body). Same errors as apiFetch. */
 async function apiFetchNoContent(path: string, opts: RequestInit): Promise<void> {

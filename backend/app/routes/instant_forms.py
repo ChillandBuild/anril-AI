@@ -469,7 +469,7 @@ async def send_template_now(row_id: str, tenant_id: str = Depends(get_tenant_id)
         "id", row_id
     ).eq("tenant_id", tenant_id).in_("template_status", ["failed", "no_template", "skipped_old"]).execute()
     await asyncio.to_thread(forms_service.ensure_lead, db, tenant_id, row_id)
-    status = await forms_service.send_form_template(db, tenant_id, row_id)
+    status = await forms_service.send_form_template(db, tenant_id, row_id, manual=True)
     refreshed = (
         db.table("meta_form_leads").select("template_status,template_error,template_sent_at")
         .eq("id", row_id).eq("tenant_id", tenant_id).limit(1).execute()

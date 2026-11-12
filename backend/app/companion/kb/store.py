@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.companion.kb.pages import strip_invisible
 from app.db.supabase import get_supabase
 from app.services.embeddings import to_pgvector
 from app.services.pagination import fetch_all_rows
@@ -77,10 +78,11 @@ def _short(value: str | None, limit: int) -> str | None:
     return value[:limit] if isinstance(value, str) else value
 
 
-def _no_nul(value: str | None) -> str | None:
+def _clean_text(value: str | None) -> str | None:
     """Postgres refuses a text value that holds a NUL character, and OCR or an odd file can
-    produce one. Without this, one such page would fail its whole book on every pass, forever."""
-    return value.replace("\x00", "") if isinstance(value, str) else value
+    produce one. Without this, one such page would fail its whole book on every pass, forever.
+    Invisible zero-width marks go too, so word search matches what people type."""
+    return strip_invisible(value.replace("\x00", "")) if isinstance(value, str) else value
 
 
 async def _run(build):
@@ -368,7 +370,7 @@ async def save_page(tenant_id: str, document_id: str, page_no: int, *, status: s
     page = await get_page(tenant_id, document_id, page_no)
     if not page:
         return None
-    text = _no_nul(text)
+    text = _clean_text(text)
     payload = {"status": status, "method": method, "text": text, "char_count": len(text or ""),
                "error": _short(error, _ERROR_MAX), "attempts": (page.get("attempts") or 0) + 1,
                "updated_at": _now()}
@@ -417,8 +419,8 @@ async def replace_chunks(tenant_id: str, document_id: str, chunks: list[dict]) -
                .eq("tenant_id", tenant_id).eq("document_id", document_id))
     rows = [{"tenant_id": tenant_id, "document_id": document_id,
              "collection_id": document["collection_id"], "tier": document["tier"], "seq": seq,
-             "heading_path": _no_nul(chunk.get("heading_path") or "")[:_HEADING_MAX],
-             "text": _no_nul(chunk["text"]), "page_from": chunk["page_from"], "page_to": chunk["page_to"]}
+             "heading_path": _clean_text(chunk.get("heading_path") or "")[:_HEADING_MAX],
+             "text": _clean_text(chunk["text"]), "page_from": chunk["page_from"], "page_to": chunk["page_to"]}
             for seq, chunk in enumerate(chunks)]
     inserted: list[dict] = []
     for start in range(0, len(rows), _CHUNK_BATCH):
@@ -588,7 +590,7 @@ async def add_chunk(tenant_id: str, document_id: str, *, heading_path: str, text
                       .eq("document_id", document_id).order("seq", desc=True).limit(1))
     row = {"tenant_id": tenant_id, "document_id": document_id, "collection_id": document["collection_id"],
            "tier": document["tier"], "seq": (last[0]["seq"] + 1) if last else 0,
-           "heading_path": _no_nul(heading_path or "")[:_HEADING_MAX], "text": _no_nul(text),
+           "heading_path": _clean_text(heading_path or "")[:_HEADING_MAX], "text": _clean_text(text),
            "page_from": page_from, "page_to": page_to}
     return _without_vectors(await _run(lambda: get_supabase().table(_CHUNKS).insert(row)))[0]
 

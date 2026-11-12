@@ -410,6 +410,17 @@ async def list_settings(ctx: dict = Depends(require_settings_read)):
     return {"settings": settings}
 
 
+def _check_auto_reply_updates(updates: dict) -> None:
+    """Settings > Auto-Reply keys: the two masters are 'true'/'false', the per-source
+    switches are validated and normalised in place (services/automation_guards.py)."""
+    from app.services.automation_guards import normalize_auto_reply_updates
+
+    try:
+        normalize_auto_reply_updates(updates)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 DESCRIPTION_SETTING_KEY = "business_description"
 DESCRIPTION_OWNER_ONLY_MESSAGE = "Only the owner can edit the Description"
 
@@ -462,6 +473,7 @@ async def update_settings(
         from app.services.ai_reply import REPLY_MODELS
         if payload.updates["ai_reply_model"] not in REPLY_MODELS:
             raise HTTPException(status_code=400, detail="Unknown reply model. Pick one from the list.")
+    _check_auto_reply_updates(payload.updates)
     description = _checked_owner_description(payload.updates, ctx)
 
     db = get_supabase()
@@ -2033,6 +2045,17 @@ async def get_ai_auto_reply_state(tenant_id: str = Depends(get_tenant_id)):
     per-lead toggle when it is off). Same rule as the reply gate: only the literal "false" is off."""
     from app.config_dynamic import get_setting
     return {"enabled": get_setting("ai_auto_reply_enabled", fallback="true", tenant_id=tenant_id) != "false"}
+
+
+@router.get("/auto-reply-sources")
+async def get_auto_reply_sources(ctx: dict = Depends(require_settings_read)):
+    """The rows of Settings > Auto-Reply. A source added to automation_guards.SOURCES
+    shows up here, and on the page, by itself. ai/template: whether that row has the switch."""
+    from app.services.automation_guards import SOURCES
+    return {"sources": [
+        {"key": s.key, "label": s.label, "group": s.group, "hint": s.hint, "ai": s.ai, "template": s.template}
+        for s in SOURCES
+    ]}
 
 
 @router.get("/telecalling-config")

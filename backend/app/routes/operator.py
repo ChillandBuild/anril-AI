@@ -14,6 +14,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.system_admin import get_system_admin
 from app.services.assignment import get_telecalling_config, save_telecalling_config
 from app.services.audit_log import record_audit_event
+from app.services.automation_guards import source_rows
 from app.services.call_wrapup import connect_rate as wrapup_connect_rate
 from app.services.deal_settings import (
     DEAL_IDLE_CLOSE_DAYS_KEY,
@@ -1368,6 +1369,7 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
             # still going out (live-confirmed 2026-07-17: a never-touched tenant had this
             # value stored as NULL, which a strict == "true" check rendered as Off).
             "ai_auto_reply_enabled": settings_map.get("ai_auto_reply_enabled") != "false",
+            "instant_templates_enabled": settings_map.get("instant_templates_enabled") != "false",
             "ai_voice_reply_enabled": settings_map.get("ai_voice_reply_enabled") == "true",
             "ai_voice_reply_speaker": settings_map.get("ai_voice_reply_speaker") or "Kore",
             "ai_media_recommendations_enabled": settings_map.get("ai_media_recommendations_enabled") == "true",
@@ -1377,6 +1379,8 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
             "reply_language_mode": settings_map.get("reply_language_mode", "mirror") or "mirror",
             "deal_idle_close_days": clamp_deal_idle_close_days(settings_map.get(DEAL_IDLE_CLOSE_DAYS_KEY)),
         },
+        # Settings > Auto-Reply rows, current state included (services/automation_guards.py).
+        "auto_reply_sources": source_rows(tenant_id),
         "usage": {
             "period": period,
             "counters": usage_counters,
@@ -1422,6 +1426,11 @@ def update_client_config(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         normalized[DEAL_IDLE_CLOSE_DAYS_KEY] = str(days)
+    from app.services.automation_guards import normalize_auto_reply_updates
+    try:
+        normalize_auto_reply_updates(normalized)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if "ai_reply_model" in normalized:
         from app.services.ai_reply import REPLY_MODELS
         if normalized["ai_reply_model"] not in REPLY_MODELS:

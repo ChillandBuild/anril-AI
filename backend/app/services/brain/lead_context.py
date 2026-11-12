@@ -23,7 +23,7 @@ DEFAULT_CHANNEL = "whatsapp"
 AI_REPLY_METRIC = "ai_reply"
 LEAD_COLUMNS = (
     "id,tenant_id,name,segment,score,phone,ai_enabled,blocked_at,opted_out,"
-    "needs_human_attention,tamil_locked,assigned_to"
+    "needs_human_attention,tamil_locked,assigned_to,source"
 )
 RETRIEVAL_OFF_NOTE = (
     "Not retrieved. Retrieving knowledge costs one embedding call, so it only runs when you ask."
@@ -71,16 +71,11 @@ def _latest_inbound(db, tenant_id: str, lead_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def _global_auto_reply_off(db, tenant_id: str) -> bool:
-    """The two checks generate_reply makes (ai_reply.py: the direct app_settings 'false' read,
-    then get_setting != 'true'); either one skips the reply."""
-    row = (
-        db.table("app_settings").select("value")
-        .eq("tenant_id", tenant_id).eq("key", "ai_auto_reply_enabled").limit(1).execute()
-    ).data or []
-    if row and row[0].get("value") == "false":
-        return True
-    return get_setting("ai_auto_reply_enabled", fallback="true", tenant_id=tenant_id) != "true"
+def _auto_reply_block(tenant_id: str, channel: str, lead: dict) -> str | None:
+    """The Settings > Auto-Reply check generate_reply makes: the AI master, the channel's
+    row and the lead's source row. Returns the plain reason, or None when nothing blocks."""
+    from app.services.automation_guards import ai_reply_block_reason
+    return ai_reply_block_reason(tenant_id, channel, lead.get("source"))
 
 
 def _quota_exhausted(db, tenant_id: str) -> bool:
@@ -104,13 +99,15 @@ def _gate(key: str, label: str, active: bool, blocks_reply: bool, detail: str) -
     return {"key": key, "label": label, "active": active, "blocks_reply": blocks_reply, "detail": detail}
 
 
-def build_gates(db, tenant_id: str, lead: dict) -> list[dict]:
+def build_gates(db, tenant_id: str, lead: dict, channel: str = DEFAULT_CHANNEL) -> list[dict]:
     """Every check that can stop or change a reply, in the order generate_reply applies them."""
+    auto_reply_block = _auto_reply_block(tenant_id, channel, lead)
     return [
         _gate("blocked", "Lead is blocked", bool(lead.get("blocked_at")), True,
               "A blocked lead gets no auto-reply."),
-        _gate("auto_reply_off", "Auto-reply is off for the business", _global_auto_reply_off(db, tenant_id), True,
-              "The business-wide AI auto-reply switch is off, so no lead gets an auto-reply."),
+        _gate("auto_reply_off", auto_reply_block or "Auto-reply is off", bool(auto_reply_block), True,
+              "Settings > Auto-Reply: the AI Replies switch, this chat channel's row and the lead's "
+              "source row (e.g. IndiaMART) must all be on."),
         _gate("takeover", "AI is off for this lead (a person took over)", lead.get("ai_enabled") is False, True,
               "Anril only rescores this lead. A person answers."),
         _gate("quota_exhausted", "AI reply quota is used up", _quota_exhausted(db, tenant_id), True,
@@ -184,7 +181,7 @@ async def build_what_aira_saw(db, tenant_id: str, lead_id: str, *, retrieval: bo
     if retrieval:
         context_text = await get_knowledge_context(tenant_id, query=message, campaign_tag_id=campaign_tag_id)
 
-    gates = build_gates(db, tenant_id, lead)
+    gates = build_gates(db, tenant_id, lead, channel)
     return {
         "reconstructed": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),

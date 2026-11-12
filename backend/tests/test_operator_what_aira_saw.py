@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.dependencies.auth import get_current_user
 from app.dependencies.system_admin import get_system_admin
 from app.main import app
-from app.services import ai_reply, business_details, deal_turn, intake, knowledge_service
+from app.services import ai_reply, automation_guards, business_details, deal_turn, intake, knowledge_service
 from app.services.brain import lead_context
 from brain_helpers import BrainDB, _BrainQuery
 
@@ -104,7 +104,13 @@ def retrieval(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def quiet(monkeypatch):
+def quiet(monkeypatch, db):
+    def stored_setting(key, fallback=None, tenant_id=None):
+        row = next((r for r in db.rows("app_settings") if r["key"] == key and r["tenant_id"] == tenant_id), None)
+        return row["value"] if row else fallback
+
+    # Settings > Auto-Reply switches are read through automation_guards, from the seeded rows.
+    monkeypatch.setattr(automation_guards, "get_setting", stored_setting)
     monkeypatch.setattr(lead_context, "get_setting", lambda key, fallback=None, tenant_id=None: fallback)
     monkeypatch.setattr(ai_reply, "get_setting", lambda key, fallback=None, tenant_id=None: fallback)
     monkeypatch.setattr(intake, "get_intake_config", lambda tenant_id, db=None: {**intake._DEFAULT_CONFIG})
@@ -187,6 +193,22 @@ class TestContent:
         body = client.get(url()).json()
         assert {g["key"]: g for g in body["gates"]}["auto_reply_off"]["active"] is True
         assert body["would_reply"] is False
+
+    def test_source_row_off_is_named_as_the_reason(self, db, client):
+        # Ravi-style case: an IndiaMART lead, with IndiaMART's AI replies switched off.
+        next(r for r in db.rows("leads") if r["id"] == LEAD1)["source"] = "indiamart"
+        db.seed("app_settings", tenant_id=T1, key="auto_reply_sources", value='{"indiamart": {"ai": false}}')
+        body = client.get(url()).json()
+        gate = {g["key"]: g for g in body["gates"]}["auto_reply_off"]
+        assert gate["active"] is True
+        assert gate["label"] == "AI replies are switched off for IndiaMART leads"
+        assert body["would_reply"] is False
+
+    def test_channel_row_off_is_named_as_the_reason(self, db, client):
+        db.seed("app_settings", tenant_id=T1, key="auto_reply_sources", value='{"whatsapp": {"ai": false}}')
+        body = client.get(url()).json()
+        gate = {g["key"]: g for g in body["gates"]}["auto_reply_off"]
+        assert gate["active"] is True and gate["label"] == "AI replies are switched off for WhatsApp"
 
     def test_opted_out_is_shown_but_does_not_block_a_reply(self, db, client):
         next(r for r in db.rows("leads") if r["id"] == LEAD1)["opted_out"] = True

@@ -29,6 +29,8 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import httpx
+
 from app.companion import memory_embed
 from app.companion.kb import chunking, filetypes, ocr, pages, store
 from app.config_dynamic import require_tenant_setting
@@ -58,6 +60,7 @@ MAX_TEXT_PAGES = 3000        # same for text/Word/Excel files: 3,000 virtual pag
 FILE_READ_SECONDS = 120      # counting a PDF's pages, or pulling all the text out of a Word/Excel file
 PAGE_READ_SECONDS = 30       # the text layer of one PDF page
 OCR_JOB_SECONDS = 240        # one page through OCR: drawing the page + 3 tries of 60 s + the waits between
+MAX_PARALLEL_SAVES = 5       # database writes one book sends at once (50 at once dropped the shared connection)
 MAX_BACKGROUND_PASSES = 2    # passes schedule() runs at once; a third book waits for the every-minute job
 FILL_ROUNDS = 3              # how many times one fill-in run asks again after skipping keyless businesses
 MAX_SLOW_PAGES = 3           # this many pages cut off by a time limit in one pass: the book is failed
@@ -389,8 +392,9 @@ async def _embed_missing(tenant_id: str, document_id: str, deadline: float) -> b
             return False
         vectors = await memory_embed.embed([_embed_text(c) for c in missing], "document", tenant_id)
         hits = [(c, v) for c, v in zip(missing, vectors) if v]
-        await asyncio.gather(*(store.set_chunk_embedding(tenant_id, c["id"], v, memory_embed.MODEL)
-                               for c, v in hits))
+        for i in range(0, len(hits), MAX_PARALLEL_SAVES):
+            await asyncio.gather(*(store.set_chunk_embedding(tenant_id, c["id"], v, memory_embed.MODEL)
+                                   for c, v in hits[i:i + MAX_PARALLEL_SAVES]))
         if len(hits) < len(missing):
             return False
 
@@ -555,6 +559,23 @@ async def _give_up(tenant_id: str, document: dict) -> str:
     return "failed"
 
 
+async def _after_dropped_connection(tenant_id: str, document_id: str) -> str:
+    """The connection to the database (or storage) dropped mid-pass. That is the network, not the file,
+    so the crash count this pass added is taken back and the next minute carries on where it stopped.
+    Example: 6 books at once on 12 Nov 2026, 15 drops in 3 minutes; each used to count as a crash, and
+    3 of them failed books whose every page had been read."""
+    document = await store.get_document(tenant_id, document_id)
+    if not document:
+        return "not_found"
+    if document["status"] != "processing":
+        return document["status"]
+    crashes = max((document.get("crashed_passes") or 0) - 1, 0)
+    row = await store.update_document(tenant_id, document_id, status="processing", crashed_passes=crashes)
+    if row:
+        _released[document_id] = row.get("updated_at") or ""
+    return "processing"
+
+
 async def _after_crash(tenant_id: str, document_id: str) -> str:
     """A pass ended in an unexpected error. Its claim is released (otherwise the every-minute job
     would think another worker has the book and wait CLAIM_SECONDS), and the third crash in a
@@ -582,6 +603,13 @@ async def run_document(tenant_id: str, document_id: str, *, budget_seconds: floa
     _deferred.discard(document_id)
     try:
         return await _pass(tenant_id, document_id, _clock() + budget_seconds)
+    except httpx.TransportError as exc:
+        logger.warning("companion kb: connection dropped during a pass document=%s (%s), not counted as a crash",
+                       document_id, type(exc).__name__)
+        try:
+            return await _after_dropped_connection(tenant_id, document_id)
+        except Exception:           # still down: the claim times out and a later pass retries
+            return "processing"
     except Exception as exc:
         # Unexpected (a database hiccup, a file that breaks the reader): the book stays
         # "processing" and the next pass retries, up to MAX_CRASHED_PASSES times in a row.
