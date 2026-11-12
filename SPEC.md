@@ -1,6 +1,6 @@
 # SPEC: Scheduled jobs on a Postgres task queue (Procrastinate)
 
-Status: draft, approved capability map 2026-10-31. Owner: Prem.
+Status: **shipped 2026-11-01** (APScheduler deleted; see `.agents/decisions/log.md` 2026-11-01). Kept for reference only. Owner: Prem.
 
 ## 1. Objective
 
