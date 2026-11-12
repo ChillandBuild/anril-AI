@@ -23,12 +23,14 @@ import re
 import zipfile
 
 PAGE_CHARS = 3000
-# The ONE place the per-file size limit lives (Supabase Free: 50 MB per file). The storage bucket in
-# migration 257 carries the same number as its file_size_limit.
-MAX_BYTES = 50 * 1024 * 1024
-# A .docx/.pptx/.xlsx is a zip archive. A 50 MB zip can unpack to many gigabytes (a "zip bomb") and
+# The ONE place the per-file size limit lives. 300 MB: AstroTamil's biggest scanned book is 227 MB.
+# Supabase Pro allows it only after the project's global file size limit (Storage settings) is raised
+# to at least 300 MB. The storage bucket carries the same number as its file_size_limit (migration 264).
+MAX_BYTES = 300 * 1024 * 1024
+# A .docx/.pptx/.xlsx is a zip archive. A small zip can unpack to many gigabytes (a "zip bomb") and
 # take the whole server down, so the sizes the archive itself declares are added up before any
-# parser opens it. 200 MB is 4x the upload limit: far above any real book.
+# parser opens it. This stays 200 MB (below the upload limit): the office parsers load every part
+# into memory, and a real text document is far smaller. Big scanned books come as PDFs.
 MAX_UNZIPPED_BYTES = 200 * 1024 * 1024
 BROKEN_OFFICE_ERROR = (
     "This file could not be opened. It may be damaged or password-protected. "

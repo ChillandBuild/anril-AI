@@ -1,7 +1,7 @@
 """Owner routes for the Anril Agents knowledge base (dashboard login, companions.manage).
 
 Worked example: AstroTamil's owner opens the collection "Astrology books" and adds "Book 7.pdf" (62 MB).
-  POST /uploads {name: "Book 7.pdf", size_bytes: 65011712}  -> 413 "Book 7.pdf is 62 MB. The limit is 50 MB."
+  POST /uploads {name: "Book 7.pdf", size_bytes: 65011712}  -> 413 "Book 7.pdf is 320 MB. The limit is 300 MB."
   POST /uploads {name: "Book 7.pdf", size_bytes: 41943040}  -> {draft_id, upload_url, ...}; the browser
        sends the file straight to storage, into <tenant>/<draft_id>/original.pdf
   POST /documents {draft_id, collection_id, tier: 2}        -> the book, status "processing"
@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.companion import store as companion_store
 from app.companion.kb import filetypes, ingest, store as kb_store, store_search
-from app.companion.kb.filetypes import MAX_BYTES     # the ONE place this limit lives (50 MB)
+from app.companion.kb.filetypes import MAX_BYTES     # the ONE place this limit lives (300 MB)
 from app.dependencies.tenant import require_permission
 from app.routes.auto_messages import _SlidingWindow
 
@@ -117,7 +117,7 @@ def _passage_out(row: dict) -> dict:
 
 
 def _mb(size: int) -> str:
-    """65011712 -> "62"; 52533657 -> "50.2" (rounded up, so a file over the limit never reads as 50)."""
+    """65011712 -> "62"; 314677657 -> "300.1" (rounded up, so a file over the limit never reads as 300)."""
     return f"{math.ceil(size / _MB * 10) / 10:g}"
 
 

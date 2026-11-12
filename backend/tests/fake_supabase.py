@@ -5,6 +5,7 @@ ordering is deterministic, and deleting a knowledge_documents row cascades the w
 real foreign keys do."""
 import itertools
 import uuid
+from urllib.parse import unquote, urlsplit
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -94,6 +95,21 @@ class FakeStorage:
 
     def from_(self, bucket: str) -> "_FakeBucket":
         return _FakeBucket(self, bucket)
+
+    def http_client(self):
+        """An httpx client that answers the signed download links below from `files`, so code that
+        streams a stored file (kb store.download_file) runs offline. Unknown file -> 400, like storage."""
+        import httpx
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            parts = urlsplit(str(request.url))
+            if parts.netloc != "fake.storage" or not parts.path.startswith("/object/sign/"):
+                return httpx.Response(404)
+            bucket, _, path = unquote(parts.path[len("/object/sign/"):]).partition("/")
+            data = self.files.get((bucket, path))
+            return httpx.Response(200, content=data) if data is not None else httpx.Response(400)
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(answer))
 
 
 class _FakeBucket:

@@ -261,7 +261,7 @@ def test_does_not_import_the_sales_knowledge_service():
 # ---------- hostile and odd files ----------
 
 def test_the_one_size_limit_lives_here():
-    assert filetypes.MAX_BYTES == 50 * 1024 * 1024
+    assert filetypes.MAX_BYTES == 300 * 1024 * 1024
     assert filetypes.MAX_UNZIPPED_BYTES == 200 * 1024 * 1024
 
 

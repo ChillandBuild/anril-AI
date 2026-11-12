@@ -16,8 +16,11 @@
   .card h2 { font-size: 1.3rem; }
   .card p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }
-.tableWrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--line); }
-.table { border-collapse: collapse; min-width: 720px; width: 100%; font-size: 0.92rem; line-height: 1.4; }
-.table th, .table td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--body); }
+.tableWrap { max-width: 100%; border: 1px solid var(--line); }
+.table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 0.9rem; line-height: 1.4; }
+.table th, .table td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--body); overflow-wrap: anywhere; hyphens: auto; }
 .table thead th { background: var(--grey); color: var(--navy); font-weight: 700; }
 .table tbody th { color: var(--navy); font-weight: 600; }
+.table th:first-child { width: 22%; }
+@media (max-width: 640px) { .table { font-size: 0.68rem; line-height: 1.3; } .table th, .table td { padding: 6px 4px; } .table th:first-child { width: 20%; } }
+@media (min-width: 900px) { .tableWrap { width: 940px; max-width: calc(100vw - 80px); } }

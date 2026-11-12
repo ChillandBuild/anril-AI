@@ -76,7 +76,7 @@ export function BlogArticle({ post }: { post: Post }) {
                 <Link prefetch={false} className={ui.tlink} href={b.href}>{b.label}</Link>
               </p>
             ) : b.type === "table" ? (
-              <div key={i} className={s.tableWrap} tabIndex={0}>
+              <div key={i} className={s.tableWrap}>
                 <table className={s.table}>
                   <thead>
                     <tr>{b.head.map((h, j) => <th key={j} scope="col">{h}</th>)}</tr>

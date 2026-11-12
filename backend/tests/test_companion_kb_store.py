@@ -25,6 +25,7 @@ def db(monkeypatch):
     fake = FakeSupabase()
     fake.storage = FakeStorage()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
+    monkeypatch.setattr(store, "_http_client", fake.storage.http_client)
     return fake
 
 
@@ -481,3 +482,26 @@ def test_tenant_b_cannot_delete_tenant_a_empty_collection(db):
     empty = run(store.create_collection(A, "Empty shelf"))  # no books: only the tenant check stops it
     assert run(store.delete_collection(B, empty["id"])) is False
     assert [r["id"] for r in db.rows("companion_kb_collections")] == [empty["id"]]
+
+
+def test_download_streams_a_big_book_to_disk_without_reading_it_whole(db, monkeypatch, tmp_path):
+    # A 3.5 MB stand-in for AstroTamil's 227 MB book: it must arrive in pieces, byte for byte.
+    big = bytes(range(256)) * (14 * 1024)
+    run(store.upload_file(f"{A}/d7/original.pdf", big, "application/pdf"))
+    monkeypatch.setattr(store._bucket().__class__, "download",
+                        lambda *a, **k: pytest.fail("the whole file was read into memory"))
+    dest = tmp_path / "book.pdf"
+    assert run(store.download_file(f"{A}/d7/original.pdf", str(dest))) == len(big)
+    assert dest.read_bytes() == big
+
+
+def test_download_of_a_missing_file_raises(db, tmp_path):
+    with pytest.raises(Exception):
+        run(store.download_file(f"{A}/never/original.pdf", str(tmp_path / "x.pdf")))
+
+
+def test_bucket_limit_in_migration_264_equals_max_bytes():
+    from pathlib import Path
+    from app.companion.kb import filetypes
+    sql = (Path(__file__).parents[1] / "supabase/migrations/264_companion_kb_300mb_files.sql").read_text()
+    assert f"file_size_limit = {filetypes.MAX_BYTES} " in sql and "'companion-kb-documents'" in sql
