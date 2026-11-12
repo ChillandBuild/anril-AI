@@ -94,6 +94,34 @@ def test_validate_rejects_unknown_sources_and_switches():
             guards.validate_source_flags(bad)
 
 
+def test_block_reason_names_the_switch_that_stops_the_reply():
+    with AI_OFF:
+        assert guards.ai_reply_block_reason(TENANT, "whatsapp", "indiamart") == \
+            "AI Replies is switched off for the whole business"
+    with settings({"telegram": {"ai": False}, "indiamart": {"ai": False}}):
+        assert guards.ai_reply_block_reason(TENANT, "telegram", None) == "AI replies are switched off for Telegram"
+        assert guards.ai_reply_block_reason(TENANT, "whatsapp", "indiamart") == \
+            "AI replies are switched off for IndiaMART leads"
+        assert guards.ai_reply_block_reason(TENANT, "whatsapp", "justdial") is None
+
+
+def test_normalize_accepts_operator_booleans_and_rejects_junk():
+    updates = {"ai_auto_reply_enabled": False, "instant_templates_enabled": "true",
+               "auto_reply_sources": '{"partner": {"template": false}}'}
+    guards.normalize_auto_reply_updates(updates)
+    assert updates == {"ai_auto_reply_enabled": "false", "instant_templates_enabled": "true",
+                       "auto_reply_sources": '{"partner": {"template": false}}'}
+    with pytest.raises(ValueError):
+        guards.normalize_auto_reply_updates({"instant_templates_enabled": "maybe"})
+
+
+def test_source_rows_report_current_state_and_missing_switches():
+    with settings({"indiamart": {"template": False}}):
+        rows = {r["key"]: r for r in guards.source_rows(TENANT)}
+    assert rows["indiamart"]["template"] is False and rows["indiamart"]["ai"] is True
+    assert rows["whatsapp"]["template"] is None and rows["partner"]["ai"] is None
+
+
 def test_every_source_has_at_least_one_switch_and_a_unique_key():
     keys = [s.key for s in guards.SOURCES]
     assert len(keys) == len(set(keys))

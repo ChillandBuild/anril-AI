@@ -126,12 +126,26 @@ const VOICE_SPEAKERS = [
   { value: "Sulafat", label: "Sulafat (Warm)" },
 ];
 
+/** One Settings > Auto-Reply row (backend automation_guards.source_rows). null = the row has no such switch. */
+interface AutoReplySourceRow {
+  key: string;
+  label: string;
+  group: "channel" | "lead";
+  hint: string;
+  ai: boolean | null;
+  template: boolean | null;
+}
+
+type AutoReplyMaster = "ai_auto_reply_enabled" | "instant_templates_enabled";
+
 interface ConfigData {
   master_prompt: string;
   business_description: string;
   credentials_status: Record<string, "configured" | "incomplete" | "not_configured">;
+  auto_reply_sources?: AutoReplySourceRow[];
   settings: {
     ai_auto_reply_enabled: boolean;
+    instant_templates_enabled?: boolean;
     ai_voice_reply_enabled: boolean;
     ai_voice_reply_speaker?: string | null;
     ai_media_recommendations_enabled?: boolean;
@@ -194,7 +208,8 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
   const [pendingProvider, setPendingProvider] = useState<"telecmi" | "sim_basic" | null>(null);
   const [retrievalSaving, setRetrievalSaving] = useState<RetrievalMode | null>(null);
   const [replyLanguageSaving, setReplyLanguageSaving] = useState<ReplyLanguageMode | null>(null);
-  const [autoReplySaving, setAutoReplySaving] = useState(false);
+  // Which Auto-Reply switch is saving: a master key, or "<source>:<ai|template>".
+  const [autoReplySaving, setAutoReplySaving] = useState<string | null>(null);
   const [idleCloseDraft, setIdleCloseDraft] = useState<string | null>(null);
   const [idleCloseSaving, setIdleCloseSaving] = useState(false);
   const [voiceReplySaving, setVoiceReplySaving] = useState(false);
@@ -336,14 +351,15 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function updateAutoReply(enabled: boolean) {
+  async function updateAutoReply(key: AutoReplyMaster, enabled: boolean) {
     // No early-return-if-unchanged guard here: the displayed value can be stale relative
     // to the DB (e.g. a never-configured tenant defaults to enabled on the backend but a
     // naive `== "true"` read shows Off) -- a guard keyed off that display would silently
     // no-op the very click meant to fix it. Live-confirmed 2026-07-17: this was exactly
     // why clicking "Off" for a never-configured tenant sent no request at all.
     if (!config) return;
-    setAutoReplySaving(true);
+    const name = key === "ai_auto_reply_enabled" ? "AI replies" : "Instant templates";
+    setAutoReplySaving(key);
     setError(null);
     try {
       await apiFetch<{ status: string }>(
@@ -351,7 +367,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
         {
           method: "PATCH",
           body: JSON.stringify({
-            settings: { ai_auto_reply_enabled: enabled }
+            settings: { [key]: enabled }
           })
         }
       );
@@ -359,15 +375,44 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
         ...config,
         settings: {
           ...config.settings,
-          ai_auto_reply_enabled: enabled
+          [key]: enabled
         }
       });
-      toast.success(enabled ? "AI auto-reply enabled for this client." : "AI auto-reply disabled for this client.");
+      toast.success(`${name} ${enabled ? "on" : "off"} for this client.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update AI auto-reply");
-      toast.error("Failed to update AI auto-reply.");
+      setError(e instanceof Error ? e.message : `Failed to update ${name}`);
+      toast.error(`Failed to update ${name}.`);
     } finally {
-      setAutoReplySaving(false);
+      setAutoReplySaving(null);
+    }
+  }
+
+  async function updateAutoReplySource(sourceKey: string, field: "ai" | "template", enabled: boolean) {
+    if (!config?.auto_reply_sources) return;
+    const rows = config.auto_reply_sources.map((r) => (r.key === sourceKey ? { ...r, [field]: enabled } : r));
+    // Stored as {source: {ai|template: false}}; a missing switch means on.
+    const flags: Record<string, Partial<Record<"ai" | "template", boolean>>> = {};
+    for (const r of rows) {
+      for (const f of ["ai", "template"] as const) {
+        if (r[f] === false) flags[r.key] = { ...flags[r.key], [f]: false };
+      }
+    }
+    const row = rows.find((r) => r.key === sourceKey);
+    const what = `${row?.label ?? sourceKey} ${field === "ai" ? "AI replies" : "instant template"}`;
+    setAutoReplySaving(`${sourceKey}:${field}`);
+    setError(null);
+    try {
+      await apiFetch<{ status: string }>(`/api/v1/operator/clients/${tenantId}/config`, {
+        method: "PATCH",
+        body: JSON.stringify({ settings: { auto_reply_sources: JSON.stringify(flags) } }),
+      });
+      setConfig({ ...config, auto_reply_sources: rows });
+      toast.success(`${what} ${enabled ? "on" : "off"} for this client.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to update ${what}`);
+      toast.error(`Failed to update ${what}.`);
+    } finally {
+      setAutoReplySaving(null);
     }
   }
 
@@ -780,20 +825,74 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
           AI Auto-Reply
         </h3>
         <div className="rounded-card border border-border bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink">Auto-reply to inbound messages</p>
-              <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-                Allow Anril to automatically reply to inbound WhatsApp messages using AI for this client.
-              </p>
-            </div>
-            <OperatorToggle
-              checked={config.settings.ai_auto_reply_enabled}
-              onChange={updateAutoReply}
-              loading={autoReplySaving}
-              aria-label="Toggle AI auto-reply"
-            />
+          <p className="mb-3 text-xs leading-relaxed text-ink-muted">
+            Same switches as the client&apos;s Settings &gt; Auto-Reply. A message goes out only when its master switch and its row are both on. Each switch saves at once.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              ["ai_auto_reply_enabled", "AI Replies", "Every AI reply, photo/video reply, “typing…”, AI follow-up and nudge."],
+              ["instant_templates_enabled", "Instant Templates", "The welcome template a new lead gets from a connected source, and partner API sends."],
+            ] as const).map(([key, title, text]) => (
+              <div key={key} className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-surface-subtle/60 p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{title}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">{text}</p>
+                </div>
+                <OperatorToggle
+                  checked={config.settings[key] !== false}
+                  onChange={(next) => updateAutoReply(key, next)}
+                  loading={autoReplySaving === key}
+                  disabled={autoReplySaving !== null && autoReplySaving !== key}
+                  aria-label={`${title} on or off`}
+                />
+              </div>
+            ))}
           </div>
+
+          {config.auto_reply_sources && config.auto_reply_sources.length > 0 && (
+            <table className="mt-4 w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border-subtle text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
+                  <th className="py-2 pr-2 text-left">Source</th>
+                  <th className="w-20 py-2 text-center leading-tight sm:w-32">Instant template</th>
+                  <th className="w-20 py-2 text-center leading-tight sm:w-32">AI replies</th>
+                </tr>
+              </thead>
+              <tbody>
+                {config.auto_reply_sources.map((row) => (
+                  <tr key={row.key} className="border-b border-border-subtle last:border-b-0">
+                    <td className="py-2 pr-2">
+                      <span className="font-medium text-ink">{row.label}</span>
+                      {row.hint && <span className="block text-xs text-ink-muted">{row.hint}</span>}
+                    </td>
+                    {(["template", "ai"] as const).map((field) => {
+                      const masterOn = config.settings[field === "ai" ? "ai_auto_reply_enabled" : "instant_templates_enabled"] !== false;
+                      const value = row[field];
+                      const savingKey = `${row.key}:${field}`;
+                      return (
+                        <td key={field} className="py-2 text-center">
+                          <div className="flex justify-center">
+                            {value === null ? (
+                              <span className="text-xs text-ink-muted" aria-label="Not available">–</span>
+                            ) : (
+                              <OperatorToggle
+                                size="sm"
+                                checked={value}
+                                onChange={(next) => updateAutoReplySource(row.key, field, next)}
+                                loading={autoReplySaving === savingKey}
+                                disabled={!masterOn || (autoReplySaving !== null && autoReplySaving !== savingKey)}
+                                aria-label={`${row.label} ${field === "ai" ? "AI replies" : "instant template"}`}
+                              />
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

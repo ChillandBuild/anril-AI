@@ -413,16 +413,12 @@ async def list_settings(ctx: dict = Depends(require_settings_read)):
 def _check_auto_reply_updates(updates: dict) -> None:
     """Settings > Auto-Reply keys: the two masters are 'true'/'false', the per-source
     switches are validated and normalised in place (services/automation_guards.py)."""
-    from app.services import automation_guards as guards
+    from app.services.automation_guards import normalize_auto_reply_updates
 
-    for key in (guards.AI_MASTER_KEY, guards.TEMPLATE_MASTER_KEY):
-        if key in updates and updates[key] not in ("true", "false"):
-            raise HTTPException(status_code=400, detail=f"{key} must be true or false")
-    if guards.SOURCES_KEY in updates:
-        try:
-            updates[guards.SOURCES_KEY] = guards.validate_source_flags(updates[guards.SOURCES_KEY])
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+    try:
+        normalize_auto_reply_updates(updates)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 DESCRIPTION_SETTING_KEY = "business_description"

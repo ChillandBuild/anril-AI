@@ -100,6 +100,46 @@ def validate_source_flags(raw: str) -> str:
     return json.dumps(clean, sort_keys=True)
 
 
+def normalize_auto_reply_updates(updates: dict) -> None:
+    """Validate and normalise the Auto-Reply keys of a settings save, in place. Used by
+    Settings (tenant) and the operator console. Masters: true/false (bool or string).
+    Raises ValueError with a plain message."""
+    for key in (AI_MASTER_KEY, TEMPLATE_MASTER_KEY):
+        if key not in updates:
+            continue
+        value = updates[key]
+        if isinstance(value, bool):
+            updates[key] = "true" if value else "false"
+        elif value not in ("true", "false"):
+            raise ValueError(f"{key} must be true or false")
+    if SOURCES_KEY in updates:
+        updates[SOURCES_KEY] = validate_source_flags(updates[SOURCES_KEY])
+
+
+def source_rows(tenant_id: str) -> list[dict]:
+    """Every SOURCES row with its current on/off state (None = the row has no such switch)."""
+    flags = _flags(tenant_id)
+    return [
+        {"key": s.key, "label": s.label, "group": s.group, "hint": s.hint,
+         "ai": _row_on(flags, s.key, "ai") if s.ai else None,
+         "template": _row_on(flags, s.key, "template") if s.template else None}
+        for s in SOURCES
+    ]
+
+
+def ai_reply_block_reason(tenant_id: str, channel: str | None, lead_source: str | None) -> str | None:
+    """Why Settings > Auto-Reply stops an AI reply to this lead, in plain words, or None."""
+    if not master_switch_on(tenant_id):
+        return "AI Replies is switched off for the whole business"
+    flags = _flags(tenant_id)
+    if channel in _BY_KEY and not _row_on(flags, channel, "ai"):
+        return f"AI replies are switched off for {_BY_KEY[channel].label}"
+    row = _ROW_FOR_LEAD_SOURCE.get(lead_source or "")
+    if row and not _row_on(flags, row, "ai"):
+        return f"AI replies are switched off for {_BY_KEY[row].label} leads"
+    return None
+
+
 def _flags(tenant_id: str) -> dict[str, dict[str, bool]]:
     return parse_source_flags(get_setting(SOURCES_KEY, tenant_id=tenant_id))
 
