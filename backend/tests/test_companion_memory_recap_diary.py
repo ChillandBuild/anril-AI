@@ -27,7 +27,7 @@ def env(monkeypatch):
     monkeypatch.setattr(card, "local_today", lambda now, zone: real_local_today(now or NOW, zone))
     state = {"calls": [], "answers": []}
 
-    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, model=None):
         state["calls"].append({"system": messages[0]["content"], "user": messages[1]["content"]})
         nxt = state["answers"].pop(0) if state["answers"] else "[]"
         if isinstance(nxt, Exception):
@@ -69,7 +69,7 @@ def test_trait_rule_is_in_every_extraction_prompt():
     night, _ = card.build_extraction_prompt("ta-en", [], [{"role": "user", "content": "hi"}])
     assert "big Vijay fan" in night[0]["content"]
     assert "TODAY'S RECAP" not in night[1]["content"] and night[1]["content"].endswith("JSON object now.")
-    assert '"forget"' in night[0]["content"]
+    assert '"forget"' not in night[0]["content"]
 
 
 def test_day_mode_prompt_carries_the_current_recap_and_asks_for_an_object():
@@ -91,7 +91,8 @@ def test_clean_recap_drops_sensitive_lines_not_the_whole_recap_and_caps_at_whole
 
 # --- same-day refresh (day mode) --------------------------------------------------------------
 
-DAY_ANSWER = ('{"ops":[{"op":"add","section":"threads","text":"Infosys interview","valid_from":"2026-11-10"}],'
+DAY_ANSWER = ('{"ops":[{"op":"add","section":"threads","text":"Infosys interview","quote":"Infosys",'
+              '"valid_from":"2026-11-10"}],'
               '"recap":"- Interview at Infosys 3 pm, Whitefield office; nervous\\n- Mom has fever, doctor at 4"}')
 
 
@@ -170,15 +171,13 @@ def test_a_failed_refresh_cools_down_for_30_minutes(env, frozen_refresh):
     assert len(env.state["calls"]) == 1
 
 
-def test_forget_words_trigger_at_once_in_three_languages(env, frozen_refresh):
-    for text in ("please forget that", "adha marandhudu", "அதை மறந்துவிடு", "Maranthudu da"):
-        assert memory_refresh.wants_forget(text), text
-    assert not memory_refresh.wants_forget("Interview went okay")
-    env.chat(("user", "forget that I failed the exam", 30), ("assistant", "Sari", 30))
-    env.state["answers"].append('{"ops": [], "forget": ["failed the exam"], "recap": "- talked"}')
-    env.state["answers"].append('{"remove": []}')
-    env.state["answers"].append('{"lines": []}')
-    assert run(memory_refresh._refresh(env.companion, "karthik", force=True)) == "ok"
+def test_a_forget_message_is_an_ordinary_message_in_three_languages(env, frozen_refresh):
+    """No chat message starts a deletion or an early memory run (Prem, 2026-11-11)."""
+    assert not hasattr(memory_refresh, "wants_forget")
+    for text in ("please forget that I failed the exam", "adha marandhudu", "அதை மறந்துவிடு"):
+        env.chat(("user", text, 30), ("assistant", "Sari", 30))
+        assert run(memory_refresh._refresh(env.companion, "karthik")) == "not_needed"
+    assert env.state["calls"] == []
 
 
 def test_two_refreshes_of_one_pair_never_run_together(env, frozen_refresh):
@@ -186,7 +185,7 @@ def test_two_refreshes_of_one_pair_never_run_together(env, frozen_refresh):
     env.chat(*[("user", f"msg {i}", 60 - i) for i in range(8)])
     gate = {}
 
-    async def slow_llm(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4):
+    async def slow_llm(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4, model=None):
         await gate["event"].wait()
         return DAY_ANSWER
     card.ai_reply._llm_chat = slow_llm
@@ -202,27 +201,26 @@ def test_two_refreshes_of_one_pair_never_run_together(env, frozen_refresh):
     assert state_row(env)["busy_until"] is None  # released
 
 
-def test_schedule_ignores_level1_and_passes_the_forget_flag(monkeypatch):
+def test_schedule_ignores_level1(monkeypatch):
     started = []
 
-    async def fake_refresh(companion, end_user_id, force=False):
-        started.append((companion["id"], force))
+    async def fake_refresh(companion, end_user_id):
+        started.append(companion["id"])
         return "ok"
     monkeypatch.setattr(memory_refresh, "_refresh", fake_refresh)
 
     async def main():
         memory_refresh.schedule({"id": "c1", "memory_level": 1}, "karthik")
-        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik", "hi")
-        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik", "forget that")
+        memory_refresh.schedule({"id": "c2", "memory_level": 2}, "karthik")
         await asyncio.gather(*memory_refresh._tasks)
     run(main())
-    assert started == [("c2", False), ("c2", True)] and not memory_refresh._tasks
+    assert started == ["c2"] and not memory_refresh._tasks
 
 
 def test_the_reply_does_not_wait_for_the_refresh(monkeypatch):
     gate = None
 
-    async def slow_refresh(companion, end_user_id, force=False):
+    async def slow_refresh(companion, end_user_id):
         await gate.wait()
         return "ok"
     monkeypatch.setattr(memory_refresh, "_refresh", slow_refresh)

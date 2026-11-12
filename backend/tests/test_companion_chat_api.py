@@ -66,7 +66,7 @@ def env(monkeypatch):
     async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
         return "[mood: warm] Vanakkam Karthik!"
 
-    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
         return None
     monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", with_tools)
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", plain)

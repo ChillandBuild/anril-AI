@@ -34,7 +34,7 @@ def env(monkeypatch):
             raise nxt
         return nxt
 
-    async def fake_kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+    async def fake_kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
         state["kb"].append({"tenant_id": tenant_id, "collection_id": collection_id, "query": message,
                             "history": history, "companion_id": companion_id})
         if state.get("kb_error"):
@@ -290,11 +290,11 @@ def test_level2_prompt_carries_the_persons_facts(env):
     person = env.db.rows("companion_end_users")[0]
     _level2(env)
     for section, text, valid_from in [("life", "lost job", "2026-10-01"),
-                                      ("threads", "Zoho interview", "2026-11-20")]:
+                                      ("threads", "Zoho interview", "2999-11-20")]:
         asyncio.run(store.add_fact("t1", env.jothidar["id"], person["id"], section, text, valid_from))
     reply(env.jothidar["id"], "Hi")
     prompt = system_prompt(env.state["llm"][-1])
-    assert "Open threads: Zoho interview (20 Nov 2026)" in prompt
+    assert "Open threads: Zoho interview (20 Nov 2999)" in prompt   # still ahead, so not yet "due"
     assert "Life: lost job (since Oct 2026)" in prompt
 
 
@@ -448,3 +448,12 @@ def test_changed_search_settings_do_not_feed_the_live_question_log(env):
     assert env.state["logged"] == []
     reply_with(env, playground.Overrides())                                  # defaults: still logged
     assert len(env.state["logged"]) == 1
+
+
+def test_a_secret_is_hidden_in_the_saved_chat_but_this_reply_still_reads_it(env):
+    env.state["replies"] = ["[mood: calm] Sari, OTP 482913 yaarukkum sollaadheenga."]
+    reply(env.jothidar["id"], "my OTP is 482913, call me on 9876543210")
+    saved = {m["role"]: m["content"] for m in env.db.rows("companion_messages")}
+    assert saved["user"] == "my OTP is [hidden], call me on 9876543210"      # the phone number stays
+    assert saved["assistant"] == "Sari, OTP [hidden] yaarukkum sollaadheenga."
+    assert env.state["llm"][0]["messages"][-1]["content"] == "my OTP is 482913, call me on 9876543210"

@@ -17,7 +17,7 @@ def env(monkeypatch):
     async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
         return next(replies)
 
-    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
         return None
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", llm)
     monkeypatch.setattr(engine.kb_search, "search", kb)

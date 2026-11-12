@@ -104,6 +104,17 @@ def test_small_talk_makes_no_embed_no_sql_and_no_judge_call(fx):
     assert fx.embed_calls == [] and fx.tiers == [] and fx.judge_calls == []
 
 
+def test_a_rewrite_the_engine_already_started_is_used_and_no_second_call_is_made(fx):
+    """The engine starts one rewrite per reply and shares it with memory search (kb/rewrite.py)."""
+    async def ready():
+        return SMALL_TALK
+
+    async def go():
+        shared = asyncio.ensure_future(ready())
+        return await search.search("t1", "col-astro", "good morning guru", [], rewrite=shared)
+    assert run(go()) == KbResult(needs_docs=False) and fx.rewrite_calls == []
+
+
 def test_step_a_hit_returns_the_main_resource_and_skips_step_b(fx):
     fx.scores = {"m12": 3, "b90": 3}
     kb = ask()

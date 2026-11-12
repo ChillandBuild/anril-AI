@@ -150,10 +150,14 @@ def _record(step: str, passages: list[Passage], scores: list[int | None], kept: 
 
 
 async def _search(tenant_id: str, collection_id: str, message: str, history: list[dict] | None,
-                  companion_id: str | None) -> KbResult:
+                  companion_id: str | None, rewrite=None) -> KbResult:
     ov = playground.current()
-    rw = (kb_rewrite.fallback_rewrite(message) if ov is not None and not ov.rewrite
-          else await kb_rewrite.rewrite(tenant_id, message, history))
+    if ov is not None and not ov.rewrite:
+        rw = kb_rewrite.fallback_rewrite(message)
+    elif rewrite is not None:   # the engine's one rewrite for this reply, shared with memory search
+        rw = await asyncio.shield(rewrite)
+    else:
+        rw = await kb_rewrite.rewrite(tenant_id, message, history)
     if ov is not None:
         ov.rewritten = None if not ov.rewrite else {
             "english": rw.english_query, "tamil": rw.tamil_query, "terms": list(rw.key_terms),
@@ -204,12 +208,14 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
 
 
 async def search(tenant_id: str, collection_id: str, message: str, history: list[dict] | None = None,
-                 *, companion_id: str | None = None) -> KbResult:
+                 *, companion_id: str | None = None, rewrite=None) -> KbResult:
     """The passages that answer `message` from one collection of one business. Never raises.
     companion_id switches on the learned shortcuts of that character.
+    rewrite: a rewrite task the caller already started for this message (the engine shares one with
+    memory search); left out, the rewrite call is made here.
     Slower than SEARCH_TIMEOUT_SECONDS counts as a failure: the reply goes on without passages."""
     try:
-        return await asyncio.wait_for(_search(tenant_id, collection_id, message, history, companion_id),
+        return await asyncio.wait_for(_search(tenant_id, collection_id, message, history, companion_id, rewrite),
                                       SEARCH_TIMEOUT_SECONDS)
     except Exception as exc:        # includes TimeoutError
         logger.warning("companion kb: search failed tenant=%s collection=%s (%s)",

@@ -18,10 +18,11 @@ import os
 import time
 import weakref
 
-from app.companion import memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion import memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
+from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
 from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used
@@ -182,7 +183,8 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
         sem.release()
 
 
-async def _knowledge(tenant_id: str, companion: dict, message: str, history: list[dict]) -> KbResult | None:
+async def _knowledge(tenant_id: str, companion: dict, message: str, history: list[dict],
+                     rewrite=None) -> KbResult | None:
     """The passages this character's collection holds for the message. None: the character has no
     collection, so nothing is searched and the reply carries no label. A search that breaks never
     breaks the reply: it comes back as "nothing found"."""
@@ -190,17 +192,33 @@ async def _knowledge(tenant_id: str, companion: dict, message: str, history: lis
     if not collection_id:
         return None
     try:
-        return await kb_search.search(tenant_id, collection_id, message, history, companion_id=companion["id"])
+        return await kb_search.search(tenant_id, collection_id, message, history, companion_id=companion["id"],
+                                      rewrite=rewrite)
     except Exception as exc:
         logger.warning("companion %s: knowledge search failed (%s)", companion["id"], type(exc).__name__)
         return KbResult(failed=True)
 
 
-async def _memory(provider, tenant_id: str, companion: dict, person: dict, message: str) -> str:
+def _shared_rewrite(tenant_id: str, companion: dict, memory, message: str, history: list[dict],
+                    with_kb: bool):
+    """ONE rewrite call per reply, started here and read by both searches (kb/rewrite.py). None when
+    nobody needs it: a Level 1 character with no files, or the Playground's rewrite switch is off.
+    Example: Priya -> Guru "amma surgery epdi pochu": one flash-lite call gives the English and the
+    Tamil-script question; the file search and the memory search both use that same answer."""
+    ov = playground.current()
+    if ov is not None and not ov.rewrite:
+        return None
+    memory_searches = getattr(memory, "searches", False) and (
+        ov is None or (ov.mode == "auto" and ov.sources != "knowledge"))   # same test as MemoryCard.context_for
+    wanted = (with_kb and companion.get("knowledge_collection_id")) or memory_searches
+    return asyncio.ensure_future(kb_rewrite.rewrite(tenant_id, message, history)) if wanted else None
+
+
+async def _memory(provider, tenant_id: str, companion: dict, person: dict, message: str, rewrite=None) -> str:
     companion_id = companion["id"]
     try:
         return await provider.context_for(tenant_id, companion_id, person["id"], message,
-                                          companion=companion, person=person) or ""
+                                          companion=companion, person=person, rewrite=rewrite) or ""
     except Exception as exc:
         logger.warning("companion %s: memory lookup failed (%s)", companion_id, type(exc).__name__)
         return ""
@@ -240,15 +258,22 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     # History is read before this message is saved, so the prompt doesn't carry it twice. It is read
     # first because the book search needs it: "and what about Rahu?" only makes sense with the turn before.
     history = await store.recent_messages(tenant_id, companion_id, person["id"],
-                                          limit=companion.get("history_messages") or HISTORY_LIMIT)
+                                          limit=companion.get("history_messages") or HISTORY_LIMIT,
+                                          after=person.get("chat_read_after"))
     ov = playground.current()   # None on the live path
     agentic = ov is not None and ov.mode == "agentic"
     with_kb = ov is None or (not agentic and ov.sources != "memories")
-    kb, memory_context = await asyncio.gather(
-        _knowledge(tenant_id, companion, message, history) if with_kb else _no_kb(),
-        _memory(memory, tenant_id, companion, person, message),
-    )
-    await store.save_message(tenant_id, conversation, "user", message)
+    rewrite = _shared_rewrite(tenant_id, companion, memory, message, history, with_kb)
+    try:
+        kb, memory_context = await asyncio.gather(
+            _knowledge(tenant_id, companion, message, history, rewrite) if with_kb else _no_kb(),
+            _memory(memory, tenant_id, companion, person, message, rewrite),
+        )
+    finally:
+        if rewrite is not None and not rewrite.done():   # memory gave up waiting and nobody else needs it
+            rewrite.cancel()
+    # Saved with secrets hidden ("my OTP is [hidden]"); this turn's prompt still gets the message as typed.
+    await store.save_message(tenant_id, conversation, "user", memory_card.mask_secrets(message))
 
     mood = _mood(conversation, companion)
     if agentic:
@@ -431,7 +456,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion)
 
     shown = _shown_basis(basis, companion)
-    saved = await store.save_message(tenant_id, conversation, "assistant", text, mood=mood,
+    saved = await store.save_message(tenant_id, conversation, "assistant", memory_card.mask_secrets(text), mood=mood,
                                      tool_calls=tool_log or None, basis=shown, sources=sources)
     if mood != conversation.get("mood"):
         await store.set_conversation_mood(tenant_id, conversation["id"], mood)
@@ -441,7 +466,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     except Exception as exc:
         logger.warning("companion %s: memory record failed (%s)", companion_id, type(exc).__name__)
     try:
-        memory_refresh.schedule(companion, conversation["end_user_id"], user_message)  # background; Level 2 only
+        memory_refresh.schedule(companion, conversation["end_user_id"])  # background; Level 2 only
     except Exception as exc:
         logger.warning("companion %s: memory refresh not scheduled (%s)", companion_id, type(exc).__name__)
 

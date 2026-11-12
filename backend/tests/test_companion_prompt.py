@@ -102,3 +102,13 @@ def test_output_rule_lists_every_mood():
 ])
 def test_parse_mood(raw, previous, expected):
     assert parse_mood(raw, previous) == expected
+
+
+def test_rule_6_never_claims_or_offers_a_deletion():
+    """Prem, 2026-11-11: a person chatting gets no forget option and is never told one exists."""
+    from app.companion.platform_rules import PLATFORM_RULES
+    rule = next(line for line in PLATFORM_RULES.splitlines() if line.startswith("6. "))
+    assert "Never say you have deleted, erased or forgotten" in rule
+    assert "never offer or describe a way to delete" in rule
+    assert "agree" not in rule and "deletes their data" not in rule
+

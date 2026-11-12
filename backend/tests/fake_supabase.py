@@ -59,6 +59,7 @@ class FakeSupabase:
         self.rpc_handlers: dict = {
             "claim_memory_pair": lambda p: _claim_memory_pair(self, p),
             "companion_day_context": lambda p: _companion_day_context(self, p),
+            "companion_set_slot_fact": lambda p: _companion_set_slot_fact(self, p),
             "match_memory_chunks": lambda p: _match_memory_chunks(self, p),
             "match_companion_kb_chunks": lambda p: _match_companion_kb_chunks(self, p),
             "companion_kb_question_tenants": lambda p: _companion_kb_question_tenants(self, p),
@@ -433,8 +434,25 @@ def _companion_day_context(db: "FakeSupabase", p: dict) -> dict:
     diary = sorted((r for r in db.rows("companion_memory_diary")
                     if (r["tenant_id"], r["companion_id"], r["end_user_id"]) == key
                     and str(r["day"]) < p["p_before_day"]), key=lambda r: str(r["day"]), reverse=True)
-    return {"recap": state.get("today_recap"), "recap_day": state.get("recap_day"),
+    cleaning = any(r.get("forget_pending") is not None for r in db.rows("companion_memory_state")
+                   if (r["tenant_id"], r["end_user_id"]) == (p["p_tenant"], p["p_end_user"]))   # migration 263
+    return {"recap": state.get("today_recap"), "recap_day": state.get("recap_day"), "cleaning": cleaning,
             "diary": [{"day": r["day"], "text": r["text"]} for r in diary[:p["p_days"]]]}
+
+
+def _companion_set_slot_fact(db: "FakeSupabase", p: dict) -> dict:
+    """Migration 262: close the pair's active fact in the slot, insert the new one."""
+    key = (p["p_tenant"], p["p_companion"], p["p_end_user"])
+    closed = [r for r in db.rows("companion_memory_facts")
+              if (r["tenant_id"], r["companion_id"], r["end_user_id"]) == key
+              and r.get("slot") == p["p_slot"] and r.get("status") == "active"]
+    for row in closed:
+        row.update(status="closed", valid_to=p["p_closed_on"], updated_at=_now_iso())
+    fact = db.add("companion_memory_facts", tenant_id=p["p_tenant"], companion_id=p["p_companion"],
+                  end_user_id=p["p_end_user"], section=p["p_section"], text=p["p_text"],
+                  valid_from=p["p_valid_from"], valid_to=None, status="active", slot=p["p_slot"],
+                  quote=p["p_quote"], source_message_id=p["p_source"], updated_at=_now_iso())
+    return {"fact": fact, "closed": [dict(r) for r in closed]}
 
 
 def _vector(value):

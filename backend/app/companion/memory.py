@@ -2,13 +2,19 @@
 Level 2 = facts about the person, kept by an engine behind this same protocol: 'card' (ours,
 memory_card.py) or 'mem0' (memory_mem0.py, later). Facts are written by the every-minute sweep
 (memory_sweep.py), never on the reply path, so record_turn stays a no-op for every engine."""
+import logging
 from datetime import date, timedelta
 from typing import Protocol
 
+logger = logging.getLogger(__name__)
+
 
 class MemoryProvider(Protocol):
+    searches: bool   # True: context_for searches old chats, so the engine starts the shared rewrite for it
+
     async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str,
-                          *, companion: dict | None = None, person: dict | None = None) -> str: ...
+                          *, companion: dict | None = None, person: dict | None = None,
+                          rewrite=None) -> str: ...
     async def record_turn(self, tenant_id: str, companion_id: str, end_user_id: str,
                           user_msg: str, reply: str) -> None: ...
     async def forget(self, tenant_id: str, end_user_id: str) -> None: ...
@@ -17,8 +23,11 @@ class MemoryProvider(Protocol):
 class Level1History:
     """Level 1: no extra memory beyond the last 10 messages, so every hook is a no-op."""
 
+    searches = False
+
     async def context_for(self, tenant_id: str, companion_id: str, end_user_id: str, message: str,
-                          *, companion: dict | None = None, person: dict | None = None) -> str:
+                          *, companion: dict | None = None, person: dict | None = None,
+                          rewrite=None) -> str:
         return ""
 
     async def record_turn(self, tenant_id: str, companion_id: str, end_user_id: str,
@@ -97,6 +106,37 @@ async def forget_fact(tenant_id: str, companion_id: str, external_user_id: str, 
         return False
     from app.companion import memory_search
     await memory_search.drop_facts(tenant_id, person["id"], [fact_id])  # its own search piece, always
+    # Before the next reply, not in the background, and each step on its own so one failure does not
+    # skip the next:
+    #   1. every character stops reading its own lines from before this moment (one small write),
+    #   2. the cleanup is put on hold-and-queue: until it has finished, replies for this person get the
+    #      card only (no "Earlier today", no "Recent days", no old-chat search),
+    #   3. the person's words leave their saved messages (no marker).
+    # The rest (diary lines, recaps, reworded search pieces) is the background cleanup's.
+    from app.companion import alerts, memory_forget
+    problems: list[str] = []
+    for step, work in (("cutoff", lambda: store.set_read_after(tenant_id, person["id"])),
+                       ("hold", lambda: memory_forget.hold(tenant_id, companion_id, person["id"], fact["text"]))):
+        try:
+            await work()
+        except Exception as exc:
+            problems.append(f"{step}:{type(exc).__name__}")
+    quote = fact.get("quote") or ""
+    try:
+        erased = await store.erase_words(tenant_id, person["id"], quote)
+        logger.info("companion memory: owner delete erased the words from %d message(s), %d search piece(s)",
+                    erased["messages"], erased["pieces"])
+        if quote.strip() and not erased["messages"]:
+            problems.append("words:not_found")      # the fact had a receipt, yet no saved message holds it
+        if erased["capped"]:
+            problems.append("words:more_chat_than_checked")
+    except Exception as exc:
+        problems.append(f"words:{type(exc).__name__}")
+    if problems:  # the fact row is gone either way; the cleanup below still runs
+        logger.error("companion memory: owner delete left the saved chat unclean (%s)", ", ".join(problems))
+        await alerts.alert(tenant_id, "companion_memory_delete_incomplete",
+                           "An owner deleted a memory, but the saved chat could not be fully cleaned. The "
+                           "words may still be in the chat history.", dedupe=False)
     _forget_everywhere(tenant_id, companion_id, person["id"], fact["text"])
     return True
 
@@ -104,13 +144,14 @@ async def forget_fact(tenant_id: str, companion_id: str, external_user_id: str, 
 async def list_diary(tenant_id: str, companion_id: str, external_user_id: str) -> dict:
     """The owner's Diary tab: this character's "earlier today" note and its diary lines about the
     person (newest first, the 90 days kept). Empty for an unknown person or a Level 1 character."""
-    from app.companion import store
+    from app.companion import memory_card, store
     from app.companion.memory_sweep import DIARY_KEEP
 
     person = await store.find_end_user(tenant_id, external_user_id)
     if not person:
         return {"today": None, "days": []}
-    since = (date.today() - DIARY_KEEP - timedelta(days=1)).isoformat()
+    today = await memory_card.person_today(tenant_id, person["id"])   # the person's own day, not the server's
+    since = (today - DIARY_KEEP - timedelta(days=1)).isoformat()
     recap = await store.get_recap(tenant_id, companion_id, person["id"])
     rows = await store.diary_since(tenant_id, companion_id, person["id"], since)
     return {"today": {"day": recap["day"], "text": recap["text"]} if recap else None,

@@ -43,7 +43,7 @@ def env(monkeypatch):
         state["plain"].append({"messages": messages, "purpose": purpose})
         return "[mood: warm] Ungal lagnam Kumbham, Guru dasha nadakkudhu."
 
-    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None):
+    async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
         return None
     monkeypatch.setattr(engine.ai_reply, "_llm_chat_with_tools", with_tools)
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", plain)

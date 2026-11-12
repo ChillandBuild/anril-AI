@@ -42,3 +42,13 @@ def _no_live_memory_embeddings(monkeypatch):
     async def embed(texts, kind, tenant_id, model=None, retries=True):
         return [fake_embedding(t) for t in texts]
     monkeypatch.setattr(memory_embed, "embed", embed)
+
+
+@pytest.fixture(autouse=True)
+def _no_shared_rewrite(monkeypatch):
+    """A reply starts one small rewrite call that both searches share (engine._shared_rewrite). Most
+    tests script the LLM answers one by one and are not about that call, so it is off by default; the
+    tests about it (test_companion_memory_router.py) switch the real one back on."""
+    from app.companion import engine
+
+    monkeypatch.setattr(engine, "_shared_rewrite", lambda *a, **k: None)

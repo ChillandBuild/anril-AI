@@ -1,8 +1,7 @@
-"""'Forget that': one thing the person asked to forget, removed from every copy of their memory.
+"""Owner delete cleanup: a fact the business owner deleted on the dashboard, removed from every other copy.
 
-Triggered by the extraction answer's "forget" list (the person said "forget that I failed the exam" /
-"adha marandhudu" / "அதை மறந்துவிடு"), or by the owner deleting a fact on the dashboard.
-The card's matching active facts are already deleted by the extraction's delete ops. This cleans the rest:
+Triggered ONLY by the owner deleting a fact (memory.forget_fact). Nothing a person types in chat starts it
+(Prem, 2026-11-11: "forget that" in chat deletes nothing). This cleans the copies beyond the deleted fact:
 1. Search pieces and card facts of every character of the business for this person: candidates from the
    search (vector + trigram, no floor) plus every fact; ONE AI call confirms which mention the thing;
    those pieces and facts are deleted.
@@ -12,14 +11,16 @@ The card's matching active facts are already deleted by the extraction's delete 
 Before step 1, a pair whose old history was never indexed (the one-time backfill) is indexed first, so
 the backfill can't bring the forgotten thing back later. Line rewrites are compare-and-set: a line another
 run changed meanwhile is left alone. A cleanup that fails is queued (forget_pending) and the hourly job
-retries it, up to MAX_TRIES. Chat history rows themselves are not touched (the person's own transcript).
+retries it every hour until it works; the MAX_TRIES-th failure raises an operator alert (alerts.py). While
+anything is queued for a person their replies get the card only (hold; memory_card.day_state). Chat history rows are not
+touched HERE: memory.forget_fact cuts the person's exact words out of them before this runs.
 Text is never logged.
 """
 import json
 import logging
 from datetime import date, timedelta
 
-from app.companion import memory_card, memory_embed, memory_search, store
+from app.companion import alerts, memory_card, memory_embed, memory_search, store
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ PER_ITEM = 25       # search candidates per half per forgotten thing, per round
 ROUNDS = 3          # a topic in 30 windows: each round finds the next ones
 PIECE_CAP = 800     # characters per candidate shown to the AI
 DIARY_DAYS = 90
-MAX_TRIES = 6       # hourly retries of a failed cleanup before giving up (logged)
+MAX_TRIES = 6       # failed hourly tries before the operator is told (it keeps trying after that)
 
 
 class ForgetError(RuntimeError):
@@ -176,10 +177,20 @@ async def forget_things(tenant_id: str, end_user_id: str, items: list[str], toda
     await _backfill_first(tenant_id, companions, end_user_id)
     companion_ids = [str(c["id"]) for c in companions]
     removed = await _remove_pieces(tenant_id, companion_ids, end_user_id, items) if companion_ids else 0
-    rewritten = await _rewrite_lines(tenant_id, end_user_id, items, today or memory_card.ist_today())
+    rewritten = await _rewrite_lines(tenant_id, end_user_id, items,
+                                     today or await memory_card.person_today(tenant_id, end_user_id))
     logger.info("companion memory: forget-that for %s removed %d piece(s), rewrote %d line(s)",
                 end_user_id, removed, rewritten)
     return {"removed": removed, "rewritten": rewritten}
+
+
+async def hold(tenant_id: str, companion_id: str, end_user_id: str, item: str) -> None:
+    """Queues `item` BEFORE its cleanup starts. While anything is queued for a person, their replies get
+    the card only (companion_day_context says "cleaning"), so a diary line or a recap that still holds
+    the deleted thing cannot reach a reply in the seconds, or the failed hours, before it is rewritten."""
+    pending = (await store.get_state(tenant_id, companion_id, end_user_id)).get("forget_pending") or {}
+    items = list(dict.fromkeys(list(pending.get("items") or []) + [item]))
+    await store.queue_forget(tenant_id, companion_id, end_user_id, items, int(pending.get("tries") or 0))
 
 
 async def forget_or_queue(tenant_id: str, companion_id: str, end_user_id: str, items: list[str],
@@ -193,16 +204,14 @@ async def forget_or_queue(tenant_id: str, companion_id: str, end_user_id: str, i
     except Exception as exc:
         tries += 1
         merged = list(dict.fromkeys(waiting + items))
-        if tries >= MAX_TRIES:
-            logger.warning("companion %s: forget-that gave up for %s after %d tries (%s)", companion_id,
-                           end_user_id, tries, type(exc).__name__)
-            rest = [i for i in waiting if i not in items]
-            await store.update_state(tenant_id, companion_id, end_user_id,
-                                     {"forget_pending": {"items": rest, "tries": 0} if rest else None})
-        else:
-            logger.warning("companion %s: forget-that failed for %s, try %d, queued (%s)", companion_id,
-                           end_user_id, tries, type(exc).__name__)
-            await store.queue_forget(tenant_id, companion_id, end_user_id, merged, tries)
+        logger.warning("companion %s: forget-that failed for %s, try %d, queued (%s)", companion_id,
+                       end_user_id, tries, type(exc).__name__)
+        if tries == MAX_TRIES:   # told once; it stays queued, so the hold on this person's memory stays too
+            await alerts.alert(tenant_id, "companion_memory_cleanup_gave_up",
+                               "Agents memory: a fact the owner deleted could not be cleaned from the diary "
+                               f"and search after {tries} tries. The fact itself is deleted, and this person's "
+                               "diary and old-chat search stay out of replies until the cleanup works.")
+        await store.queue_forget(tenant_id, companion_id, end_user_id, merged, tries)
         return None
     if waiting:
         rest = [i for i in waiting if i not in items]

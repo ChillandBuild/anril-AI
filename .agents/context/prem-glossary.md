@@ -17,3 +17,5 @@ here (one line).
 | continue.. | Carry on with the last thing you proposed |
 | propose everything | Agents suggest, he decides; nothing gets built without his tick |
 | Aira → Anril | The WhatsApp sales product is now called Anril in everything user-facing (2026-11-09). Code, tables and old docs still say Aira. The companion product is "Anril Agents". |
+| Anril Sales / Anril Agents | The two products (confirmed 2026-11-11): Anril Sales = the WhatsApp sales/lead product; Anril Agents = the companion characters. Each has its own knowledge base. |
+| unral / under / unril | Voice typing's garble of "Anril": "unral sales" = Anril Sales, "under agents" = Anril Agents |
