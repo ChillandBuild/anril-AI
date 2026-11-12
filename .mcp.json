@@ -4,7 +4,7 @@
       "type": "http",
       "url": "https://mcp.render.com/mcp?ownerId=tea-d7m36fsvikkc73fo8pcg",
       "headers": {
-        "Authorization": "Bearer ${rnd_52oYKHPEDsjwlC5Y7IJzRzDWJmmI}"
+        "Authorization": "Bearer ${RENDER_API_KEY}"
       }
     },
     "supabase": {
