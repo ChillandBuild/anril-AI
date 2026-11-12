@@ -81,13 +81,27 @@ export default function AutoReplySettingsPage() {
     void load();
   }, [load]);
 
+  // What was just saved, shown until the save's reload finishes. handleSave clears the drafts
+  // before it reloads the settings, so without this the switches flash back to the old values.
+  const [saving, setSaving] = useState<{ ai: boolean; templates: boolean; flags: Flags } | null>(null);
+
   const storedMaster = (key: string) => settingFor(key)?.display_value !== "false";
-  const master = (key: string) => (drafts[key] !== undefined ? drafts[key] === "true" : storedMaster(key));
-  const aiOn = master(AI_KEY);
-  const templatesOn = master(TEMPLATE_KEY);
+  // An empty draft is the form's copy of a never-set value: treat it as not edited (default on).
+  const master = (key: string) => (drafts[key] ? drafts[key] === "true" : storedMaster(key));
+  const aiOn = saving?.ai ?? master(AI_KEY);
+  const templatesOn = saving?.templates ?? master(TEMPLATE_KEY);
 
   const storedFlags = useMemo(() => parseFlags(settingFor(SOURCES_KEY)?.display_value), [settingFor]);
-  const flags = drafts[SOURCES_KEY] !== undefined ? parseFlags(drafts[SOURCES_KEY]) : storedFlags;
+  const flags = saving?.flags ?? (drafts[SOURCES_KEY] ? parseFlags(drafts[SOURCES_KEY]) : storedFlags);
+
+  const save = async () => {
+    setSaving({ ai: aiOn, templates: templatesOn, flags });
+    try {
+      await handleSave(SECTION_ID, [AI_KEY, TEMPLATE_KEY, SOURCES_KEY]);
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const dirty =
     aiOn !== storedMaster(AI_KEY) || templatesOn !== storedMaster(TEMPLATE_KEY) || !sameFlags(flags, storedFlags);
@@ -117,7 +131,7 @@ export default function AutoReplySettingsPage() {
       <SwitchPill
         on={isOn(flags, source.key, field)}
         size="sm"
-        disabled={!canManageSettings || !masterOn}
+        disabled={!canManageSettings || !masterOn || saving !== null}
         aria-label={`${source.label} ${field === "ai" ? "AI replies" : "instant template"}`}
         onChange={(next) => setRow(source.key, field, next)}
       />
@@ -155,7 +169,7 @@ export default function AutoReplySettingsPage() {
               icon={MessagesSquare}
               title="AI Replies"
               on={aiOn}
-              disabled={!canManageSettings}
+              disabled={!canManageSettings || saving !== null}
               onChange={(next) => setMaster(AI_KEY, next)}
               offText="No AI reply anywhere: no photo/video reply, no “typing…”, no AI follow-ups or nudges. Messages wait for a teammate."
               onText="The AI replies on the channels and sources switched on below."
@@ -164,7 +178,7 @@ export default function AutoReplySettingsPage() {
               icon={Send}
               title="Instant Templates"
               on={templatesOn}
-              disabled={!canManageSettings}
+              disabled={!canManageSettings || saving !== null}
               onChange={(next) => setMaster(TEMPLATE_KEY, next)}
               offText="No welcome template to any new lead from any source. Leads are still added and assigned."
               onText="New leads get their welcome template from the sources switched on below."
@@ -219,7 +233,7 @@ export default function AutoReplySettingsPage() {
               state={saveStates[SECTION_ID] ?? "idle"}
               dirty={dirty}
               disabled={!canManageSettings}
-              onClick={() => handleSave(SECTION_ID, [AI_KEY, TEMPLATE_KEY, SOURCES_KEY])}
+              onClick={save}
             />
           </SectionFooter>
         </SectionLoadGate>
