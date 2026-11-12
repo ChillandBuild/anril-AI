@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.services.ai_reply import generate_silence_nudge, send_whatsapp
-from app.services.automation_guards import lead_blocks_automated_outbound, master_switch_on
+from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.entitlements import check_quota, meter
 from app.services.growth import IST_OFFSET
 
@@ -232,7 +232,7 @@ def _evaluate_gates(db, job: dict, lead: dict) -> tuple[str, str | None]:
     # cleanly when the tenant flips them back on rather than losing the work.
     if not _enabled_for(tenant_id):
         return HOLD, "silence nudge disabled"
-    if not master_switch_on(tenant_id):
+    if not ai_replies_allowed(tenant_id, "whatsapp", lead.get("source")):
         return HOLD, "ai auto reply disabled"
 
     # Gates 3-4: shared lead-level gates, plus the three silence-only checks
@@ -269,7 +269,7 @@ def _evaluate_gates(db, job: dict, lead: dict) -> tuple[str, str | None]:
 
 _LEAD_COLUMNS = (
     "id,name,phone,ai_enabled,converted_at,blocked_at,opted_out,"
-    "whatsapp_undeliverable,needs_human_attention,last_inbound_at"
+    "whatsapp_undeliverable,needs_human_attention,last_inbound_at,source"
 )
 
 

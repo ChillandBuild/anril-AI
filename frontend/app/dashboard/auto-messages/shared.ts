@@ -110,7 +110,7 @@ export const SENT_BY_APP = "Sent by your app";
 /** Plain words for the codes the backend writes to auto_message_sends.reason. */
 const REASON_TEXT: Record<string, string> = {
   no_rule: "No message is set up for this event yet",
-  ai_auto_reply_off: "Not sent: Auto-Reply was off in Settings",
+  ai_auto_reply_off: "Not sent: Instant templates were off in Settings > Auto-Reply",
   // Retired checks: no new row gets these reasons, but old rows still carry them.
   duplicate: "Skipped: this person was already messaged recently",
   opted_out: "Skipped: customer had asked not to be messaged",

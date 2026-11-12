@@ -373,8 +373,8 @@ async def send_one(db, send: dict) -> bool:
         return False
     tenant_id = send["tenant_id"]
 
-    from app.services.automation_guards import master_switch_on
-    if not master_switch_on(tenant_id):
+    from app.services.automation_guards import instant_template_allowed
+    if not instant_template_allowed(tenant_id, "partner" if send.get("source") == "partner" else "website"):
         _finish(db, send["id"], "skipped", "ai_auto_reply_off")
         return False
 

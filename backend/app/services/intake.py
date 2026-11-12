@@ -2428,8 +2428,14 @@ async def deliver_astro_reply(payload: dict, tenant_id: str, db=None) -> dict:
         from app.db.supabase import get_supabase
         db = get_supabase()
     from app.services.ai_reply import send_whatsapp
+    from app.services.automation_guards import instant_template_allowed
 
     external_ref = str(payload.get("external_ref") or "")
+    # Settings > Auto-Reply: Partner API off = no message to the customer. Checked before
+    # the reply id is claimed, so a re-push after it is switched back on still delivers.
+    if not instant_template_allowed(tenant_id, "partner"):
+        logger.info(f"Astro reply for session {external_ref} not sent: Partner API is off (tenant {tenant_id})")
+        return {"ok": True, "nudged": False, "reason": "auto_reply_off"}
     session_id = session_ref_to_id(external_ref)
     if not session_id:
         logger.warning(f"Astro reply with malformed external_ref {external_ref!r} (tenant {tenant_id})")
@@ -2575,6 +2581,14 @@ def _partner_error(status: int, code: str, error: str) -> tuple[int, dict]:
     return status, {"ok": False, "code": code, "error": error}
 
 
+async def _partner_switched_off(tenant_id: str) -> tuple[int, dict] | None:
+    """Settings > Auto-Reply: Instant Templates master or the Partner API row is off."""
+    from app.services.automation_guards import instant_template_allowed
+    if await asyncio.to_thread(instant_template_allowed, tenant_id, "partner"):
+        return None
+    return _partner_error(409, "auto_reply_off", "Partner API sends are switched off in Settings > Auto-Reply")
+
+
 def _partner_reference(payload: dict) -> str:
     return str(payload.get("reference") or "")[:_PARTNER_REFERENCE_MAX]
 
@@ -2641,6 +2655,8 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
     if db is None:
         from app.db.supabase import get_supabase
         db = get_supabase()
+    if refused := await _partner_switched_off(tenant_id):
+        return refused
 
     code = str(payload.get("template_code") or "").strip()
     has_event = payload.get("event") not in (None, "")
@@ -2748,6 +2764,8 @@ async def partner_send_text(payload: dict, tenant_id: str, db=None) -> tuple[int
     if db is None:
         from app.db.supabase import get_supabase
         db = get_supabase()
+    if refused := await _partner_switched_off(tenant_id):
+        return refused
 
     raw_text = payload.get("text")
     text = raw_text.strip() if isinstance(raw_text, str) else ""

@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from app.db.supabase import get_supabase
 from app.services.ai_reply import send_whatsapp
-from app.services.automation_guards import lead_blocks_automated_outbound, master_switch_on
+from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
 from app.services.template_params import template_status
@@ -335,7 +335,7 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
     lead_id = lead["id"]
     phone = lead["phone"]
     step_id = step["id"]
-    if not master_switch_on(tenant_id):
+    if not ai_replies_allowed(tenant_id, "whatsapp", lead.get("source")):
         logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (ai_auto_reply disabled for tenant {tenant_id})")
         return False
     message_type = step["message_type"]

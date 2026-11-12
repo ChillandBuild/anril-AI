@@ -124,15 +124,15 @@ def _assign_now(lead_id: str, tenant_id: str, segment: str | None) -> None:
         logger.warning(f"marketplace: assignment failed for lead {lead_id}: {e}")
 
 
-async def send_welcome_template(db, tenant_id: str, phone: str, enquiry: dict) -> bool:
+async def send_welcome_template(db, tenant_id: str, phone: str, enquiry: dict, provider: str = "indiamart") -> bool:
     """Send the tenant's chosen approved template. Variables are filled in
     order with the buyer's first name then the product, padded with neutral
     words, so any 0-2 variable template works. Media-header templates are
     skipped (they need a media parameter we don't have)."""
     from app.config_dynamic import get_setting
-    from app.services.automation_guards import master_switch_on
-    if not master_switch_on(tenant_id):
-        logger.info(f"marketplace: welcome template skipped for tenant {tenant_id}: AI auto-reply is off")
+    from app.services.automation_guards import instant_template_allowed
+    if not instant_template_allowed(tenant_id, provider):
+        logger.info(f"marketplace: {provider} welcome template skipped for tenant {tenant_id}: switched off in Auto-Reply")
         return False
     template_id = get_setting(WELCOME_TEMPLATE_KEY, tenant_id=tenant_id)
     if not template_id:
@@ -197,5 +197,5 @@ async def handle_enquiry(tenant_id: str, provider: str, enquiry: dict, db=None) 
     if not enquiry.get("do_not_call"):
         _assign_now(lead_id, tenant_id, lead.get("segment"))
     from app.routes.upload import _normalize_phone
-    await send_welcome_template(db, tenant_id, _normalize_phone(enquiry["phone"]) or enquiry["phone"], enquiry)
+    await send_welcome_template(db, tenant_id, _normalize_phone(enquiry["phone"]) or enquiry["phone"], enquiry, provider)
     return {"status": "ok", "lead_id": lead_id, "is_new": True}

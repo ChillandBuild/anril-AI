@@ -1137,6 +1137,16 @@ export interface TelecallingAnalytics {
   quality_avg?: number | null;
 }
 
+/** One row of Settings > Auto-Reply (backend automation_guards.SOURCES). ai/template: has that switch. */
+export interface AutoReplySource {
+  key: string;
+  label: string;
+  group: "channel" | "lead";
+  hint: string;
+  ai: boolean;
+  template: boolean;
+}
+
 export interface TelecallingConfig {
   enabled?: boolean;
   calling_provider?: "telecmi" | "sim_basic";
@@ -3028,6 +3038,8 @@ export const api = {
   settings: {
     getAiAutoReply: () =>
       apiFetch<{ enabled: boolean }>(`/api/v1/settings/ai-auto-reply`),
+    getAutoReplySources: () =>
+      apiFetch<{ sources: AutoReplySource[] }>(`/api/v1/settings/auto-reply-sources`),
     getTelecallingConfig: () =>
       apiFetch<TelecallingConfig>(`/api/v1/settings/telecalling-config`),
   },

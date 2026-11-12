@@ -1774,7 +1774,7 @@ async def generate_reply(
     # Step 0: fetch lead + load module configs
     lead_row = (
         db.table("leads")
-        .select("ai_enabled,score,segment,phone,converted_at,tenant_id,assigned_to,name,blocked_at,needs_human_attention,tamil_locked")
+        .select("ai_enabled,score,segment,phone,converted_at,tenant_id,assigned_to,name,blocked_at,needs_human_attention,tamil_locked,source")
         .eq("id", str(lead_id))
         .limit(1)
         .execute()
@@ -1827,8 +1827,9 @@ async def generate_reply(
         if prev_inbound and _is_similar(message, prev_inbound.get("content", "")):
             escalation_flags.add("D")
             logger.info(f"Trigger D: lead {lead_id} repeated same question")
-    from app.config_dynamic import get_setting
-    global_ai_enabled = get_setting("ai_auto_reply_enabled", fallback="true", tenant_id=tenant_id) == "true"
+    # Settings > Auto-Reply: the AI master, this channel's row and the lead's source row.
+    from app.services.automation_guards import ai_replies_allowed
+    global_ai_enabled = ai_replies_allowed(tenant_id, channel, lead_data.get("source"))
     if (lead_data and lead_data.get("ai_enabled") is False) or not global_ai_enabled:
         logger.info(f"AI auto-reply is disabled (lead_ai_enabled={lead_data.get('ai_enabled')}, global_ai_enabled={global_ai_enabled}) — skipping auto-reply")
         # Still rescore via Score Engine v2 so admin sees segment updates during manual handling

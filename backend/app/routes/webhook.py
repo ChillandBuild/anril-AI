@@ -401,8 +401,8 @@ async def _process_inbound_message_background(
         # instead -- `body` is empty for those, so this condition already excludes them.
         # Settings > Auto-Reply off = nothing automatic reaches the customer: no
         # typing indicator, no media ack (generate_reply checks it for the reply itself).
-        from app.services.automation_guards import master_switch_on
-        auto_reply_on = master_switch_on(tenant_id)
+        from app.services.automation_guards import ai_replies_allowed_for_lead
+        auto_reply_on = ai_replies_allowed_for_lead(db, tenant_id, "whatsapp", lead_id)
         if msg_type in ("text", "button", "interactive", "audio", "image", "document", "video", "location") and body:
             if meta_message_id and meta_phone_number_id and auto_reply_on:
                 try:
