@@ -10,9 +10,9 @@ import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: { absolute: "Bulk WhatsApp, AI Chatbot & Telecalling CRM | Anril AI" },
+  title: { absolute: "Bulk WhatsApp, AI Chat Agent & CRM | Anril AI" },
   description:
-    "Bulk WhatsApp sender, AI chatbot in Tanglish, lead management with Hot/Warm/Cold scoring, payment links and telecaller call tracking in one platform.",
+    "Bulk WhatsApp sender, AI chat agent in Tanglish, lead management with Hot/Warm/Cold scoring, payment links and telecaller call tracking in one platform.",
   alternates: { canonical: "/product" },
 };
 

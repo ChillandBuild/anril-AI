@@ -42,14 +42,20 @@ const dancingScript = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Anril AI – WhatsApp AI Chatbot, CRM & Payments",
+    default: "Anril AI – AI Chat Agent, CRM & Payments",
     template: "%s | Anril AI",
   },
   metadataBase: new URL("https://www.anrilaitech.com"),
   description:
     "Anril AI replies to every enquiry on WhatsApp, Instagram and Facebook, scores leads, takes payments and tracks calls. Built in Coimbatore.",
-  openGraph: { siteName: "Anril AI", type: "website", locale: "en_IN", images: ["/og-image.png"] },
-  twitter: { card: "summary_large_image" },
+  openGraph: {
+    siteName: "Anril AI",
+    type: "website",
+    locale: "en_IN",
+    images: [{ url: "/og-image-v2.png", width: 1200, height: 630, alt: "Anril AI – AI chat agent for WhatsApp, Instagram & Facebook" }],
+  },
+  twitter: { card: "summary_large_image", images: ["/og-image-v2.png"] },
+  keywords: ["WhatsApp AI agent", "AI chat agent", "WhatsApp chatbot", "AI chatbot", "WhatsApp CRM", "bulk WhatsApp", "lead management", "WhatsApp payments"],
   applicationName: "Anril AI",
   appleWebApp: {
     capable: true,

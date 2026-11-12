@@ -10,7 +10,7 @@ import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
 export const metadata: Metadata = {
   title: { absolute: "Real Estate, School & Clinic Lead Management | Anril AI" },
   description:
-    "Lead management and WhatsApp chatbot for real estate, education, healthcare, D2C brands and any business whose customers ask before they buy.",
+    "Lead management and WhatsApp AI agent for real estate, education, healthcare, D2C brands and any business whose customers ask before they buy.",
   alternates: { canonical: "/industries" },
 };
 

@@ -32,9 +32,9 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     path: "/whatsapp-chatbot",
     kicker: "Engage",
     label: "WhatsApp AI chatbot",
-    title: "WhatsApp AI Chatbot in Tanglish for Business | Anril AI",
+    title: "WhatsApp AI Agent in Tanglish for Business | Anril AI",
     description:
-      "Anril's WhatsApp AI chatbot replies to every enquiry in seconds, day and night, in Tanglish or any language, and scores leads Hot, Warm or Cold. From ₹999.",
+      "Anril's WhatsApp AI agent replies to every enquiry in seconds, day and night, in Tanglish or any language, and scores leads Hot, Warm or Cold. From ₹999.",
     h1: "WhatsApp AI chatbot that replies to every enquiry",
     opening:
       "Anril's WhatsApp AI chatbot answers customer enquiries on WhatsApp, Instagram and Facebook in seconds, using your own business information. It replies in Tanglish by default, understands voice notes, scores each lead Hot, Warm or Cold, and hands over to your team when needed.",
@@ -311,7 +311,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/real-estate",
     kicker: "Real estate",
     label: "Real estate",
-    title: "Real Estate Lead Management & WhatsApp Chatbot | Anril AI",
+    title: "Real Estate Lead Management & WhatsApp AI Agent | Anril AI",
     description:
       "Anril answers property enquiries on WhatsApp instantly, scores each buyer Hot, Warm or Cold, and sends hot buyers to your sales team. From ₹999/month.",
     h1: "Real estate lead management on WhatsApp",
@@ -355,7 +355,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/education",
     kicker: "Education",
     label: "Education",
-    title: "WhatsApp Chatbot for Schools & Colleges | Anril AI",
+    title: "WhatsApp AI Agent for Schools & Colleges | Anril AI",
     description:
       "Anril replies to admission and course enquiries day and night, shares fees and brochures, and passes serious students and parents to your counsellors.",
     h1: "WhatsApp chatbot for schools and colleges",
@@ -399,7 +399,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/study-abroad",
     kicker: "Study abroad",
     label: "Study-abroad consultants",
-    title: "WhatsApp Chatbot for Study Abroad Consultants | Anril AI",
+    title: "WhatsApp AI Agent for Study Abroad Consultants | Anril AI",
     description:
       "Anril replies to study-abroad enquiries on WhatsApp day and night, scores each student Hot, Warm or Cold, and passes serious students to your counsellors.",
     h1: "WhatsApp chatbot and lead management for study-abroad consultants",
@@ -445,7 +445,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/healthcare",
     kicker: "Healthcare",
     label: "Healthcare",
-    title: "WhatsApp Chatbot for Hospitals & Clinics | Anril AI",
+    title: "WhatsApp AI Agent for Hospitals & Clinics | Anril AI",
     description:
       "Anril answers patient enquiries on WhatsApp about doctors, timings and services, and sends appointment requests to your front desk.",
     h1: "WhatsApp chatbot for hospitals and clinics",
@@ -488,7 +488,7 @@ export const INDUSTRY_PAGES: readonly Landing[] = [
     path: "/industries/d2c",
     kicker: "D2C brands",
     label: "D2C brands",
-    title: "WhatsApp Chatbot, Payments & Orders for D2C Brands | Anril AI",
+    title: "WhatsApp AI Agent, Payments & Orders for D2C Brands | Anril AI",
     description:
       "Anril replies to product questions, sends photos and price lists, collects payment by link and creates the order, all inside the WhatsApp chat.",
     h1: "WhatsApp chatbot, payments and orders for D2C brands",

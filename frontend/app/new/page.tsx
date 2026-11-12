@@ -14,10 +14,20 @@ import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, SOFTWARE, faqSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: { absolute: "WhatsApp AI Chatbot & CRM for Business | Anril AI" },
+  title: { absolute: "WhatsApp AI Agent & CRM for Business | Anril AI" },
   description:
-    "Anril AI is a WhatsApp chatbot and CRM: replies to every WhatsApp, Instagram and Facebook enquiry in seconds, scores leads, takes payments. From ₹999/month.",
+    "Anril AI is an AI chat agent and CRM. Replies to every WhatsApp, Instagram and Facebook enquiry in seconds, scores leads and takes payments. Starting from ₹999/month.",
   alternates: { canonical: "/" },
+  openGraph: {
+    siteName: "Anril AI",
+    type: "website",
+    locale: "en_IN",
+    url: "https://www.anrilaitech.com/",
+    title: "Anril AI – AI Chat Agent for WhatsApp, Instagram & Facebook",
+    description: "Replies to every enquiry in seconds, scores leads and takes payments. Starting from ₹999/month.",
+    images: [{ url: "/og-image-v2.png", width: 1200, height: 630, alt: "Anril AI – AI chat agent for WhatsApp, Instagram & Facebook" }],
+  },
+  twitter: { card: "summary_large_image", title: "Anril AI – AI Chat Agent for WhatsApp, Instagram & Facebook", description: "Replies to every enquiry in seconds, scores leads and takes payments. Starting from ₹999/month.", images: ["/og-image-v2.png"] },
 };
 
 export default function NewHomePage() {

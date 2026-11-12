@@ -12,7 +12,7 @@ import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, SOFTWARE, breadcrumbSchema, faqSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: { absolute: "WhatsApp API & Chatbot Pricing India – from ₹999 | Anril" },
+  title: { absolute: "WhatsApp AI Agent Pricing India – Starting ₹999 | Anril" },
   description:
     "Anril AI plans start from ₹999 a month (plus GST). WhatsApp message charges from Meta are separate. Cancel anytime, GST invoice. Free demo.",
   alternates: { canonical: "/pricing" },
