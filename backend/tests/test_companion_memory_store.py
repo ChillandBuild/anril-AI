@@ -108,7 +108,8 @@ def test_unknown_section_is_refused(db):
         run(store.add_fact("t1", "jothidar", "karthik", "secrets", "x"))
 
 
-def test_sixty_fact_cap_evicts_closed_then_preferences_then_refuses(db):
+def test_nothing_is_thrown_away_and_the_ceiling_refuses_new_facts(db, monkeypatch):
+    # Prem 2026-11-11: keep all, show the best. 60 was the old limit; a closed fact and a like used to be deleted.
     def seed(n, **kw):
         for i in range(n):
             db.add("companion_memory_facts", tenant_id="t1", companion_id="jothidar", end_user_id="karthik",
@@ -117,19 +118,28 @@ def test_sixty_fact_cap_evicts_closed_then_preferences_then_refuses(db):
     seed(1, section="life", status="closed")
     seed(1, section="preferences", status="active")
     seed(58, section="people", status="active")
-    assert len(db.rows("companion_memory_facts")) == 60
-
-    run(store.add_fact("t1", "jothidar", "karthik", "threads", "Zoho interview"))
+    assert run(store.add_fact("t1", "jothidar", "karthik", "threads", "Zoho interview")) is not None
     rows = db.rows("companion_memory_facts")
-    assert len(rows) == 60 and not any(r["status"] == "closed" for r in rows)
+    assert len(rows) == 61 and sum(r["status"] == "closed" for r in rows) == 1
+    assert sum(r["section"] == "preferences" for r in rows) == 1
+    assert store.MAX_FACTS_PER_PAIR == 500
 
-    run(store.add_fact("t1", "jothidar", "karthik", "threads", "son's exam"))
-    rows = db.rows("companion_memory_facts")
-    assert len(rows) == 60 and not any(r["section"] == "preferences" for r in rows)
-
+    # The safety ceiling counts active facts and facts closed in the last 90 days. The closed fact above
+    # has no recent close date ("Lived in Madurai", closed last year): it does not use up room.
+    monkeypatch.setattr(store, "MAX_FACTS_PER_PAIR", 61)
+    assert run(store.add_fact("t1", "jothidar", "karthik", "threads", "fits, the old closed one is not counted")) is not None
     assert run(store.add_fact("t1", "jothidar", "karthik", "threads", "one too many")) is None
-    assert len(db.rows("companion_memory_facts")) == 60
-    # Another character's pair has its own 60.
+    assert run(store.set_slot_fact("t1", "jothidar", "karthik", "home_city", "profile", "Lives in Chennai",
+                                   None, "2026-11-11")) == (None, [])
+    assert len(db.rows("companion_memory_facts")) == 62
+    # A fact closed yesterday does count.
+    monkeypatch.setattr(store, "MAX_FACTS_PER_PAIR", 3)
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    for status in ("active", "active", "closed"):
+        db.add("companion_memory_facts", tenant_id="t1", companion_id="guru", end_user_id="karthik", section="life",
+               text=status, status=status, updated_at=recent)
+    assert run(store.add_fact("t1", "guru", "karthik", "life", "no room")) is None
+    # Another character's pair has its own ceiling.
     assert run(store.add_fact("t1", "vastu", "karthik", "life", "buying a house")) is not None
 
 

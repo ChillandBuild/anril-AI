@@ -15,6 +15,23 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A throwaway Postgres with pgvector. tests/test_companion_memory_pg.py builds the companion memory
+    # schema in it from the real migration files (tests/pg_schema.py) and tests the SQL the fake
+    # database cannot: tenant links, one fact per slot, search, the run claim, the day context.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: tester
+          POSTGRES_PASSWORD: tester
+          POSTGRES_DB: memtest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tester -d memtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,7 +53,18 @@ jobs:
         env:
           SUPABASE_URL: https://dummy.supabase.co
           SUPABASE_SERVICE_KEY: dummy
+          COMPANION_MEMORY_TEST_DATABASE_URL: postgresql://tester:tester@localhost:5432/memtest
         run: python -m pytest
+
+      # A skipped test passes silently: fail the build if the real-database tests did not run.
+      - name: Companion memory tests ran on real Postgres
+        env:
+          SUPABASE_URL: https://dummy.supabase.co
+          SUPABASE_SERVICE_KEY: dummy
+          COMPANION_MEMORY_TEST_DATABASE_URL: postgresql://tester:tester@localhost:5432/memtest
+        run: |
+          python -m pytest tests/test_companion_memory_pg.py -q -rs | tee pg.out
+          if grep -q "skipped" pg.out; then echo "real-database tests were skipped"; exit 1; fi
 
   frontend:
     name: Frontend Lint & Typecheck

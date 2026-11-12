@@ -48,7 +48,7 @@ def _line(m: dict) -> str:
     Aadhaar...) is left out entirely, like the card and the diary do."""
     who = "Person" if m["role"] == "user" else "Character"
     text = memory_card._unfenced(m["content"])[:MSG_CAP]
-    if memory_card._SECRET_WORDS.search(text):
+    if memory_card.names_secret(text):
         return f"{who}: (private detail left out)"
     return f"{who}: {memory_card.redact(text)}"
 
@@ -76,8 +76,13 @@ async def index_messages(tenant_id: str, companion_id: str, end_user_id: str, me
     """Stores the search windows for messages a memory run just read. Returns the count."""
     if not messages:
         return 0
-    before = await store.messages_before(tenant_id, companion_id, end_user_id, messages[0]["created_at"],
-                                         OVERLAP)
+    cutoff = await store.read_after(tenant_id, end_user_id)  # set when an owner deleted a memory
+    before = store.after_cutoff(
+        await store.messages_before(tenant_id, companion_id, end_user_id, messages[0]["created_at"], OVERLAP),
+        cutoff)
+    messages = store.after_cutoff(messages, cutoff, roles=("assistant",))  # the person's own words were erased
+    if not messages:
+        return 0
     wins = windows(messages, before)
     texts = ["\n".join(_line(m) for m in w) for w in wins]
     vectors = await memory_embed.embed(texts, "document", tenant_id)
@@ -98,14 +103,18 @@ async def index_diary(tenant_id: str, companion_id: str, end_user_id: str, day: 
 
 async def index_facts(tenant_id: str, companion_id: str, end_user_id: str, facts: list[dict],
                       today: date) -> None:
-    """Closed facts, as the card would show them ("Lived in Chennai (until Mar 2026)")."""
+    """Facts as the card would show them: closed ("Lived in Chennai (until Mar 2026)") and active
+    ("Lives in Bengaluru (since Mar 2026)"). Active ones are indexed so a fact the 2,000-character card
+    had no room for is still found; a fact the card does show is never repeated (render_hits).
+    One piece per fact: closing or rewording a fact replaces its piece."""
     if not facts:
         return
-    texts = [memory_card._fact_line({**f, "status": "closed"}) for f in facts]
+    texts = [memory_card._fact_line(f) for f in facts]
     vectors = await memory_embed.embed(texts, "document", tenant_id)
     rows = [{"tenant_id": tenant_id, "companion_id": companion_id, "end_user_id": end_user_id,
              "kind": "fact", "source_key": str(f["id"]),
-             "day": (memory_card._norm_date(f.get("valid_to")) or today.isoformat()),
+             "day": (memory_card._norm_date(f.get("valid_to")) or memory_card._norm_date(f.get("valid_from"))
+                     or today.isoformat()),
              "text": t, "embedding": _vec(v)} for f, t, v in zip(facts, texts, vectors)]
     await store.upsert_chunks(rows)
 
@@ -151,28 +160,71 @@ def fuse(rows: list[dict]) -> list[dict]:
     return sorted(passed, key=lambda h: -h["rrf"])
 
 
+def rewritten_queries(rewrite, message: str) -> list[str]:
+    """The English and the Tamil-script version of the message from the shared rewrite, when they say
+    something the typed message does not. [] with no rewrite, a failed one, or an English message.
+    Example: "amma surgery epdi pochu" -> ["How did my mother's surgery go?", "அம்மாவின் அறுவை சிகிச்சை எப்படி நடந்தது?"]."""
+    if rewrite is None or getattr(rewrite, "failed", False):
+        return []
+    out: list[str] = []
+    seen = {" ".join((message or "").casefold().split())}
+    for text in (rewrite.english_query, rewrite.tamil_query):
+        key = " ".join((text or "").casefold().split())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(text.strip())
+    return out
+
+
+def best_rows(rows: list[dict]) -> list[dict]:
+    """One row per (piece, list) with its best score, so a piece found by two versions of the question
+    is ranked once in fuse, not twice."""
+    best: dict[tuple, dict] = {}
+    for r in rows:
+        key = (str(r["id"]), r.get("source"))
+        if key not in best or float(r["score"]) > float(best[key]["score"]):
+            best[key] = r
+    return list(best.values())
+
+
 async def search(tenant_id: str, companion_id: str, end_user_id: str, message: str, *,
-                 today: date | None = None, model: str | None = None, with_recent: bool = True) -> list[dict]:
+                 today: date | None = None, model: str | None = None, with_recent: bool = True,
+                 rewrite=None) -> list[dict]:
     """Fused hits for this message ([] on any error: a reply never waits on a broken search).
     with_recent=False searches the text alone (the Playground's Search tab and the agentic tool,
-    whose query is already the question)."""
+    whose query is already the question).
+    rewrite (the shared kb Rewrite) adds its English and Tamil-script versions as extra searches: Priya's
+    "amma surgery epdi pochu" is also searched as "How did my mother's surgery go?", which is how the
+    fact line "Mother's surgery is on Friday" is worded. The message as typed is always searched too,
+    with the same floors, so a rewrite can only add hits."""
     try:
         before = []
         if with_recent:
             recent = await store.recent_messages(tenant_id, companion_id, end_user_id, limit=4)
             before = [m["content"] for m in recent if m["role"] == "user"][-2:]
         query = "\n".join(before + [message])
+        extra = rewritten_queries(rewrite, message)
         companions = await scope_companions(tenant_id, companion_id)
         try:
-            [vector] = await asyncio.wait_for(memory_embed.embed([query], "query", tenant_id, model=model,
-                                                                 retries=False), QUERY_EMBED_SECONDS)
+            vectors = list(await asyncio.wait_for(
+                memory_embed.embed([query] + extra, "query", tenant_id, model=model, retries=False),
+                QUERY_EMBED_SECONDS))
         except asyncio.TimeoutError:
             logger.warning("companion %s: memory search embedding timed out", companion_id)
-            vector = None
-        trigram = _trigram_query(message)
-        if vector is None and not trigram:
+            vectors = []
+        vectors += [None] * (1 + len(extra) - len(vectors))
+        asks = [(vector, _trigram_query(text)) for vector, text in zip(vectors, [message] + extra)]
+        asks = [(vector, words) for vector, words in asks if vector is not None or words]
+        if not asks:
             return []
-        rows = await store.match_chunks(tenant_id, companions, end_user_id, vector, trigram, CANDIDATES)
+        found = await asyncio.gather(*(store.match_chunks(tenant_id, companions, end_user_id, vector, words,
+                                                          CANDIDATES) for vector, words in asks),
+                                     return_exceptions=True)
+        failed = [part for part in found if isinstance(part, BaseException)]
+        if failed:   # the other versions' hits are kept: a rewrite can only add
+            logger.warning("companion %s: %d of %d memory searches failed (%s)", companion_id, len(failed),
+                           len(found), type(failed[0]).__name__)
+        rows = best_rows([row for part in found if not isinstance(part, BaseException) for row in part])
         hits = fuse(rows)
         playground.note(f"Memories: {len(rows)} candidates, {len(hits)} passed the floor")
         return hits

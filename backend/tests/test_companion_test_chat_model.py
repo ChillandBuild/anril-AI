@@ -38,7 +38,10 @@ def test_only_the_companion_engine_passes_a_model_to_the_llm():
     offenders = []
     for path in APP.rglob("*.py"):
         for node in _calls(path, LLM_FUNCS):
-            if _passes(node, "model") and path.relative_to(APP).as_posix() != "companion/engine.py":
+            # engine.py: the Playground's model picker. memory_card.py: the note-writer's fixed model
+            # (NOTE_MODEL, never a value from a request).
+            if _passes(node, "model") and path.relative_to(APP).as_posix() not in (
+                    "companion/engine.py", "companion/memory_card.py"):
                 offenders.append(f"{path.relative_to(APP)}:{node.lineno}")
     assert offenders == [], f"model passed to the LLM outside the Playground path: {offenders}"
 

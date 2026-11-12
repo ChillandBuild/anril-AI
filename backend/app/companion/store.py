@@ -5,6 +5,7 @@ Sync supabase calls run in a thread so they don't block the event loop.
 """
 import asyncio
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 from app.companion.models import CompanionSettings
@@ -185,16 +186,183 @@ async def set_conversation_mood(tenant_id: str, conversation_id: str, mood: str)
     await asyncio.to_thread(_q)
 
 
-async def recent_messages(tenant_id: str, companion_id: str, end_user_id: str, limit: int = 10) -> list[dict]:
-    """Last `limit` messages of this character with this person, across conversations, oldest first."""
+async def recent_messages(tenant_id: str, companion_id: str, end_user_id: str, limit: int = 10, *,
+                          after: str | None = None) -> list[dict]:
+    """Last `limit` messages of this character with this person, across conversations, oldest first.
+    `after` (companion_end_users.chat_read_after): nothing sent at or before it is returned, so the
+    character never re-reads the chat from before an owner deleted a memory."""
     def _q():
-        return (
-            get_supabase().table("companion_messages").select("role, content, mood, created_at")
-            .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
-            .order("created_at", desc=True).limit(limit).execute().data
-        )
+        q = (get_supabase().table("companion_messages").select("role, content, mood, created_at")
+             .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id))
+        if after:
+            q = q.gt("created_at", after)
+        return q.order("created_at", desc=True).limit(limit).execute().data
     rows = await asyncio.to_thread(_q) or []
     return list(reversed(rows))
+
+
+# --- an owner deleted a memory: the person's own words leave the saved chat (migration 263) ------
+
+ERASE_SCAN = 5000                   # newest messages / search pieces of the person that are checked
+_PAGE = 1000                        # PostgREST returns at most 1000 rows per call
+_LEFTOVER = re.compile(r"^[\W_]+|[\W_]+$")
+_PLACEHOLDER = re.compile(r"\[(number|email)\]")
+
+
+def _norm_map(text: str) -> tuple[str, list[int]]:
+    """`text` as a receipt is compared (memory_card._norm_quote: case-folded, everything that is not a
+    letter, a mark or a digit becomes one space), plus where each of its characters sits in `text`.
+    "Amma-ku  sugar!" → ("amma ku sugar", [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13])."""
+    out: list[str] = []
+    at: list[int] = []
+    for i, ch in enumerate(text):
+        category = unicodedata.category(ch)
+        if category == "Cf":            # invisible joiners are dropped, not spaces
+            continue
+        if category[0] in "LMN":
+            for folded in ch.casefold():
+                out.append(folded)
+                at.append(i)
+        elif out and out[-1] != " ":
+            out.append(" ")
+            at.append(i)
+    if out and out[-1] == " ":
+        out.pop()
+        at.pop()
+    return "".join(out), at
+
+
+def _quote_pattern(quote: str) -> "re.Pattern | None":
+    """A whole-word pattern for `quote` over _norm_map text. The saved quote may hold "[number]" or
+    "[email]" where the person typed digits or an address (memory_card.redact): those match the real thing.
+    None for a quote with fewer than 3 characters of words."""
+    quote = unicodedata.normalize("NFC", quote or "")
+    parts: list[str] = []
+    words = 0
+    pieces = _PLACEHOLDER.split(quote)          # text, kind, text, kind, ..., text
+    for i, piece in enumerate(pieces):
+        if i % 2:
+            last = not any(_norm_map(p)[0] for p in pieces[i + 1::2])
+            parts.append(r"\d(?:[\d ]*\d)?" if piece == "number"
+                         else r"\S+(?: \S+){0,3}" if last else r"\S+(?: \S+){0,5}?")
+        else:
+            norm = _norm_map(piece)[0]
+            if norm:
+                parts.append(re.escape(norm))
+                words += len(norm)
+    if words < 3:
+        return None
+    return re.compile(r"(?<!\S)" + " ".join(parts) + r"(?!\S)")
+
+
+def quote_spans(text: str, quote: str) -> list[tuple[int, int]]:
+    """Where `quote` sits in `text` as whole words, compared the way a receipt is (so "Amma-ku sugar"
+    is found by the quote "amma ku sugar"). (start, end) pairs in `text`, which must be NFC."""
+    pattern = _quote_pattern(quote)
+    if pattern is None:
+        return []
+    norm, at = _norm_map(text)
+    return [(at[m.start()], at[m.end() - 1] + 1) for m in pattern.finditer(norm) if m.end() > m.start()]
+
+
+def cut_words(content: str, quote: str) -> str:
+    """`content` without `quote`, tidied: "Amma-ku sugar problem. Naalaiku interview irukku" minus
+    "amma ku sugar problem" → "Naalaiku interview irukku". "" when nothing is left; `content` itself
+    when the quote is not in it."""
+    text = unicodedata.normalize("NFC", content or "")
+    spans = quote_spans(text, quote)
+    if not spans:
+        return content
+    kept, last = [], 0
+    for start, end in spans:
+        kept.append(text[last:start])
+        last = end
+    kept.append(text[last:])
+    cut = re.sub(r"\s{2,}", " ", " ".join(kept)).strip()
+    cut = re.sub(r"^[\s.,;:!?\-]+", "", cut)
+    return cut if re.sub(_LEFTOVER, "", cut) else ""
+
+
+def _scan(build) -> list[dict]:
+    """Up to ERASE_SCAN rows of `build()` (a fresh ordered query each call), read 1000 at a time."""
+    rows: list[dict] = []
+    while len(rows) < ERASE_SCAN:
+        page = build().range(len(rows), len(rows) + _PAGE - 1).execute().data or []
+        rows += page
+        if len(page) < _PAGE:
+            break
+    return rows
+
+
+async def erase_words(tenant_id: str, end_user_id: str, quote: str) -> dict:
+    """Cuts the person's words out of every saved message of theirs (with any character) and deletes
+    the search pieces that carry them. A message with nothing left is deleted. The words are matched
+    the way the receipt was (case, punctuation and spacing do not matter).
+    {"messages": n, "pieces": n, "capped": bool}; capped = the person has more saved chat than was
+    checked. No marker is left: the person must not learn a delete exists."""
+    if _quote_pattern(quote) is None:
+        return {"messages": 0, "pieces": 0, "capped": False}
+
+    def _q():
+        db = get_supabase()
+        rows = _scan(lambda: db.table("companion_messages").select("id, content")
+                     .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).eq("role", "user")
+                     .order("created_at", desc=True))
+        changed = 0
+        for row in rows:                      # read everything first: a delete would shift the pages
+            content = row.get("content") or ""
+            left = cut_words(content, quote)
+            if left == content:
+                continue
+            q = db.table("companion_messages")
+            q = q.update({"content": left}) if left else q.delete()
+            q.eq("tenant_id", tenant_id).eq("id", row["id"]).execute()
+            changed += 1
+        pieces = _scan(lambda: db.table("companion_memory_chunks").select("id, text")
+                       .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).eq("kind", "messages")
+                       .order("created_at", desc=True))
+        hit = [r["id"] for r in pieces
+               if quote_spans(unicodedata.normalize("NFC", r.get("text") or ""), quote)]
+        for start in range(0, len(hit), 100):
+            (db.table("companion_memory_chunks").delete().eq("tenant_id", tenant_id)
+             .in_("id", hit[start:start + 100]).execute())
+        return {"messages": changed, "pieces": len(hit),
+                "capped": len(rows) >= ERASE_SCAN or len(pieces) >= ERASE_SCAN}
+    return await asyncio.to_thread(_q)
+
+
+async def set_read_after(tenant_id: str, end_user_id: str) -> str:
+    """From now on no character reads this person's chat from before this moment (reply window,
+    note-writer, search index, diary). The moment is the person's newest saved message, so it is on the
+    database's clock like every message time (the app server's clock can be seconds off). Returns it."""
+    def _q():
+        db = get_supabase()
+        newest = (db.table("companion_messages").select("created_at")
+                  .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id)
+                  .order("created_at", desc=True).limit(1).execute().data)
+        edge = newest[0]["created_at"] if newest else _now()
+        (db.table("companion_end_users").update({"chat_read_after": edge})
+         .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
+        return edge
+    return await asyncio.to_thread(_q)
+
+
+async def read_after(tenant_id: str, end_user_id: str) -> str | None:
+    """companion_end_users.chat_read_after, or None (no memory was ever deleted for this person)."""
+    def _q():
+        return (get_supabase().table("companion_end_users").select("chat_read_after")
+                .eq("tenant_id", tenant_id).eq("id", end_user_id).limit(1).execute().data)
+    rows = await asyncio.to_thread(_q)
+    return rows[0].get("chat_read_after") if rows else None
+
+
+def after_cutoff(messages: list[dict], cutoff: str | None, *, roles: tuple[str, ...] = ("user", "assistant")
+                 ) -> list[dict]:
+    """`messages` without those of `roles` sent at or before `cutoff` (None = keep all)."""
+    if not cutoff:
+        return messages
+    edge = _parse_ts(cutoff)
+    return [m for m in messages if m["role"] not in roles or _parse_ts(m["created_at"]) > edge]
 
 
 # --- pending turns (a reply paused while the client's app runs a tool) -------------------------
@@ -484,7 +652,7 @@ async def search_facts(tenant_id: str, companion_id: str, q: str, limit: int = 1
 # --- Level 2 memory: facts, watermarks, tenant settings (migration 249) -------------------------
 
 FACT_SECTIONS = ("profile", "people", "life", "preferences", "threads")
-MAX_FACTS_PER_PAIR = 60
+MAX_FACTS_PER_PAIR = 500   # a safety ceiling, not a working limit: nothing is evicted (see _has_room)
 CLOSED_FACT_WINDOW = timedelta(days=90)
 
 
@@ -542,27 +710,29 @@ async def get_fact(tenant_id: str, fact_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def _make_room(db, tenant_id: str, companion_id: str, end_user_id: str) -> bool:
-    """Keeps a (character, person) pair under MAX_FACTS_PER_PAIR rows before an add: deletes the
-    oldest closed fact first, then the oldest active preference. False if neither exists."""
-    rows = (
-        db.table("companion_memory_facts").select("id, status, section, created_at")
-        .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
-        .order("created_at").execute().data or []
-    )
-    if len(rows) < MAX_FACTS_PER_PAIR:
-        return True
-    victim = next((r for r in rows if r["status"] == "closed"), None) or next(
-        (r for r in rows if r["status"] == "active" and r["section"] == "preferences"), None)
-    if not victim:
-        return False
-    db.table("companion_memory_facts").delete().eq("tenant_id", tenant_id).eq("id", victim["id"]).execute()
-    return True
+def _has_room(db, tenant_id: str, companion_id: str, end_user_id: str) -> bool:
+    """False once a (character, person) pair holds MAX_FACTS_PER_PAIR facts. Nothing is ever thrown
+    away to make room (Prem, 2026-11-11): the card shows the newest that fit, search finds the rest,
+    and a pair at the ceiling stops taking new facts until the owner deletes some (an alert is raised).
+    Counted: active facts and facts closed in the last 90 days (what list_facts shows the owner). An
+    old closed fact ("Lived in Madurai", closed last year) does not use up room."""
+    def _count(status: str, room: int) -> int:
+        q = (db.table("companion_memory_facts").select("id")
+             .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+             .eq("status", status))
+        if status == "closed":
+            q = q.gte("updated_at", (datetime.now(timezone.utc) - CLOSED_FACT_WINDOW).isoformat())
+        return len(q.limit(room).execute().data or [])
+    active = _count("active", MAX_FACTS_PER_PAIR)
+    return active < MAX_FACTS_PER_PAIR and active + _count("closed", MAX_FACTS_PER_PAIR - active) < MAX_FACTS_PER_PAIR
 
 
 async def add_fact(tenant_id: str, companion_id: str, end_user_id: str, section: str, text: str,
-                   valid_from: str | None = None, valid_to: str | None = None) -> dict | None:
-    """Adds one active fact. None when the pair is full (60 rows, nothing evictable)."""
+                   valid_from: str | None = None, valid_to: str | None = None, *,
+                   quote: str | None = None, source_message_id: str | None = None) -> dict | None:
+    """Adds one active fact. None when the pair is at the ceiling (MAX_FACTS_PER_PAIR rows).
+    quote / source_message_id (migration 261): the person's words the fact came from and the message
+    they were found in. The memory sweep always sends them; hand-added facts have none."""
     if section not in FACT_SECTIONS:
         raise ValueError(f"unknown section {section!r}")
     now = _now()
@@ -571,10 +741,12 @@ async def add_fact(tenant_id: str, companion_id: str, end_user_id: str, section:
         "section": section, "text": text.strip()[:300], "valid_from": valid_from, "valid_to": valid_to,
         "status": "active", "created_at": now, "updated_at": now,
     }
+    if quote:
+        row["quote"], row["source_message_id"] = quote.strip()[:300], source_message_id
 
     def _q():
         db = get_supabase()
-        if not _make_room(db, tenant_id, companion_id, end_user_id):
+        if not _has_room(db, tenant_id, companion_id, end_user_id):
             return None
         return db.table("companion_memory_facts").insert(row).execute().data[0]
     return await asyncio.to_thread(_q)
@@ -596,8 +768,13 @@ async def close_fact(tenant_id: str, fact_id: str, valid_to: str | None = None) 
     return await _update_fact(tenant_id, fact_id, {"status": "closed", "valid_to": valid_to})
 
 
-async def update_fact_text(tenant_id: str, fact_id: str, text: str) -> bool:
-    return await _update_fact(tenant_id, fact_id, {"text": text.strip()[:300]})
+async def update_fact_text(tenant_id: str, fact_id: str, text: str, *, quote: str | None = None,
+                           source_message_id: str | None = None) -> bool:
+    """New wording for a fact. With a quote, the fact's receipt is replaced too."""
+    payload = {"text": text.strip()[:300]}
+    if quote:
+        payload["quote"], payload["source_message_id"] = quote.strip()[:300], source_message_id
+    return await _update_fact(tenant_id, fact_id, payload)
 
 
 async def delete_fact(tenant_id: str, fact_id: str) -> bool:
@@ -607,6 +784,57 @@ async def delete_fact(tenant_id: str, fact_id: str) -> bool:
             .eq("tenant_id", tenant_id).eq("id", fact_id).execute().data
         )
     return bool(await asyncio.to_thread(_q))
+
+
+async def set_slot_fact(tenant_id: str, companion_id: str, end_user_id: str, slot: str, section: str,
+                        text: str, valid_from: str | None, closed_on: str, *, quote: str | None = None,
+                        source_message_id: str | None = None) -> tuple[dict | None, list[dict]]:
+    """The one live fact of a slot (migration 262): closes this pair's active fact in `slot` on
+    `closed_on` and adds the new one, in one transaction. Returns (new fact, the facts it closed);
+    (None, []) when the pair is full. "Lives in Chennai" → closed, "Lives in Bengaluru" → active."""
+    params = {"p_tenant": tenant_id, "p_companion": companion_id, "p_end_user": end_user_id, "p_slot": slot,
+              "p_section": section, "p_text": text.strip()[:300], "p_valid_from": valid_from,
+              "p_closed_on": closed_on, "p_quote": quote.strip()[:300] if quote else None,
+              "p_source": source_message_id if quote else None}
+
+    def _q():
+        db = get_supabase()
+        if not _has_room(db, tenant_id, companion_id, end_user_id):
+            return None, []
+        out = db.rpc("companion_set_slot_fact", params).execute().data or {}
+        return out.get("fact"), out.get("closed") or []
+    return await asyncio.to_thread(_q)
+
+
+async def mark_threads_asked(tenant_id: str, fact_ids: list[str]) -> None:
+    """The character was shown these threads as due: it asks once, then waits to hear."""
+    if not fact_ids:
+        return
+
+    def _q():
+        (get_supabase().table("companion_memory_facts").update({"asked_at": _now()})
+         .eq("tenant_id", tenant_id).in_("id", fact_ids).eq("section", "threads").eq("status", "active")
+         .is_("asked_at", "null").execute())
+    await asyncio.to_thread(_q)
+
+
+async def expire_threads(tenant_id: str, companion_id: str, end_user_id: str, *, dated_before: str,
+                         undated_before: str) -> int:
+    """Open threads nobody closed: a date before `dated_before` (a day), or no date and created before
+    `undated_before` (a timestamp). They become closed + expired_at, and leave the card. Returns the count."""
+    now = _now()
+    payload = {"status": "closed", "expired_at": now, "updated_at": now}
+
+    def _base():
+        return (get_supabase().table("companion_memory_facts").update(payload)
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+                .eq("section", "threads").eq("status", "active"))
+
+    def _q():
+        dated = _base().lt("valid_from", dated_before).execute().data or []
+        undated = _base().is_("valid_from", "null").lt("created_at", undated_before).execute().data or []
+        return len(dated) + len(undated)
+    return await asyncio.to_thread(_q)
 
 
 async def get_watermark(tenant_id: str, companion_id: str, end_user_id: str) -> str | None:
@@ -1144,7 +1372,7 @@ async def replace_recap_if(tenant_id: str, companion_id: str, end_user_id: str, 
 async def queue_forget(tenant_id: str, companion_id: str, end_user_id: str, items: list[str],
                        tries: int) -> None:
     """A "forget that" cleanup that failed: the hourly job tries it again. The items are kept only
-    until the cleanup succeeds (or gives up); forget-me deletes the whole state row."""
+    until the cleanup succeeds; forget-me deletes the whole state row."""
     await update_state(tenant_id, companion_id, end_user_id,
                        {"forget_pending": {"items": items[:10], "tries": tries}})
 
@@ -1155,4 +1383,46 @@ async def pending_forgets(tenant_id: str) -> list[dict]:
         return (get_supabase().table("companion_memory_state")
                 .select("companion_id, end_user_id, forget_pending")
                 .eq("tenant_id", tenant_id).not_.is_("forget_pending", "null").limit(200).execute().data)
+    return await asyncio.to_thread(_q) or []
+
+
+# --- skipped message ranges (migration 261): what the card could not read, kept on record ---------
+
+async def messages_range(tenant_id: str, companion_id: str, end_user_id: str, after: str, through: str,
+                         limit: int) -> list[dict]:
+    """Messages of this pair with after < created_at <= through, oldest first, at most `limit`."""
+    def _q():
+        return (get_supabase().table("companion_messages").select("id, role, content, created_at")
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+                .gt("created_at", after).lte("created_at", through).order("created_at").limit(limit)
+                .execute().data)
+    return await asyncio.to_thread(_q) or []
+
+
+async def park_messages(tenant_id: str, companion_id: str, end_user_id: str, *, after: str, through: str,
+                        count: int, mark: str | None) -> None:
+    """Writes down a range the card could not read and moves the watermark past it, in ONE write, so the
+    messages are either still waiting behind the watermark or on record here, never neither.
+    A range that starts where the last one ended (`mark` is its `through`) is joined to it.
+    Call only while holding the pair's claim (read, then write)."""
+    ranges = list((await get_state(tenant_id, companion_id, end_user_id)).get("skipped") or [])
+    last = ranges[-1] if ranges else None
+    if last and mark and last.get("through") == mark and not last.get("dead"):
+        ranges[-1] = {**last, "through": through, "count": int(last.get("count") or 0) + count}
+    else:
+        ranges.append({"after": after, "through": through, "count": count, "tries": 0, "since": _now()})
+    await update_state(tenant_id, companion_id, end_user_id,
+                       {"skipped": ranges, "last_message_at": through, "failures": 0})
+
+
+async def set_skipped(tenant_id: str, companion_id: str, end_user_id: str, ranges: list[dict]) -> None:
+    await update_state(tenant_id, companion_id, end_user_id, {"skipped": ranges or None})
+
+
+async def pairs_with_skipped(tenant_id: str) -> list[dict]:
+    """This business's pairs that have skipped message ranges on record."""
+    def _q():
+        return (get_supabase().table("companion_memory_state")
+                .select("companion_id, end_user_id, skipped")
+                .eq("tenant_id", tenant_id).not_.is_("skipped", "null").limit(500).execute().data)
     return await asyncio.to_thread(_q) or []

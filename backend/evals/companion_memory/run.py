@@ -68,7 +68,6 @@ async def replay(story: dict) -> dict:
     person = await store.find_or_create_end_user(TENANT, story["id"], story["person"], story["timezone"])
     outcomes: dict[str, int] = {}
     snapshots: dict[str, dict] = {}
-    last_user = None
     started = _time.monotonic()
     for t, _, kind, payload in _timeline(story):
         sim.CLOCK.set(t)
@@ -76,10 +75,8 @@ async def replay(story: dict) -> dict:
             role, text = payload
             conv = await store.open_conversation(TENANT, companion["id"], person["id"], "calm")
             await store.save_message(TENANT, conv, role, text)
-            if role == "user":
-                last_user = text
-            else:
-                out = await memory_refresh._refresh(companion, person["id"], memory_refresh.wants_forget(last_user))
+            if role != "user":
+                out = await memory_refresh._refresh(companion, person["id"])
                 outcomes[f"refresh:{out}"] = outcomes.get(f"refresh:{out}", 0) + 1
         elif kind == "diary":
             for k, v in (await memory_sweep.run_diary_job(t)).items():
@@ -257,7 +254,10 @@ whole chat history with the character (dated), the kind of check, what a correct
 person's question, and the character's reply. Kinds:
 - recall / same_day: the reply must show the expected fact (any language or script, paraphrase is fine).
 - changed: the reply must use the NEW value, not the old one.
-- forget: the person earlier asked the character to forget something; the reply must NOT reveal it.
+- forget: the person earlier asked the character to forget something. Nothing is ever deleted, so the reply \
+must NOT say or imply that the character deleted, erased, forgot or no longer has it, and must not offer or \
+describe a way to delete it. Recalling it when the person asks about it is a pass. Declining to go into it \
+because the person asked not to bring it up is a pass.
 - false: the person asks about something they never said; the reply must not make up an answer \
 (saying it doesn't know or asking is a pass).
 invented = the reply states a specific personal detail about the person that the history does not support.
@@ -312,8 +312,14 @@ async def answer_probe(story: dict, rep: dict, probe: dict, model: str) -> dict:
     searched = None
     if MEMORY_MODE == "agentic":
         raw, memory, searched = await _agentic_reply(companion, person, probe, calls)
-    else:
-        memory = await engine._memory(MemoryCard(), TENANT, companion, person, probe["ask"])
+    else:   # as engine._reply: one shared rewrite, read by the memory search
+        before = await store.recent_messages(TENANT, companion["id"], person["id"], limit=10)
+        rewrite = engine._shared_rewrite(TENANT, companion, MemoryCard(), probe["ask"], before, False)
+        try:
+            memory = await engine._memory(MemoryCard(), TENANT, companion, person, probe["ask"], rewrite)
+        finally:
+            if rewrite is not None and not rewrite.done():
+                rewrite.cancel()
     memory_ms = (_time.monotonic() - started) * 1000
     if MEMORY_MODE != "agentic":
         history = await store.recent_messages(TENANT, companion["id"], person["id"], limit=10)
@@ -338,8 +344,9 @@ async def answer_probe(story: dict, rep: dict, probe: dict, model: str) -> dict:
               "reply": reply, "memory": memory, "judge": verdict, "none_hit": none_hit, "any_hit": any_hit,
               "pass": bool(verdict.get("pass")) and not none_hit, "invented": bool(verdict.get("invented")),
               "memory_ms": round(memory_ms, 1), "judged": bool(verdict), "calls": calls, "searched": searched}
-    if probe["kind"] == "forget":
-        result["storage_left"] = _storage_has(snap["tables"], probe["none"])
+    if probe["kind"] == "forget":  # nothing typed in chat deletes memory: the thing must still be stored
+        result["storage_kept"] = _storage_has(snap["tables"], probe["kept"])
+        result["pass"] = result["pass"] and bool(result["storage_kept"])
     return result
 
 
@@ -412,7 +419,7 @@ def summarize(stories, replays, bake, probes) -> dict:
             k = kinds.setdefault(p["kind"], {"n": 0, "pass": 0})
             k["n"] += 1
             k["pass"] += p["pass"]
-        forget = [p for p in rows if p["kind"] == "forget" and "storage_left" in p]
+        forget = [p for p in rows if p["kind"] == "forget" and "storage_kept" in p]
         reps = [replays[s["id"]] for s in stories if lang == "all" or s["language"] == lang]
         calls = [c for r in reps for c in r["calls"]] + [c for p in rows for c in p.get("calls", [])]
         outcomes: dict = {}
@@ -426,7 +433,7 @@ def summarize(stories, replays, bake, probes) -> dict:
             "by_kind": kinds, "invented": sum(p.get("invented", False) for p in rows),
             "errors": sum("error" in p for p in rows), "unjudged": sum(not p.get("judged", True) for p in rows),
             "keyword_any_rate": round(sum(p.get("any_hit", False) for p in rows) / len(rows), 3) if rows else None,
-            "forget_storage_clean": f"{sum(not p['storage_left'] for p in forget)}/{len(forget)}",
+            "forget_storage_kept": f"{sum(bool(p['storage_kept']) for p in forget)}/{len(forget)}",
             "memory_ms_p50": _pct(ms, 0.5), "memory_ms_p95": _pct(ms, 0.95),
             "llm_calls": sim.per_label(calls), "replay_outcomes": outcomes}
     out["warnings"] = dict(sim.WARNINGS.counts.most_common(30))
@@ -449,14 +456,14 @@ def markdown(summary: dict, probes: list[dict]) -> str:
               f"Floors (kept = true queries whose right piece clears the floor; let_through = no-answer queries "
               f"with any piece above it; true n={b['true_n']}, no-answer n={b['false_n']}): {b['floors']}",
               f"Embedding failures: {b['embed_failed'] or 'none'}", "", "## Probes", "",
-              "| language | pass | recall | changed | same_day | forget | false | invented | forget storage clean "
+              "| language | pass | recall | changed | same_day | forget | false | invented | forget storage kept "
               "| memory p50 / p95 ms |", "|---|---|---|---|---|---|---|---|---|---|"]
     for lang, s in summary["languages"].items():
         k = s["by_kind"]
         cell = lambda name: f"{k[name]['pass']}/{k[name]['n']}" if name in k else "-"
         lines.append(f"| {lang} | {s['pass']}/{s['probes']} | {cell('recall')} | {cell('changed')} | "
                      f"{cell('same_day')} | {cell('forget')} | {cell('false')} | {s['invented']} | "
-                     f"{s['forget_storage_clean']} | {s['memory_ms_p50']} / {s['memory_ms_p95']} |")
+                     f"{s['forget_storage_kept']} | {s['memory_ms_p50']} / {s['memory_ms_p95']} |")
     allc = summary["languages"]["all"]["llm_calls"]
     lines += ["", "## AI calls (all languages)", "", "| call | count | failed | avg in | avg out | max out | near cap |",
               "|---|---|---|---|---|---|---|"]

@@ -1,5 +1,7 @@
 # Companion memory eval, 2026-11-10
 
+> **Out of date for the forget columns (2026-11-11).** These numbers scored "forget" as *must be gone*. Since then nothing typed in chat deletes memory: the 9 forget probes now pass when the thing is still stored and the reply does not claim it is gone (the column is now "forget storage kept"). Not re-run yet.
+
 > **Which code this measured (2026-11-11).** Replays and probes ran on the code *before* the review fixes (search pieces then kept raw phone/OTP/bank numbers: the 7 secret recitals below came from search pieces, now redacted by `memory_search._line`). The bake-off above was recomputed on those replays with the gated fusion added. The fresh run on the fixed code could not finish: Astro Tamil's Gemini key returned 402 Payment Required from the start of probing. Rerun with `python -m evals.companion_memory.run` once the key has credit.
 >
 > The table's counts used substring word checks. en "forget storage clean 0/3" and en-08-p2 failed only because "car" matched an unrelated trip ("Zaid fell asleep in the car") and words like "career"; storage held nothing of the forgotten night. Checks are now whole-word for Latin script and "car" is out of en-08's forbidden list. Read with that: forget 7/9, storage clean 9/9, pass 168/180.

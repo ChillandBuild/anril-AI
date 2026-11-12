@@ -13,7 +13,7 @@ from tests.conftest import fake_embedding
 from tests.test_companion_memory_recap_diary import (  # noqa: F401  (env is a fixture)
     DAY_ANSWER, NOW, TODAY, YDAY_NOON, YESTERDAY, at, env, run, state_row)
 
-EMPTY = '{"ops": [], "forget": []}'
+EMPTY = '{"ops": []}'
 MIDNIGHT_AGO = 930  # 10 Nov 00:00 IST is 930 minutes before NOW (15:30 IST)
 
 
@@ -231,7 +231,7 @@ def test_backfill_indexes_old_history_once(env):
 
 def _smart_llm(env, monkeypatch, word):
     """Confirms/rewrites by looking for `word`, like the real model would."""
-    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4):
+    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4, model=None):
         system, user = messages[0]["content"], messages[1]["content"]
         env.state["calls"].append({"system": system, "user": user})
         refs = re.findall(r"^(\w\d+) \[[^\]]*\] (.*)$", user, re.M)
@@ -269,7 +269,8 @@ def test_forget_that_reaches_search_facts_diary_and_recap(env, monkeypatch):
     assert state_row(env)["today_recap"] is None
 
 
-def test_the_forget_list_from_extraction_starts_the_cleanup(env, monkeypatch):
+def test_a_forget_list_from_the_model_starts_no_cleanup(env, monkeypatch):
+    """Even if the model still answers with a "forget" list, a chat message deletes nothing."""
     seen = []
 
     async def fake_forget(tenant_id, end_user_id, items, today=None):
@@ -279,7 +280,7 @@ def test_the_forget_list_from_extraction_starts_the_cleanup(env, monkeypatch):
     env.chat(("user", "forget that I failed the exam", 30))
     env.state["answers"].append('{"ops": [], "forget": ["failed the exam"]}')
     assert run(memory_sweep._sweep_pair(env.companion, "karthik", None, 0, at(0), NOW)) == "ok"
-    assert seen == [["failed the exam"]]
+    assert seen == [] and not any(r.get("forget_pending") for r in env.db.rows("companion_memory_state"))
 
 
 def test_the_owner_deleting_a_fact_cleans_the_other_copies(env, monkeypatch):
@@ -368,32 +369,6 @@ def test_the_night_sweep_reads_the_state_again_once_it_holds_the_pair(env):
     run(store.set_watermark("t1", env.companion["id"], "karthik", last))
     assert run(memory_sweep._sweep_fresh(env.companion, "karthik", last, NOW)) == "skipped"
     assert env.state["calls"] == []
-
-
-def test_a_forget_request_skips_the_cool_down_and_waits_out_a_busy_pair(env, monkeypatch):
-    from app.companion import memory_refresh
-    monkeypatch.setattr(memory_refresh, "datetime", type("D", (), {"now": staticmethod(lambda tz=None: NOW)}))
-    monkeypatch.setattr(memory_refresh, "FORGET_WAITS", (0.0, 0.0))
-    run(store.update_state("t1", env.companion["id"], "karthik", {"day_retry_after": at(-20)}))
-    env.chat(("user", "adha marandhudu", 5), ("assistant", "Sari", 5))
-    real = memory_sweep.run_claimed
-    tries = []
-
-    async def busy_once(*a, **k):
-        tries.append(1)
-        return "busy" if len(tries) == 1 else await real(*a, **k)
-    monkeypatch.setattr(memory_sweep, "run_claimed", busy_once)
-    env.state["answers"].append(EMPTY)
-    assert run(memory_refresh._refresh(env.companion, "karthik", force=True)) == "ok"
-    assert len(tries) == 2
-    assert run(memory_refresh._refresh(env.companion, "karthik")) in ("cooling_down", "not_needed")
-
-
-def test_tamil_words_that_only_share_the_root_do_not_trigger_forget():
-    from app.companion.memory_refresh import wants_forget
-    for text in ("மறுநாள் வருவேன்", "மறுபடியும் சொல்லு", "I forgot my keys at home"):
-        assert not wants_forget(text), text
-    assert wants_forget("அதை மறந்துவிடு") and wants_forget("forget it")
 
 
 def test_forget_finds_a_topic_spread_over_many_windows(env, monkeypatch):

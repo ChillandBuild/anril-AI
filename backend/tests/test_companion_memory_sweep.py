@@ -22,7 +22,7 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     state = {"calls": [], "answers": []}
 
-    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, model=None):
         state["calls"].append({"tenant_id": tenant_id, "user": messages[1]["content"], "purpose": purpose})
         nxt = state["answers"].pop(0) if state["answers"] else "[]"
         if isinstance(nxt, Exception):
@@ -67,10 +67,10 @@ def test_day1_example_one_call_four_facts_and_watermark_moves(env):
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", "Job poiduchu. En paiyan ku 10th exam March la. " + SECRET, 8),
              ("assistant", "Kavalaipadaathinga Karthik.", 8))
-    env.state["answers"].append('''[{"op":"add","section":"life","text":"lost job","valid_from":"2026-10"},
-      {"op":"add","section":"people","text":"son, in 10th standard"},
-      {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03"},
-      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20"}]''')
+    env.state["answers"].append('''[{"op":"add","section":"life","text":"lost job","valid_from":"2026-10","quote":"Job poiduchu"},
+      {"op":"add","section":"people","text":"son, in 10th standard","quote":"En paiyan ku 10th exam"},
+      {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03","quote":"10th exam March la"},
+      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20","quote":"Zoho la interview 20th"}]''')
     assert sweep() == {"ok": 1}
     assert len(env.state["calls"]) == 1 and env.state["calls"][0]["purpose"] == "companion_memory"
     assert len(facts(env)) == 4
@@ -95,7 +95,7 @@ def test_level1_characters_and_other_tenants_rows_are_left_alone(env):
 
     theirs = env.character("t2", "Their bot")
     env.chat(theirs, "priya", ("user", "I moved to Pune", 5), ("assistant", "nice", 5))
-    env.state["answers"].append('[{"op":"add","section":"profile","text":"lives in Pune"}]')
+    env.state["answers"].append('[{"op":"add","section":"profile","text":"lives in Pune","quote":"I moved to Pune"}]')
     sweep()
     fact = env.db.rows("companion_memory_facts")[0]
     assert env.state["calls"][0]["tenant_id"] == "t2"
@@ -130,11 +130,71 @@ def test_a_failed_night_keeps_the_watermark_and_the_third_moves_it_on(env, caplo
 
     assert sweep() == {"failed": 1} and mark(env, jothidar, "karthik") is None and state()["failures"] == 1
     assert sweep() == {"failed": 1} and state()["failures"] == 2       # night 2: still retried
-    assert sweep() == {"gave_up": 1} and mark(env, jothidar, "karthik") == at(5)  # night 3: move on
-    assert state()["failures"] == 0
-    assert sweep() == {} and len(env.state["calls"]) == 3
+    assert sweep() == {"parked": 1} and mark(env, jothidar, "karthik") == at(5)  # night 3: move on, keep a record
+    assert state()["failures"] == 0 and len(env.state["calls"]) == 3     # no second try on the parking night
+    [parked] = state()["skipped"]
+    assert (parked["through"], parked["count"], parked["tries"]) == (at(5), 2, 0) and parked["after"] < at(5)
+    # the parked messages are searchable at once, even though the card never read them
+    assert [c["kind"] for c in env.db.rows("companion_memory_chunks")] == ["messages"]
     assert facts(env) == []
     assert SECRET not in caplog.text and "Super!" not in caplog.text
+
+    # night 4: the AI is still down. One more try is counted and the record stays.
+    env.state["answers"].append(RuntimeError("groq down"))
+    assert sweep() == {"parked_failed": 1} and state()["skipped"][0]["tries"] == 1
+    # night 5: the AI is back. The parked messages reach the card and the record is cleared.
+    env.state["answers"].append('[{"op":"add","section":"threads","text":"Zoho interview","quote":"Zoho la interview 20th"}]')
+    assert sweep() == {"parked_recovered": 1} and state()["skipped"] is None
+    assert facts(env) == ["Zoho interview"] and mark(env, jothidar, "karthik") == at(5)
+    assert sweep() == {} and len(env.state["calls"]) == 5
+    assert SECRET not in caplog.text
+
+
+def test_parked_messages_are_read_late_and_only_add(env):
+    """Priya's old chat was parked; she has since said she moved. The late read must not undo that."""
+    guru = env.character("t1", "Guru")
+    env.chat(guru, "priya", ("user", "Naan Chennai la irukken", 600), ("assistant", "Super!", 600))
+    env.state["answers"] += [RuntimeError("down")] * 3
+    assert [sweep(), sweep(), sweep()] == [{"failed": 1}, {"failed": 1}, {"parked": 1}]
+    env.chat(guru, "priya", ("user", "Bangalore ku maathiten", 30), ("assistant", "Oh nice", 30))
+    env.state["answers"] += [
+        '[{"op":"add","section":"profile","text":"Lives in Bangalore","quote":"Bangalore ku maathiten"}]',
+        '[{"op":"close","ref":"f1"},{"op":"add","section":"people","text":"From Chennai","quote":"Naan Chennai la irukken"}]',
+    ]
+    assert sweep() == {"ok": 1, "parked_recovered": 1}
+    late_prompt = env.state["calls"][-1]["user"]
+    assert "Naan Chennai la irukken" in late_prompt and "Bangalore ku maathiten" not in late_prompt
+    rows = {r["text"]: r["status"] for r in env.db.rows("companion_memory_facts")}
+    assert rows == {"Lives in Bangalore": "active", "From Chennai": "active"}
+    assert mark(env, guru, "priya") == at(30)
+
+
+def test_a_parked_range_that_keeps_failing_is_marked_dead_but_never_erased(env, monkeypatch):
+    monkeypatch.setattr(memory_sweep, "PARKED_TRIES", 2)
+    guru = env.character("t1", "Guru")
+    env.chat(guru, "priya", ("user", SECRET, 5), ("assistant", "Super!", 5))
+    env.state["answers"] += [RuntimeError("down")] * 5
+    outcomes = [sweep() for _ in range(6)]
+    assert outcomes == [{"failed": 1}, {"failed": 1}, {"parked": 1}, {"parked_failed": 1}, {"parked_dead": 1}, {}]
+    [parked] = env.db.rows("companion_memory_state")[0]["skipped"]
+    assert parked["dead"] is True and parked["tries"] == 2 and parked["count"] == 2
+    assert len(env.state["calls"]) == 5  # a dead range costs no more AI calls
+    # the operator bell hears about it: once when the chat is parked, once when it is given up
+    assert [(i["tenant_id"], i["type"]) for i in env.db.rows("incidents")] == [
+        ("t1", "companion_memory_parked"), ("t1", "companion_memory_parked_dead")]
+    assert SECRET not in str(env.db.rows("incidents"))
+
+
+def test_a_failed_park_leaves_the_watermark_so_nothing_is_lost(env, monkeypatch):
+    guru = env.character("t1", "Guru")
+    env.chat(guru, "priya", ("user", SECRET, 5), ("assistant", "Super!", 5))
+    asyncio.run(store.record_failure("t1", guru["id"], "priya", 2))
+    env.state["answers"].append(RuntimeError("down"))
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("database down")
+    monkeypatch.setattr(store, "park_messages", broken)
+    assert sweep() == {"failed": 1} and mark(env, guru, "priya") is None
 
 
 def test_a_good_night_clears_the_failure_count(env):
@@ -223,9 +283,9 @@ def test_forget_me_during_the_ai_call_writes_nothing(env, monkeypatch):
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
 
-    async def llm_while_forgetting(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4):
+    async def llm_while_forgetting(messages, max_tokens=300, tenant_id=None, *, purpose="", temperature=0.4, model=None):
         env.db.tables["companion_messages"].clear()  # forget_end_user ran meanwhile
-        return '[{"op":"add","section":"life","text":"interview at Zoho"}]'
+        return '[{"op":"add","section":"life","text":"interview at Zoho","quote":"Zoho la interview"}]'
     monkeypatch.setattr(memory_card.ai_reply, "_llm_chat", llm_while_forgetting)
     assert sweep() == {"forgotten": 1}
     assert facts(env) == [] and all(r.get("last_message_at") is None for r in env.db.rows("companion_memory_state"))
@@ -235,8 +295,8 @@ def test_a_retried_batch_does_not_duplicate_facts(env):
     jothidar = env.character("t1", "Jothidar AI")
     env.chat(jothidar, "karthik", ("user", SECRET, 5), ("assistant", "Super!", 5))
     asyncio.run(store.add_fact("t1", jothidar["id"], "karthik", "threads", "Zoho interview on 20th"))
-    env.state["answers"].append('[{"op":"add","section":"threads","text":"zoho interview on 20th"},'
-                                '{"op":"add","section":"life","text":"job hunting"},'
-                                '{"op":"add","section":"life","text":"Job hunting"}]')
+    env.state["answers"].append('[{"op":"add","section":"threads","text":"zoho interview on 20th","quote":"Zoho la interview 20th"},'
+                                '{"op":"add","section":"life","text":"job hunting","quote":"interview"},'
+                                '{"op":"add","section":"life","text":"Job hunting","quote":"interview"}]')
     assert sweep() == {"ok": 1}
     assert sorted(facts(env)) == ["Zoho interview on 20th", "job hunting"]

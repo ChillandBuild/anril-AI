@@ -10,6 +10,8 @@ One JSON file per person in stories/ (en-01.json … ta-10.json … ta-en-10.jso
   "search": [{"id": "ta-en-03-s1", "query": "naai ku vet enna sonnanga?", "day": "2026-10-03", "any": ["vet"]}]
 }
 Times are the person's local wall-clock time. Probe kinds: recall, changed, forget, false, same_day.
+A forget probe (the person asked the character to forget something) also has "kept": words of the thing that must
+STILL be in storage, because nothing typed in chat deletes memory; the reply must not claim it is gone.
 Run: python -m evals.companion_memory.stories   (validates every file, prints counts)
 """
 import json
@@ -78,6 +80,8 @@ def validate(story: dict) -> list[str]:
         for key in ("any", "none"):
             if not isinstance(p.get(key), list):
                 errs.append(f"{sid} {p.get('id')}: {key} must be a list")
+        if p.get("kind") == "forget" and not (isinstance(p.get("kept"), list) and p["kept"]):
+            errs.append(f"{sid} {p.get('id')}: a forget probe needs kept (words that must still be stored)")
     for s in story["search"]:
         if not s.get("query") or not s.get("day") or not isinstance(s.get("any"), list) or not s["any"]:
             errs.append(f"{sid} {s.get('id')}: search needs query, day, any")

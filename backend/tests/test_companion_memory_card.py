@@ -1,5 +1,6 @@
 """companion-memory T3: the card engine's prompt, op checks, apply and render."""
 import asyncio
+import json
 import logging
 from datetime import date
 
@@ -23,7 +24,7 @@ def db(monkeypatch):
 def llm(monkeypatch):
     state = {"calls": [], "answers": []}
 
-    async def fake(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def fake(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, model=None):
         state["calls"].append({"messages": messages, "purpose": purpose, "tenant_id": tenant_id})
         nxt = state["answers"].pop(0)
         if isinstance(nxt, Exception):
@@ -81,31 +82,36 @@ def test_parse_ops(raw, expected):
 
 
 def test_validate_drops_bad_ops_and_keeps_good_ones():
-    refs = {"f1": {"id": "a"}, "f2": {"id": "b"}}
+    refs = {"f1": {"id": "a", "section": "life"}, "f2": {"id": "b", "section": "people"}}
+    said = [{"id": "m1", "role": "user", "content": "Zoho la interview 20th. En paiyan PSBB la 10th padikkiran."}]
     ops = [
-        {"op": "add", "section": "threads", "text": "Zoho interview", "valid_from": "2026-11-20"},
-        {"op": "add", "section": "secrets", "text": "x"},                       # bad section
-        {"op": "add", "section": "life", "text": "x" * 301},                    # too long
-        {"op": "add", "section": "profile", "text": "phone 98765 43210"},       # phone number
-        {"op": "add", "section": "profile", "text": "Aadhaar ending 4421"},     # ID word
+        {"op": "add", "section": "threads", "text": "Zoho interview", "valid_from": "2026-11-20",
+         "quote": "Zoho la interview 20th"},
+        {"op": "add", "section": "secrets", "text": "x", "quote": "Zoho la interview"},       # bad section
+        {"op": "add", "section": "life", "text": "x" * 301, "quote": "Zoho la interview"},    # too long
+        {"op": "add", "section": "profile", "text": "phone 98765 43210", "quote": "Zoho"},    # phone number
+        {"op": "add", "section": "profile", "text": "Aadhaar ending 4421", "quote": "Zoho"},  # ID word
         {"op": "close", "ref": "f9"},                                           # unknown ref
         {"op": "close", "ref": "f1", "valid_to": "2026-12"},
         {"op": "delete", "ref": "f1"},                                          # same ref twice
-        {"op": "update", "ref": "f2", "text": "son, in 10th standard at PSBB"},
+        {"op": "update", "ref": "f2", "text": "son, in 10th standard at PSBB", "quote": "En paiyan PSBB la 10th"},
         {"op": "rename", "ref": "f2"},                                          # unknown op
     ]
-    kept, dropped = card.validate_ops(ops, refs)
+    kept, dropped, unquoted = card.validate_ops(ops, refs, said)
     assert kept == [
-        {"op": "add", "section": "threads", "text": "Zoho interview", "valid_from": "2026-11-20"},
+        {"op": "add", "section": "threads", "text": "Zoho interview", "valid_from": "2026-11-20",
+         "quote": "Zoho la interview 20th", "source_message_id": "m1"},
         {"op": "close", "ref": "f1", "valid_to": "2026-12-01"},
-        {"op": "update", "ref": "f2", "text": "son, in 10th standard at PSBB"},
+        {"op": "update", "ref": "f2", "text": "son, in 10th standard at PSBB",
+         "quote": "En paiyan PSBB la 10th", "source_message_id": "m1"},
     ]
-    assert dropped == 7
+    assert dropped == 7 and unquoted == 0
 
 
 def test_at_most_ten_ops_and_bad_dates_become_null():
-    ops = [{"op": "add", "section": "life", "text": f"fact {i}", "valid_from": "someday"} for i in range(12)]
-    kept, dropped = card.validate_ops(ops, {})
+    ops = [{"op": "add", "section": "life", "text": f"fact {i}", "valid_from": "someday", "quote": "Job poiduchu"}
+           for i in range(12)]
+    kept, dropped, _ = card.validate_ops(ops, {}, DAY1)
     assert len(kept) == 10 and dropped == 2 and all(op["valid_from"] is None for op in kept)
 
 
@@ -113,10 +119,10 @@ def test_at_most_ten_ops_and_bad_dates_become_null():
 
 def test_day1_example_saves_four_facts(db, llm):
     llm["answers"].append('''[
-      {"op":"add","section":"life","text":"lost job","valid_from":"2026-10"},
-      {"op":"add","section":"people","text":"son, in 10th standard"},
-      {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03"},
-      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20"}]''')
+      {"op":"add","section":"life","text":"lost job","valid_from":"2026-10","quote":"Job poiduchu"},
+      {"op":"add","section":"people","text":"son, in 10th standard","quote":"En paiyan ku 10th exam"},
+      {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03","quote":"10th exam March la"},
+      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20","quote":"Zoho la interview 20th"}]''')
     done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", DAY1))
     assert done["add"] == 4
     call = llm["calls"][0]
@@ -125,6 +131,8 @@ def test_day1_example_saves_four_facts(db, llm):
     assert rendered.splitlines()[0].startswith("Open threads: ")
     assert "Zoho interview (20 Nov 2026)" in rendered and "son's 10th exam (Mar 2027)" in rendered
     assert "People: son, in 10th standard" in rendered and "Life: lost job (since Oct 2026)" in rendered
+    job = next(f for f in db.rows("companion_memory_facts") if f["text"] == "lost job")
+    assert job["quote"] == "Job poiduchu" and job["source_message_id"] is None  # DAY1 rows carry no id
 
 
 def test_job_change_closes_one_fact_adds_one_and_forget_deletes(db, llm):
@@ -132,7 +140,7 @@ def test_job_change_closes_one_fact_adds_one_and_forget_deletes(db, llm):
     interview = run(store.add_fact("t1", "jothidar", "karthik", "threads", "Zoho interview", "2026-11-20"))
     # The card is sent oldest first: f1 = lost job, f2 = Zoho interview.
     llm["answers"].append('''[{"op":"close","ref":"f1","valid_to":"2026-11"},
-      {"op":"add","section":"life","text":"works at Zoho","valid_from":"2026-12"},
+      {"op":"add","section":"life","text":"works at Zoho","valid_from":"2026-12","quote":"Interview pass! Next week join pannren"},
       {"op":"close","ref":"f2","valid_to":"2026-11-20"}]''')
     done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik",
                                       [{"role": "user", "content": "Interview pass! Next week join pannren."}]))
@@ -145,9 +153,33 @@ def test_job_change_closes_one_fact_adds_one_and_forget_deletes(db, llm):
     job = next(f for f in run(store.list_facts("t1", "karthik", "jothidar", include_closed=False))
                if f["text"] == "works at Zoho")
     assert interview and job
+    # "forget that job thing" in chat deletes nothing, even when the model answers with a delete
     llm["answers"].append('[{"op":"delete","ref":"f1"}]')  # only active facts are sent: f1 = works at Zoho
-    run(card.extract_and_apply("t1", JOTHIDAR, "karthik", [{"role": "user", "content": "Andha job vishayam marandhudunga"}]))
-    assert run(store.get_fact("t1", job["id"])) is None
+    done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", [{"role": "user", "content": "Andha job vishayam marandhudunga"}]))
+    assert done["delete"] == 0 and run(store.get_fact("t1", job["id"]))["text"] == "works at Zoho"
+
+
+def test_only_a_preference_example_replaced_by_a_trait_can_be_deleted(db, llm):
+    for text in ("watched Leo twice", "has a Vijay poster"):
+        run(store.add_fact("t1", "jothidar", "karthik", "preferences", text))
+    run(store.add_fact("t1", "jothidar", "karthik", "people", "amma has diabetes"))
+    facts = run(store.list_facts("t1", "karthik", "jothidar", include_closed=False))
+    ref = {f["text"]: f"f{i}" for i, f in enumerate(facts, 1)}
+    llm["answers"].append(json.dumps([
+        {"op": "add", "section": "preferences", "text": "big Vijay fan", "quote": "Vijay padam thaan best"},
+        {"op": "delete", "ref": ref["watched Leo twice"]},
+        {"op": "delete", "ref": ref["amma has diabetes"]},
+    ]))
+    done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", [{"role": "user", "content": "Vijay padam thaan best"}]))
+    left = {f["text"] for f in run(store.list_facts("t1", "karthik", "jothidar", include_closed=False))}
+    assert done["delete"] == 1 and left == {"big Vijay fan", "has a Vijay poster", "amma has diabetes"}
+
+
+def test_the_extraction_prompt_never_asks_for_a_delete_on_a_forget_request():
+    prompt, _ = card.build_extraction_prompt("ta-en", [], [{"role": "user", "content": "adha marandhudu"}], recap="")
+    rules = prompt[0]["content"]
+    assert '"forget"' not in rules and "do NOT delete, close or change any fact" in rules
+    assert "Does not want <the topic> brought up" in rules
 
 
 def test_llm_error_or_garbage_changes_nothing(db, llm):
@@ -161,7 +193,7 @@ def test_llm_error_or_garbage_changes_nothing(db, llm):
 
 def test_logs_never_contain_fact_or_message_text(db, llm, caplog):
     caplog.set_level(logging.DEBUG)
-    llm["answers"].append(f'[{{"op":"add","section":"life","text":"{SECRET}"}}]')
+    llm["answers"].append(f'[{{"op":"add","section":"life","text":"{SECRET}","quote":"{SECRET}"}}]')
     run(card.extract_and_apply("t1", JOTHIDAR, "karthik", [{"role": "user", "content": SECRET}]))
     assert SECRET not in caplog.text and "Zoho" not in caplog.text
 
@@ -188,9 +220,9 @@ def test_render_order_and_cap():
 # --- review fixes (2026-11-09) --------------------------------------------------------------------
 
 def test_a_malformed_ref_is_dropped_not_fatal():
-    refs = {"f1": {"id": "x", "text": "a"}}
-    kept, dropped = card.validate_ops([{"op": "delete", "ref": ["f1"]}, {"op": "close", "ref": {}},
-                                       {"op": "delete", "ref": "f1"}], refs)
+    refs = {"f1": {"id": "x", "text": "a", "section": "preferences"}}
+    kept, dropped, _ = card.validate_ops([{"op": "delete", "ref": ["f1"]}, {"op": "close", "ref": {}},
+                                          {"op": "delete", "ref": "f1"}], refs, [])
     assert kept == [{"op": "delete", "ref": "f1"}] and dropped == 2
 
 
@@ -201,3 +233,105 @@ def test_day_month_year_birth_dates_are_kept(text):
 
 def test_phone_numbers_are_still_dropped():
     assert card._clean_text("call me on 98400 12345") is None
+
+
+# --- receipts: every fact needs the person's own words behind it (2026-11-11) ---------------------
+
+GURU_CHAT = [
+    {"id": "m1", "role": "user", "content": "Naan  Chennai-la irukken!"},
+    {"id": "m2", "role": "assistant", "content": "Priya, you are a doctor and you live in Madurai, right?"},
+    {"id": "m3", "role": "user", "content": "எனக்கு ஒரு தம்பி இருக்கான். My card is 4111 1111 1111 1111, password is amma123"},
+]
+
+
+@pytest.fixture
+def guru_chat(db):
+    """GURU_CHAT as rows: extract() saves nothing when the newest message is gone (person deleted)."""
+    for m in GURU_CHAT:
+        db.add("companion_messages", tenant_id="t1", companion_id="jothidar", end_user_id="priya", **m)
+    return GURU_CHAT
+
+
+def _add(text, quote=None, section="profile"):
+    op = {"op": "add", "section": section, "text": text}
+    return op if quote is None else {**op, "quote": quote}
+
+
+def test_a_fact_is_kept_only_with_a_quote_found_in_the_persons_own_message():
+    kept, dropped, unquoted = card.validate_ops([
+        _add("Lives in Chennai", "naan chennai la irukken"),      # punctuation, case and spacing differ: still found
+        _add("Has a younger brother", "ஒரு தம்பி இருக்கான்", "people"),
+        _add("Is a doctor", "you are a doctor"),                  # only the CHARACTER said it
+        _add("Lives in Madurai", "Naan Madurai la irukken"),      # nobody said it
+        _add("Likes cricket"),                                    # no quote at all
+        _add("Is a hen keeper", "hen"),                           # "hen" is inside "Chennai", not a word of its own
+    ], {}, GURU_CHAT)
+    assert [(op["text"], op["source_message_id"]) for op in kept] == [
+        ("Lives in Chennai", "m1"), ("Has a younger brother", "m3")]
+    assert dropped == 4 and unquoted == 4
+
+
+def test_an_update_needs_a_receipt_too_and_a_close_does_not():
+    refs = {"f1": {"id": "a", "section": "profile"}, "f2": {"id": "b", "section": "profile"},
+            "f3": {"id": "c", "section": "threads"}}
+    kept, _, unquoted = card.validate_ops([
+        {"op": "update", "ref": "f1", "text": "Lives in Chennai", "quote": "Chennai-la irukken"},
+        {"op": "update", "ref": "f2", "text": "Is a doctor in Madurai", "quote": "you are a doctor"},
+        {"op": "close", "ref": "f3", "valid_to": "2026-11-10"},
+    ], refs, GURU_CHAT)
+    assert [op["op"] for op in kept] == ["update", "close"] and unquoted == 1
+    assert kept[0]["quote"] == "Chennai-la irukken" and kept[0]["source_message_id"] == "m1"
+
+
+def test_a_stored_quote_never_keeps_a_number_run_or_a_secret():
+    kept, _, unquoted = card.validate_ops([
+        _add("Has a younger brother", "தம்பி இருக்கான். My card is 4111 1111 1111 1111", "people"),
+        _add("Calls mother amma", "password is amma123", "people"),
+    ], {}, GURU_CHAT)
+    assert [op["quote"] for op in kept] == ["தம்பி இருக்கான். My card is [number]"] and unquoted == 1
+
+
+def test_what_the_character_said_never_becomes_a_fact(db, llm, guru_chat):
+    llm["answers"].append(json.dumps([_add("Is a doctor", "you are a doctor"),
+                                      _add("Lives in Chennai", "Naan Chennai-la irukken")]))
+    done = run(card.extract_and_apply("t1", JOTHIDAR, "priya", GURU_CHAT))
+    rows = db.rows("companion_memory_facts")
+    assert done["add"] == 1 and [(r["text"], r["quote"], r["source_message_id"]) for r in rows] == [
+        ("Lives in Chennai", "Naan Chennai-la irukken", "m1")]
+
+
+def test_an_update_replaces_the_receipt(db, llm, guru_chat):
+    fact = run(store.add_fact("t1", "jothidar", "priya", "profile", "Lives in TN", quote="old words",
+                              source_message_id="m0"))
+    llm["answers"].append(json.dumps([{"op": "update", "ref": "f1", "text": "Lives in Chennai",
+                                       "quote": "Chennai-la irukken"}]))
+    assert run(card.extract_and_apply("t1", JOTHIDAR, "priya", GURU_CHAT))["update"] == 1
+    row = run(store.get_fact("t1", fact["id"]))
+    assert (row["text"], row["quote"], row["source_message_id"]) == ("Lives in Chennai", "Chennai-la irukken", "m1")
+
+
+def test_the_prompt_asks_for_a_quote_from_a_person_line():
+    rules = card.build_extraction_prompt("ta-en", [], GURU_CHAT)[0][0]["content"]
+    assert '"quote"' in rules and 'ONE "Person:" line' in rules and 'Never quote a "Character:" line' in rules
+    assert "Late read" not in rules
+    assert "Late read" in card.build_extraction_prompt("ta-en", [], GURU_CHAT, late=True)[0][0]["content"]
+
+
+def test_a_late_read_only_adds(db, llm, guru_chat):
+    home = run(store.add_fact("t1", "jothidar", "priya", "profile", "Lives in Bangalore"))
+    llm["answers"].append(json.dumps([{"op": "close", "ref": "f1", "valid_to": "2026-11-01"},
+                                      {"op": "update", "ref": "f1", "text": "Lives in Chennai", "quote": "Chennai-la irukken"},
+                                      _add("Has a younger brother", "ஒரு தம்பி இருக்கான்", "people")]))
+    result = run(card.extract("t1", JOTHIDAR, "priya", GURU_CHAT, None, late=True))
+    assert result.done == {"add": 1, "close": 0, "update": 0, "delete": 0} and result.closed == []
+    row = run(store.get_fact("t1", home["id"]))
+    assert row["status"] == "active" and row["text"] == "Lives in Bangalore"
+
+
+def test_a_full_card_logs_the_fact_it_could_not_save(db, llm, guru_chat, caplog):
+    for i in range(store.MAX_FACTS_PER_PAIR):
+        run(store.add_fact("t1", "jothidar", "priya", "threads", f"thread {i}"))
+    llm["answers"].append(json.dumps([_add("Has a younger brother", "ஒரு தம்பி இருக்கான்", "people")]))
+    caplog.set_level(logging.WARNING)
+    assert run(card.extract_and_apply("t1", JOTHIDAR, "priya", GURU_CHAT))["add"] == 0
+    assert "memory card full" in caplog.text and "brother" not in caplog.text

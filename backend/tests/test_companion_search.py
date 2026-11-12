@@ -142,7 +142,7 @@ def test_knowledge_searches_the_characters_collection_and_names_book_and_pages(e
     caplog.set_level(logging.DEBUG)
     calls = []
 
-    async def fake_search(tenant_id, collection_id, message, history=None, *, companion_id=None):
+    async def fake_search(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
         calls.append((tenant_id, collection_id, message, history, companion_id))
         return KbResult(passages=(MAIN, BOOK7), topic="Saturn in the seventh house")
 
