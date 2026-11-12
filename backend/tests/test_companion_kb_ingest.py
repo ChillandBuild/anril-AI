@@ -7,6 +7,7 @@ import copy
 import json
 import logging
 
+import httpx
 import pytest
 
 from app.companion.kb import filetypes, ingest, ocr, store
@@ -589,6 +590,64 @@ def test_a_clean_pass_clears_the_crash_count(db, world, monkeypatch):
     world.ocr_seconds = 30.0                             # out of time, but nothing went wrong
     assert run(ingest.run_document(A, doc["id"])) == "processing"
     assert run(store.get_document(A, doc["id"]))["crashed_passes"] == 0
+
+
+async def _dropped(*args, **kwargs):
+    raise httpx.RemoteProtocolError("Server disconnected")
+
+
+def test_a_dropped_database_connection_is_not_counted_as_a_crash(db, world, monkeypatch):
+    # 12 Nov 2026: 6 books uploaded at once, Supabase dropped the shared connection 15 times in 3 minutes,
+    # and 5 books were failed "tried 3 times" although every page had been read.
+    doc = add_book(make_pdf([P1]))
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "pending_pages", _dropped)
+        for _ in range(4):
+            assert run(ingest.run_document(A, doc["id"])) == "processing"
+    row = run(store.get_document(A, doc["id"]))
+    assert (row["status"], row["crashed_passes"]) == ("processing", 0)
+    assert not ingest._claimed_elsewhere(row)            # let go: the next minute carries on
+    assert run(ingest.run_document(A, doc["id"])) == "ready"
+
+
+def test_a_dropped_connection_while_saving_a_page_reads_it_again_instead_of_failing_it(db, world, monkeypatch):
+    doc = add_book(make_pdf([P1, P2]))
+    real, drops = store.save_page, []
+
+    async def flaky(tenant_id, document_id, page_no, **fields):
+        if page_no == 2 and fields.get("status") == "ok" and not drops:
+            drops.append(page_no)
+            raise httpx.RemoteProtocolError("Server disconnected")
+        return await real(tenant_id, document_id, page_no, **fields)
+
+    monkeypatch.setattr(store, "save_page", flaky)
+    status = run(ingest.run_document(A, doc["id"]))
+    if status == "processing":
+        status = run(ingest.run_document(A, doc["id"]))
+    assert drops == [2] and status == "ready"
+    assert {n: p["status"] for n, p in pages_of(doc).items()} == {1: "ok", 2: "ok"}
+
+
+def test_passage_vectors_are_saved_a_few_at_a_time(db, world, monkeypatch):
+    # 50 saves at once per book, times 6 books, is what overloaded the shared connection.
+    text = "\n\n".join(f"## Part {i}\n{P1} {P2} {P1}" for i in range(40))
+    doc = add_book(text.encode(), "txt")
+    real, now, peak = store.set_chunk_embedding, [0], [0]
+
+    async def counted(*args, **kwargs):
+        now[0] += 1
+        peak[0] = max(peak[0], now[0])
+        try:
+            await asyncio.sleep(0)
+            return await real(*args, **kwargs)
+        finally:
+            now[0] -= 1
+
+    monkeypatch.setattr(store, "set_chunk_embedding", counted)
+    assert run(ingest.run_document(A, doc["id"])) == "ready"
+    chunks = db.rows("companion_kb_chunks")
+    assert len(chunks) > ingest.MAX_PARALLEL_SAVES and all(c.get("embedding") for c in chunks)
+    assert 1 < peak[0] <= ingest.MAX_PARALLEL_SAVES
 
 
 def test_a_book_whose_passes_died_three_times_is_failed_before_a_fourth_try(db, world):
