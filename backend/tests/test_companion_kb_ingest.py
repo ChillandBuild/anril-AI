@@ -69,6 +69,7 @@ def db(monkeypatch, tmp_path):
     fake = FakeSupabase()
     fake.storage = FakeStorage()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
+    monkeypatch.setattr(store, "_http_client", fake.storage.http_client)
     monkeypatch.setattr(ingest, "get_supabase", lambda: fake)
     monkeypatch.setattr(ingest, "CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(ingest, "_released", {})

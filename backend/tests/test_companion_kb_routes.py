@@ -200,7 +200,7 @@ def test_ids_must_be_uuids(env):
 
 def test_limits(env):
     assert env.client.get(f"{BASE}/limits").json() == {
-        "max_bytes": 50 * MB, "accepted_types": sorted(filetypes.ACCEPTED_TYPES)}
+        "max_bytes": 300 * MB, "accepted_types": sorted(filetypes.ACCEPTED_TYPES)}
 
 
 def test_upload_ticket_points_into_the_callers_own_folder_and_writes_nothing(env):
@@ -215,8 +215,8 @@ def test_upload_ticket_points_into_the_callers_own_folder_and_writes_nothing(env
 
 
 @pytest.mark.parametrize("name,size,status,says", [
-    ("Book 7.pdf", 62 * MB, 413, "Book 7.pdf is 62 MB. The limit is 50 MB."),
-    ("Book 7.pdf", 50 * MB + 1, 413, "Book 7.pdf is 50.1 MB. The limit is 50 MB."),
+    ("Book 7.pdf", 320 * MB, 413, "Book 7.pdf is 320 MB. The limit is 300 MB."),
+    ("Book 7.pdf", 300 * MB + 1, 413, "Book 7.pdf is 300.1 MB. The limit is 300 MB."),
     ("clip.mp4", MB, 400, "Video files are not supported yet. We accept: .csv, .docx,"),
     ("notes.doc", MB, 400, "Save the file as .docx and upload it again."),
     ("run.exe", MB, 400, "This file type (.exe) is not supported."),
@@ -515,10 +515,10 @@ def test_copy_from_sales_says_too_big_and_already_added_in_plain_words(env, monk
     body = {"sales_document_id": env.sales[0]["id"], "collection_id": env.mine.col["id"], "tier": 2}
 
     async def too_big(*a):
-        raise companion_kb.ingest.SalesFileTooBig(65011712)
+        raise companion_kb.ingest.SalesFileTooBig(320 * MB)
     monkeypatch.setattr(companion_kb.ingest, "copy_from_sales", too_big)
     r = env.client.post(f"{BASE}/documents/from-sales", json=body)
-    assert r.status_code == 413 and r.json()["detail"] == "This file is 62 MB. The limit is 50 MB."
+    assert r.status_code == 413 and r.json()["detail"] == "This file is 320 MB. The limit is 300 MB."
 
     async def twice(*a):
         raise companion_kb.ingest.AlreadyCopied('"Price list.pdf" is already in this collection.')

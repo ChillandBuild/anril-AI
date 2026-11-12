@@ -14,6 +14,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+import httpx
+
 from app.db.supabase import get_supabase
 from app.services.embeddings import to_pgvector
 from app.services.pagination import fetch_all_rows
@@ -514,16 +516,33 @@ async def stored_file(tenant_id: str, document_id: str) -> dict | None:
     return None
 
 
+_DOWNLOAD_LINK_SECONDS = 15 * 60     # a 300 MB book takes well under a minute on the server's network
+_DOWNLOAD_PIECE = 1024 * 1024         # 1 MB at a time
+
+
+def _http_client() -> httpx.AsyncClient:
+    """The client download_file streams with. Tests swap it for one that serves the fake bucket."""
+    return httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0))
+
+
 async def download_file(path: str, dest_path: str) -> int:
-    """Copy a stored file to a local path. Returns its size in bytes."""
-    data = await asyncio.to_thread(lambda: _bucket().download(path))
+    """Copy a stored file to a local path, 1 MB at a time. Returns its size in bytes.
 
-    def write() -> int:
+    Streamed, not read whole: a 227 MB scanned book held in memory at once could run the server out of
+    RAM. Example: "t1/d7/original.pdf" -> a short-lived signed link -> 227 pieces written to dest_path.
+    A non-2xx answer or a broken connection raises, and the caller deletes the half-written file."""
+    made = await asyncio.to_thread(lambda: _bucket().create_signed_url(path, _DOWNLOAD_LINK_SECONDS))
+    url = made.get("signedURL") or made.get("signedUrl")
+    if not url:
+        raise RuntimeError("storage gave no download link")
+    size = 0
+    async with _http_client() as client, client.stream("GET", url) as response:
+        response.raise_for_status()
         with open(dest_path, "wb") as handle:
-            handle.write(data)
-        return len(data)
-
-    return await asyncio.to_thread(write)
+            async for piece in response.aiter_bytes(_DOWNLOAD_PIECE):
+                handle.write(piece)
+                size += len(piece)
+    return size
 
 
 async def upload_file(path: str, data: bytes, content_type: str) -> None:
