@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import ui from "@/components/site/site.module.css";
 import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL } from "@/components/site/content";
 import { DemoSection } from "@/components/site/DemoSection";
@@ -45,6 +46,11 @@ export default function PricingPage() {
         <Kicker>Pricing</Kicker>
         <h2 className={ui.secH} id="faq-h">Questions about pricing</h2>
         <Faq items={PRICING_FAQ.map((f) => ({ q: f.q, a: f.a }))} />
+      </section>
+      <section className={ui.band} aria-label="Compare">
+        <Link prefetch={false} className={ui.tlink} href="/blog/wati-vs-interakt-vs-aisensy-vs-anril">
+          Compare Anril with Wati, Interakt and AiSensy
+        </Link>
       </section>
       <DemoSection />
     </Frame>

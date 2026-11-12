@@ -36,8 +36,35 @@ export const HOME_FAQ: readonly FaqEntry[] = [
     a: "Businesses that get a lot of enquiries: schools and colleges, study-abroad consultants, hospitals and clinics, real estate, and D2C brands, in India and overseas.",
   },
   {
+    q: "Do you build websites?",
+    a: "Yes. We build static, dynamic and AI-powered websites for businesses, made to your needs.",
+  },
+  {
     q: "Where is Anril AI based?",
     a: "2, Sree Narayana Guru Road, Mission Road, Saibaba Koil, Coimbatore, Tamil Nadu 641011. Open Monday to Saturday, 10 AM to 6 PM.",
+  },
+];
+
+export const WEBSITE_FAQ: readonly FaqEntry[] = [
+  {
+    q: "Do you build websites?",
+    a: "Yes. We build static, dynamic and AI-powered websites for businesses, made to your needs.",
+  },
+  {
+    q: "How much does a website cost?",
+    a: "It depends on the number of pages and features you need. Message us on WhatsApp and we'll send a clear quote.",
+  },
+  {
+    q: "Can I update the website myself?",
+    a: "Yes, with a dynamic website you can update your own content.",
+  },
+  {
+    q: "Can you add an AI chat to my existing website?",
+    a: "Yes. Anril AI can answer visitors on your website chat, and those enquiries come into the same dashboard as WhatsApp, Instagram and Facebook.",
+  },
+  {
+    q: "Where are you based?",
+    a: "Coimbatore, Tamil Nadu. We work with businesses across India and overseas.",
   },
 ];
 

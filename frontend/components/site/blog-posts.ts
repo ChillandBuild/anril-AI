@@ -2,9 +2,11 @@ import type { FaqEntry } from "./schema";
 
 // Blog articles. Facts about Anril AI come from the SEO brief and the product; the rest is general guidance
 // that does not depend on a number or a competitor. The WhatsApp API pricing article quotes no rupee rates: Meta's
-// rate card is the source. We do not publish comparisons that name other companies.
+// rate card is the source. The Wati/Interakt/AiSensy comparison uses only what each tool's own website states, with the check date.
 
-export type Block = { type: "h2"; text: string } | { type: "p"; text: string } | { type: "ul"; items: readonly string[] };
+export type Block = { type: "h2"; text: string } | { type: "p"; text: string } | { type: "ul"; items: readonly string[] }
+  | { type: "table"; head: readonly string[]; rows: readonly (readonly string[])[] }
+  | { type: "a"; href: string; label: string };
 
 export type Post = {
   slug: string;
@@ -27,6 +29,63 @@ export type Post = {
 export const BLOG_AUTHOR = "Anril AI team";
 
 const ALL_POSTS: readonly Post[] = [
+  {
+    slug: "wati-vs-interakt-vs-aisensy-vs-anril",
+    title: "Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits your business? (2026)",
+    description:
+      "An honest comparison of four WhatsApp tools for Indian businesses: AI replies, Tamil support, bulk campaigns, payments, call tracking and starting price, so you can pick the right one.",
+    published: "2026-11-12",
+    updated: "2026-11-12",
+    author: BLOG_AUTHOR,
+    link: { href: "https://wa.me/919047370380", label: "Book a free demo on WhatsApp" },
+    body: [
+      { type: "p", text: "If your business gets enquiries on WhatsApp, you have probably heard of Wati, Interakt and AiSensy. All three are popular in India. Anril is a newer tool built in Coimbatore. This guide compares them in plain words so you can choose the one that fits you. We make Anril, so we have tried to be fair and stick to what each tool's own website says." },
+      { type: "h2", text: "Quick answer" },
+      { type: "ul", items: [
+        "Want a well-known tool with a team inbox and chatbot builder: Wati.",
+        "Selling products and want a WhatsApp catalogue: Interakt.",
+        "Want a free plan to start with broadcasts: AiSensy.",
+        "Want AI replies in Tamil or Tanglish, lead scoring, payments and call tracking in one place, from ₹999/month: Anril.",
+      ] },
+      { type: "h2", text: "Comparison table" },
+      { type: "table", head: ["", "Wati", "Interakt", "AiSensy", "Anril"], rows: [
+        ["Starting price (per month)", "From ₹2,699 (Growth, billed quarterly)", "From ₹2,799 (Growth). Instagram-only plan from ₹999", "Free plan. Paid plan prices on request", "From ₹999 + GST"],
+        ["Bulk WhatsApp campaigns", "Yes", "Yes", "Yes", "Yes (Reach)"],
+        ["AI replies from your own business info", "Yes, AI credits on all plans", "AI Agents from ₹2,499/month", "AI add-on from ₹1,350/month", "Yes, included (Engage)"],
+        ["Replies in Tamil / Tanglish by default", "—", "—", "—", "Yes"],
+        ["Understands voice notes", "—", "—", "—", "Yes"],
+        ["Hot / Warm / Cold lead scoring", "—", "—", "—", "Yes"],
+        ["Instagram + Facebook DMs in same inbox", "Yes (Growth plan)", "Instagram yes; Facebook —", "—", "Yes"],
+        ["Payment links, orders, stock", "Catalogue yes; payments —", "Catalogue and payments yes", "Catalogue and payment collection yes", "Yes (Commerce, Razorpay)"],
+        ["Telecaller call tracking (Tamil)", "—", "—", "—", "Yes (CallIQ)"],
+        ["Free trial", "7 days", "Yes", "Free plan", "No free trial, free demos"],
+      ] },
+      { type: "p", text: "Meta's WhatsApp message charges are extra on every tool. Prices checked on 12 November 2026 from each tool's own website. A dash (—) means we could not confirm it on that tool's website, so please check with them." },
+      { type: "h2", text: "Wati" },
+      { type: "p", text: "Wati is a well-known WhatsApp tool with a team inbox, a chatbot builder and broadcasts. It is a good fit for teams that want a mature tool and will build their own chatbot flows." },
+      { type: "h2", text: "Interakt" },
+      { type: "p", text: "Interakt focuses on WhatsApp catalogue and commerce, with broadcasts as well. It is a good fit for product sellers." },
+      { type: "h2", text: "AiSensy" },
+      { type: "p", text: "AiSensy has a free plan to start with, broadcasts, and AI as an add-on. It is a good fit for trying WhatsApp marketing at low cost." },
+      { type: "h2", text: "Anril" },
+      { type: "p", text: "Anril joins five parts in one system: Reach (bulk WhatsApp campaigns), Engage (AI replies on WhatsApp, Instagram, Facebook and Telegram, with Hot/Warm/Cold lead scoring and hand-over to your team), Commerce (Razorpay payment links, orders, stock and dispatch) and CallIQ (telecaller call tracking that understands Tamil). It replies in Tanglish by default and understands voice notes. Plans start from ₹999/month. No free trial, but free live demos." },
+      { type: "p", text: "Best for: schools, colleges, study-abroad consultants, clinics, real estate and D2C brands that get many enquiries and want them answered and followed up." },
+      { type: "h2", text: "How to choose" },
+      { type: "ul", items: [
+        "How many enquiries do you get a day? Under 10: a free tool may be enough.",
+        "Do your customers write in Tamil or Tanglish?",
+        "Do you need AI to reply, or will your staff reply?",
+        "Do you take payments or orders on WhatsApp?",
+        "Do you have telecallers whose calls you want to track?",
+      ] },
+      { type: "a", href: "/blog/how-to-choose-a-whatsapp-business-tool", label: "See our 7 questions to ask" },
+    ],
+    faqs: [
+      { q: "Which is the cheapest WhatsApp tool in India?", a: "AiSensy has a free plan. Among paid plans with AI replies included, Anril starts from ₹999/month. Meta's message charges are extra on all tools." },
+      { q: "Which WhatsApp tool replies in Tamil?", a: "Anril replies in Tamil and Tanglish by default." },
+      { q: "Is Anril an alternative to Wati?", a: "Yes. Anril covers bulk campaigns and AI replies like Wati, and also adds lead scoring, payments and telecaller call tracking in the same system." },
+    ],
+  },
   {
     slug: "how-to-choose-a-whatsapp-business-tool",
     seoTitle: "How to Choose a WhatsApp Business Tool",
@@ -228,7 +287,7 @@ const ALL_POSTS: readonly Post[] = [
     faqs: [
       { q: "How often should I review telecaller performance?", a: "Look at activity numbers weekly and review a few scored calls with each telecaller in a short weekly one-to-one." },
       { q: "Does CallIQ understand Tamil?", a: "Yes. CallIQ understands Tamil calls. Calls and recordings are unlimited." },
-      { q: "How is CallIQ billed?", a: "Yearly, from ₹14,999 a year." },
+      { q: "How is CallIQ billed?", a: "CallIQ is priced by team size. Message us on WhatsApp for a quote." },
     ],
   },
   {

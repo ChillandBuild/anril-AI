@@ -38,3 +38,5 @@
   .base p, .details address { min-height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .cta, .cols a { transition: none; } }
+.lead .also { font: 400 0.95rem var(--sans, inherit); letter-spacing: 0; line-height: 1.5; color: rgba(255, 255, 255, 0.8); }
+.also a { color: var(--white); text-decoration: underline; text-underline-offset: 3px; }

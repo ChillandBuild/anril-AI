@@ -220,7 +220,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     ],
     faqs: [
       { q: "Is there a limit on calls or recordings?", a: "No. Calls and recordings are unlimited." },
-      { q: "How is CallIQ billed?", a: "Yearly, from ₹14,999 a year." },
+      { q: "How is CallIQ billed?", a: "CallIQ is priced by team size. Message us on WhatsApp for a quote." },
     ],
     related: ["whatsapp-crm", "whatsapp-chatbot"],
   },

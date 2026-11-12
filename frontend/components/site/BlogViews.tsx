@@ -71,6 +71,23 @@ export function BlogArticle({ post }: { post: Post }) {
               <h2 key={i}>{b.text}</h2>
             ) : b.type === "p" ? (
               <p key={i}>{b.text}</p>
+            ) : b.type === "a" ? (
+              <p key={i}>
+                <Link prefetch={false} className={ui.tlink} href={b.href}>{b.label}</Link>
+              </p>
+            ) : b.type === "table" ? (
+              <div key={i} className={s.tableWrap} tabIndex={0}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>{b.head.map((h, j) => <th key={j} scope="col">{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.map((r) => (
+                      <tr key={r[0]}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>))}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <ul key={i}>
                 {b.items.map((it) => (

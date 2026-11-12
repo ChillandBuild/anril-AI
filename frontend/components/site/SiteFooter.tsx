@@ -21,6 +21,9 @@ export function SiteFooter() {
           <div className={s.lead}>
             <p>Answer every enquiry. Call the right lead first.</p>
             <a className={s.cta} href={DEMO_HREF}>{DEMO_LABEL}</a>
+            <p className={s.also}>
+              We also build <Link prefetch={false} href="/website-development">AI-powered websites</Link>.
+            </p>
           </div>
           <nav aria-label="Footer" className={s.cols}>
             <div>

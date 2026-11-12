@@ -4,9 +4,10 @@
 
 ## Modules
 - Reach: bulk WhatsApp campaigns with approved templates, contact lists and segments, scheduling, delivery and engagement reports.
-- Engage: AI replies on WhatsApp, Instagram DMs and Facebook Messenger, from the business's own knowledge base. Replies in Tanglish by default, any language possible, understands voice notes. Scores leads Hot, Warm or Cold, follows up, and hands over to a human.
+- Engage: AI replies on WhatsApp, Instagram DMs, Facebook Messenger, Telegram and website chat, from the business's own knowledge base. Replies in Tanglish by default, any language possible, understands voice notes. Scores leads Hot, Warm or Cold, follows up, and hands over to a human.
 - Commerce: payment links (Razorpay) with status, orders from enquiries, catalogue, stock and low-stock alerts, dispatch status.
 - CallIQ: call intelligence that understands Tamil calls, with call recording and telecaller performance measures.
+- Website development (service): static, dynamic and AI-powered websites built for each business; can connect to Anril so website enquiries land in the same dashboard. Price on quote. Page: https://www.anrilaitech.com/website-development
 - Anril Attract: a done-for-you social media and Meta/Google ads service whose leads flow into Anril's AI chat.
 
 ## Key facts
@@ -31,6 +32,7 @@
 - [WhatsApp CRM](https://www.anrilaitech.com/whatsapp-crm): one lead list, Hot/Warm/Cold scoring, follow-ups
 - [Telecaller software](https://www.anrilaitech.com/telecaller-software): CallIQ call recording and Tamil call analysis
 - [WhatsApp payments and orders](https://www.anrilaitech.com/whatsapp-payments): Razorpay payment links, orders, stock
+- [Website development](https://www.anrilaitech.com/website-development): static, dynamic and AI-powered websites, free AI website audit
 - [Social media and ads](https://www.anrilaitech.com/social-media-ads): Anril Attract, done-for-you posts and ads
 - [Real estate](https://www.anrilaitech.com/industries/real-estate)
 - [Education](https://www.anrilaitech.com/industries/education)
@@ -42,6 +44,7 @@
 - [About](https://www.anrilaitech.com/about): company and contact
 
 ## Blog articles
+- [Wati vs Interakt vs AiSensy vs Anril: which WhatsApp tool fits your business? (2026)](https://www.anrilaitech.com/blog/wati-vs-interakt-vs-aisensy-vs-anril)
 - [How to choose a WhatsApp business tool: 7 questions to ask](https://www.anrilaitech.com/blog/how-to-choose-a-whatsapp-business-tool)
 - [Case study: how a customer-facing business in our own group uses Anril](https://www.anrilaitech.com/blog/case-study-customer-business-ai-replies)
 - [How Meta's per-message pricing works in India](https://www.anrilaitech.com/blog/whatsapp-business-api-pricing-india)
