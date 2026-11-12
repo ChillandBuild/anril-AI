@@ -1,4 +1,7 @@
 """Page reading rules for the knowledge base (app/companion/kb/pages.py): pure logic plus tiny generated PDFs."""
+import os
+
+import pytest
 from PIL import Image
 
 from app.companion.kb import pages
@@ -8,6 +11,18 @@ from app.companion.kb.pages import (
 
 TAMIL = "தமிழ் மொழி மிகவும் பழமையான மொழி. இது உலகின் செம்மொழிகளில் ஒன்றாகும். திருக்குறள் தமிழின் சிறந்த நூல்."
 OLD_FONT_TEXT = "jkpo; Ntjk; jkpo;ehL fhy;gJ jpUf;Fws; kpfTk; rpwe;j E}y; mUk;ngUk; tpsf;fk;"
+# Exactly what pdfplumber reads from the AstroTamil AI Rule Book (a Tamil page printed to PDF from Chrome):
+# the vowel signs ெ ே ை come BEFORE their letter (screen order) and every ி comes out as \x00.
+# Correct text: "AI ஜோதிட விதி புத்தகம் நம் AI ஒவ்வொரு கேள்விக்கும் ... சொல்லும்."
+SCRAMBLED = (
+    "AI ேஜாத\x00ட வ\x00த\x00 புத்தகம்\nநம் AI ஒவ்ெவாரு ேகள்வ\x00க்கும் ஜாதகத்த\x00ல் எைதப் பார்க்க ேவண்டும் "
+    "என்று இந்த\nவ\x00த\x00கள் ெசால்க\x00ன்றன. கணக்கு நம் app ெசய்யும். AI வ\x00ளக்கம் மட்டும் ெசால்லும்."
+)
+UNSCRAMBLED = (
+    "AI ஜோதிட விதி புத்தகம்\nநம் AI ஒவ்வொரு கேள்விக்கும் ஜாதகத்தில் எதைப் பார்க்க வேண்டும் "
+    "என்று இந்த\nவிதிகள் சொல்கின்றன. கணக்கு நம் app செய்யும். AI விளக்கம் மட்டும் சொல்லும்."
+)
+NOTO = {"BAAAAA+NotoSansTamil-Regular"}
 ENGLISH = "Hello, world. Don't worry, this page is ordinary English prose with a normal font and plain punctuation."
 
 
@@ -81,6 +96,37 @@ def test_normal_font_not_mistaken_for_old_font():
 
 
 # --- text_difference ---
+
+def test_screen_order_tamil_with_missing_i_fails():
+    # The rule book bug: this used to pass, so the scrambled text was saved and search missed "விதி".
+    assert text_layer_ok(SCRAMBLED, NOTO) is False
+
+
+def test_screen_order_tamil_fails_even_when_i_is_mapped():
+    # Another font may map ி correctly but still put ெ ே ை before the letter: 6 of 20 words start with one.
+    assert text_layer_ok(SCRAMBLED.replace("\x00", "ி"), NOTO) is False
+
+
+def test_same_text_in_correct_order_passes():
+    assert text_layer_ok(UNSCRAMBLED, NOTO) is True
+
+
+def test_one_stray_sign_from_ocr_noise_still_passes():
+    # Archive.org text layers have the odd stray sign (at most 1.8% of words on 9 real books): not a reason to OCR.
+    assert text_layer_ok(TAMIL + " ேமலும் இது நல்ல நூல்.", NOTO) is True
+
+
+def test_replacement_character_fails():
+    assert text_layer_ok(TAMIL + " வ\ufffdதி", set()) is False
+
+
+@pytest.mark.skipif(not os.environ.get("KB_SCRAMBLED_TAMIL_PDF"),
+                    reason="set KB_SCRAMBLED_TAMIL_PDF to a Chrome-printed Tamil PDF (the client's rule book is not in the repo)")
+def test_every_page_of_the_real_scrambled_pdf_goes_to_ocr():
+    path = os.environ["KB_SCRAMBLED_TAMIL_PDF"]
+    trusted = [no for no in range(1, count_pages(path) + 1) if text_layer_ok(*read_page(path, no))]
+    assert trusted == []
+
 
 def test_text_difference_identical_and_whitespace_only():
     assert text_difference("abc def", "abc def") == 0.0
