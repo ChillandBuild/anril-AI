@@ -399,8 +399,12 @@ async def _process_inbound_message_background(
         # (synthesized to text in the webhook loop above) into the reply engine.
         # Uncaptioned media and every sticker fall through to the ack branch below
         # instead -- `body` is empty for those, so this condition already excludes them.
+        # Settings > Auto-Reply off = nothing automatic reaches the customer: no
+        # typing indicator, no media ack (generate_reply checks it for the reply itself).
+        from app.services.automation_guards import master_switch_on
+        auto_reply_on = master_switch_on(tenant_id)
         if msg_type in ("text", "button", "interactive", "audio", "image", "document", "video", "location") and body:
-            if meta_message_id and meta_phone_number_id:
+            if meta_message_id and meta_phone_number_id and auto_reply_on:
                 try:
                     from app.services.meta_cloud import send_typing_indicator
                     await send_typing_indicator(
@@ -447,6 +451,9 @@ async def _process_inbound_message_background(
             # messages do the same inside generate_reply.
             from app.services.intake import note_lead_message
             note_lead_message(db, tenant_id, lead_id)
+            if not auto_reply_on:
+                logger.info(f"Media ack skipped for lead {lead_id}: AI auto-reply is off")
+                return
             try:
                 cutoff = (datetime.now(timezone.utc) - timedelta(hours=_MEDIA_ACK_DEDUPE_HOURS)).isoformat()
                 recent = (

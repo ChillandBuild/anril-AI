@@ -373,6 +373,11 @@ async def send_one(db, send: dict) -> bool:
         return False
     tenant_id = send["tenant_id"]
 
+    from app.services.automation_guards import master_switch_on
+    if not master_switch_on(tenant_id):
+        _finish(db, send["id"], "skipped", "ai_auto_reply_off")
+        return False
+
     lead = None
     if send.get("lead_id"):
         rows = (

@@ -130,6 +130,10 @@ async def send_welcome_template(db, tenant_id: str, phone: str, enquiry: dict) -
     words, so any 0-2 variable template works. Media-header templates are
     skipped (they need a media parameter we don't have)."""
     from app.config_dynamic import get_setting
+    from app.services.automation_guards import master_switch_on
+    if not master_switch_on(tenant_id):
+        logger.info(f"marketplace: welcome template skipped for tenant {tenant_id}: AI auto-reply is off")
+        return False
     template_id = get_setting(WELCOME_TEMPLATE_KEY, tenant_id=tenant_id)
     if not template_id:
         return False

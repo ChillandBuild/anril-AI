@@ -475,9 +475,11 @@ def _meta_error(exc: Exception) -> str:
     return f"WhatsApp didn't send it: {str(detail)[:300]}"
 
 
-async def send_form_template(db, tenant_id: str, form_lead_id: str) -> str:
+async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: bool = False) -> str:
     """Send the form's template to one stored lead. Returns the final status.
-    The pending -> sending claim makes a second caller a no-op."""
+    The pending -> sending claim makes a second caller a no-op. `manual` is the
+    owner's Resend button: it goes out even while Auto-Reply is off."""
+    from app.services.automation_guards import master_switch_on
     from app.services.meta_cloud import send_template_message
 
     claimed = (
@@ -492,6 +494,9 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str) -> str:
     def finish(status: str, **extra) -> str:
         db.table("meta_form_leads").update({"template_status": status, **extra}).eq("id", form_lead_id).execute()
         return status
+
+    if not manual and not master_switch_on(tenant_id):
+        return finish("failed", template_error="Not sent: Auto-Reply was off in Settings. Use Resend to send it now.")
 
     form = (
         db.table("meta_lead_forms").select("template_id,template_variables")
