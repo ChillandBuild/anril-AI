@@ -9,12 +9,14 @@ import { SalesPicker } from "@/components/agents/SalesPicker";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ErrorNote, INPUT, LoadingRows } from "@/components/agents/ui";
 import {
   CANCELLED_TEXT,
+  DONE_LINGER_MS,
   importLabel,
   isBusy,
   itemStatusText,
   sortPickedFiles,
   stagedCount,
   uploadOne,
+  uploadSummary,
   type UploadItem,
 } from "@/components/agents/uploadQueue";
 
@@ -47,6 +49,9 @@ export function ImportCard({
   const [collectionId, setCollectionId] = useState<string | null>(initialCollectionId);
   const [tier, setTier] = useState<1 | 2>(2);
   const [items, setItems] = useState<UploadItem[]>([]);
+  /** Finished files that already left the list (they still count in "3 of 5 uploaded"). */
+  const [cleared, setCleared] = useState(0);
+  const lingerTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const [refused, setRefused] = useState<string[]>([]);
   const [limits, setLimits] = useState<KbLimits | null>(null);
   const [limitsFailed, setLimitsFailed] = useState(false);
@@ -65,8 +70,11 @@ export function ImportCard({
 
   useEffect(() => {
     alive.current = true;
+    const timers = lingerTimers.current;
     return () => {
       alive.current = false;
+      timers.forEach(clearTimeout);
+      timers.clear();
     };
   }, []);
 
@@ -90,6 +98,8 @@ export function ImportCard({
     const { accepted, refused: bad } = sortPickedFiles(Array.from(list), items.map((i) => i.file), limits?.max_bytes ?? null);
     setRefused(bad);
     if (accepted.length === 0) return;
+    // A new batch after the last one finished starts the count again.
+    if (!isBusy(items) && stagedCount(items) === 0) setCleared(0);
     setItems((prev) => [
       ...prev,
       ...accepted.map<UploadItem>((file) => ({
@@ -104,6 +114,14 @@ export function ImportCard({
     ]);
   };
 
+  /** Removes a finished row and keeps it in the count. Does nothing if it is already gone. */
+  const clearDone = (id: string) => {
+    if (!alive.current || !itemsRef.current.some((i) => i.id === id && i.status === "done")) return;
+    itemsRef.current = itemsRef.current.filter((i) => i.id !== id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setCleared((n) => n + 1);
+  };
+
   const runItem = async (item: UploadItem, target: { collectionId: string; tier: 1 | 2 }) => {
     patch(item.id, { status: "uploading", progress: 0, error: "", collectionId: target.collectionId, tier: target.tier });
     const controller = new AbortController();
@@ -116,6 +134,12 @@ export function ImportCard({
       });
       patch(item.id, { status: "done", progress: 1 });
       if (alive.current) onChanged();
+      // Show the green tick, then take the row away by itself. Failed files stay with Retry.
+      const timer = setTimeout(() => {
+        lingerTimers.current.delete(timer);
+        clearDone(item.id);
+      }, DONE_LINGER_MS);
+      lingerTimers.current.add(timer);
     } catch (e) {
       if (e instanceof UploadCancelledError) {
         patch(item.id, { status: "staged", progress: 0, error: CANCELLED_TEXT });
@@ -233,7 +257,7 @@ export function ImportCard({
         )}
 
         <p className="sr-only" role="status">
-          {items.length > 0 ? `${items.filter((i) => i.status === "done").length} of ${items.length} files uploaded` : ""}
+          {uploadSummary(cleared, items)}
         </p>
 
         {items.length > 0 && (
@@ -271,7 +295,7 @@ export function ImportCard({
                     <button
                       type="button"
                       aria-label={item.status === "done" ? `Dismiss ${item.file.name}` : `Remove ${item.file.name}`}
-                      onClick={() => setItems((p) => p.filter((x) => x.id !== item.id))}
+                      onClick={() => (item.status === "done" ? clearDone(item.id) : setItems((p) => p.filter((x) => x.id !== item.id)))}
                       className="shrink-0 rounded p-1 text-ink-secondary hover:text-danger"
                     >
                       <X size={14} aria-hidden="true" />

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { UploadCancelledError, type KbCollection, type KbDocument, type KbUploadTicket } from "@/lib/api";
 import {
   CANCELLED_TEXT,
+  DONE_LINGER_MS,
+  uploadSummary,
   bookHref,
   canCreateCollection,
   checkFile,
@@ -244,5 +246,23 @@ describe("lists", () => {
   it("toggles an id", () => {
     expect(toggleId(["a"], "b")).toEqual(["a", "b"]);
     expect(toggleId(["a", "b"], "a")).toEqual(["b"]);
+  });
+});
+
+describe("finished files leave the list by themselves", () => {
+  it("lingers 2 seconds, long enough to see the tick", () => {
+    expect(DONE_LINGER_MS).toBe(2000);
+  });
+  it("keeps cleared files in the count so it never drops", () => {
+    // 5 dropped: 3 finished and gone, 1 failed (stays with Retry), 1 still uploading.
+    expect(uploadSummary(3, [{ status: "error" }, { status: "uploading" }])).toBe("3 of 5 files uploaded");
+    // The uploading one finishes and is still showing its tick.
+    expect(uploadSummary(3, [{ status: "error" }, { status: "done" }])).toBe("4 of 5 files uploaded");
+    // ...then it leaves the list.
+    expect(uploadSummary(4, [{ status: "error" }])).toBe("4 of 5 files uploaded");
+  });
+  it("says nothing when there is nothing to report", () => {
+    expect(uploadSummary(0, [])).toBe("");
+    expect(uploadSummary(1, [])).toBe("1 of 1 file uploaded");
   });
 });

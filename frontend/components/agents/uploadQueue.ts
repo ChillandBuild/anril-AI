@@ -116,6 +116,21 @@ export function itemStatusText(item: Pick<UploadItem, "status" | "progress" | "e
   }
 }
 
+/** How long a finished file shows its green tick before it leaves the list by itself. */
+export const DONE_LINGER_MS = 2000;
+
+/**
+ * The line read to screen readers. `cleared` = finished files that already left the list, so the count
+ * doesn't drop when a row disappears. Example: 5 dropped, 3 finished and gone, 1 failed, 1 uploading →
+ * cleared 3, items [error, uploading] → "3 of 5 files uploaded".
+ */
+export function uploadSummary(cleared: number, items: Pick<UploadItem, "status">[]): string {
+  const total = cleared + items.length;
+  if (total === 0) return "";
+  const done = cleared + items.filter((i) => i.status === "done").length;
+  return `${done} of ${total} ${total === 1 ? "file" : "files"} uploaded`;
+}
+
 /** Shown on a file after Cancel; it is staged again, so Import sends it. */
 export const CANCELLED_TEXT = "Upload cancelled. Press Import to try again.";
 
