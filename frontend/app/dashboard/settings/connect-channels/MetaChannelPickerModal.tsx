@@ -1,6 +1,7 @@
 "use client";
 import { X, Loader2, ArrowRight } from "lucide-react";
 import { Portal } from "./ui";
+import { Select } from "@/components/ui/Select";
 import { assetOptions } from "./useMetaChannelSignup";
 import type { MetaChannelAdAccount, MetaChannelAssets, MetaChannelPage, MetaChannelTarget } from "./useMetaChannelSignup";
 
@@ -77,17 +78,14 @@ export default function MetaChannelPickerModal({
             {error && <p className="rounded-xl bg-red-50 px-3 py-2 font-body text-xs text-red-700">{error}</p>}
             <label className="block">
               <span className="font-label text-xs font-bold uppercase tracking-wider text-ink">{copy.label}</span>
-              <select
+              <Select
                 value={selectedId}
-                onChange={event => onSelect(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 font-body text-sm text-ink disabled:bg-surface-low disabled:text-ink-muted"
+                onChange={onSelect}
+                className="mt-2"
                 disabled={isBusy}
-              >
-                <option value="">Select one to continue</option>
-                {options.map(option => (
-                  <option key={option.id} value={option.id}>{optionLabel(option)}</option>
-                ))}
-              </select>
+                placeholder="Select one to continue"
+                options={options.map(option => ({ value: option.id, label: optionLabel(option) }))}
+              />
               <p className="mt-1.5 font-body text-[11px] text-ink-muted">{copy.hint}</p>
             </label>
           </div>

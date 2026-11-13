@@ -17,6 +17,7 @@ import {
   Info,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { LANGUAGES, STATUS_COLORS, detectVariables, formatNextEdit } from "../types";
 import type { Button, Template } from "../types";
 import WhatsAppPreview from "../components/whatsapp-preview";
@@ -466,21 +467,22 @@ export default function TemplateDetailsPage() {
                   <label className="font-body text-sm font-medium text-ink mb-1.5 block">
                     Header Type
                   </label>
-                  <select
+                  <Select
+                    className="mb-3"
                     value={headerType}
-                    onChange={(e) => {
-                      setHeaderType(e.target.value as "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT");
+                    onChange={(v) => {
+                      setHeaderType(v as "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT");
                       setHeaderText("");
                       clearMedia();
                     }}
-                    className="input w-full mb-3"
-                  >
-                    <option value="NONE">None</option>
-                    <option value="TEXT">Text Header</option>
-                    <option value="IMAGE">Image Header</option>
-                    <option value="VIDEO">Video Header</option>
-                    <option value="DOCUMENT">Document Header</option>
-                  </select>
+                    options={[
+                      { value: "NONE", label: "None" },
+                      { value: "TEXT", label: "Text Header" },
+                      { value: "IMAGE", label: "Image Header" },
+                      { value: "VIDEO", label: "Video Header" },
+                      { value: "DOCUMENT", label: "Document Header" },
+                    ]}
+                  />
 
                   {headerType === "TEXT" && (
                     <>

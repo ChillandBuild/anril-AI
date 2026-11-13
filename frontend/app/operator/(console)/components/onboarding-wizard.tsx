@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { ChevronRight, ChevronLeft, RefreshCw } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
 
 interface OnboardingWizardProps {
@@ -108,13 +109,13 @@ export function OnboardingWizard({ open, onClose, onComplete }: OnboardingWizard
               </div>
               <div>
                 <label className="text-sm font-medium text-ink-secondary block mb-1">Business Type *</label>
-                <select
-                  value={businessType} onChange={e => setBusinessType(e.target.value)} required
-                  className="w-full border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Select business type</option>
-                  {BUSINESS_TYPES.map(bt => <option key={bt} value={bt}>{bt}</option>)}
-                </select>
+                <Select
+                  aria-label="Business Type"
+                  value={businessType}
+                  onChange={setBusinessType}
+                  placeholder="Select business type"
+                  options={BUSINESS_TYPES.map(bt => ({ value: bt, label: bt }))}
+                />
               </div>
               <div>
                 <label className="text-sm font-medium text-ink-secondary block mb-1">Primary Contact *</label>

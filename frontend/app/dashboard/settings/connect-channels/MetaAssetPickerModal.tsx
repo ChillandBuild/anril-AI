@@ -1,6 +1,7 @@
 "use client";
 import { X, Loader2, ArrowRight } from "lucide-react";
 import { Portal } from "./ui";
+import { Select } from "@/components/ui/Select";
 import type { MetaBusinessAssets } from "./channels";
 
 export default function MetaAssetPickerModal({
@@ -49,10 +50,16 @@ export default function MetaAssetPickerModal({
             {error && <p className="rounded-xl bg-red-50 px-3 py-2 font-body text-xs text-red-700">{error}</p>}
             <label className="block">
               <span className="font-label text-xs font-bold uppercase tracking-wider text-ink">Facebook Page <span className="font-normal normal-case text-ink-muted">(optional)</span></span>
-              <select value={selectedPageId} onChange={event => onSelectPage(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 font-body text-sm text-ink disabled:bg-surface-low disabled:text-ink-muted" disabled={isBusy || hasNoPages}>
-                <option value="">{hasNoPages ? "No Page was shared with Anril" : "Do not connect a Page"}</option>
-                {assets.pages.map(page => <option key={page.id} value={page.id}>{page.name}{page.instagram_business_account ? " · Instagram linked" : ""}</option>)}
-              </select>
+              <Select
+                value={selectedPageId}
+                onChange={onSelectPage}
+                className="mt-2"
+                disabled={isBusy || hasNoPages}
+                options={[
+                  { value: "", label: hasNoPages ? "No Page was shared with Anril" : "Do not connect a Page" },
+                  ...assets.pages.map(page => ({ value: page.id, label: `${page.name}${page.instagram_business_account ? " · Instagram linked" : ""}` })),
+                ]}
+              />
               <p className="mt-1.5 font-body text-[11px] text-ink-muted">
                 {hasNoPages
                   ? "WhatsApp still connects. To add Messenger and Instagram later, run this again and share a Page in the Meta window."
@@ -61,10 +68,16 @@ export default function MetaAssetPickerModal({
             </label>
             <label className="block">
               <span className="font-label text-xs font-bold uppercase tracking-wider text-ink">Ad account <span className="font-normal normal-case text-ink-muted">(optional)</span></span>
-              <select value={selectedAdAccountId} onChange={event => onSelectAdAccount(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 font-body text-sm text-ink" disabled={isBusy}>
-                <option value="">Do not connect an ad account</option>
-                {assets.ad_accounts.map(account => <option key={account.id} value={account.id}>{account.name}{account.account_id ? ` · ${account.account_id}` : ""}{account.currency ? ` · ${account.currency}` : ""}</option>)}
-              </select>
+              <Select
+                value={selectedAdAccountId}
+                onChange={onSelectAdAccount}
+                className="mt-2"
+                disabled={isBusy}
+                options={[
+                  { value: "", label: "Do not connect an ad account" },
+                  ...assets.ad_accounts.map(account => ({ value: account.id, label: `${account.name}${account.account_id ? ` · ${account.account_id}` : ""}${account.currency ? ` · ${account.currency}` : ""}` })),
+                ]}
+              />
               <p className="mt-1.5 font-body text-[11px] text-ink-muted">Anril reads reporting data from this account. It cannot create, edit, or publish ads.</p>
             </label>
           </div>

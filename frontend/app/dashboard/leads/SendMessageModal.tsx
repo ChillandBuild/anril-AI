@@ -5,6 +5,7 @@ import { CalendarClock, FileText, Loader2, MessageSquare, Send, X } from "lucide
 import { toast } from "sonner";
 import { api, Lead, type SendDetailsTemplate } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/Select";
 import { WhenToSend } from "@/components/schedule/WhenToSend";
 import { defaultWhen, formatSendTime, resolveWhen, type WhenValue } from "@/lib/schedule-time";
 import { VARIABLE_LABEL, blankVariables, renderTemplate, templateLabel } from "@/app/dashboard/telecalling/lib/send-details";
@@ -222,11 +223,12 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLab
             <p className="text-xs text-[#64748b]">Templates reach every selected lead, even after the 24-hour window.</p>
             <div>
               <label className={LABEL} htmlFor="bulk-template">Template</label>
-              <select id="bulk-template" value={templateId} onChange={(e) => setTemplateId(e.target.value)} className={cn(INPUT, "cursor-pointer")}>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{templateLabel(t)}</option>
-                ))}
-              </select>
+              <Select
+                id="bulk-template"
+                value={templateId}
+                onChange={setTemplateId}
+                options={templates.map((t) => ({ value: t.id, label: templateLabel(t) }))}
+              />
             </div>
 
             {template?.variables.map((v, i) =>

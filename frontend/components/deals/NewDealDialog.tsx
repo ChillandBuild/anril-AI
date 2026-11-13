@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Package, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, CatalogItem, DealMutationResult, NewDealPayload, PaymentMethod } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { formatRupees } from "./money";
 
 type Outcome = "paid" | "link" | "quote";
@@ -300,18 +301,17 @@ export function NewDealDialog({ open, onClose, onCreated, defaultLead, defaultSo
                   {lines.map((line) => (
                     <div key={line.key} className="rounded-2xl border border-border p-3 space-y-2">
                       <div className="flex items-center gap-2">
-                        <select
+                        <Select
+                          size="sm"
+                          aria-label="Catalog item"
+                          className="w-40 shrink-0"
                           value={line.catalogItemId ?? ""}
-                          onChange={(e) => (e.target.value ? pickCatalogItem(line.key, e.target.value) : updateLine(line.key, { catalogItemId: null }))}
-                          className="w-40 shrink-0 rounded-lg border border-border px-2 py-1.5 font-body text-xs text-ink outline-none focus:border-primary"
-                        >
-                          <option value="">Free text…</option>
-                          {catalogItems.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(v) => (v ? pickCatalogItem(line.key, v) : updateLine(line.key, { catalogItemId: null }))}
+                          options={[
+                            { value: "", label: "Free text…" },
+                            ...catalogItems.map((item) => ({ value: item.id, label: item.name })),
+                          ]}
+                        />
                         <input
                           value={line.name}
                           onChange={(e) => updateLine(line.key, { name: e.target.value, catalogItemId: null })}

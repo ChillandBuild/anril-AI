@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ChevronDown, Loader2, Phone, Pin, Search, StickyNote, Users, X } from "lucide-react";
+import { Loader2, Phone, Pin, Search, StickyNote, Users, X } from "lucide-react";
 import { api, type Caller, type CallLog, type ReviewLead, type ReviewRange } from "@/lib/api";
 import { cn, formatPhone, timeAgo } from "@/lib/utils";
 import { useCallers, useNotes } from "@/hooks/useApi";
@@ -14,6 +14,7 @@ import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
 import { AiraLoader } from "@/components/AiraLoader";
+import { Select } from "@/components/ui/Select";
 
 type Preset = "today" | "7" | "30" | "custom";
 type Tab = "all" | "called" | "notes" | "uncalled" | "review";
@@ -133,32 +134,18 @@ function FilterSelect({
 }) {
   const active = value !== "";
   return (
-    <label
-      htmlFor={id}
+    <Select
+      size="sm"
+      id={id}
+      aria-label={label}
+      value={value}
+      onChange={onChange}
       className={cn(
-        "relative flex items-center h-9 pl-3 pr-7 rounded-xl border bg-white transition-colors",
-        active ? "border-[var(--primary-200)] bg-[var(--primary-50)]" : "border-[#e2e8f0]",
+        "w-auto min-w-[140px] font-bold",
+        active ? "border-[var(--primary-200)] bg-[var(--primary-50)] text-primary" : "text-[#13284A]",
       )}
-    >
-      <span className="sr-only">{label}</span>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "appearance-none bg-transparent font-body text-xs font-bold focus:outline-none cursor-pointer",
-          active ? "text-primary" : "text-[#13284A]",
-        )}
-      >
-        <option value="">{anyLabel}</option>
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={13} className="absolute right-2.5 text-[#94a3b8] pointer-events-none" />
-    </label>
+      options={[{ value: "", label: anyLabel }, ...options.map((o) => ({ value: o.id, label: o.label }))]}
+    />
   );
 }
 
@@ -310,28 +297,23 @@ export default function CallReview() {
               />
             </div>
           )}
-          <label htmlFor="review-caller" className="relative flex items-center h-9 pl-2 pr-7 gap-2 rounded-xl border border-[#e2e8f0] bg-white">
+          <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-primary text-white grid place-items-center font-label text-[10px] font-extrabold shrink-0">
               {selectedCaller ? initial(selectedCaller.name) : <Users size={12} />}
             </span>
-            <select
+            <Select
+              size="sm"
               id="review-caller"
+              aria-label="Telecaller"
               value={callerId}
-              onChange={(e) => {
-                setCallerId(e.target.value);
+              onChange={(v) => {
+                setCallerId(v);
                 setSelectedId(null);
               }}
-              className="appearance-none bg-transparent font-body text-xs font-bold text-[#13284A] focus:outline-none cursor-pointer max-w-[180px] truncate"
-            >
-              <option value="">All telecallers</option>
-              {callers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={13} className="absolute right-2.5 text-[#94a3b8] pointer-events-none" />
-          </label>
+              className="w-auto min-w-[160px] max-w-[220px] font-bold text-[#13284A]"
+              options={[{ value: "", label: "All telecallers" }, ...callers.map((c) => ({ value: c.id, label: c.name }))]}
+            />
+          </div>
           <label htmlFor="review-search" className="flex-1 min-w-[200px] flex items-center h-9 px-3 gap-2 rounded-xl border border-[#e2e8f0] bg-white">
             <Search size={14} className="text-[#94a3b8] shrink-0" />
             <input

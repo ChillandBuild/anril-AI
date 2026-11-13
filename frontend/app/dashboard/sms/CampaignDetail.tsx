@@ -4,6 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { api, type SmsMessageStatus } from "@/lib/api";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
@@ -219,22 +220,17 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
         <CardHeader
           title="Messages"
           action={
-            <select
+            <Select
               aria-label="Filter by status"
-              className={`${inputCls} w-auto`}
+              size="sm"
+              className="w-auto min-w-[160px]"
               value={status}
-              onChange={(e) => {
-                setStatus(e.target.value as "" | SmsMessageStatus);
+              onChange={(v) => {
+                setStatus(v as "" | SmsMessageStatus);
                 setOffset(0);
               }}
-            >
-              <option value="">All statuses</option>
-              {MESSAGE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {statusLabel(s)}
-                </option>
-              ))}
-            </select>
+              options={[{ value: "", label: "All statuses" }, ...MESSAGE_STATUSES.map((s) => ({ value: s, label: statusLabel(s) }))]}
+            />
           }
         />
         {messages.isLoading && !messages.data ? (

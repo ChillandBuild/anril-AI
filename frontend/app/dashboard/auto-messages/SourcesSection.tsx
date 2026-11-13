@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Copy } from "lucide-react";
 import { api, type AutoMessageEvents, type AutoMessageSetup, type PrivateSendStatus } from "@/lib/api";
-import { ghostBtn, inputCls, primaryBtn } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { ghostBtn, primaryBtn } from "./shared";
 
 const COPIED_FLASH_MS = 2000;
 const ROW = "flex flex-col gap-3 border-t border-border-subtle px-3 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-4";
@@ -129,19 +130,18 @@ function WebsiteFormRow({
           <label htmlFor="form-event" className="font-body text-xs text-ink-secondary">
             Fires:
           </label>
-          <select
+          <Select
+            size="sm"
             id="form-event"
             value={eventKey}
-            onChange={(e) => setEventKey(e.target.value)}
-            className={`${inputCls} !w-auto min-w-[140px]`}
-          >
-            {options.length === 0 && <option value="interested">Interested</option>}
-            {options.map((o) => (
-              <option key={o.key} value={o.key}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            onChange={setEventKey}
+            className="w-auto min-w-[140px]"
+            options={
+              options.length === 0
+                ? [{ value: "interested", label: "Interested" }]
+                : options.map((o) => ({ value: o.key, label: o.label }))
+            }
+          />
           <CopyCode text={formSnippet(setup.form_script_url, eventKey)} eventLabel={chosen?.label ?? "Interested"} />
         </div>
       </div>

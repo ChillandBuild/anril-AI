@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, FileText, MessageCircle, MessageSquare, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { api, type ScheduledTemplate, type SendDetailsContext, type SendDetailsTemplate } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/utils";
 import { useScheduledTemplates } from "@/hooks/useScheduledTemplates";
@@ -157,16 +158,13 @@ export function SendDetailsView({
         </p>
       ) : (
         <>
-          <select
+          <Select
+            size="sm"
             value={templateId}
-            onChange={(e) => pickTemplate(e.target.value)}
+            onChange={pickTemplate}
             aria-label="Template"
-            className="w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-body text-xs text-[#1e293b] focus:outline-none focus:ring-2 focus:ring-emerald-300"
-          >
-            {context.templates.map((t) => (
-              <option key={t.id} value={t.id}>{templateLabel(t)}</option>
-            ))}
-          </select>
+            options={context.templates.map((t) => ({ value: t.id, label: templateLabel(t) }))}
+          />
           {template && template.variables.length > 0 && (
             <button
               type="button"

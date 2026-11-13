@@ -15,6 +15,7 @@ import { SegmentBadge } from "@/components/segment-badge";
 import { FilterMenu, FilterMenuOption } from "./FilterMenu";
 import { SegmentBroadcastModal } from "./SegmentBroadcastModal";
 import { ComposeModal } from "./ComposeModal";
+import { Select } from "@/components/ui/Select";
 import { CheckTick } from "@/components/ui/controls";
 import { SendMessageModal } from "./SendMessageModal";
 import { SendTemplateModal } from "./SendTemplateModal";
@@ -110,11 +111,6 @@ const SEGMENT_COLORS: Record<string, { text: string; edge: string }> = {
   C: { text: "text-[#0A1528]", edge: "bg-blue-600" },
   D: { text: "text-[#0A1528]", edge: "bg-slate-400" },
 };
-
-// Matches the FilterMenu buttons beside it. Fixed width fits "All campaigns"/"All broadcasts"; a long
-// name is cut short here but shown in full in the list. No right padding: Chrome's arrow sits inside it.
-const PICKER_CLASS =
-  "h-[30px] w-[132px] shrink-0 truncate rounded-lg border border-[#e2e8f0] bg-white pl-2 pr-1 text-xs font-bold text-[#0A1528] hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary/20";
 
 const SOURCE_FILTERS: FilterMenuOption[] = [
   { value: "ALL", label: "All" },
@@ -655,18 +651,18 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
           {reengageTrigger === "broadcast" && (
             <label className="block">
               <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Broadcast</span>
-              <select
+              <Select
                 value={selectedBroadcastId}
-                onChange={(e) => setSelectedBroadcastId(e.target.value)}
-                className="mt-1 w-full max-w-md rounded-xl border border-on-surface/20 px-3 py-2 text-sm"
-              >
-                <option value="">Select a broadcast…</option>
-                {broadcastHistory.filter((b) => b.broadcast_id).map((b) => (
-                  <option key={b.broadcast_id} value={b.broadcast_id}>
-                    {b.template_name} · {new Date(b.timestamp).toLocaleString()}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedBroadcastId}
+                placeholder="Select a broadcast…"
+                className="mt-1 max-w-md"
+                options={broadcastHistory
+                  .flatMap((b) => (b.broadcast_id ? [{ ...b, broadcast_id: b.broadcast_id }] : []))
+                  .map((b) => ({
+                    value: b.broadcast_id,
+                    label: `${b.template_name} · ${new Date(b.timestamp).toLocaleString()}`,
+                  }))}
+              />
             </label>
           )}
 
@@ -758,35 +754,35 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
 
               {/* Which campaign / broadcast, in the same row as the Source it narrows. */}
               {showsSourcePicker && sourceFilter === "META_ADS" && (
-                <select
+                <Select
+                  size="sm"
                   value={selectedCampaignId}
-                  onChange={(e) => setSelectedCampaignId(e.target.value)}
+                  onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className={PICKER_CLASS}
-                >
-                  <option value="">All campaigns</option>
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {campaignLabel(c)}
-                    </option>
-                  ))}
-                </select>
+                  className="w-[132px] shrink-0"
+                  options={[
+                    { value: "", label: "All campaigns" },
+                    ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
+                  ]}
+                />
               )}
 
               {showsSourcePicker && sourceFilter === "BROADCAST" && (
-                <select
+                <Select
+                  size="sm"
                   value={selectedBroadcastId}
-                  onChange={(e) => setSelectedBroadcastId(e.target.value)}
+                  onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className={PICKER_CLASS}
-                >
-                  <option value="">All broadcasts</option>
-                  {broadcastHistory.map((h) => (
-                    <option key={h.broadcast_id} value={h.broadcast_id}>
-                      {h.template_name} · {new Date(h.timestamp).toLocaleDateString()}
-                    </option>
-                  ))}
-                </select>
+                  className="w-[132px] shrink-0"
+                  options={[
+                    { value: "", label: "All broadcasts" },
+                    ...broadcastHistory.flatMap((h) =>
+                      h.broadcast_id
+                        ? [{ value: h.broadcast_id, label: `${h.template_name} · ${new Date(h.timestamp).toLocaleDateString()}` }]
+                        : [],
+                    ),
+                  ]}
+                />
               )}
 
               <FilterMenu

@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { KpiCard } from "@/components/kpi-card";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 
 type Tab = "roles" | "users" | "audit";
@@ -406,6 +407,7 @@ export default function RolesPage() {
   async function saveUser(e: React.FormEvent) {
     e.preventDefault();
     if (atSeatLimit) return;
+    if (!editingOwner && !userDraft.role_id) return; // the role dropdown is required (a native select used to enforce this)
     setSaving(true);
     setError(null);
     try {
@@ -887,9 +889,14 @@ export default function RolesPage() {
               </div>
               <div className="relative">
                 <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" size={15} />
-                <select className="input" style={{ paddingLeft: "2.25rem" }} value={userDraft.role_id} onChange={(e) => setUserDraft((d) => ({ ...d, role_id: e.target.value }))} required>
-                  {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
-                </select>
+                <Select
+                  className="pl-9"
+                  aria-label="Role"
+                  placeholder="Select a role"
+                  value={userDraft.role_id}
+                  onChange={(v) => setUserDraft((d) => ({ ...d, role_id: v }))}
+                  options={roles.map((role) => ({ value: role.id, label: role.name }))}
+                />
               </div>
               </>
               )}

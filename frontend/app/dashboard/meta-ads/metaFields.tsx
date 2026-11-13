@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronDown, Columns3, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { Columns3, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import type { MetaBreakdown, MetaField } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/Select";
 import { TickMark } from "@/components/ui/controls";
 import { fieldHelp } from "./metaFieldHelp";
 import { HoverTip } from "./HoverTip";
@@ -293,25 +294,20 @@ export function BreakdownSelect({
   onChange: (value: string | null) => void;
 }) {
   return (
-    <label className="relative flex h-9 shrink-0 items-center rounded-xl border border-[#e2e8f0] bg-white pl-3 font-label text-xs font-bold text-[#0A1528] shadow-sm transition-colors hover:border-primary-200 focus-within:ring-2 focus-within:ring-primary-200">
-      Breakdown
-      <span className="relative">
-        <select
-          value={value ?? ""}
-          onChange={(event) => onChange(event.target.value || null)}
-          aria-label="Break down by"
-          className="h-8 !w-[7rem] cursor-pointer truncate appearance-none border-0 bg-transparent pl-1.5 pr-7 font-label text-xs font-semibold text-[#64748b] shadow-none focus:outline-none focus:ring-0"
-        >
-          <option value="">None</option>
-          {breakdowns.map((breakdown) => (
-            <option key={breakdown.key} value={breakdown.key}>
-              {breakdown.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-      </span>
-    </label>
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="font-label text-xs font-bold text-[#0A1528]">Breakdown</span>
+      <Select
+        size="sm"
+        value={value ?? ""}
+        onChange={(v) => onChange(v || null)}
+        aria-label="Break down by"
+        className="w-[9rem]"
+        options={[
+          { value: "", label: "None" },
+          ...breakdowns.map((breakdown) => ({ value: breakdown.key, label: breakdown.label })),
+        ]}
+      />
+    </div>
   );
 }
 

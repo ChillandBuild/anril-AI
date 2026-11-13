@@ -15,13 +15,13 @@ import {
   Eye,
   Layers,
   ChevronRight,
-  ChevronDown,
   Download,
   X,
   AlertCircle,
   HelpCircle,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 import { KpiCard } from "@/components/kpi-card";
 import { LANGUAGES, STATUS_COLORS } from "./types";
@@ -460,37 +460,37 @@ export default function TemplatesPage() {
             )}
           </div>
 
-          <div className="relative w-[130px] shrink-0 sm:w-[150px]">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-7 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-            >
-              <option value="ALL">All Types</option>
-              <option value="MARKETING">Marketing</option>
-              <option value="UTILITY">Utility</option>
-              <option value="AUTHENTICATION">Authentication</option>
-            </select>
-            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] pointer-events-none" />
-          </div>
+          <Select
+            size="sm"
+            aria-label="Filter by type"
+            className="w-[130px] shrink-0 sm:w-[150px]"
+            value={selectedCategory}
+            onChange={setSelectedCategory}
+            options={[
+              { value: "ALL", label: "All Types" },
+              { value: "MARKETING", label: "Marketing" },
+              { value: "UTILITY", label: "Utility" },
+              { value: "AUTHENTICATION", label: "Authentication" },
+            ]}
+          />
 
-          <div className="relative w-[130px] shrink-0 sm:w-[150px]">
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-7 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="APPROVED">Approved</option>
-              <option value="PENDING">Pending</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="PAUSED">Paused</option>
-              <option value="DISABLED">Disabled</option>
-              <option value="ARCHIVED">Archived</option>
-              <option value="DELETED">Deleted</option>
-            </select>
-            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] pointer-events-none" />
-          </div>
+          <Select
+            size="sm"
+            aria-label="Filter by status"
+            className="w-[130px] shrink-0 sm:w-[150px]"
+            value={selectedStatus}
+            onChange={setSelectedStatus}
+            options={[
+              { value: "ALL", label: "All Statuses" },
+              { value: "APPROVED", label: "Approved" },
+              { value: "PENDING", label: "Pending" },
+              { value: "REJECTED", label: "Rejected" },
+              { value: "PAUSED", label: "Paused" },
+              { value: "DISABLED", label: "Disabled" },
+              { value: "ARCHIVED", label: "Archived" },
+              { value: "DELETED", label: "Deleted" },
+            ]}
+          />
 
           <div className="flex shrink-0 items-center gap-2">
             {hasFilters && (

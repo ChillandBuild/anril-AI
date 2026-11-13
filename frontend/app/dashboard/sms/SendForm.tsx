@@ -5,6 +5,8 @@ import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Plus, Search } from "lucide-react";
+import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { api, type SmsPreview, type SmsCampaignPreviewRequest, type SmsTemplate, type SmsVarSource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { dateBounds, defaultWhen, formatSendTime, resolveWhen, untilSend, type WhenValue } from "@/lib/schedule-time";
@@ -486,12 +488,19 @@ export function SendForm() {
               <Field label="Name this send (optional)" hint="So you can find it later in Reports">
                 <input className={inputCls} value={name} placeholder={autoName} maxLength={80} onChange={(e) => setName(e.target.value)} />
               </Field>
-              <Field label="Send">
-                <select className={inputCls} value={when.mode} onChange={(e) => setWhen((w) => ({ ...w, mode: e.target.value as WhenValue["mode"] }))}>
-                  <option value="now">Right now</option>
-                  <option value="later">Later…</option>
-                </select>
-              </Field>
+              {/* Not <Field>: its <label> would pass a click on "Send" to the "Right now" button. */}
+              <div role="group" aria-labelledby="sms-send-when-label" className="block">
+                <span id="sms-send-when-label" className="mb-1 block text-xs font-bold text-[#334155]">Send</span>
+                <SegmentedControl
+                  aria-labelledby="sms-send-when-label"
+                  value={when.mode}
+                  onChange={(v) => setWhen((w) => ({ ...w, mode: v }))}
+                  options={[
+                    { value: "now", label: "Right now" },
+                    { value: "later", label: "Later…" },
+                  ]}
+                />
+              </div>
               {when.mode === "later" && (
                 <>
                   <Field label="Date (IST)">
@@ -647,24 +656,20 @@ function ManualFields({
               <Plus size={12} /> Add sender
             </Link>
           </div>
-          <select
+          <Select
             id="sms-manual-sender"
-            className={inputCls}
             value={picked}
             disabled={senders.isLoading && !senders.data}
-            onChange={(e) => {
-              const s = list.find((x) => `${x.sender_id}|${x.entity_id}` === e.target.value);
+            onChange={(v) => {
+              const s = list.find((x) => `${x.sender_id}|${x.entity_id}` === v);
               onChange({ sender_id: s?.sender_id ?? "", entity_id: s?.entity_id ?? "" });
             }}
-          >
-            <option value="">{senders.isLoading && !senders.data ? "Loading…" : "Choose a sender ID…"}</option>
-            {list.map((s) => (
-              <option key={`${s.sender_id}|${s.entity_id}`} value={`${s.sender_id}|${s.entity_id}`}>
-                {s.sender_id}
-                {s.entity_name ? ` · ${s.entity_name}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder={senders.isLoading && !senders.data ? "Loading…" : "Choose a sender ID…"}
+            options={list.map((s) => ({
+              value: `${s.sender_id}|${s.entity_id}`,
+              label: `${s.sender_id}${s.entity_name ? ` · ${s.entity_name}` : ""}`,
+            }))}
+          />
           <span className="mt-1 block text-[11px] text-[#64748b]">Only senders added in DLT Manager can send.</span>
         </div>
         <Field label="Entity ID" hint={entityChanged ? "Different from this sender's saved entity. Check it matches your DLT portal." : "Fills in from the sender. You can change it."}>

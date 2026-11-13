@@ -23,6 +23,7 @@ import {
 import { getAuthHeaders } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 
@@ -1289,17 +1290,13 @@ function ScriptsTab() {
                                           <label className="block text-[8px] font-bold text-on-surface-muted uppercase mb-1">
                                             Go to Step
                                           </label>
-                                          <select
-                                            value={br.goto}
-                                            onChange={(e) => updateBranch(idx, bi, { goto: parseInt(e.target.value) || 1 })}
-                                            className="w-full border border-surface-mid rounded-md px-2 py-1.5 font-body text-xs bg-surface text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
-                                          >
-                                            {formSteps.map((_, sIdx) => (
-                                              <option key={sIdx} value={sIdx + 1}>
-                                                Step {sIdx + 1}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <Select
+                                            size="sm"
+                                            aria-label="Go to Step"
+                                            value={String(br.goto)}
+                                            onChange={(v) => updateBranch(idx, bi, { goto: parseInt(v) || 1 })}
+                                            options={formSteps.map((_, sIdx) => ({ value: String(sIdx + 1), label: `Step ${sIdx + 1}` }))}
+                                          />
                                         </div>
                                         <button 
                                           onClick={() => removeBranch(idx, bi)} 

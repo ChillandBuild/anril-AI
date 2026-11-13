@@ -7,7 +7,6 @@ import {
   Archive,
   Ban,
   Check,
-  ChevronDown,
   ChevronRight,
   Columns3,
   Copy,
@@ -26,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 import { api, AdPerformanceRow, AdTrackingCodeResponse, TrackedAd } from "@/lib/api";
 import {
@@ -869,9 +869,6 @@ export function AdPerformanceTab() {
     }
   }
 
-  const selectClass =
-    "h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid/80 bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-sm transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-40";
-
   return (
     <div className="space-y-[18px]">
       <div
@@ -1202,31 +1199,22 @@ export function AdPerformanceTab() {
                 <label htmlFor="tracking-creative" className="mb-1.5 block font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
                   Meta ad creative
                 </label>
-                <div className="relative">
-                  <select
-                    id="tracking-creative"
-                    className={selectClass}
-                    value={trackingCreativeId}
-                    onChange={(event) => {
-                      setTrackingCreativeId(event.target.value);
-                      setTrackingResult(null);
-                      setCopiedTrackingMessage(false);
-                    }}
-                  >
-                    <option value="">Select a creative</option>
-                    {whatsappCreatives.map((creative) => {
-                      const campaign = creative.campaign_id ? campaignNames.get(creative.campaign_id) : null;
-                      const adset = creative.adset_id ? adsetNames.get(creative.adset_id) : null;
-                      const context = [campaign, adset].filter(Boolean).join(" · ");
-                      return (
-                        <option key={creative.id} value={creative.id}>
-                          {creative.name}{context ? ` — ${context}` : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-                </div>
+                <Select
+                  id="tracking-creative"
+                  value={trackingCreativeId}
+                  onChange={(v) => {
+                    setTrackingCreativeId(v);
+                    setTrackingResult(null);
+                    setCopiedTrackingMessage(false);
+                  }}
+                  placeholder="Select a creative"
+                  options={whatsappCreatives.map((creative) => {
+                    const campaign = creative.campaign_id ? campaignNames.get(creative.campaign_id) : null;
+                    const adset = creative.adset_id ? adsetNames.get(creative.adset_id) : null;
+                    const context = [campaign, adset].filter(Boolean).join(" · ");
+                    return { value: creative.id, label: `${creative.name}${context ? ` — ${context}` : ""}` };
+                  })}
+                />
               </div>
 
               <div>

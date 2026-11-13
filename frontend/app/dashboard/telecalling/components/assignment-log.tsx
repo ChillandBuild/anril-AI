@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { Download, RefreshCw, ArrowRight, ClipboardList } from "lucide-react";
 import { api, Caller, AssignmentLogEntry, AssignmentLogSummary } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
@@ -114,21 +115,30 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
       <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded-2xl border border-surface-mid/80 bg-white/95 p-3 shadow-sm">
         <div className="w-full sm:w-[170px]">
           <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Caller</label>
-          <select value={callerFilter} onChange={(e) => { setPage(1); setCallerFilter(e.target.value); }}
-            className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200">
-            <option value="">All callers</option>
-            {callers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <Select
+            size="sm"
+            aria-label="Caller"
+            className="h-9"
+            value={callerFilter}
+            onChange={(v) => { setPage(1); setCallerFilter(v); }}
+            options={[{ value: "", label: "All callers" }, ...callers.map((c) => ({ value: c.id, label: c.name }))]}
+          />
         </div>
         <div className="w-full sm:w-[160px]">
           <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Segment</label>
-          <select value={segmentFilter} onChange={(e) => { setPage(1); setSegmentFilter(e.target.value); }}
-            className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200">
-            <option value="">All segments</option>
-            <option value="A">Hot</option>
-            <option value="B">Warm</option>
-            <option value="C">Cold</option>
-          </select>
+          <Select
+            size="sm"
+            aria-label="Segment"
+            className="h-9"
+            value={segmentFilter}
+            onChange={(v) => { setPage(1); setSegmentFilter(v); }}
+            options={[
+              { value: "", label: "All segments" },
+              { value: "A", label: "Hot" },
+              { value: "B", label: "Warm" },
+              { value: "C", label: "Cold" },
+            ]}
+          />
         </div>
         <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           <button onClick={load} disabled={loading}

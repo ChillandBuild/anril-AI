@@ -11,6 +11,8 @@ import {
   updatePrivateSendSettings,
   type PrivateSendTier,
 } from "@/lib/operator";
+import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { OperatorToggle } from "../../../components/operator-toggle";
 import { SkeletonCard } from "../components/skeleton";
 import { PrivateSendKeys } from "./private-send-keys";
@@ -140,11 +142,12 @@ export function PrivateSendView({ tenantId, enabledFeatures, onToggleFeature, fe
               <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink-muted">Monthly sends</span>
-                  <select value={tier} onChange={(e) => setTier(e.target.value as PrivateSendTier)} className={selectCls} disabled={saving === "cap"}>
-                    {PRIVATE_SEND_TIERS.map((t) => (
-                      <option key={t.id} value={t.id}>{t.label}</option>
-                    ))}
-                  </select>
+                  <Select
+                    value={tier}
+                    onChange={(v) => setTier(v as PrivateSendTier)}
+                    disabled={saving === "cap"}
+                    options={PRIVATE_SEND_TIERS.map((t) => ({ value: t.id, label: t.label }))}
+                  />
                 </label>
                 {tier === "custom" && (
                   <label className="block">
@@ -217,19 +220,16 @@ export function PrivateSendView({ tenantId, enabledFeatures, onToggleFeature, fe
           <div>
             <h3 className="mb-3 text-sm font-semibold text-ink">Offline grace</h3>
             <div className="rounded-card border border-border bg-white p-4 shadow-sm">
-              <label className="block max-w-xs">
-                <span className="mb-1.5 block text-xs font-medium text-ink-muted">Keep sending after the plug-in last checked in for</span>
-                <select
-                  value={data.offline_grace_hours}
-                  onChange={(e) => save("grace", { offline_grace_hours: Number(e.target.value) })}
+              <div className="max-w-md">
+                <span id="offline-grace-label" className="mb-1.5 block text-xs font-medium text-ink-muted">Keep sending after the plug-in last checked in for</span>
+                <SegmentedControl
+                  aria-labelledby="offline-grace-label"
+                  value={String(data.offline_grace_hours)}
+                  onChange={(v) => save("grace", { offline_grace_hours: Number(v) })}
                   disabled={saving === "grace"}
-                  className={selectCls}
-                >
-                  {PRIVATE_SEND_GRACE_HOURS.map((h) => (
-                    <option key={h} value={h}>{h} {h === 1 ? "hour" : "hours"}</option>
-                  ))}
-                </select>
-              </label>
+                  options={PRIVATE_SEND_GRACE_HOURS.map((h) => ({ value: String(h), label: `${h} ${h === 1 ? "hour" : "hours"}` }))}
+                />
+              </div>
             </div>
           </div>
 

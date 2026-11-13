@@ -4,12 +4,13 @@ import { api, InboundLead } from "@/lib/api";
 import { useInboundLeads, useInboundCampaigns } from "@/hooks/useApi";
 import {
   Download, Megaphone, Filter, X,
-  Info, RefreshCw, ChevronDown, RadioTower,
+  Info, RefreshCw, RadioTower,
   Link2, Copy, Check,
 } from "lucide-react";
 import { cn, formatPhone } from "@/lib/utils";
 import { SegmentBadge } from "@/components/segment-badge";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 
@@ -385,49 +386,39 @@ export function InboundLeadsClient({
           <div className="flex flex-wrap items-end gap-2.5">
             <div className="w-full sm:w-[165px]">
               <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Segment</label>
-              <select
+              <Select
+                size="sm"
                 value={selectedSegment}
-                onChange={(e) => setSelectedSegment(e.target.value)}
-                className="h-9 w-full rounded-xl border border-surface-mid bg-white px-3 text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              >
-                {SEGMENT_FILTER_OPTIONS.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
+                onChange={setSelectedSegment}
+                aria-label="Segment"
+                options={SEGMENT_FILTER_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
+              />
             </div>
 
             <div className="min-w-[230px] flex-1">
               <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Ad Campaign</label>
-              <div className="relative">
-                <select
-                  value={selectedCampaign}
-                  onChange={(e) => setSelectedCampaign(e.target.value)}
-                  disabled={origin === "organic"}
-                  className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <option value="">All Campaigns</option>
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>{c.campaign_name}</option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] pointer-events-none" />
-              </div>
+              <Select
+                size="sm"
+                value={selectedCampaign}
+                onChange={setSelectedCampaign}
+                disabled={origin === "organic"}
+                aria-label="Ad Campaign"
+                options={[
+                  { value: "", label: "All Campaigns" },
+                  ...campaigns.map((c) => ({ value: c.id, label: c.campaign_name })),
+                ]}
+              />
             </div>
 
             <div className="w-full sm:w-[165px]">
               <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Channel</label>
-              <div className="relative">
-                <select
-                  value={selectedSource}
-                  onChange={(e) => setSelectedSource(e.target.value)}
-                  className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-                >
-                  {SOURCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] pointer-events-none" />
-              </div>
+              <Select
+                size="sm"
+                value={selectedSource}
+                onChange={setSelectedSource}
+                aria-label="Channel"
+                options={SOURCE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              />
             </div>
 
             <div className="w-[145px]">

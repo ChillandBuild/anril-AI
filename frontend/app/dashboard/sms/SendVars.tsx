@@ -1,6 +1,7 @@
 "use client";
 
 import type { SmsVarSource } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { Field, inputCls } from "./ui";
 
 const FIXED = "__fixed__";
@@ -32,26 +33,22 @@ export function VariableMapper({
           <div key={i} className="grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
             <p className="text-sm font-bold text-[#0A1528] sm:pb-2.5">Variable {i + 1}</p>
             <Field label="Use">
-              <select
-                className={inputCls}
+              <Select
                 value={mode}
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   if (!v) onSet(i, null);
                   else if (v === TYPED) onSet(i, { source: "typed", value: "" });
                   else if (v === FIXED) onSet(i, { source: "text", value: cur?.source === "text" ? cur.value : "" });
                   else onSet(i, { source: "field", value: v });
                 }}
-              >
-                <option value="">Choose…</option>
-                {fields.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-                {allowTyped && <option value={TYPED}>Type for each number</option>}
-                <option value={FIXED}>Fixed text for everyone</option>
-              </select>
+                placeholder="Choose…"
+                options={[
+                  { value: "", label: "Choose…" },
+                  ...fields.map((f) => ({ value: f.key, label: f.label })),
+                  ...(allowTyped ? [{ value: TYPED, label: "Type for each number" }] : []),
+                  { value: FIXED, label: "Fixed text for everyone" },
+                ]}
+              />
             </Field>
             {cur?.source === "text" && (
               <Field label="Text">

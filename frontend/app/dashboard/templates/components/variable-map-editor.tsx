@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { detectVariables } from "../types";
+import { Select } from "@/components/ui/Select";
 
 export type VariableMap = Record<string, string>;
 
@@ -155,25 +156,19 @@ export default function VariableMapEditor({ templateId, bodyText, saved, canEdit
                 {`{{${n}}}`}
               </span>
               <div className="space-y-2 min-w-0">
-                <select
+                <Select
                   aria-label={`What fills {{${n}}}`}
                   value={isCollected ? COLLECTED_OPTION : value}
                   disabled={!canEdit || saving}
-                  onChange={(e) => setSlot(n, e.target.value === COLLECTED_OPTION ? COLLECTED : e.target.value)}
-                  className="input w-full disabled:bg-surface-subtle disabled:cursor-not-allowed"
-                >
-                  <option value="">Default: {DEFAULTS[n] || "a dash (-)"}</option>
-                  {FIELD_GROUPS.map((g) => (
-                    <optgroup key={g.label} label={g.label}>
-                      {g.fields.map((f) => (
-                        <option key={f.value} value={f.value}>{f.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  <optgroup label="From the chat">
-                    <option value={COLLECTED_OPTION}>Collected detail…</option>
-                  </optgroup>
-                </select>
+                  onChange={(v) => setSlot(n, v === COLLECTED_OPTION ? COLLECTED : v)}
+                  options={[
+                    { value: "", label: `Default: ${DEFAULTS[n] || "a dash (-)"}` },
+                    ...FIELD_GROUPS.flatMap((g) =>
+                      g.fields.map((f) => ({ value: f.value, label: f.label, group: g.label })),
+                    ),
+                    { value: COLLECTED_OPTION, label: "Collected detail…", group: "From the chat" },
+                  ]}
+                />
                 {isCollected && (
                   <input
                     aria-label={`Collected detail name for {{${n}}}`}

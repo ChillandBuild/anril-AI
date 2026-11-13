@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { SwitchPill } from "@/components/ui/controls";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ConflictsLink } from "@/components/brain/ConflictsLink";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { CatalogueTabs } from "../catalog/CatalogueTabs";
@@ -255,17 +256,18 @@ export default function ServicesPage() {
                     disabled={!canManageSettings}
                     className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-low px-3 py-1.5 font-body text-sm text-ink focus:border-primary/40 focus:bg-white focus:outline-none"
                   />
-                  <select
+                  <SegmentedControl
+                    size="sm"
                     aria-label={`Detail ${index + 1} type`}
                     value={field.type}
-                    onChange={(e) => updateField(index, { type: e.target.value as FieldType })}
+                    onChange={(v) => updateField(index, { type: v })}
                     disabled={!canManageSettings}
-                    className="rounded-lg border border-transparent bg-surface-low px-2.5 py-1.5 font-body text-sm text-ink focus:border-primary/40 focus:outline-none"
-                  >
-                    <option value="text">Text</option>
-                    <option value="date">Date</option>
-                    <option value="choice">Choice</option>
-                  </select>
+                    options={[
+                      { value: "text", label: "Text" },
+                      { value: "date", label: "Date" },
+                      { value: "choice", label: "Choice" },
+                    ]}
+                  />
                   {canManageSettings && (
                     <button
                       type="button"

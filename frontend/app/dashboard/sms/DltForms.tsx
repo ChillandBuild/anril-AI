@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { api, type SmsDltStatus, type SmsOk, type SmsTemplateType } from "@/lib/api";
 import { isValidSenderId } from "./dltSetup";
 import { CATEGORY_LABELS, friendlyError } from "./helpers";
@@ -52,13 +53,7 @@ export function ListToolbar({
         <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
         <input aria-label={placeholder} className={`${inputCls} pl-8`} placeholder={placeholder} value={query} onChange={(e) => onQuery(e.target.value)} />
       </div>
-      <select aria-label="Filter by status" className={`${inputCls} w-auto`} value={status} onChange={(e) => onStatus(e.target.value)}>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <Select aria-label="Filter by status" className="w-auto min-w-[160px]" value={status} onChange={onStatus} options={options} />
       {children && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{children}</div>}
     </div>
   );
@@ -243,11 +238,15 @@ function AddTemplateForm({ onClose, initial, onSaved }: { onClose: () => void; i
         <textarea className={textareaCls} rows={3} value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
       <Field label="Template category" hint="As approved on DLT. Check your DLT portal if you're not sure.">
-        <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
-          {type === "" && <option value="">Choose the category…</option>}
-          <option value="service">{CATEGORY_LABELS.service}</option>
-          <option value="promotional">{CATEGORY_LABELS.promotional}</option>
-        </select>
+        <Select
+          value={type}
+          onChange={(v) => setType(v as SmsTemplateType)}
+          placeholder="Choose the category…"
+          options={[
+            { value: "service", label: CATEGORY_LABELS.service },
+            { value: "promotional", label: CATEGORY_LABELS.promotional },
+          ]}
+        />
       </Field>
       <ErrorLine text={error} />
       <Btn busy={busy} disabled={!entityId.trim() || !dltId.trim() || !text.trim() || senderIds.length === 0 || !type} onClick={() => void submit()}>

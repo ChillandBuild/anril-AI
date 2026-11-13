@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AutoMessageEvents, type AutoMessageSend, type PrivateSendStatus } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { PrivateSendDailyTable } from "./PrivateSend";
-import { EVENT_LABEL, SENT_BY_APP, SOURCE_LABEL, STATUS_STYLE, formatWhen, ghostBtn, inputCls, reasonText } from "./shared";
+import { EVENT_LABEL, SENT_BY_APP, SOURCE_LABEL, STATUS_STYLE, formatWhen, ghostBtn, reasonText } from "./shared";
 
 const FIRST_PAGE = 10;
 const NEXT_PAGE = 25;
@@ -93,21 +94,22 @@ export function ActivitySection({ privateSend }: { privateSend: PrivateSendStatu
   return (
     <section className="overflow-hidden rounded-[24px] border border-border-subtle bg-white">
       <div className="flex flex-wrap gap-2 border-b border-border-subtle px-3 py-3 sm:px-4">
-        <select value={event} onChange={(e) => setEvent(e.target.value)} aria-label="Filter by event" className={`${inputCls} !w-auto min-w-[140px]`}>
-          <option value="">All events</option>
-          {eventOptions.map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status" className={`${inputCls} !w-auto min-w-[140px]`}>
-          {STATUS_FILTERS.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.label}
-            </option>
-          ))}
-        </select>
+        <Select
+          size="sm"
+          aria-label="Filter by event"
+          className="w-auto min-w-[140px]"
+          value={event}
+          onChange={setEvent}
+          options={[{ value: "", label: "All events" }, ...eventOptions.map((o) => ({ value: o.key, label: o.label }))]}
+        />
+        <Select
+          size="sm"
+          aria-label="Filter by status"
+          className="w-auto min-w-[140px]"
+          value={status}
+          onChange={setStatus}
+          options={STATUS_FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+        />
       </div>
 
       {error === "load" ? (

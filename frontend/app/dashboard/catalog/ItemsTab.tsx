@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Layers, Loader2, Package, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/Select";
 import { ItemForm, ITEM_TYPES } from "./ItemForm";
 import { ItemThumb } from "./ItemThumb";
 import { StockDialog } from "./StockDialog";
@@ -259,17 +260,14 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
                   className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary w-48"
                   placeholder="New group name"
                 />
-                <select
+                <Select
+                  size="sm"
+                  aria-label="Group type"
+                  className="w-auto min-w-[120px]"
                   value={newPanelGroupType}
-                  onChange={(e) => setNewPanelGroupType(e.target.value)}
-                  className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary capitalize"
-                >
-                  {ITEM_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setNewPanelGroupType}
+                  options={ITEM_TYPES.map((type) => ({ value: type, label: <span className="capitalize">{type}</span>, text: type }))}
+                />
                 <button
                   type="button"
                   onClick={handleCreateGroupFromPanel}

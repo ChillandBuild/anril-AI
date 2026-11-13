@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   api,
@@ -7,6 +7,7 @@ import {
   type AutoMessageTemplate,
   type AutoMessageVariable,
 } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { CopyButton } from "@/app/dashboard/settings/connect-channels/ui";
 import { CategoryTag } from "./CategoryTag";
 import { DeleteEvent } from "./DeleteEvent";
@@ -104,11 +105,10 @@ export function EventEditor(props: EventEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
-  const pickerRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
-    pickerRef.current?.focus();
-  }, []);
+    document.getElementById(pickerId)?.focus();
+  }, [pickerId]);
 
   const isDirty = comparable(draft) !== comparable(initial);
   const { onDirtyChange } = props;
@@ -265,22 +265,18 @@ export function EventEditor(props: EventEditorProps) {
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select
                 id={pickerId}
-                ref={pickerRef}
                 value={draft.templateId}
-                onChange={(e) => pickTemplate(e.target.value)}
+                onChange={pickTemplate}
                 disabled={disabled}
-                className={`${inputCls} min-w-0 flex-1 font-mono`}
-              >
-                <option value="">Choose a template…</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.category ? ` · ${t.category.toLowerCase()}` : ""}
-                  </option>
-                ))}
-              </select>
+                placeholder="Choose a template…"
+                className="min-w-0 flex-1 font-mono"
+                options={templates.map((t) => ({
+                  value: t.id,
+                  label: `${t.name}${t.category ? ` · ${t.category.toLowerCase()}` : ""}`,
+                }))}
+              />
               {template && <CategoryTag category={template.category} />}
             </div>
           )}

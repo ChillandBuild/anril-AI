@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { Users, Check, Loader2, Clock } from "lucide-react";
 import { api, type Caller } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
@@ -206,11 +207,13 @@ export default function LiveAgentStatus({
 
           {/* Caller dropdown — only in individual mode */}
           {localShiftConfig.shift_mode === "individual" && (
-            <select
+            <Select
+              size="sm"
+              className="w-auto min-w-[180px]"
+              aria-label="Telecaller"
               value={individualCallerId}
               disabled={!canManageShifts}
-              onChange={(e) => {
-                const id = e.target.value;
+              onChange={(id) => {
                 setIndividualCallerId(id);
                 if (id) {
                   const caller = callers.find((c) => c.id === id);
@@ -218,53 +221,46 @@ export default function LiveAgentStatus({
                   setIndividualEnd(caller?.shift_end_hour ?? localShiftConfig.shift_end_hour);
                 }
               }}
-              className="px-2 py-1 rounded-lg bg-white border border-[#e2e8f0] text-xs text-[#13284A] focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Select telecaller</option>
-              {callers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              options={[{ value: "", label: "Select telecaller" }, ...callers.map((c) => ({ value: c.id, label: c.name }))]}
+            />
           )}
 
           {/* Start / End hour selects */}
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-[#475569] font-medium">Start:</span>
-            <select
-              value={localShiftConfig.shift_mode === "individual" && individualCallerId ? individualStart : localShiftConfig.shift_start_hour}
+            <Select
+              size="sm"
+              className="w-auto min-w-[96px]"
+              aria-label="Shift start"
+              value={String(localShiftConfig.shift_mode === "individual" && individualCallerId ? individualStart : localShiftConfig.shift_start_hour)}
               disabled={!canManageShifts}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
+              onChange={(v) => {
+                const val = parseInt(v);
                 if (localShiftConfig.shift_mode === "individual" && individualCallerId) {
                   setIndividualStart(val);
                 } else {
                   setLocalShiftConfig((prev) => ({ ...prev, shift_start_hour: val }));
                 }
               }}
-              className="px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] text-xs text-[#13284A] focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {HOURS.map((h) => (
-                <option key={h} value={h}>{formatHour(h)}</option>
-              ))}
-            </select>
+              options={HOURS.map((h) => ({ value: String(h), label: formatHour(h) }))}
+            />
             <span className="text-[#475569] font-medium ml-1">End:</span>
-            <select
-              value={localShiftConfig.shift_mode === "individual" && individualCallerId ? individualEnd : localShiftConfig.shift_end_hour}
+            <Select
+              size="sm"
+              className="w-auto min-w-[96px]"
+              aria-label="Shift end"
+              value={String(localShiftConfig.shift_mode === "individual" && individualCallerId ? individualEnd : localShiftConfig.shift_end_hour)}
               disabled={!canManageShifts}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
+              onChange={(v) => {
+                const val = parseInt(v);
                 if (localShiftConfig.shift_mode === "individual" && individualCallerId) {
                   setIndividualEnd(val);
                 } else {
                   setLocalShiftConfig((prev) => ({ ...prev, shift_end_hour: val }));
                 }
               }}
-              className="px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] text-xs text-[#13284A] focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {HOURS.map((h) => (
-                <option key={h} value={h}>{formatHour(h)}</option>
-              ))}
-            </select>
+              options={HOURS.map((h) => ({ value: String(h), label: formatHour(h) }))}
+            />
           </div>
 
           {/* Single Save button */}

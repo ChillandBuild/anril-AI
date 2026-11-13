@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api, ReengagementLog, ReengagementStep, WabaTemplate } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   sent: { label: "Sent", cls: "bg-emerald-100 text-emerald-700" },
@@ -446,41 +447,41 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                 <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">
                   Backup template (sent if the lead&apos;s window is closed)
                 </span>
-                <select
+                <Select
                   value={fallbackTemplate}
-                  onChange={(e) => setFallbackTemplate(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-on-surface/20 px-3 py-2 text-sm"
-                >
-                  <option value="">No backup — skip lead if window closed</option>
-                  {templates.map((t) => {
-                    const c = varCountByName[t.name] ?? 0;
-                    return (
-                      <option key={t.id} value={t.name} disabled={c >= 2}>
-                        {t.name}{c >= 2 ? " (multi-variable — not supported)" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
+                  onChange={setFallbackTemplate}
+                  className="mt-1"
+                  options={[
+                    { value: "", label: "No backup — skip lead if window closed" },
+                    ...templates.map((t) => {
+                      const c = varCountByName[t.name] ?? 0;
+                      return {
+                        value: t.name,
+                        label: `${t.name}${c >= 2 ? " (multi-variable — not supported)" : ""}`,
+                        disabled: c >= 2,
+                      };
+                    }),
+                  ]}
+                />
               </label>
             </>
           ) : (
             <label className="block">
               <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Template</span>
-              <select
+              <Select
                 value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-on-surface/20 px-3 py-2 text-sm"
-              >
-                <option value="">Select a template…</option>
-                {templates.map((t) => {
+                onChange={setTemplateName}
+                placeholder="Select a template…"
+                className="mt-1"
+                options={templates.map((t) => {
                   const c = varCountByName[t.name] ?? 0;
-                  return (
-                    <option key={t.id} value={t.name} disabled={c >= 2}>
-                      {t.name}{c >= 2 ? " (multi-variable — not supported)" : ""}
-                    </option>
-                  );
+                  return {
+                    value: t.name,
+                    label: `${t.name}${c >= 2 ? " (multi-variable — not supported)" : ""}`,
+                    disabled: c >= 2,
+                  };
                 })}
-              </select>
+              />
             </label>
           )}
 

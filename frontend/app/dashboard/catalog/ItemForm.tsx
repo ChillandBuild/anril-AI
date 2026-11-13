@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { GST_RATE_OPTIONS } from "./money";
 
 export const ITEM_TYPES = ["product", "service", "property", "course", "other"];
@@ -174,17 +175,11 @@ export function ItemForm({
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase text-ink-muted">Type</label>
-            <select
+            <Select
               value={itemType}
-              onChange={(event) => setItemType(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border bg-surface-low px-3 text-sm capitalize outline-none focus:border-primary"
-            >
-              {ITEM_TYPES.map((type) => (
-                <option key={type} value={type} className="capitalize">
-                  {type}
-                </option>
-              ))}
-            </select>
+              onChange={setItemType}
+              options={ITEM_TYPES.map((type) => ({ value: type, label: <span className="capitalize">{type}</span>, text: type }))}
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase text-ink-muted">Price (optional)</label>
@@ -215,18 +210,11 @@ export function ItemForm({
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase text-ink-muted">GST rate (optional)</label>
-            <select
+            <Select
               value={gstRate}
-              onChange={(event) => setGstRate(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary"
-            >
-              <option value="">None</option>
-              {GST_RATE_OPTIONS.map((rate) => (
-                <option key={rate} value={rate}>
-                  {rate}%
-                </option>
-              ))}
-            </select>
+              onChange={setGstRate}
+              options={[{ value: "", label: "None" }, ...GST_RATE_OPTIONS.map((rate) => ({ value: String(rate), label: `${rate}%` }))]}
+            />
             <p className="mt-1 text-xs text-ink-muted">Used on your monthly sales file, not shown to customers.</p>
           </div>
           {itemType === "product" && (
@@ -262,26 +250,21 @@ export function ItemForm({
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase text-ink-muted">Variant Group</label>
             {!showNewGroupInput ? (
-              <select
+              <Select
                 value={variantGroupId}
-                onChange={(event) => {
-                  const val = event.target.value;
+                onChange={(val) => {
                   if (val === "__new__") {
                     setShowNewGroupInput(true);
                   } else {
                     setVariantGroupId(val);
                   }
                 }}
-                className="h-10 w-full rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary cursor-pointer"
-              >
-                <option value="">None (Ungrouped)</option>
-                {variantGroups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name} ({group.item_type})
-                  </option>
-                ))}
-                <option value="__new__">+ New group</option>
-              </select>
+                options={[
+                  { value: "", label: "None (Ungrouped)" },
+                  ...variantGroups.map((group) => ({ value: group.id, label: `${group.name} (${group.item_type})` })),
+                  { value: "__new__", label: "+ New group" },
+                ]}
+              />
             ) : (
               <div className="flex gap-2">
                 <input

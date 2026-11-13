@@ -21,6 +21,7 @@ import {
   type HistoryStats,
   type Severity,
 } from "@/lib/escalations";
+import { Select } from "@/components/ui/Select";
 import { StatCards, type StatItem } from "@/components/escalations/stat-cards";
 import { HistoryTab } from "@/components/escalations/history-tab";
 import { ChannelCell, DurationCell, LeadCell, PersonCell, TableEmpty, TableSkeleton, TriggerChip } from "@/components/escalations/atoms";
@@ -379,28 +380,22 @@ export function EscalationPanel({
               ))
             ) : (
               <>
-                <select
-                  value={historyResolver}
-                  onChange={(e) => setHistoryResolver(e.target.value)}
+                <Select
+                  size="sm"
                   aria-label="Filter by resolver"
-                  className="h-8 cursor-pointer rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 outline-none transition-colors hover:border-primary-200 focus:border-[var(--primary-600)] shadow-xs"
-                >
-                  <option value="">Anyone</option>
-                  {historyStats.resolvers.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <select
-                  value={historyReason}
-                  onChange={(e) => setHistoryReason(e.target.value)}
+                  className="w-auto"
+                  value={historyResolver}
+                  onChange={setHistoryResolver}
+                  options={[{ value: "", label: "Anyone" }, ...historyStats.resolvers.map((r) => ({ value: r, label: r }))]}
+                />
+                <Select
+                  size="sm"
                   aria-label="Filter by reason"
-                  className="h-8 cursor-pointer rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 outline-none transition-colors hover:border-primary-200 focus:border-[var(--primary-600)] shadow-xs"
-                >
-                  <option value="">Any reason</option>
-                  {historyStats.reasons.map((r) => (
-                    <option key={r} value={r}>{TRIGGERS[r]?.label ?? r}</option>
-                  ))}
-                </select>
+                  className="w-auto"
+                  value={historyReason}
+                  onChange={setHistoryReason}
+                  options={[{ value: "", label: "Any reason" }, ...historyStats.reasons.map((r) => ({ value: r, label: TRIGGERS[r]?.label ?? r }))]}
+                />
               </>
             )}
           </div>

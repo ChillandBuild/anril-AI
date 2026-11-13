@@ -30,6 +30,7 @@ import DeleteDocumentModal from "./DeleteDocumentModal";
 import ProfileSectionsEditor from "./ProfileSectionsEditor";
 import { AutoGrowTextarea } from "./useAutoGrow";
 import KitStarter from "./KitStarter";
+import { Select } from "@/components/ui/Select";
 import ReadinessLine from "./ReadinessLine";
 import KnowledgeGapAnswerForm from "./KnowledgeGapAnswerForm";
 
@@ -994,22 +995,22 @@ export default function KnowledgePage() {
                   <span className="font-label text-xs font-semibold text-on-surface-muted">
                     Replaces:
                   </span>
-                  <select
-                    value={replaceTarget}
-                    onChange={(e) => setReplaceTarget(e.target.value)}
-                    disabled={uploading}
-                    title="Does this upload replace an existing file? The old file is removed only when you apply the new one."
-                    className="max-w-[14rem] px-3 py-1.5 rounded-xl border border-surface-mid bg-white font-body text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
-                  >
-                    <option value="">Nothing — it&apos;s a new file</option>
-                    {documents
-                      .filter((d) => docStatus(d) !== "review" && docStatus(d) !== "sorting")
-                      .map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                  </select>
+                  <span title="Does this upload replace an existing file? The old file is removed only when you apply the new one.">
+                    <Select
+                      size="sm"
+                      aria-label="Replaces"
+                      className="w-auto max-w-[14rem]"
+                      value={replaceTarget}
+                      onChange={setReplaceTarget}
+                      disabled={uploading}
+                      options={[
+                        { value: "", label: "Nothing — it's a new file" },
+                        ...documents
+                          .filter((d) => docStatus(d) !== "review" && docStatus(d) !== "sorting")
+                          .map((d) => ({ value: d.id, label: d.name })),
+                      ]}
+                    />
+                  </span>
                 </div>
               )}
               {campaignTags.length > 0 && (
@@ -1017,19 +1018,18 @@ export default function KnowledgePage() {
                   <span className="font-label text-xs font-semibold text-on-surface-muted">
                     Campaign Scope:
                   </span>
-                  <select
+                  <Select
+                    size="sm"
+                    aria-label="Campaign scope"
+                    className="w-auto"
                     value={selectedCampaignTag}
-                    onChange={(e) => setSelectedCampaignTag(e.target.value)}
+                    onChange={setSelectedCampaignTag}
                     disabled={uploading}
-                    className="px-3 py-1.5 rounded-xl border border-surface-mid bg-white font-body text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
-                  >
-                    <option value="">🌐 All campaigns (shared)</option>
-                    {campaignTags.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        🎯 {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "", label: "🌐 All campaigns (shared)" },
+                      ...campaignTags.map((t) => ({ value: t.id, label: `🎯 ${t.name}` })),
+                    ]}
+                  />
                 </div>
               )}
               </div>
@@ -1207,49 +1207,54 @@ export default function KnowledgePage() {
               {/* Filters & View Switcher */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Format Filter */}
-                <select
+                <Select
+                  size="sm"
+                  aria-label="File type"
+                  className="w-auto"
                   value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl border border-surface-mid bg-white font-body text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
-                >
-                  <option value="all">All File Types</option>
-                  <option value="pdf">PDF Documents</option>
-                  <option value="word">Word (.docx, .doc)</option>
-                  <option value="spreadsheet">Excel & CSV</option>
-                  <option value="presentation">PowerPoint (.pptx)</option>
-                  <option value="text">Text & Markdown</option>
-                  <option value="image">Images</option>
-                </select>
+                  onChange={setCategoryFilter}
+                  options={[
+                    { value: "all", label: "All File Types" },
+                    { value: "pdf", label: "PDF Documents" },
+                    { value: "word", label: "Word (.docx, .doc)" },
+                    { value: "spreadsheet", label: "Excel & CSV" },
+                    { value: "presentation", label: "PowerPoint (.pptx)" },
+                    { value: "text", label: "Text & Markdown" },
+                    { value: "image", label: "Images" },
+                  ]}
+                />
 
                 {/* Status Filter */}
-                <select
+                <Select
+                  size="sm"
+                  aria-label="Status"
+                  className="w-auto"
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl border border-surface-mid bg-white font-body text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="live">Live</option>
-                  <option value="unsorted">Not sorted</option>
-                  <option value="review">Review ready ({stats.review})</option>
-                  <option value="sorting">Sorting ({stats.processing})</option>
-                  <option value="failed">Failed ({stats.failed})</option>
-                </select>
+                  onChange={setStatusFilter}
+                  options={[
+                    { value: "all", label: "All Statuses" },
+                    { value: "live", label: "Live" },
+                    { value: "unsorted", label: "Not sorted" },
+                    { value: "review", label: `Review ready (${stats.review})` },
+                    { value: "sorting", label: `Sorting (${stats.processing})` },
+                    { value: "failed", label: `Failed (${stats.failed})` },
+                  ]}
+                />
 
                 {/* Campaign Scope Filter */}
                 {campaignTags.length > 0 && (
-                  <select
+                  <Select
+                    size="sm"
+                    aria-label="Campaign scope"
+                    className="w-auto"
                     value={campaignFilter}
-                    onChange={(e) => setCampaignFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl border border-surface-mid bg-white font-body text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
-                  >
-                    <option value="all">All Scopes</option>
-                    <option value="global">🌐 Shared / Global only</option>
-                    {campaignTags.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        🎯 {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCampaignFilter}
+                    options={[
+                      { value: "all", label: "All Scopes" },
+                      { value: "global", label: "🌐 Shared / Global only" },
+                      ...campaignTags.map((t) => ({ value: t.id, label: `🎯 ${t.name}` })),
+                    ]}
+                  />
                 )}
 
                 {/* View Mode Switcher */}

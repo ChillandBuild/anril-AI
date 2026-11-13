@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, Clock, FileText, MessageSquareText, Moon, Siren, Users, X } from "lucide-react";
 import { api, NotificationConfig, Caller, WabaTemplate } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import {
   Fact,
   Facts,
@@ -220,18 +222,13 @@ export function NotificationConfigPanel({ canManage = true }: { canManage?: bool
             <div className="rounded-2xl border border-border-subtle bg-surface-subtle p-4">
               <label className="font-body text-sm font-semibold text-ink">Claimable broadcast to</label>
               <p className="mb-2 mt-0.5 font-body text-xs text-ink-muted">Who gets the &quot;open to claim&quot; alert.</p>
-              <select
+              <SegmentedControl
+                aria-label="Claimable broadcast to"
                 value={cfg.claimable_audience}
                 disabled={!canManage}
-                onChange={(e) => patch({ claimable_audience: e.target.value as NotificationConfig["claimable_audience"] })}
-                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
-              >
-                {AUDIENCE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => patch({ claimable_audience: v })}
+                options={AUDIENCE_OPTIONS}
+              />
 
               {cfg.claimable_audience === "specific" && (
                 <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto rounded-xl border border-border bg-white p-2">
@@ -530,19 +527,13 @@ function WhatsAppAlertCard({
               <label className="mb-2 block font-label text-[11px] font-bold uppercase tracking-wider text-ink-muted">
                 Message template
               </label>
-              <select
+              <Select
                 value={block.template_id ?? ""}
                 disabled={!canManage}
-                onChange={(e) => onChange({ ...block, template_id: e.target.value || null })}
-                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
-              >
-                <option value="">Select a template…</option>
-                {approvedTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => onChange({ ...block, template_id: v || null })}
+                placeholder="Select a template…"
+                options={[{ value: "", label: "No template" }, ...approvedTemplates.map((t) => ({ value: t.id, label: t.name }))]}
+              />
               {selectedTemplate && (
                 <div className="mt-2 rounded-xl border border-border-subtle bg-white p-3">
                   <p className="mb-1 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Preview</p>
@@ -728,17 +719,13 @@ function PhoneRecipients({
 
 function HourSelect({ value, onChange, disabled }: { value: number; onChange: (h: number) => void; disabled?: boolean }) {
   return (
-    <select
-      value={value}
+    <Select
+      value={String(value)}
       disabled={disabled}
-      onChange={(e) => onChange(parseInt(e.target.value))}
-      className="rounded-xl border border-border bg-white px-3 py-2 font-mono text-sm text-ink transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
-    >
-      {Array.from({ length: 24 }, (_, h) => (
-        <option key={h} value={h}>
-          {String(h).padStart(2, "0")}:00
-        </option>
-      ))}
-    </select>
+      onChange={(v) => onChange(parseInt(v))}
+      aria-label="Hour"
+      className="w-auto min-w-[110px] font-mono"
+      options={Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` }))}
+    />
   );
 }

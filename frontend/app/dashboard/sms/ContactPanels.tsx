@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { api, type SmsContactGroup, type SmsUploadPreview, type SmsUploadResult } from "@/lib/api";
 import { formatCount, friendlyError, skippedRowsCsv } from "./helpers";
 import { Btn, ConsentCheck, Field, FilePicker, Modal, Notice, inputCls, saveCsv, textareaCls } from "./ui";
@@ -17,15 +18,15 @@ export function GroupSelect({ groups, choice, onChange, label = "Group" }: { gro
   return (
     <div className="space-y-2">
       <Field label={label}>
-        <select className={inputCls} value={choice.value} onChange={(e) => onChange({ ...choice, value: e.target.value })}>
-          <option value="">No group</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name} ({formatCount(g.contacts)})
-            </option>
-          ))}
-          <option value={NEW_GROUP}>New group…</option>
-        </select>
+        <Select
+          value={choice.value}
+          onChange={(v) => onChange({ ...choice, value: v })}
+          options={[
+            { value: "", label: "No group" },
+            ...groups.map((g) => ({ value: g.id, label: `${g.name} (${formatCount(g.contacts)})` })),
+            { value: NEW_GROUP, label: "New group…" },
+          ]}
+        />
       </Field>
       {choice.value === NEW_GROUP && (
         <Field label="New group name">
@@ -266,24 +267,19 @@ export function UploadPanel({ open, groups, onClose, onDone }: { open: boolean; 
             <>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Number column">
-                  <select className={inputCls} value={phoneCol} onChange={(e) => setPhoneCol(e.target.value)}>
-                    <option value="">Choose…</option>
-                    {preview.columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={phoneCol}
+                    onChange={setPhoneCol}
+                    placeholder="Choose…"
+                    options={preview.columns.map((c) => ({ value: c, label: c }))}
+                  />
                 </Field>
                 <Field label="Name column">
-                  <select className={inputCls} value={nameCol} onChange={(e) => setNameCol(e.target.value)}>
-                    <option value="">None</option>
-                    {preview.columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={nameCol}
+                    onChange={setNameCol}
+                    options={[{ value: "", label: "None" }, ...preview.columns.map((c) => ({ value: c, label: c }))]}
+                  />
                 </Field>
               </div>
               <div>

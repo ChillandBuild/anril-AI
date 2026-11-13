@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Download, FileText, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useInstantForm, useInstantFormLeads, useInstantFormTemplates } from "@/hooks/useApi";
 import { api } from "@/lib/api";
@@ -315,18 +316,18 @@ export function InstantFormDetail({ formId }: { formId: string }) {
           <>
             <label className="flex flex-col gap-1.5 font-label text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
               Template
-              <select
+              <Select
                 value={templateId}
-                onChange={(event) => pickTemplate(event.target.value)}
-                className="h-9 rounded-xl border border-[#e2e8f0] bg-white px-3 font-body text-sm font-semibold normal-case tracking-normal text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-200"
-              >
-                <option value="">Don&apos;t send anything</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {`${template.name} (${template.language})`}
-                  </option>
-                ))}
-              </select>
+                onChange={pickTemplate}
+                className="normal-case tracking-normal"
+                options={[
+                  { value: "", label: "Don't send anything" },
+                  ...templates.map((template) => ({
+                    value: template.id,
+                    label: `${template.name} (${template.language})`,
+                  })),
+                ]}
+              />
             </label>
             {templatesError && (
               <p className="font-body text-xs text-red-600">{errorMessage(templatesError)}</p>
@@ -352,20 +353,21 @@ export function InstantFormDetail({ formId }: { formId: string }) {
                   {rows.map((row, index) => (
                     <div key={index} className="flex flex-wrap items-center gap-2">
                       <span className="w-16 font-label text-xs font-bold text-primary-700">{`{{${index + 1}}}`}</span>
-                      <select
+                      <Select
+                        size="sm"
                         aria-label={`Value for {{${index + 1}}}`}
                         value={row.choice}
-                        onChange={(event) => changeRow(index, { choice: event.target.value, text: row.text })}
-                        className="h-9 min-w-[180px] flex-1 rounded-xl border border-[#e2e8f0] bg-white px-3 font-body text-sm font-semibold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-200"
-                      >
-                        <option value={FIRST_NAME}>First name</option>
-                        {(detail?.questions ?? []).map((question) => (
-                          <option key={question.key} value={`field:${question.key}`}>
-                            {questionLabel(question)}
-                          </option>
-                        ))}
-                        <option value={FIXED_TEXT}>Fixed text…</option>
-                      </select>
+                        onChange={(v) => changeRow(index, { choice: v, text: row.text })}
+                        className="min-w-[180px] flex-1"
+                        options={[
+                          { value: FIRST_NAME, label: "First name" },
+                          ...(detail?.questions ?? []).map((question) => ({
+                            value: `field:${question.key}`,
+                            label: questionLabel(question),
+                          })),
+                          { value: FIXED_TEXT, label: "Fixed text…" },
+                        ]}
+                      />
                       {row.choice === FIXED_TEXT && (
                         <input
                           type="text"

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { api, type SmsTemplateType } from "@/lib/api";
 import { CheckField } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { revalidateDlt } from "./DltForms";
 import { isValidSenderId, parseSenderIds } from "./dltSetup";
 import { CATEGORY_LABELS, ENTITY_ID_MESSAGE, friendlyError, isValidEntityId } from "./helpers";
@@ -101,10 +102,14 @@ function AddEntityForm({ onClose }: { onClose: () => void }) {
                 <input className={inputCls} value={dltId} onChange={(e) => setDltId(e.target.value)} />
               </Field>
               <Field label="Type">
-                <select className={inputCls} value={type} onChange={(e) => setType(e.target.value as SmsTemplateType)}>
-                  <option value="service">{CATEGORY_LABELS.service}</option>
-                  <option value="promotional">{CATEGORY_LABELS.promotional}</option>
-                </select>
+                <Select
+                  value={type}
+                  onChange={(v) => setType(v as SmsTemplateType)}
+                  options={[
+                    { value: "service", label: CATEGORY_LABELS.service },
+                    { value: "promotional", label: CATEGORY_LABELS.promotional },
+                  ]}
+                />
               </Field>
             </div>
             <Field label="Message" hint="Exactly as approved on DLT. Use {#var#} where a value changes.">

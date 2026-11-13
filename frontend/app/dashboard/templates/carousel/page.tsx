@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Trash2, ArrowLeft, AlertCircle, Image as ImageIcon } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { LANGUAGES, detectVariables } from "../types";
 import type { Button } from "../types";
 import {
@@ -189,11 +190,11 @@ export default function CarouselTemplateBuilderPage() {
             </div>
             <div>
               <label className="font-body text-sm font-medium text-ink mb-1.5 block">Language</label>
-              <select value={language} onChange={e => setLanguage(e.target.value)} className="input w-full">
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>{lang.label}</option>
-                ))}
-              </select>
+              <Select
+                value={language}
+                onChange={setLanguage}
+                options={LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))}
+              />
             </div>
             <div>
               <label className="font-body text-sm font-medium text-ink mb-1.5 block">Intro message (shown above carousel)</label>
@@ -247,14 +248,14 @@ export default function CarouselTemplateBuilderPage() {
               <div className="grid sm:grid-cols-[120px_1fr] gap-3 mb-4">
                 <div>
                   <label className="text-xs text-ink-muted mb-1 block">Media type</label>
-                  <select
+                  <Select
                     value={card.header_media_type}
-                    onChange={e => updateCard(i, { header_media_type: e.target.value as "IMAGE" | "VIDEO" })}
-                    className="input text-sm w-full"
-                  >
-                    <option value="IMAGE">Image</option>
-                    <option value="VIDEO">Video</option>
-                  </select>
+                    onChange={v => updateCard(i, { header_media_type: v as "IMAGE" | "VIDEO" })}
+                    options={[
+                      { value: "IMAGE", label: "Image" },
+                      { value: "VIDEO", label: "Video" },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="text-xs text-ink-muted mb-1 block">Media URL (publicly hosted)</label>

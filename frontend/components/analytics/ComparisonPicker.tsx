@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 import { ComparisonSelection } from "./periodSelection";
 
 export function comparisonLabel(selection: ComparisonSelection): string {
@@ -23,24 +23,18 @@ export function ComparisonPicker({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-[132px] shrink-0">
-        <select
-          value={value.mode}
-          onChange={(e) => selectMode(e.target.value as ComparisonSelection["mode"])}
-          className="h-9 w-full cursor-pointer appearance-none rounded-xl border border-surface-mid bg-white px-3 pr-8 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-        >
-          {([
-            ["off", "Off"],
-            ["previous", "Previous period"],
-            ["custom", "Custom"],
-          ] as const).map(([mode, label]) => (
-            <option key={mode} value={mode}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-muted" />
-      </div>
+      <Select
+        size="sm"
+        aria-label="Comparison"
+        className="h-9 w-[150px] shrink-0"
+        value={value.mode}
+        onChange={(v) => selectMode(v as ComparisonSelection["mode"])}
+        options={[
+          { value: "off", label: "Off" },
+          { value: "previous", label: "Previous period" },
+          { value: "custom", label: "Custom" },
+        ]}
+      />
 
       {value.mode === "custom" && (
         <>

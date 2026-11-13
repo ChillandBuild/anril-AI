@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { KEY_PLACEHOLDER, buildCurl, buildPython, countVars, friendlyError, maskKey, parseNumbers } from "./helpers";
@@ -79,39 +80,32 @@ export function ApiBuilderCard() {
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Sender">
-                <select
-                  className={inputCls}
+                <Select
                   value={senderId}
-                  onChange={(e) => {
-                    setSenderId(e.target.value);
+                  onChange={(v) => {
+                    setSenderId(v);
                     setTemplateId("");
                     setVars([]);
                   }}
-                >
-                  <option value="">All senders</option>
-                  {senderList.map((s) => (
-                    <option key={`${s.entity_id}-${s.sender_id}`} value={s.sender_id}>
-                      {s.sender_id}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "All senders" },
+                    ...senderList.map((s) => ({ value: s.sender_id, label: s.sender_id })),
+                  ]}
+                />
               </Field>
               <Field label="Approved template">
-                <select
-                  className={inputCls}
+                <Select
                   value={templateId}
-                  onChange={(e) => {
-                    setTemplateId(e.target.value);
+                  onChange={(v) => {
+                    setTemplateId(v);
                     setVars([]);
                   }}
-                >
-                  <option value="">Choose a template…</option>
-                  {forSender.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Choose a template…"
+                  options={forSender.map((t) => ({
+                    value: t.id,
+                    label: t.message.length > 60 ? `${t.message.slice(0, 60)}…` : t.message,
+                  }))}
+                />
               </Field>
             </div>
             {!templates.isLoading && usable.length === 0 && <Notice tone="info">No approved templates are ready yet. Add them in the Templates tab.</Notice>}

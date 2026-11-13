@@ -15,6 +15,7 @@ import {
   Lock,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { LANGUAGES, CATEGORIES, detectVariables } from "../types";
 import type { Button } from "../types";
 import {
@@ -367,17 +368,11 @@ export default function NewTemplatePage() {
                 <label className="font-body text-sm font-medium text-ink mb-1.5 block">
                   Language
                 </label>
-                <select
+                <Select
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="input"
-                >
-                  {LANGUAGES.map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setLanguage}
+                  options={LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))}
+                />
               </div>
             </div>
           )}
@@ -395,21 +390,22 @@ export default function NewTemplatePage() {
                   <label className="font-body text-sm font-medium text-ink mb-1.5 block">
                     Header Type
                   </label>
-                  <select
+                  <Select
+                    className="mb-3"
                     value={headerType}
-                    onChange={(e) => {
-                      setHeaderType(e.target.value as "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT");
+                    onChange={(v) => {
+                      setHeaderType(v as "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT");
                       setHeaderText("");
                       clearMedia();
                     }}
-                    className="input w-full mb-3"
-                  >
-                    <option value="NONE">None</option>
-                    <option value="TEXT">Text Header</option>
-                    <option value="IMAGE">Image Header</option>
-                    <option value="VIDEO">Video Header</option>
-                    <option value="DOCUMENT">Document Header</option>
-                  </select>
+                    options={[
+                      { value: "NONE", label: "None" },
+                      { value: "TEXT", label: "Text Header" },
+                      { value: "IMAGE", label: "Image Header" },
+                      { value: "VIDEO", label: "Video Header" },
+                      { value: "DOCUMENT", label: "Document Header" },
+                    ]}
+                  />
 
                   {headerType === "TEXT" && (
                     <>

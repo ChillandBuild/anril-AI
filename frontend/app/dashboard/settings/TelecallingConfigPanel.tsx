@@ -15,6 +15,7 @@ import {
   type SectionLoadState,
 } from "./SettingsSection";
 import { CheckField, SwitchPill, TickMark } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 
 type AssignMode = "auto" | "pull" | "available";
 type ChannelRule = { enabled: boolean; mode: AssignMode; segments?: string[] };
@@ -410,25 +411,23 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="font-label text-xs font-semibold text-ink w-32">Calling hours</label>
-                    <select
-                      value={draft.recycle_start_hour ?? 9}
-                      onChange={(e) => setDraft({ ...draft, recycle_start_hour: Number(e.target.value) })}
-                      className="px-3 py-1.5 rounded-lg border border-border text-sm font-body text-ink bg-white"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>{`${i.toString().padStart(2, "0")}:00`}</option>
-                      ))}
-                    </select>
+                    <Select
+                      size="sm"
+                      aria-label="Calling hours start"
+                      value={String(draft.recycle_start_hour ?? 9)}
+                      onChange={(v) => setDraft({ ...draft, recycle_start_hour: Number(v) })}
+                      className="w-auto min-w-[100px]"
+                      options={Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${i.toString().padStart(2, "0")}:00` }))}
+                    />
                     <span className="font-body text-xs text-ink-muted">to</span>
-                    <select
-                      value={draft.recycle_end_hour ?? 18}
-                      onChange={(e) => setDraft({ ...draft, recycle_end_hour: Number(e.target.value) })}
-                      className="px-3 py-1.5 rounded-lg border border-border text-sm font-body text-ink bg-white"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>{`${i.toString().padStart(2, "0")}:00`}</option>
-                      ))}
-                    </select>
+                    <Select
+                      size="sm"
+                      aria-label="Calling hours end"
+                      value={String(draft.recycle_end_hour ?? 18)}
+                      onChange={(v) => setDraft({ ...draft, recycle_end_hour: Number(v) })}
+                      className="w-auto min-w-[100px]"
+                      options={Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${i.toString().padStart(2, "0")}:00` }))}
+                    />
                     <span className="font-body text-xs text-ink-muted">IST</span>
                   </div>
                 </div>

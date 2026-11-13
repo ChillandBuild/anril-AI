@@ -1,5 +1,6 @@
 "use client";
 import type { AutoMessageVariable, AutoMessageVarSource } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { VAR_SOURCES, inputCls } from "./shared";
 
 const INVALID = "border-danger focus:border-danger";
@@ -43,19 +44,13 @@ export function VariableRow({
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-start">
       <span className="font-mono text-xs font-bold text-primary sm:pt-2.5">{label}</span>
       <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-        <select
+        <Select
           value={value.source}
-          onChange={(e) => onChange(changeSource(value, e.target.value as AutoMessageVarSource))}
-          className={inputCls}
+          onChange={(v) => onChange(changeSource(value, v as AutoMessageVarSource))}
           aria-label={`What fills ${label}`}
           disabled={disabled}
-        >
-          {VAR_SOURCES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          options={VAR_SOURCES.map((s) => ({ value: s.id, label: s.label }))}
+        />
 
         {value.source === "text" && (
           <input

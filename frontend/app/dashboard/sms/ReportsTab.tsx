@@ -5,6 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { ChevronDown, ChevronRight, Download, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import { api, type SmsCampaign, type SmsMessageFilters, type SmsReportSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -327,22 +328,17 @@ function Messages({ range }: { range: { from: string; to: string } }) {
             }}
           />
         </form>
-        <select
+        <Select
           aria-label="Status"
-          className={cn(inputCls, "h-9 w-40")}
+          size="sm"
+          className="h-9 w-40"
           value={status}
-          onChange={(e) => {
+          onChange={(v) => {
             setOffset(0);
-            setStatus(e.target.value);
+            setStatus(v);
           }}
-        >
-          <option value="">All statuses</option>
-          {MESSAGE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {statusLabel(s)}
-            </option>
-          ))}
-        </select>
+          options={[{ value: "", label: "All statuses" }, ...MESSAGE_STATUSES.map((s) => ({ value: s, label: statusLabel(s) }))]}
+        />
         <Btn variant="outline" className="h-9" busy={exporting} onClick={() => void exportCsv()}>
           <Download size={14} /> Export
         </Btn>

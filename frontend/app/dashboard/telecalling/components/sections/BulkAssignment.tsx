@@ -6,6 +6,7 @@ import { Users, Search, Loader2 } from "lucide-react";
 import { api, type Caller, type Lead } from "@/lib/api";
 import { formatPhone } from "@/lib/utils";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { LEAD_STATUS_LABEL, TONE_CHIP, leadStatusTone } from "@/lib/call-wrapup";
 
 interface BulkAssignmentProps {
@@ -166,14 +167,15 @@ export default function BulkAssignment({ callers }: BulkAssignmentProps) {
       <div className="flex items-center gap-3 bg-[#f8fafc] p-4 rounded-2xl border border-[#e2e8f0] mt-auto">
         <div className="flex-1">
           <span className="font-label text-[10px] text-[#94a3b8] uppercase font-extrabold block">Reassign To:</span>
-          <select
+          <Select
+            size="sm"
+            className="mt-1"
+            aria-label="Reassign to"
             value={bulkAssigneeId}
-            onChange={(e) => setBulkAssigneeId(e.target.value)}
-            className="w-full bg-white border border-[#e2e8f0] px-2 py-1.5 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary mt-1"
-          >
-            <option value="">Select Caller...</option>
-            {callers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={setBulkAssigneeId}
+            placeholder="Select Caller..."
+            options={callers.map((c) => ({ value: c.id, label: c.name }))}
+          />
         </div>
         <div className="shrink-0 pt-4">
           <button

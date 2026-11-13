@@ -8,6 +8,7 @@ import { ChevronRight, Download, FileText, Layers, RefreshCw, Search, Send } fro
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import {
   api,
   type ScheduledBulkResult,
@@ -207,21 +208,17 @@ function WhenCell({ sendAt, sub }: { sendAt: Date; sub: string }) {
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (next: string) => void; options: { value: string; label: string }[] }) {
   return (
-    <label className="flex h-10 items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-3 text-xs text-[#64748b]">
+    <div className="flex items-center gap-2 text-xs text-[#64748b]">
       <span className="whitespace-nowrap">{label}:</span>
-      <select
+      <Select
+        size="sm"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
         aria-label={label}
-        className="min-w-0 bg-transparent pr-1 text-xs font-bold text-[#0A1528] focus:outline-none"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        className="w-auto min-w-[110px] font-bold"
+        options={options}
+      />
+    </div>
   );
 }
 

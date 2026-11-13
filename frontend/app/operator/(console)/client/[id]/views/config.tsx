@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Image as ImageIcon, Clock, Link2, Loader2, Mic, Plus, Puzzle, RadioTower, Shield, Smartphone, Sparkles, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { SmsConnectionPanel } from "./SmsConnectionPanel";
 import { SkeletonCard } from "../components/skeleton";
 import { OperatorToggle } from "../../../components/operator-toggle";
@@ -926,16 +927,12 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
               <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-muted">
                 <Mic size={13} /> Voice
               </span>
-              <select
+              <Select
                 value={voiceSettings.speaker}
-                onChange={(e) => updateVoiceSetting("ai_voice_reply_speaker", e.target.value)}
+                onChange={(v) => updateVoiceSetting("ai_voice_reply_speaker", v)}
                 disabled={voiceSettingSaving === "ai_voice_reply_speaker"}
-                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-primary disabled:opacity-60"
-              >
-                {VOICE_SPEAKERS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
+                options={VOICE_SPEAKERS.map((option) => ({ value: option.value, label: option.label }))}
+              />
             </label>
           </div>
         </div>
@@ -967,16 +964,12 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
               <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-muted">
                 <ImageIcon size={13} /> Maximum images ceiling
               </span>
-              <select
+              <Select
                 value={Number.isFinite(mediaMaxImagesCeiling) ? String(mediaMaxImagesCeiling) : "5"}
-                onChange={(e) => updateMediaRecommendationSetting("catalog_ai_max_images_ceiling", e.target.value)}
+                onChange={(v) => updateMediaRecommendationSetting("catalog_ai_max_images_ceiling", v)}
                 disabled={mediaRecommendationSaving === "catalog_ai_max_images_ceiling"}
-                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-primary disabled:opacity-60"
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => (
-                  <option key={count} value={count}>{count}</option>
-                ))}
-              </select>
+                options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => ({ value: String(count), label: String(count) }))}
+              />
               <span className="mt-1 block text-[11px] text-ink-muted">The client can choose any value up to this; they can never exceed it.</span>
             </label>
           </div>

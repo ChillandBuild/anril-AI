@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Select } from "@/components/ui/Select";
 import { IntakeSession } from "@/lib/api";
 import { FieldColumn } from "./columns";
 
@@ -49,50 +49,27 @@ function PackageCell({
   packages: PackageOption[];
   onChangePackage: (sessionId: string, packageKey: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const canEdit = row.status === "awaiting_payment" && packages.length > 1;
 
-  if (editing) {
+  // The picker is shown directly (no pencil step): a closed menu has no blur event to cancel an "editing" mode.
+  if (canEdit) {
     return (
-      <select
-        autoFocus
-        value={row.package_key ?? ""}
-        onChange={(e) => {
-          onChangePackage(row.id, e.target.value);
-          setEditing(false);
-        }}
-        onBlur={() => setEditing(false)}
-        className="rounded-lg border border-border px-2 py-1 font-body text-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {packages.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.name} — ₹{(p.amount_paise / 100).toFixed(0)}
-          </option>
-        ))}
-      </select>
+      // Stop clicks (also from the floating menu) from reaching the row's own click handler.
+      <span onClick={(e) => e.stopPropagation()}>
+        <Select
+          size="sm"
+          aria-label="Change package"
+          className="w-auto min-w-[160px]"
+          value={row.package_key ?? ""}
+          onChange={(key) => onChangePackage(row.id, key)}
+          placeholder={row.package_name || "Choose package"}
+          options={packages.map((p) => ({ value: p.key, label: `${p.name} — ₹${(p.amount_paise / 100).toFixed(0)}` }))}
+        />
+      </span>
     );
   }
 
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      {row.package_name || "—"}
-      {canEdit && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-          }}
-          aria-label="Change package"
-          title="Change package"
-          className="text-ink-muted hover:text-ink"
-        >
-          <Pencil size={11} />
-        </button>
-      )}
-    </span>
-  );
+  return <span className="inline-flex items-center gap-1.5">{row.package_name || "—"}</span>;
 }
 
 export function IntakeTable({

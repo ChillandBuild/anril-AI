@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { companionsApi, type Companion } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { INPUT } from "@/components/agents/ui";
+import { Select } from "@/components/ui/Select";
 
 const STORE_KEY = "anril.agents.character";
 
@@ -63,36 +63,28 @@ export function CharacterSelect({
   /** Plain teal text with no border, for a picker row under an input box (Playground). */
   inline?: boolean;
 }) {
+  const labelId = useId();
+  const options = characters.map((c) => ({ value: c.id, label: `${c.name}${c.status !== "live" ? ` (${c.status})` : ""}` }));
   if (inline) {
     return (
-      <label className={cn("flex items-center gap-1.5 text-sm text-ink-secondary", className)}>
-        <span className="sr-only">Character</span>
-        <select
+      <div className={cn("flex items-center gap-1.5 text-sm text-ink-secondary", className)}>
+        <Select
+          size="sm"
+          aria-label="Character"
+          className="h-7 w-auto max-w-[220px] border-transparent bg-transparent px-1.5 font-semibold text-primary hover:border-transparent hover:bg-surface-mid"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="cursor-pointer rounded-md bg-transparent py-0.5 font-semibold text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          {characters.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {c.status !== "live" ? ` (${c.status})` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={onChange}
+          options={options}
+        />
+      </div>
     );
   }
   return (
-    <label className={cn("flex items-center gap-2 text-sm text-ink-secondary", className)}>
-      <span className="shrink-0">Character</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={cn(INPUT, "w-auto min-w-[180px] py-1.5")}>
-        {characters.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-            {c.status !== "live" ? ` (${c.status})` : ""}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className={cn("flex items-center gap-2 text-sm text-ink-secondary", className)}>
+      <span id={labelId} className="shrink-0">
+        Character
+      </span>
+      <Select size="sm" aria-labelledby={labelId} className="w-auto min-w-[180px]" value={value} onChange={onChange} options={options} />
+    </div>
   );
 }

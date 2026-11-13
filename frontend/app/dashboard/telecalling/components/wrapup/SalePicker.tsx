@@ -1,6 +1,7 @@
 "use client";
 import { Minus, Plus, X } from "lucide-react";
 import type { CatalogItem } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { formatRupees } from "@/components/deals/money";
 import type { SaleLine, WrapupDraft } from "../../lib/wrapup-draft";
 
@@ -77,22 +78,20 @@ export default function SalePicker({ mode, products, amountRupees, catalogItems,
               ))}
             </ul>
           )}
-          <select
+          {/* Always shows the "Add a product…" prompt; key resets it after each pick. */}
+          <Select
+            size="sm"
             value=""
-            onChange={(e) => add(e.target.value)}
+            onChange={add}
             aria-label="Add a product"
             disabled={atLimit || catalogItems.length === 0}
-            className="w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-body text-xs text-[#1e293b] focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-          >
-            <option value="">
-              {atLimit ? `Limit reached — ${MAX_PRODUCTS} products max` : catalogItems.length === 0 ? "No products yet — enter the amount instead" : "Add a product…"}
-            </option>
-            {available.map((item) => (
-              <option key={item.id} value={item.id} disabled={item.price_paise == null}>
-                {item.name}{item.price_paise == null ? " (no price)" : ` · ${formatRupees(item.price_paise)}`}
-              </option>
-            ))}
-          </select>
+            placeholder={atLimit ? `Limit reached — ${MAX_PRODUCTS} products max` : catalogItems.length === 0 ? "No products yet — enter the amount instead" : "Add a product…"}
+            options={available.map((item) => ({
+              value: item.id,
+              label: `${item.name}${item.price_paise == null ? " (no price)" : ` · ${formatRupees(item.price_paise)}`}`,
+              disabled: item.price_paise == null,
+            }))}
+          />
           {products.length > 0 && <p className="text-right font-label text-xs font-bold text-emerald-800">Total {formatRupees(total)}</p>}
         </>
       ) : (

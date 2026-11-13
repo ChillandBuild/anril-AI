@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Eye, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { api, type CallAlert, type CallAlertType } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
 
@@ -78,17 +79,14 @@ export default function NeedsAttention({ onViewLead }: NeedsAttentionProps) {
             Warnings from call scoring. You get one summary each morning; only rudeness and wrong product info alert you straight away.
           </p>
         </div>
-        <select
+        <Select
+          size="sm"
+          className="w-auto min-w-[180px]"
           value={type}
-          onChange={(e) => setType(e.target.value as CallAlertType | "")}
+          onChange={(v) => setType(v as CallAlertType | "")}
           aria-label="Filter by type"
-          className="rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 font-label text-xs text-[#13284A]"
-        >
-          <option value="">All types</option>
-          {(Object.keys(TYPE_LABEL) as CallAlertType[]).map((t) => (
-            <option key={t} value={t}>{TYPE_LABEL[t]}</option>
-          ))}
-        </select>
+          options={[{ value: "", label: "All types" }, ...(Object.keys(TYPE_LABEL) as CallAlertType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))]}
+        />
       </div>
 
       {loading && rows.length === 0 ? (

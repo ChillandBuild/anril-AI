@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { api, type Lead } from "@/lib/api";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { formatPhone } from "@/lib/utils";
 import { MAX_LEADS_PER_CAMPAIGN, errorText, formatCount } from "./helpers";
 import { Badge, Btn, Empty, LoadError, inputCls } from "./ui";
@@ -112,21 +113,16 @@ export function LeadPicker({ selected, onChange }: { selected: Set<string>; onCh
             className={`${inputCls} pl-9`}
           />
         </div>
-        <select
+        <Select
           aria-label="Segment"
+          className="w-auto min-w-[160px]"
           value={segment}
-          onChange={(e) => {
-            setSegment(e.target.value);
+          onChange={(v) => {
+            setSegment(v);
             setPage(1);
           }}
-          className={`${inputCls} w-auto`}
-        >
-          {SEGMENTS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          options={SEGMENTS.map((s) => ({ value: s.value, label: s.label }))}
+        />
         <Btn type="submit" variant="outline">
           Search
         </Btn>

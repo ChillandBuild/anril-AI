@@ -13,6 +13,7 @@ import { usePolling } from "@/hooks/usePolling";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 import { TickMark } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1826,19 +1827,13 @@ export default function OutboundLeadsPage() {
                   <label htmlFor="template-select" className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider mb-2">
                     Template Name
                   </label>
-                  <select
+                  <Select
                     id="template-select"
                     value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">Select a template…</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.name}>
-                        {t.name} ({t.category.toLowerCase()})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setTemplateName}
+                    placeholder="Select a template…"
+                    options={templates.map(t => ({ value: t.name, label: `${t.name} (${t.category.toLowerCase()})` }))}
+                  />
                   {templatesPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading templates…</p>
                   )}
@@ -1859,19 +1854,15 @@ export default function OutboundLeadsPage() {
                   <label htmlFor="tag-select" className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider mb-2">
                     Broadcast Tag <span className="normal-case font-normal text-on-surface-muted">(optional)</span>
                   </label>
-                  <select
+                  <Select
                     id="tag-select"
                     value={selectedTag}
-                    onChange={(e) => setSelectedTag(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">No tag — skip interest tracking</option>
-                    {tags.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSelectedTag}
+                    options={[
+                      { value: "", label: "No tag — skip interest tracking" },
+                      ...tags.map(t => ({ value: t.id, label: t.name })),
+                    ]}
+                  />
                   {stepTagsPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading tags…</p>
                   )}
@@ -1897,20 +1888,21 @@ export default function OutboundLeadsPage() {
                       {Array.from({ length: varCount }, (_, idx) => (
                         <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-surface-mid/60">
                           <span className="font-mono text-xs text-on-surface-muted w-10 shrink-0 font-bold">{`{{${idx + 1}}}`}</span>
-                          <select
+                          <Select
+                            size="sm"
+                            aria-label={`Column for {{${idx + 1}}}`}
                             value={variableMapping[idx] ?? ""}
-                            onChange={(e) => {
+                            onChange={(v) => {
                               const next = Array.from({ length: varCount }, (_, i) => variableMapping[i] ?? "");
-                              next[idx] = e.target.value;
+                              next[idx] = v;
                               setVariableMapping(next);
                             }}
-                            className="flex-1 bg-surface-low rounded-lg px-2.5 py-1.5 font-body text-xs text-on-surface border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-                          >
-                            <option value="">— pick a column —</option>
-                            {parsedData.columns.map(c => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
+                            className="flex-1"
+                            options={[
+                              { value: "", label: "— pick a column —" },
+                              ...parsedData.columns.map(c => ({ value: c, label: c })),
+                            ]}
+                          />
                         </div>
                       ))}
                     </div>

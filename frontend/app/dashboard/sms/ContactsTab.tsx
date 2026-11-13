@@ -7,6 +7,7 @@ import { ClipboardPaste, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { api, type SmsContactGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Pager } from "./CampaignDetail";
@@ -180,23 +181,17 @@ function ContactsPanel() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
           <input aria-label="Search contacts" className={`${inputCls} pl-9`} placeholder="Search name or number" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
-        <select
+        <Select
           aria-label="Filter by group"
-          className={`${inputCls} w-auto`}
+          className="w-auto min-w-[160px]"
           value={groupId}
-          onChange={(e) => {
-            setGroupId(e.target.value);
+          onChange={(v) => {
+            setGroupId(v);
             setOffset(0);
             setSelected(new Set());
           }}
-        >
-          <option value="">All contacts</option>
-          {groupList.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name} ({formatCount(g.contacts)})
-            </option>
-          ))}
-        </select>
+          options={[{ value: "", label: "All contacts" }, ...groupList.map((g) => ({ value: g.id, label: `${g.name} (${formatCount(g.contacts)})` }))]}
+        />
         <Btn type="submit" variant="outline">
           Search
         </Btn>
@@ -359,14 +354,12 @@ function GroupActionPanel({
           <p className="text-sm text-[#64748b]">You have no groups yet. Create one in the Groups tab first.</p>
         ) : (
           <Field label="Group">
-            <select className={inputCls} value={target} onChange={(e) => setPicked(e.target.value)}>
-              <option value="">Choose a group…</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={target}
+              onChange={setPicked}
+              placeholder="Choose a group…"
+              options={groups.map((g) => ({ value: g.id, label: g.name }))}
+            />
           </Field>
         )}
         <div className="flex justify-end gap-2">

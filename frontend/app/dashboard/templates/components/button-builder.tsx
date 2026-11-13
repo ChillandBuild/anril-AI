@@ -12,6 +12,8 @@ import {
   PhoneCall,
 } from "lucide-react";
 import type { Button } from "../types";
+import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { buttonBlockers, cleanButtonLabel, cleanPhone, fixUrl, groupQuickReplies } from "../template-rules";
 import FieldMessages, { SampleInputs, useFixNotes } from "./field-messages";
 
@@ -396,17 +398,12 @@ export default function ButtonBuilder({
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <p className="font-body text-xs text-ink-muted mb-1">Country</p>
-                  <select
+                  <Select
+                    aria-label="Country code"
                     value={btn.country || "+91"}
-                    onChange={(e) => update(i, "country", e.target.value)}
-                    className="input text-sm"
-                  >
-                    {COUNTRY_CODES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => update(i, "country", v)}
+                    options={COUNTRY_CODES.map((c) => ({ value: c.code, label: c.label }))}
+                  />
                 </div>
                 <div className="col-span-2">
                   <p className="font-body text-xs text-ink-muted mb-1">
@@ -429,17 +426,16 @@ export default function ButtonBuilder({
             {btn.type === "WHATSAPP_CALL" && (
               <div>
                 <p className="font-body text-xs text-ink-muted mb-1">Active for</p>
-                <select
-                  value={btn.active_for_days || 7}
-                  onChange={(e) =>
-                    update(i, "active_for_days", parseInt(e.target.value))
-                  }
-                  className="input text-sm"
-                >
-                  <option value={7}>7 days</option>
-                  <option value={30}>30 days</option>
-                  <option value={90}>90 days</option>
-                </select>
+                <SegmentedControl
+                  aria-label="Active for"
+                  value={String(btn.active_for_days || 7)}
+                  onChange={(v) => update(i, "active_for_days", parseInt(v))}
+                  options={[
+                    { value: "7", label: "7 days" },
+                    { value: "30", label: "30 days" },
+                    { value: "90", label: "90 days" },
+                  ]}
+                />
               </div>
             )}
 

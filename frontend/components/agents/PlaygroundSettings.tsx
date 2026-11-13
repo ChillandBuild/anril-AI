@@ -3,6 +3,8 @@ import { useId, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_URL, type PlaygroundDefaults } from "@/lib/api";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Select } from "@/components/ui/Select";
 import { CopyButton } from "@/components/agents/CodeBlock";
 import { tabKeyDown } from "@/components/agents/PlaygroundParts";
 import {
@@ -72,18 +74,14 @@ export function PlaygroundSettings({ tab, settings, live, onChange, display, onD
       )}
 
       <Row label="Sources" note={note("sources")} htmlFor="pg-sources">
-        <select
+        <Select
+          size="sm"
           id="pg-sources"
+          className="w-auto min-w-[130px]"
           value={settings.sources}
-          onChange={(e) => onChange({ sources: e.target.value as PlaygroundDefaults["sources"] })}
-          className={DROPDOWN}
-        >
-          {(Object.keys(SOURCE_LABEL) as PlaygroundDefaults["sources"][]).map((s) => (
-            <option key={s} value={s}>
-              {SOURCE_LABEL[s]}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => onChange({ sources: v as PlaygroundDefaults["sources"] })}
+          options={(Object.keys(SOURCE_LABEL) as PlaygroundDefaults["sources"][]).map((s) => ({ value: s, label: SOURCE_LABEL[s] }))}
+        />
       </Row>
       <hr className="border-border" />
       <Row label="Results" hint="Live: 5 memories, 3–4 passages" note={note("results")}>
@@ -105,16 +103,17 @@ export function PlaygroundSettings({ tab, settings, live, onChange, display, onD
           step={1}
         />
       </Row>
-      <Row label="Rerank" note={note("rerank")} htmlFor="pg-rerank">
-        <select
-          id="pg-rerank"
+      <Row label="Rerank" note={note("rerank")}>
+        <SegmentedControl
+          size="sm"
+          aria-label="Rerank"
           value={settings.rerank ? "judge" : "off"}
-          onChange={(e) => onChange({ rerank: e.target.value === "judge" })}
-          className={DROPDOWN}
-        >
-          <option value="judge">Judge (live)</option>
-          <option value="off">Off</option>
-        </select>
+          onChange={(v) => onChange({ rerank: v === "judge" })}
+          options={[
+            { value: "judge", label: "Judge (live)" },
+            { value: "off", label: "Off" },
+          ]}
+        />
       </Row>
       <Row label="Rewrite query" note={note("rewrite")}>
         <Toggle label="Rewrite query" on={settings.rewrite} onChange={(rewrite) => onChange({ rewrite })} />
@@ -148,8 +147,6 @@ export function PlaygroundSettings({ tab, settings, live, onChange, display, onD
   );
 }
 
-const DROPDOWN =
-  "rounded-[10px] border border-border bg-white px-2.5 py-1.5 text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15";
 const CHECKBOX = "h-4 w-4 accent-primary";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

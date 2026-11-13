@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, CircleDashed, FlaskConical, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
+import { Select } from "@/components/ui/Select";
 import { API_URL, MarketplaceStatus, WabaTemplate, api, getAuthHeaders } from "@/lib/api";
 import { Fact, Facts, SettingsSection } from "../SettingsSection";
 import { CopyButton, timeAgo } from "./ui";
@@ -235,19 +236,16 @@ function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
         sends it within seconds of every new enquiry. {"{{1}}"} becomes the buyer&apos;s first name, {"{{2}}"} the
         product they asked about.
       </p>
-      <select
+      <Select
         value={selected}
         disabled={!canManage || saving || !loaded}
-        onChange={(e) => save(e.target.value)}
-        className="w-full rounded-xl border border-border bg-white px-3 py-2 font-body text-sm text-ink disabled:opacity-60"
-      >
-        <option value="">Don&apos;t send a message</option>
-        {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-      </select>
+        onChange={save}
+        aria-label="First WhatsApp message template"
+        options={[
+          { value: "", label: "Don't send a message" },
+          ...templates.map((t) => ({ value: t.id, label: t.name })),
+        ]}
+      />
       {preview && <p className="rounded-xl bg-white p-3 font-body text-xs text-ink-secondary">{preview}</p>}
       {loaded && templates.length === 0 && (
         <p className="font-body text-[11px] text-ink-muted">No approved templates yet — create one under Templates.</p>

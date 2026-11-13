@@ -5,9 +5,8 @@ import { companionsApi, type CompanionRequestKind, type CompanionRequestLog } fr
 import { formatMs } from "@/components/agents/playground";
 import { KIND_LABEL, barMax, dailyBars, errorRate } from "@/components/agents/requestsView";
 import { CARD, ErrorNote, LoadingRows } from "@/components/agents/ui";
+import { Select } from "@/components/ui/Select";
 
-const SELECT =
-  "rounded-xl border border-border bg-white px-3 py-1.5 text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15";
 const DAY_OPTIONS = [1, 7, 30];
 
 function timeLabel(iso: string): string {
@@ -39,23 +38,29 @@ export default function RequestsPage() {
   return (
     <div className="w-full space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-2">
-        <label>
-          <span className="sr-only">Kind</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as CompanionRequestKind | "")} className={SELECT}>
-            <option value="">All kinds</option>
-            {(Object.keys(KIND_LABEL) as CompanionRequestKind[]).map((k) => (
-              <option key={k} value={k}>{KIND_LABEL[k]}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">Result</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value as "ok" | "error" | "")} className={SELECT}>
-            <option value="">All results</option>
-            <option value="ok">Succeeded</option>
-            <option value="error">Failed</option>
-          </select>
-        </label>
+        <Select
+          size="sm"
+          aria-label="Kind"
+          className="w-auto min-w-[140px]"
+          value={kind}
+          onChange={(v) => setKind(v as CompanionRequestKind | "")}
+          options={[
+            { value: "", label: "All kinds" },
+            ...(Object.keys(KIND_LABEL) as CompanionRequestKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] })),
+          ]}
+        />
+        <Select
+          size="sm"
+          aria-label="Result"
+          className="w-auto min-w-[140px]"
+          value={status}
+          onChange={(v) => setStatus(v as "ok" | "error" | "")}
+          options={[
+            { value: "", label: "All results" },
+            { value: "ok", label: "Succeeded" },
+            { value: "error", label: "Failed" },
+          ]}
+        />
         <div role="radiogroup" aria-label="Time range" className="flex gap-1 rounded-xl bg-surface-mid p-1">
           {DAY_OPTIONS.map((d) => (
             <button

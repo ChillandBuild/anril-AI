@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, User, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/Select";
 import {
   companionsApi,
   type Companion,
@@ -205,19 +206,17 @@ export function PlaygroundChat({
         chips={
           <>
             {models.length > 0 && (
-              <label className={chipClass()}>
-                <span className="sr-only">Model</span>
-                <select value={model} onChange={(e) => setModel(e.target.value)} className="max-w-[190px] cursor-pointer bg-transparent focus:outline-none">
-                  <option value="">{liveLabel ? `${liveLabel} (live)` : "Live model"}</option>
-                  {models
-                    .filter((m) => m.id !== liveModel)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <Select
+                size="sm"
+                aria-label="Model"
+                className="w-auto max-w-[190px]"
+                value={model}
+                onChange={setModel}
+                options={[
+                  { value: "", label: liveLabel ? `${liveLabel} (live)` : "Live model" },
+                  ...models.filter((m) => m.id !== liveModel).map((m) => ({ value: m.id, label: m.label })),
+                ]}
+              />
             )}
             <span className={chipClass(true)}>{formatSetting("mode", settings.mode)}</span>
             <button
