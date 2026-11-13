@@ -360,6 +360,16 @@ def test_run_pending_reads_books_of_every_business_inside_one_budget(db, world):
     assert run(ingest.run_pending())["waiting"] == 0
 
 
+def test_run_pending_lets_the_helper_exit_after_every_pass(db, world, monkeypatch):
+    # The helper process holds the memory of the pages it read until it exits.
+    closed = []
+    monkeypatch.setattr(ingest.helper, "close", lambda: closed.append(1))
+    add_book(make_pdf([P1]))
+    run(ingest.run_pending())
+    run(ingest.run_pending())          # nothing waiting: still closed
+    assert closed == [1, 1]
+
+
 def test_run_pending_leaves_a_book_another_worker_is_reading(db, world):
     doc = add_book(make_pdf([None] * 6))                              # just registered: its upload request reads it
     assert run(ingest.run_pending())["skipped"] == 1

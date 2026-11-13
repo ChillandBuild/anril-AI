@@ -7,7 +7,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from app.companion.kb import ocr
+from app.companion.kb import ocr, pages
 from app.services import gemini_client
 
 TENANT = "11111111-1111-1111-1111-111111111111"
@@ -306,12 +306,12 @@ def test_render_pdf_page_returns_png_bytes(tmp_path):
     path = tmp_path / "two.pdf"
     Image.new("RGB", (200, 300), "white").save(
         path, format="PDF", save_all=True, append_images=[Image.new("RGB", (300, 200), "black")])
-    first, second = ocr.render_pdf_page(str(path), 1), ocr.render_pdf_page(str(path), 2)
+    first, second = pages.render_pdf_page(str(path), 1), pages.render_pdf_page(str(path), 2)
     assert first.startswith(PNG_SIGNATURE) and second.startswith(PNG_SIGNATURE)
     w1, h1 = size_of(first)
     w2, h2 = size_of(second)
     assert h1 > w1 and w2 > h2                    # page 1 is tall, page 2 is wide: 1-based
-    small = size_of(ocr.render_pdf_page(str(path), 1, scale=1.0))
+    small = size_of(pages.render_pdf_page(str(path), 1, scale=1.0))
     assert abs(w1 - 2 * small[0]) <= 2            # scale 2.0 is the default
 
 
@@ -319,7 +319,7 @@ def test_render_pdf_page_out_of_range_raises(tmp_path):
     path = tmp_path / "one.pdf"
     Image.new("RGB", (100, 100), "white").save(path, format="PDF")
     with pytest.raises(Exception):
-        ocr.render_pdf_page(str(path), 2)
+        pages.render_pdf_page(str(path), 2)
 
 
 # ---- ocr_pdf_page --------------------------------------------------------------------------------

@@ -32,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from app.companion import memory_embed
-from app.companion.kb import chunking, filetypes, ocr, pages, store
+from app.companion.kb import chunking, filetypes, helper, ocr, pages, store
 from app.config_dynamic import require_tenant_setting
 from app.db.supabase import get_supabase
 from app.services import ai_reply
@@ -171,10 +171,10 @@ async def _local_file(tenant_id: str, document: dict) -> str:
 # --- reading pages ----------------------------------------------------------------------------------
 
 async def _open_file(document: dict, reader, *args):
-    """Run a whole-file reader in a thread for at most FILE_READ_SECONDS. Whatever goes wrong
-    becomes _BookFailed with a sentence the owner can read."""
+    """Run a whole-file reader in the helper process for at most FILE_READ_SECONDS. Whatever goes
+    wrong becomes _BookFailed with a sentence the owner can read."""
     try:
-        return await asyncio.wait_for(asyncio.to_thread(reader, *args), FILE_READ_SECONDS)
+        return await helper.run(reader, *args, timeout=FILE_READ_SECONDS)
     except filetypes.UnsupportedFileType as exc:
         raise _BookFailed(str(exc)) from None
     except asyncio.TimeoutError:
@@ -205,8 +205,7 @@ def _too_many_pages(kind: str, count: int) -> str | None:
     return None
 
 
-def _virtual_pages(path: str, file_type: str) -> list[str]:
-    return filetypes.virtual_pages(filetypes.extract_text(path, file_type))
+_virtual_pages = filetypes.text_pages     # a filetypes function, so the helper loads only that module
 
 
 def _check_not_stuck(path: str) -> None:
@@ -218,8 +217,7 @@ async def _text_layer(path: str, page_no: int) -> tuple[str, bool]:
     """(text layer, can it be used) of one PDF page. A page that cannot be parsed, or whose
     parser is still running after PAGE_READ_SECONDS, goes to OCR."""
     try:
-        text, fonts = await asyncio.wait_for(asyncio.to_thread(pages.read_page, path, page_no),
-                                             PAGE_READ_SECONDS)
+        text, fonts = await helper.run(pages.read_page, path, page_no, timeout=PAGE_READ_SECONDS)
     except asyncio.TimeoutError:
         _slow_pages[path] = _slow_pages.get(path, 0) + 1
         return "", False
@@ -229,8 +227,8 @@ async def _text_layer(path: str, page_no: int) -> tuple[str, bool]:
 
 
 async def _ocr_pdf_page(tenant_id: str, path: str, page_no: int) -> tuple[str | None, str | None]:
-    """ocr.ocr_pdf_page, cut off after OCR_JOB_SECONDS (drawing the page runs in a thread that
-    can hang on a broken PDF). A cut-off page counts as one failed try, like any OCR error."""
+    """ocr.ocr_pdf_page, cut off after OCR_JOB_SECONDS (drawing the page can hang on a broken PDF;
+    the helper is then killed). A cut-off page counts as one failed try, like any OCR error."""
     try:
         return await asyncio.wait_for(ocr.ocr_pdf_page(tenant_id, path, page_no), OCR_JOB_SECONDS)
     except asyncio.TimeoutError:
@@ -713,7 +711,10 @@ async def run_pending(limit: int = 5, budget_seconds: float = 45.0) -> dict:
             out["run"] += 1
             out["finished"] += status != "processing"
 
-    await asyncio.gather(*(lane() for _ in range(LANES)))
+    try:
+        await asyncio.gather(*(lane() for _ in range(LANES)))
+    finally:
+        helper.close()      # the helper exits: what it used for these pages goes back to the system
     if _clock() < deadline and (_last_fill is None or _clock() - _last_fill >= FILL_EVERY_SECONDS):
         _last_fill = _clock()
         try:

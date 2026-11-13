@@ -24,12 +24,11 @@ import asyncio
 import base64
 import io
 import logging
-import threading
 
 import httpx
-import pypdfium2 as pdfium
 from PIL import Image
 
+from app.companion.kb import helper, pages
 from app.config_dynamic import require_tenant_setting
 from app.services import ai_reply
 from app.services import gemini_client
@@ -61,9 +60,8 @@ _TIMEOUT = 60.0
 _TRY_DELAYS = (0.0, 1.0, 3.0)       # wait before try 1, 2, 3
 _RETRYABLE = (408, 429, 500, 502, 503, 504)
 _OVERLAP = 0.03                     # the two halves share this band so a line on the cut is whole in one
-_MAX_SIDE = 3000                    # a huge page is rendered smaller, not sent as a 40 MB image
+RENDER_SECONDS = 120                # drawing one page in the helper; a broken PDF can hang
 _slots = asyncio.Semaphore(4)       # per process: OCR never takes every outbound slot
-_pdfium_lock = threading.Lock()     # PDFium is not thread-safe; renders run one at a time
 
 
 class OcrError(RuntimeError):
@@ -73,23 +71,6 @@ class OcrError(RuntimeError):
     def __init__(self, message: str, retry: bool = True):
         super().__init__(message)
         self.retry = retry
-
-
-def render_pdf_page(path: str, page_no: int, *, scale: float = 2.0) -> bytes:
-    """Page page_no (1-based) of the PDF as PNG bytes. scale 2.0 is 144 dots per inch."""
-    with _pdfium_lock:
-        pdf = pdfium.PdfDocument(path)
-        try:
-            page = pdf[page_no - 1]
-            longest = max(page.get_size()) * scale
-            if longest > _MAX_SIDE:
-                scale = scale * _MAX_SIDE / longest
-            image = page.render(scale=scale).to_pil()
-        finally:
-            pdf.close()
-    out = io.BytesIO()
-    image.convert("RGB").save(out, format="PNG")
-    return out.getvalue()
 
 
 def split_image(png: bytes) -> tuple[bytes, bytes]:
@@ -227,7 +208,7 @@ async def ocr_image(tenant_id: str, image: bytes, mime_type: str = "image/png") 
 async def ocr_pdf_page(tenant_id: str, path: str, page_no: int) -> tuple[str | None, str | None]:
     """Render page page_no (1-based) of the PDF and read it. Same result shape as ocr_image."""
     try:
-        image = await asyncio.to_thread(render_pdf_page, path, page_no)
+        image = await helper.run(pages.render_pdf_page, path, page_no, timeout=RENDER_SECONDS)
     except Exception as exc:
         logger.warning("companion kb: page render failed (%s)", type(exc).__name__)
         return None, "The page could not be opened"

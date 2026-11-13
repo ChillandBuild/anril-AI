@@ -108,6 +108,11 @@ def extract_text(path: str, file_type: str) -> str:
     return text.replace("\x00", "")
 
 
+def text_pages(path: str, file_type: str) -> list[str]:
+    """The pages of a TEXT_TYPES file: extract_text cut by virtual_pages. Runs in the helper process."""
+    return virtual_pages(extract_text(path, file_type))
+
+
 def virtual_pages(text: str, size: int = PAGE_CHARS) -> list[str]:
     """Cut text into pages of at most `size` characters, breaking at a line break when the piece has one.
 

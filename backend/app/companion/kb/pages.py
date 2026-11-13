@@ -18,10 +18,13 @@ A document-level spot-check then catches garbage that passes those rules: OCR 3 
 SPOT_DIFF, distrust_text_layer is True and every page of the document goes to OCR.
 """
 import difflib
+import io
 import re
 import string
+import threading
 
 import pdfplumber
+import pypdfium2 as pdfium
 
 MIN_CHARS = 50                 # under this many non-space characters the text layer counts as missing
 MAX_INWORD_PUNCT = 0.08        # share of punctuation sitting between two letters, the old-font fingerprint
@@ -39,6 +42,8 @@ _TAMIL_WORD = re.compile(r"[\u0B80-\u0BFF]+")
 _PRE_BASE_SIGNS = ("\u0BC6", "\u0BC7", "\u0BC8")     # ெ ே ை: drawn left of the letter, typed after it
 _UNMAPPED = ("\x00", "\ufffd")                        # a glyph the PDF font gave no letter for
 _PUNCT = set(string.punctuation)
+_MAX_SIDE = 3000                    # a huge page is rendered smaller, not sent as a 40 MB image
+_pdfium_lock = threading.Lock()     # PDFium is not thread-safe (tests draw pages from threads)
 # Zero-width non-joiner (Thanjavur library PDFs put one after every ்), zero-width space, byte-order
 # mark. Invisible, but word search treats மூலம்+mark as another word than a typed மூலம். The
 # zero-width joiner stays: it can change how a letter is drawn.
@@ -63,6 +68,24 @@ def read_page(path: str, page_no: int) -> tuple[str, set[str]]:
     if not text.strip():
         return "", set()
     return text, fonts
+
+
+def render_pdf_page(path: str, page_no: int, *, scale: float = 2.0) -> bytes:
+    """Page page_no (1-based) of the PDF as PNG bytes, for OCR. scale 2.0 is 144 dots per inch.
+    Lives here, not in ocr.py, so the helper process that runs it loads only this light module."""
+    with _pdfium_lock:
+        pdf = pdfium.PdfDocument(path)
+        try:
+            page = pdf[page_no - 1]
+            longest = max(page.get_size()) * scale
+            if longest > _MAX_SIDE:
+                scale = scale * _MAX_SIDE / longest
+            image = page.render(scale=scale).to_pil()
+        finally:
+            pdf.close()
+    out = io.BytesIO()
+    image.convert("RGB").save(out, format="PNG")
+    return out.getvalue()
 
 
 def _old_font(fonts: set[str]) -> bool:

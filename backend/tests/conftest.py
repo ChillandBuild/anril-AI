@@ -52,3 +52,13 @@ def _no_shared_rewrite(monkeypatch):
     from app.companion import engine
 
     monkeypatch.setattr(engine, "_shared_rewrite", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _kb_helper_inline(monkeypatch):
+    """The knowledge base reads PDFs in a helper process. Tests fake those reads with closures,
+    which cannot cross to another process, so the helper runs inline (in a thread) by default;
+    test_companion_kb_helper.py switches the real one back on."""
+    from app.companion.kb import helper
+
+    monkeypatch.setattr(helper, "INLINE", True)
