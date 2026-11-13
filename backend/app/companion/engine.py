@@ -108,7 +108,8 @@ async def _live_companion(tenant_id: str, companion_id: str, require_live: bool 
     companion = await store.get_companion(tenant_id, companion_id)
     if not companion:
         raise CompanionNotFound(companion_id)
-    if companion.get("status") == "paused":
+    # An archived character is silent even if a racing PATCH left its status as live.
+    if companion.get("status") == "paused" or companion.get("archived_at"):
         raise CompanionPaused(companion_id)
     if require_live and companion.get("status") != "live":
         raise CompanionNotLive(companion_id)

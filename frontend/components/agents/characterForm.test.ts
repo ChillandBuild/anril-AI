@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Companion } from "@/lib/api";
-import { changedFields, collectionIdOf, linesToList, nextDraftName, ownReasoningOn } from "./characterForm";
+import { changedFields, collectionIdOf, linesToList, nameMatches, nextDraftName, ownReasoningOn } from "./characterForm";
 
 const jothidar: Companion = {
   id: "c1", name: "Maya", industry: "general", role: "Support guide", backstory: "", speaking_style: "",
@@ -62,5 +62,16 @@ describe("changedFields", () => {
     expect(changedFields(older, { ...older })).toEqual({});
     expect(changedFields(older, { ...older, own_reasoning: false })).toEqual({ own_reasoning: false });
     expect(changedFields(older, { ...older, own_reasoning: true })).toEqual({});
+  });
+});
+
+describe("nameMatches (typing a Live character's name before Delete permanently)", () => {
+  it("ignores case and spaces at the ends", () => {
+    expect(nameMatches(" jothidar ai ", "Jothidar AI")).toBe(true);
+  });
+  it("needs the whole name", () => {
+    expect(nameMatches("Jothidar", "Jothidar AI")).toBe(false);
+    expect(nameMatches("", "Jothidar AI")).toBe(false);
+    expect(nameMatches("   ", "   ")).toBe(false);
   });
 });

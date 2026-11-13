@@ -267,7 +267,7 @@ async def widget_session(body: WidgetAuthIn, request: Request):
         tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
         _check_person(tenant_id, body.user_id)
         companion = await store.get_companion(tenant_id, str(body.companion_id))
-        if not companion or companion.get("status") != "live":
+        if not companion or companion.get("status") != "live" or companion.get("archived_at"):
             raise ApiError(409, "companion_not_live", "This character isn't live yet.")
         person = await store.find_end_user(tenant_id, body.user_id)
         history = []

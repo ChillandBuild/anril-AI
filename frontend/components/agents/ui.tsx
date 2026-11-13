@@ -45,7 +45,7 @@ export function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-ink">
+      <label id={`${id}-label`} htmlFor={id} className="block text-sm font-medium text-ink">
         {label}
       </label>
       {children}

@@ -56,3 +56,9 @@ export function changedFields(original: Companion, draft: Companion): CompanionI
   if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
   return out as CompanionInput;
 }
+
+/** Live characters need their name typed before a permanent delete. Spaces at the ends and letter case don't matter.
+ * Example: "jothidar ai " matches "Jothidar AI"; "Jothidar" does not. */
+export function nameMatches(typed: string, name: string): boolean {
+  return typed.trim().length > 0 && typed.trim().toLowerCase() === name.trim().toLowerCase();
+}

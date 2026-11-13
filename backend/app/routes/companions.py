@@ -44,8 +44,9 @@ async def _check_collection(tenant_id: str, collection_id: str | None) -> None:
 
 
 @router.get("")
-async def list_companions(ctx: dict = Depends(require_companions_manage)):
-    return {"companions": await store.list_companions(ctx["tenant_id"])}
+async def list_companions(archived: bool = False, ctx: dict = Depends(require_companions_manage)):
+    """Active characters. ?archived=true → the Archived tab."""
+    return {"companions": await store.list_companions(ctx["tenant_id"], archived=archived)}
 
 
 @router.post("", status_code=201)
@@ -57,7 +58,15 @@ async def create_companion(payload: CompanionSettings, ctx: dict = Depends(requi
     try:
         return await store.create_companion(tenant_id, payload)
     except store.DuplicateCompanionName:
-        raise HTTPException(status_code=409, detail="You already have a character with that name")
+        raise HTTPException(status_code=409, detail=await _duplicate_name_detail(tenant_id, payload.name))
+
+
+async def _duplicate_name_detail(tenant_id: str, name: str) -> str:
+    """An archived character still holds its name, so say where the clash is."""
+    archived = await store.list_companions(tenant_id, archived=True)
+    if any(c.get("name", "").strip().lower() == name.strip().lower() for c in archived):
+        return "An archived character has that name. Restore it or delete it permanently."
+    return "You already have a character with that name"
 
 
 def _tenant_model(tenant_id: str) -> tuple[str | None, bool]:
@@ -220,6 +229,8 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
     if not current:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     changes = payload.changes()
+    if current.get("archived_at") and "status" in changes:
+        raise HTTPException(status_code=409, detail="This character is archived. Restore it first.")
     engine_switched = changes.get("memory_engine", current.get("memory_engine", "card")) != \
         current.get("memory_engine", "card")
     await _check_tag(tenant_id, changes.get("knowledge_tag_id"))
@@ -227,7 +238,7 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
     try:
         row = await store.update_companion(tenant_id, str(companion_id), changes)
     except store.DuplicateCompanionName:
-        raise HTTPException(status_code=409, detail="You already have a character with that name")
+        raise HTTPException(status_code=409, detail=await _duplicate_name_detail(tenant_id, changes.get("name", "")))
     if not row:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     if engine_switched:
@@ -235,6 +246,53 @@ async def update_companion(companion_id: UUID, payload: CompanionUpdate,
         # until forget-me or a manual delete.
         await store.reset_watermarks(tenant_id, str(companion_id))
     return row
+
+
+def _audit_character(ctx: dict, action: str, row: dict) -> None:
+    try:
+        record_audit_event(
+            get_supabase(), tenant_id=ctx["tenant_id"], actor_user_id=ctx.get("user_id"),
+            actor_role=ctx.get("role"), action=action, target_type="companion",
+            target_id=row["id"], metadata={"name": row.get("name"), "status": row.get("status")},
+        )
+    except Exception as exc:
+        logger.warning("companion %s audit failed (%s)", action, type(exc).__name__)
+
+
+@router.post("/{companion_id}/archive")
+async def archive_companion(companion_id: UUID, ctx: dict = Depends(require_companions_manage)):
+    """Hide from the list and stop answering (paused). Its chats and memory are kept."""
+    tenant_id = ctx["tenant_id"]
+    before = await store.get_companion(tenant_id, str(companion_id))
+    row = await store.archive_companion(tenant_id, str(companion_id))
+    if not row:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    if before and not before.get("archived_at"):
+        _audit_character(ctx, "tenant.companion_archived", before)
+    return row
+
+
+@router.post("/{companion_id}/restore")
+async def restore_companion(companion_id: UUID, ctx: dict = Depends(require_companions_manage)):
+    """Back to the list as Draft."""
+    tenant_id = ctx["tenant_id"]
+    before = await store.get_companion(tenant_id, str(companion_id))
+    row = await store.restore_companion(tenant_id, str(companion_id))
+    if not row:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    if before and before.get("archived_at"):
+        _audit_character(ctx, "tenant.companion_restored", row)
+    return row
+
+
+@router.delete("/{companion_id}", status_code=204)
+async def delete_companion(companion_id: UUID, ctx: dict = Depends(require_companions_manage)):
+    """Delete permanently, with its chats and memory. Cannot be undone."""
+    tenant_id = ctx["tenant_id"]
+    row = await store.get_companion(tenant_id, str(companion_id))
+    if not row or not await store.delete_companion(tenant_id, str(companion_id)):
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    _audit_character(ctx, "tenant.companion_deleted", row)
 
 
 _SEARCH_MAX = 20

@@ -1,11 +1,23 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Archive, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionStatus, type KbCollection } from "@/lib/api";
-import { LANGUAGES, MOODS, changedFields, collectionIdOf, linesToList, ownReasoningOn } from "@/components/agents/characterForm";
+import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, ownReasoningOn } from "@/components/agents/characterForm";
 import { saveErrorMessage } from "@/components/agents/formErrors";
-import { BTN_PRIMARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
+import { CharacterDeleteDialog } from "@/components/agents/CharacterDeleteDialog";
+import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+
+/** Status dots: grey Draft, green Live, amber Paused. */
+export const STATUS_OPTIONS: { value: CompanionStatus; label: string; dot: string }[] = [
+  { value: "draft", label: "Draft", dot: "#94a3b8" },
+  { value: "live", label: "Live", dot: "#15803d" },
+  { value: "paused", label: "Paused", dot: "#d97706" },
+];
 
 type Tab = "persona" | "memory" | "knowledge";
 type Errors = Record<string, string>;
@@ -30,6 +42,24 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const router = useRouter();
+  const archived = Boolean(saved.archived_at);
+
+  const restore = async () => {
+    setRestoring(true);
+    setMessage("");
+    try {
+      const back = await companionsApi.restore(saved.id);
+      setSaved(back);
+      setDraft(back);
+    } catch (err) {
+      setMessage((err as Error).message || "Could not restore this character.");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const changes = changedFields(saved, draft);
   const dirty = Object.keys(changes).length > 0;
@@ -71,18 +101,28 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
           </div>
           <p className="text-xs text-ink-muted">Draft characters work only in the Playground. Live ones answer on your site.</p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-ink-secondary">
-          Status
-          <select
-            value={draft.status}
-            onChange={(e) => set("status", e.target.value as CompanionStatus)}
-            className={cn(INPUT, "w-auto py-1.5")}
-          >
-            <option value="draft">Draft</option>
-            <option value="live">Live</option>
-            <option value="paused">Paused</option>
-          </select>
-        </label>
+        {!archived && (
+          <div className="flex items-center gap-2 text-sm text-ink-secondary">
+            <span id="character-status-label">Status</span>
+            <SegmentedControl
+              aria-labelledby="character-status-label"
+              value={draft.status}
+              onChange={(v) => set("status", v)}
+              options={STATUS_OPTIONS}
+            />
+          </div>
+        )}
+        {archived ? (
+          <button type="button" onClick={restore} disabled={restoring} className={BTN_PRIMARY}>
+            <RotateCcw size={15} aria-hidden="true" />
+            {restoring ? "Restoring…" : "Restore as Draft"}
+          </button>
+        ) : (
+          <button type="button" onClick={() => setDeleting(true)} className={BTN_SECONDARY} aria-label={`Delete ${saved.name}`}>
+            <Trash2 size={15} aria-hidden="true" />
+            Delete
+          </button>
+        )}
         <button type="button" onClick={save} disabled={!dirty || saving} className={BTN_PRIMARY}>
           {saving ? "Saving…" : "Save"}
         </button>
@@ -91,6 +131,20 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
         </span>
         {justSaved && !dirty && <span className="text-xs text-success">Saved</span>}
       </div>
+
+      {archived && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <Archive size={15} aria-hidden="true" />
+          This character is archived. It doesn&apos;t answer anyone. Restore it to use it again.
+        </div>
+      )}
+      {deleting && (
+        <CharacterDeleteDialog
+          character={saved}
+          onClose={() => setDeleting(false)}
+          onDone={(choice) => router.push(`/dashboard/agents/characters${choice === "archive" ? "?tab=archived" : ""}`)}
+        />
+      )}
 
       {message && (
         <div role="alert" className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
@@ -189,10 +243,18 @@ function PersonaTab({ draft, set, errors }: TabProps) {
     <div className="grid gap-4 md:grid-cols-2">
       {text("name", "Name", "What customers see, e.g. Maya.")}
       <Field id="industry" label="Industry" error={errors.industry}>
-        <select id="industry" value={draft.industry} onChange={(e) => set("industry", e.target.value as Companion["industry"])} className={INPUT}>
-          <option value="general">General</option>
-          <option value="astrology">Astrology</option>
-        </select>
+        <div>
+          <SegmentedControl
+            id="industry"
+            aria-labelledby="industry-label"
+            value={draft.industry}
+            onChange={(v) => set("industry", v)}
+            options={[
+              { value: "general", label: "General" },
+              { value: "astrology", label: "Astrology" },
+            ]}
+          />
+        </div>
       </Field>
       <div className="md:col-span-2">{text("role", "Role", "One line, e.g. Friendly guide who answers product questions.")}</div>
       <div className="md:col-span-2">{area("backstory", "Backstory", "Who they are, in a few sentences.")}</div>
@@ -204,19 +266,26 @@ function PersonaTab({ draft, set, errors }: TabProps) {
       <ListField id="rules" label="Rules" hint="Up to 30, one per line." value={draft.rules} onChange={(v) => set("rules", v)} errors={errors} />
       {text("temperament", "Temperament", "e.g. Patient, never preachy.")}
       <Field id="default_mood" label="Default mood" error={errors.default_mood}>
-        <select id="default_mood" value={draft.default_mood} onChange={(e) => set("default_mood", e.target.value as Companion["default_mood"])} className={cn(INPUT, "capitalize")}>
-          {MOODS.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
+        <Select
+          id="default_mood"
+          value={draft.default_mood}
+          onChange={(v) => set("default_mood", v as Companion["default_mood"])}
+          options={MOODS.map((m) => ({ value: m, label: m.charAt(0).toUpperCase() + m.slice(1) }))}
+        />
       </Field>
       <Field id="language" label="Language" error={errors.language}>
-        <select id="language" value={draft.language} onChange={(e) => set("language", e.target.value)} className={INPUT}>
-          {LANGUAGES.some((l) => l.value === draft.language) ? null : <option value={draft.language}>{draft.language}</option>}
-          {LANGUAGES.map((l) => (
-            <option key={l.value} value={l.value}>{l.label}</option>
-          ))}
-        </select>
+        <div>
+          <SegmentedControl
+            id="language"
+            aria-labelledby="language-label"
+            value={draft.language}
+            onChange={(v) => set("language", v)}
+            options={[
+              ...(LANGUAGES.some((l) => l.value === draft.language) ? [] : [{ value: draft.language, label: draft.language }]),
+              ...LANGUAGES.map((l) => ({ value: l.value, label: LANGUAGE_LABEL[l.value] ?? l.label })),
+            ]}
+          />
+        </div>
       </Field>
     </div>
   );
@@ -226,17 +295,33 @@ function MemoryTab({ draft, set, errors }: TabProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field id="memory_level" label="Memory level" error={errors.memory_level} hint="Level 2 remembers facts about each person across chats.">
-        <select id="memory_level" value={draft.memory_level} onChange={(e) => set("memory_level", Number(e.target.value) as 1 | 2)} className={INPUT}>
-          <option value={1}>Level 1: recent messages only</option>
-          <option value={2}>Level 2: remembers facts</option>
-        </select>
+        <div>
+          <SegmentedControl
+            id="memory_level"
+            aria-labelledby="memory_level-label"
+            value={String(draft.memory_level) as "1" | "2"}
+            onChange={(v) => set("memory_level", Number(v) as 1 | 2)}
+            options={[
+              { value: "1", label: "Level 1 · recent messages" },
+              { value: "2", label: "Level 2 · remembers facts" },
+            ]}
+          />
+        </div>
       </Field>
       {draft.memory_level === 2 && (
         <Field id="memory_engine" label="Memory engine" error={errors.memory_engine}>
-          <select id="memory_engine" value={draft.memory_engine} onChange={(e) => set("memory_engine", e.target.value as Companion["memory_engine"])} className={INPUT}>
-            <option value="card">Card (built in)</option>
-            <option value="mem0">mem0</option>
-          </select>
+          <div>
+            <SegmentedControl
+              id="memory_engine"
+              aria-labelledby="memory_engine-label"
+              value={draft.memory_engine}
+              onChange={(v) => set("memory_engine", v)}
+              options={[
+                { value: "card", label: "Card (built in)" },
+                { value: "mem0", label: "mem0" },
+              ]}
+            />
+          </div>
         </Field>
       )}
       <Field id="history_messages" label="Recent messages read" hint="2 to 50. Every reply reads this many recent messages." error={errors.history_messages}>
@@ -252,10 +337,15 @@ function MemoryTab({ draft, set, errors }: TabProps) {
         />
       </Field>
       <Field id="privacy_mode" label="Who can read the memory" error={errors.privacy_mode}>
-        <select id="privacy_mode" value={draft.privacy_mode} onChange={(e) => set("privacy_mode", e.target.value as "A" | "B")} className={INPUT}>
-          <option value="A">You and the character (you can see the facts)</option>
-          <option value="B">Only the character (private to each person)</option>
-        </select>
+        <Select
+          id="privacy_mode"
+          value={draft.privacy_mode}
+          onChange={(v) => set("privacy_mode", v as "A" | "B")}
+          options={[
+            { value: "A", label: "You and the character (you can see the facts)" },
+            { value: "B", label: "Only the character (private to each person)" },
+          ]}
+        />
       </Field>
     </div>
   );
@@ -288,19 +378,17 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
           hint="The character reads only the files in this collection. Add files on the Upload page."
           error={errors.knowledge_collection_id}
         >
-          <select
+          <Select
             id="knowledge_collection_id"
             value={current ?? ""}
             disabled={loading}
-            onChange={(e) => set("knowledge_collection_id", e.target.value || null)}
-            className={INPUT}
-          >
-            <option value="">No files</option>
-            {current && !(collections ?? []).some((c) => c.id === current) && <option value={current}>Current collection</option>}
-            {(collections ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name} ({fileCount(c.book_count)})</option>
-            ))}
-          </select>
+            onChange={(v) => set("knowledge_collection_id", v || null)}
+            options={[
+              { value: "", label: "No files" },
+              ...(current && !(collections ?? []).some((c) => c.id === current) ? [{ value: current, label: "Current collection" }] : []),
+              ...(collections ?? []).map((c) => ({ value: c.id, label: `${c.name} (${fileCount(c.book_count)})` })),
+            ]}
+          />
         </Field>
         {loading && <p className="text-xs text-ink-muted">Loading collections…</p>}
         {loadError && (

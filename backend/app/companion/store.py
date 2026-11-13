@@ -51,13 +51,46 @@ async def get_companion(tenant_id: str, companion_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-async def list_companions(tenant_id: str) -> list[dict]:
+async def list_companions(tenant_id: str, *, archived: bool | None = None) -> list[dict]:
+    """Every character (None: memory, privacy and forget-person must still see archived ones),
+    only active ones (False: the Characters list and pickers) or only archived ones (True: the
+    Archived tab, newest archive first)."""
+    def _q():
+        q = get_supabase().table("companions").select("*").eq("tenant_id", tenant_id)
+        if archived is True:
+            return q.not_.is_("archived_at", "null").order("archived_at", desc=True).execute().data
+        if archived is False:
+            q = q.is_("archived_at", "null")
+        return q.order("created_at").execute().data
+    return await asyncio.to_thread(_q) or []
+
+
+async def archive_companion(tenant_id: str, companion_id: str) -> dict | None:
+    """Hide it and stop it answering at once (status paused). Archiving twice keeps the first date.
+    Returns the row, or None if it isn't this tenant's."""
+    current = await get_companion(tenant_id, companion_id)
+    if not current or current.get("archived_at"):
+        return current
+    return await update_companion(tenant_id, companion_id, {"archived_at": _now(), "status": "paused"})
+
+
+async def restore_companion(tenant_id: str, companion_id: str) -> dict | None:
+    """Back to the list as Draft, so it never goes Live again without the owner choosing to."""
+    current = await get_companion(tenant_id, companion_id)
+    if not current or not current.get("archived_at"):
+        return current
+    return await update_companion(tenant_id, companion_id, {"archived_at": None, "status": "draft"})
+
+
+async def delete_companion(tenant_id: str, companion_id: str) -> bool:
+    """Delete permanently. Its conversations, messages, memory and KB logs go with it (ON DELETE
+    CASCADE on every companion_* child table). Collections and books belong to the business and stay."""
     def _q():
         return (
-            get_supabase().table("companions").select("*")
-            .eq("tenant_id", tenant_id).order("created_at").execute().data
+            get_supabase().table("companions").delete()
+            .eq("tenant_id", tenant_id).eq("id", companion_id).execute().data
         )
-    return await asyncio.to_thread(_q) or []
+    return bool(await asyncio.to_thread(_q))
 
 
 async def update_companion(tenant_id: str, companion_id: str, changes: dict) -> dict | None:
@@ -460,7 +493,8 @@ async def overview_counts(tenant_id: str) -> dict:
 
     def _q():
         db = get_supabase()
-        chars = db.table("companions").select("status").eq("tenant_id", tenant_id).execute().data or []
+        chars = (db.table("companions").select("status").eq("tenant_id", tenant_id)
+                 .is_("archived_at", "null").execute().data or [])
         testers = [r["id"] for r in (
             db.table("companion_end_users").select("id")
             .eq("tenant_id", tenant_id).like("external_user_id", TEST_PERSON_PATTERN).execute().data or [])]

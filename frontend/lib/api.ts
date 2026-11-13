@@ -4035,11 +4035,13 @@ export interface Companion {
   history_messages: number;
   privacy_mode: "A" | "B";
   status: CompanionStatus;
+  /** Set when the owner archived it (Archived tab). Null = active. */
+  archived_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
-export type CompanionInput = Partial<Omit<Companion, "id" | "created_at" | "updated_at">>;
+export type CompanionInput = Partial<Omit<Companion, "id" | "created_at" | "updated_at" | "archived_at">>;
 
 export interface CompanionApiKey {
   id: string;
@@ -4232,7 +4234,15 @@ export type CompanionSearchResult = {
 const COMPANIONS = "/api/v1/companions";
 
 export const companionsApi = {
-  list: () => apiFetch<{ companions: Companion[] }>(COMPANIONS).then((r) => r.companions),
+  /** Active characters. archived=true → the Archived tab. */
+  list: (archived = false) =>
+    apiFetch<{ companions: Companion[] }>(archived ? `${COMPANIONS}?archived=true` : COMPANIONS).then((r) => r.companions),
+  /** Hide it and stop it answering (status becomes paused). Chats and memory are kept. */
+  archive: (id: string) => apiFetch<Companion>(`${COMPANIONS}/${id}/archive`, { method: "POST" }),
+  /** Back to the list as Draft. */
+  restore: (id: string) => apiFetch<Companion>(`${COMPANIONS}/${id}/restore`, { method: "POST" }),
+  /** Delete permanently, with its chats and memory. Cannot be undone. */
+  remove: (id: string) => apiFetch<void>(`${COMPANIONS}/${id}`, { method: "DELETE" }),
   get: (id: string) => apiFetch<Companion>(`${COMPANIONS}/${id}`),
   create: (data: CompanionInput & { name: string }) =>
     apiFetch<Companion>(COMPANIONS, { method: "POST", body: JSON.stringify(data) }),
