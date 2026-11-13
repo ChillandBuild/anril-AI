@@ -96,15 +96,26 @@ def fallback_line(language: str | None) -> str:
     return FALLBACK_LINES.get(language or "", FALLBACK_LINES["en"])
 
 
-def _model_kw(model: str | None) -> dict:
-    """The model keyword for ai_reply, only when the Playground picked one. Live replies send none."""
-    return {"model": model} if model else {}
+def character_model(companion: dict | None) -> str:
+    """The model this character replies with (companions.model). Missing, or a model since removed
+    from the list, is the default, so a reply never fails over a stale value."""
+    return ai_reply.reply_model_or_default((companion or {}).get("model"))
+
+
+def _model_kw(companion: dict, model: str | None) -> dict:
+    """The model keywords for ai_reply. model = the Playground's pick: exactly that model, no fallback
+    (a test of one model must not be answered by the other). None = the character's own model, with
+    the usual one retry on the other model when Google struggles.
+    Example: Jothidar saved on 3.5 -> {"model": "google/gemini-3.5-flash-lite", "fallback": True}."""
+    if model:
+        return {"model": model}
+    return {"model": character_model(companion), "fallback": True}
 
 
 async def _live_companion(tenant_id: str, companion_id: str, require_live: bool = False,
                           model: str | None = None) -> tuple[dict, str]:
-    """The character, checked usable, plus the LLM provider name (the tenant's, or the
-    Playground's picked model's)."""
+    """The character, checked usable, plus the LLM provider name (of the Playground's picked model,
+    else the character's own)."""
     companion = await store.get_companion(tenant_id, companion_id)
     if not companion:
         raise CompanionNotFound(companion_id)
@@ -114,7 +125,7 @@ async def _live_companion(tenant_id: str, companion_id: str, require_live: bool 
     if require_live and companion.get("status") != "live":
         raise CompanionNotLive(companion_id)
     try:
-        provider, _ = await asyncio.to_thread(ai_reply._provider_for, tenant_id, model)
+        provider, _ = await asyncio.to_thread(ai_reply._provider_for, tenant_id, model or character_model(companion))
     except RuntimeError as exc:
         raise CompanionMisconfigured(str(exc)) from exc
     return companion, provider
@@ -236,7 +247,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
-                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(model))
+                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model))
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
     text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion)
@@ -334,7 +345,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     try:
         raw, raw_calls = await ai_reply._llm_chat_with_tools(
             prompt, app_tools.to_llm_tools(offered + app_offered), max_tokens=LLM_MAX_TOKENS,
-            tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(model))
+            tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model))
         normalized = app_tools.normalize_calls(raw_calls)
         calls = [c for c in normalized if c["name"] in search_names]
         wants_app = any(c["name"] in {t.name for t in app_offered} for c in normalized)
@@ -392,13 +403,13 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         if use_tools:
             raw, raw_calls = await ai_reply._llm_chat_with_tools(
                 prompt, app_tools.to_llm_tools(tools), max_tokens=LLM_MAX_TOKENS,
-                tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(model),
+                tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model),
             )
             calls = app_tools.normalize_calls(raw_calls)
         else:
             raw = await ai_reply._llm_chat(
                 prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
-                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(model),
+                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model),
             )
     except Exception as exc:
         logger.warning("companion %s: LLM call failed on round %d (%s)", companion_id, round_no, type(exc).__name__)

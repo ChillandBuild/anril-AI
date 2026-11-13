@@ -34,12 +34,14 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     state = {"provider": "groq", "tool_calls": [], "plain": [], "script": []}
     monkeypatch.setattr(engine.ai_reply, "_resolve_provider", lambda t: (state["provider"], "m"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(engine.ai_reply, "_provider_for", lambda tenant_id, model=None: engine.ai_reply._resolve_provider(tenant_id))
 
-    async def with_tools(messages, tools, max_tokens=300, tenant_id=None, *, purpose="ai_reply"):
+    async def with_tools(messages, tools, max_tokens=300, tenant_id=None, *, purpose="ai_reply", **kw):
         state["tool_calls"].append({"messages": messages, "tools": tools, "purpose": purpose})
         return state["script"].pop(0)
 
-    async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, **kw):
         state["plain"].append({"messages": messages, "purpose": purpose})
         return "[mood: warm] Ungal lagnam Kumbham, Guru dasha nadakkudhu."
 
@@ -209,6 +211,8 @@ def test_purpose_reaches_the_provider(monkeypatch):
         seen.update(kw)
         return "", []
     monkeypatch.setattr(ai_reply, "_resolve_provider", lambda t: ("gemini", "m"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(ai_reply, "_provider_for", lambda tenant_id, model=None: ai_reply._resolve_provider(tenant_id))
     monkeypatch.setattr(ai_reply, "gemini_chat_completion_with_tools", gemini)
     asyncio.run(ai_reply._llm_chat_with_tools([], [], tenant_id="t1"))
     assert seen["purpose"] == "ai_reply"

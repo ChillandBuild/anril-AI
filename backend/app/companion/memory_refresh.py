@@ -72,3 +72,27 @@ async def _claimed_refresh(companion: dict, end_user_id: str, threshold: int, no
         return "not_needed"
     return await memory_sweep._sweep_pair(companion, end_user_id, mark, 0, unread[-1]["created_at"], now,
                                           mode="day")
+
+
+async def status(companion: dict, end_user_id: str | None) -> dict:
+    """The Playground's memory line. Example: Level 2, history 10 -> {"level": 2, "unread": 3,
+    "saves_at": 8}: "saves memories after 8 messages or overnight. 3 of 8 so far"."""
+    saves_at = trigger_at(companion.get("history_messages"))
+    if (companion.get("memory_level") or 1) != 2:
+        return {"level": 1, "unread": 0, "saves_at": saves_at}
+    if not end_user_id:
+        return {"level": 2, "unread": 0, "saves_at": saves_at}
+    tenant_id, companion_id = companion["tenant_id"], companion["id"]
+    mark = (await store.get_state(tenant_id, companion_id, end_user_id)).get("last_message_at")
+    unread = await store.messages_after(tenant_id, companion_id, end_user_id, mark, saves_at)
+    return {"level": 2, "unread": len(unread), "saves_at": saves_at}
+
+
+async def save_now(companion: dict, end_user_id: str) -> str:
+    """The Playground's "Save now": the same claimed day-mode step the Nth message starts, run at once
+    (any unread message is enough). It moves the watermark, so the next automatic run and the 02:00
+    sweep skip these messages. "busy" when another run holds the pair. Level 2 only (caller checks)."""
+    now = datetime.now(timezone.utc)
+    return await memory_sweep.run_claimed(
+        companion, end_user_id, memory_sweep.CLAIM_SECONDS,
+        lambda: _claimed_refresh(companion, end_user_id, 1, now))

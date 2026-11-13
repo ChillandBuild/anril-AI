@@ -4,7 +4,7 @@ import { changedFields, collectionIdOf, linesToList, nameMatches, nextDraftName,
 
 const jothidar: Companion = {
   id: "c1", name: "Maya", industry: "general", role: "Support guide", backstory: "", speaking_style: "",
-  sample_lines: ["Vanakkam!"], goals: [], temperament: "", default_mood: "calm", language: "ta-en", rules: [],
+  sample_lines: ["Vanakkam!"], goals: [], temperament: "", default_mood: "calm", language: "ta-en", model: "google/gemini-3.1-flash-lite", rules: [],
   knowledge_tag_id: null, knowledge_collection_id: null, own_reasoning: true, memory_level: 2, memory_engine: "card", history_messages: 10, privacy_mode: "A", status: "draft",
 };
 
@@ -28,6 +28,11 @@ describe("changedFields", () => {
 
   it("compares lists by value", () => {
     expect(changedFields(jothidar, { ...jothidar, sample_lines: ["Vanakkam!"] })).toEqual({});
+  });
+
+  it("sends only the model when the AI model changes", () => {
+    expect(changedFields(jothidar, { ...jothidar, model: "google/gemini-3.5-flash-lite" })).toEqual({ model: "google/gemini-3.5-flash-lite" });
+    expect(changedFields(jothidar, { ...jothidar })).not.toHaveProperty("model");
   });
 
   it("never sends the old books tag", () => {

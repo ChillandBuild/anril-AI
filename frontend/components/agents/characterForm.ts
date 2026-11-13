@@ -27,7 +27,7 @@ export function linesToList(text: string): string[] {
 
 const EDITABLE: (keyof CompanionInput)[] = [
   "name", "industry", "role", "backstory", "speaking_style", "sample_lines", "goals", "temperament",
-  "default_mood", "language", "rules", "memory_level", "memory_engine",
+  "default_mood", "language", "model", "rules", "memory_level", "memory_engine",
   "history_messages", "privacy_mode", "status",
 ];
 

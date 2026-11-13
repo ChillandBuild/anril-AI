@@ -462,6 +462,27 @@ async def find_end_user(tenant_id: str, external_user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+async def list_test_people(tenant_id: str, prefix: str) -> list[dict]:
+    """One dashboard login's Playground test customers (external id starts with prefix, e.g.
+    "owner-test:<login id>:"), oldest first. Deleted ones (forgotten_at set) are left out."""
+    def _q():
+        return (
+            get_supabase().table("companion_end_users").select("id, external_user_id, display_name")
+            .eq("tenant_id", tenant_id).like("external_user_id", prefix + "%").is_("forgotten_at", "null")
+            .order("first_seen_at").execute().data or [])
+    return await asyncio.to_thread(_q)
+
+
+async def revive_end_user(tenant_id: str, end_user_id: str, display_name: str | None) -> None:
+    """A Playground "Start over": after forget_end_user, the same test customer is usable again
+    (forgotten_at cleared, name put back), with no chats and no memories."""
+    def _q():
+        (get_supabase().table("companion_end_users")
+         .update({"forgotten_at": None, "display_name": display_name})
+         .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
+    await asyncio.to_thread(_q)
+
+
 async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
     """Hard-deletes the person's pending turns, messages and conversations with every character
     of this tenant, then blanks their name and stamps forgotten_at. The person row stays, so a
@@ -553,7 +574,9 @@ async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int
         needle = q.strip().lower()
         people = [
             {"end_user_id": u["id"], "external_user_id": u["external_user_id"],
-             "display_name": u.get("display_name"), **stats[u["id"]]}
+             "display_name": u.get("display_name"),
+             "is_test": u["external_user_id"].startswith("owner-test:"),   # a Playground test customer
+             **stats[u["id"]]}
             for u in users
             if not u.get("forgotten_at") and (
                 not needle or needle in u["external_user_id"].lower()

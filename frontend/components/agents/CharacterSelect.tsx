@@ -45,8 +45,12 @@ export function useCharacters() {
     }
   };
 
+  /** Swap in a character the server just returned, e.g. after the Playground saved its model. */
+  const replace = (updated: Companion) =>
+    setCharacters((list) => (list ? list.map((c) => (c.id === updated.id ? updated : c)) : list));
+
   const selected = characters?.find((c) => c.id === selectedId) ?? null;
-  return { characters, selected, select, error };
+  return { characters, selected, select, replace, error };
 }
 
 export function CharacterSelect({

@@ -1,30 +1,40 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, User, Wrench, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ArrowLeftRight, Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import {
   companionsApi,
+  type ApiError,
   type Companion,
   type CompanionAppTool,
+  type CompanionMemoryStatus,
   type CompanionModel,
   type CompanionReply,
   type CompanionToolCall,
   type PlaygroundDefaults,
+  type PlaygroundSources,
+  type TestPerson,
 } from "@/lib/api";
 import {
   chatErrorText,
   formatMs,
-  formatSetting,
   formatToolCall,
+  memoryStatusLine,
+  modelChoices,
+  modelLabel,
   pairCompareReplies,
   parseToolOutput,
   replySourceLine,
-  settingsToSend,
+  saveMemoryResult,
+  sourcesSetting,
+  suggestionsFor,
   toolNameError,
 } from "@/components/agents/playground";
 import { CharacterSelect } from "@/components/agents/CharacterSelect";
 import { Hero, PromptBox, chipClass } from "@/components/agents/PlaygroundParts";
+import { TestPersonPicker, useTestPeople } from "@/components/agents/TestPersonPicker";
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT } from "@/components/agents/ui";
 
 type ReplyBubble = {
@@ -43,56 +53,105 @@ type Bubble = { kind: "user"; text: string } | ReplyBubble | { kind: "error"; te
 /** A paused turn. `trace` = the lines from before the pause; /continue returns none, so they are kept here. */
 type PendingTools = { turnId: string; calls: CompanionToolCall[]; started: number; trace: string[] };
 
-const SUGGESTIONS = ["What do you know about me?", "What did I tell you last time?", "What do your files say about returns?"];
+/** "Use for <name>": idle, asking "are you sure", or saving. */
+type UseFor = "idle" | "confirm" | "saving";
+type SaveNote = { tone: "ok" | "info" | "error"; text: string; seeThem: boolean };
+
+const BAR = "mx-auto mt-2 flex max-w-[720px] flex-wrap items-center justify-between gap-2 rounded-[10px] px-2.5 py-2 text-[12.5px]";
+const SMALL_BTN = "min-h-8 px-3 text-[12.5px]";
 
 /**
- * Chat with one character as the owner ("Testing as you"). Example: the owner types
+ * Chat with one character as the owner or as a test customer. Example: the owner types
  * "Which plan am I on?" and Maya answers, with grey lines under the reply saying what she
- * searched ("Memory card: 6 lines"); if she asks the app for get_account(...), the owner
- * types the answer by hand or skips.
+ * searched ("Memory card: 6 lines"). The model chip starts on Maya's saved model; trying
+ * another is for this test chat only until "Use for Maya" is confirmed.
  */
 export function PlaygroundChat({
   character,
   characters,
   onSelectCharacter,
-  settings,
+  onCharacterSaved,
+  sources,
   live,
   models,
-  liveModel,
-  onMessageSent,
 }: {
   character: Companion;
   characters: Companion[];
   onSelectCharacter: (id: string) => void;
-  settings: PlaygroundDefaults;
+  /** The server's copy of the character after "Use for <name>" saved its model. */
+  onCharacterSaved: (c: Companion) => void;
+  /** The "Answer from" choice in Advanced; the only setting that differs from live chat. */
+  sources: PlaygroundSources;
   live: PlaygroundDefaults;
   models: CompanionModel[];
-  liveModel: string | null;
-  /** Tells the page the last typed message, for the REQUEST block. */
-  onMessageSent: (message: string) => void;
 }) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingTools | null>(null);
   const [tools, setTools] = useState<CompanionAppTool[]>([]);
-  const [model, setModel] = useState("");   // "" = the business's live model
+  const [pick, setPick] = useState<string | null>(null);   // null = the character's own model
+  const [useFor, setUseFor] = useState<UseFor>("idle");
+  const [useForError, setUseForError] = useState("");
+  const [savedModel, setSavedModel] = useState("");
   const [compare, setCompare] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const activeId = useRef(character.id);   // the character on screen now; a reply for another one is dropped
+
+  // Who the owner is testing as. null = You.
+  const { people, setPeople, max, error: peopleError, reload: reloadPeople } = useTestPeople();
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [epoch, setEpoch] = useState(0);   // bumped by Start over so the screen clears even though the id is the same
+  const you = people?.find((p) => p.is_you);
+  const person: TestPerson | undefined = people?.find((p) => p.external_user_id === personId) ?? you;
+
+  const [memory, setMemory] = useState<CompanionMemoryStatus | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<SaveNote | null>(null);
+
+  // A reply that arrives for another character, person or cleared screen is dropped.
+  const screenKey = `${character.id}|${person?.external_user_id ?? ""}|${epoch}`;
+  const activeKey = useRef(screenKey);
 
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [bubbles, pending]);
 
-  // A different character starts a fresh screen (its memory of the owner stays on the server).
+  // A different character or person starts a fresh screen (what they remember stays on the server).
   useEffect(() => {
-    activeId.current = character.id;
+    activeKey.current = screenKey;
     setBubbles([]);
     setPending(null);
     setBusy(false);
+    setSaveNote(null);
+  }, [screenKey]);
+
+  // A different character starts on its own model again.
+  useEffect(() => {
+    setPick(null);
+    setUseFor("idle");
+    setUseForError("");
+    setSavedModel("");
   }, [character.id]);
+
+  const loadMemory = useCallback(() => {
+    const id = person?.external_user_id;
+    if (!id) return;
+    const forKey = activeKey.current;
+    companionsApi
+      .testPersonMemory(character.id, id)
+      .then((m) => {
+        if (activeKey.current === forKey) setMemory(m);
+      })
+      .catch(() => {
+        if (activeKey.current === forKey) setMemory(null);   // no line rather than a wrong one
+      });
+  }, [character.id, person?.external_user_id]);
+  useEffect(() => {
+    setMemory(null);
+    loadMemory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the screen changes
+  }, [screenKey]);
 
   const toBubble = (reply: CompanionReply, started: number, label?: string, priorTrace: string[] = []): ReplyBubble => ({
     kind: "reply",
@@ -112,6 +171,7 @@ export function PlaygroundChat({
       setBubbles((b) => [...b, toBubble(reply, started, label)]);
       return;
     }
+    if (reply.memory) setMemory(reply.memory);
     if (reply.status === "tool_call" && reply.turn_id) {
       setPending({ turnId: reply.turn_id, calls: reply.tool_calls, started, trace: [...priorTrace, ...(reply.trace ?? [])] });
       return;
@@ -120,23 +180,28 @@ export function PlaygroundChat({
     setBubbles((b) => [...b, toBubble(reply, started, undefined, priorTrace)]);
   };
 
+  const trying = pick !== null && pick !== character.model;
+
   const send = async (given?: string) => {
     const message = (given ?? text).trim();
     if (!message || busy || pending) return;
-    const forId = character.id;
+    const forKey = screenKey;
     setText("");
     setBusy(true);
-    onMessageSent(message);
+    setSaveNote(null);
     setBubbles((b) => [...b, { kind: "user", text: message }]);
     const started = performance.now();
-    const picked = model || undefined;
-    const sent = settingsToSend(settings, live);
+    const base = {
+      model: trying ? pick : undefined,   // the character's own model is what the server uses anyway
+      settings: sourcesSetting(sources, live),
+      test_person: person && !person.is_you ? person.external_user_id : undefined,
+    };
     // Compare: the same message again, without memory, in parallel. Shown beside the first, labelled.
     const [main, bare] = await Promise.allSettled([
-      companionsApi.testChat(character.id, message, { tools, model: picked, settings: sent }),
-      compare ? companionsApi.testChat(character.id, message, { model: picked, use_memory: false, settings: sent }) : Promise.resolve(null),
+      companionsApi.testChat(character.id, message, { ...base, tools }),
+      compare ? companionsApi.testChat(character.id, message, { ...base, use_memory: false }) : Promise.resolve(null),
     ]);
-    if (activeId.current !== forId) return;   // the owner switched characters meanwhile
+    if (activeKey.current !== forKey) return;   // the owner switched character or person meanwhile
     if (main.status === "fulfilled") handle(main.value, started);
     else setBubbles((b) => [...b, { kind: "error", text: chatErrorText(main.reason) }]);
     if (bare.status === "fulfilled" && bare.value) handle(bare.value, started, "Without memory");
@@ -146,22 +211,66 @@ export function PlaygroundChat({
 
   const answerTools = async (results: { id: string; output: unknown }[]) => {
     if (!pending) return;
-    const forId = character.id;
+    const forKey = screenKey;
     setBusy(true);
     try {
       const reply = await companionsApi.continueTestChat(pending.turnId, results);
-      if (activeId.current === forId) handle(reply, pending.started, undefined, pending.trace);
+      if (activeKey.current === forKey) handle(reply, pending.started, undefined, pending.trace);
     } catch (err) {
-      if (activeId.current !== forId) return;
+      if (activeKey.current !== forKey) return;
       setPending(null);
       setBubbles((b) => [...b, { kind: "error", text: chatErrorText(err) }]);
     } finally {
-      if (activeId.current === forId) setBusy(false);
+      if (activeKey.current === forKey) setBusy(false);
+    }
+  };
+
+  /** "Yes, switch": save the tried model on the character. Failure keeps the chip on the tried model. */
+  const switchModel = async () => {
+    if (!pick || useFor === "saving") return;
+    const forId = character.id;
+    setUseFor("saving");
+    setUseForError("");
+    try {
+      const updated = await companionsApi.update(forId, { model: pick });
+      if (activeKey.current.split("|")[0] !== forId) return;
+      onCharacterSaved(updated);
+      setPick(null);
+      setUseFor("idle");
+      setSavedModel(modelLabel(models, updated.model));
+    } catch (err) {
+      if (activeKey.current.split("|")[0] !== forId) return;
+      setUseFor("confirm");
+      setUseForError((err as ApiError).message || "Could not save. Try again.");
+    }
+  };
+
+  const saveNow = async () => {
+    const id = person?.external_user_id;
+    if (!id || saving) return;
+    const forKey = screenKey;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      const r = await companionsApi.saveTestPersonMemory(character.id, id);
+      if (activeKey.current !== forKey) return;
+      const res = saveMemoryResult(r.outcome, { facts: r.facts, character: character.name, person: person?.name ?? "", isYou: !!person?.is_you });
+      setSaveNote(res);
+      loadMemory();
+    } catch (err) {
+      if (activeKey.current !== forKey) return;
+      setSaveNote({ tone: "error", text: (err as ApiError).message || "Could not save the memory. Try again.", seeThem: false });
+    } finally {
+      setSaving(false);
     }
   };
 
   const started = bubbles.length > 0 || !!pending;
-  const liveLabel = models.find((m) => m.id === liveModel)?.label;
+  const choices = modelChoices(models, character.model, character.name);
+  const tried = pick ? modelLabel(models, pick) : "";
+  const own = modelLabel(models, character.model);
+  const status = memory ? memoryStatusLine(memory, character) : null;
+  const suggestions = suggestionsFor(character);
 
   return (
     <div>
@@ -209,16 +318,17 @@ export function PlaygroundChat({
               <Select
                 size="sm"
                 aria-label="Model"
-                className="w-auto max-w-[190px]"
-                value={model}
-                onChange={setModel}
-                options={[
-                  { value: "", label: liveLabel ? `${liveLabel} (live)` : "Live model" },
-                  ...models.filter((m) => m.id !== liveModel).map((m) => ({ value: m.id, label: m.label })),
-                ]}
+                className={cn("h-7 w-auto max-w-[260px] rounded-lg", trying && "border-amber-300 bg-amber-50 text-amber-900")}
+                value={pick ?? character.model}
+                onChange={(v) => {
+                  setPick(v === character.model ? null : v);
+                  setUseFor("idle");
+                  setUseForError("");
+                  setSavedModel("");
+                }}
+                options={choices}
               />
             )}
-            <span className={chipClass(true)}>{formatSetting("mode", settings.mode)}</span>
             <button
               type="button"
               aria-pressed={compare}
@@ -233,23 +343,103 @@ export function PlaygroundChat({
         pickers={
           <>
             <CharacterSelect characters={characters} value={character.id} onChange={onSelectCharacter} inline />
-            <span className="inline-flex items-center gap-1.5 text-ink-secondary">
-              <User size={14} aria-hidden="true" /> Testing as you
-            </span>
+            <TestPersonPicker
+              people={people}
+              max={max}
+              selectedId={person?.external_user_id ?? ""}
+              onPick={setPersonId}
+              onCreated={(p) => {
+                setPeople((list) => [...(list ?? []), p]);
+                setPersonId(p.external_user_id);
+              }}
+              onStartedOver={(p) => {
+                setPeople((list) => (list ? list.map((x) => (x.external_user_id === p.external_user_id ? p : x)) : list));
+                setEpoch((n) => n + 1);
+              }}
+              onDeleted={(p) => {
+                setPeople((list) => (list ? list.filter((x) => x.external_user_id !== p.external_user_id) : list));
+                if (person?.external_user_id === p.external_user_id) setPersonId(null);
+              }}
+              onOpen={reloadPeople}
+            />
           </>
         }
       />
-      {model && <p className="mx-auto mt-2 max-w-[720px] text-xs text-ink-muted">Test chat only; live replies keep the live model.</p>}
+      {peopleError && <p role="alert" className="mx-auto mt-2 max-w-[720px] text-xs text-danger">{peopleError}</p>}
+
+      {status && (
+        <p className="mx-auto mt-2 flex max-w-[720px] flex-wrap items-center gap-x-1.5 text-xs text-ink-muted">
+          <span>{status.text}</span>
+          {status.canSave && (
+            <>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => void saveNow()} disabled={saving} className="inline-flex items-center gap-1 font-medium text-primary hover:underline disabled:opacity-60">
+                {saving && <Loader2 size={12} className="animate-spin" aria-hidden="true" />} Save now
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {saveNote && (
+        <p
+          role={saveNote.tone === "error" ? "alert" : "status"}
+          className={cn("mx-auto mt-1.5 max-w-[720px] text-xs", saveNote.tone === "ok" ? "text-success" : saveNote.tone === "error" ? "text-danger" : "text-ink-secondary")}
+        >
+          {saveNote.text}{" "}
+          {saveNote.seeThem && (
+            <Link href="/dashboard/agents/memories" className="font-medium text-primary hover:underline">
+              See them →
+            </Link>
+          )}
+        </p>
+      )}
+
+      {trying && useFor === "idle" && (
+        <div className={cn(BAR, "bg-amber-50 text-amber-900")}>
+          <span>
+            Trying <b>{tried}</b> in this test chat only. Visitors still get <b>{own}</b>.
+          </span>
+          <button type="button" onClick={() => setUseFor("confirm")} className={cn(BTN_PRIMARY, SMALL_BTN)}>
+            Use for {character.name}
+          </button>
+        </div>
+      )}
+      {trying && useFor !== "idle" && (
+        <div className={cn(BAR, "bg-amber-50 text-amber-900")}>
+          <span>
+            From now on every visitor gets <b>{tried}</b> from {character.name}.
+          </span>
+          <span className="flex gap-2">
+            <button type="button" disabled={useFor === "saving"} onClick={() => { setUseFor("idle"); setUseForError(""); }} className={cn(BTN_SECONDARY, SMALL_BTN)}>
+              Cancel
+            </button>
+            <button type="button" disabled={useFor === "saving"} onClick={() => void switchModel()} className={cn(BTN_PRIMARY, SMALL_BTN)}>
+              {useFor === "saving" ? "Saving…" : "Yes, switch"}
+            </button>
+          </span>
+          {useForError && <span role="alert" className="w-full text-danger">{useForError}</span>}
+        </div>
+      )}
+      {savedModel && !trying && (
+        <p role="status" className="mx-auto mt-2 max-w-[720px] rounded-[10px] bg-green-100 px-2.5 py-2 text-[12.5px] text-success">
+          Saved. {character.name} now answers with {savedModel}.
+        </p>
+      )}
+      {compare && (
+        <p className="mx-auto mt-2 max-w-[720px] text-xs text-ink-muted">
+          Each reply comes twice: normal, and as if {character.name} had never met {person?.is_you === false ? person.name : "you"}.
+        </p>
+      )}
 
       {!started && (
-        <div className="mx-auto mt-3.5 flex max-w-[720px] flex-col gap-2">
-          {SUGGESTIONS.map((s) => (
+        <div className="mx-auto mt-3.5 flex max-w-[720px] flex-wrap gap-1.5">
+          {suggestions.map((s) => (
             <button
               key={s}
               type="button"
               disabled={busy}
               onClick={() => void send(s)}
-              className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-ink transition-colors hover:bg-surface-mid disabled:opacity-50"
+              className="rounded-full border border-border bg-white px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-surface-mid disabled:opacity-50"
             >
               {s}
             </button>

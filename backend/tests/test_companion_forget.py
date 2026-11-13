@@ -12,9 +12,11 @@ def env(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     monkeypatch.setattr(engine.ai_reply, "_resolve_provider", lambda t: ("groq", "m"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(engine.ai_reply, "_provider_for", lambda tenant_id, model=None: engine.ai_reply._resolve_provider(tenant_id))
     replies = iter(["[mood: concerned] a", "[mood: happy] b", "[mood: warm] c", "[mood: warm] d", "[mood: warm] e"] * 3)
 
-    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, **kw):
         return next(replies)
 
     async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
@@ -80,7 +82,7 @@ def test_fresh_start_uses_the_default_mood_in_the_prompt(env, monkeypatch):
     asyncio.run(engine.forget_person("t1", "48213"))
     prompts = []
 
-    async def spy(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def spy(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, **kw):
         prompts.append(messages)
         return "[mood: calm] hello again"
     monkeypatch.setattr(engine.ai_reply, "_llm_chat", spy)

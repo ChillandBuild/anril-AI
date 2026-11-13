@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Archive, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionStatus, type KbCollection } from "@/lib/api";
+import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionModel, type CompanionStatus, type KbCollection } from "@/lib/api";
 import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, ownReasoningOn } from "@/components/agents/characterForm";
 import { saveErrorMessage } from "@/components/agents/formErrors";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
@@ -287,7 +287,57 @@ function PersonaTab({ draft, set, errors }: TabProps) {
           />
         </div>
       </Field>
+      <ModelField draft={draft} set={set} errors={errors} />
     </div>
+  );
+}
+
+/**
+ * "AI model" under Language. Example: Jothidar saved on "google/gemini-3.1-flash-lite" and two
+ * models offered -> a dropdown of their labels, "Gemini 3.1 Flash Lite" picked. With no Gemini
+ * key the list is empty, so the saved model shows read-only (nothing to choose from).
+ */
+function ModelField({ draft, set, errors }: TabProps) {
+  const [models, setModels] = useState<CompanionModel[] | null>(null);   // null = still loading
+  useEffect(() => {
+    companionsApi
+      .models()
+      .then((r) => setModels(r.models))
+      .catch(() => setModels([]));   // same as "no key": read-only
+  }, []);
+
+  const name = draft.name.trim() || "this character";
+  const label = (id: string) => models?.find((m) => m.id === id)?.label ?? id;
+  const readOnly = models !== null && models.length === 0;
+  return (
+    <Field
+      id="model"
+      label="AI model"
+      error={errors.model}
+      hint={
+        readOnly
+          ? "Add your Gemini key in Settings to change the model."
+          : `Every reply from ${name} uses this model. Try others first in the Playground.`
+      }
+    >
+      {readOnly ? (
+        <p id="model" className="rounded-xl border border-border bg-surface-mid px-3 py-2 text-sm text-ink">
+          {label(draft.model)}
+        </p>
+      ) : (
+        <Select
+          id="model"
+          disabled={models === null}
+          value={draft.model}
+          onChange={(v) => set("model", v)}
+          options={[
+            // A saved model that is no longer offered stays visible until the owner changes it.
+            ...(models ?? []).map((m) => ({ value: m.id, label: m.label })),
+            ...((models ?? []).some((m) => m.id === draft.model) ? [] : [{ value: draft.model, label: draft.model }]),
+          ]}
+        />
+      )}
+    </Field>
   );
 }
 

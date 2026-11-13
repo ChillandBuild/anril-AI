@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { companionsApi, type CompanionPerson } from "@/lib/api";
 import { CharacterSelect, useCharacters } from "@/components/agents/CharacterSelect";
+import { personLabel } from "@/components/agents/playground";
 import { PersonMemory } from "@/components/agents/PersonMemory";
 import { BTN_SECONDARY, CARD, ErrorNote, INPUT, LoadingRows, formatDate } from "@/components/agents/ui";
 
@@ -87,11 +88,14 @@ export default function MemoriesPage() {
                       className={cn("w-full px-4 py-3 text-left transition-colors hover:bg-surface-mid/60", open?.external_user_id === p.external_user_id && "bg-primary/5")}
                     >
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-ink">{p.display_name || p.external_user_id}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-medium text-ink">{personLabel(p)}</span>
+                          {p.is_test && <span className="shrink-0 rounded-full bg-surface-mid px-2 py-px text-[11px] text-ink-secondary">Playground</span>}
+                        </span>
                         <span className="shrink-0 text-xs text-ink-muted">{formatDate(p.last_seen_at)}</span>
                       </div>
                       <div className="text-xs text-ink-muted">
-                        {p.external_user_id} · {p.fact_count === null ? "private" : `${p.fact_count} facts`} · {p.message_count} messages
+                        {p.is_test ? "Test customer" : p.external_user_id} · {p.fact_count === null ? "private" : `${p.fact_count} facts`} · {p.message_count} messages
                       </div>
                     </button>
                   </li>

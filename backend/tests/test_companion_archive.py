@@ -24,6 +24,8 @@ def env(monkeypatch):
     # The overview also asks which AI model is set: keep that off the real database.
     monkeypatch.setattr(ai_reply, "_resolve_reply_model", lambda tenant_id: "gemini/gemini-3.1-flash")
     monkeypatch.setattr(ai_reply, "_resolve_provider", lambda tenant_id: ("gemini", "gemini-3.1-flash"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(ai_reply, "_provider_for", lambda tenant_id, model=None: ai_reply._resolve_provider(tenant_id))
     ctx = {"tenant_id": "t1", "user_id": "u1", "role": "owner"}
     app = FastAPI()
     app.include_router(companions.router, prefix=BASE)

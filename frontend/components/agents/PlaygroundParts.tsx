@@ -2,22 +2,7 @@
 import { ArrowUp, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Small pieces both Playground tabs share: the hero, the big input box, a chip. */
-
-/**
- * Arrow-key switching for a row of tabs (roving tabindex: the selected tab is the only tab stop).
- * Example: on "Chat", ArrowRight selects "Search" and moves focus to it. Home / End jump to the ends.
- */
-export function tabKeyDown<T extends string>(e: React.KeyboardEvent<HTMLElement>, order: T[], current: T, select: (t: T) => void) {
-  const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-  const i = order.indexOf(current);
-  const next = e.key === "Home" ? 0 : e.key === "End" ? order.length - 1 : step ? (i + step + order.length) % order.length : -1;
-  if (next < 0) return;
-  e.preventDefault();
-  select(order[next]);
-  const tabs = e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]');
-  tabs?.[next]?.focus();
-}
+/** Small pieces of the Playground chat: the hero, the big input box, a chip. */
 
 /** Centered icon + title shown before anything is sent. Example: "See what Maya can do". */
 export function Hero({ title }: { title: string }) {
@@ -33,7 +18,7 @@ export function Hero({ title }: { title: string }) {
 
 /**
  * The big message box: text on top, small chips + Send under it, pickers
- * in the grey strip below. Example: Chat tab -> [model chip] [Auto-search] [Compare] (Send).
+ * in the grey strip below. Example: [Gemini 3.1 Flash Lite · Maya's model] [Compare without memory] (Send).
  */
 export function PromptBox({
   id,

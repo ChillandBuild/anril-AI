@@ -17,8 +17,24 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Language = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=16)]
 
 
+DEFAULT_MODEL = "google/gemini-3.1-flash-lite"   # = ai_reply.DEFAULT_REPLY_MODEL (a test keeps them equal)
+
+
+def _known_model(value: str | None) -> str | None:
+    """A character's model must be on ai_reply.REPLY_MODELS. Adding a model there is all it takes."""
+    from app.services.ai_reply import REPLY_MODELS   # lazy: ai_reply pulls in the whole services layer
+    if value is not None and value not in REPLY_MODELS:
+        raise ValueError("Pick one of the listed AI models")
+    return value
+
+
 class _CardFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("model", check_fields=False)
+    @classmethod
+    def _model_is_known(cls, value: str | None) -> str | None:
+        return _known_model(value)
 
 
 class CompanionSettings(_CardFields):
@@ -33,6 +49,7 @@ class CompanionSettings(_CardFields):
     temperament: str = Field("", max_length=300)
     default_mood: Mood = "calm"
     language: Language = "ta-en"
+    model: str = DEFAULT_MODEL                 # the AI model every reply uses, e.g. "google/gemini-3.5-flash-lite"
     rules: list[Rule] = Field(default_factory=list, max_length=30)
     knowledge_tag_id: UUID | None = None     # old Anril Sales books tag: still accepted, no longer read
     knowledge_collection_id: UUID | None = None   # the collection of books this character reads
@@ -56,6 +73,7 @@ class CompanionUpdate(_CardFields):
     temperament: str | None = Field(None, max_length=300)
     default_mood: Mood | None = None
     language: Language | None = None
+    model: str | None = None
     rules: list[Rule] | None = Field(None, max_length=30)
     knowledge_tag_id: UUID | None = None
     knowledge_collection_id: UUID | None = None

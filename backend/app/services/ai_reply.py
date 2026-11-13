@@ -53,16 +53,16 @@ def _provider_and_native_model(model: str) -> tuple[str, str]:
 
 
 def available_reply_models(tenant_id: str | None) -> list[dict]:
-    """The models this tenant could switch to: all of them once the Gemini key is set. Used
-    only by the Agents Playground model picker; live replies always use ai_reply_model."""
+    """The models this tenant could switch to: all of them once the Gemini key is set. Used by the
+    Agents character editor and Playground pickers. WhatsApp replies always use ai_reply_model."""
     if not get_setting("gemini_api_key", tenant_id=tenant_id):
         return []
     return [{"id": model_id, "label": label} for model_id, label in REPLY_MODELS.items()]
 
 
 def _provider_for(tenant_id: str | None, model: str | None) -> tuple[str, str]:
-    """(provider, native_model): the tenant's ai_reply_model, or an explicit model override
-    (Playground only). Either way the tenant's own Gemini key must be set."""
+    """(provider, native_model): the tenant's ai_reply_model, or an explicit model (an Agents
+    character's own model, or the Playground's pick). Either way the tenant's own Gemini key must be set."""
     if not model:
         return _resolve_provider(tenant_id)
     provider, native_model = _provider_and_native_model(model)
@@ -115,14 +115,16 @@ async def _llm_chat(
     purpose: str = "ai_reply",
     temperature: float = 0.4,
     model: str | None = None,
+    fallback: bool | None = None,
 ) -> str:
     # purpose/temperature are overridable for non-reply callers (knowledge auto-sort
     # meters under "knowledge_sort" and needs near-deterministic output).
-    # model: Agents Playground test chat only, and it never falls back: a test of one
-    # model must not be answered by the other. Live replies never pass it.
+    # model: an Agents character's own model, or the Playground's pick. fallback (one retry on the
+    # other model when Google struggles) defaults to on only when no model is named: a Playground
+    # test of one model must not be answered by the other. A character's own model passes fallback=True.
     _provider, native_model = _provider_for(tenant_id, model)
     return await _gemini_call(
-        gemini_chat_completion, native_model, fallback=model is None,
+        gemini_chat_completion, native_model, fallback=(model is None) if fallback is None else fallback,
         messages=messages, temperature=temperature, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
     )
@@ -134,14 +136,14 @@ async def _llm_complete(prompt: str, max_tokens: int = 300, tenant_id: str | Non
 
 async def _llm_chat_with_tools(
     messages: list[dict], tools: list[dict], max_tokens: int = 300, tenant_id: str | None = None,
-    *, purpose: str = "ai_reply", model: str | None = None,
+    *, purpose: str = "ai_reply", model: str | None = None, fallback: bool | None = None,
 ) -> tuple[str, list[dict]]:
     """Tool-calling counterpart to _llm_chat -- catalog-recommendation replies on the
     tenant's ai_reply_model. purpose is overridable so other callers (the companion) meter
-    under their own name. model: Agents Playground test chat only (no fallback, as above)."""
+    under their own name. model / fallback: as in _llm_chat."""
     _provider, native_model = _provider_for(tenant_id, model)
     return await _gemini_call(
-        gemini_chat_completion_with_tools, native_model, fallback=model is None,
+        gemini_chat_completion_with_tools, native_model, fallback=(model is None) if fallback is None else fallback,
         messages=messages, tools=tools, max_tokens=max_tokens,
         tenant_id=tenant_id, purpose=purpose,
     )

@@ -1,15 +1,16 @@
-"""companion-dashboard T10: the Playground model picker and "Compare without memory".
+"""The character's own model, the Playground model picker and "Compare without memory".
 
-The model override is test-chat only. ai_reply is shared with the live WhatsApp reply path, so
-these tests prove that generate_reply and the public companion routes never pass a model, and
-that a picked model must be one the tenant has an API key for."""
+Every character replies with its own model (companions.model), with the usual one-retry fallback.
+The Playground can try another model, with no fallback. ai_reply is shared with the live WhatsApp
+reply path, so these tests prove that generate_reply never passes a model, that the public API can't
+choose one, and that a picked model must be one the tenant has an API key for."""
 import ast
 import json
 from pathlib import Path
 
 import pytest
 
-from app.companion import engine
+from app.companion import engine, models
 from app.services import ai_reply
 from tests.test_companion_chat_api import DASH, PUB, bearer, env  # noqa: F401  (env is a fixture)
 from tests.test_companion_tools import CHART, GET_CHART, call
@@ -61,6 +62,11 @@ def test_public_companion_routes_never_pass_model_or_use_memory():
 
 # --- runtime ----------------------------------------------------------------------------------
 
+def _save_model(env, model: str) -> None:
+    """Writes a model straight onto the live character's row (also stale ones the API would refuse)."""
+    next(r for r in env.db.rows("companions") if r["id"] == env.live["id"])["model"] = model
+
+
 @pytest.fixture
 def spy(env, monkeypatch):  # noqa: F811
     """Records the kwargs of every LLM call. The Gemini key is set; the tenant runs 3.1 Flash Lite."""
@@ -91,8 +97,23 @@ def test_public_chat_never_passes_a_model(env, spy):  # noqa: F811
     assert spy == []
     r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=body)
     assert r.status_code == 200 and r.json().get("model") is None
-    assert spy and all("model" not in call_kw for call_kw in spy)
+    # The character's own model (none saved in the fixture -> the default), with fallback on.
+    assert spy and all(c["model"] == "google/gemini-3.1-flash-lite" and c["fallback"] is True for c in spy)
     assert len(env.db.rows("companion_messages")) == 2   # a normal turn: saved with memory
+
+
+def test_public_chat_uses_the_characters_own_model(env, spy):  # noqa: F811
+    _save_model(env, "google/gemini-3.5-flash-lite")
+    body = {"companion_id": env.live["id"], "user_id": "48213", "message": "hi"}
+    assert env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=body).status_code == 200
+    assert spy[-1]["model"] == "google/gemini-3.5-flash-lite" and spy[-1]["fallback"] is True
+
+
+def test_a_stale_saved_model_falls_back_to_the_default(env, spy):  # noqa: F811
+    _save_model(env, "google/gemini-1.0-retired")
+    body = {"companion_id": env.live["id"], "user_id": "48213", "message": "hi"}
+    assert env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=body).status_code == 200
+    assert spy[-1]["model"] == "google/gemini-3.1-flash-lite"
 
 
 def test_models_lists_only_providers_with_keys(env, spy):  # noqa: F811
@@ -116,10 +137,49 @@ def test_test_chat_uses_the_picked_model(env, spy):  # noqa: F811
     assert r.json()["model"] == "Gemini 3.5 Flash Lite"
 
 
-def test_test_chat_without_a_model_uses_the_live_one(env, spy):  # noqa: F811
+def test_test_chat_without_a_pick_uses_the_characters_model(env, spy):  # noqa: F811
+    _save_model(env, "google/gemini-3.5-flash-lite")
     r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi"})
-    assert r.status_code == 200 and "model" not in spy[-1]
-    assert r.json()["model"] == "Gemini 3.1 Flash Lite"
+    assert r.status_code == 200
+    assert spy[-1]["model"] == "google/gemini-3.5-flash-lite" and spy[-1]["fallback"] is True
+    assert r.json()["model"] == "Gemini 3.5 Flash Lite"
+
+
+def test_a_picked_model_never_falls_back(env, spy):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat",
+                        json={"message": "hi", "model": "google/gemini-3.5-flash-lite"})
+    assert r.status_code == 200 and "fallback" not in spy[-1]
+
+
+def test_patch_saves_a_listed_model_and_refuses_others(env, spy):  # noqa: F811
+    url = f"{DASH}/{env.live['id']}"
+    r = env.client.patch(url, json={"model": "google/gemini-3.5-flash-lite"})
+    assert r.status_code == 200 and r.json()["model"] == "google/gemini-3.5-flash-lite"
+    for bad in ("deepseek/deepseek-chat", "google/gemini-3.5-flash", ""):
+        assert env.client.patch(url, json={"model": bad}).status_code == 422
+    assert env.db.rows("companions")[0]["model"] == "google/gemini-3.5-flash-lite"
+
+
+def test_a_new_character_gets_the_default_model(env, spy):  # noqa: F811
+    r = env.client.post(DASH, json={"name": "Dental Desk"})
+    assert r.status_code == 201 and r.json()["model"] == "google/gemini-3.1-flash-lite"
+    assert models.DEFAULT_MODEL == ai_reply.DEFAULT_REPLY_MODEL
+
+
+def test_llm_chat_fallback_follows_the_flag(monkeypatch):
+    import asyncio
+    seen = []
+    monkeypatch.setattr(ai_reply, "_provider_for", lambda t, m: ("gemini", "gemini-3.5-flash-lite"))
+
+    async def fake_call(call, native_model, *, fallback, **kw):
+        seen.append(fallback)
+        return "ok"
+    monkeypatch.setattr(ai_reply, "_gemini_call", fake_call)
+    msgs = [{"role": "user", "content": "x"}]
+    asyncio.run(ai_reply._llm_chat(msgs, tenant_id="t1"))                                   # WhatsApp
+    asyncio.run(ai_reply._llm_chat(msgs, tenant_id="t1", model="google/gemini-3.5-flash-lite"))  # Playground pick
+    asyncio.run(ai_reply._llm_chat(msgs, tenant_id="t1", model="google/gemini-3.5-flash-lite", fallback=True))
+    assert seen == [True, False, True]
 
 
 @pytest.mark.parametrize("model", ["openai/gpt-5-nano-2025-08-07", "sarvam-30b", "groq/llama-3.3-70b-versatile",

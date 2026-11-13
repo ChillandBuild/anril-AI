@@ -1,12 +1,18 @@
 import type {
   ApiError,
+  Companion,
   CompanionKnowledgeHit,
   CompanionMemoryHit,
+  CompanionMemoryStatus,
+  CompanionModel,
+  CompanionPerson,
   CompanionReply,
   CompanionSearchResult,
   CompanionToolCall,
   PlaygroundDefaults,
   PlaygroundSettings,
+  PlaygroundSources,
+  SaveMemoryOutcome,
 } from "@/lib/api";
 import { pageSpanText } from "@/components/agents/collectionRows";
 
@@ -64,7 +70,7 @@ export function replySourceLine(basis: CompanionReply["basis"], sources: Compani
 }
 
 // ---------------------------------------------------------------------------
-// Settings panel
+// What the chat and the search send
 // ---------------------------------------------------------------------------
 
 /** What live chat uses, until GET /models says otherwise. Same numbers the backend reports. */
@@ -79,121 +85,119 @@ export const FALLBACK_DEFAULTS: PlaygroundDefaults = {
   mode: "auto",
 };
 
-/** Search-tab checkboxes. Display only: they change what is listed, never what is searched. */
-export type ResultDisplay = { showDocs: boolean; showDropped: boolean };
-export const DEFAULT_DISPLAY: ResultDisplay = { showDocs: true, showDropped: false };
+/**
+ * The only setting the Playground changes from live chat. Example: "knowledge" -> { sources: "knowledge" };
+ * "all" (what live chat does) -> {} so the backend behaves exactly as live.
+ */
+export function sourcesSetting(sources: PlaygroundSources, live: PlaygroundDefaults): PlaygroundSettings {
+  return sources === live.sources ? {} : { sources };
+}
 
-export const SOURCE_LABEL: Record<PlaygroundDefaults["sources"], string> = {
-  all: "All sources",
-  memories: "Memories",
-  knowledge: "Knowledge",
+// ---------------------------------------------------------------------------
+// Model chip
+// ---------------------------------------------------------------------------
+
+/** A model as the owner reads it: its label, or the raw id when it is no longer offered. */
+export function modelLabel(models: CompanionModel[], id: string): string {
+  return models.find((m) => m.id === id)?.label ?? id;
+}
+
+/**
+ * The chip's dropdown. The character's own model carries its name.
+ * Example: Jothidar on 3.1 -> ["Gemini 3.1 Flash Lite · Jothidar's model", "Gemini 3.5 Flash Lite"].
+ * A saved model that is no longer offered is still listed, so the chip never shows a blank.
+ */
+export function modelChoices(models: CompanionModel[], characterModel: string, characterName: string): { value: string; label: string }[] {
+  const all = models.some((m) => m.id === characterModel) ? models : [{ id: characterModel, label: characterModel }, ...models];
+  return all.map((m) => ({ value: m.id, label: m.id === characterModel ? `${m.label} · ${characterName}'s model` : m.label }));
+}
+
+// ---------------------------------------------------------------------------
+// Suggestions
+// ---------------------------------------------------------------------------
+
+type SuggestionSet = { memory: [string, string]; marriage: string; files: string };
+
+const SUGGESTIONS: Record<"ta" | "ta-en" | "en", SuggestionSet> = {
+  ta: {
+    memory: ["என்னைப் பற்றி உங்களுக்கு என்ன தெரியும்?", "போன முறை நான் என்ன சொன்னேன்?"],
+    marriage: "திருமணம் பற்றி முதலில் எதைப் பார்க்க வேண்டும்?",
+    files: "உங்கள் கோப்புகளில் என்ன இருக்கிறது?",
+  },
+  "ta-en": {
+    memory: ["Ennai pathi enna theriyum?", "Pona thadava naan enna sonnen?"],
+    marriage: "Kalyanam pathi mudhalla edha paakanum?",
+    files: "Unga files-la enna irukku?",
+  },
+  en: {
+    memory: ["What do you know about me?", "What did I tell you last time?"],
+    marriage: "What should I check first about marriage?",
+    files: "What do your files cover?",
+  },
 };
 
-/** A stepper click, kept inside its range and free of float noise. Example: 0.7 + 0.05 -> 0.75, never 0.7500000001. */
-export function stepValue(current: number, delta: number, min: number, max: number): number {
-  const next = Math.round((current + delta) * 100) / 100;
-  return Math.min(max, Math.max(min, next));
+/**
+ * Starter questions that fit the character, in its language (unknown language -> English).
+ * Always the two memory questions; then astrology -> the marriage question, general with a
+ * collection -> "what do your files cover", general without one -> nothing more.
+ * Example: Tanglish astrology -> ["Ennai pathi enna theriyum?", "Pona thadava naan enna sonnen?", "Kalyanam pathi mudhalla edha paakanum?"].
+ */
+export function suggestionsFor(c: Pick<Companion, "industry" | "language" | "knowledge_collection_id">): string[] {
+  const set = SUGGESTIONS[c.language as keyof typeof SUGGESTIONS] ?? SUGGESTIONS.en;
+  if (c.industry === "astrology") return [...set.memory, set.marriage];
+  return c.knowledge_collection_id ? [...set.memory, set.files] : [...set.memory];
 }
 
-/** A setting as the owner reads it. Example: memory_floor 0.7 -> "0.70"; rerank true -> "Judge"; judge_min 2 -> "2 / 3". */
-export function formatSetting(key: keyof PlaygroundDefaults, value: PlaygroundDefaults[keyof PlaygroundDefaults]): string {
-  switch (key) {
-    case "memory_floor":
-      return Number(value).toFixed(2);
-    case "judge_min":
-      return `${value} / 3`;
-    case "rerank":
-      return value ? "Judge" : "Off";
-    case "rewrite":
-    case "memory_card":
-      return value ? "on" : "off";
-    case "mode":
-      return value === "agentic" ? "Agentic" : "Auto-search";
-    case "sources":
-      return SOURCE_LABEL[value as PlaygroundDefaults["sources"]] ?? String(value);
+// ---------------------------------------------------------------------------
+// Test customers and memory status
+// ---------------------------------------------------------------------------
+
+/** How a person is named in the Memories list: the typed name, "You" for the owner's own test id, else the id. */
+export function personLabel(p: Pick<CompanionPerson, "display_name" | "is_test" | "external_user_id">): string {
+  if (p.display_name) return p.display_name;
+  return p.is_test ? "You" : p.external_user_id;
+}
+
+/**
+ * The grey line under the chat box. Level 2 -> "Jothidar saves memories after 8 messages or overnight. 3 of 8 so far",
+ * with a Save now button (canSave) only when something is unread. Level 1 -> says nothing is saved long-term.
+ */
+export function memoryStatusLine(
+  status: CompanionMemoryStatus,
+  c: { name: string; history_messages: number },
+): { text: string; canSave: boolean } {
+  if (status.level === 1) {
+    return { text: `${c.name} keeps only the last ${c.history_messages} messages; nothing is saved long-term.`, canSave: false };
+  }
+  return {
+    text: `${c.name} saves memories after ${status.saves_at} messages or overnight. ${status.unread} of ${status.saves_at} so far`,
+    canSave: status.unread > 0,
+  };
+}
+
+/**
+ * What the owner reads after "Save now". Example: saved, 3 facts, Jothidar, Asha ->
+ * { text: "Memory saved: Jothidar remembers 3 facts about Asha.", tone: "ok", seeThem: true }.
+ * For the owner's own test id the sentence says "about you".
+ */
+export function saveMemoryResult(
+  outcome: SaveMemoryOutcome,
+  o: { facts: number | null; character: string; person: string; isYou: boolean },
+): { text: string; tone: "ok" | "info"; seeThem: boolean } {
+  switch (outcome) {
+    case "saved": {
+      // Privacy mode B: the business can't read what the character remembers, not even a count.
+      if (o.facts === null) return { text: "Memory saved. This character is in privacy mode B, so its memories can't be shown.", tone: "ok", seeThem: false };
+      const facts = `${o.facts} ${o.facts === 1 ? "fact" : "facts"}`;
+      return { text: `Memory saved: ${o.character} remembers ${facts} about ${o.isYou ? "you" : o.person}.`, tone: "ok", seeThem: true };
+    }
+    case "nothing_new":
+      return { text: "Nothing new to save yet.", tone: "info", seeThem: false };
+    case "busy":
+      return { text: "Already saving, try again in a minute.", tone: "info", seeThem: false };
     default:
-      return String(value);
+      return { text: "The last reply is still being written. Try again in a few seconds.", tone: "info", seeThem: false };
   }
-}
-
-/** Under a changed setting. Example: strictness 0.6 while live is 0.7 -> "Live chat uses 0.70"; same -> "". */
-export function liveNote(key: keyof PlaygroundDefaults, settings: PlaygroundDefaults, live: PlaygroundDefaults): string {
-  return settings[key] === live[key] ? "" : `Live chat uses ${formatSetting(key, live[key])}`;
-}
-
-/** The settings that differ from live chat. Example: only memory_floor moved -> ["memory_floor"]. */
-export function changedSettings(settings: PlaygroundDefaults, live: PlaygroundDefaults): (keyof PlaygroundDefaults)[] {
-  return (Object.keys(live) as (keyof PlaygroundDefaults)[]).filter((k) => settings[k] !== live[k]);
-}
-
-/**
- * What goes to the backend: only what differs from live chat ({} when nothing moved, so the backend behaves as live).
- * `only` limits it to some settings, e.g. SEARCH_KEYS for a search.
- */
-export function settingsToSend(
-  settings: PlaygroundDefaults,
-  live: PlaygroundDefaults,
-  only?: (keyof PlaygroundDefaults)[],
-): PlaygroundSettings {
-  const out: Record<string, unknown> = {};
-  for (const k of changedSettings(settings, live)) if (!only || only.includes(k)) out[k] = settings[k];
-  return out as PlaygroundSettings;
-}
-
-/** The settings a search uses. Memory mode and the memory card only matter in chat. */
-export const SEARCH_KEYS: (keyof PlaygroundDefaults)[] = ["sources", "results", "memory_floor", "judge_min", "rerank", "rewrite"];
-
-// ---------------------------------------------------------------------------
-// REQUEST block
-// ---------------------------------------------------------------------------
-
-export type RequestLang = "cURL" | "Python" | "TypeScript";
-export const REQUEST_LANGS: RequestLang[] = ["cURL", "Python", "TypeScript"];
-
-export const SEARCH_NO_API =
-  "Search has no public API yet. This tab shows what your character would find; characters search for themselves on every chat call.";
-
-/**
- * The real public call a business's server makes to chat with this character.
- * Example: Maya, "Can I return my shoes?" ->
- *   curl -X POST https://api.example.com/api/v1/companion/chat -H "Authorization: Bearer $ANRIL_SECRET_KEY" ...
- */
-export function chatRequestSnippet(lang: RequestLang, o: { apiBase: string; companionId: string; message: string }): string {
-  const url = `${o.apiBase.replace(/\/+$/, "")}/api/v1/companion/chat`;
-  const message = o.message.trim() || "Hello";
-  const body = `{"companion_id": ${JSON.stringify(o.companionId)}, "user_id": "your-user-id", "message": ${JSON.stringify(message)}}`;
-  if (lang === "cURL") {
-    const shellBody = body.replace(/'/g, `'\\''`);   // a ' inside the message must not end the shell string
-    return [
-      `curl -X POST ${url} \\`,
-      `  -H "Authorization: Bearer $ANRIL_SECRET_KEY" \\`,
-      `  -H "Content-Type: application/json" \\`,
-      `  -d '${shellBody}'`,
-    ].join("\n");
-  }
-  if (lang === "Python") {
-    return [
-      "import os, httpx",
-      "",
-      "r = httpx.post(",
-      `    ${JSON.stringify(url)},`,
-      `    headers={"Authorization": f"Bearer {os.environ['ANRIL_SECRET_KEY']}"},`,
-      `    json=${body},`,
-      ")",
-      `print(r.json()["reply"])`,
-    ].join("\n");
-  }
-  return [
-    `const r = await fetch(${JSON.stringify(url)}, {`,
-    `  method: "POST",`,
-    `  headers: {`,
-    "    Authorization: `Bearer ${process.env.ANRIL_SECRET_KEY}`,",
-    `    "Content-Type": "application/json",`,
-    `  },`,
-    `  body: JSON.stringify(${body}),`,
-    `});`,
-    `console.log((await r.json()).reply);`,
-  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -235,11 +239,11 @@ export function memoryPersonLine(hit: Pick<CompanionMemoryHit, "external_user_id
 }
 
 export type SearchView = {
-  /** Kept first; dropped ones only when "Dropped by judge" is on. */
+  /** Kept first; dropped ones only when "Show pages it found but dropped" is on. */
   knowledge: CompanionKnowledgeHit[];
-  /** Kept first; below-floor ones only when "Dropped by judge" is on. */
+  /** Kept first; below-floor ones only when "Show pages it found but dropped" is on. */
   memories: CompanionMemoryHit[];
-  /** "2 memories below strictness 0.70 hidden", or "". */
+  /** "2 weak-match memories hidden", or "". */
   hiddenLine: string;
   /** The knowledge side failed (an "all" search); show NOTICE_KNOWLEDGE_ERROR where its rows would be. */
   knowledgeError: boolean;
@@ -253,14 +257,14 @@ export const NOTICE_NO_COLLECTION = "This character reads no collection. Pick on
 export const NOTICE_SMALL_TALK = "Small talk — the files were not searched.";
 export const NOTICE_PRIVATE = "This character is in privacy mode B: memories can't be shown.";
 export const NOTICE_KNOWLEDGE_ERROR = "Knowledge search isn't available right now. Try again.";
-export const NOTICE_NOTHING = "Nothing passed. Lower the strictness or the judge minimum.";
+export const NOTICE_NOTHING = "Nothing passed the checks, so nothing would be read.";
 
 /**
  * Turns one search response into what the screen lists, using the display-only
- * checkboxes. Example: 3 knowledge hits (1 dropped) + 2 memories below 0.70, with
- * "Dropped by judge" off -> 2 knowledge rows, 0 memory rows, hiddenLine "2 memories below strictness 0.70 hidden".
+ * checkbox. Example: 3 knowledge hits (1 dropped) + 2 weak memories, with
+ * "Show pages it found but dropped" off -> 2 knowledge rows, 0 memory rows, hiddenLine "2 weak-match memories hidden".
  */
-export function buildSearchView(result: CompanionSearchResult, o: { showDropped: boolean; strictness: number }): SearchView {
+export function buildSearchView(result: CompanionSearchResult, o: { showDropped: boolean }): SearchView {
   const wantsKnowledge = result.in !== "memories";
   const wantsMemories = result.in !== "knowledge";
   const knowledge = wantsKnowledge ? result.knowledge.filter((h) => h.kept || o.showDropped) : [];
@@ -268,7 +272,7 @@ export function buildSearchView(result: CompanionSearchResult, o: { showDropped:
   const belowFloor = wantsMemories ? result.memories.filter((m) => !m.kept).length : 0;
   const hiddenLine =
     !o.showDropped && belowFloor > 0
-      ? `${belowFloor} ${belowFloor === 1 ? "memory" : "memories"} below strictness ${o.strictness.toFixed(2)} hidden`
+      ? `${belowFloor} weak-match ${belowFloor === 1 ? "memory" : "memories"} hidden`
       : "";
 
   const notices: string[] = [];

@@ -16,7 +16,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.companion import engine, install, keys, memory, memory_search, playground, store
+from app.companion import (engine, install, keys, memory, memory_refresh, memory_search, playground,
+                           playground_people, store)
 from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
@@ -137,8 +138,11 @@ async def put_memory_settings(payload: MemoryScopeIn, ctx: dict = Depends(requir
 
 # --- people (Memories page). DELETE /people/... is declared before /{companion_id} routes. -------
 
+ExternalUserIdPath = Path(min_length=1, max_length=200)
+
+
 @router.delete("/people/{external_user_id}", status_code=204)
-async def forget_person(external_user_id: str = Path(min_length=1, max_length=200),
+async def forget_person(external_user_id: str = ExternalUserIdPath,
                         ctx: dict = Depends(require_companions_manage)):
     """"Delete this person": their chats with every character and every remembered fact,
     business-wide (engine.forget_person). Audited by our person id, never the external id."""
@@ -146,14 +150,69 @@ async def forget_person(external_user_id: str = Path(min_length=1, max_length=20
     person = await store.find_end_user(tenant_id, external_user_id)
     if not person or not await engine.forget_person(tenant_id, external_user_id):
         raise HTTPException(status_code=404, detail="Person not found")
+    _audit_forget(ctx, person["id"])
+
+
+def _audit_forget(ctx: dict, end_user_id: str, *, test: bool = False) -> None:
     try:
         record_audit_event(
-            get_supabase(), tenant_id=tenant_id, actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
+            get_supabase(), tenant_id=ctx["tenant_id"], actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
             action="tenant.companion_person_forgotten", target_type="companion_end_user",
-            target_id=person["id"], metadata={},
+            target_id=end_user_id, metadata={"test_person": True} if test else {},
         )
     except Exception as exc:
         logger.warning("companion forget audit failed (%s)", type(exc).__name__)
+
+
+# --- Playground test customers. Declared before /{companion_id} too. -----------------------------
+# Scoped to the caller's own login: another login's test customers and real customers are 404 here.
+
+class TestPersonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=40)
+
+
+async def _usable_test_person(ctx: dict, external_user_id: str) -> None:
+    try:
+        await playground_people.require_usable(ctx["tenant_id"], ctx["user_id"], external_user_id)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+
+
+@router.get("/test-people")
+async def list_test_people(ctx: dict = Depends(require_companions_manage)):
+    """The Playground's "Testing as" list: "You" first, then this login's test customers."""
+    people = await playground_people.list_people(ctx["tenant_id"], ctx["user_id"])
+    return {"people": people, "max": playground_people.MAX_TEST_PEOPLE}
+
+
+@router.post("/test-people", status_code=201)
+async def create_test_person(payload: TestPersonIn, ctx: dict = Depends(require_companions_manage)):
+    try:
+        return await playground_people.create(ctx["tenant_id"], ctx["user_id"], payload.name)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+
+
+@router.delete("/test-people/{external_user_id}", status_code=204)
+async def delete_test_person(external_user_id: str = ExternalUserIdPath, ctx: dict = Depends(require_companions_manage)):
+    """Deletes a test customer: its chats with every character and every memory, like "Delete this person"."""
+    try:
+        person = await playground_people.delete(ctx["tenant_id"], ctx["user_id"], external_user_id)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    if person:
+        _audit_forget(ctx, person["id"], test=True)
+
+
+@router.post("/test-people/{external_user_id}/start-over")
+async def start_over_test_person(external_user_id: str = ExternalUserIdPath,
+                                 ctx: dict = Depends(require_companions_manage)):
+    """Same test customer (id and name), no chats and no memories: the next chat is a first visit."""
+    try:
+        return await playground_people.start_over(ctx["tenant_id"], ctx["user_id"], external_user_id)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
 
 
 # --- chat API secret keys (Install tab). Declared before /{companion_id} too. --------------------
@@ -320,6 +379,7 @@ class TestChatIn(BaseModel):
     model: str | None = Field(None, max_length=100)   # Playground picker; must be one the tenant has a key for
     use_memory: bool = True                           # False = the "Compare without memory" reply
     settings: PlaygroundSettings | None = None        # Playground settings panel; None = live behaviour
+    test_person: str | None = Field(None, min_length=1, max_length=200)  # a test customer's id; None = "You"
 
 
 class ContinueIn(BaseModel):
@@ -356,12 +416,15 @@ async def test_chat_continue(payload: ContinueIn, ctx: dict = Depends(require_co
 
 @router.post("/{companion_id}/test-chat")
 async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends(require_companions_manage)):
-    """The owner chats with a character from the dashboard. Stored as person "owner-test:<user_id>",
+    """The owner chats with a character from the dashboard, as "You" ("owner-test:<user_id>") or one of
+    their test customers (playground_people). Either way it is a test person,
     so it never mixes with a real end user's history."""
     tenant_id = ctx["tenant_id"]
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Type a message first")
+    person_id = payload.test_person or playground_people.you_id(ctx["user_id"])
+    await _usable_test_person(ctx, person_id)
     if payload.model:
         allowed = {m["id"] for m in await asyncio.to_thread(ai_reply.available_reply_models, tenant_id)}
         if payload.model not in allowed:
@@ -370,12 +433,16 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
     try:
         with playground.use(ov):
             result = await engine.reply(
-                str(companion_id), tenant_id, f"owner-test:{ctx['user_id']}", message,
+                str(companion_id), tenant_id, person_id, message,
                 tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory)
     except _EXPECTED as exc:
         raise _http_error(exc)
-    model = payload.model or (await asyncio.to_thread(_tenant_model_id, tenant_id))
-    return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model or "", model), "trace": ov.trace}
+    companion = await store.get_companion(tenant_id, str(companion_id)) or {}
+    model = payload.model or engine.character_model(companion)
+    person = await store.find_end_user(tenant_id, person_id)
+    status = await memory_refresh.status({**companion, "tenant_id": tenant_id}, person and person["id"])
+    return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model, model), "trace": ov.trace,
+            "memory": status}
 
 
 
@@ -420,12 +487,53 @@ async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
         "people": [
             {"external_user_id": p["external_user_id"], "display_name": p["display_name"],
              "fact_count": None if private else p["fact_count"], "message_count": p["message_count"],
-             "last_seen_at": p["last_seen_at"]}
+             "last_seen_at": p["last_seen_at"], "is_test": p.get("is_test", False)}
             for p in people
         ],
         "total": total,
         "privacy_mode": row.get("privacy_mode", "A"),
     }
+
+
+async def _test_pair(companion_id: UUID, external_user_id: str, ctx: dict) -> tuple[dict, dict | None]:
+    """(character, person or None) for a Playground memory call; the person must be the caller's own."""
+    tenant_id = ctx["tenant_id"]
+    await _usable_test_person(ctx, external_user_id)
+    companion = await store.get_companion(tenant_id, str(companion_id))
+    if not companion:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return {**companion, "tenant_id": tenant_id}, await store.find_end_user(tenant_id, external_user_id)
+
+
+@router.get("/{companion_id}/test-people/{external_user_id}/memory")
+async def test_person_memory_status(companion_id: UUID, external_user_id: str = ExternalUserId,
+                                    ctx: dict = Depends(require_companions_manage)):
+    """The Playground memory line: {level, unread, saves_at}."""
+    companion, person = await _test_pair(companion_id, external_user_id, ctx)
+    return await memory_refresh.status(companion, person and person["id"])
+
+
+_SAVE_OUTCOME = {"ok": "saved", "busy": "busy", "waiting": "waiting"}
+
+
+@router.post("/{companion_id}/test-people/{external_user_id}/save-memory")
+async def save_test_person_memory(companion_id: UUID, external_user_id: str = ExternalUserId,
+                                  ctx: dict = Depends(require_companions_manage)):
+    """"Save now": runs the memory step the Nth message would start, at once (one AI call).
+    facts = what the character now remembers about this person (None in privacy mode B)."""
+    companion, person = await _test_pair(companion_id, external_user_id, ctx)
+    if (companion.get("memory_level") or 1) != 2:
+        raise HTTPException(status_code=409, detail="This character keeps only recent chat, so there is nothing to save.")
+    if not person:
+        return {"outcome": "nothing_new", "facts": 0}
+    outcome = await memory_refresh.save_now(companion, person["id"])
+    if outcome == "failed":
+        raise HTTPException(status_code=502, detail="The AI couldn't read the chat just now. Try again in a few minutes.")
+    if companion.get("privacy_mode") == "B":
+        facts = None
+    else:
+        facts = len(await store.list_facts(ctx["tenant_id"], person["id"], str(companion_id), include_closed=False))
+    return {"outcome": _SAVE_OUTCOME.get(outcome, "nothing_new"), "facts": facts}
 
 
 class SearchIn(BaseModel):

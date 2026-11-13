@@ -24,9 +24,11 @@ def env(monkeypatch):
     fake = FakeSupabase()
     monkeypatch.setattr(store, "get_supabase", lambda: fake)
     monkeypatch.setattr(engine.ai_reply, "_resolve_provider", lambda tenant_id: ("groq", "llama"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(engine.ai_reply, "_provider_for", lambda tenant_id, model=None: engine.ai_reply._resolve_provider(tenant_id))
     state = {"llm": [], "kb": [], "replies": ["[mood: warm] Vanakkam Karthik!"]}
 
-    async def fake_llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def fake_llm(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, **kw):
         state["llm"].append({"messages": messages, "max_tokens": max_tokens, "tenant_id": tenant_id,
                              "purpose": purpose, "temperature": temperature})
         nxt = state["replies"].pop(0) if state["replies"] else "[mood: calm] ok"
@@ -210,6 +212,8 @@ def test_misconfigured_paused_and_missing(env, monkeypatch):
     def unset(tenant_id):
         raise RuntimeError("ai_reply_model not configured for this client")
     monkeypatch.setattr(engine.ai_reply, "_resolve_provider", unset)
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(engine.ai_reply, "_provider_for", lambda tenant_id, model=None: engine.ai_reply._resolve_provider(tenant_id))
     with pytest.raises(engine.CompanionMisconfigured):
         reply(env.vastu["id"])
     assert env.db.rows("companion_messages") == []

@@ -10,6 +10,7 @@ import {
   type CompanionPerson,
 } from "@/lib/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { personLabel } from "@/components/agents/playground";
 import { SECTION_LABEL, layoutMemoryGraph } from "@/components/agents/memoryGraph";
 import { BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
 
@@ -35,7 +36,7 @@ export function PersonMemory({
   const [view, setView] = useState<"list" | "diary" | "graph">("list");
   const [confirmForget, setConfirmForget] = useState(false);
   const [busy, setBusy] = useState(false);
-  const name = person.display_name || person.external_user_id;
+  const name = personLabel(person);
 
   const load = useCallback(() => {
     setError("");
@@ -77,7 +78,7 @@ export function PersonMemory({
         <div>
           <h2 id="person-title" className="text-base font-semibold text-ink">{name}</h2>
           <p className="text-xs text-ink-muted">
-            User id {person.external_user_id} · {person.message_count} messages · last seen {formatDate(person.last_seen_at)}
+            {person.is_test ? "Playground test customer" : `User id ${person.external_user_id}`} · {person.message_count} messages · last seen {formatDate(person.last_seen_at)}
           </p>
         </div>
         <button type="button" onClick={() => setConfirmForget(true)} className={cn(BTN_SECONDARY, "min-h-8 px-3 text-danger")}>

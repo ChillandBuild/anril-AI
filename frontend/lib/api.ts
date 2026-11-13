@@ -4024,6 +4024,11 @@ export interface Companion {
   temperament: string;
   default_mood: CompanionMood;
   language: string;
+  /**
+   * The AI model every reply from this character uses, e.g. "google/gemini-3.1-flash-lite".
+   * The label to show comes from companionsApi.models().
+   */
+  model: string;
   rules: string[];
   knowledge_tag_id: string | null;
   /** The collection of books this character reads (Anril Agents knowledge base). */
@@ -4090,7 +4095,32 @@ export interface CompanionReply {
   sources?: { document: string; page_from: number; page_to: number }[];
   /** What was searched for this reply, one plain line per step (test chat only). Example: "Memory card: 6 lines". */
   trace?: string[];
+  /** Where this test customer's memory stands after the reply (test chat only). */
+  memory?: CompanionMemoryStatus;
 }
+
+/**
+ * How close a test customer is to the next memory save. Example: Level 2, 3 unread of 8 ->
+ * { level: 2, unread: 3, saves_at: 8 }. Level 1 characters keep recent chat only.
+ */
+export interface CompanionMemoryStatus {
+  level: 1 | 2;
+  unread: number;
+  saves_at: number;
+}
+
+/**
+ * A made-up customer the owner chats as in the Playground. "You" is always first.
+ * Example: { external_user_id: "owner-test:u1:t4k9xz", name: "Asha", is_you: false }.
+ */
+export interface TestPerson {
+  external_user_id: string;
+  name: string;
+  is_you: boolean;
+}
+
+/** What "Save now" did. saved = facts written; nothing_new = no unread messages; busy = a save was already running; waiting = the last reply is still being written. */
+export type SaveMemoryOutcome = "saved" | "nothing_new" | "busy" | "waiting";
 
 export interface CompanionMemoryFact {
   id: string;
@@ -4125,7 +4155,10 @@ export interface CompanionOverview {
 
 export interface CompanionPerson {
   external_user_id: string;
+  /** For a Playground test customer: the name the owner typed; null for "You". */
   display_name: string | null;
+  /** A Playground test customer (the Memories page tags it "Playground"). */
+  is_test: boolean;
   /** null when the character is in privacy mode B. */
   fact_count: number | null;
   message_count: number;
@@ -4267,7 +4300,14 @@ export const companionsApi = {
   testChat: (
     id: string,
     message: string,
-    opts: { tools?: CompanionAppTool[]; model?: string; use_memory?: boolean; settings?: PlaygroundSettings } = {},
+    opts: {
+      tools?: CompanionAppTool[];
+      model?: string;
+      use_memory?: boolean;
+      settings?: PlaygroundSettings;
+      /** A test customer's external_user_id; left out = "You". */
+      test_person?: string;
+    } = {},
   ) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
       method: "POST",
@@ -4319,6 +4359,26 @@ export const companionsApi = {
       `${COMPANIONS}/${id}/people${qs ? `?${qs}` : ""}`,
     );
   },
+  /** The owner's test customers for the Playground ("You" first) and how many they may have. */
+  testPeople: () => apiFetch<{ people: TestPerson[]; max: number }>(`${COMPANIONS}/test-people`),
+  /** Add a test customer. 409 when the max is reached. */
+  createTestPerson: (name: string) =>
+    apiFetch<TestPerson>(`${COMPANIONS}/test-people`, { method: "POST", body: JSON.stringify({ name }) }),
+  /** Wipe the test customer's chats and memories and remove it from the list. "You" cannot be deleted (400). */
+  deleteTestPerson: (externalUserId: string) =>
+    apiFetchNoContent(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}`, { method: "DELETE" }),
+  /** Wipe the chats and memories but keep the name; the next chat is a first visit. Same id comes back. */
+  startOverTestPerson: (externalUserId: string) =>
+    apiFetch<TestPerson>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/start-over`, { method: "POST" }),
+  /** Memory status of one test customer with one character. */
+  testPersonMemory: (id: string, externalUserId: string) =>
+    apiFetch<CompanionMemoryStatus>(`${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/memory`),
+  /** "Save now": run the memory save early. facts is null in privacy mode B. 409 for a Level 1 character, 502 if the AI call failed. */
+  saveTestPersonMemory: (id: string, externalUserId: string) =>
+    apiFetch<{ outcome: SaveMemoryOutcome; facts: number | null }>(
+      `${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/save-memory`,
+      { method: "POST" },
+    ),
   /** "Delete this person": chats and facts with every character. */
   forgetPerson: (externalUserId: string) =>
     apiFetchNoContent(`${COMPANIONS}/people/${encodeURIComponent(externalUserId)}`, { method: "DELETE" }),

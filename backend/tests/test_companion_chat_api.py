@@ -59,11 +59,13 @@ def env(monkeypatch):
     monkeypatch.setattr(companions, "get_supabase", lambda: fake)
     state = {"script": [], "audit": []}
     monkeypatch.setattr(engine.ai_reply, "_resolve_provider", lambda t: ("groq", "m"))
+    # The character's own model goes through _provider_for: same key check as _resolve_provider.
+    monkeypatch.setattr(engine.ai_reply, "_provider_for", lambda tenant_id, model=None: engine.ai_reply._resolve_provider(tenant_id))
 
-    async def with_tools(messages, tools, max_tokens=300, tenant_id=None, *, purpose="ai_reply"):
+    async def with_tools(messages, tools, max_tokens=300, tenant_id=None, *, purpose="ai_reply", **kw):
         return state["script"].pop(0)
 
-    async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4):
+    async def plain(messages, max_tokens=300, tenant_id=None, *, purpose="ai_reply", temperature=0.4, **kw):
         return "[mood: warm] Vanakkam Karthik!"
 
     async def kb(tenant_id, collection_id, message, history=None, *, companion_id=None, rewrite=None):
