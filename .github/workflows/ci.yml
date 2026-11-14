@@ -9,6 +9,30 @@ on:
       - main
 
 jobs:
+  # Backstop for the pre-commit secret check (hooks can be skipped or not installed): scans only
+  # the commits in this push or PR, so the already-revoked keys in old history don't fail it.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Scan new commits
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then RANGE="$BASE..HEAD"; else RANGE="-1 HEAD"; fi
+          echo "Scanning: $RANGE"
+          gitleaks git --redact --no-banner --config .gitleaks.toml --log-opts="$RANGE"
+
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest
