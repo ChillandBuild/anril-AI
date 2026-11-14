@@ -11,6 +11,7 @@ import {
   CalendarClock,
   Grid3X3,
   HandCoins,
+  History,
   Inbox,
   Layers,
   Megaphone,
@@ -24,6 +25,7 @@ import {
   Send,
   ShoppingBag,
   Settings,
+  SlidersHorizontal,
   ShieldCheck,
   SquarePen,
   Zap,
@@ -54,6 +56,7 @@ type MoreMenuSection =
   | "engage"
   | "reach"
   | "sms"
+  | "otp"
   | "commerce"
   | "callIq"
   | "aiSetup"
@@ -80,6 +83,7 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
   { key: "engage", title: "ANRIL ENGAGE" },
   { key: "reach", title: "ANRIL REACH" },
   { key: "sms", title: "ANRIL SMS" },
+  { key: "otp", title: "ANRIL OTP" },
   { key: "commerce", title: "SALES · ANRIL COMMERCE" },
   { key: "callIq", title: "ANRIL CALL IQ" },
   { key: "aiSetup", title: "AI SETUP" },
@@ -89,6 +93,9 @@ const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] =
 
 const MESSAGING_FEATURES = ["outbound_messaging", "inbound_messaging"];
 const SMS_PERMS = ["sms.view", "sms.manage"];
+/** Anril OTP is not behind the SMS feature flag, so it is gated by permissions only. */
+// Same rule as the desktop sidebar (navSections.otpVisible) and the backend (routes/otp.py `view`).
+const OTP_PERMS = ["sms.view", "sms.manage", "settings.view", "settings.manage"];
 
 const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/analytics", icon: BarChart2, label: "Analytics", section: "top", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES },
@@ -106,6 +113,10 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/sms/transactions", icon: ReceiptText, label: "Transactions", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/sms/developer", icon: Code2, label: "Dev API", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/sms/otp", icon: KeyRound, label: "Smart OTP", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
+  { href: "/dashboard/otp", icon: KeyRound, label: "Send & check", section: "otp", permissionAny: OTP_PERMS, exact: true },
+  { href: "/dashboard/otp/history", icon: History, label: "History", section: "otp", permissionAny: OTP_PERMS },
+  { href: "/dashboard/otp/settings", icon: SlidersHorizontal, label: "Settings", section: "otp", permissionAny: OTP_PERMS },
+  { href: "/dashboard/otp/api", icon: Code2, label: "API & docs", section: "otp", permissionAny: OTP_PERMS },
   { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
   {
     href: "/dashboard/catalog",

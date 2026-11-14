@@ -3,8 +3,8 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import useSWR from "swr";
 import { api, type OtpHistoryItem } from "@/lib/api";
-import { formatIst } from "../helpers";
-import { Badge, Btn, Card, CardHeader, Empty, LoadError, Modal, Notice, Skeleton, TableWrap, tdCls, thCls } from "../ui";
+import { formatIst } from "../sms/helpers";
+import { Badge, Btn, Card, CardHeader, Empty, LoadError, Modal, Notice, Skeleton, TableWrap, tdCls, thCls } from "../sms/ui";
 import {
   ChannelBadge,
   ORIGIN_LABELS,

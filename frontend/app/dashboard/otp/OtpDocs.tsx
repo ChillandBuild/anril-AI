@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
-import { Btn, Card, CardHeader, Notice, TableWrap, tdCls, thCls } from "../ui";
+import { Btn, Card, CardHeader, Notice, TableWrap, tdCls, thCls } from "../sms/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://YOUR-ANRIL-API";
 const OTP_BASE = `${API_BASE}/api/v1/otp`;

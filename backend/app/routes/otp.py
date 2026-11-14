@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import require_owner, require_permission
+from app.dependencies.tenant import require_any_permission, require_owner, require_permission
 from app.routes.auto_messages import _client_ip, _SlidingWindow
 from app.services import bulk9_client
 from app.services import otp as svc
@@ -41,8 +41,9 @@ _verify_limiter = _SlidingWindow(60, 60)
 _key_change_limiter = _SlidingWindow(5, 60)
 _console_send_limiter = _SlidingWindow(10, 60)
 
-view = require_permission("sms.view")
-manage = require_permission("sms.manage")
+# OTP is its own section (not only SMS): WhatsApp-only clients reach it through settings access.
+view = require_any_permission("sms.view", "settings.view")
+manage = require_any_permission("sms.manage", "settings.manage")
 settings_manage = require_permission("settings.manage")
 
 Mode = Literal["sms", "whatsapp", "both", "sms_then_whatsapp"]

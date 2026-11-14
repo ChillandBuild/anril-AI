@@ -1,23 +1,15 @@
 "use client";
 
 import type { OtpHistoryItem, OtpMode, OtpView } from "@/lib/api";
-import type { Tone } from "../helpers";
-import { Badge, Btn } from "../ui";
+import type { Tone } from "../sms/helpers";
+import { Badge, Btn } from "../sms/ui";
 
 /** The backend puts a plain-English message in `detail`, which apiFetch copies to err.message. */
 export function otpError(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-export const OTP_TABS = [
-  { value: "send", label: "Send & check" },
-  { value: "history", label: "History" },
-  { value: "settings", label: "Settings" },
-  { value: "api", label: "API & docs" },
-  { value: "smart", label: "Smart OTP (SMS)" },
-] as const;
-
-export const OTP_BASE = "/dashboard/sms/otp";
+export const OTP_BASE = "/dashboard/otp";
 
 /** Shared SWR key so the Send, Settings and History tabs see one overview. */
 export const OTP_OVERVIEW_KEY = "otp:overview";

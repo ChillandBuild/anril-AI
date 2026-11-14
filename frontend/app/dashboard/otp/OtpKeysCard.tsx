@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { api, type OtpKey } from "@/lib/api";
-import { Badge, Btn, Card, CardHeader, Empty, LoadError, Modal, Notice, Skeleton, TableWrap, tdCls, thCls } from "../ui";
-import { usePerm } from "../usePerm";
+import { Badge, Btn, Card, CardHeader, Empty, LoadError, Modal, Notice, Skeleton, TableWrap, tdCls, thCls } from "../sms/ui";
+import { usePerm } from "../sms/usePerm";
 
 const MAX_ACTIVE_KEYS = 2;
 

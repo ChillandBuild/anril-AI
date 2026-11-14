@@ -495,3 +495,14 @@ def test_wrong_tries_setting_is_range_checked(env):
         with pytest.raises(svc.OtpError):
             svc.save_settings(env.db, TENANT, {"max_attempts": bad})
     assert svc.save_settings(env.db, TENANT, {"max_attempts": 3})["max_attempts"] == 3
+
+
+def test_settings_access_alone_reaches_otp_but_not_keys(env):
+    """WhatsApp-only clients: a member with settings access (no SMS permission) can use OTP."""
+    client, holder = _client(env)
+    holder["ctx"] = {"tenant_id": TENANT, "role": "admin", "user_id": "u3", "permissions": ["settings.manage"]}
+    assert client.get("/api/v1/otp-console/overview").status_code == 200
+    assert client.post("/api/v1/otp-console/send", json={"phone": PHONE, "mode": "sms"}).status_code == 200
+    assert client.get("/api/v1/otp-console/keys").status_code == 403
+    holder["ctx"] = {"tenant_id": TENANT, "role": "member", "user_id": "u4", "permissions": ["leads.view"]}
+    assert client.get("/api/v1/otp-console/overview").status_code == 403

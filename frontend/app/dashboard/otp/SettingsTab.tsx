@@ -4,9 +4,9 @@ import { useState, type FormEvent } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { api, type OtpMode, type OtpOverview, type OtpSettings } from "@/lib/api";
-import { formatCount } from "../helpers";
-import { usePerm } from "../usePerm";
-import { Badge, Btn, Card, CardHeader, Field, LoadError, Modal, Notice, Skeleton, inputCls } from "../ui";
+import { formatCount } from "../sms/helpers";
+import { usePerm } from "../sms/usePerm";
+import { Badge, Btn, Card, CardHeader, Field, LoadError, Modal, Notice, Skeleton, inputCls } from "../sms/ui";
 import { ModePicker, OTP_OVERVIEW_KEY, otpError } from "./otpShared";
 
 const SMS_TEMPLATES_KEY = "otp:sms-templates";

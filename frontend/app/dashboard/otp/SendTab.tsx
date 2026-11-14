@@ -4,9 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { api, type OtpMode, type OtpOverview, type OtpVerifyResult, type OtpView } from "@/lib/api";
-import { formatCount } from "../helpers";
-import { usePerm } from "../usePerm";
-import { Badge, Btn, Card, CardHeader, Field, LoadError, Notice, Skeleton, inputCls } from "../ui";
+import { formatCount } from "../sms/helpers";
+import { usePerm } from "../sms/usePerm";
+import { Badge, Btn, Card, CardHeader, Field, LoadError, Notice, Skeleton, inputCls } from "../sms/ui";
 import { ChannelBadge, ModePicker, OTP_BASE, OTP_OVERVIEW_KEY, ResultBadge, otpError, otpIsSettled } from "./otpShared";
 
 const POLL_INTERVAL_MS = 3000;
@@ -130,8 +130,8 @@ function SendContent({ overview, canManage }: { overview: OtpOverview; canManage
       <Card>
         <CardHeader title="Channels" hint="Where codes can go. A way of sending works only when its channels are ready." />
         <div className="divide-y divide-[#e2e8f0] px-4 sm:px-5">
-          <ChannelRow name="SMS" ready={overview.channels.sms.ready} problem={overview.channels.sms.problem} onOpenSettings={() => router.push(`${OTP_BASE}?tab=settings`)} />
-          <ChannelRow name="WhatsApp" ready={overview.channels.whatsapp.ready} problem={overview.channels.whatsapp.problem} onOpenSettings={() => router.push(`${OTP_BASE}?tab=settings`)} />
+          <ChannelRow name="SMS" ready={overview.channels.sms.ready} problem={overview.channels.sms.problem} onOpenSettings={() => router.push(`${OTP_BASE}/settings`)} />
+          <ChannelRow name="WhatsApp" ready={overview.channels.whatsapp.ready} problem={overview.channels.whatsapp.problem} onOpenSettings={() => router.push(`${OTP_BASE}/settings`)} />
         </div>
       </Card>
 

@@ -38,7 +38,7 @@ const SMS_TITLES: Record<string, { title: string; description: string }> = {
   reports: { title: "Delivery Reports", description: "Every send and what happened to each message." },
   transactions: { title: "Transactions", description: "Top-ups and SMS used, with the balance after each." },
   developer: { title: "Dev API", description: "Send SMS from your own software with your API key." },
-  otp: { title: "OTP", description: "Send login codes by SMS, WhatsApp or both, and see what happened to each one." },
+  otp: { title: "Smart OTP", description: "Send and check OTPs, and see their history." },
 };
 
 /* ------------------------------------------------------------------ *
@@ -127,15 +127,6 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "roles", label: "Roles", icon: ShieldCheck },
       { value: "users", label: "Users", icon: Users },
       { value: "audit", label: "Audit Log", icon: ScrollText },
-    ],
-  },
-  "/dashboard/sms/otp": {
-    tabs: [
-      { value: "send", label: "Send & check" },
-      { value: "history", label: "History" },
-      { value: "settings", label: "Settings" },
-      { value: "api", label: "API & docs" },
-      { value: "smart", label: "Smart OTP (SMS)" },
     ],
   },
 };
@@ -376,6 +367,14 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     return {
       title: "My performance",
       description: "Your calls, attendance and performance at a glance.",
+    };
+  }
+  if (pathname === "/dashboard/otp" || pathname.startsWith("/dashboard/otp/")) {
+    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Settings", api: "API & docs" };
+    const tab = otpTab[pathname.split("/")[3] ?? ""] ?? otpTab[""];
+    return {
+      title: `Anril OTP / ${tab}`,
+      description: "Send login codes by SMS, WhatsApp or both, and see what happened to each one.",
     };
   }
   if (pathname === "/dashboard/sms" || pathname.startsWith("/dashboard/sms/")) {

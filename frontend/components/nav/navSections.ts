@@ -2,7 +2,7 @@ import {
   ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
   Inbox, Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
-  BookUser, Code2, KeyRound, LayoutDashboard, ListChecks, ReceiptText,
+  BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
 } from "lucide-react";
 import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
 
@@ -30,6 +30,7 @@ export type SectionKey =
   | "engage"
   | "reach"
   | "sms"
+  | "otp"
   | "commerce"
   | "callIq"
   | "aiSetup"
@@ -217,6 +218,28 @@ const SMS_PAGES: NavLeaf[] = ([
   };
 });
 
+/** Anril OTP is its own section, not under SMS, so WhatsApp-only clients can reach it (not gated on smsOn).
+ *  Same permission list as MoreMenu OTP_PERMS and the backend's routes/otp.py `view`. */
+const otpVisible = (a: NavAccess) => a.isSubscribed && a.canAny(["sms.view", "sms.manage", "settings.view", "settings.manage"]);
+
+const OTP_PAGES: NavLeaf[] = ([
+  ["", "Send & check", KeyRound],
+  ["history", "History", History],
+  ["settings", "Settings", SlidersHorizontal],
+  ["api", "API & docs", Code2],
+] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
+  const href = slug ? `/dashboard/otp/${slug}` : "/dashboard/otp";
+  return {
+    kind: "link",
+    key: slug ? `otp-${slug}` : "otp",
+    href,
+    label,
+    icon,
+    visible: otpVisible,
+    isActive: (p) => (slug ? p === href || p.startsWith(`${href}/`) : p === href),
+  };
+});
+
 const DEALS: NavLeaf = {
   kind: "link",
   key: "deals",
@@ -339,6 +362,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { key: "engage", title: "Anril Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
   { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS] },
   { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES },
+  { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES },
   { key: "commerce", title: "Anril Commerce", icon: Coins, entries: [DEALS, CATALOGUE] },
   { key: "callIq", title: "Anril Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
   { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },

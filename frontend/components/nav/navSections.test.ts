@@ -61,6 +61,10 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Transactions", href: "/dashboard/sms/transactions" },
   { label: "Dev API", href: "/dashboard/sms/developer" },
   { label: "Smart OTP", href: "/dashboard/sms/otp" },
+  { label: "Send & check", href: "/dashboard/otp" },
+  { label: "History", href: "/dashboard/otp/history" },
+  { label: "Settings", href: "/dashboard/otp/settings" },
+  { label: "API & docs", href: "/dashboard/otp/api" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
@@ -204,6 +208,52 @@ describe("Anril SMS section", () => {
     expect(sectionContainsPage(smsSection, "/dashboard/sms-other")).toBe(false);
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("sms");
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms/send")).toBe("sms");
+  });
+});
+
+describe("Anril OTP section", () => {
+  const otpSection = NAV_SECTIONS.find((section) => section.key === "otp")!;
+  const otpLinks = (access: NavAccess) => visibleEntries(otpSection, access) as NavLeaf[];
+
+  it("is its own main-menu section with the 4 pages, after Anril SMS", () => {
+    expect(otpSection.title).toBe("Anril OTP");
+    expect(otpLinks(allAccess).map((leaf) => leaf.label)).toEqual(["Send & check", "History", "Settings", "API & docs"]);
+    expect(otpLinks(allAccess).map((leaf) => leaf.href)).toEqual([
+      "/dashboard/otp",
+      "/dashboard/otp/history",
+      "/dashboard/otp/settings",
+      "/dashboard/otp/api",
+    ]);
+    const keys = NAV_SECTIONS.map((section) => section.key);
+    expect(keys.indexOf("otp")).toBe(keys.indexOf("sms") + 1);
+  });
+
+  it.each(["sms.view", "sms.manage", "settings.view", "settings.manage"])("shows with %s when SMS is off", (permission) => {
+    const access: NavAccess = {
+      ...noAccess,
+      isSubscribed: true,
+      smsOn: false,
+      can: (value) => value === permission,
+      canAny: (values) => values.includes(permission),
+    };
+    expect(otpLinks(access)).toHaveLength(4);
+  });
+
+  it("hides the section without an active subscription", () => {
+    expect(otpLinks({ ...allAccess, isSubscribed: false })).toHaveLength(0);
+  });
+
+  it("hides the section without SMS or settings permission", () => {
+    expect(otpLinks({ ...allAccess, canSettings: false, can: () => false, canAny: () => false })).toHaveLength(0);
+  });
+
+  it("marks the root page active only on its exact path", () => {
+    const [sendCheck, history] = otpLinks(allAccess);
+    expect(sendCheck.isActive("/dashboard/otp")).toBe(true);
+    expect(sendCheck.isActive("/dashboard/otp/history")).toBe(false);
+    expect(history.isActive("/dashboard/otp/history")).toBe(true);
+    expect(history.isActive("/dashboard/otp/history-other")).toBe(false);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/otp/api")).toBe("otp");
   });
 });
 
