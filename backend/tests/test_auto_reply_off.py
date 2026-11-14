@@ -322,6 +322,7 @@ EXEMPT = {
     "services/deal_actions.py": "only runs inside generate_reply, after its switch check",
     "services/deal_turn.py": "only runs inside generate_reply, after its switch check",
     "services/partner_events.py": "only called by intake.partner_send_template, after its switch check",
+    "services/otp.py": "login codes the customer asked for (client's server / dashboard); blocking them breaks logins",
 }
 
 

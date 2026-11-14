@@ -1,4 +1,4 @@
-"""The 30 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 31 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -24,6 +24,7 @@ RETRY_CLASS: dict[str, str] = {
     "sms-send": "A",
     "sms-reconcile": "A",
     "sms-balance-sync": "A",
+    "otp-sweep": "A",
     "numbers-pool-sync": "B",
     "send-log-prune": "B",
     "scheduler-runs-prune": "B",
@@ -194,6 +195,15 @@ async def sms_balance_sync(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.sms_wallet import sync_balances
     await sync_balances(get_supabase())
+
+
+@queue_app.periodic(cron="* * * * *", periodic_id="otp-sweep")
+# Class A (claims are atomic), locked so two copies don't both try the same overdue backups.
+@queue_app.task(name="otp-sweep", **_one_at_a_time("otp-sweep"), queue="messages")
+async def otp_sweep(timestamp: int) -> None:
+    from app.db.supabase import get_supabase
+    from app.services.otp import sweep
+    await sweep(get_supabase())
 
 
 @queue_app.periodic(cron="30 0,12 * * *", periodic_id="numbers-pool-sync")  # 06:00 and 18:00 IST

@@ -171,6 +171,14 @@ def handle_callback(db, tenant_id: str, payload: dict) -> dict:
 
 def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
     status = classify(p.get("status") or p.get("status_lower"))
+    udf1 = str(p.get("udf1") or "")
+    if udf1.startswith("otp:"):  # an Anril OTP SMS (services/otp.py tags it otp:<request id>)
+        from app.services import otp
+        matched = otp.apply_sms_report(db, tenant_id, udf1[4:], status,
+                                       p.get("status_description") or p.get("description") or p.get("failure_reason"))
+        if matched and event_id:
+            db.table("sms_delivery_events").update({"matched": True}).eq("id", event_id).execute()
+        return {"status": "ok" if matched else "unmatched"}
     msg = _find_message(db, tenant_id, udf1=p.get("udf1"),
                         request_id=p.get("request_id") or p.get("server_request_id"), phone=p.get("mobile"))
     if not msg:

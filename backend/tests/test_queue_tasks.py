@@ -21,7 +21,7 @@ FIRES = 30
 MESSAGES = {
     "scheduled-broadcasts", "reengagement-rules", "silence-nudge", "callback-notifications",
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
-    "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up",
+    "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
 COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "companion-kb-learning"}
@@ -55,6 +55,7 @@ CALLEES = {
     "sms-send": ("app.services.sms_campaigns.process_due_sms", True, True),
     "sms-reconcile": ("app.services.sms_delivery.reconcile", True, True),
     "sms-balance-sync": ("app.services.sms_wallet.sync_balances", True, True),
+    "otp-sweep": ("app.services.otp.sweep", True, True),
     "numbers-pool-sync": ("app.services.number_sync.sync_all_tenants_pool", True, False),
     "send-log-prune": ("app.services.outbound_router.prune_send_log", True, False),
     "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
@@ -78,7 +79,7 @@ MONDAY = 0
 EVERY = {
     "scheduled-broadcasts": 60, "reengagement-rules": 60, "silence-nudge": 60,
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
-    "scheduled-templates": 60, "sms-send": 60, "companion-kb-ingest": 60,
+    "scheduled-templates": 60, "sms-send": 60, "companion-kb-ingest": 60, "otp-sweep": 60,
     "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
     "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "instant-forms-catch-up": 1800, "ad-insights-sync": 3600,
@@ -115,7 +116,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 30
+    assert len(_periodic()) == 31
 
 
 def test_task_name_matches_periodic_id():
@@ -168,7 +169,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (20, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (21, 4, 6)
 
 
 def test_sync_and_async_split():
@@ -224,7 +225,7 @@ async def test_scheduled_broadcasts_sets_the_heartbeat_for_the_ready_check():
 
 # sms-send is class A (a sweep), but two overlapping copies can both build the same
 # campaign when a build runs past BUILD_STALE (10 min), so it is locked too.
-ONE_AT_A_TIME = CLASS_C | {"sms-send", "companion-memory", "companion-diary", "companion-search-backfill",
+ONE_AT_A_TIME = CLASS_C | {"sms-send", "otp-sweep", "companion-memory", "companion-diary", "companion-search-backfill",
                             "companion-kb-ingest", "companion-kb-learning"}
 
 

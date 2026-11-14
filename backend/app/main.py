@@ -27,6 +27,7 @@ from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
+from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
 from app.routes import sms, sms_contacts, sms_webhooks, operator_sms
@@ -400,6 +401,8 @@ app.include_router(auto_messages.public_router, prefix="/api/v1/auto-messages", 
 app.include_router(auto_messages.router, prefix="/api/v1/auto-messages", tags=["auto-messages"], dependencies=_auth)
 app.include_router(private_send.public_router, prefix="/api/v1/private-send", tags=["private-send"])
 app.include_router(private_send_keys.router, prefix="/api/v1/private-send", tags=["private-send-keys"], dependencies=_auth)
+app.include_router(otp_routes.public_router, prefix="/api/v1/otp", tags=["otp-api"])
+app.include_router(otp_routes.router, prefix="/api/v1/otp-console", tags=["otp"], dependencies=_auth)
 # Legacy prefix. Razorpay's dashboard has /api/v1/expert-handoff/razorpay-webhook
 # registered externally; remove these two lines only after updating it there.
 app.include_router(intake_public_router, prefix="/api/v1/expert-handoff", tags=["intake-webhook-legacy"])

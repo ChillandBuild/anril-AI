@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from app.db.supabase import get_supabase
 from app.config import settings
+from app.services import otp as otp_service
 from app.services.growth import record_stage_event
 from app.services.google_ads_attribution import parse_google_ref
 from app.services.failover import update_number_quality, handle_quality_red, handle_quality_yellow, set_portfolio_limit
@@ -831,6 +832,17 @@ async def whatsapp_webhook(
                 for msg in value.get("messages", []):
                     msg_type = msg.get("type")
                     msg_id = msg.get("id", "")
+                    # WhatsApp's "I didn't request a code" button on an OTP message: cancel that
+                    # code and tell the client's server. Never a chat turn: no reply, no AI.
+                    if msg_type == "button" and (msg.get("button") or {}).get("payload") == otp_service.NOT_REQUESTED_PAYLOAD:
+                        try:
+                            await asyncio.to_thread(
+                                otp_service.handle_not_requested, db, tenant_id,
+                                phone=msg.get("from", ""), context_wamid=(msg.get("context") or {}).get("id"),
+                            )
+                        except Exception as e:
+                            logger.error(f"otp not-requested handling failed tenant={tenant_id}: {type(e).__name__}")
+                        continue
                     # image/document/video/sticker: persisted and, if captioned,
                     # routed through the normal text pipeline using the caption;
                     # uncaptioned (every sticker included) gets one canned ack
@@ -1188,5 +1200,9 @@ async def whatsapp_webhook(
                 statuses = value.get("statuses") or []
                 if statuses:
                     await asyncio.to_thread(_apply_status_updates, db, tenant_id, statuses)
+                    try:
+                        await asyncio.to_thread(otp_service.apply_whatsapp_statuses, db, tenant_id, statuses)
+                    except Exception as e:
+                        logger.error(f"otp whatsapp status update failed tenant={tenant_id}: {type(e).__name__}")
 
     return {"status": "ok"}

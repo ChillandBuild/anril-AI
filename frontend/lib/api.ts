@@ -2003,7 +2003,91 @@ function smsMessageQuery(f: SmsMessageFilters): string {
   return qs.toString();
 }
 
+// ---- Anril OTP (/api/v1/otp-console) ----
+export type OtpMode = "sms" | "whatsapp" | "both" | "sms_then_whatsapp";
+export type OtpSettings = {
+  default_mode: OtpMode;
+  fallback_wait_seconds: number;
+  max_per_hour: number;
+  expiry_minutes: number;
+  code_length: number;
+  max_attempts: number;
+  sms_sender_id: string | null;
+  sms_message_id: string | null;
+  wa_template_name: string | null;
+  wa_template_language: string | null;
+  status_webhook_url: string | null;
+  has_webhook_secret: boolean;
+};
+export type OtpChannel = { ready: boolean; problem: string | null };
+export type OtpOverview = {
+  settings: OtpSettings;
+  channels: { sms: OtpChannel; whatsapp: OtpChannel };
+  not_requested_7d: number;
+  failed_updates_7d: number;
+  limits: Record<"fallback_wait_seconds" | "max_per_hour" | "expiry_minutes" | "code_length" | "max_attempts", [number, number]>;
+};
+export type OtpView = {
+  otp_id: string;
+  phone: string;
+  mode: OtpMode;
+  source: "anril" | "client";
+  status: "pending" | "verified" | "expired" | "locked" | "not_requested" | "failed";
+  ref: string | null;
+  expires_at: string;
+  verified_at: string | null;
+  sms: { status: "none" | "sent" | "delivered" | "failed"; error: string | null };
+  whatsapp: { status: "none" | "sent" | "delivered" | "read" | "failed"; error: string | null };
+  whatsapp_backup_sent: boolean;
+  not_requested: boolean;
+  created_at: string;
+};
+export type OtpHistoryItem = OtpView & { origin: "dashboard" | "api" | "bot" | "telecaller"; code: string; attempts: number };
+export type OtpVerifyResult = { verified: boolean; reason: string | null; message: string | null; attempts_left: number; otp_id: string };
+export type OtpKey = { id: string; key_prefix: string; status: "active" | "revoked"; created_at: string; revoked_at: string | null; last_used_at: string | null };
+
 export const api = {
+  otp: {
+    overview: () => apiFetch<OtpOverview>("/api/v1/otp-console/overview"),
+    saveSettings: (patch: Partial<Omit<OtpSettings, "has_webhook_secret">>) =>
+      apiFetch<{ settings: OtpSettings }>("/api/v1/otp-console/settings", { method: "PUT", body: JSON.stringify(patch) }),
+    rotateWebhookSecret: () => apiFetch<{ secret: string }>("/api/v1/otp-console/webhook-secret", { method: "POST" }),
+    testWebhook: () => apiFetch<{ ok: boolean; error: string | null }>("/api/v1/otp-console/webhook-test", { method: "POST" }),
+    send: (data: { phone: string; mode?: OtpMode; code?: string }) =>
+      apiFetch<OtpView>("/api/v1/otp-console/send", { method: "POST", body: JSON.stringify(data) }),
+    verify: (data: { otp_id: string; code: string }) =>
+      apiFetch<OtpVerifyResult>("/api/v1/otp-console/verify", { method: "POST", body: JSON.stringify(data) }),
+    history: (params: { before?: string; limit?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.before) qs.set("before", params.before);
+      if (params.limit != null) qs.set("limit", String(params.limit));
+      const q = qs.toString();
+      return apiFetch<{ items: OtpHistoryItem[] }>(`/api/v1/otp-console/history${q ? `?${q}` : ""}`);
+    },
+    historyItem: (id: string) =>
+      apiFetch<{
+        item: OtpHistoryItem;
+        updates: { event: string; status: string; attempts: number; last_error: string | null; created_at: string; delivered_at: string | null }[];
+      }>(`/api/v1/otp-console/history/${encodeURIComponent(id)}`),
+    smsTemplates: () =>
+      apiFetch<{ templates: { sender_id: string; message_id: string; message: string }[]; problem: string | null }>(
+        "/api/v1/otp-console/sms-templates",
+      ),
+    whatsappTemplates: () =>
+      apiFetch<{ templates: { name: string; language: string; status: string; body: string | null }[]; problem: string | null }>(
+        "/api/v1/otp-console/whatsapp-templates",
+      ),
+    createWhatsappTemplate: (data: { name: string; language: string }) =>
+      apiFetch<{ name: string; language: string; status: string }>("/api/v1/otp-console/whatsapp-templates", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    keys: () => apiFetch<{ keys: OtpKey[] }>("/api/v1/otp-console/keys"),
+    createKey: () =>
+      apiFetch<{ id: string; key: string; key_prefix: string; created_at: string }>("/api/v1/otp-console/keys", { method: "POST" }),
+    revokeKey: (id: string) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/otp-console/keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  },
   sms: {
     status: () => apiFetch<SmsStatus>("/api/v1/sms/status"),
     balance: () => apiFetch<SmsBalance>("/api/v1/sms/balance"),
