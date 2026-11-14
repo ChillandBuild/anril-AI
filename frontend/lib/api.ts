@@ -4181,6 +4181,8 @@ export interface CompanionReply {
   trace?: string[];
   /** Where this test customer's memory stands after the reply (test chat only). */
   memory?: CompanionMemoryStatus;
+  /** Why the reply failed, in plain words, when the AI call failed (test chat only; visitors see only the sorry line). */
+  problem?: string | null;
 }
 
 /**

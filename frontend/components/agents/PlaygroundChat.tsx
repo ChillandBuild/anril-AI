@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftRight, Loader2, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import {
@@ -47,6 +47,8 @@ type ReplyBubble = {
   basis?: CompanionReply["basis"];
   sources?: CompanionReply["sources"];
   trace: string[];
+  /** Why the AI call failed (owner-only), e.g. "Your Google AI Studio credits are used up...". */
+  problem?: string | null;
 };
 type Bubble = { kind: "user"; text: string } | ReplyBubble | { kind: "error"; text: string };
 
@@ -163,6 +165,7 @@ export function PlaygroundChat({
     basis: reply.basis ?? null,
     sources: reply.sources ?? [],
     trace: [...priorTrace, ...(reply.trace ?? [])],
+    problem: reply.problem ?? null,
   });
 
   /** `priorTrace` = trace lines from the paused turn this reply continues. */
@@ -460,6 +463,14 @@ function ReplyView({ bubble: b, heading, full }: { bubble: ReplyBubble; heading?
     <div className={cn("min-w-0 space-y-1.5", full ? "w-full" : "max-w-[85%]")}>
       {heading && <div className="text-xs font-medium text-ink-secondary">{heading}</div>}
       <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">{b.text}</div>
+      {b.problem && (
+        <div role="alert" className="flex gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-900">
+          <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0" />
+          <span>
+            <span className="font-semibold">Only you see this:</span> {b.problem} Visitors get the sorry line above.
+          </span>
+        </div>
+      )}
       {source && <div className="px-1 text-xs text-ink-secondary">{source}</div>}
       {b.trace.length > 0 && (
         <ul aria-label="What was searched" className="space-y-0.5 border-l-2 border-primary/20 pl-2 text-xs text-ink-secondary">

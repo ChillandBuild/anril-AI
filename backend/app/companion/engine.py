@@ -250,6 +250,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
                                        purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model))
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
+        playground.problem(ai_reply.describe_llm_error(exc))
     text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion)
     logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
                 int((time.monotonic() - started) * 1000))
@@ -413,6 +414,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             )
     except Exception as exc:
         logger.warning("companion %s: LLM call failed on round %d (%s)", companion_id, round_no, type(exc).__name__)
+        playground.problem(ai_reply.describe_llm_error(exc))
     llm_ms = int((time.monotonic() - llm_started) * 1000)
 
     known = {t.name for t in tools}

@@ -88,6 +88,35 @@ def _google_side_failure(exc: Exception) -> bool:
     return isinstance(exc, httpx.TransportError)
 
 
+def describe_llm_error(exc: Exception) -> str:
+    """Why an AI call failed, in words a business owner can act on. Shown only to the owner (the
+    Playground); a visitor still gets the polite sorry line. Example: Google answers 402
+    "prepayment credits are depleted" -> "Your Google AI Studio credits are used up. ..."."""
+    if isinstance(exc, httpx.TransportError):
+        return "Couldn't reach Google's Gemini service (network problem or timeout). Try again in a minute."
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return f"The AI call failed ({type(exc).__name__}). Try again in a minute."
+    code = exc.response.status_code
+    try:
+        body = exc.response.text.lower()
+    except Exception:
+        body = ""
+    if code == 402 or "prepayment" in body or "credits are depleted" in body:
+        return ("Your Google AI Studio credits are used up, so Gemini refused to answer. "
+                "Add credits at ai.studio/projects, then try again.")
+    if "billing" in body:
+        return "Google says billing isn't set up for your Gemini key's project. Fix it at ai.studio/projects."
+    if code == 429:
+        return "Gemini is getting too many requests from your key right now (rate limit). Wait a minute and try again."
+    if code in (401, 403):
+        return "Google refused your Gemini key (wrong, expired or switched off). Check it in Settings."
+    if code == 404:
+        return "Google doesn't offer this AI model to your key. Pick another model for this character."
+    if code >= 500:
+        return "Google's Gemini service had an error on its side. Try again in a minute."
+    return f"Google refused the request (error {code}). Try again, or contact Anril support if it keeps happening."
+
+
 def _other_reply_model(native_model: str) -> str | None:
     others = (m[len(_GEMINI_PREFIX):] for m in REPLY_MODELS)
     return next((m for m in others if m != native_model), None)

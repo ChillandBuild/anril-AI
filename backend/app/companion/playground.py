@@ -40,6 +40,8 @@ class Overrides:
     kb_candidates: list[dict] = field(default_factory=list)
     kb_scores: dict[str, dict] = field(default_factory=dict)   # passage id -> meaning / rrf, from fuse
     memory_candidates: list[dict] = field(default_factory=list)
+    # Why the reply failed, in plain words (ai_reply.describe_llm_error). None when it worked.
+    problem: str | None = None
 
     def note(self, line: str) -> None:
         self.trace.append(line)
@@ -67,6 +69,14 @@ def changes_search() -> bool:
     ov = _current.get()
     return ov is not None and (ov.results is not None or ov.memory_floor is not None or ov.judge_min is not None
                                or not ov.rerank or not ov.rewrite or ov.mode != "auto")
+
+
+def problem(text: str) -> None:
+    """Record why the reply failed, for the owner's eyes only; a no-op on the live path.
+    The first problem wins (the normal reply runs before Compare's reply without memory)."""
+    ov = _current.get()
+    if ov is not None and ov.problem is None:
+        ov.problem = text
 
 
 def note(line: str) -> None:
