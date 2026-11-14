@@ -133,6 +133,7 @@ async def gemini_chat_completion(
     system_instruction, input_steps = _messages_to_gemini_input(messages)
     request_json: dict = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": input_steps,
         "generation_config": {
             "temperature": temperature,
@@ -167,6 +168,7 @@ async def gemini_chat_completion_with_tools(
     system_instruction, input_steps = _messages_to_gemini_input(messages)
     request_json: dict = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": input_steps,
         "tools": _openai_tools_to_gemini(tools),
         "generation_config": {
@@ -207,6 +209,7 @@ async def gemini_speech_to_text(
     api_key = require_tenant_setting("gemini_api_key", tenant_id)
     request_json = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": [{
             "type": "user_input",
             "content": [
@@ -267,6 +270,7 @@ async def gemini_transcribe_audio(
     api_key = require_tenant_setting("gemini_api_key", tenant_id)
     request_json = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": [{
             "type": "user_input",
             "content": [{"type": "text", "text": prompt}, _audio_part(audio_bytes, mime_type)],
@@ -305,6 +309,7 @@ async def gemini_analysis_json(
     content: list[dict] = [{"type": "text", "text": user_prompt}]
     request_json = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "system_instruction": system_prompt,
         "input": [{"type": "user_input", "content": content}],
         "generation_config": {
@@ -355,6 +360,7 @@ def _gemini_document_interaction(
     content_type = "document" if mime_type == "application/pdf" else "image"
     request_json = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": [{
             "type": "user_input",
             "content": [
@@ -501,6 +507,7 @@ async def gemini_text_to_speech(
             headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
             json={
                 "model": model,
+                "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
                 "input": text,
                 "response_format": {"type": "audio"},
                 "generation_config": {"speech_config": [{"voice": voice}]},

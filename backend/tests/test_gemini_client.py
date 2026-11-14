@@ -48,6 +48,7 @@ async def test_gemini_text_to_speech_decodes_pcm_and_transcodes_to_mp3():
     assert call_kwargs["headers"] == {"x-goog-api-key": "test-key", "Content-Type": "application/json"}
     assert call_kwargs["json"] == {
         "model": "gemini-2.5-flash-preview-tts",
+        "store": False,
         "input": "Vanga sir, order ready ah irukku",
         "response_format": {"type": "audio"},
         "generation_config": {"speech_config": [{"voice": "Kore"}]},

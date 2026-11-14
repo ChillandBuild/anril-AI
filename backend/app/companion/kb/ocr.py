@@ -109,6 +109,7 @@ async def _generate(key: str, model: str, image: bytes, mime_type: str, tenant_i
     output limit. Raises OcrError for anything that is not a usable answer."""
     payload = {
         "model": model,
+        "store": False,  # no copy kept at Google: it cost ~3.4s a call and nothing reads it back
         "input": [{
             "type": "user_input",
             "content": [
