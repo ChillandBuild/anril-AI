@@ -76,9 +76,9 @@ The WhatsApp message shows two things: the **Copy code** button and Meta's **"I 
 1. **Dashboard OTP page** — send a test/manual code in any mode, see history with per-channel status
    (SMS: sent/delivered/failed, WhatsApp: sent/delivered/read/failed, verified yes/no).
 2. **Anril OTP API** — for the client's app or website (section 6).
-3. **Anril WhatsApp bot** — the bot can send a code to the person it is chatting with and check the
+3. *(Later, not built — owner 2026-11-14)* **Anril WhatsApp bot** — the bot can send a code to the person it is chatting with and check the
    code they type back (e.g. "verify your number before we book").
-4. **Anril's own telecaller login** (section 8).
+4. *(Later, not built — owner 2026-11-14)* **Anril's own telecaller login** (section 8).
 
 ## 6. Anril OTP API (for client servers)
 
@@ -107,7 +107,10 @@ The WhatsApp message shows two things: the **Copy code** button and Meta's **"I 
 - Signed with HMAC-SHA256 (`X-Anril-Signature` header + timestamp) so the client can check it came from Anril.
 - Retries with back-off on failure (e.g. 5 tries over ~1 hour), then dropped and marked in the dashboard.
 
-## 8. Anril's own telecaller OTP
+## 8. Anril's own telecaller OTP — LATER, not built
+
+Owner, 2026-11-14: not needed now. When a screen needs a code, add it there using the OTP service then.
+Kept below as the agreed design.
 
 Owner-controlled, three separate switches (Settings → Team, applied on Save):
 1. **Verify number when adding a telecaller** — telecaller must enter a code sent to their phone before the account is active.

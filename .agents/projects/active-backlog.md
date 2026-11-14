@@ -578,14 +578,14 @@ first review that has already been applied.
 - **Check sticky side effects** of `ClientLayout` `overflow-x-clip`: Call Review header (`sticky top-14`) and Subscriptions cart bar (`sticky bottom-0`) may now actually pin.
 - **No contact-id audience:** Address Book contacts outside any group reach Send SMS only as typed numbers, so their saved names don't fill {#var#}; the user has to type values per number ("Type for each number", 2026-11-12).
 - **Browser QA not done for the Type numbers table** (2026-11-12): layout, Excel paste in a real browser, red-cell marking. Option discussed but not decided: hide Phone for typed numbers.
-- **WhatsApp OTP (proposed 2026-11-12, not started):** one Anril OTP API (WhatsApp, SMS, or WhatsApp-then-SMS) with Anril-made hashed codes, attempt limits and one history. Needs the interview first (who calls it, fallback rules, limits); touches API keys → security review.
+- **Anril OTP — shipped 2026-11-14 (commit "anril otp"), open items:** (1) never sent a real WhatsApp OTP (needs an approved authentication template on a tenant) or a real status update to a client URL; (2) set `OTP_SECRET` on Render before a client goes live (else derived from the Supabase service key; rotating that cancels open codes); (3) logged-in UI QA not done — the UI test user lost its tenant membership (screens checked on a mock preview only); (4) `send_code` makes sync Supabase calls on the event loop (like the older SMS routes) — move to threads if OTP volume grows; (5) deferred by the owner: telecaller OTP switches and the WhatsApp bot tool.
 - `frontend/lib/brand-guard.test.ts` still fails on `LeadsClient.tsx` (`#25D366`).
 
 ### Research notes (2026-10-22/23, before the build)
 - _Moved from personal memory 2026-11-04._ Full API review + Fast2SMS support email table: `docs/bulk9-api-review.md` (read it before any new SMS spec instead of redoing the 118-page docs review). Client panel live at sms.anrilaitech.com since 2026-11-03 (GoDaddy CNAME sms → bulk9.com); Prem administers there by hand.
 - Fast2SMS support email (27 Oct 2026) confirmed no API for: client API key retrieval, PE–TM binding, address book, wallet history, low-balance alerts, account settings, webhook replay. `sms_details=1` on a send returns the per-SMS charge. Fast2SMS and Bulk9 keys are not interchangeable. The email's sample `otp_length=1` is invalid (docs: 4–10).
 
-Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2SMS's white-label panel "Bulk9" (explored 2026-10-22; nothing built yet, repo has no SMS code).
+Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2SMS's white-label panel "Bulk9" (explored 2026-10-22). _Update: the per-tenant SMS module shipped 2026-11-04 (above); the reseller-API automation below is still not built._
 
 - Reseller API docs (public, noindex): https://bulk9.com/reseller/docs — host bulk9.com/api/reseller/*, key in Authorization header (avoid the GET ?authorization= form; it puts the key in URLs/logs).
 - CAN: reseller balance, user balance, list users, create-user (name/username/password/email/mobile), add-credit (channel=sms, no_of_sms, per_sms_cost = client's price, prepaid/postpaid, expiry), debit-credit, enable/disable user, change plan expiry.
