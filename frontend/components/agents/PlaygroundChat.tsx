@@ -394,8 +394,10 @@ export function PlaygroundChat({
   );
 
   return (
-    // Started: a column as tall as the screen (header + paddings taken off); the list takes the spare height and scrolls, the input stays at the bottom.
-    <div className={cn(started && "flex h-[calc(100dvh-10rem)] min-h-[480px] flex-col md:h-[calc(100dvh-13rem)]")}>
+    // Started: a column exactly as tall as the screen below the top bar (56/64px), the page padding (16/24px) and the
+    // card padding (18px), so the list scrolls, the input and the "Save now" line stay on screen, and Advanced
+    // (after this column in the card) starts just below the screen: there when you scroll, out of the way when chatting.
+    <div className={cn(started && "flex h-[calc(100dvh-6.5rem)] min-h-[480px] flex-col md:h-[calc(100dvh-7.5rem)]")}>
       {started ? (
         <div ref={listRef} className="mx-auto mb-2 mt-1 min-h-0 w-full max-w-[720px] flex-1 space-y-3 overflow-y-auto pr-1" aria-live="polite">
           {history.length > 0 && (
@@ -511,7 +513,7 @@ export function PlaygroundChat({
         {peopleError && <p role="alert" className="mx-auto mt-2 max-w-[720px] text-xs text-danger">{peopleError}</p>}
 
         {status && (
-          <p className="mx-auto mt-2 flex max-w-[720px] flex-wrap items-center gap-x-1.5 text-xs text-ink-muted">
+          <p className="mx-auto mt-2 flex max-w-[720px] flex-wrap items-center justify-center gap-x-1.5 text-center text-xs text-ink-muted">
             <span>{status.text}</span>
             {status.canSave && (
               <>
@@ -526,7 +528,7 @@ export function PlaygroundChat({
         {saveNote && (
           <p
             role={saveNote.tone === "error" ? "alert" : "status"}
-            className={cn("mx-auto mt-1.5 max-w-[720px] text-xs", saveNote.tone === "ok" ? "text-success" : saveNote.tone === "error" ? "text-danger" : "text-ink-secondary")}
+            className={cn("mx-auto mt-1.5 max-w-[720px] text-center text-xs", saveNote.tone === "ok" ? "text-success" : saveNote.tone === "error" ? "text-danger" : "text-ink-secondary")}
           >
             {saveNote.text}{" "}
             {saveNote.seeThem && (

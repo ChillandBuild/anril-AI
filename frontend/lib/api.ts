@@ -1352,6 +1352,9 @@ const RETRYABLE_STATUS = new Set([502, 503, 504]);
 // Cold-start (Render spin-up) can take 30–50s; give GETs room, keep mutations tight.
 const GET_TIMEOUT_MS = 45_000;
 const MUTATION_TIMEOUT_MS = 15_000;
+/** A Playground reply runs the book search, its judge and the reply model one after another (~8s, more
+ * when Google is slow), so it gets its own wait. Never retried, so a late answer can't be sent twice. */
+const PLAYGROUND_REPLY_TIMEOUT_MS = 60_000;
 const RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
 
 function delay(ms: number): Promise<void> {
@@ -1446,12 +1449,12 @@ async function downloadCsv(path: string, fileName: string): Promise<void> {
   window.URL.revokeObjectURL(url);
 }
 
-async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
+async function apiFetch<T>(path: string, opts: RequestInit = {}, timeoutOverrideMs?: number): Promise<T> {
   const method = (opts.method ?? "GET").toUpperCase();
   // Only idempotent reads are retried — retrying a POST/PATCH/DELETE could
   // double-send a broadcast/message/assignment if the first reached the server.
   const idempotent = method === "GET" || method === "HEAD";
-  const timeoutMs = idempotent ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
+  const timeoutMs = timeoutOverrideMs ?? (idempotent ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
   const maxAttempts = idempotent ? RETRY_DELAYS_MS.length + 1 : 1;
 
   let lastErr: unknown;
@@ -4412,12 +4415,12 @@ export const companionsApi = {
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
       method: "POST",
       body: JSON.stringify({ message, ...opts }),
-    }),
+    }, PLAYGROUND_REPLY_TIMEOUT_MS),
   continueTestChat: (turn_id: string, results: { id: string; output: unknown }[]) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/test-chat/continue`, {
       method: "POST",
       body: JSON.stringify({ turn_id, results }),
-    }),
+    }, PLAYGROUND_REPLY_TIMEOUT_MS),
 
   personMemory: (id: string, externalUserId: string) =>
     apiFetch<{ facts: CompanionMemoryFact[]; memory_scope: CompanionMemoryScope }>(
