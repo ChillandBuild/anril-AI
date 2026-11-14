@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import re
 import secrets
 from typing import Literal
 from uuid import UUID
@@ -2613,7 +2614,8 @@ _ALL_TENANT_TABLES = [
     "meta_templates", "phone_number_quality_history", "phone_numbers",
     "reengagement_logs", "reengagement_steps", "segment_templates",
     "telecalling_upload_batches", "voice_numbers", "whatsapp_insights_snapshots",
-    "ad_campaigns", "app_notifications",
+    "ad_campaigns", "app_notifications", "employee_todos",
+    "knowledge_versions", "knowledge_reviews",
     "app_audit_logs", "leads", "app_settings", "tenant_users",
 ]
 
@@ -2627,10 +2629,12 @@ def delete_client(tenant_id: str, _admin: dict = Depends(get_system_admin)):
 
     tenant_name = tenant.data["name"]
 
-    owner_row = (
+    # Collect login accounts BEFORE the wipe: tenant_users and callers are the
+    # only way to find them, and both are cleared below.
+    owner_rows = (
         db.table("tenant_users").select("user_id")
         .eq("tenant_id", tenant_id).eq("role", "owner")
-        .maybe_single().execute()
+        .execute()
     )
     caller_users = (
         db.table("callers").select("user_id")
@@ -2638,12 +2642,11 @@ def delete_client(tenant_id: str, _admin: dict = Depends(get_system_admin)):
         .not_.is_("user_id", "null")
         .execute()
     )
-    user_ids_to_delete = []
-    if owner_row.data and owner_row.data.get("user_id"):
-        user_ids_to_delete.append(owner_row.data["user_id"])
-    for c in (caller_users.data or []):
-        if c.get("user_id"):
-            user_ids_to_delete.append(c["user_id"])
+    user_ids_to_delete: list[str] = []
+    for row in (owner_rows.data or []) + (caller_users.data or []):
+        uid = row.get("user_id")
+        if uid and uid not in user_ids_to_delete:
+            user_ids_to_delete.append(uid)
 
     for table in _ALL_TENANT_TABLES:
         try:
@@ -2651,13 +2654,34 @@ def delete_client(tenant_id: str, _admin: dict = Depends(get_system_admin)):
         except Exception as e:
             logger.warning("delete_client: could not clear %s: %s", table, e)
 
-    db.table("tenants").delete().eq("id", tenant_id).execute()
+    tenant_delete_error: Exception | None = None
+    try:
+        db.table("tenants").delete().eq("id", tenant_id).execute()
+    except Exception as e:
+        tenant_delete_error = e
 
+    # Remove logins even if the tenants row was refused: the data is already
+    # wiped, and a retry can no longer find these user ids.
     for uid in user_ids_to_delete:
         try:
             db.auth.admin.delete_user(uid)
         except Exception as e:
             logger.warning("delete_client: could not delete auth user %s: %s", uid, e)
+
+    if tenant_delete_error is not None:
+        # Usually a table with a no-cascade tenant_id FK that is missing from
+        # _ALL_TENANT_TABLES; Postgres names it in the message.
+        blocker = re.search(r'constraint "\w+" on table "(\w+)"', str(tenant_delete_error))
+        logger.error("delete_client: tenants row refused for %s: %s", tenant_id, tenant_delete_error)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Client data was cleared, but the client record could not be removed: "
+                f"table '{blocker.group(1)}' still has rows for it. Add it to the delete list."
+                if blocker
+                else "Client data was cleared, but the client record could not be removed."
+            ),
+        )
 
     logger.warning("OPERATOR DELETE CLIENT: %s (%s) — all data purged", tenant_name, tenant_id)
     return {"deleted": True, "tenant_name": tenant_name}
