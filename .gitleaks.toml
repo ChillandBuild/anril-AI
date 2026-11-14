@@ -1,0 +1,28 @@
+# Secret scan rules for the lefthook pre-commit check and the CI "Secret Scan" job.
+# gitleaks' built-in rules do not know Render or the new Gemini key format, so both are added
+# here: a Render API key leaked into .mcp.json three times (May, June, Nov 2026).
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "render-api-key"
+description = "Render API key"
+regex = '''rnd_[A-Za-z0-9]{16,}'''
+keywords = ["rnd_"]
+
+[[rules]]
+id = "gemini-api-key"
+description = "Google Gemini API key (AQ. format)"
+regex = '''AQ\.[A-Za-z0-9_\-]{40,}'''
+keywords = ["aq."]
+
+# Test files are full of made-up secrets ("secret = 'test-secret'"). Skip the noisy generic rule
+# there only; the Render, Gemini and provider-specific rules still run on tests.
+[[allowlists]]
+description = "fake secrets in test fixtures"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)tests?/''',
+  '''\.test\.[jt]sx?$''',
+]

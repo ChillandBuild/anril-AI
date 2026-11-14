@@ -18,6 +18,11 @@ pre-commit:
       glob: "backend/app/routes/*.py"
       run: sh scripts/hooks/tenant-audit.sh {staged_files}
 
+    # Blocks API keys/tokens in staged changes (Render, Gemini, gitleaks defaults).
+    - name: secret-scan
+      run: sh scripts/hooks/secret-scan.sh
+      fail_text: "A secret is staged. Remove it; if it was a real key, revoke it too."
+
 pre-push:
   jobs:
     - name: full-typecheck
