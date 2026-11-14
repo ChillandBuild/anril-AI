@@ -56,6 +56,51 @@ function confirmText(c: Confirm): { title: string; description: string; label: s
       };
 }
 
+/**
+ * The name box behind "+ New". A plain row, not a <form>: the chips sit inside the message box's form,
+ * and a form inside a form makes the browser reload the page on Add ("?n=Prem") instead of saving.
+ * Enter adds (but not the Enter that confirms a Tamil / IME word), Escape cancels; neither sends a chat message.
+ */
+export function NewPersonInput({
+  name,
+  busy,
+  onName,
+  onAdd,
+  onCancel,
+}: {
+  name: string;
+  busy: boolean;
+  onName: (v: string) => void;
+  onAdd: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <label className="sr-only" htmlFor="new-test-customer">Test customer name</label>
+      <input
+        id="new-test-customer"
+        autoFocus
+        value={name}
+        onChange={(e) => onName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+            e.preventDefault(); // else Enter submits the message box around it
+            onAdd();
+          } else if (e.key === "Escape") {
+            onCancel();
+          }
+        }}
+        maxLength={40}
+        placeholder="Name (any language)"
+        className={cn(INPUT, "h-7 w-[160px] min-w-0 px-2.5 py-0 text-[12.5px]")}
+      />
+      <button type="button" onClick={onAdd} disabled={busy || !name.trim()} className={cn(BTN_PRIMARY, "min-h-7 px-3 text-[12.5px]")}>
+        Add
+      </button>
+    </div>
+  );
+}
+
 const CHIP = "inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 const CHIP_OFF = "border-border bg-white text-ink-secondary hover:bg-surface-mid";
 const CHIP_ON = "border-primary bg-primary text-white";
@@ -167,34 +212,17 @@ export function TestPersonChips({
             );
           })}
           {adding ? (
-            <form
-              className="flex items-center gap-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void create();
+            <NewPersonInput
+              name={name}
+              busy={busy}
+              onName={setName}
+              onAdd={() => void create()}
+              onCancel={() => {
+                setAdding(false);
+                setName("");
+                setError("");
               }}
-            >
-              <label className="sr-only" htmlFor="new-test-customer">Test customer name</label>
-              <input
-                id="new-test-customer"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setAdding(false);
-                    setName("");
-                    setError("");
-                  }
-                }}
-                maxLength={40}
-                placeholder="Name (any language)"
-                className={cn(INPUT, "h-7 w-[160px] min-w-0 px-2.5 py-0 text-[12.5px]")}
-              />
-              <button type="submit" disabled={busy || !name.trim()} className={cn(BTN_PRIMARY, "min-h-7 px-3 text-[12.5px]")}>
-                Add
-              </button>
-            </form>
+            />
           ) : (
             <button
               type="button"
