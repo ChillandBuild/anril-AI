@@ -4183,6 +4183,18 @@ export interface CompanionReply {
   memory?: CompanionMemoryStatus;
   /** Why the reply failed, in plain words, when the AI call failed (test chat only; visitors see only the sorry line). */
   problem?: string | null;
+  /** What the reply drew on about the person (test chat only). Example: { memory_hits: 2, card_lines: 6 }. */
+  used?: { memory_hits: number; card_lines: number };
+}
+
+/** One saved line of a test customer's chat with a character, oldest first. Old replies carry no trace, time or model. */
+export interface TestChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  mood: string | null;
+  basis: "primary" | "book" | "own" | "chat" | null;
+  sources: { document: string; page_from: number; page_to: number }[];
+  at: string;
 }
 
 /**
@@ -4393,6 +4405,8 @@ export const companionsApi = {
       settings?: PlaygroundSettings;
       /** A test customer's external_user_id; left out = "You". */
       test_person?: string;
+      /** "Try again": the server deletes the newest question + answer, then answers the same message again. */
+      retry?: boolean;
     } = {},
   ) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {
@@ -4459,6 +4473,9 @@ export const companionsApi = {
   /** Memory status of one test customer with one character. */
   testPersonMemory: (id: string, externalUserId: string) =>
     apiFetch<CompanionMemoryStatus>(`${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/memory`),
+  /** The saved chat of one test customer with one character: newest 50, oldest first. */
+  testPersonChat: (id: string, externalUserId: string) =>
+    apiFetch<{ messages: TestChatMessage[] }>(`${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/chat`),
   /** "Save now": run the memory save early. facts is null in privacy mode B. 409 for a Level 1 character, 502 if the AI call failed. */
   saveTestPersonMemory: (id: string, externalUserId: string) =>
     apiFetch<{ outcome: SaveMemoryOutcome; facts: number | null }>(

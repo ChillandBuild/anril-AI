@@ -42,6 +42,9 @@ class Overrides:
     memory_candidates: list[dict] = field(default_factory=list)
     # Why the reply failed, in plain words (ai_reply.describe_llm_error). None when it worked.
     problem: str | None = None
+    # What memory reached the reply, for the plain "Used:" line. None: not looked at this turn.
+    memory_hits: int | None = None      # past moments found by the memory search
+    card_lines: int | None = None       # lines of the memory card (its notes about the person)
 
     def note(self, line: str) -> None:
         self.trace.append(line)
@@ -77,6 +80,13 @@ def problem(text: str) -> None:
     ov = _current.get()
     if ov is not None and ov.problem is None:
         ov.problem = text
+
+
+def used_memories(hits: int) -> None:
+    """How many past moments the memory search handed the reply; a no-op on the live path."""
+    ov = _current.get()
+    if ov is not None:
+        ov.memory_hits = hits
 
 
 def note(line: str) -> None:

@@ -16,8 +16,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.companion import (engine, install, keys, memory, memory_refresh, memory_search, playground,
-                           playground_people, store)
+from app.companion import (engine, install, keys, memory, memory_card, memory_refresh, memory_search,
+                           playground, playground_people, store)
 from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
@@ -380,6 +380,7 @@ class TestChatIn(BaseModel):
     use_memory: bool = True                           # False = the "Compare without memory" reply
     settings: PlaygroundSettings | None = None        # Playground settings panel; None = live behaviour
     test_person: str | None = Field(None, min_length=1, max_length=200)  # a test customer's id; None = "You"
+    retry: bool = False   # "Try again": the newest question + answer are replaced by this new answer
 
 
 class ContinueIn(BaseModel):
@@ -430,6 +431,10 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
         if payload.model not in allowed:
             raise HTTPException(status_code=422, detail="That model isn't set up for your business")
     ov = (payload.settings or PlaygroundSettings()).overrides()
+    if payload.retry and payload.use_memory:
+        before = await store.find_end_user(tenant_id, person_id)
+        if before:
+            await store.drop_last_turn(tenant_id, str(companion_id), before["id"], memory_card.mask_secrets(message))
     try:
         with playground.use(ov):
             result = await engine.reply(
@@ -442,7 +447,8 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
     person = await store.find_end_user(tenant_id, person_id)
     status = await memory_refresh.status({**companion, "tenant_id": tenant_id}, person and person["id"])
     return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model, model), "trace": ov.trace,
-            "memory": status, "problem": ov.problem}
+            "memory": status, "problem": ov.problem,
+            "used": {"memory_hits": ov.memory_hits or 0, "card_lines": ov.card_lines or 0}}
 
 
 
@@ -511,6 +517,23 @@ async def test_person_memory_status(companion_id: UUID, external_user_id: str = 
     """The Playground memory line: {level, unread, saves_at}."""
     companion, person = await _test_pair(companion_id, external_user_id, ctx)
     return await memory_refresh.status(companion, person and person["id"])
+
+
+@router.get("/{companion_id}/test-people/{external_user_id}/chat")
+async def test_person_chat(companion_id: UUID, external_user_id: str = ExternalUserId,
+                           ctx: dict = Depends(require_companions_manage)):
+    """The saved Playground chat of this test person with this character (newest 50, oldest first),
+    so the screen comes back when the owner returns. Empty before the first message."""
+    companion, person = await _test_pair(companion_id, external_user_id, ctx)
+    if not person:
+        return {"messages": []}
+    rows = await store.chat_history(ctx["tenant_id"], companion["id"], person["id"],
+                                    after=person.get("chat_read_after"))
+    return {"messages": [{"role": r["role"], "text": r["content"], "mood": r.get("mood"),
+                          "basis": r.get("basis"),
+                          "sources": [{k: x.get(k) for k in ("document", "page_from", "page_to")}
+                                      for x in r.get("sources") or []],
+                          "at": r["created_at"]} for r in rows if r["role"] in ("user", "assistant")]}
 
 
 _SAVE_OUTCOME = {"ok": "saved", "busy": "busy", "waiting": "waiting"}

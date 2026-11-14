@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Companion, PlaygroundDefaults, PlaygroundSources } from "@/lib/api";
+import type { Companion, CompanionAppTool, PlaygroundDefaults, PlaygroundSources } from "@/lib/api";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { PlaygroundSearch } from "@/components/agents/PlaygroundSearch";
+import { AppTools } from "@/components/agents/AppTools";
 
 const STORE_KEY = "pg-advanced-open";
 
@@ -34,11 +35,21 @@ export function PlaygroundAdvanced({
   live,
   sources,
   onSources,
+  techLines,
+  onTechLines,
+  tools,
+  onTools,
 }: {
   character: Companion;
   live: PlaygroundDefaults;
   sources: PlaygroundSources;
   onSources: (s: PlaygroundSources) => void;
+  /** Show the grey "what was searched" lines under each reply. Remembered in localStorage "pg-tech-lines". */
+  techLines: boolean;
+  onTechLines: (on: boolean) => void;
+  /** Pretend app tools the chat sends along. */
+  tools: CompanionAppTool[];
+  onTools: (t: CompanionAppTool[]) => void;
 }) {
   const [open, setOpen] = useState(false);   // closed until the browser says otherwise (no server/client mismatch)
   useEffect(() => setOpen(readOpen()), []);
@@ -80,6 +91,22 @@ export function PlaygroundAdvanced({
           <p className="mb-2.5 mt-0.5 text-xs text-ink-muted">Narrow it down: did the wrong answer come from your files, or from what it remembers about you?</p>
           <SegmentedControl aria-label="Answer from" value={sources} onChange={onSources} options={SOURCE_OPTIONS} />
           {sources !== "all" && <p className="mt-1.5 text-xs text-ink-muted">Visitors always get files + memories.</p>}
+        </div>
+
+        <div className="py-3.5">
+          <label className="flex cursor-pointer items-start gap-2 text-sm font-semibold text-ink">
+            <input type="checkbox" checked={techLines} onChange={(e) => onTechLines(e.target.checked)} className="mt-1 h-3.5 w-3.5 accent-primary" />
+            <span>
+              Show technical lines
+              <span className="mt-0.5 block text-xs font-normal text-ink-muted">What was searched under each reply, e.g. Memories: 0 candidates</span>
+            </span>
+          </label>
+        </div>
+
+        <div className="py-3.5">
+          <h3 className="text-sm font-semibold text-ink">Your app&apos;s tools</h3>
+          <p className="mb-2.5 mt-0.5 text-xs text-ink-muted">Pretend your app offers tools, then answer them by hand when {name} asks.</p>
+          <AppTools tools={tools} onChange={onTools} />
         </div>
 
         <div className="py-3.5">

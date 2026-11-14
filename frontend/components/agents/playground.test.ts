@@ -27,6 +27,7 @@ import {
   sourcesSetting,
   suggestionsFor,
   toolNameError,
+  usedLine,
 } from "./playground";
 
 describe("formatToolCall", () => {
@@ -309,5 +310,28 @@ describe("pairCompareReplies", () => {
     const b: B = { kind: "reply", text: "b", label: "Without memory" };
     expect(pairCompareReplies([a])).toEqual([a]);
     expect(pairCompareReplies([b])).toEqual([b]);
+  });
+});
+
+describe("usedLine", () => {
+  const src = [{ document: "Main resource", page_from: 12, page_to: 12 }];
+  it("names notes and past chats, and the files", () => {
+    expect(usedLine({ card_lines: 6, memory_hits: 2 }, "primary", src, null)).toBe(
+      "Its notes about you + 2 past chats · From Main resource, p. 12",
+    );
+  });
+  it("uses the person's name for a test customer", () => {
+    expect(usedLine({ card_lines: 6, memory_hits: 0 }, "own", [], "Meena")).toBe("Its notes about Meena · Own reasoning, not from your files");
+    expect(usedLine({ card_lines: 0, memory_hits: 1 }, null, [], "Meena")).toBe("1 past chat with Meena · Not from your files");
+    expect(usedLine({ card_lines: 0, memory_hits: 3 }, "chat", [], null)).toBe("3 past chats with you · Not from your files");
+  });
+  it("says so when nothing was remembered", () => {
+    expect(usedLine({ card_lines: 0, memory_hits: 0 }, "chat", [], "Meena")).toBe("Nothing it remembers about Meena yet · Not from your files");
+    expect(usedLine({ card_lines: 0, memory_hits: 0 }, "chat", [], null)).toBe("Nothing it remembers about you yet · Not from your files");
+  });
+  it("for an old saved reply (no used) shows only the file part, or nothing", () => {
+    expect(usedLine(undefined, "book", src, null)).toBe("From Main resource, p. 12");
+    expect(usedLine(undefined, "chat", [], null)).toBe("");
+    expect(usedLine(undefined, null, undefined, null)).toBe("");
   });
 });

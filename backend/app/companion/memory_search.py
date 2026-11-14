@@ -227,6 +227,7 @@ async def search(tenant_id: str, companion_id: str, end_user_id: str, message: s
         rows = best_rows([row for part in found if not isinstance(part, BaseException) for row in part])
         hits = fuse(rows)
         playground.note(f"Memories: {len(rows)} candidates, {len(hits)} passed the floor")
+        playground.used_memories(len(hits))
         return hits
     except Exception as exc:
         logger.warning("companion %s: memory search failed (%s)", companion_id, type(exc).__name__)

@@ -924,6 +924,7 @@ class MemoryCard:
             _due_shown[(tenant_id, companion_id, end_user_id)] = due
         if ov is not None:
             ov.note("Memory card: off" if card_off else f"Memory card: {len(card.splitlines())} lines")
+            ov.card_lines = 0 if card_off else len([ln for ln in card.splitlines() if ln.strip()])
         if card_off:   # nothing from the card reaches the prompt, so search hits are not deduped against it
             card, recap, diary = "", "", ""
         recap, diary, found, dropped = fit_memory(card, recap, diary, hits, today)

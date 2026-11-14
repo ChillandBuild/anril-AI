@@ -69,6 +69,34 @@ export function replySourceLine(basis: CompanionReply["basis"], sources: Compani
   return "";
 }
 
+/**
+ * The plain "Used:" line under a reply (without the "Used:" label): what it drew on, in words.
+ * Example: used { card_lines: 6, memory_hits: 2 }, basis "primary", Meena -> "Its notes about Meena + 2 past chats · From Main resource, p. 12".
+ * `used` missing (an old saved reply) -> the memory part is left out, and with no file part either the result is "".
+ * `personName` null = the owner ("you").
+ */
+export function usedLine(
+  used: CompanionReply["used"],
+  basis: CompanionReply["basis"],
+  sources: CompanionReply["sources"],
+  personName: string | null,
+): string {
+  const files = replySourceLine(basis, sources);
+  if (!used) return files;
+  const who = personName ?? "you";
+  const { card_lines: card, memory_hits: hits } = used;
+  const chats = `${hits} past ${hits === 1 ? "chat" : "chats"}`;
+  const memory =
+    card > 0 && hits > 0
+      ? `Its notes about ${who} + ${chats}`
+      : card > 0
+        ? `Its notes about ${who}`
+        : hits > 0
+          ? `${chats} with ${who}`
+          : `Nothing it remembers about ${who} yet`;
+  return `${memory} · ${files || "Not from your files"}`;
+}
+
 // ---------------------------------------------------------------------------
 // What the chat and the search send
 // ---------------------------------------------------------------------------

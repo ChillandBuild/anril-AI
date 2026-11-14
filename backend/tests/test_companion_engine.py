@@ -187,12 +187,14 @@ def test_the_book_search_gets_the_history_before_this_message(env):
     assert [m["content"] for m in env.state["kb"][1]["history"]] == ["Sani pathi sollunga", "Sani pathi."]
 
 
-def test_llm_error_saves_the_fallback_line_and_keeps_the_mood(env):
+def test_llm_error_answers_the_fallback_line_and_saves_nothing(env):
+    """A failed turn leaves no trace: not the message, not the sorry line (so it isn't counted toward
+    the memory step or read back later as something the character said), and the mood stays."""
     env.state["replies"] = ["[mood: concerned] First.", RuntimeError("groq 500")]
     reply(env.jothidar["id"], "one")
     r = reply(env.jothidar["id"], "two")
-    assert r.text == engine.FALLBACK_LINES["ta-en"] and r.mood == "concerned"
-    assert env.db.rows("companion_messages")[-1]["content"] == engine.FALLBACK_LINES["ta-en"]
+    assert r.text == engine.FALLBACK_LINES["ta-en"] and r.mood == "concerned" and r.message_id is None
+    assert [m["content"] for m in env.db.rows("companion_messages")] == ["one", "First."]
     assert env.db.rows("companion_conversations")[0]["mood"] == "concerned"
 
 

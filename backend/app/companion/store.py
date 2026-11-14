@@ -234,6 +234,43 @@ async def recent_messages(tenant_id: str, companion_id: str, end_user_id: str, l
     return list(reversed(rows))
 
 
+CHAT_SHOWN = 50   # Playground: how many saved messages come back on screen when the page opens
+
+
+async def chat_history(tenant_id: str, companion_id: str, end_user_id: str, *, after: str | None = None,
+                       limit: int = CHAT_SHOWN) -> list[dict]:
+    """The Playground's saved chat with this character, oldest first, so the screen shows what the
+    character itself reads. Example: [{"role": "user", "content": "Hii", ...}, {"role": "assistant", ...}].
+    `after`: as in recent_messages (chat from before a deleted memory is not shown)."""
+    def _q():
+        q = (get_supabase().table("companion_messages")
+             .select("role, content, mood, basis, sources, created_at")
+             .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id))
+        if after:
+            q = q.gt("created_at", after)
+        return q.order("created_at", desc=True).limit(limit).execute().data
+    rows = await asyncio.to_thread(_q) or []
+    return list(reversed(rows))
+
+
+async def drop_last_turn(tenant_id: str, companion_id: str, end_user_id: str, question: str) -> bool:
+    """Playground "Try again": deletes the newest question + answer of this person with this character,
+    so the new answer replaces the old one instead of piling up in the history. Only when the newest two
+    are exactly `question` (as saved) then its answer; otherwise nothing is deleted (False). Example: the
+    reply to "Rasi?" failed, so it was never saved: Try again must not delete the "Hii" turn before it."""
+    def _q():
+        db = get_supabase()
+        rows = (db.table("companion_messages").select("id, role, content")
+                .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+                .order("created_at", desc=True).limit(2).execute().data) or []
+        if [r["role"] for r in rows] != ["assistant", "user"] or rows[1]["content"] != question:
+            return False
+        for r in rows:
+            db.table("companion_messages").delete().eq("tenant_id", tenant_id).eq("id", r["id"]).execute()
+        return True
+    return await asyncio.to_thread(_q)
+
+
 # --- an owner deleted a memory: the person's own words leave the saved chat (migration 263) ------
 
 ERASE_SCAN = 5000                   # newest messages / search pieces of the person that are checked

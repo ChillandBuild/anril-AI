@@ -204,3 +204,74 @@ def test_is_own_matches_only_this_login():
     assert not playground_people.is_own("owner-test:u10", "u1")
     assert not playground_people.is_own("owner-test:u2:tabc123", "u1")
     assert not playground_people.is_own("48213", "u1")
+
+
+# --- the chat comes back, failed turns, Try again ---------------------------------------------------
+
+def _chat(env, person=YOU):
+    return env.client.get(f"{DASH}/{env.live['id']}/test-people/{person}/chat").json()["messages"]
+
+
+def test_saved_chat_comes_back_oldest_first(env):  # noqa: F811
+    assert _chat(env) == []
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hii"})
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "I live in Madurai"})
+    assert [(m["role"], m["text"]) for m in _chat(env)] == [
+        ("user", "Hii"), ("assistant", "Vanakkam Karthik!"),
+        ("user", "I live in Madurai"), ("assistant", "Vanakkam Karthik!")]
+
+
+def test_each_test_customer_has_their_own_chat(env):  # noqa: F811
+    pid = _add(env).json()["external_user_id"]
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Vanakkam", "test_person": pid})
+    assert [m["text"] for m in _chat(env, pid)] == ["Vanakkam", "Vanakkam Karthik!"]
+    assert _chat(env) == []
+
+
+def test_chat_of_someone_elses_person_is_refused(env):  # noqa: F811
+    r = env.client.get(f"{DASH}/{env.live['id']}/test-people/owner-test:u2:tabc123/chat")
+    assert r.status_code == 404
+
+
+def test_a_failed_reply_is_not_saved_or_counted(env, monkeypatch):  # noqa: F811
+    _level2(env)
+    from app.companion import engine
+
+    async def broken(*a, **kw):
+        raise RuntimeError("credits used up")
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat", broken)
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hiii"})
+    assert r.json()["text"] == engine.fallback_line("ta-en")
+    assert r.json()["memory"]["unread"] == 0 and _chat(env) == []
+
+
+def test_try_again_replaces_the_last_answer(env):  # noqa: F811
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hii"})
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Rasi?"})
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Rasi?", "retry": True})
+    assert r.status_code == 200
+    assert [m["text"] for m in _chat(env)] == ["Hii", "Vanakkam Karthik!", "Rasi?", "Vanakkam Karthik!"]
+
+
+def test_try_again_with_nothing_saved_just_answers(env):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hii", "retry": True})
+    assert r.status_code == 200 and [m["text"] for m in _chat(env)] == ["Hii", "Vanakkam Karthik!"]
+
+
+def test_test_chat_says_what_memory_was_used(env):  # noqa: F811
+    r = env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hii"})
+    assert r.json()["used"] == {"memory_hits": 0, "card_lines": 0}
+
+
+def test_try_again_after_a_failed_reply_keeps_the_turn_before(env, monkeypatch):  # noqa: F811
+    from app.companion import engine
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Hii"})
+    good = engine.ai_reply._llm_chat
+
+    async def broken(*a, **kw):
+        raise RuntimeError("credits used up")
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat", broken)
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Rasi?"})    # failed, not saved
+    monkeypatch.setattr(engine.ai_reply, "_llm_chat", good)
+    env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "Rasi?", "retry": True})
+    assert [m["text"] for m in _chat(env)] == ["Hii", "Vanakkam Karthik!", "Rasi?", "Vanakkam Karthik!"]

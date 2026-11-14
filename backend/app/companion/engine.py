@@ -285,8 +285,8 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     finally:
         if rewrite is not None and not rewrite.done():   # memory gave up waiting and nobody else needs it
             rewrite.cancel()
-    # Saved with secrets hidden ("my OTP is [hidden]"); this turn's prompt still gets the message as typed.
-    await store.save_message(tenant_id, conversation, "user", memory_card.mask_secrets(message))
+    # The message is saved in _finish, together with the reply, and only when the reply worked: a failed
+    # turn leaves no "sorry" line in the history for the next prompt or the memory step to read.
 
     mood = _mood(conversation, companion)
     if agentic:
@@ -457,6 +457,13 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
     return text, mood, basis, sources
 
 
+def _has_text(raw: str | None) -> bool:
+    """False when the model gave nothing to show (the call failed or only tags came back), i.e. when
+    _read_reply answers with the fallback line."""
+    text, _ = parse_used(raw or "", 0)
+    return bool(parse_mood(text, "calm")[0].strip())
+
+
 def _shown_basis(basis: str | None, companion: dict) -> str | None:
     """The label the person sees. A documents-only character (own_reasoning off) that found nothing
     says "my material does not cover this"; showing "own reading" on that would be wrong. The
@@ -468,7 +475,14 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
                   tool_log: list[dict], started: float, llm_ms: int, kb: KbResult | None = None) -> CompanionReply:
     companion_id = companion["id"]
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion)
+    if not _has_text(raw):
+        # The AI call failed (or came back empty): the person gets the sorry line, and nothing is saved,
+        # so it isn't counted toward the memory step and isn't read back as something the character said.
+        logger.info("companion %s: reply failed, turn not saved", companion_id)
+        return CompanionReply(status="done", text=text, mood=mood, conversation_id=conversation["id"])
 
+    # Saved with secrets hidden ("my OTP is [hidden]"); the prompt got the message as typed.
+    await store.save_message(tenant_id, conversation, "user", memory_card.mask_secrets(user_message))
     shown = _shown_basis(basis, companion)
     saved = await store.save_message(tenant_id, conversation, "assistant", memory_card.mask_secrets(text), mood=mood,
                                      tool_calls=tool_log or None, basis=shown, sources=sources)
