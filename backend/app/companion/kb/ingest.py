@@ -365,9 +365,13 @@ def _heading_only(text: str) -> bool:
     return all(not line.strip() or line.lstrip().startswith("#") for line in text.splitlines())
 
 
-def _passages(page_texts: list[tuple[int, str]], title: str) -> list[dict]:
-    """The book's passages from its read pages. A passage that is only a heading line is dropped."""
-    return [c for c in chunking.chunk_pages(page_texts, title=title or "") if not _heading_only(c["text"])]
+def _passages(page_texts: list[tuple[int, str]], title: str, instruction_pages: int = 0) -> list[dict]:
+    """The book's passages from its read pages. A passage that is only a heading line is dropped.
+    instruction_pages = N: pages 1..N (the owner's standing instructions, never searched) are cut on
+    their own, so no passage runs from page N into page N+1 and mixes instructions with a topic."""
+    cut = [p for p in page_texts if p[0] <= instruction_pages], [p for p in page_texts if p[0] > instruction_pages]
+    return [c for part in cut if part
+            for c in chunking.chunk_pages(part, title=title or "") if not _heading_only(c["text"])]
 
 
 def _same_passage(c: dict) -> tuple:
@@ -477,7 +481,8 @@ async def _finish(tenant_id: str, document: dict, deadline: float) -> str:
     document_id = document["id"]
     ledger = await store.list_pages(tenant_id, document_id)
     failed = [p for p in ledger if p["status"] == "failed"]
-    wanted = _passages(await store.ok_pages_text(tenant_id, document_id), document.get("title") or "")
+    wanted = _passages(await store.ok_pages_text(tenant_id, document_id), document.get("title") or "",
+                       document.get("instruction_pages") or 0)
     if not wanted:
         raise _BookFailed((failed[0].get("error") if failed else None) or NO_TEXT_ERROR)
     stored = await store.list_chunks(tenant_id, document_id)

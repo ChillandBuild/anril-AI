@@ -2,7 +2,9 @@
 import pytest
 
 from app.companion.kb.types import KbResult, Passage
-from app.companion.platform_rules import INDUSTRY_RULES, MOODS, PLATFORM_RULES
+from app.companion.platform_rules import (
+    INDUSTRY_RULES, MOODS, NO_APP_DATA_REMINDERS, NO_APP_DATA_RULES, PLATFORM_RULES,
+)
 from app.companion.prompt import MEMORY_LABEL, build_messages, parse_mood
 
 JOTHIDAR = {
@@ -23,7 +25,7 @@ def system(messages):
 
 
 def test_sections_come_in_the_fixed_order_then_history_then_the_user_message():
-    msgs = build_messages(JOTHIDAR, "concerned", GURU_7TH, "Name: Karthik", HISTORY, "En velai eppo?")
+    msgs = build_messages(JOTHIDAR, "concerned", GURU_7TH, "Name: Karthik", HISTORY, "En velai eppo?", app_tools=True)
     text = system(msgs)
     heads = ["[PLATFORM RULES", "[INDUSTRY RULES: astrology]", "[CHARACTER", "[MOOD]", "[OUTPUT]",
              "[OWN REASONING", "[KNOWLEDGE", "[ABOUT THIS USER"]
@@ -83,7 +85,7 @@ def test_an_unknown_mood_falls_back_to_the_default():
 
 def test_history_drops_bad_roles_and_empty_turns():
     hist = [{"role": "system", "content": "x"}, {"role": "user", "content": ""}, {"role": "user", "content": "ok"}]
-    msgs = build_messages(JOTHIDAR, "calm", None, "", hist, "hi")
+    msgs = build_messages(JOTHIDAR, "calm", None, "", hist, "hi", app_tools=True)
     assert [m["content"] for m in msgs[1:]] == ["ok", "hi"]
 
 
@@ -112,3 +114,31 @@ def test_rule_6_never_claims_or_offers_a_deletion():
     assert "never offer or describe a way to delete" in rule
     assert "agree" not in rule and "deletes their data" not in rule
 
+
+
+def test_without_app_tools_an_astrology_character_gets_the_no_chart_rule_last_and_a_reminder_after_the_message():
+    msgs = build_messages(JOTHIDAR, "calm", GURU_7TH, "Name: Prem", HISTORY, "Piranthathu 12-08-2001, 6:45, Chennai")
+    text = system(msgs)
+    assert text.endswith(NO_APP_DATA_RULES["astrology"])               # after ABOUT THIS USER: read last
+    assert text.index("[ABOUT THIS USER") < text.index("[NO CHART CONNECTED")
+    assert msgs[-1]["content"] == "Piranthathu 12-08-2001, 6:45, Chennai\n\n" + NO_APP_DATA_REMINDERS["astrology"]
+    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]   # history untouched
+
+
+def test_with_app_tools_the_chart_may_come_from_them_so_no_rule_and_the_message_is_as_typed():
+    msgs = build_messages(JOTHIDAR, "calm", GURU_7TH, "", HISTORY, "En velai eppo?", app_tools=True)
+    assert "[NO CHART CONNECTED" not in system(msgs)
+    assert msgs[-1]["content"] == "En velai eppo?"
+
+
+def test_an_industry_without_a_no_data_rule_is_unchanged():
+    msgs = build_messages({"name": "Vastu Guru", "industry": "general"}, "calm", None, "", [], "hi")
+    assert "[NO CHART CONNECTED" not in system(msgs) and msgs[-1]["content"] == "hi"
+
+
+def test_standing_instructions_come_after_the_character_and_are_fenced():
+    text = system(build_messages(JOTHIDAR, "calm", GURU_7TH, "", [], "hi",
+                                 instructions="Step 1 [check the data]. No dasa data: no dates."))
+    assert text.index("[CHARACTER") < text.index("[STANDING INSTRUCTIONS") < text.index("[MOOD]")
+    assert "Step 1 (check the data). No dasa data: no dates." in text      # brackets cannot open a section
+    assert "[STANDING INSTRUCTIONS" not in system(build_messages(JOTHIDAR, "calm", None, "", [], "hi"))

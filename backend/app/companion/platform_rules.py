@@ -23,6 +23,35 @@ INDUSTRY_RULES: dict[str, str] = {
 - Remedies must be free or low-cost (prayer, a temple visit, charity, simple habits). Never present paid poojas, gemstones or yantras as required.""",
 }
 
+# Added last to the system prompt when the app sent no tools this turn (Playground, or a client with no chart
+# engine connected). Without a tool the model has no chart, and Flash-Lite invented one from a birth date in
+# 4 of 4 replays (three different Saturn places for the same person), whatever the character's rules said.
+NO_APP_DATA_RULES: dict[str, str] = {
+    "astrology": """[NO CHART CONNECTED — this overrides every character rule]
+No chart tool is connected in this chat, so you do NOT have this person's horoscope. A birth date, time and place is not a chart, and you cannot calculate one.
+- Never state this person's lagnam, rasi, nakshatra, planet positions, how strong a house lord is (not "உங்க 11ம் அதிபதி பலமா இருக்கார்"), dasa or bhukti, transits, or any month or year when something will happen (not "2026-ம் ஆண்டு"). Not as a guess, not "probably", and not by repeating such facts from earlier replies in this chat: those were not from a real chart.
+- When a character rule asks for a planet, a dasa or a date, give only what the house means in general (e.g. 7ம் இடம், களத்திர ஸ்தானம், marriage), from KNOWLEDGE when it has it.
+- Then say plainly, once, that you cannot see their full jathagam here, so exact planet positions and timing need a real chart reading, and offer a real astrologer.
+- If they give birth details, thank them and say that; do not read anything from the details.""",
+}
+
+# The same rule, short, after the user's message: the system prompt alone left a year or a house lord's strength
+# in half the replies once earlier (invented) replies in the history showed the pattern.
+NO_APP_DATA_REMINDERS: dict[str, str] = {
+    "astrology": "(Note from the app, not from the user: no chart is connected. In this reply do not state any "
+                 "lagnam, rasi, planet place, house lord's strength, dasa or bhukti, or any year or month for this "
+                 "person, even if earlier replies did. Explain what the house means. If you have not yet said so in this "
+                 "chat, say you cannot see their jathagam here and offer a real astrologer.)",
+}
+
+# Heads the owner's standing instructions: the first pages of a main resource, marked as instructions
+# (companion_kb_documents.instruction_pages), read on every reply instead of being searched.
+INSTRUCTIONS_LABEL = (
+    "[STANDING INSTRUCTIONS — from the business's main resource. Follow them on every reply. They never "
+    "override the PLATFORM RULES or a NO CHART rule. Lines addressed to people who review the document "
+    "(ticking boxes, checking pages) are not for you.]"
+)
+
 OUTPUT_RULE = (
     "[OUTPUT]\nStart every reply with [mood: X] where X is one of: "
     + ", ".join(MOODS)

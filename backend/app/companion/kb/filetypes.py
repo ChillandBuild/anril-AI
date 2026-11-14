@@ -109,8 +109,38 @@ def extract_text(path: str, file_type: str) -> str:
 
 
 def text_pages(path: str, file_type: str) -> list[str]:
-    """The pages of a TEXT_TYPES file: extract_text cut by virtual_pages. Runs in the helper process."""
-    return virtual_pages(extract_text(path, file_type))
+    """The pages of a TEXT_TYPES file: its own page markers when it has them (marked_pages), else
+    extract_text cut by virtual_pages. Runs in the helper process."""
+    text = extract_text(path, file_type)
+    return marked_pages(text) or virtual_pages(text)
+
+
+# A PDF saved as text often keeps its page breaks as lines like "=== page 12 ===".
+_PAGE_MARK = re.compile(r"^[ \t]*=+[ \t]*page[ \t]+(\d+)[ \t]*=+[ \t]*$", re.IGNORECASE | re.MULTILINE)
+
+
+def marked_pages(text: str) -> list[str] | None:
+    """The pages of a text that carries its own page markers, so page 5 here is page 5 of the original.
+
+    Worked example: "=== page 1 ===\nCover\n=== page 2 ===\nMarriage" -> ["Cover", "Marriage"].
+    Before this, AstroTamil's 31-page rule book (saved as .txt) was cut every 3,000 characters into 10
+    "pages", so "Main resource, p. 2" pointed at PDF pages 4-6.
+    None (use virtual_pages) unless there are at least 2 markers numbered 1, 2, 3 ... in order and some
+    page has text: a marker that skips or repeats a number would put the wrong number on a page.
+    A blank page stays, as "": dropping it would shift every later page number (the rule book has
+    blank pages 14, 20 and 22). Text before the first marker belongs to page 1. Marker lines are dropped."""
+    marks = list(_PAGE_MARK.finditer(text or ""))
+    if len(marks) < 2 or [int(m.group(1)) for m in marks] != list(range(1, len(marks) + 1)):
+        return None
+    pages = []
+    for i, mark in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        start = 0 if i == 0 else mark.end()
+        body = text[start:end] if i else text[:mark.start()] + text[mark.end():end]
+        pages.append(body.strip("\r\n"))
+    if not any(page.strip() for page in pages):
+        return None
+    return [page if page.strip() else "" for page in pages]
 
 
 def virtual_pages(text: str, size: int = PAGE_CHARS) -> list[str]:

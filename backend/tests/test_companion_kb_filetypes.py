@@ -15,6 +15,8 @@ from app.companion.kb.filetypes import (
     extract_text,
     file_type_of,
     kind_of,
+    marked_pages,
+    text_pages,
     virtual_pages,
 )
 
@@ -307,3 +309,38 @@ def test_nul_bytes_never_leave_the_reader(tmp_path):
     path = tmp_path / "nul.csv"
     path.write_bytes(b"a\x00,b\n")
     assert "\x00" not in extract_text(str(path), "csv")
+
+
+# ---------- marked_pages: a PDF saved as text keeps its own page numbers ----------
+
+def test_marked_pages_follow_the_markers_and_drop_them():
+    text = "=== page 1 ===\nCover note\n=== page 2 ===\nHow to decide\n=== Page 3 ===\n1 Marriage\n"
+    assert marked_pages(text) == ["Cover note", "How to decide", "1 Marriage"]
+
+
+def test_text_before_the_first_marker_belongs_to_page_1():
+    assert marked_pages("Title\n=== page 1 ===\nA\n=== page 2 ===\nB") == ["Title\n\nA", "B"]
+
+
+@pytest.mark.parametrize("text", [
+    "no markers at all",
+    "=== page 1 ===\nonly one marker",
+    "=== page 1 ===\nA\n=== page 3 ===\nB",            # skips a number
+    "=== page 2 ===\nA\n=== page 3 ===\nB",            # does not start at 1
+    "=== page 1 ===\n \n=== page 2 ===\n",             # every page blank
+])
+def test_marked_pages_says_none_unless_the_markers_can_be_trusted(text):
+    assert marked_pages(text) is None
+
+
+def test_text_pages_uses_the_markers_else_3000_character_pages(tmp_path):
+    marked = tmp_path / "rule book.txt"
+    marked.write_text("".join(f"=== page {n} ===\n" + "x" * 1500 + "\n" for n in range(1, 32)), encoding="utf-8")
+    assert len(text_pages(str(marked), "txt")) == 31          # was 16 virtual pages, numbered wrong
+    plain = tmp_path / "notes.txt"
+    plain.write_text("\n".join("y" * 50 for _ in range(130)), encoding="utf-8")
+    assert len(text_pages(str(plain), "txt")) == 3
+
+
+def test_a_blank_page_keeps_its_number():
+    assert marked_pages("=== page 1 ===\nA\n=== page 2 ===\n\n=== page 3 ===\nC") == ["A", "", "C"]

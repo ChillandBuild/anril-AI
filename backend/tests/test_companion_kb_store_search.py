@@ -283,3 +283,35 @@ def test_gaps_for_collection_lists_open_gaps_of_the_characters_reading_it(world)
     assert rows[0] == {"id": big["id"], "topic": "Kumbha lagna", "ask_count": 9,
                        "last_asked_at": "2026-11-10T10:00:00+00:00", "companion_id": "guru", "companion_name": "Guru"}
     assert run(ss.gaps_for_collection(A, "c9")) == []
+
+
+# --- standing instructions (migration 270) ---
+
+def _rule_book(db, instruction_pages=2):
+    db.add("companion_kb_documents", id="rb", tenant_id=A, collection_id="c1", title="Rule book", tier=1,
+           instruction_pages=instruction_pages, created_at="2026-11-12T00:00:00+00:00")
+    for n, status, text in [(1, "ok", "Note to reviewers"), (2, "ok", "How the AI decides"), (3, "ok", "1 Marriage")]:
+        db.add("companion_kb_pages", tenant_id=A, document_id="rb", page_no=n, status=status, text=text)
+    for seq, (start, end) in enumerate([(1, 2), (3, 3)]):
+        db.add("companion_kb_chunks", id=f"rb{seq}", tenant_id=A, document_id="rb", collection_id="c1", tier=1,
+               seq=seq, heading_path="", text=f"passage {seq}", page_from=start, page_to=end)
+
+
+def test_instruction_text_is_the_first_n_pages_of_the_main_resources(db, world):
+    _rule_book(db)
+    db.add("companion_kb_documents", id="b9", tenant_id=A, collection_id="c1", title="Book 9", tier=2,
+           instruction_pages=1)                                          # a book's flag is ignored: tier 2
+    db.add("companion_kb_pages", tenant_id=A, document_id="b9", page_no=1, status="ok", text="book page")
+    assert run(ss.instruction_text(A, "c1")) == "Note to reviewers\n\nHow the AI decides"
+    assert run(ss.instruction_text(B, "c1")) == ""                       # another business: nothing
+
+
+def test_no_instruction_pages_means_no_instructions(db, world):
+    _rule_book(db, instruction_pages=0)
+    assert run(ss.instruction_text(A, "c1")) == ""
+
+
+def test_a_shortcut_never_hands_over_an_instruction_page(db, world):
+    _rule_book(db)
+    got = run(ss.chunks_for_pages(A, "rb", [{"page_from": 1, "page_to": 3}]))
+    assert [c["id"] for c in got] == ["rb1"]

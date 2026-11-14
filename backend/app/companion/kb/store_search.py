@@ -95,7 +95,8 @@ async def _owns_companion(tenant_id: str, companion_id: str) -> bool:
 
 
 async def _document(tenant_id: str, document_id: str) -> dict | None:
-    rows = await _run(lambda: get_supabase().table(_DOCUMENTS).select("id, title, tier, collection_id")
+    rows = await _run(lambda: get_supabase().table(_DOCUMENTS)
+                      .select("id, title, tier, collection_id, instruction_pages")
                       .eq("tenant_id", tenant_id).eq("id", document_id).limit(1))
     return rows[0] if rows else None
 
@@ -135,8 +136,31 @@ async def chunks_for_pages(tenant_id: str, document_id: str, pages: list[dict]) 
     rows = await fetch_all_rows(
         lambda: get_supabase().table(_CHUNKS).select(_CHUNK_COLUMNS)
         .eq("tenant_id", tenant_id).eq("document_id", document_id).order("seq"), page_size=200)
+    instructions = document.get("instruction_pages") or 0     # standing instructions are never a passage
     return [{**row, "document_title": document["title"], "tier": document["tier"]} for row in rows
-            if any(row["page_from"] <= r["page_to"] and row["page_to"] >= r["page_from"] for r in ranges)]
+            if row["page_to"] > instructions
+            and any(row["page_from"] <= r["page_to"] and row["page_to"] >= r["page_from"] for r in ranges)]
+
+
+INSTRUCTIONS_MAX_CHARS = 8000
+
+
+async def instruction_text(tenant_id: str, collection_id: str) -> str:
+    """The owner's standing instructions: pages 1..instruction_pages of the collection's main resources
+    (tier 1), in reading order, at most INSTRUCTIONS_MAX_CHARS. "" when no main resource has any.
+    Example: the rule book with instruction_pages 3 -> the text of its pages 1-3 (how to decide,
+    how sure to be, the answer format), read on every reply instead of being searched."""
+    docs = await _run(lambda: get_supabase().table(_DOCUMENTS).select("id, instruction_pages")
+                      .eq("tenant_id", tenant_id).eq("collection_id", collection_id).eq("tier", 1)
+                      .gt("instruction_pages", 0).order("created_at"))
+    parts: list[str] = []
+    for doc in docs:
+        # The pages themselves, not the passages: passages overlap, so their text would repeat.
+        rows = await _run(lambda d=doc: get_supabase().table("companion_kb_pages").select("page_no, text")
+                          .eq("tenant_id", tenant_id).eq("document_id", d["id"]).eq("status", "ok")
+                          .lte("page_no", d["instruction_pages"]).order("page_no"))
+        parts += [r["text"].strip() for r in rows if (r.get("text") or "").strip()]
+    return "\n\n".join(parts)[:INSTRUCTIONS_MAX_CHARS]
 
 
 # --- question log -----------------------------------------------------------------------------------

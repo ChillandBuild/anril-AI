@@ -131,7 +131,8 @@ def test_the_engine_reads_the_chat_from_after_the_delete_only(monkeypatch):
     person = fixture.db.rows("companion_end_users")[0]
     run(store.set_read_after("t1", person["id"]))
     eng.reply(fixture.jothidar["id"], "vanakkam")
-    assert [m["content"] for m in fixture.state["llm"][-1]["messages"][1:]] == ["vanakkam"]
+    # Only the new message (the no-chart reminder after it is not chat history).
+    assert [m["content"].split("\n\n(Note from the app", 1)[0] for m in fixture.state["llm"][-1]["messages"][1:]] == ["vanakkam"]
 
 
 def test_the_search_index_never_takes_the_characters_lines_from_before_the_delete(env):
