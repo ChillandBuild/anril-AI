@@ -38,7 +38,6 @@ const SMS_TITLES: Record<string, { title: string; description: string }> = {
   reports: { title: "Delivery Reports", description: "Every send and what happened to each message." },
   transactions: { title: "Transactions", description: "Top-ups and SMS used, with the balance after each." },
   developer: { title: "Dev API", description: "Send SMS from your own software with your API key." },
-  otp: { title: "Smart OTP", description: "Send and check OTPs, and see their history." },
 };
 
 /* ------------------------------------------------------------------ *

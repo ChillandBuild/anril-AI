@@ -108,8 +108,6 @@ async def _register_webhook(db, tenant_id: str, api_key: str) -> bool:
     _put(db, tenant_id, "bulk9_webhook_error", "Webhook setup has not been confirmed. Retry setup to check Bulk9.")
     try:
         await _upsert_webhook(api_key, url, secret)
-        # OTP delivery reports (Delivered / Failed in OTP history) come on their own webhook.
-        await _upsert_webhook(api_key, f"{url}/otp", secret, service="otp")
     except (Bulk9Error, Bulk9Timeout) as exc:
         logger.warning("SMS webhook setup failed for %s (%s)", tenant_id, type(exc).__name__)
         error = ("Bulk9 did not confirm webhook setup. Retry to check the existing callback."

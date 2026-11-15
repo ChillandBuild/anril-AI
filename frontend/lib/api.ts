@@ -1874,17 +1874,6 @@ export interface SmsPreview {
   rate_per_sms: number | null;
   estimated_amount: number | null;
 }
-export interface SmsOtpHistoryItem {
-  id: string;
-  mobile: string;
-  action: "send" | "resend" | "verify";
-  ok: boolean;
-  message: string | null;
-  created_at: string;
-  /** "delivered" | "failed" once the operator reported; null = no report yet (or a verify row). */
-  delivery_status: "delivered" | "failed" | null;
-  delivered_at: string | null;
-}
 export type SmsCampaignStatus = "preparing" | "scheduled" | "sending" | "completed" | "cancelled";
 export type SmsMessageStatus =
   | "queued" | "sending" | "submitted" | "delivered" | "failed" | "unknown" | "skipped" | "cancelled";
@@ -2048,6 +2037,27 @@ export type OtpView = {
 export type OtpHistoryItem = OtpView & { origin: "dashboard" | "api" | "bot" | "telecaller"; code: string; attempts: number };
 export type OtpVerifyResult = { verified: boolean; reason: string | null; message: string | null; attempts_left: number; otp_id: string };
 export type OtpKey = { id: string; key_prefix: string; status: "active" | "revoked"; created_at: string; revoked_at: string | null; last_used_at: string | null };
+export type OtpHistoryFilters = {
+  status?: OtpHistoryItem["status"];
+  channel?: "sms" | "whatsapp";
+  origin?: OtpHistoryItem["origin"];
+  /** Any part of the phone number; only digits are used. */
+  q?: string;
+};
+/** History summary. Rates are 0–1, or null when nothing was sent. verified_rate counts Anril-made codes only. */
+export type OtpStats = {
+  days: number;
+  total: number;
+  delivered: number;
+  anril_made: number;
+  delivered_rate: number | null;
+  verified_rate: number | null;
+  by_status: Record<OtpHistoryItem["status"], number>;
+  sms: { sent: number; delivered: number; failed: number };
+  whatsapp: { sent: number; delivered: number; read: number; failed: number };
+  whatsapp_backups: number;
+  daily: { day: string; sent: number; verified: number }[];
+};
 
 export const api = {
   otp: {
@@ -2060,13 +2070,18 @@ export const api = {
       apiFetch<OtpView>("/api/v1/otp-console/send", { method: "POST", body: JSON.stringify(data) }),
     verify: (data: { otp_id: string; code: string }) =>
       apiFetch<OtpVerifyResult>("/api/v1/otp-console/verify", { method: "POST", body: JSON.stringify(data) }),
-    history: (params: { before?: string; limit?: number } = {}) => {
+    history: (params: { before?: string; limit?: number } & OtpHistoryFilters = {}) => {
       const qs = new URLSearchParams();
       if (params.before) qs.set("before", params.before);
       if (params.limit != null) qs.set("limit", String(params.limit));
+      if (params.status) qs.set("status", params.status);
+      if (params.channel) qs.set("channel", params.channel);
+      if (params.origin) qs.set("origin", params.origin);
+      if (params.q?.trim()) qs.set("q", params.q.trim());
       const q = qs.toString();
       return apiFetch<{ items: OtpHistoryItem[] }>(`/api/v1/otp-console/history${q ? `?${q}` : ""}`);
     },
+    stats: (days: 7 | 30 | 90 = 7) => apiFetch<OtpStats>(`/api/v1/otp-console/stats?days=${days}`),
     historyItem: (id: string) =>
       apiFetch<{
         item: OtpHistoryItem;
@@ -2174,11 +2189,6 @@ export const api = {
         `/api/v1/sms/reports/logs?from=${from}&to=${to}&page=${page}&limit=${limit}`,
       ),
     developerKey: () => apiFetch<{ api_key: string }>("/api/v1/sms/developer/key"),
-    otpSend: (data: { mobile: string; otp_id: string; otp_length?: number; otp_expiry?: number; variables_values?: string }) =>
-      apiFetch<{ ok: boolean; request_id?: string; message?: string }>("/api/v1/sms/otp/send", {
-        method: "POST",
-        body: JSON.stringify({ otp_length: 6, otp_expiry: 15, ...data }),
-      }),
     contacts: (params: { search?: string; group_id?: string; limit?: number; offset?: number } = {}) => {
       const qs = new URLSearchParams();
       if (params.search) qs.set("search", params.search);
@@ -2238,12 +2248,6 @@ export const api = {
         `/api/v1/sms/contact-groups/${encodeURIComponent(id)}?with_contacts=${withContacts ? "true" : "false"}`,
         { method: "DELETE" },
       ),
-    otpVerify: (data: { mobile: string; otp: string }) =>
-      apiFetch<SmsOk>("/api/v1/sms/otp/verify", { method: "POST", body: JSON.stringify(data) }),
-    otpResend: (data: { mobile: string }) =>
-      apiFetch<SmsOk>("/api/v1/sms/otp/resend", { method: "POST", body: JSON.stringify(data) }),
-    otpHistory: (limit = 50, offset = 0) =>
-      apiFetch<{ items: SmsOtpHistoryItem[]; total: number }>(`/api/v1/sms/otp/history?limit=${limit}&offset=${offset}`),
     dltList: () => apiFetch<SmsDltList>("/api/v1/sms/dlt/entities"),
     creditRequests: () => apiFetch<{ items: SmsCreditRequest[] }>("/api/v1/sms/credit-requests"),
     requestCredit: (data: { amount: number; note?: string }) =>

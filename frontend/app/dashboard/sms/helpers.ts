@@ -477,27 +477,6 @@ export function walletCsv(items: SmsWalletItem[]): string {
   return ["Date,Type,Description,SMS,Amount", ...rows].join("\r\n");
 }
 
-export const OTP_LENGTH_RANGE = { min: 4, max: 10 };
-export const OTP_EXPIRY_RANGE = { min: 1, max: 10080 };
-export const OTP_EXTRA_MAX = 200;
-
-/** Checks the OTP form's number boxes; returns a message for the first problem, or the parsed values. */
-export function parseOtpSettings(input: { length: string; expiry: string; extra: string }):
-  | { error: string }
-  | { error: null; length: number; expiry: number; extra: string | undefined } {
-  const length = Number(input.length);
-  if (!Number.isInteger(length) || length < OTP_LENGTH_RANGE.min || length > OTP_LENGTH_RANGE.max) {
-    return { error: `OTP length must be a whole number from ${OTP_LENGTH_RANGE.min} to ${OTP_LENGTH_RANGE.max}.` };
-  }
-  const expiry = Number(input.expiry);
-  if (!Number.isInteger(expiry) || expiry < OTP_EXPIRY_RANGE.min || expiry > OTP_EXPIRY_RANGE.max) {
-    return { error: `Expiry must be a whole number of minutes from ${OTP_EXPIRY_RANGE.min} to ${formatCount(OTP_EXPIRY_RANGE.max)}.` };
-  }
-  const extra = input.extra.trim();
-  if (extra.length > OTP_EXTRA_MAX) return { error: `Extra message values can be at most ${OTP_EXTRA_MAX} characters.` };
-  return { error: null, length, expiry, extra: extra || undefined };
-}
-
 /** The cost line under the credit count; null estimate means no charge has been reported yet. */
 export function estimateLine(preview: { rate_per_sms: number | null; estimated_amount: number | null }): { text: string; known: boolean } {
   if (preview.estimated_amount == null || preview.rate_per_sms == null) {
@@ -536,19 +515,6 @@ export function fromLocalInput(value: string): string | null {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-const OTP_ACTION_LABELS: Record<string, string> = { send: "Sent", resend: "Resent", verify: "Checked" };
-
-export function otpActionLabel(action: string): string {
-  return OTP_ACTION_LABELS[action] ?? action;
-}
-
-/** Delivery column of the OTP history: "—" until the operator reports back. */
-export function otpDelivery(status: string | null | undefined): { label: string; tone: Tone | null } {
-  if (status === "delivered") return { label: "Delivered", tone: "success" };
-  if (status === "failed") return { label: "Failed", tone: "danger" };
-  return { label: "—", tone: null };
 }
 
 // ---- Contacts and recipients ----

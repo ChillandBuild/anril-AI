@@ -1,4 +1,4 @@
-"""SMS page extras: the ₹ estimate, moving a scheduled campaign, deleting, and OTP history."""
+"""SMS page extras: the ₹ estimate, moving a scheduled campaign and deleting."""
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -119,48 +119,6 @@ async def test_deleted_campaigns_leave_the_list():
     assert [c["id"] for c in out["campaigns"]] == [keep["id"]] and gone["id"] != keep["id"]
 
 
-# ---------------------------------------------------------------- OTP history
-
-@pytest.mark.asyncio
-async def test_otp_send_resend_and_verify_are_logged_without_the_code():
-    db = FakeSupabase()
-    with patch.object(sms, "get_supabase", lambda: db), \
-         patch.object(bulk9_client, "otp_send", AsyncMock(return_value={"request_id": "o1", "message": "sent"})), \
-         patch.object(bulk9_client, "otp_resend", AsyncMock(return_value={"message": "again"})), \
-         patch.object(bulk9_client, "otp_verify", AsyncMock(side_effect=Bulk9Error("Invalid OTP"))):
-        await sms.otp_send(sms.OtpSendBody(mobile="9876543210", otp_id="7"), CTX)
-        await sms.otp_resend(sms.OtpResendBody(mobile="9876543210"), CTX)
-        out = await sms.otp_verify(sms.OtpVerifyBody(mobile="9876543210", otp="123456"), CTX)
-    assert out == {"ok": False, "message": "Invalid OTP"}
-    rows = db.rows("sms_otp_log")
-    assert [(r["action"], r["ok"]) for r in rows] == [("send", True), ("resend", True), ("verify", False)]
-    assert rows[0]["request_id"] == "o1" and rows[0]["created_by"] == "u1"
-    assert all("123456" not in str(r) for r in rows)
-
-
-@pytest.mark.asyncio
-async def test_failed_send_is_logged_and_still_raised():
-    db = FakeSupabase()
-    with patch.object(sms, "get_supabase", lambda: db), \
-         patch.object(bulk9_client, "otp_send", AsyncMock(side_effect=Bulk9Error("Bad OTP template"))), \
-         pytest.raises(HTTPException) as e:
-        await sms.otp_send(sms.OtpSendBody(mobile="9876543210", otp_id="7"), CTX)
-    assert e.value.status_code == 502
-    assert db.rows("sms_otp_log")[0]["ok"] is False
-
-
-@pytest.mark.asyncio
-async def test_otp_history_is_per_tenant_newest_first():
-    db = FakeSupabase()
-    db.add("sms_otp_log", tenant_id=T, mobile="9876543210", action="send", ok=True, created_at="2026-11-01")
-    db.add("sms_otp_log", tenant_id=T, mobile="9876543210", action="verify", ok=True, created_at="2026-11-02")
-    db.add("sms_otp_log", tenant_id=OTHER, mobile="9000000000", action="send", ok=True, created_at="2026-11-03")
-    with patch.object(sms, "get_supabase", lambda: db):
-        out = await sms.otp_history(limit=50, offset=0, ctx=CTX)
-    assert [i["action"] for i in out["items"]] == ["verify", "send"]
-    assert set(out["items"][0]) == {"id", "mobile", "action", "ok", "message", "created_at", "delivery_status", "delivered_at"}
-
-
 # ---------------------------------------------------------------- report dates are Indian days
 
 def test_report_dates_cover_the_indian_day():
@@ -189,9 +147,10 @@ async def test_summary_counts_night_held_messages_and_days():
     db.add("sms_messages", tenant_id=T, status="delivered", created_at="2026-11-03T06:00:00+00:00",
            submitted_at="2026-11-03T06:00:00+00:00")
     db.add("sms_messages", tenant_id=OTHER, status="submitted", created_at=night, submitted_at=night)
-    db.add("sms_otp_log", tenant_id=T, action="send", ok=True, created_at="2026-11-04T05:00:00+00:00")
-    db.add("sms_otp_log", tenant_id=T, action="verify", ok=True, created_at="2026-11-04T05:01:00+00:00")
-    db.add("sms_otp_log", tenant_id=T, action="send", ok=False, created_at="2026-11-04T05:02:00+00:00")
+    # Anril OTP: only codes Bulk9 accepted as SMS count (WhatsApp-only and failed sends have no request id).
+    db.add("otp_requests", tenant_id=T, sms_request_id="r1", created_at="2026-11-04T05:00:00+00:00")
+    db.add("otp_requests", tenant_id=T, sms_request_id=None, created_at="2026-11-04T05:01:00+00:00")
+    db.add("otp_requests", tenant_id=OTHER, sms_request_id="r2", created_at="2026-11-04T05:02:00+00:00")
     at_3am = datetime(2026, 11, 4, 21, 53, tzinfo=timezone.utc)
     with patch.object(sms, "get_supabase", lambda: db), patch.object(sms, "_utcnow", lambda: at_3am), \
          patch.object(sms.bulk9_client, "sms_summary", AsyncMock(return_value={})):
@@ -213,7 +172,7 @@ async def test_summary_counts_more_than_1000_otps():
     from datetime import date
     db = FakeSupabase()
     for _ in range(1203):
-        db.add("sms_otp_log", tenant_id=T, action="send", ok=True, created_at="2026-11-04T05:00:00+00:00")
+        db.add("otp_requests", tenant_id=T, sms_request_id="r", created_at="2026-11-04T05:00:00+00:00")
     with patch.object(sms, "get_supabase", lambda: db), \
          patch.object(sms.bulk9_client, "sms_summary", AsyncMock(return_value={})):
         out = await sms.reports_summary(date(2026, 11, 4), date(2026, 11, 4), CTX)

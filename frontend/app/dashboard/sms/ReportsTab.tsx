@@ -29,14 +29,12 @@ import {
   maxToFor,
   humanizeKind,
   onTheWayCount,
-  otpActionLabel,
-  otpDelivery,
   sendProgress,
   statusLabel,
 } from "./helpers";
 import { MessageStatus, messageTime } from "./MessageStatus";
 import { useSms } from "./SmsShell";
-import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
+import { Badge, Btn, Card, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
 const PAGE = 50;
@@ -512,65 +510,6 @@ function LogsBody() {
   );
 }
 
-export function OtpHistory() {
-  const [offset, setOffset] = useState(0);
-  const { data, error, isLoading, mutate } = useSWR(["sms:otp-history", offset], () => api.sms.otpHistory(PAGE, offset), {
-    keepPreviousData: true,
-    revalidateOnFocus: false,
-  });
-  const items = data?.items ?? [];
-  return (
-    <Card>
-      <CardHeader title="OTP history" hint="OTPs sent, resent and checked from this dashboard." />
-      {isLoading && !data ? (
-        <Skeleton className="m-4 h-32" />
-      ) : error && !data ? (
-        <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
-      ) : items.length === 0 ? (
-        <Empty title="No OTPs sent from Anril yet." hint="OTPs your own app sends with your API key don't show here." />
-      ) : (
-        <>
-          <TableWrap>
-            <table className="w-full min-w-[720px]">
-              <thead>
-                <tr className="border-b border-[#f1f5f9]">
-                  <th className={thCls}>Time (IST)</th>
-                  <th className={thCls}>Mobile</th>
-                  <th className={thCls}>Action</th>
-                  <th className={thCls}>Result</th>
-                  <th className={thCls}>Delivery</th>
-                  <th className={thCls}>Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((o) => (
-                  <tr key={o.id} className="border-b border-[#f1f5f9] last:border-0">
-                    <td className={`${tdCls} whitespace-nowrap`}>{formatIst(o.created_at)}</td>
-                    <td className={`${tdCls} whitespace-nowrap`}>{o.mobile}</td>
-                    <td className={tdCls}>{otpActionLabel(o.action)}</td>
-                    <td className={tdCls}>
-                      <Badge tone={o.ok ? "success" : "danger"}>{o.ok ? "OK" : "Failed"}</Badge>
-                    </td>
-                    <td className={tdCls}>
-                      {(() => {
-                        const d = otpDelivery(o.delivery_status);
-                        return d.tone ? <Badge tone={d.tone}>{d.label}</Badge> : <span className="text-[#94a3b8]">{d.label}</span>;
-                      })()}
-                    </td>
-                    <td className={`${tdCls} max-w-[260px] truncate text-[#64748b]`} title={o.message ?? undefined}>
-                      {o.message || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-          <Pager offset={offset} limit={PAGE} total={data?.total ?? 0} onOffset={setOffset} />
-        </>
-      )}
-    </Card>
-  );
-}
 
 /** One raw-log cell. The status description (a DLT / operator code) is shown in plain English with the raw code on hover. */
 function LogCell({ column, value }: { column: string; value: unknown }) {

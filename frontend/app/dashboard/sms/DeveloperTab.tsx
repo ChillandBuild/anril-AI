@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { OTP_EXPIRY_RANGE, OTP_EXTRA_MAX, OTP_LENGTH_RANGE, friendlyError, parseOtpSettings } from "./helpers";
-import { Btn, Card, CardHeader, Field, Notice, inputCls } from "./ui";
+import { friendlyError } from "./helpers";
+import { Btn, Card, CardHeader, Notice } from "./ui";
 import { usePerm } from "./usePerm";
 
 export function ApiKeyCard() {
@@ -61,93 +61,6 @@ export function ApiKeyCard() {
                 <Eye size={14} /> Show API key
               </Btn>
             )}
-          </>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-export function OtpConsole() {
-  const { canManage } = usePerm();
-  const [mobile, setMobile] = useState("");
-  const [otpId, setOtpId] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpLength, setOtpLength] = useState("6");
-  const [otpExpiry, setOtpExpiry] = useState("15");
-  const [extra, setExtra] = useState("");
-  const [busy, setBusy] = useState<"send" | "verify" | "resend" | null>(null);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-
-  async function run(kind: "send" | "verify" | "resend") {
-    if (busy) return;
-    setResult(null);
-    const settings = parseOtpSettings({ length: otpLength, expiry: otpExpiry, extra });
-    if (kind === "send" && settings.error !== null) {
-      setResult({ ok: false, text: settings.error });
-      return;
-    }
-    setBusy(kind);
-    try {
-      const m = mobile.trim();
-      let res;
-      if (kind === "send" && settings.error === null) {
-        res = await api.sms.otpSend({ mobile: m, otp_id: otpId.trim(), otp_length: settings.length, otp_expiry: settings.expiry, variables_values: settings.extra });
-      } else if (kind === "verify") {
-        res = await api.sms.otpVerify({ mobile: m, otp: otp.trim() });
-      } else {
-        res = await api.sms.otpResend({ mobile: m });
-      }
-      setResult({ ok: res.ok, text: res.message || (res.ok ? "Done." : "That didn't work.") });
-    } catch (err) {
-      setResult({ ok: false, text: friendlyError(err, "That didn't go through.") });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader title="OTP test console" hint="Try the OTP flow with your own number. Each send uses SMS from your balance." />
-      <div className="space-y-3 p-4 sm:p-5">
-        {!canManage ? (
-          <Notice tone="info">You need SMS manage access to use the test console.</Notice>
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Mobile number" hint="10 digits, or with +91">
-                <input className={inputCls} inputMode="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} />
-              </Field>
-              <Field label="OTP template ID" hint="The OTP id from your approved OTP template">
-                <input className={inputCls} value={otpId} onChange={(e) => setOtpId(e.target.value)} />
-              </Field>
-              <Field label="OTP received">
-                <input className={inputCls} inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value)} />
-              </Field>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="OTP length" hint={`${OTP_LENGTH_RANGE.min} to ${OTP_LENGTH_RANGE.max} digits`}>
-                <input className={inputCls} type="number" inputMode="numeric" min={OTP_LENGTH_RANGE.min} max={OTP_LENGTH_RANGE.max} value={otpLength} onChange={(e) => setOtpLength(e.target.value)} />
-              </Field>
-              <Field label="Expires after (minutes)" hint={`${OTP_EXPIRY_RANGE.min} to ${OTP_EXPIRY_RANGE.max.toLocaleString("en-IN")} minutes`}>
-                <input className={inputCls} type="number" inputMode="numeric" min={OTP_EXPIRY_RANGE.min} max={OTP_EXPIRY_RANGE.max} value={otpExpiry} onChange={(e) => setOtpExpiry(e.target.value)} />
-              </Field>
-              <Field label="Extra message values (optional)" hint="Values for other {#var#} in your OTP template, separated by |">
-                <input className={inputCls} maxLength={OTP_EXTRA_MAX} value={extra} onChange={(e) => setExtra(e.target.value)} />
-              </Field>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Btn busy={busy === "send"} disabled={!mobile.trim() || !otpId.trim() || !!busy} onClick={() => void run("send")}>
-                Send OTP
-              </Btn>
-              <Btn variant="outline" busy={busy === "verify"} disabled={!mobile.trim() || !otp.trim() || !!busy} onClick={() => void run("verify")}>
-                Verify
-              </Btn>
-              <Btn variant="outline" busy={busy === "resend"} disabled={!mobile.trim() || !!busy} onClick={() => void run("resend")}>
-                Resend
-              </Btn>
-            </div>
-            {result && <Notice tone={result.ok ? "success" : "danger"}>{result.text}</Notice>}
           </>
         )}
       </div>

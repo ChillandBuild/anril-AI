@@ -22,10 +22,12 @@ def test_client_sms_and_operator_connection_routes_remain():
     assert {
         "/api/v1/sms/campaigns", "/api/v1/sms/templates", "/api/v1/sms/balance",
         "/api/v1/sms/dlt/entity", "/api/v1/sms/dlt/sender-excel", "/api/v1/sms/dlt/template-excel",
-        "/api/v1/sms/otp/send", "/api/v1/sms/otp/verify", "/api/v1/sms/otp/resend",
         "/api/v1/sms/developer/key", "/webhook/bulk9/{tenant_id}",
         "/api/v1/operator/clients/{tenant_id}/sms/key", "/api/v1/operator/clients/{tenant_id}/sms/webhook",
+        "/api/v1/otp/send", "/api/v1/otp/verify",
     } <= paths
+    # Bulk9 Smart OTP is gone (2026-11-15): Anril OTP (/api/v1/otp) replaced it.
+    assert not {p for p in paths if p.startswith("/api/v1/sms/otp") or p == "/webhook/bulk9/{tenant_id}/otp"}
 
 
 def test_existing_razorpay_oauth_is_not_removed_with_sms_recharge():

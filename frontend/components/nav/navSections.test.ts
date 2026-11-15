@@ -60,7 +60,6 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Delivery Reports", href: "/dashboard/sms/reports" },
   { label: "Transactions", href: "/dashboard/sms/transactions" },
   { label: "Dev API", href: "/dashboard/sms/developer" },
-  { label: "Smart OTP", href: "/dashboard/sms/otp" },
   { label: "Send & check", href: "/dashboard/otp" },
   { label: "History", href: "/dashboard/otp/history" },
   { label: "Settings", href: "/dashboard/otp/settings" },
@@ -166,10 +165,10 @@ describe("Anril SMS section", () => {
   const smsSection = NAV_SECTIONS.find((section) => section.key === "sms")!;
   const smsLinks = (access: NavAccess) => visibleEntries(smsSection, access) as NavLeaf[];
 
-  it("is its own main-menu section with the 8 pages in Bulk9's order", () => {
+  it("is its own main-menu section with the 7 pages in Bulk9's order", () => {
     expect(smsSection.title).toBe("Anril SMS");
     expect(smsLinks(allAccess).map((leaf) => leaf.label)).toEqual([
-      "Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API", "Smart OTP",
+      "Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API",
     ]);
     const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
     expect(reach.entries.some((entry) => entry.key.startsWith("sms"))).toBe(false);
@@ -183,7 +182,7 @@ describe("Anril SMS section", () => {
       can: (value) => value === permission,
       canAny: (values) => values.includes(permission),
     };
-    expect(smsLinks(access)).toHaveLength(8);
+    expect(smsLinks(access)).toHaveLength(7);
   });
 
   it("hides the section when the tenant feature is off", () => {
@@ -204,7 +203,7 @@ describe("Anril SMS section", () => {
     expect(dashboard.isActive("/dashboard/sms/setup")).toBe(false);
     expect(setup.isActive("/dashboard/sms/setup")).toBe(true);
     expect(setup.isActive("/dashboard/sms/setup-other")).toBe(false);
-    expect(sectionContainsPage(smsSection, "/dashboard/sms/otp")).toBe(true);
+    expect(sectionContainsPage(smsSection, "/dashboard/sms/otp")).toBe(false);
     expect(sectionContainsPage(smsSection, "/dashboard/sms-other")).toBe(false);
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("sms");
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms/send")).toBe("sms");

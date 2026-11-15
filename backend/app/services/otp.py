@@ -874,12 +874,88 @@ async def sweep(db=None, *, limit: int = 200) -> dict:
 
 # ---------------------------------------------------------------- dashboard summaries
 
-def history(db, tenant_id: str, *, limit: int = 50, before: str | None = None) -> list[dict]:
+STATUSES = ("pending", "verified", "expired", "locked", "not_requested", "failed")
+ORIGINS = ("dashboard", "api", "bot", "telecaller")
+CHANNELS = ("sms", "whatsapp")
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def history(db, tenant_id: str, *, limit: int = 50, before: str | None = None, status: str | None = None,
+            channel: str | None = None, origin: str | None = None, search: str | None = None) -> list[dict]:
+    """Newest first. Filters: result `status`, a `channel` that was used, `origin`, and `search`
+    (any part of the phone number's digits). Unknown filter values are ignored."""
     q = (db.table("otp_requests").select("*").eq("tenant_id", tenant_id)
          .order("created_at", desc=True).limit(min(max(limit, 1), 200)))
     if before:
         q = q.lt("created_at", before)
+    if status in STATUSES:
+        q = q.eq("status", status)
+    if channel in CHANNELS:
+        q = q.neq(f"{channel}_status", "none")
+    if origin in ORIGINS:
+        q = q.eq("origin", origin)
+    digits = re.sub(r"\D", "", search or "")[:15]
+    if digits:
+        q = q.like("phone", f"%{digits}%")
     return [history_view(r) for r in (q.execute().data or [])]
+
+
+def stats(db, tenant_id: str, days: int = 7) -> dict:
+    """Totals for the History summary over the last `days` (1 to 90) Indian days, today included.
+    verified_rate counts only Anril-made codes: Anril can't see whether a client-made code was used."""
+    days = min(max(int(days), 1), 90)
+    today = _now().astimezone(_IST).date()
+    first = today - timedelta(days=days - 1)
+    since = datetime(first.year, first.month, first.day, tzinfo=_IST).isoformat()
+    by_status = {s: 0 for s in STATUSES}
+    sms = {"sent": 0, "delivered": 0, "failed": 0}
+    whatsapp = {"sent": 0, "delivered": 0, "read": 0, "failed": 0}
+    daily = {(first + timedelta(days=i)).isoformat(): {"day": (first + timedelta(days=i)).isoformat(), "sent": 0, "verified": 0}
+             for i in range(days)}
+    total = delivered = anril_made = backups = 0
+    start = 0
+    while True:
+        rows = (db.table("otp_requests")
+                .select("status,source,mode,sms_status,whatsapp_status,fallback_sent_at,created_at")
+                .eq("tenant_id", tenant_id).gte("created_at", since).order("id")
+                .range(start, start + 999).execute()).data or []
+        for r in rows:
+            total += 1
+            if r.get("status") in by_status:
+                by_status[r["status"]] += 1
+            if r.get("source") == "anril":
+                anril_made += 1
+            s_st, w_st = r.get("sms_status") or "none", r.get("whatsapp_status") or "none"
+            if s_st != "none":
+                sms["sent"] += 1
+                if s_st in ("delivered", "failed"):
+                    sms[s_st] += 1
+            if w_st != "none":
+                whatsapp["sent"] += 1
+                if w_st in ("delivered", "read"):
+                    whatsapp["delivered"] += 1
+                if w_st in ("read", "failed"):
+                    whatsapp[w_st] += 1
+            if s_st == "delivered" or w_st in ("delivered", "read"):
+                delivered += 1
+            if r.get("fallback_sent_at") and r.get("mode") == "sms_then_whatsapp":
+                backups += 1
+            created = _parse_ts(r.get("created_at"))
+            day = daily.get(created.astimezone(_IST).date().isoformat()) if created else None
+            if day is not None:
+                day["sent"] += 1
+                if r.get("status") == "verified":
+                    day["verified"] += 1
+        if len(rows) < 1000:
+            break
+        start += 1000
+    return {
+        "days": days, "total": total, "delivered": delivered, "anril_made": anril_made,
+        "delivered_rate": round(delivered / total, 4) if total else None,
+        "verified_rate": round(by_status["verified"] / anril_made, 4) if anril_made else None,
+        "by_status": by_status, "sms": sms, "whatsapp": whatsapp, "whatsapp_backups": backups,
+        "daily": list(daily.values()),
+    }
 
 
 def not_requested_count(db, tenant_id: str, days: int = 7) -> int:

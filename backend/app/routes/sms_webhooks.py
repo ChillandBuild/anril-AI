@@ -93,11 +93,3 @@ async def bulk9_delivery_webhook(tenant_id: str, request: Request):
     results = [sms_delivery.handle_callback(db, tenant_id, p) for p in items]
     return {"status": "ok", "processed": len(results)}
 
-
-@router.post("/webhook/bulk9/{tenant_id}/otp")
-async def bulk9_otp_webhook(tenant_id: str, request: Request):
-    """OTP delivery reports (same secret and payload as SMS); they fill OTP history."""
-    tenant_id, items = await _authenticated_items(tenant_id, request)
-    db = get_supabase()
-    results = [sms_delivery.handle_otp_callback(db, tenant_id, p) for p in items]
-    return {"status": "ok", "processed": len(results)}

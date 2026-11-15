@@ -2,7 +2,6 @@
 
 import type { OtpHistoryItem, OtpMode, OtpView } from "@/lib/api";
 import type { Tone } from "../sms/helpers";
-import { Badge, Btn } from "../sms/ui";
 
 /** The backend puts a plain-English message in `detail`, which apiFetch copies to err.message. */
 export function otpError(err: unknown, fallback: string): string {
@@ -33,42 +32,6 @@ export function modeShortLabel(mode: OtpMode): string {
   return MODE_SHORT[mode] ?? mode;
 }
 
-/** Segmented choice of how to send a code. The chosen option is filled, the others outlined. */
-export function ModePicker({
-  value,
-  onChange,
-  disabled,
-  showHints,
-}: {
-  value: OtpMode;
-  onChange: (mode: OtpMode) => void;
-  disabled?: boolean;
-  showHints?: boolean;
-}) {
-  return (
-    <div role="group" aria-label="How to send the code" className="grid gap-2 sm:grid-cols-2">
-      {MODE_OPTIONS.map((opt) => {
-        const selected = opt.value === value;
-        return (
-          <Btn
-            key={opt.value}
-            variant={selected ? "primary" : "outline"}
-            aria-pressed={selected}
-            disabled={disabled}
-            onClick={() => onChange(opt.value)}
-            className="h-auto min-h-10 w-full flex-col items-start whitespace-normal py-2.5 text-left"
-          >
-            <span>{opt.label}</span>
-            {showHints && (
-              <span className={selected ? "text-xs font-normal text-white/85" : "text-xs font-normal text-[#64748b]"}>{opt.hint}</span>
-            )}
-          </Btn>
-        );
-      })}
-    </div>
-  );
-}
-
 type ChannelStatus = OtpView["sms"]["status"] | OtpView["whatsapp"]["status"];
 
 /** Badge for one channel's delivery state. */
@@ -85,11 +48,6 @@ export function channelBadge(status: ChannelStatus): { label: string; tone: Tone
     default:
       return { label: "Not used", tone: "neutral" };
   }
-}
-
-export function ChannelBadge({ status }: { status: ChannelStatus }) {
-  const b = channelBadge(status);
-  return <Badge tone={b.tone}>{b.label}</Badge>;
 }
 
 /** Plain wording for an OTP's overall result. */
@@ -110,11 +68,6 @@ export function resultLabel(status: OtpHistoryItem["status"]): { label: string; 
   }
 }
 
-export function ResultBadge({ status }: { status: OtpHistoryItem["status"] }) {
-  const r = resultLabel(status);
-  return <Badge tone={r.tone}>{r.label}</Badge>;
-}
-
 /** True once an OTP has stopped changing, so live polling can stop. */
 export function otpIsSettled(v: Pick<OtpView, "status" | "sms" | "whatsapp">): boolean {
   if (v.status !== "pending") return true;
@@ -132,4 +85,47 @@ export const ORIGIN_LABELS: Record<OtpHistoryItem["origin"], string> = {
 
 export function sourceLabel(source: OtpView["source"]): string {
   return source === "anril" ? "Anril" : "Your server";
+}
+
+/** One step in a code's journey, for the Timeline component in otpUi. */
+export type OtpStep = { key: string; title: string; time?: string; detail?: string; tone: Tone };
+
+/** What happened to one code, in order. Only the send, verify and not-requested moments have times;
+ *  channel steps don't (Anril keeps their status, not when each change happened). */
+export function otpTimeline(v: OtpView, formatTime: (iso: string) => string): OtpStep[] {
+  const steps: OtpStep[] = [
+    { key: "created", title: v.source === "anril" ? "Code made by Anril" : "Code received from your server", time: formatTime(v.created_at), tone: "info" },
+  ];
+  const sms = v.sms.status;
+  if (sms !== "none") {
+    const title = sms === "delivered" ? "SMS delivered" : sms === "failed" ? "SMS not delivered" : "SMS sent";
+    steps.push({ key: "sms", title, detail: v.sms.error ?? undefined, tone: sms === "delivered" ? "success" : sms === "failed" ? "danger" : "info" });
+  }
+  const wa = v.whatsapp.status;
+  if (wa !== "none") {
+    const via = v.whatsapp_backup_sent ? "WhatsApp backup" : "WhatsApp";
+    const title = wa === "read" ? `${via} read` : wa === "delivered" ? `${via} delivered` : wa === "failed" ? `${via} not delivered` : `${via} sent`;
+    steps.push({ key: "whatsapp", title, detail: v.whatsapp.error ?? undefined, tone: wa === "read" || wa === "delivered" ? "success" : wa === "failed" ? "danger" : "info" });
+  }
+  if (v.not_requested) {
+    steps.push({ key: "not_requested", title: "Customer said they didn't ask for this code", detail: "Anril cancelled the code.", tone: "danger" });
+  }
+  switch (v.status) {
+    case "verified":
+      steps.push({ key: "end", title: "Code verified", time: v.verified_at ? formatTime(v.verified_at) : undefined, tone: "success" });
+      break;
+    case "locked":
+      steps.push({ key: "end", title: "Locked after too many wrong tries", tone: "danger" });
+      break;
+    case "expired":
+      steps.push({ key: "end", title: "Expired before it was used", time: v.expires_at ? formatTime(v.expires_at) : undefined, tone: "neutral" });
+      break;
+    case "failed":
+      steps.push({ key: "end", title: "Didn't reach the customer on any channel", tone: "danger" });
+      break;
+    case "pending":
+      if (!otpIsSettled(v)) steps.push({ key: "end", title: "Waiting for a delivery report…", tone: "neutral" });
+      break;
+  }
+  return steps;
 }

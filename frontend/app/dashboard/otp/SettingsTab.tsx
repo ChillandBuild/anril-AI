@@ -3,14 +3,20 @@
 import { useState, type FormEvent } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { toast } from "sonner";
+import { Copy, Plus } from "lucide-react";
 import { api, type OtpMode, type OtpOverview, type OtpSettings } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { formatCount } from "../sms/helpers";
 import { usePerm } from "../sms/usePerm";
-import { Badge, Btn, Card, CardHeader, Field, LoadError, Modal, Notice, Skeleton, inputCls } from "../sms/ui";
-import { ModePicker, OTP_OVERVIEW_KEY, otpError } from "./otpShared";
+import { Btn, Field, LoadError, Modal, Notice, Skeleton, inputCls } from "../sms/ui";
+import { OTP_OVERVIEW_KEY, otpError } from "./otpShared";
+import { CopyButton, ModeCards, SectionCard, SettingsRow, StatusPill } from "./otpUi";
 
 const SMS_TEMPLATES_KEY = "otp:sms-templates";
 const WA_TEMPLATES_KEY = "otp:wa-templates";
+
+/** Stands in for the code in the template previews. */
+const SAMPLE_CODE = "482913";
 
 const WA_NOTE =
   'WhatsApp shows a Copy code button on these messages. For some accounts WhatsApp also adds an "I didn\'t request a code" button; if a customer taps it, Anril cancels that code and tells your server.';
@@ -156,16 +162,16 @@ export function SettingsTab() {
 
   if (error && !data) {
     return (
-      <Card>
+      <div className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
         <LoadError message={otpError(error, "Try again in a moment.")} onRetry={() => void mutate()} />
-      </Card>
+      </div>
     );
   }
   if (isLoading || !data) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-64" />
-        <Skeleton className="h-40" />
+      <div className="space-y-6">
+        <Skeleton className="h-72 rounded-2xl" />
+        <Skeleton className="h-48 rounded-2xl" />
       </div>
     );
   }
@@ -187,6 +193,10 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
   const dirty = Object.keys(patch).length > 0;
   const hasErrors = Object.keys(errors).length > 0;
   const disabled = !canEdit || saving;
+
+  // The WhatsApp preview quotes the expiry being typed, falling back to the saved value while it is not a valid number.
+  const expiryCheck = readInt(draft.expiry, limits.expiry_minutes, "Expiry");
+  const expiryPreview = "value" in expiryCheck ? expiryCheck.value : saved.expiry_minutes;
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setEdits((prev) => ({ ...prev, [key]: value }));
@@ -218,121 +228,152 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
   const usesWhatsapp = mode === "whatsapp" || mode === "both" || mode === "sms_then_whatsapp";
 
   return (
-    <div className="space-y-4 pb-2">
+    <div className="space-y-6 pb-24">
       {!canEdit && (
         <Notice tone="info">Only people with settings permission can change these. Ask the account owner.</Notice>
       )}
       {saveError && <Notice tone="danger">{saveError}</Notice>}
 
-      <Card>
-        <CardHeader title="How codes are sent" hint="Pick the default. You can still choose another way for a single code." />
-        <div className="space-y-4 p-4 sm:p-5">
-          <ModePicker value={mode} onChange={(m) => set("mode", m)} disabled={disabled} showHints />
+      <SectionCard title="Delivery" description="How codes reach your customers.">
+        <div>
+          <SettingsRow
+            title="Default way to send"
+            description="Used when a request doesn't say. You can still pick another way for a single code."
+          >
+            <ModeCards value={mode} onChange={(m) => set("mode", m)} disabled={disabled} />
 
-          {usesSms && !overview.channels.sms.ready && (
-            <Notice tone="warn">{overview.channels.sms.problem ?? "SMS isn't ready yet."}</Notice>
-          )}
-          {usesWhatsapp && !overview.channels.whatsapp.ready && (
-            <Notice tone="warn">{overview.channels.whatsapp.problem ?? "WhatsApp isn't ready yet."}</Notice>
-          )}
+            {(usesSms && !overview.channels.sms.ready) || (usesWhatsapp && !overview.channels.whatsapp.ready) ? (
+              <div className="mt-4 space-y-3">
+                {usesSms && !overview.channels.sms.ready && (
+                  <Notice tone="warn">{overview.channels.sms.problem ?? "SMS isn't ready yet."}</Notice>
+                )}
+                {usesWhatsapp && !overview.channels.whatsapp.ready && (
+                  <Notice tone="warn">{overview.channels.whatsapp.problem ?? "WhatsApp isn't ready yet."}</Notice>
+                )}
+              </div>
+            ) : null}
+          </SettingsRow>
 
           {mode === "sms_then_whatsapp" && (
-            <NumberField
-              label="Wait before sending on WhatsApp"
-              hint={`Seconds. ${formatCount(limits.fallback_wait_seconds[0])} to ${formatCount(limits.fallback_wait_seconds[1])}.`}
-              value={draft.wait}
-              onChange={(v) => set("wait", v)}
-              range={limits.fallback_wait_seconds}
-              disabled={disabled}
-              error={errors.wait}
-              className="sm:max-w-xs"
-            />
+            <SettingsRow
+              title="WhatsApp backup wait"
+              description="How long to wait for the SMS to be delivered before the same code goes on WhatsApp."
+            >
+              <NumberField
+                label="WhatsApp backup wait"
+                unit="seconds"
+                hint={`${formatCount(limits.fallback_wait_seconds[0])} to ${formatCount(limits.fallback_wait_seconds[1])} seconds.`}
+                value={draft.wait}
+                onChange={(v) => set("wait", v)}
+                disabled={disabled}
+                error={errors.wait}
+              />
+            </SettingsRow>
           )}
         </div>
-      </Card>
+      </SectionCard>
 
-      <Card>
-        <CardHeader title="Code rules" />
-        <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
-          <NumberField
-            label="Code length"
-            hint={`Digits. ${limits.code_length[0]} to ${limits.code_length[1]}.`}
-            value={draft.codeLength}
-            onChange={(v) => set("codeLength", v)}
-            range={limits.code_length}
+      <SectionCard title="Code rules">
+        <div>
+          <SettingsRow title="Code length" description="How many digits Anril puts in a code.">
+            <NumberField
+              label="Code length"
+              unit="digits"
+              hint={`${limits.code_length[0]} to ${limits.code_length[1]}.`}
+              value={draft.codeLength}
+              onChange={(v) => set("codeLength", v)}
+              disabled={disabled}
+              error={errors.codeLength}
+            />
+          </SettingsRow>
+          <SettingsRow title="Expires after" description="After this, the code stops working.">
+            <NumberField
+              label="Expires after"
+              unit="minutes"
+              hint={`${formatCount(limits.expiry_minutes[0])} to ${formatCount(limits.expiry_minutes[1])} minutes.`}
+              value={draft.expiry}
+              onChange={(v) => set("expiry", v)}
+              disabled={disabled}
+              error={errors.expiry}
+            />
+          </SettingsRow>
+          <SettingsRow title="Codes per number per hour" description="Stops one number being flooded with codes.">
+            <NumberField
+              label="Codes per number per hour"
+              unit="per hour"
+              hint={`${formatCount(limits.max_per_hour[0])} to ${formatCount(limits.max_per_hour[1])}.`}
+              value={draft.maxPerHour}
+              onChange={(v) => set("maxPerHour", v)}
+              disabled={disabled}
+              error={errors.maxPerHour}
+            />
+          </SettingsRow>
+          <SettingsRow title="Wrong tries allowed" description="After this many wrong tries the code locks.">
+            <NumberField
+              label="Wrong tries allowed"
+              unit="tries"
+              hint={`${limits.max_attempts[0]} to ${limits.max_attempts[1]}. Then the code locks.`}
+              value={draft.maxAttempts}
+              onChange={(v) => set("maxAttempts", v)}
+              disabled={disabled}
+              error={errors.maxAttempts}
+            />
+          </SettingsRow>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Templates">
+        <div>
+          <SmsTemplateRow value={draft.smsKey} onChange={(v) => set("smsKey", v)} disabled={disabled} />
+          <WhatsappTemplateRow
+            value={draft.waKey}
+            onChange={(v) => set("waKey", v)}
             disabled={disabled}
-            error={errors.codeLength}
-          />
-          <NumberField
-            label="Expires after (minutes)"
-            hint={`${formatCount(limits.expiry_minutes[0])} to ${formatCount(limits.expiry_minutes[1])} minutes.`}
-            value={draft.expiry}
-            onChange={(v) => set("expiry", v)}
-            range={limits.expiry_minutes}
-            disabled={disabled}
-            error={errors.expiry}
-          />
-          <NumberField
-            label="Max codes per number per hour"
-            hint={`${formatCount(limits.max_per_hour[0])} to ${formatCount(limits.max_per_hour[1])}.`}
-            value={draft.maxPerHour}
-            onChange={(v) => set("maxPerHour", v)}
-            range={limits.max_per_hour}
-            disabled={disabled}
-            error={errors.maxPerHour}
-          />
-          <NumberField
-            label="Wrong tries allowed"
-            hint={`${limits.max_attempts[0]} to ${limits.max_attempts[1]}. Then the code locks.`}
-            value={draft.maxAttempts}
-            onChange={(v) => set("maxAttempts", v)}
-            range={limits.max_attempts}
-            disabled={disabled}
-            error={errors.maxAttempts}
+            canCreate={canEdit}
+            expiryMinutes={expiryPreview}
           />
         </div>
-      </Card>
+      </SectionCard>
 
-      <SmsTemplateCard value={draft.smsKey} onChange={(v) => set("smsKey", v)} disabled={disabled} />
-
-      <WhatsappTemplateCard value={draft.waKey} onChange={(v) => set("waKey", v)} disabled={disabled} canCreate={canEdit} />
-
-      <Card>
-        <CardHeader title="Status updates to your server" hint="Anril tells your server when a code is delivered, read or fails." />
-        <div className="space-y-5 p-4 sm:p-5">
-          <div className="space-y-2">
-            <Field label="Your server's address" hint="Must start with https://">
-              <input
-                className={inputCls}
-                type="url"
-                inputMode="url"
-                autoComplete="off"
-                placeholder="https://example.com/otp-status"
-                value={draft.webhookUrl}
-                disabled={disabled}
-                onChange={(e) => set("webhookUrl", e.target.value)}
-              />
-            </Field>
+      <SectionCard title="Status updates to your server" description="Anril tells your server when a code is delivered, read or fails.">
+        <div>
+          <SettingsRow title="Status URL" description="Must start with https://">
+            <input
+              className={inputCls}
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              placeholder="https://example.com/otp-status"
+              aria-label="Status URL"
+              aria-invalid={!!errors.webhookUrl}
+              value={draft.webhookUrl}
+              disabled={disabled}
+              onChange={(e) => set("webhookUrl", e.target.value)}
+            />
             {errors.webhookUrl && <FieldError message={errors.webhookUrl} />}
-          </div>
+          </SettingsRow>
 
           <SigningSecret hasSecret={saved.has_webhook_secret} isOwner={isOwner} />
 
-          <WebhookTest
-            disabled={!canEdit || dirty || !saved.status_webhook_url}
-            dirty={dirty}
-            hasUrl={!!saved.status_webhook_url}
-          />
+          <WebhookTest disabled={!canEdit || dirty || !saved.status_webhook_url} dirty={dirty} hasUrl={!!saved.status_webhook_url} />
         </div>
-      </Card>
+      </SectionCard>
 
       {canEdit && dirty && (
-        <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-white px-4 py-3 shadow-lg">
-          <p className="text-sm font-semibold text-[#334155]">Unsaved changes</p>
-          <div className="flex gap-2">
-            <Btn variant="outline" disabled={saving} onClick={discard}>
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#0A1528] px-5 py-3 text-white shadow-[0_12px_32px_rgba(10,21,40,0.28)]">
+          <p className="flex items-center gap-2.5 text-sm font-semibold">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-[#f79009]" aria-hidden="true" />
+            You have unsaved changes
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={discard}
+              className="h-10 rounded-xl px-4 text-sm font-bold text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-50"
+            >
               Discard
-            </Btn>
+            </button>
             <Btn busy={saving} disabled={hasErrors} onClick={() => void save()}>
               Save
             </Btn>
@@ -346,36 +387,36 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
 function NumberField({
   label,
   hint,
+  unit,
   value,
   onChange,
-  range,
   disabled,
   error,
-  className,
 }: {
   label: string;
   hint: string;
+  unit: string;
   value: string;
   onChange: (v: string) => void;
-  range: [number, number];
   disabled: boolean;
   error?: string;
-  className?: string;
 }) {
   return (
-    <div className={className}>
-      <Field label={label} hint={hint}>
+    <div>
+      <div className="relative max-w-[220px]">
         <input
-          className={inputCls}
+          className={cn(inputCls, "pr-20")}
           type="number"
           inputMode="numeric"
-          min={range[0]}
-          max={range[1]}
+          aria-label={label}
+          aria-invalid={!!error}
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
         />
-      </Field>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#94a3b8]">{unit}</span>
+      </div>
+      <p className="mt-1.5 text-xs text-[#64748b]">{hint}</p>
       {error && <FieldError message={error} />}
     </div>
   );
@@ -389,60 +430,81 @@ function FieldError({ message }: { message: string }) {
   );
 }
 
-function SmsTemplateCard({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
+/** The template message with its first {#var#} shown as the sample code. */
+function withSampleCode(message: string) {
+  const match = /\{#var#\}/i.exec(message);
+  if (!match) return message;
+  return (
+    <>
+      {message.slice(0, match.index)}
+      <strong>{SAMPLE_CODE}</strong>
+      {message.slice(match.index + match[0].length)}
+    </>
+  );
+}
+
+function SmsTemplateRow({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
   const { data, error, isLoading, mutate } = useSWR(SMS_TEMPLATES_KEY, () => api.otp.smsTemplates(), { revalidateOnFocus: false });
   const templates = data?.templates ?? [];
   const chosen = templates.find((t) => `${t.sender_id}|${t.message_id}` === value);
   const knownKey = value === "" || chosen !== undefined;
 
   return (
-    <Card>
-      <CardHeader title="SMS template" hint="Your approved DLT template with one variable. The code goes into that variable." />
-      <div className="space-y-3 p-4 sm:p-5">
-        {error && !data ? (
-          <LoadError message={otpError(error, "Try again in a moment.")} onRetry={() => void mutate()} />
-        ) : isLoading || !data ? (
-          <Skeleton className="h-10" />
-        ) : (
-          <>
-            {data.problem && <Notice tone="warn">{data.problem}</Notice>}
-            <Field label="Template">
-              <select
-                className={`${inputCls} truncate`}
-                value={value}
-                disabled={disabled}
-                onChange={(e) => onChange(e.target.value)}
-              >
-                <option value="">No template chosen</option>
-                {templates.map((t) => {
-                  const key = `${t.sender_id}|${t.message_id}`;
-                  return (
-                    <option key={key} value={key}>
-                      {`${t.sender_id} · ${t.message}`}
-                    </option>
-                  );
-                })}
-                {!knownKey && <option value={value}>Saved template (not in this list)</option>}
-              </select>
-            </Field>
-            {chosen && <p className="break-words rounded-xl bg-[#f8fafc] px-3 py-2 text-xs text-[#334155] whitespace-pre-wrap">{chosen.message}</p>}
-          </>
-        )}
-      </div>
-    </Card>
+    <SettingsRow
+      title="SMS template"
+      description="Your approved DLT template with one variable. The code goes into that variable."
+    >
+      {error && !data ? (
+        <LoadError message={otpError(error, "Try again in a moment.")} onRetry={() => void mutate()} />
+      ) : isLoading || !data ? (
+        <Skeleton className="h-10" />
+      ) : (
+        <div className="space-y-3">
+          {data.problem && <Notice tone="warn">{data.problem}</Notice>}
+          <select
+            className={`${inputCls} truncate`}
+            aria-label="SMS template"
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            <option value="">No template chosen</option>
+            {templates.map((t) => {
+              const key = `${t.sender_id}|${t.message_id}`;
+              return (
+                <option key={key} value={key}>
+                  {`${t.sender_id} · ${t.message}`}
+                </option>
+              );
+            })}
+            {!knownKey && <option value={value}>Saved template (not in this list)</option>}
+          </select>
+          {chosen && (
+            <div>
+              <div className="max-w-sm break-words whitespace-pre-wrap rounded-2xl rounded-bl-md bg-[#f1f5f9] px-4 py-3 text-sm text-[#0A1528]">
+                {withSampleCode(chosen.message)}
+              </div>
+              <p className="mt-2 text-xs text-[#64748b]">Preview with a sample code</p>
+            </div>
+          )}
+        </div>
+      )}
+    </SettingsRow>
   );
 }
 
-function WhatsappTemplateCard({
+function WhatsappTemplateRow({
   value,
   onChange,
   disabled,
   canCreate,
+  expiryMinutes,
 }: {
   value: string;
   onChange: (v: string) => void;
   disabled: boolean;
   canCreate: boolean;
+  expiryMinutes: number;
 }) {
   const [creating, setCreating] = useState(false);
   const { data, error, isLoading, mutate: reload } = useSWR(WA_TEMPLATES_KEY, () => api.otp.whatsappTemplates(), {
@@ -452,26 +514,27 @@ function WhatsappTemplateCard({
   const known = value === "" || templates.some((t) => `${t.name}|${t.language}` === value);
 
   return (
-    <Card>
-      <CardHeader
-        title="WhatsApp template"
-        hint="Only approved templates can be used. Create one here if you don't have one yet."
-        action={
-          <Btn variant="outline" className="h-9" disabled={!canCreate || disabled} onClick={() => setCreating(true)}>
-            Create new
-          </Btn>
-        }
-      />
-      <div className="space-y-3 p-4 sm:p-5">
-        {error && !data ? (
-          <LoadError message={otpError(error, "Try again in a moment.")} onRetry={() => void reload()} />
-        ) : isLoading || !data ? (
-          <Skeleton className="h-10" />
-        ) : (
-          <>
-            {data.problem && <Notice tone="warn">{data.problem}</Notice>}
-            <Field label="Template">
-              <select className={`${inputCls} truncate`} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+    <SettingsRow
+      title="WhatsApp template"
+      description="Must be an approved authentication template. Create one here if you don't have one."
+    >
+      <div className="space-y-3">
+        {data?.problem && <Notice tone="warn">{data.problem}</Notice>}
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            {error && !data ? (
+              <LoadError message={otpError(error, "Try again in a moment.")} onRetry={() => void reload()} />
+            ) : isLoading || !data ? (
+              <Skeleton className="h-10" />
+            ) : (
+              <select
+                className={`${inputCls} truncate`}
+                aria-label="WhatsApp template"
+                value={value}
+                disabled={disabled}
+                onChange={(e) => onChange(e.target.value)}
+              >
                 <option value="">No template chosen</option>
                 {templates.map((t) => {
                   const key = `${t.name}|${t.language}`;
@@ -484,20 +547,33 @@ function WhatsappTemplateCard({
                 })}
                 {!known && <option value={value}>Saved template (not in this list)</option>}
               </select>
-            </Field>
-          </>
-        )}
-      </div>
-      <div className="border-t border-[#e2e8f0] p-4 sm:p-5">
-        <Notice tone="info">{WA_NOTE}</Notice>
+            )}
+          </div>
+          <Btn variant="outline" className="h-10 shrink-0" disabled={!canCreate || disabled} onClick={() => setCreating(true)}>
+            <Plus size={15} aria-hidden="true" />
+            Create new
+          </Btn>
+        </div>
+
+        <div>
+          <div className="max-w-sm rounded-2xl rounded-tl-md bg-[#e7fbe9] px-4 py-3 shadow-sm">
+            <p className="text-sm text-[#0A1528]">
+              <strong>{SAMPLE_CODE}</strong> is your verification code. For your security, do not share this code.
+            </p>
+            <p className="mt-1 text-xs text-[#64748b]">This code expires in {expiryMinutes} minutes.</p>
+            <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-black/10 pt-2.5 text-sm font-semibold text-primary">
+              <Copy size={14} aria-hidden="true" />
+              Copy code
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-[#64748b]">Preview with a sample code</p>
+        </div>
+
+        <p className="text-xs leading-relaxed text-[#64748b]">{WA_NOTE}</p>
       </div>
 
-      <NewWhatsappTemplate
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreated={() => void reload()}
-      />
-    </Card>
+      <NewWhatsappTemplate open={creating} onClose={() => setCreating(false)} onCreated={() => void reload()} />
+    </SettingsRow>
   );
 }
 
@@ -585,24 +661,11 @@ function SigningSecret({ hasSecret, isOwner }: { hasSecret: boolean; isOwner: bo
     }
   }
 
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Copied");
-    } catch {
-      toast.error("Couldn't copy. Select the text and copy it.");
-    }
-  }
-
   return (
-    <div className="space-y-3 border-t border-[#e2e8f0] pt-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-[#0A1528]">Signing secret</p>
-          <p className="mt-0.5 text-xs text-[#64748b]">Lets your server check that an update really came from Anril.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={hasSecret ? "success" : "neutral"}>{hasSecret ? "Secret is set" : "No secret yet"}</Badge>
+    <SettingsRow title="Signing secret" description="Lets your server check that an update really came from Anril.">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusPill tone={hasSecret ? "success" : "neutral"}>{hasSecret ? "Secret is set" : "No secret yet"}</StatusPill>
           {isOwner ? (
             <Btn variant="outline" className="h-9" busy={busy} onClick={() => void create()}>
               {hasSecret ? "Replace signing secret" : "Create signing secret"}
@@ -611,25 +674,21 @@ function SigningSecret({ hasSecret, isOwner }: { hasSecret: boolean; isOwner: bo
             <p className="text-xs text-[#64748b]">Only the account owner can create the signing secret.</p>
           )}
         </div>
-      </div>
 
-      {secret && (
-        <div className="space-y-3">
-          <Notice tone="warn">Copy it now. Anril won&apos;t show it again.</Notice>
-          <code className="block select-all break-all rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2.5 font-mono text-xs text-[#0A1528]">
-            {secret}
-          </code>
-          <div className="flex flex-wrap gap-2">
-            <Btn variant="outline" className="h-9" onClick={() => void copy(secret)}>
-              Copy
-            </Btn>
+        {secret && (
+          <div className="space-y-3 rounded-xl border border-[#fedf89] bg-[#fffaeb] p-4">
+            <p className="text-sm font-semibold text-[#b54708]">Copy it now. Anril won&apos;t show it again.</p>
+            <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white py-1.5 pl-3 pr-1.5">
+              <code className="min-w-0 flex-1 select-all break-all font-mono text-xs text-[#0A1528]">{secret}</code>
+              <CopyButton text={secret} />
+            </div>
             <Btn variant="link" onClick={() => setSecret(null)}>
               I&apos;ve copied it
             </Btn>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -656,16 +715,15 @@ function WebhookTest({ disabled, dirty, hasUrl }: { disabled: boolean; dirty: bo
   else if (!hasUrl) hint = "Save an address first, then send a test.";
 
   return (
-    <div className="space-y-3 border-t border-[#e2e8f0] pt-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-[#64748b]">{hint}</p>
+    <SettingsRow title="Test" description={hint}>
+      <div className="space-y-3">
         <Btn variant="outline" className="h-9" busy={busy} disabled={disabled} onClick={() => void test()}>
           Send test update
         </Btn>
+        {failure && <Notice tone="danger">{failure}</Notice>}
+        {result?.ok && <Notice tone="success">Your server accepted the test update.</Notice>}
+        {result && !result.ok && <Notice tone="danger">{result.error ?? "Your server didn't accept the test update."}</Notice>}
       </div>
-      {failure && <Notice tone="danger">{failure}</Notice>}
-      {result?.ok && <Notice tone="success">Your server accepted the test update.</Notice>}
-      {result && !result.ok && <Notice tone="danger">{result.error ?? "Your server didn't accept the test update."}</Notice>}
-    </div>
+    </SettingsRow>
   );
 }

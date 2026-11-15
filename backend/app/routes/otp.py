@@ -16,7 +16,7 @@ import time
 from typing import Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -273,9 +273,17 @@ async def console_verify(body: ConsoleVerifyIn, ctx: dict = Depends(manage)):
 
 
 @router.get("/history")
-async def console_history(before: Optional[str] = None, limit: int = 50, ctx: dict = Depends(view)):
-    rows = await asyncio.to_thread(svc.history, get_supabase(), ctx["tenant_id"], limit=limit, before=before)
+async def console_history(before: Optional[str] = None, limit: int = 50, status: Optional[str] = None,
+                          channel: Optional[str] = None, origin: Optional[str] = None,
+                          q: Optional[str] = Query(None, max_length=40), ctx: dict = Depends(view)):
+    rows = await asyncio.to_thread(svc.history, get_supabase(), ctx["tenant_id"], limit=limit, before=before,
+                                   status=status, channel=channel, origin=origin, search=q)
     return _ok({"items": rows})
+
+
+@router.get("/stats")
+async def console_stats(days: int = Query(7, ge=1, le=90), ctx: dict = Depends(view)):
+    return _ok(await asyncio.to_thread(svc.stats, get_supabase(), ctx["tenant_id"], days))
 
 
 @router.get("/history/{otp_id}")

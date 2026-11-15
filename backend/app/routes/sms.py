@@ -713,8 +713,9 @@ async def reports_summary(from_: Optional[date] = Query(None, alias="from"), to:
         start += 1000
     start = 0
     while True:
-        otps = (db.table("sms_otp_log").select("created_at").eq("tenant_id", tid).in_("action", ["send", "resend"])
-                .eq("ok", True).gte("created_at", lo).lte("created_at", hi).order("id")
+        # Anril OTP codes that went out by SMS (Bulk9 accepted them, so they have a request id).
+        otps = (db.table("otp_requests").select("created_at").eq("tenant_id", tid)
+                .not_.is_("sms_request_id", "null").gte("created_at", lo).lte("created_at", hi).order("id")
                 .range(start, start + 999).execute()).data or []
         for r in otps:
             day = daily.get(_ist_day(r.get("created_at")))
@@ -762,94 +763,3 @@ async def developer_key(ctx: dict = Depends(_owner_gate)):
     return {"api_key": ctx["api_key"]}
 
 
-def _mobile(raw: str) -> str:
-    m = camp.normalize_indian_mobile(raw)
-    if not m:
-        raise HTTPException(422, "Enter a valid 10-digit Indian mobile number.")
-    return m
-
-
-class OtpSendBody(BaseModel):
-    mobile: str
-    otp_id: str = Field(min_length=1, max_length=40)
-    otp_length: int = Field(6, ge=4, le=10)
-    otp_expiry: int = Field(15, ge=1, le=10080)
-    variables_values: Optional[str] = Field(None, max_length=200)
-
-
-class OtpVerifyBody(BaseModel):
-    mobile: str
-    otp: str = Field(min_length=1, max_length=12)
-
-
-class OtpResendBody(BaseModel):
-    mobile: str
-
-
-def _log_otp(ctx: dict, mobile: str, action: str, ok: bool, message: str | None,
-             request_id: str | None = None) -> None:
-    """OTP history row (never the code). Best effort: a failed write must not fail the OTP."""
-    try:
-        get_supabase().table("sms_otp_log").insert({
-            "tenant_id": ctx["tenant_id"], "mobile": mobile, "action": action, "ok": ok,
-            "request_id": request_id, "message": (message or "")[:300] or None,
-            "created_by": ctx.get("user_id"),
-        }).execute()
-    except Exception:
-        logger.exception("sms: OTP history write failed for tenant %s", ctx["tenant_id"])
-
-
-async def _otp_call(ctx: dict, mobile: str, action: str, call, ok_text: str) -> dict:
-    try:
-        res = await _bulk9(call)
-    except HTTPException as e:
-        _log_otp(ctx, mobile, action, False, str(e.detail))
-        raise
-    message = _message(res, ok_text)
-    _log_otp(ctx, mobile, action, True, message, res.get("request_id"))
-    return {"ok": True, "request_id": res.get("request_id"), "message": message}
-
-
-@router.post("/otp/send")
-async def otp_send(body: OtpSendBody, ctx: dict = Depends(manage)):
-    mobile = _mobile(body.mobile)
-    return await _otp_call(ctx, mobile, "send", bulk9_client.otp_send(
-        ctx["api_key"], mobile=mobile, otp_id=body.otp_id, otp_length=body.otp_length,
-        otp_expiry=body.otp_expiry, variables_values=(body.variables_values or "").strip() or None), "OTP sent.")
-
-
-@router.post("/otp/verify")
-async def otp_verify(body: OtpVerifyBody, ctx: dict = Depends(manage)):
-    mobile = _mobile(body.mobile)
-    try:
-        res = await bulk9_client.otp_verify(ctx["api_key"], mobile=mobile, otp=body.otp.strip())
-    except Bulk9Error as e:
-        # A wrong or expired code is an answer, not a provider outage.
-        _log_otp(ctx, mobile, "verify", False, str(e))
-        return {"ok": False, "message": str(e)}
-    except Bulk9Timeout:
-        raise HTTPException(504, "The SMS provider did not respond in time. Please try again.")
-    message = _message(res, "OTP verified.")
-    _log_otp(ctx, mobile, "verify", True, message)
-    return {"ok": True, "message": message}
-
-
-@router.post("/otp/resend")
-async def otp_resend(body: OtpResendBody, ctx: dict = Depends(manage)):
-    mobile = _mobile(body.mobile)
-    out = await _otp_call(ctx, mobile, "resend", bulk9_client.otp_resend(ctx["api_key"], mobile=mobile),
-                          "OTP sent again.")
-    return {"ok": True, "message": out["message"]}
-
-
-OTP_LOG_FIELDS = ("id", "mobile", "action", "ok", "message", "created_at", "delivery_status", "delivered_at")
-
-
-@router.get("/otp/history")
-async def otp_history(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-                      ctx: dict = Depends(view_no_key)):
-    """OTPs sent, resent and checked from this dashboard. OTPs your own app sends with the API key
-    aren't here: Bulk9 has no OTP-history API."""
-    res = (get_supabase().table("sms_otp_log").select("*", count="exact").eq("tenant_id", ctx["tenant_id"])
-           .order("created_at", desc=True).range(offset, offset + limit - 1).execute())
-    return {"items": [{k: r.get(k) for k in OTP_LOG_FIELDS} for r in res.data or []], "total": res.count or 0}

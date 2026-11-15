@@ -452,9 +452,9 @@ export function SendForm() {
               ))}
             {template && looksLikeOtp(template.message) && (
               <Notice tone="info">
-                This looks like an OTP message. Your app sends OTPs on its own and makes the code itself, so you don&apos;t type one here.{" "}
-                <Link href="/dashboard/sms/otp" className="font-bold underline">
-                  Set up OTP →
+                This looks like an OTP message. Use Anril OTP for codes: it makes the code, sends it and checks it.{" "}
+                <Link href="/dashboard/otp/settings" className="font-bold underline">
+                  Set up Anril OTP →
                 </Link>
               </Notice>
             )}

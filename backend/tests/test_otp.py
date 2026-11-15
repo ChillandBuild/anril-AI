@@ -506,3 +506,54 @@ def test_settings_access_alone_reaches_otp_but_not_keys(env):
     assert client.get("/api/v1/otp-console/keys").status_code == 403
     holder["ctx"] = {"tenant_id": TENANT, "role": "member", "user_id": "u4", "permissions": ["leads.view"]}
     assert client.get("/api/v1/otp-console/overview").status_code == 403
+
+
+# ---------------------------------------------------------------- History filters + summary (2026-11-15)
+
+def _req(env, **row):
+    base = {"tenant_id": TENANT, "phone": "919876543210", "mode": "sms", "source": "anril", "origin": "api",
+            "code_masked": "12••56", "status": "pending", "sms_status": "sent", "whatsapp_status": "none",
+            "expires_at": svc._iso(svc._now() + timedelta(minutes=10)), "created_at": svc._iso(svc._now())}
+    return env.db.add("otp_requests", **{**base, **row})
+
+
+def test_history_filters_by_status_channel_origin_and_number(env):
+    _req(env, status="verified", phone="919876543210")
+    _req(env, status="failed", mode="whatsapp", sms_status="none", whatsapp_status="failed", phone="447700900123")
+    _req(env, status="verified", origin="dashboard", phone="919000000001")
+    _req(env, tenant_id=OTHER, status="verified")
+    assert len(svc.history(env.db, TENANT)) == 3
+    assert {r["phone"] for r in svc.history(env.db, TENANT, status="verified")} == {"+919876543210", "+919000000001"}
+    assert [r["phone"] for r in svc.history(env.db, TENANT, channel="whatsapp")] == ["+447700900123"]
+    assert [r["phone"] for r in svc.history(env.db, TENANT, origin="dashboard")] == ["+919000000001"]
+    assert [r["phone"] for r in svc.history(env.db, TENANT, search="98765 43")] == ["+919876543210"]
+    assert len(svc.history(env.db, TENANT, status="bogus", channel="fax", search="--")) == 3  # unknown filters ignored
+
+
+def test_stats_counts_rates_channels_and_days(env):
+    now = svc._now()
+    _req(env, status="verified", sms_status="delivered")
+    _req(env, status="verified", mode="both", sms_status="failed", whatsapp_status="read")
+    _req(env, status="failed", sms_status="failed")
+    _req(env, status="pending", source="client", mode="sms_then_whatsapp", sms_status="failed",
+         whatsapp_status="delivered", fallback_sent_at=svc._iso(now))
+    _req(env, status="verified", created_at=svc._iso(now - timedelta(days=30)))  # outside 7 days
+    _req(env, tenant_id=OTHER, status="verified")
+    out = svc.stats(env.db, TENANT, 7)
+    assert out["total"] == 4 and out["anril_made"] == 3 and out["delivered"] == 3
+    assert out["by_status"]["verified"] == 2 and out["by_status"]["failed"] == 1
+    assert out["verified_rate"] == round(2 / 3, 4) and out["delivered_rate"] == 0.75
+    assert out["sms"] == {"sent": 4, "delivered": 1, "failed": 3}
+    assert out["whatsapp"] == {"sent": 2, "delivered": 2, "read": 1, "failed": 0}
+    assert out["whatsapp_backups"] == 1
+    assert len(out["daily"]) == 7 and out["daily"][-1]["sent"] == 4 and out["daily"][-1]["verified"] == 2
+    empty = svc.stats(env.db, "33333333-3333-3333-3333-333333333333", 30)
+    assert empty["total"] == 0 and empty["verified_rate"] is None and len(empty["daily"]) == 30
+
+
+def test_stats_and_filtered_history_routes(env):
+    client, _ = _client(env)
+    _req(env, status="verified")
+    assert client.get("/api/v1/otp-console/stats?days=30").json()["total"] == 1
+    assert client.get("/api/v1/otp-console/stats?days=91").status_code == 422
+    assert len(client.get("/api/v1/otp-console/history?status=verified&channel=sms&q=9876").json()["items"]) == 1

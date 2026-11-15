@@ -41,7 +41,6 @@ import {
   type SendFormInput,
   canCancelCampaign,
   maskKey,
-  otpDelivery,
   parseNumbers,
   skippedRowsCsv,
   smsCounterLine,
@@ -51,7 +50,6 @@ import {
   canRescheduleCampaign,
   estimateLine,
   fromLocalInput,
-  otpActionLabel,
   toLocalInput,
   campaignNeedsUpdates,
   previewKey,
@@ -68,7 +66,6 @@ import {
   balanceLevel,
   formatRupees,
   formatSignedSms,
-  parseOtpSettings,
   sendBlock,
   walletCsv,
   hasLink,
@@ -253,28 +250,6 @@ describe("walletCsv", () => {
   });
 });
 
-describe("parseOtpSettings", () => {
-  it("accepts the defaults and trims the extra values", () => {
-    expect(parseOtpSettings({ length: "6", expiry: "15", extra: "  a|b " })).toEqual({ error: null, length: 6, expiry: 15, extra: "a|b" });
-    expect(parseOtpSettings({ length: "6", expiry: "15", extra: "" })).toMatchObject({ extra: undefined });
-  });
-  it("accepts the range edges", () => {
-    expect(parseOtpSettings({ length: "4", expiry: "1", extra: "" }).error).toBeNull();
-    expect(parseOtpSettings({ length: "10", expiry: "10080", extra: "x".repeat(200) }).error).toBeNull();
-  });
-  it("rejects out-of-range, fractional and empty numbers", () => {
-    expect(parseOtpSettings({ length: "3", expiry: "15", extra: "" }).error).toMatch(/OTP length/);
-    expect(parseOtpSettings({ length: "11", expiry: "15", extra: "" }).error).toMatch(/OTP length/);
-    expect(parseOtpSettings({ length: "6", expiry: "0", extra: "" }).error).toMatch(/Expiry/);
-    expect(parseOtpSettings({ length: "6", expiry: "10081", extra: "" }).error).toMatch(/Expiry/);
-    expect(parseOtpSettings({ length: "6.5", expiry: "15", extra: "" }).error).toMatch(/OTP length/);
-    expect(parseOtpSettings({ length: "", expiry: "15", extra: "" }).error).toMatch(/OTP length/);
-  });
-  it("rejects extra values over 200 characters", () => {
-    expect(parseOtpSettings({ length: "6", expiry: "15", extra: "x".repeat(201) }).error).toMatch(/200/);
-  });
-});
-
 describe("estimateLine", () => {
   it("shows the rupee estimate and rate when known", () => {
     const e = estimateLine({ rate_per_sms: 0.18, estimated_amount: 1800 });
@@ -313,15 +288,6 @@ describe("datetime-local conversion", () => {
   });
   it("produces an ISO string with a timezone designator", () => {
     expect(fromLocalInput("2026-11-10T14:00")).toMatch(/Z$/);
-  });
-});
-
-describe("otpActionLabel", () => {
-  it("maps actions to plain words", () => {
-    expect(otpActionLabel("send")).toBe("Sent");
-    expect(otpActionLabel("resend")).toBe("Resent");
-    expect(otpActionLabel("verify")).toBe("Checked");
-    expect(otpActionLabel("other")).toBe("other");
   });
 });
 
@@ -380,14 +346,6 @@ describe("preparing campaigns", () => {
     expect(canCancelCampaign("sending")).toBe(false);
     expect(canRescheduleCampaign("preparing")).toBe(false);
     expect(canDeleteCampaign("preparing")).toBe(false);
-  });
-});
-
-describe("otpDelivery", () => {
-  it("maps the delivery report", () => {
-    expect(otpDelivery("delivered")).toEqual({ label: "Delivered", tone: "success" });
-    expect(otpDelivery("failed")).toEqual({ label: "Failed", tone: "danger" });
-    expect(otpDelivery(null)).toEqual({ label: "—", tone: null });
   });
 });
 

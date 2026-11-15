@@ -16,7 +16,7 @@ Anril never pays for or sends from a shared account.
 
 | Mode | What happens |
 |---|---|
-| SMS only | Exactly today's Bulk9 Smart OTP. No change. |
+| SMS only | Code goes as a normal DLT SMS using the client's chosen OTP template (see section 11, item 1). |
 | WhatsApp only | Code goes as a WhatsApp Authentication template (Copy code button). |
 | SMS + WhatsApp | The **same** code goes on both at the same time. |
 | SMS, then WhatsApp | SMS first. WhatsApp is sent only if the SMS fails (see 2.1). |
@@ -53,7 +53,8 @@ The WhatsApp message shows two things: the **Copy code** button and Meta's **"I 
 - Anril-made codes: Anril stores only a **hash** of the code (never the code itself), with expiry
   and a wrong-try counter. Wrong tries allowed is a client setting (1 to 10, default 5), then the code is dead.
 - Client-made codes: Anril delivers and does not keep the code after sending (logs show it masked: `00••10`).
-- SMS-only with Anril making the code keeps using Bulk9 Smart OTP as today.
+- Every SMS goes as a normal DLT SMS, whoever makes the code. Bulk9 Smart OTP was removed on 2026-11-15
+  (it needed a Smart OTP ID that only Bulk9's dashboard shows, and was never used).
 
 ## 4. Client settings (Settings → OTP, applied only on Save)
 
@@ -150,7 +151,7 @@ A proper guide for client developers, inside the Developer page and as a public 
      and `udf1` came back in the delivery report.
    - **Decision:** when Anril or the client's server makes the code, the SMS goes as a normal DLT SMS using an
      OTP template the client picks from their approved DLT list (shown in a dropdown, no Smart OTP ID needed).
-     Anril checks the code itself. Bulk9 Smart OTP stays only for the existing "SMS only, Bulk9 makes the code" flow.
+     Anril checks the code itself. (Update 2026-11-15: Bulk9 Smart OTP is removed entirely, page and API.)
 2. **"I didn't request a code" is a Meta beta.** It may not appear for every client yet. Nothing breaks if
    it's missing.
 3. Bulk9 delivery reports can arrive late; the wait timer covers this.

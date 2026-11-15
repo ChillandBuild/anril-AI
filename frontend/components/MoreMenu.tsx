@@ -112,7 +112,6 @@ const MORE_ITEMS: MoreMenuItem[] = [
   { href: "/dashboard/sms/reports", icon: BarChart2, label: "Delivery Reports", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/sms/transactions", icon: ReceiptText, label: "Transactions", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/sms/developer", icon: Code2, label: "Dev API", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/otp", icon: KeyRound, label: "Smart OTP", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
   { href: "/dashboard/otp", icon: KeyRound, label: "Send & check", section: "otp", permissionAny: OTP_PERMS, exact: true },
   { href: "/dashboard/otp/history", icon: History, label: "History", section: "otp", permissionAny: OTP_PERMS },
   { href: "/dashboard/otp/settings", icon: SlidersHorizontal, label: "Settings", section: "otp", permissionAny: OTP_PERMS },

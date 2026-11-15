@@ -196,27 +196,6 @@ def _apply_event(db, tenant_id: str, event_id: str | None, p: dict) -> dict:
     return {"status": "ok"}
 
 
-def handle_otp_callback(db, tenant_id: str, payload: dict) -> dict:
-    """One Bulk9 OTP delivery callback (already authenticated): marks the OTP history rows sent
-    with this request ID Delivered or Failed. Only final statuses; Delivered is never undone."""
-    p = bulk9_client.scrub_financial(payload, bulk9_client.CLIENT_DEBIT_KEYS)
-    request_id = str(p.get("request_id") or p.get("server_request_id") or "")
-    if not _REQUEST_ID.fullmatch(request_id):
-        return {"status": "unmatched"}
-    status = classify(p.get("status") or p.get("status_lower"))
-    if status not in FINAL:
-        return {"status": "ignored"}
-    patch: dict = {"delivery_status": status}
-    if status == "delivered" and _at(p):
-        patch["delivered_at"] = _at(p).isoformat()
-    amount = _amount(p.get("amount_debited"))
-    if amount is not None:
-        patch["amount_debited"] = str(amount)
-    rows = (db.table("sms_otp_log").update(patch).eq("tenant_id", tenant_id).eq("request_id", request_id)
-            .or_("delivery_status.is.null,delivery_status.neq.delivered").execute()).data or []
-    return {"status": "ok" if rows else "unmatched"}
-
-
 # ---------------------------------------------------------------- reconcile job
 
 async def reconcile(db, *, now: datetime | None = None, limit: int = 200) -> dict:

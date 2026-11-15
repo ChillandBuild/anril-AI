@@ -303,32 +303,6 @@ async def test_send_dlt_manual_payload():
     assert "wallet" not in out
 
 
-# ---------------------------------------------------------------- OTP delivery webhook
-
-def _otp(db, request_id="otp-1"):
-    db.add("sms_otp_log", tenant_id=T, mobile="9876543210", action="send", ok=True, request_id=request_id)
-    return db.rows("sms_otp_log")[-1]
-
-
-def test_otp_delivered_fills_history_and_is_never_undone():
-    db = FakeSupabase()
-    row = _otp(db)
-    out = sms_delivery.handle_otp_callback(db, T, {"request_id": "otp-1", "status": "Delivered",
-                                                   "delivery_timestamp": 1762164000, "amount_debited": "0.18"})
-    assert out["status"] == "ok" and row["delivery_status"] == "delivered" and row["amount_debited"] == "0.18"
-    assert row["delivered_at"].startswith("2025-11-03")
-    sms_delivery.handle_otp_callback(db, T, {"request_id": "otp-1", "status": "failed"})
-    assert row["delivery_status"] == "delivered"
-
-
-def test_otp_callback_for_another_tenant_or_pending_status_changes_nothing():
-    db = FakeSupabase()
-    row = _otp(db)
-    assert sms_delivery.handle_otp_callback(db, OTHER, {"request_id": "otp-1", "status": "failed"})["status"] == "unmatched"
-    assert sms_delivery.handle_otp_callback(db, T, {"request_id": "otp-1", "status": "sent"})["status"] == "ignored"
-    assert row.get("delivery_status") is None
-
-
 @pytest.mark.asyncio
 async def test_fields_route_adds_contact_columns():
     db, g = _setup()
@@ -336,13 +310,3 @@ async def test_fields_route_adds_contact_columns():
     with patch.object(sms, "get_supabase", lambda: db):
         out = await sms.campaign_fields(source="contacts", group_ids=g["id"], ctx=CTX)
     assert out["fields"][-1] == {"key": "col:plan", "label": "plan"}
-
-
-def test_otp_callback_with_absurd_timestamp_still_records_status():
-    db = FakeSupabase()
-    for rid, ts in (("otp-1", "1e999"), ("otp-2", 10 ** 20)):
-        row = _otp(db, rid)
-        out = sms_delivery.handle_otp_callback(db, T, {"request_id": rid, "status": "Delivered",
-                                                       "delivery_timestamp": ts})
-        assert out["status"] == "ok" and row["delivery_status"] == "delivered"
-        assert row.get("delivered_at") is None

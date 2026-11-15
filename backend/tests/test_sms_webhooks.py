@@ -110,14 +110,6 @@ def test_bulk9_header_secret_with_bad_json_is_400():
     assert r.status_code == 400
 
 
-def test_otp_webhook_accepts_body_secret():
-    with patch.object(sms_webhooks, "get_setting", side_effect=_secret), \
-         patch.object(sms_webhooks, "get_supabase"), \
-         patch.object(sms_webhooks.sms_delivery, "handle_otp_callback", return_value={"status": "ok"}) as handle:
-        r = client.post(f"/webhook/bulk9/{T}/otp", json={"anril_secret": "s3cret", "request_id": "SOtp1", "status": "Delivered"})
-    assert r.status_code == 200 and "anril_secret" not in handle.call_args.args[2]
-
-
 def test_registered_webhook_has_a_body_template_with_the_secret():
     import json
     from app.services import bulk9_client

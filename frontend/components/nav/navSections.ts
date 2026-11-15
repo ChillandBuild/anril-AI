@@ -204,7 +204,6 @@ const SMS_PAGES: NavLeaf[] = ([
   ["reports", "Delivery Reports", BarChart2],
   ["transactions", "Transactions", ReceiptText],
   ["developer", "Dev API", Code2],
-  ["otp", "Smart OTP", KeyRound],
 ] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
   const href = slug ? `/dashboard/sms/${slug}` : "/dashboard/sms";
   return {

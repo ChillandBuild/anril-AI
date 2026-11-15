@@ -247,35 +247,12 @@ async def sms_summary(api_key: str, *, date_from: str, date_to: str) -> dict:
     return scrub_financial(await _request(api_key, "GET", "/dev/sms_summary", params={"from": date_from, "to": date_to}))
 
 
-# ---------------------------------------------------------------- OTP
-
-async def otp_send(api_key: str, *, mobile: str, otp_id: str, otp_length: int = 6,
-                   otp_expiry: int = 15, variables_values: str | None = None) -> dict:
-    if not 4 <= otp_length <= 10:
-        raise ValueError("OTP length must be 4 to 10")
-    if not 1 <= otp_expiry <= 10080:
-        raise ValueError("OTP expiry must be 1 to 10080 minutes")
-    body: dict[str, Any] = {"mobile": mobile, "otp_id": otp_id, "otp_length": otp_length,
-                            "otp_expiry": otp_expiry}
-    if variables_values:
-        body["variables_values"] = variables_values
-    return await _request(api_key, "POST", "/dev/otp/send", json=body)
-
-
-async def otp_verify(api_key: str, *, mobile: str, otp: str) -> dict:
-    return await _request(api_key, "POST", "/dev/otp/verify", json={"mobile": mobile, "otp": otp})
-
-
-async def otp_resend(api_key: str, *, mobile: str) -> dict:
-    return await _request(api_key, "POST", "/dev/otp/resend", json={"mobile": mobile})
-
-
 # ---------------------------------------------------------------- delivery webhook config
 
-# service: "sms" (campaign delivery reports) or "otp" (OTP delivery reports). Both send the same
-# standard payload (request_id, mobile, status, amount_debited...).
-WEBHOOK_SERVICES = ("sms", "otp")
-_WEBHOOK_NAMES = {"sms": "Anril delivery updates", "otp": "Anril OTP updates"}
+# service: "sms" (delivery reports). The standard payload carries request_id, mobile, status,
+# amount_debited...
+WEBHOOK_SERVICES = ("sms",)
+_WEBHOOK_NAMES = {"sms": "Anril delivery updates"}
 
 
 def _webhook_path(service: str) -> str:

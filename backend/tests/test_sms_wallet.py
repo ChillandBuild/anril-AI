@@ -131,13 +131,3 @@ async def test_send_gate(balance, needed, expect):
             with pytest.raises(HTTPException) as e:
                 await sms._require_send_ready("k", needed)
             assert e.value.status_code == 409 and expect in e.value.detail
-
-
-@pytest.mark.asyncio
-async def test_otp_send_passes_extra_values():
-    send = AsyncMock(return_value={"request_id": "o1"})
-    with patch.object(bulk9_client, "otp_send", send), patch.object(sms, "get_supabase", FakeSupabase):
-        await sms.otp_send(sms.OtpSendBody(mobile="9876543210", otp_id="7", otp_length=4, otp_expiry=5,
-                                           variables_values=" Astro|{otp} "), {"tenant_id": T, "api_key": "k"})
-    assert send.call_args.kwargs["variables_values"] == "Astro|{otp}"
-    assert send.call_args.kwargs["otp_length"] == 4 and send.call_args.kwargs["otp_expiry"] == 5
