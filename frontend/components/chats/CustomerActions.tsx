@@ -107,7 +107,7 @@ export function CustomerActions({
   return (
     <div className="space-y-4 px-4 pt-4">
       {/* ── Actions ── */}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {lead.booked_at ? (
           <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
             <CalendarCheck size={16} className="shrink-0 text-sky-700" />
@@ -171,9 +171,9 @@ export function CustomerActions({
             onClick={() => setBookingOpen(true)}
             disabled={!canReply}
             title={canReply ? undefined : "You have read-only access to conversations"}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[13.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            <CalendarCheck size={16} /> Book a visit
+            <CalendarCheck size={14} /> Book a visit
           </button>
         )}
 
@@ -182,9 +182,9 @@ export function CustomerActions({
           onClick={() => setPayOpen(true)}
           disabled={!canManageDeals}
           title={canManageDeals ? undefined : "You need permission to manage deals"}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#e2e8f0] bg-white text-[13.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white text-[12.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
         >
-          <Receipt size={16} className="text-[#64748b]" /> Record payment
+          <Receipt size={14} className="text-[#64748b]" /> Record payment
         </button>
 
         {lead.lost_at ? (
@@ -211,9 +211,9 @@ export function CustomerActions({
               onClick={() => setLostOpen((o) => !o)}
               disabled={!canReply || busy !== null}
               aria-expanded={lostOpen}
-              className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white text-[13.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white text-[12.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <X size={15} className="text-[#64748b]" /> Not buying <ChevronDown size={14} className="text-[#64748b]" />
+              <X size={14} className="text-[#64748b]" /> Not buying <ChevronDown size={13} className="text-[#64748b]" />
             </button>
             {lostOpen && (
               <div className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white py-1 shadow-xl">

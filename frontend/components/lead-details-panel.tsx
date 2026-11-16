@@ -274,6 +274,8 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
     : (lead.phone ?? "?").slice(-2);
 
   const converted = Boolean(lead.converted_at);
+  // Only real moves from one group to another; "stayed in the same group" checks are left out.
+  const groupMoves = history.filter((ev) => ev.from_segment && ev.to_segment && ev.from_segment !== ev.to_segment);
 
   return (
     <div className="w-80 flex-shrink-0 border-l border-surface-mid bg-surface flex flex-col h-full overflow-hidden">
@@ -344,16 +346,16 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
           <Section icon={<TrendingUp size={12} />} title="Group history">
             {loadingHistory && <p className="font-body text-xs text-on-surface-muted">Loading…</p>}
             {!loadingHistory && historyError && <p className="font-body text-xs text-red-500">Failed to load history.</p>}
-            {!loadingHistory && !historyError && history.length === 0 && (
+            {!loadingHistory && !historyError && groupMoves.length === 0 && (
               <p className="font-body text-xs text-on-surface-muted">
                 No group changes yet.
                 <br />
-                <span className="text-[10px]">Appears once this lead sends a message.</span>
+                <span className="text-[10px]">Shows here when the AI moves this lead to another group.</span>
               </p>
             )}
-            {history.length > 0 && (
+            {groupMoves.length > 0 && (
               <div className="space-y-2">
-                {history.slice(0, 8).map((ev) => <ScoreEventCard key={ev.id} ev={ev} />)}
+                {groupMoves.slice(0, 8).map((ev) => <ScoreEventCard key={ev.id} ev={ev} />)}
               </div>
             )}
           </Section>

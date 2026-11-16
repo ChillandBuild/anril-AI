@@ -789,7 +789,7 @@ export function ChatThread({
 
       {/* The AI handed this chat over: say why, and let a person take it. */}
       {hasEscalation && !teach && (
-        <div className="flex items-center gap-3 border-t border-amber-200 bg-amber-50 px-5 py-2.5">
+        <div className="flex items-center gap-3 border-t border-amber-200 bg-amber-50 px-5 py-1.5">
           <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-amber-900">
             <span className="mr-1">🙋</span>
             <span className="font-bold">The AI agent needs you:</span>{" "}
@@ -801,7 +801,7 @@ export function ChatThread({
                 type="button"
                 onClick={() => void claimHandover()}
                 disabled={claiming}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-[12.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[12px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
               >
                 {claiming && <Loader2 size={13} className="animate-spin" />} I&apos;ll reply
               </button>
@@ -811,7 +811,7 @@ export function ChatThread({
                 onClick={markResolved}
                 disabled={resolvingHandover}
                 title="The customer has what they needed: close this handover"
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-4 text-[12.5px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3.5 text-[12px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
               >
                 <Check size={14} /> {resolvingHandover ? "Closing…" : "Mark done"}
               </button>

@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Check, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TickMark } from "@/components/ui/controls";
 import {
   CAME_FROM_OPTIONS,
   DATE_OPTIONS,
@@ -27,7 +28,7 @@ function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
-/** One option row: a tick box (several can be picked) or a round tick (pick one). */
+/** One option row with the dashboard's round tick. `round` marks a pick-one group (radio). */
 function TickRow({
   checked,
   onClick,
@@ -49,15 +50,7 @@ function TickRow({
       onClick={onClick}
       className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-semibold text-[#0A1528] transition-colors hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
     >
-      <span
-        className={cn(
-          "flex h-[18px] w-[18px] shrink-0 items-center justify-center border-[1.5px] transition-colors",
-          round ? "rounded-full" : "rounded-[5px]",
-          checked ? "border-primary bg-primary" : "border-[#cbd5e1] bg-white"
-        )}
-      >
-        {checked && (round ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : <Check size={12} strokeWidth={3.25} className="text-white" />)}
-      </span>
+      <TickMark checked={checked} size="sm" />
       {dot && <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />}
       <span className="min-w-0 truncate">{label}</span>
     </button>
