@@ -70,5 +70,35 @@ class SenderNameTests(unittest.TestCase):
         self.assertIsNone(actor_name(FakeSupabase(), {"user_id": "nobody", "tenant_id": "t1", "caller_id": None}))
 
 
+class ArchivedBlockedByTests(SenderNameTests):
+    """Archived & blocked shows who did it (migration 273); undoing clears the name."""
+
+    def lead(self):
+        return next(r for r in self.db.rows("leads") if r["id"] == LEAD)
+
+    def test_archive_records_the_teammate_and_unarchive_clears_it(self):
+        self.as_user("c1")
+        self.assertEqual(self.client.patch(f"/api/v1/leads/{LEAD}/archive").status_code, 200)
+        self.assertTrue(self.lead()["archived_at"])
+        self.assertEqual(self.lead()["archived_by_name"], "Karthik")
+        self.client.patch(f"/api/v1/leads/{LEAD}/archive")
+        self.assertIsNone(self.lead()["archived_at"])
+        self.assertIsNone(self.lead()["archived_by_name"])
+
+    def test_archiving_by_hand_clears_the_automatic_marker(self):
+        self.lead()["archived_reason"] = "idle_30d"
+        self.as_user("c1")
+        self.client.patch(f"/api/v1/leads/{LEAD}/archive")
+        self.assertEqual((self.lead()["archived_by_name"], self.lead()["archived_reason"]), ("Karthik", None))
+
+    def test_block_records_the_teammate_and_stops_the_ai(self):
+        self.as_user(None)
+        self.assertEqual(self.client.patch(f"/api/v1/leads/{LEAD}/block").status_code, 200)
+        self.assertEqual(self.lead()["blocked_by_name"], "Ravi Kumar")
+        self.assertIs(self.lead()["ai_enabled"], False)
+        self.client.patch(f"/api/v1/leads/{LEAD}/block")
+        self.assertIsNone(self.lead()["blocked_by_name"])
+
+
 if __name__ == "__main__":
     unittest.main()

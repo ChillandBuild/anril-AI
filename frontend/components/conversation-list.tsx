@@ -50,8 +50,8 @@ interface Props {
   onLoadMore?: () => void;
   /** Open handovers, for the Needs you tab's badge. */
   escalationCount?: number;
-  /** The full-screen handover page, shown under the tabs when Needs you is open. */
-  escalationPanelContent?: React.ReactNode;
+  /** A full-width page shown under the tabs (Needs you, Archived & blocked). */
+  fullPageContent?: React.ReactNode;
 }
 
 const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
@@ -88,7 +88,7 @@ export function ConversationList(props: Props) {
     leads, selectedId, onSelect, onDeleted, view, onViewChange, channel, onChannelChange, counts, filters,
     onFiltersChange, countFor, team, tags, searchQuery, onSearchChange, onPin, onRefresh, onArchive,
     canArchive = false, onBlock, hasMore = false, loadingMore = false, loading = false, onLoadMore,
-    escalationCount = 0, escalationPanelContent,
+    escalationCount = 0, fullPageContent,
   } = props;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -151,17 +151,16 @@ export function ConversationList(props: Props) {
   const tabs: { id: InboxView; label: string; count?: number; urgent?: boolean }[] = [
     // No number on Inbox: the "All" channel chip right under it already shows it.
     { id: "inbox", label: "Inbox" },
-    { id: "needs_you", label: "Needs you", count: escalationCount, urgent: true },
     { id: "ai_handling", label: "AI handling", count: counts.ai_handling },
-    { id: "archived", label: "Archived" },
-    { id: "blocked", label: "Blocked" },
+    { id: "needs_you", label: "Needs you", count: escalationCount, urgent: true },
+    { id: "archived", label: "Archived & blocked" },
   ];
   const showSections = view === "inbox";
   const anyNarrowing = Boolean(searchQuery) || filterCount > 0 || channel !== "all";
 
   // The full-width Needs you page keeps its original header and left-aligned tabs; the narrow
   // chat list uses the 68px band (level with the chat header) and tabs locked to its width.
-  const fullScreen = view === "needs_you" && Boolean(escalationPanelContent);
+  const fullScreen = (view === "needs_you" || view === "archived") && Boolean(fullPageContent);
 
   const headerAndTabs = (
     <>
@@ -231,13 +230,13 @@ export function ConversationList(props: Props) {
     </>
   );
 
-  // Needs you: the full-screen handover page under the same header and tabs.
-  if (view === "needs_you" && escalationPanelContent) {
+  // Needs you / Archived & blocked: a full-width page under the same header and tabs.
+  if (fullScreen) {
     return (
       <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
         {headerAndTabs}
         {/* A bounded flex column, so the panel's table area is what scrolls. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{escalationPanelContent}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{fullPageContent}</div>
       </div>
     );
   }
@@ -537,13 +536,13 @@ export function ConversationList(props: Props) {
                             className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12.5px] text-slate-700 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                           >
                             <Archive size={14} className="text-slate-500" />
-                            {view === "archived" ? "Unarchive" : "Archive"}
+                            Archive
                           </button>
                         )}
                         {onBlock && (
                           <button onClick={() => { setCardMenuId(null); onBlock(lead.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12.5px] text-slate-700 hover:bg-slate-50 transition-colors">
                             <Ban size={14} className="text-slate-500" />
-                            {view === "blocked" ? "Unblock" : "Block"}
+                            Block
                           </button>
                         )}
                         <button onClick={() => handleDeleteOne(lead.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12.5px] text-red-600 hover:bg-red-50 transition-colors">

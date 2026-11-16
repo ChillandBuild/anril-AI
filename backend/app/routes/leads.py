@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.supabase import get_supabase
-from app.services.actor import sender_fields
+from app.services.actor import actor_name, sender_fields
 from app.services.call_evaluation import strip_evaluation
 from app.services.call_transcript import mask_transcripts
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, get_owner_tenant_id, require_permission
@@ -890,19 +890,24 @@ async def toggle_archive(lead_id: UUID, ctx: dict = Depends(require_conversation
     if not cur.data:
         raise HTTPException(status_code=404, detail="Lead not found")
     new_val = None if cur.data.get("archived_at") else datetime.now(timezone.utc).isoformat()
-    res = db.table("leads").update({"archived_at": new_val}).eq("id", str(lead_id)).eq("tenant_id", tenant_id).execute()
-    return res.data[0] if res.data else {"archived_at": new_val}
+    patch = {"archived_at": new_val, "archived_by_name": actor_name(db, ctx) if new_val else None, "archived_reason": None}
+    res = db.table("leads").update(patch).eq("id", str(lead_id)).eq("tenant_id", tenant_id).execute()
+    return res.data[0] if res.data else patch
 
 
 @router.patch("/{lead_id}/block")
-async def toggle_block(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+async def toggle_block(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
     """Toggle a contact's blocked state — hides from active inbox and stops AI auto-reply."""
     db = get_supabase()
+    tenant_id = ctx["tenant_id"]
     cur = db.table("leads").select("blocked_at").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
     if not cur.data:
         raise HTTPException(status_code=404, detail="Lead not found")
     blocking = not cur.data.get("blocked_at")
-    update: dict = {"blocked_at": datetime.now(timezone.utc).isoformat() if blocking else None}
+    update: dict = {
+        "blocked_at": datetime.now(timezone.utc).isoformat() if blocking else None,
+        "blocked_by_name": actor_name(db, ctx) if blocking else None,
+    }
     if blocking:
         update["ai_enabled"] = False  # blocked contacts must not get auto-replies
     res = db.table("leads").update(update).eq("id", str(lead_id)).eq("tenant_id", tenant_id).execute()

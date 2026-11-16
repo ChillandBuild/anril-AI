@@ -1,4 +1,4 @@
-"""The 31 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 32 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -29,6 +29,7 @@ RETRY_CLASS: dict[str, str] = {
     "send-log-prune": "B",
     "scheduler-runs-prune": "B",
     "private-send-meta-reconcile": "B",
+    "auto-archive-idle": "B",
     "crm-cutoff-sweep": "A",
     "instant-forms-catch-up": "A",
     "call-alert-summary": "C",
@@ -225,6 +226,13 @@ async def send_log_prune(timestamp: int) -> None:
 async def scheduler_runs_prune(timestamp: int) -> None:
     from app import main
     await main._prune_scheduler_runs()
+
+
+@queue_app.periodic(cron="30 22 * * *", periodic_id="auto-archive-idle")  # 04:00 IST
+@queue_app.task(name="auto-archive-idle", queue="maintenance")
+async def auto_archive_idle(timestamp: int) -> None:
+    from app.services.auto_archive import archive_idle_chats
+    await archive_idle_chats()
 
 
 @queue_app.periodic(cron="0 22 * * *", periodic_id="private-send-meta-reconcile")  # 03:30 IST

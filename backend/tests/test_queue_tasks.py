@@ -25,7 +25,7 @@ MESSAGES = {
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
 COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "companion-kb-learning"}
-CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile"}
+CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile", "auto-archive-idle"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
     "call-alert-summary", "brain-weekly-digest",
@@ -60,6 +60,7 @@ CALLEES = {
     "send-log-prune": ("app.services.outbound_router.prune_send_log", True, False),
     "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
     "private-send-meta-reconcile": ("app.services.private_send.process_meta_reconcile", True, False),
+    "auto-archive-idle": ("app.services.auto_archive.archive_idle_chats", True, False),
     "crm-cutoff-sweep": ("app.services.call_ai_pipeline.sweep_crm_cutoff", True, False),
     "instant-forms-catch-up": ("app.services.meta_lead_forms.catch_up_all", True, False),
     "call-alert-summary": ("app.services.call_alerts.send_morning_summaries", False, True),
@@ -93,6 +94,7 @@ AT_IST = {
     "send-log-prune": (["03:00"], None),
     "scheduler-runs-prune": (["03:15"], None),
     "private-send-meta-reconcile": (["03:30"], None),
+    "auto-archive-idle": (["04:00"], None),
     "call-alert-summary": ([f"{MORNING_SUMMARY_HOUR_IST:02d}:00"], None),
     "brain-weekly-digest": (["09:00"], MONDAY),
 }
@@ -116,7 +118,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 31
+    assert len(_periodic()) == 32
 
 
 def test_task_name_matches_periodic_id():
@@ -169,7 +171,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (21, 4, 6)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (21, 5, 6)
 
 
 def test_sync_and_async_split():

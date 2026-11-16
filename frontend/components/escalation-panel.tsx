@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, MessageSquare, Search, UserCog, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Loader2, MessageSquare, Search, UserCog, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDuration, secondsSince } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -11,6 +11,7 @@ import {
   channelOf,
   fetchCallers,
   fetchHandovers,
+  fetchHistory,
   reopenHandover,
   resolveHandover,
   severityForWait,
@@ -19,8 +20,11 @@ import {
   type Caller,
   type Handover,
   type HistoryStats,
+  type ResolvedHandover,
   type Severity,
 } from "@/lib/escalations";
+import { CheckTick } from "@/components/ui/controls";
+import { channelLabel, downloadCsv, istDateTime, segmentLabel, today, type CsvColumn } from "@/components/chats/exportCsv";
 import { Select } from "@/components/ui/Select";
 import { StatCards, type StatItem } from "@/components/escalations/stat-cards";
 import { HistoryTab } from "@/components/escalations/history-tab";
@@ -73,6 +77,17 @@ export function EscalationPanel({
   const [historyResolver, setHistoryResolver] = useState("");
   const [historyReason, setHistoryReason] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Export (owner only, like Segments): ticked rows, or everything the current filters show.
+  const canExport = role === "owner";
+  const [pickedActive, setPickedActive] = useState<Set<string>>(new Set());
+  const [pickedHistory, setPickedHistory] = useState<Set<string>>(new Set());
+  const [historyRows, setHistoryRows] = useState<ResolvedHandover[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const onHistoryRows = useCallback((rows: ResolvedHandover[], total: number) => {
+    setHistoryRows(rows);
+    setHistoryTotal(total);
+  }, []);
 
   const visibleHandovers = useMemo(
     () =>
@@ -130,6 +145,8 @@ export function EscalationPanel({
 
   function switchTab(next: Tab) {
     setTab(next);
+    setPickedActive(new Set());
+    setPickedHistory(new Set());
     setSearchQuery("");
     setQuickFilter("all");
     setHistoryResolver("");
@@ -277,6 +294,74 @@ export function EscalationPanel({
     }
   }
 
+  const ACTIVE_COLUMNS: CsvColumn<Handover>[] = [
+    { header: "Name", value: (h) => h.leads?.name },
+    { header: "Phone", value: (h) => h.leads?.phone },
+    { header: "Channel", value: (h) => channelLabel(h.leads?.source) },
+    { header: "Interest", value: (h) => segmentLabel(h.leads?.segment) },
+    { header: "Why it needs you", value: (h) => h.reason },
+    { header: "Waiting since", value: (h) => istDateTime(h.opened_at) },
+    { header: "Assigned to", value: (h) => (h.assigned_to ? h.caller_name ?? "Assigned" : "Unassigned") },
+  ];
+  const HISTORY_COLUMNS: CsvColumn<ResolvedHandover>[] = [
+    { header: "Name", value: (h) => h.leads?.name },
+    { header: "Phone", value: (h) => h.leads?.phone },
+    { header: "Channel", value: (h) => channelLabel(h.leads?.source) },
+    { header: "Interest", value: (h) => segmentLabel(h.leads?.segment) },
+    { header: "Why it needed you", value: (h) => h.reason },
+    { header: "Resolved by", value: (h) => h.resolved_by_name ?? "Not recorded" },
+    { header: "Resolved at", value: (h) => istDateTime(h.resolved_at) },
+    { header: "Time to resolve", value: (h) => formatDuration(h.duration_seconds) },
+  ];
+
+  const exportCount = tab === "active"
+    ? pickedActive.size || filteredHandovers.length
+    : pickedHistory.size || historyTotal;
+  const exportPicked = tab === "active" ? pickedActive.size > 0 : pickedHistory.size > 0;
+
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      if (tab === "active") {
+        const rows = pickedActive.size ? filteredHandovers.filter((h) => pickedActive.has(h.id)) : filteredHandovers;
+        downloadCsv(`needs-you-${today()}.csv`, rows, ACTIVE_COLUMNS);
+      } else {
+        let rows: ResolvedHandover[];
+        if (pickedHistory.size) {
+          rows = historyRows.filter((r) => pickedHistory.has(r.id));
+        } else {
+          // Everything the History filters match, not just the loaded page.
+          rows = [];
+          for (let offset = 0; offset < 5000; offset += 100) {
+            const page = await fetchHistory({
+              limit: 100, offset, q: searchQuery.trim() || undefined,
+              resolver: historyResolver || undefined, reason: historyReason || undefined,
+            });
+            rows.push(...page.data);
+            if (rows.length >= page.total || page.data.length === 0) break;
+          }
+        }
+        downloadCsv(`needs-you-history-${today()}.csv`, rows, HISTORY_COLUMNS);
+      }
+      toast.success("Export downloaded");
+    } catch {
+      toast.error("Couldn't export. Try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const allActivePicked = filteredHandovers.length > 0 && filteredHandovers.every((h) => pickedActive.has(h.id));
+  function toggleActive(id: string) {
+    setPickedActive((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const readOnlyTitle = canReplyToConversations ? undefined : "You have read-only access to conversations";
   const QUICK_FILTERS = [
     { key: "all", label: "All" },
@@ -398,6 +483,19 @@ export function EscalationPanel({
                 />
               </>
             )}
+
+            {canExport && (
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={exporting || exportCount === 0}
+                title={exportPicked ? "Download the ticked leads as a spreadsheet" : "Download every lead these filters show"}
+                className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 shadow-xs transition-all hover:border-primary-200 hover:bg-primary-50/50 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                {exportPicked ? `Export ${exportCount} selected` : `Export ${exportCount}`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -411,6 +509,10 @@ export function EscalationPanel({
           resolver={historyResolver}
           reason={historyReason}
           onStatsChange={setHistoryStats}
+          selectable={canExport}
+          selected={pickedHistory}
+          onSelectedChange={setPickedHistory}
+          onRowsChange={onHistoryRows}
         />
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -434,7 +536,18 @@ export function EscalationPanel({
                 <table className="w-full min-w-[920px] border-collapse">
                   <thead>
                     <tr className="border-b border-border/70 bg-slate-50/70">
-                      <th className="sticky top-0 z-10 whitespace-nowrap px-4 py-3 pl-8 text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500">
+                      {canExport && (
+                        <th className="w-10 py-3 pl-5">
+                          <CheckTick
+                            size="sm"
+                            checked={allActivePicked}
+                            indeterminate={!allActivePicked && filteredHandovers.some((h) => pickedActive.has(h.id))}
+                            onChange={() => setPickedActive(allActivePicked ? new Set() : new Set(filteredHandovers.map((h) => h.id)))}
+                            aria-label="Select all shown"
+                          />
+                        </th>
+                      )}
+                      <th className={cn("sticky top-0 z-10 whitespace-nowrap px-4 py-3 text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500", canExport ? "pl-6" : "pl-8")}>
                         Lead
                       </th>
                       <th className="sticky top-0 z-10 whitespace-nowrap px-4 py-3 text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500">
@@ -455,7 +568,7 @@ export function EscalationPanel({
                     </tr>
                   </thead>
                   {loading ? (
-                    <TableSkeleton columns={6} />
+                    <TableSkeleton columns={canExport ? 7 : 6} />
                   ) : (
                     <tbody>
                       {filteredHandovers.map((h) => {
@@ -467,10 +580,16 @@ export function EscalationPanel({
                             key={h.id}
                             className="group border-b border-border-subtle/80 bg-surface transition-colors hover:bg-primary-50/20 last:border-b-0"
                           >
-                            <td className="relative px-4 py-3 pl-8 text-left align-middle">
+                            {canExport && (
+                              <td className="w-10 py-3 pl-5 align-middle">
+                                <CheckTick size="sm" checked={pickedActive.has(h.id)} onChange={() => toggleActive(h.id)} aria-label="Select this lead" />
+                              </td>
+                            )}
+                            <td className={cn("relative px-4 py-3 text-left align-middle", canExport ? "pl-6" : "pl-8")}>
                               <span
                                 className={cn(
-                                  "absolute left-3 top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all",
+                                  "absolute top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all",
+                                  canExport ? "left-1.5" : "left-3",
                                   SLA_BAR[severity]
                                 )}
                                 title={SLA_TITLE[severity]}

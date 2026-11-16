@@ -6,6 +6,7 @@ import { ConversationList } from "@/components/conversation-list";
 import { ChatThread } from "@/components/chat-thread";
 import { LeadDetailsPanel } from "@/components/lead-details-panel";
 import { EscalationPanel } from "@/components/escalation-panel";
+import { ArchivedBlockedPanel } from "@/components/chats/ArchivedBlockedPanel";
 import { createClient } from "@/lib/supabase/client";
 import { usePolling } from "@/hooks/usePolling";
 import { toast } from "sonner";
@@ -95,8 +96,8 @@ export default function ConversationsPage() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [error, setError] = useState(false);
   const [view, setView] = useState<InboxView>("inbox");
-  // Needs you (the handover page) has no list of its own: the list behind it stays Inbox.
-  const listView: ListView = view === "needs_you" ? "inbox" : view;
+  // The full-width pages (Needs you, Archived & blocked) have no list of their own: the list behind them stays Inbox.
+  const listView: ListView = view === "ai_handling" ? "ai_handling" : "inbox";
   const [escalationCount, setEscalationCount] = useState(0);
   const [channel, setChannel] = useState<InboxChannel>("all");
   const [filters, setFilters] = useState<InboxFilters>(EMPTY_FILTERS);
@@ -276,7 +277,7 @@ export default function ConversationsPage() {
     setLeads((prev) => prev.filter((l) => l.id !== id));
     if (selected?.id === id) setSelected(null);
     api.leads.archive(id)
-      .then(() => toast.success(view === "archived" ? "Chat unarchived" : "Chat archived"))
+      .then(() => toast.success("Chat archived"))
       .catch(() => { toast.error("Failed to archive"); load(); });
   }
 
@@ -284,7 +285,7 @@ export default function ConversationsPage() {
     setLeads((prev) => prev.filter((l) => l.id !== id));
     if (selected?.id === id) setSelected(null);
     api.leads.block(id)
-      .then(() => toast.success(view === "blocked" ? "Contact unblocked" : "Contact blocked"))
+      .then(() => toast.success("Contact blocked"))
       .catch(() => { toast.error("Failed to block"); load(); });
   }
 
@@ -322,23 +323,31 @@ export default function ConversationsPage() {
     escalationCount,
   };
 
-  if (view === "needs_you") {
+  if (view === "needs_you" || view === "archived") {
     return (
       <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--shell-left)]">
-        {/* Needs you takes the whole page width, with the Conversations tabs above. */}
+        {/* Needs you and Archived & blocked take the whole page width, with the Conversations tabs above. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ConversationList
             {...listProps}
             leads={[]}
             selectedId={null}
             onSelect={() => {}}
-            escalationPanelContent={
-              <EscalationPanel
-                onReply={handleEscalationReply}
-                onCountChange={setEscalationCount}
-                currentCallerId={callerId}
-                canReplyToConversations={canReplyToConversations}
-              />
+            fullPageContent={
+              view === "needs_you" ? (
+                <EscalationPanel
+                  onReply={handleEscalationReply}
+                  onCountChange={setEscalationCount}
+                  currentCallerId={callerId}
+                  canReplyToConversations={canReplyToConversations}
+                />
+              ) : (
+                <ArchivedBlockedPanel
+                  onOpenChat={handleEscalationReply}
+                  canReply={canReplyToConversations}
+                  canExport={role === "owner"}
+                />
+              )
             }
           />
         </div>

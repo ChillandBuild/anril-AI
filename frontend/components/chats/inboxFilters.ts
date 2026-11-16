@@ -1,9 +1,10 @@
 /** The Chats page filters. Everything here is applied by the server (GET /api/v1/conversations),
  *  so totals, counts and paging always describe exactly what the list shows. */
 
-/** Chats page tabs. "needs_you" is the full-screen handover (escalation) page; the rest are chat lists. */
-export type InboxView = "inbox" | "needs_you" | "ai_handling" | "archived" | "blocked";
-export type ListView = Exclude<InboxView, "needs_you">;
+/** Chats page tabs. "needs_you" (handovers) and "archived" (Archived & blocked) are full-width
+ *  pages; "inbox" and "ai_handling" are chat lists. */
+export type InboxView = "inbox" | "ai_handling" | "needs_you" | "archived";
+export type ListView = "inbox" | "ai_handling";
 export type InboxChannel = "all" | "whatsapp" | "instagram" | "facebook" | "telegram";
 export type DateRange = "any" | "today" | "7d" | "30d" | "custom";
 

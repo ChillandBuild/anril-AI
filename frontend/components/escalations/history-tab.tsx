@@ -13,6 +13,7 @@ import {
 } from "@/lib/escalations";
 
 import { ChannelCell, DurationCell, LeadCell, PersonCell, TableEmpty, TableSkeleton, TriggerChip } from "@/components/escalations/atoms";
+import { CheckTick } from "@/components/ui/controls";
 
 const PAGE_SIZE = 25;
 
@@ -29,9 +30,18 @@ interface HistoryTabProps {
   resolver: string;
   reason: string;
   onStatsChange: (stats: HistoryStats) => void;
+  /** Owner-only: tick rows to export them. The parent keeps the selection and the Export button. */
+  selectable?: boolean;
+  selected?: Set<string>;
+  onSelectedChange?: (next: Set<string>) => void;
+  /** The loaded rows and the total for the current filters, for the parent's Export. */
+  onRowsChange?: (rows: ResolvedHandover[], total: number) => void;
 }
 
-export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver, reason, onStatsChange }: HistoryTabProps) {
+export function HistoryTab({
+  onOpenChat, canReply, onReopened, search, resolver, reason, onStatsChange,
+  selectable = false, selected, onSelectedChange, onRowsChange,
+}: HistoryTabProps) {
   const [rows, setRows] = useState<ResolvedHandover[]>([]);
   const [stats, setStats] = useState<HistoryStats>(EMPTY_HISTORY_STATS);
   const [total, setTotal] = useState(0);
@@ -112,6 +122,19 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
     onStatsChange(stats);
   }, [stats, onStatsChange]);
 
+  useEffect(() => {
+    onRowsChange?.(rows, total);
+  }, [rows, total, onRowsChange]);
+
+  const picked = selected ?? new Set<string>();
+  const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.id));
+  function togglePick(id: string) {
+    const next = new Set(picked);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onSelectedChange?.(next);
+  }
+
   const filtered = Boolean(debounced || resolver || reason);
   const hasUnattributed = rows.some((r) => !r.resolved_by_name);
 
@@ -138,12 +161,24 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
         />
       ) : (
         <>
-          <div className="rounded-2xl border border-border/80 bg-surface shadow-card overflow-hidden">
+          {/* shrink-0: in this scrolling column a shrinkable card clipped the last rows instead of scrolling. */}
+          <div className="shrink-0 rounded-2xl border border-border/80 bg-surface shadow-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1040px] border-collapse">
                 <thead>
                   <tr className="border-b border-border/70 bg-slate-50/70">
-                    <th className="sticky top-0 z-10 whitespace-nowrap px-4 py-3 pl-8 text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500">
+                    {selectable && (
+                      <th className="w-10 py-3 pl-5">
+                        <CheckTick
+                          size="sm"
+                          checked={allPicked}
+                          indeterminate={!allPicked && rows.some((r) => picked.has(r.id))}
+                          onChange={() => onSelectedChange?.(allPicked ? new Set() : new Set(rows.map((r) => r.id)))}
+                          aria-label="Select all shown"
+                        />
+                      </th>
+                    )}
+                    <th className={`sticky top-0 z-10 whitespace-nowrap px-4 py-3 ${selectable ? "pl-3" : "pl-8"} text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500`}>
                       Lead
                     </th>
                     <th className="sticky top-0 z-10 whitespace-nowrap px-4 py-3 text-left font-heading text-[10px] font-bold uppercase tracking-[0.09em] text-slate-500">
@@ -167,7 +202,7 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
                   </tr>
                 </thead>
                 {loading ? (
-                  <TableSkeleton columns={7} />
+                  <TableSkeleton columns={selectable ? 8 : 7} />
                 ) : (
                   <tbody>
                     {rows.map((row) => (
@@ -175,7 +210,12 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
                         key={row.id}
                         className="group border-b border-border-subtle/80 bg-surface transition-colors hover:bg-primary-50/20 last:border-b-0"
                       >
-                        <td className="px-4 py-3 pl-8 text-left align-middle">
+                        {selectable && (
+                          <td className="w-10 py-3 pl-5 align-middle">
+                            <CheckTick size="sm" checked={picked.has(row.id)} onChange={() => togglePick(row.id)} aria-label="Select this lead" />
+                          </td>
+                        )}
+                        <td className={`px-4 py-3 ${selectable ? "pl-3" : "pl-8"} text-left align-middle`}>
                           <LeadCell lead={row.leads} />
                         </td>
                         <td className="px-4 py-3 text-left align-middle">
@@ -224,7 +264,7 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4 px-6 py-4">
+          <div className="flex shrink-0 items-center justify-between gap-4 px-6 py-4">
             <p className="font-body text-[11.5px] text-ink-muted">
               Showing {rows.length} of {total}
             </p>
@@ -240,7 +280,7 @@ export function HistoryTab({ onOpenChat, canReply, onReopened, search, resolver,
           </div>
 
           {hasUnattributed && (
-            <div className="mx-6 mb-6 flex items-start gap-2 rounded-[9px] border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+            <div className="mx-6 mb-6 flex shrink-0 items-start gap-2 rounded-[9px] border border-amber-200 bg-amber-50 px-3.5 py-2.5">
               <Info size={14} className="mt-px flex-shrink-0 text-amber-700" />
               <p className="font-body text-[11.5px] leading-relaxed text-amber-800">
                 Escalations resolved before resolver tracking shipped show as <em>Not recorded</em>. Everything

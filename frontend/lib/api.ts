@@ -54,6 +54,11 @@ export interface Lead {
   lost_at?: string | null;
   lost_reason?: string | null;
   team_seen_at?: string | null;
+  /** Who archived / blocked the chat (migration 273); null on older rows. */
+  archived_by_name?: string | null;
+  /** How it was archived (migration 274): null = by a teammate, "idle_30d" = by itself after 30 quiet days. */
+  archived_reason?: string | null;
+  blocked_by_name?: string | null;
   /** Chats list only: 0 = needs you, 1 = AI agent is handling, 2 = handled by the team. */
   inbox_group?: 0 | 1 | 2 | null;
   /** Chats list only: when the customer's unanswered message arrived. */
