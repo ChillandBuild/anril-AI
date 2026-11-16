@@ -65,11 +65,6 @@ def system_prompt(call):
     return call["messages"][0]["content"]
 
 
-def typed(content):
-    """The user's message as typed: Jothidar has no app tools here, so the no-chart reminder follows it."""
-    return content.split("\n\n(Note from the app", 1)[0]
-
-
 def test_happy_path_searches_the_collection_strips_the_mood_and_saves_it(env):
     r = reply(env.jothidar["id"], "En velai eppo kidaikkum?", display_name="Karthik")
     assert r.status == "done" and r.text == "Vanakkam Karthik!" and r.mood == "warm"
@@ -80,7 +75,7 @@ def test_happy_path_searches_the_collection_strips_the_mood_and_saves_it(env):
     assert (call["purpose"], call["max_tokens"], call["temperature"], call["tenant_id"]) == \
         ("companion_reply", 700, 0.5, "t1")
     assert "Guru in the 7th house" in system_prompt(call)
-    assert call["messages"][-1]["role"] == "user" and typed(call["messages"][-1]["content"]) == "En velai eppo kidaikkum?"
+    assert call["messages"][-1] == {"role": "user", "content": "En velai eppo kidaikkum?"}
 
     msgs = env.db.rows("companion_messages")
     assert [(m["role"], m["content"], m["mood"]) for m in msgs] == [
@@ -97,7 +92,7 @@ def test_mood_carries_into_the_next_prompt_and_history_is_sent(env):
     second = reply(env.jothidar["id"], "Enna pannalam?")
     prompt2 = env.state["llm"][1]
     assert "Your current mood with this user: concerned." in system_prompt(prompt2)
-    assert [typed(m["content"]) for m in prompt2["messages"][1:]] == [
+    assert [m["content"] for m in prompt2["messages"][1:]] == [
         "Romba kavalaya irukku", "Kavalaipadaathinga.", "Enna pannalam?"]
     assert second.mood == "encouraging"
 
@@ -332,7 +327,7 @@ def test_history_messages_setting_sets_how_many_recent_messages_are_sent(env):
         reply(env.jothidar["id"], f"message {i}")
     env.db.rows("companions")[0]["history_messages"] = 2
     reply(env.jothidar["id"], "message 3")
-    sent = [typed(m["content"]) for m in env.state["llm"][-1]["messages"][1:]]
+    sent = [m["content"] for m in env.state["llm"][-1]["messages"][1:]]
     assert sent == ["message 2", "reply 2", "message 3"]  # 2 recent + the new one
 
     env.db.rows("companions")[0].pop("history_messages")  # no setting → the default 10
@@ -467,38 +462,4 @@ def test_a_secret_is_hidden_in_the_saved_chat_but_this_reply_still_reads_it(env)
     saved = {m["role"]: m["content"] for m in env.db.rows("companion_messages")}
     assert saved["user"] == "my OTP is [hidden], call me on 9876543210"      # the phone number stays
     assert saved["assistant"] == "Sari, OTP [hidden] yaarukkum sollaadheenga."
-    assert typed(env.state["llm"][0]["messages"][-1]["content"]) == "my OTP is 482913, call me on 9876543210"
-
-
-def test_no_app_tools_means_the_no_chart_rule_and_sending_a_tool_switches_it_off(env, monkeypatch):
-    from app.companion.models import AppTool
-    reply_with(env, playground.Overrides(), msg="12-08-2001, 6:45, Chennai")
-    assert "[NO CHART CONNECTED" in system_prompt(env.state["llm"][-1])
-
-    rounds = _tool_round(env, monkeypatch, [])                             # the app sends get_chart this time
-    reply_with(env, playground.Overrides(), msg="12-08-2001, 6:45, Chennai",
-               tools=[AppTool(name="get_chart", description="The person's birth chart")])
-    sent = rounds[-1]["messages"]
-    assert "[NO CHART CONNECTED" not in sent[0]["content"] and sent[-1]["content"] == "12-08-2001, 6:45, Chennai"
-
-
-def test_the_main_resources_instruction_pages_reach_every_reply(env, monkeypatch):
-    monkeypatch.setattr(engine, "_instructions_cache", {})
-    env.db.add("companion_kb_documents", id="rb", tenant_id="t1", collection_id="col-astro", title="Rule book",
-               tier=1, instruction_pages=1, created_at="2026-11-12T00:00:00+00:00")
-    env.db.add("companion_kb_pages", tenant_id="t1", document_id="rb", page_no=1, status="ok",
-               text="No dasa data: never give a date.")
-    monkeypatch.setattr(engine.kb_store_search, "get_supabase", lambda: env.db)
-    reply_with(env, playground.Overrides())
-    assert "[STANDING INSTRUCTIONS" in system_prompt(env.state["llm"][-1])
-    assert "No dasa data: never give a date." in system_prompt(env.state["llm"][-1])
-
-
-def test_instructions_that_cannot_be_read_never_break_the_reply(env, monkeypatch):
-    monkeypatch.setattr(engine, "_instructions_cache", {})
-
-    async def down(*a, **k):
-        raise RuntimeError("db down")
-    monkeypatch.setattr(engine.kb_store_search, "instruction_text", down)
-    out = reply_with(env, playground.Overrides())
-    assert out.status == "done" and "[STANDING INSTRUCTIONS" not in system_prompt(env.state["llm"][-1])
+    assert env.state["llm"][0]["messages"][-1]["content"] == "my OTP is 482913, call me on 9876543210"

@@ -1,0 +1,123 @@
+-- 273_companion_kb_drop_instruction_pages.sql
+-- Undoes the "standing instructions" feature of migration 270 (owner's decision 2026-11-16): a character's
+-- rules belong in its Persona; uploaded files are content only. The search function goes back to exactly
+-- migration 269's version, then the column goes.
+--
+-- Apply in two steps. Step 1 (the function) is safe at any time. Step 2 (DROP COLUMN) only after the code
+-- that no longer reads instruction_pages is deployed (commit after 60bbdeb1): the 60bbdeb1 code selects it.
+-- Undo: undo/273_companion_kb_drop_instruction_pages_undo.sql
+SET LOCAL lock_timeout = '5s';
+
+-- Step 1
+CREATE OR REPLACE FUNCTION public.match_companion_kb_chunks(p_tenant uuid, p_collection uuid, p_tier integer, p_model text, p_embedding_en vector, p_embedding_ta vector, p_query_en text, p_query_ta text, p_terms text[], p_count integer)
+ RETURNS TABLE(id uuid, document_id uuid, document_title text, tier smallint, heading_path text, text text, page_from integer, page_to integer, source text, score double precision)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  WITH scope AS MATERIALIZED (
+    SELECT c.id, c.document_id, d.title AS document_title, c.tier, c.heading_path, c.text,
+           c.page_from, c.page_to, c.embedding, c.embedding_model, c.tsv
+    FROM companion_kb_chunks c
+    JOIN companion_kb_documents d ON d.id = c.document_id AND d.tenant_id = p_tenant
+    WHERE c.tenant_id = p_tenant AND c.collection_id = p_collection AND c.tier = p_tier
+  ),
+  -- Up to this many passages the fuzzy word list is cheap; above it, the indexed exact-word list.
+  big AS (
+    SELECT count(*) > 300 AS yes FROM scope
+  ),
+  q AS (
+    -- "saturn & 7th & house" -> "saturn | 7th | house": any word may match.
+    SELECT replace(plainto_tsquery('simple', coalesce(p_query_en, '') || ' ' || coalesce(p_query_ta, ''))::text,
+                   '&', '|')::tsquery AS any_word
+  ),
+  terms AS (
+    SELECT DISTINCT btrim(term) AS term
+    FROM unnest(coalesce(p_terms, '{}'::text[])) AS term
+    WHERE length(btrim(term)) >= 3
+  ),
+  by_vector_en AS (
+    SELECT s.id, 'vector_en'::text AS source, (1 - (s.embedding <=> p_embedding_en))::double precision AS score
+    FROM scope s
+    WHERE p_embedding_en IS NOT NULL AND s.embedding IS NOT NULL AND s.embedding_model = p_model
+    ORDER BY s.embedding <=> p_embedding_en
+    LIMIT p_count
+  ),
+  by_vector_ta AS (
+    SELECT s.id, 'vector_ta'::text AS source, (1 - (s.embedding <=> p_embedding_ta))::double precision AS score
+    FROM scope s
+    WHERE p_embedding_ta IS NOT NULL AND s.embedding IS NOT NULL AND s.embedding_model = p_model
+    ORDER BY s.embedding <=> p_embedding_ta
+    LIMIT p_count
+  ),
+  by_words AS (
+    SELECT s.id, 'words'::text AS source, ts_rank(s.tsv, q.any_word)::double precision AS score
+    FROM scope s, q
+    WHERE numnode(q.any_word) > 0 AND s.tsv @@ q.any_word
+    ORDER BY ts_rank(s.tsv, q.any_word) DESC
+    LIMIT p_count
+  ),
+  -- Small scope: fuzzy, as before (catches spelling variants in a short main resource).
+  by_trigram_fuzzy AS (
+    SELECT t.id, 'trigram'::text AS source, t.score
+    FROM (
+      SELECT s.id, max(word_similarity(t.term, s.text))::double precision AS score
+      FROM scope s, terms t
+      WHERE NOT (SELECT yes FROM big)
+      GROUP BY s.id
+    ) t
+    WHERE t.score >= 0.3
+    ORDER BY t.score DESC
+    LIMIT p_count
+  ),
+  -- Big scope: passages containing a key word as written (the index finds them), most different
+  -- words first, then most repeats. "sani dasha" in a book: a passage with both words beats one
+  -- that says sani once. Score = words found + repeats / 10000 (the caller only uses the order).
+  by_trigram_exact AS (
+    SELECT x.id, 'trigram'::text AS source,
+           (count(*) + least(sum(x.repeats), 9999) / 10000.0)::double precision AS score
+    FROM (
+      SELECT c.id,
+             (length(lower(c.text)) - length(replace(lower(c.text), lower(t.term), ''))) / length(t.term) AS repeats
+      FROM terms t
+      JOIN companion_kb_chunks c
+        ON c.text ILIKE '%' || replace(replace(replace(t.term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+      WHERE (SELECT yes FROM big)
+        AND c.tenant_id = p_tenant AND c.collection_id = p_collection AND c.tier = p_tier
+    ) x
+    GROUP BY x.id
+    ORDER BY 3 DESC, x.id
+    LIMIT p_count
+  ),
+  by_question AS (
+    SELECT k.id, 'question'::text AS source, k.score
+    FROM (
+      SELECT s.id, max(GREATEST(
+               CASE WHEN p_embedding_en IS NULL THEN 0 ELSE 1 - (cq.embedding <=> p_embedding_en) END,
+               CASE WHEN p_embedding_ta IS NULL THEN 0 ELSE 1 - (cq.embedding <=> p_embedding_ta) END
+             ))::double precision AS score
+      FROM companion_kb_chunk_questions cq
+      JOIN scope s ON s.id = cq.chunk_id
+      WHERE p_tier = 1 AND cq.tenant_id = p_tenant AND cq.collection_id = p_collection
+        AND cq.embedding IS NOT NULL AND cq.embedding_model = p_model
+        AND (p_embedding_en IS NOT NULL OR p_embedding_ta IS NOT NULL)
+      GROUP BY s.id
+    ) k
+    ORDER BY k.score DESC
+    LIMIT p_count
+  ),
+  hits AS (
+    SELECT * FROM by_vector_en
+    UNION ALL SELECT * FROM by_vector_ta
+    UNION ALL SELECT * FROM by_words
+    UNION ALL SELECT * FROM by_trigram_fuzzy
+    UNION ALL SELECT * FROM by_trigram_exact
+    UNION ALL SELECT * FROM by_question
+  )
+  SELECT s.id, s.document_id, s.document_title, s.tier, s.heading_path, s.text, s.page_from, s.page_to,
+         h.source, h.score
+  FROM hits h JOIN scope s ON s.id = h.id;
+$function$;
+
+-- Step 2 (after the deploy)
+ALTER TABLE companion_kb_documents DROP COLUMN IF EXISTS instruction_pages;

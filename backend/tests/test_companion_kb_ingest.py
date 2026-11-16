@@ -811,11 +811,3 @@ def test_schedule_starts_at_most_two_background_passes(db, world, monkeypatch):
     assert not ingest._claimed_elsewhere(waiting)
     assert run(ingest.run_pending())["finished"] == 1
     assert docs[2]["id"] not in ingest._deferred
-
-
-def test_instruction_pages_are_cut_apart_from_the_topic_pages():
-    pages = [(1, "How the AI decides\n" + "check the data first. " * 20), (2, "1 Marriage\n" + "look at the 7th house. " * 20)]
-    together = ingest._passages(pages, "Rule book")
-    assert any(c["page_from"] == 1 and c["page_to"] == 2 for c in together)     # one passage spans both
-    apart = ingest._passages(pages, "Rule book", instruction_pages=1)
-    assert apart and all(c["page_to"] <= 1 or c["page_from"] >= 2 for c in apart)

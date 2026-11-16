@@ -1,9 +1,7 @@
 """Builds the LLM messages for one companion reply, and reads the mood tag back out.
 
-Pure functions, no I/O. Section order is fixed: PLATFORM, INDUSTRY, CHARACTER, STANDING INSTRUCTIONS (when the
-main resource has some), MOOD, OUTPUT,
-OWN REASONING, KNOWLEDGE, ABOUT THIS USER, then (an industry with one, and no app tools this turn) the
-no-chart rule, then history, then the user's message (with the no-chart reminder after it). Business-written text is
+Pure functions, no I/O. Section order is fixed: PLATFORM, INDUSTRY, CHARACTER, MOOD, OUTPUT,
+OWN REASONING, KNOWLEDGE, ABOUT THIS USER, then history, then the user's message. Business-written text is
 fenced inside its own section, and square brackets in it are turned into round ones, so a
 backstory can't open a fake "[PLATFORM RULES]" header of its own.
 """
@@ -12,8 +10,7 @@ from collections.abc import Mapping
 
 from app.companion.kb.types import KbResult, Passage
 from app.companion.platform_rules import (
-    INDUSTRY_RULES, INSTRUCTIONS_LABEL, MOODS, NO_APP_DATA_REMINDERS, NO_APP_DATA_RULES, OUTPUT_RULE,
-    OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES,
+    INDUSTRY_RULES, MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES,
 )
 
 LANGUAGES = {
@@ -88,34 +85,24 @@ def knowledge_block(kb: KbResult | None) -> str:
 
 
 def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_context: str,
-                   history: list[dict], user_message: str, *, app_tools: bool = False,
-                   instructions: str = "") -> list[dict]:
-    """settings is a companions row (or any mapping with the character-card keys).
-    app_tools: the app sent its own tools this turn (e.g. AstroTamil's get_chart). Without them an astrology
-    character gets the no-chart rule last, so it never states a lagnam, dasa or date it could not have looked up.
-    instructions: the main resource's standing-instruction pages (store_search.instruction_text), fenced."""
+                   history: list[dict], user_message: str) -> list[dict]:
+    """settings is a companions row (or any mapping with the character-card keys)."""
     sections = [PLATFORM_RULES]
     industry = INDUSTRY_RULES.get(settings.get("industry") or "general")
     if industry:
         sections.append(industry)
     sections.append(_character_block(settings))
-    if (instructions or "").strip():
-        sections.append(INSTRUCTIONS_LABEL + "\n" + fence(instructions))
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")
     sections.append(f"[MOOD]\nYour current mood with this user: {current}. Let it colour your tone, not your facts.")
     sections.append(OUTPUT_RULE)
     sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else OWN_REASONING_ALLOWED)
     sections.append(knowledge_block(kb))
     sections.append(MEMORY_LABEL + "\n" + (fence(memory_context or "") or "none"))
-    no_data = None if app_tools else NO_APP_DATA_RULES.get(settings.get("industry") or "general")
-    if no_data:
-        sections.append(no_data)
 
     messages = [{"role": "system", "content": "\n\n".join(sections)}]
     messages += [{"role": m["role"], "content": m["content"]} for m in history
                  if m.get("role") in ("user", "assistant") and m.get("content")]
-    reminder = NO_APP_DATA_REMINDERS.get(settings.get("industry") or "general") if no_data else None
-    messages.append({"role": "user", "content": f"{user_message}\n\n{reminder}" if reminder else user_message})
+    messages.append({"role": "user", "content": user_message})
     return messages
 
 

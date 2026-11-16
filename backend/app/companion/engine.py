@@ -24,7 +24,6 @@ from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
 from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
-from app.companion.kb import store_search as kb_store_search
 from app.companion.kb.types import KbResult
 from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used
 from app.services import ai_reply
@@ -242,10 +241,9 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     """One stateless reply: books only, no facts, no history, and no DB write at all (no person,
     no conversation), so it can run beside the normal reply without racing it."""
     started = time.monotonic()
-    kb, instructions = await asyncio.gather(_knowledge(tenant_id, companion, message, []),
-                                            _instructions(tenant_id, companion))
+    kb = await _knowledge(tenant_id, companion, message, [])
     mood = companion.get("default_mood") or "calm"
-    prompt = build_messages(companion, mood, kb, "", [], message, instructions=instructions)
+    prompt = build_messages(companion, mood, kb, "", [], message)
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
@@ -280,10 +278,9 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     with_kb = ov is None or (not agentic and ov.sources != "memories")
     rewrite = _shared_rewrite(tenant_id, companion, memory, message, history, with_kb)
     try:
-        kb, memory_context, instructions = await asyncio.gather(
+        kb, memory_context = await asyncio.gather(
             _knowledge(tenant_id, companion, message, history, rewrite) if with_kb else _no_kb(),
             _memory(memory, tenant_id, companion, person, message, rewrite),
-            _instructions(tenant_id, companion),
         )
     finally:
         if rewrite is not None and not rewrite.done():   # memory gave up waiting and nobody else needs it
@@ -294,9 +291,8 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     mood = _mood(conversation, companion)
     if agentic:
         return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
-                              memory_context, mood, tools, started, model, ov, instructions)
-    prompt = build_messages(companion, mood, kb, memory_context, history, message, app_tools=bool(tools),
-                            instructions=instructions)
+                              memory_context, mood, tools, started, model, ov)
+    prompt = build_messages(companion, mood, kb, memory_context, history, message)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb)
@@ -304,30 +300,6 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
 
 async def _no_kb() -> None:
     return None
-
-
-INSTRUCTIONS_TTL = 300.0     # seconds: an owner's change to the instruction pages shows within 5 minutes
-_instructions_cache: dict[str, tuple[float, str]] = {}
-
-
-async def _instructions(tenant_id: str, companion: dict) -> str:
-    """The standing-instruction pages of this character's main resources (cached per collection for
-    INSTRUCTIONS_TTL). "" without a collection, without instruction pages, or when the read fails:
-    a missing read never breaks the reply."""
-    collection_id = companion.get("knowledge_collection_id")
-    if not collection_id:
-        return ""
-    key, now = f"{tenant_id}:{collection_id}", time.monotonic()
-    hit = _instructions_cache.get(key)
-    if hit and hit[0] > now:
-        return hit[1]
-    try:
-        text = await kb_store_search.instruction_text(tenant_id, collection_id)
-    except Exception as exc:
-        logger.warning("companion %s: standing instructions not read (%s)", companion["id"], type(exc).__name__)
-        return hit[1] if hit else ""
-    _instructions_cache[key] = (now + INSTRUCTIONS_TTL, text)
-    return text
 
 
 # ---- Agentic mode (Playground only) -----------------------------------------------------------
@@ -353,24 +325,21 @@ AGENTIC_NOTE = (
 
 async def _agentic(companion: dict, provider: str, tenant_id: str, conversation: dict, person: dict,
                    message: str, history: list[dict], memory_context: str, mood: str, tools: list[AppTool],
-                   started: float, model: str | None, ov: "playground.Overrides",
-                   instructions: str = "") -> CompanionReply:
+                   started: float, model: str | None, ov: "playground.Overrides") -> CompanionReply:
     offered = [t for t in (SEARCH_MEMORY, SEARCH_KNOWLEDGE)
                if ov.sources == "all" or (ov.sources == "memories") == (t is SEARCH_MEMORY)]
     if not companion.get("knowledge_collection_id"):
         offered = [t for t in offered if t is not SEARCH_KNOWLEDGE]
     if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
         ov.note("Agentic: no search tool to offer, replied as usual")
-        prompt = build_messages(companion, mood, None, memory_context, history, message,
-                                app_tools=bool(tools), instructions=instructions)
+        prompt = build_messages(companion, mood, None, memory_context, history, message)
         return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
                                  started, model=model)
     search_names = {t.name for t in offered}
     # The app's own tools are offered too (search tool names win a clash). An app-tool call here is not
     # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
     app_offered = [t for t in tools if t.name not in search_names]
-    prompt = build_messages(companion, mood, None, memory_context, history, message,
-                            app_tools=bool(tools), instructions=instructions)
+    prompt = build_messages(companion, mood, None, memory_context, history, message)
     prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
     llm_started = time.monotonic()
     raw, calls, wants_app = None, [], False
@@ -404,8 +373,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
             ov.note(f'Round 1: called search_memory("{query}") -> {len(hits)} hits')
         log.append({"name": call["name"], "args": call["args"], "ok": True})
     context = "\n".join(part for part in [memory_context] + found if part)
-    prompt = build_messages(companion, mood, kb, context, history, message,
-                            app_tools=bool(tools), instructions=instructions)
+    prompt = build_messages(companion, mood, kb, context, history, message)
     reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
                               model=model, kb=kb)
     total = int((time.monotonic() - started) * 1000)
