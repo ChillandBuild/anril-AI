@@ -1,15 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, API_URL, DealSummary, getAuthHeaders, Lead } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { ChevronRight, CheckCircle2, Calendar, TrendingUp, MessageCircle, Plus, Power, PowerOff } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronRight, CheckCircle2, Calendar, TrendingUp, MessageCircle, Plus } from "lucide-react";
 import { SegmentBadge } from "./segment-badge";
 import { describeScoreEvent, type ScoreEventLike } from "./scoreHistory";
 import { NewDealDialog } from "./deals/NewDealDialog";
 import { StageBadge } from "./deals/StageBadge";
 import { formatRupees } from "./deals/money";
-import { useMasterAiEnabled } from "@/lib/useMasterAiEnabled";
+import { CustomerActions } from "./chats/CustomerActions";
+import type { Option } from "./chats/inboxFilters";
 
 // ─── Channel icons ─────────────────────────────────────────────────────────────
 function IgIcon({ size = 11 }: { size?: number }) {
@@ -211,19 +210,18 @@ function DealRow({ deal }: { deal: DealSummary }) {
 // ─── Main panel ───────────────────────────────────────────────────────────────
 interface LeadDetailsPanelProps {
   lead: Lead;
+  /** Teammates, for Record payment's Sold by. */
+  team?: Option[];
   onCollapse: () => void;
   onLeadUpdate?: (updated: Lead) => void;
 }
 
-export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetailsPanelProps) {
-  const [activeTab, setActiveTab] = useState<"info" | "actions">("info");
+export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: LeadDetailsPanelProps) {
   const [history, setHistory] = useState<ScoreEvent[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const masterAiEnabled = useMasterAiEnabled();
-  const [converting, setConverting] = useState(false);
   const [showNewDeal, setShowNewDeal] = useState(false);
+  const dealsRef = useRef<HTMLDivElement>(null);
   const [deals, setDeals] = useState<DealSummary[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
   const [dealsError, setDealsError] = useState(false);
@@ -271,27 +269,6 @@ export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetails
     return () => { mounted = false; };
   }, [lead.id, dealsReload]);
 
-  async function handleToggleAI() {
-    setToggling(true);
-    try {
-      const updated = await api.leads.toggleAI(lead.id, !lead.ai_enabled);
-      onLeadUpdate?.(updated);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Toggle failed");
-    } finally { setToggling(false); }
-  }
-
-  async function handleMarkConverted() {
-    if (!confirm(`Mark ${lead.name || lead.phone} as converted? This feeds AI Auto-Tune.`)) return;
-    setConverting(true);
-    try {
-      const updated = await api.leads.convert(lead.id);
-      onLeadUpdate?.(updated);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
-    } finally { setConverting(false); }
-  }
-
   const initials = lead.name
     ? lead.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
     : (lead.phone ?? "?").slice(-2);
@@ -301,95 +278,87 @@ export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetails
   return (
     <div className="w-80 flex-shrink-0 border-l border-surface-mid bg-surface flex flex-col h-full overflow-hidden">
       {/* Panel header */}
-      <div className="px-4 pt-3 pb-0 border-b border-surface-mid">
-        <div className="flex items-center justify-between mb-2">
+      <div className="px-4 py-2.5 border-b border-surface-mid">
+        <div className="flex items-center justify-between">
           <p className="font-label text-[11px] font-semibold text-on-surface-muted uppercase tracking-wider">
             {lead.name || "Contact"}
           </p>
           <button
             onClick={onCollapse}
-            title="Collapse panel"
+            title="Hide customer panel"
+            aria-label="Hide customer panel"
             className="p-1 rounded-lg hover:bg-surface-low text-on-surface-muted hover:text-on-surface transition-colors"
           >
             <ChevronRight size={15} />
           </button>
         </div>
-        {/* Tabs */}
-        <div className="flex gap-0">
-          {(["info", "actions"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-4 py-2 font-label text-xs font-semibold transition-colors border-b-2 -mb-px",
-                activeTab === tab
-                  ? "border-primary text-primary"
-                  : "border-transparent text-on-surface-muted hover:text-on-surface"
-              )}
-            >
-              {tab === "info" ? "Info" : "Actions"}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto">
+        <CustomerActions
+          lead={lead}
+          team={team}
+          deals={deals}
+          onLeadUpdate={onLeadUpdate}
+          onDealsChanged={() => setDealsReload((n) => n + 1)}
+          onShowDeals={() => dealsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
 
-        {/* ── INFO tab ── */}
-        {activeTab === "info" && (
-          <div className="px-4 py-4 space-y-5">
-            {/* Identity */}
-            <div className="flex items-start gap-3">
-              <div className="w-11 h-11 rounded-full bg-surface-low flex items-center justify-center shrink-0">
-                <span className="font-display text-sm font-bold text-primary">{initials}</span>
-              </div>
-              <div className="min-w-0">
-                <p className="font-body text-sm font-semibold text-on-surface truncate">
-                  {lead.name || "Unnamed lead"}
-                </p>
-                {lead.phone && (
-                  <p className="font-label text-xs text-on-surface-muted mt-0.5">{lead.phone}</p>
+        {/* ── Lead info ── */}
+        <div className="mt-5 border-t border-surface-mid px-4 py-4 space-y-5">
+          {/* Identity */}
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-full bg-surface-low flex items-center justify-center shrink-0">
+              <span className="font-display text-sm font-bold text-primary">{initials}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="font-body text-sm font-semibold text-on-surface truncate">
+                {lead.name || "Unnamed lead"}
+              </p>
+              {lead.phone && (
+                <p className="font-label text-xs text-on-surface-muted mt-0.5">{lead.phone}</p>
+              )}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <SourceBadge source={lead.source} />
+                {converted && (
+                  <span className="inline-flex items-center gap-1 text-green-600 font-label text-xs font-semibold">
+                    <CheckCircle2 size={10} /> Converted
+                  </span>
                 )}
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <SourceBadge source={lead.source} />
-                  {converted && (
-                    <span className="inline-flex items-center gap-1 text-green-600 font-label text-xs font-semibold">
-                      <CheckCircle2 size={10} /> Converted
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
+          </div>
 
-            <Section icon={<Calendar size={12} />} title="Joined">
-              <p className="font-body text-xs text-on-surface">
-                {formatDate(lead.created_at)}
-                <span className="text-on-surface-muted ml-1.5">({timeAgo(lead.created_at)})</span>
+          <Section icon={<Calendar size={12} />} title="Joined">
+            <p className="font-body text-xs text-on-surface">
+              {formatDate(lead.created_at)}
+              <span className="text-on-surface-muted ml-1.5">({timeAgo(lead.created_at)})</span>
+            </p>
+          </Section>
+
+          <Section icon={<TrendingUp size={12} />} title="Segment">
+            <SegmentBadge segment={lead.segment} />
+          </Section>
+
+          <Section icon={<TrendingUp size={12} />} title="Group history">
+            {loadingHistory && <p className="font-body text-xs text-on-surface-muted">Loading…</p>}
+            {!loadingHistory && historyError && <p className="font-body text-xs text-red-500">Failed to load history.</p>}
+            {!loadingHistory && !historyError && history.length === 0 && (
+              <p className="font-body text-xs text-on-surface-muted">
+                No group changes yet.
+                <br />
+                <span className="text-[10px]">Appears once this lead sends a message.</span>
               </p>
-            </Section>
+            )}
+            {history.length > 0 && (
+              <div className="space-y-2">
+                {history.slice(0, 8).map((ev) => <ScoreEventCard key={ev.id} ev={ev} />)}
+              </div>
+            )}
+          </Section>
 
-            <Section icon={<TrendingUp size={12} />} title="Segment">
-              <SegmentBadge segment={lead.segment} />
-            </Section>
-
-            <Section icon={<TrendingUp size={12} />} title="Group history">
-              {loadingHistory && <p className="font-body text-xs text-on-surface-muted">Loading…</p>}
-              {!loadingHistory && historyError && <p className="font-body text-xs text-red-500">Failed to load history.</p>}
-              {!loadingHistory && !historyError && history.length === 0 && (
-                <p className="font-body text-xs text-on-surface-muted">
-                  No group changes yet.
-                  <br />
-                  <span className="text-[10px]">Appears once this lead sends a message.</span>
-                </p>
-              )}
-              {history.length > 0 && (
-                <div className="space-y-2">
-                  {history.slice(0, 8).map((ev) => <ScoreEventCard key={ev.id} ev={ev} />)}
-                </div>
-              )}
-            </Section>
-
+          <div ref={dealsRef} className="scroll-mt-3">
             <Section icon={<CheckCircle2 size={12} />} title="Deals">
               {loadingDeals && <p className="font-body text-xs text-on-surface-muted">Loading…</p>}
               {!loadingDeals && dealsError && <p className="font-body text-xs text-red-500">Couldn&apos;t load deals.</p>}
@@ -410,77 +379,7 @@ export function LeadDetailsPanel({ lead, onCollapse, onLeadUpdate }: LeadDetails
               </button>
             </Section>
           </div>
-        )}
-
-        {/* ── ACTIONS tab ── */}
-        {activeTab === "actions" && (
-          <div className="px-4 py-5 space-y-4">
-            {/* AI toggle */}
-            <div className={cn("rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3", !masterAiEnabled && "opacity-60")}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-label text-xs font-semibold text-on-surface">AI Auto-Reply</p>
-                  <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                    {!masterAiEnabled
-                      ? "AI is off for your whole account — turn it on in Settings → Auto-Reply"
-                      : lead.ai_enabled !== false ? "Bot is handling replies" : "You are handling replies"}
-                  </p>
-                </div>
-                <span className={cn(
-                  "w-2.5 h-2.5 rounded-full shrink-0",
-                  masterAiEnabled && lead.ai_enabled !== false ? "bg-emerald-500" : "bg-amber-500"
-                )} />
-              </div>
-              <button
-                onClick={handleToggleAI}
-                disabled={toggling || !masterAiEnabled}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 py-2 rounded-lg font-label text-xs font-semibold transition-colors disabled:opacity-40",
-                  lead.ai_enabled !== false
-                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200"
-                    : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200"
-                )}
-              >
-                {lead.ai_enabled !== false ? <PowerOff size={13} /> : <Power size={13} />}
-                {toggling ? "Updating…" : lead.ai_enabled !== false ? "Pause AI" : "Resume AI"}
-              </button>
-            </div>
-
-            {/* Mark converted */}
-            <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3">
-              <div>
-                <p className="font-label text-xs font-semibold text-on-surface">Conversion</p>
-                <p className="font-body text-[11px] text-on-surface-muted mt-0.5">
-                  {converted ? "This lead has been converted" : "Mark when a deal is closed"}
-                </p>
-              </div>
-              {converted ? (
-                <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700">
-                  <CheckCircle2 size={14} />
-                  <span className="font-label text-xs font-semibold">Converted</span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleMarkConverted}
-                  disabled={converting}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary text-white font-label text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-40"
-                >
-                  <CheckCircle2 size={13} />
-                  {converting ? "Saving…" : "Mark as Converted"}
-                </button>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowNewDeal(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-white font-label text-xs font-semibold hover:bg-primary/90 transition-colors"
-            >
-              <Plus size={13} /> Log a sale or send a quote
-            </button>
-          </div>
-        )}
-
+        </div>
       </div>
       <NewDealDialog
         open={showNewDeal}

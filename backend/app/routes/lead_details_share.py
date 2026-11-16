@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, require_any_permission
 from app.services import scheduled_templates
+from app.services.actor import sender_fields
 from app.services.call_details_share import ShareError, send_details, share_context
 
 router = APIRouter()
@@ -42,9 +43,10 @@ async def post_send_details(lead_id: UUID, payload: SendDetailsIn, ctx: dict = D
     if (payload.text is None) == (payload.template_id is None):
         raise HTTPException(status_code=400, detail="Send either a message or a template")
     try:
+        db = get_supabase()
         return await send_details(
-            get_supabase(), ctx["tenant_id"], str(lead_id), text=payload.text, template_id=payload.template_id,
-            variables=payload.variables, now=datetime.now(timezone.utc),
+            db, ctx["tenant_id"], str(lead_id), text=payload.text, template_id=payload.template_id,
+            variables=payload.variables, now=datetime.now(timezone.utc), sender=sender_fields(db, ctx),
         )
     except ShareError as e:
         raise HTTPException(status_code=400, detail=str(e))

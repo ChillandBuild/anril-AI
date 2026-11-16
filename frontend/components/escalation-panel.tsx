@@ -296,7 +296,7 @@ export function EscalationPanel({
                 <AlertTriangle size={18} className="text-[var(--primary-800)]" />
               </div>
               <div>
-                <h2 className="font-display text-xl font-bold tracking-tight text-gray-900">Escalations</h2>
+                <h2 className="font-display text-xl font-bold tracking-tight text-gray-900">Needs you</h2>
                 <p className="font-body text-xs font-medium text-gray-500 mt-0.5">
                   Conversations the AI handed to a human.
                 </p>

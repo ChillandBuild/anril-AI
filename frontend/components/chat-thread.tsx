@@ -12,14 +12,17 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { SwitchPill } from "@/components/ui/controls";
 import { useMasterAiEnabled } from "@/lib/useMasterAiEnabled";
 import { ShareProductMenu } from "@/components/chat/ShareProductMenu";
-import { NewDealDialog } from "@/components/deals/NewDealDialog";
-import { fetchHandovers, resolveHandover } from "@/lib/escalations";
+import { RecordPaymentDialog } from "@/components/chats/RecordPaymentDialog";
+import type { Option } from "@/components/chats/inboxFilters";
+import { Select } from "@/components/ui/Select";
+import { fetchHandovers, resolveHandover, type Handover } from "@/lib/escalations";
 import {
   CheckCircle2,
   AlertTriangle, Pencil, Trash2,
   FileText, Image as ImageIcon,
   Music, Video, Download, X, Eraser, MoreVertical,
-  ArrowLeft, Check, CheckCheck, Flag, Info, Smile, SendHorizontal, Paperclip, CreditCard, Lock,
+  ArrowLeft, Check, CheckCheck, Smile, SendHorizontal, Paperclip, CreditCard, Lock,
+  PanelRightOpen, PanelRightClose, UserRound, Loader2,
 } from "lucide-react";
 import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
 
@@ -118,9 +121,27 @@ function MediaBubble({ msg }: { msg: Message }) {
 }
 
 // ─── Single message bubble (memoized — only re-renders when this message changes) ─
-const MessageBubble = memo(function MessageBubble({ msg }: { msg: Message }) {
+// ─── Real delivery ticks, from WhatsApp's receipts ─────────────────────────────
+function DeliveryTicks({ msg, onDark }: { msg: Message; onDark: boolean }) {
+  const status = msg.delivery_status;
+  if (status === "failed") {
+    return (
+      <span className={cn("inline-flex items-center gap-0.5 font-semibold", onDark ? "text-amber-200" : "text-red-500")} title={msg.delivery_error_title || "Not delivered"}>
+        <AlertTriangle size={11} /> Not delivered
+      </span>
+    );
+  }
+  if (status === "read") {
+    return <CheckCheck size={13} className={onDark ? "text-sky-200" : "text-sky-500"} aria-label="Read" />;
+  }
+  if (status === "delivered") return <CheckCheck size={13} aria-label="Delivered" />;
+  return <Check size={13} aria-label="Sent" />;
+}
+
+const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Message; myUserId: string | null }) {
   const isOutbound = msg.direction === "outbound";
   const isAi = isOutbound && msg.is_ai_generated;
+  const isMine = Boolean(myUserId && msg.sent_by_user_id === myUserId);
   // Where an AI reply came from, shown in its label.
   const aiSource = !isAi ? null
     : msg.media_type === "image" ? "media recommendation"
@@ -142,6 +163,11 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: Message }) {
             ✦ Anril AI{aiSource && <span className="font-semibold text-[#64748b]"> · {aiSource}</span>}
           </p>
         )}
+        {isOutbound && !isAi && msg.sent_by_name && (
+          <p className="mb-0.5 flex items-center gap-1 text-[10.5px] font-bold text-white/85">
+            <UserRound size={11} strokeWidth={2.5} /> {msg.sent_by_name}{isMine && <span className="font-semibold text-white/70"> (you)</span>}
+          </p>
+        )}
         {msg.media_type && <MediaBubble msg={msg} />}
         {msg.content && !(msg.media_type && msg.content.startsWith("[")) && (
           <p className={cn("whitespace-pre-wrap", msg.media_type && "mt-1.5 text-xs opacity-80")}>
@@ -152,9 +178,8 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: Message }) {
           "mt-1 flex items-center gap-1 text-[10px]",
           isOutbound && !isAi ? "text-white/70" : "text-[#64748b]"
         )}>
-          {isOutbound && !isAi && <span>Sent by you ·</span>}
           <span>{new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
-          {isOutbound && <CheckCheck size={12} />}
+          {isOutbound && <DeliveryTicks msg={msg} onDark={!isAi} />}
         </p>
       </div>
     </div>
@@ -211,6 +236,7 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
 // ─── Main ChatThread component ────────────────────────────────────────────────
 export function ChatThread({
   lead,
+  team = [],
   onDeleted,
   onLeadUpdate,
   onBack,
@@ -218,13 +244,15 @@ export function ChatThread({
   onToggleDetails,
 }: {
   lead: Lead;
+  /** Teammates, for the assign dropdown and Record payment's Sold by. */
+  team?: Option[];
   onDeleted?: (id: string) => void;
   onLeadUpdate?: (updated: Lead) => void;
   onBack?: () => void;
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
 }) {
-  const { role, permissions } = useAuthRole();
+  const { role, permissions, callerId } = useAuthRole();
   const masterAiEnabled = useMasterAiEnabled();
   const canReplyToConversations = role === "owner" || permissions.includes("conversations.reply");
   const canManageDeals = role === "owner" || permissions.includes("deals.manage");
@@ -232,6 +260,7 @@ export function ChatThread({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState<Lead>(lead);
+  const hasEscalation = Boolean(current.needs_human_attention || current.needs_human_intervention);
   const [converting, setConverting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -246,9 +275,15 @@ export function ChatThread({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileCaption, setFileCaption] = useState("");
 
-  // New header state
-  const [callers, setCallers] = useState<Record<string, string>>({});
-  const [handovers, setHandovers] = useState<Array<{ id: string; lead_id: string; reason?: string | null }>>([]);
+  // Header + handover state
+  const [handovers, setHandovers] = useState<Handover[]>([]);
+  const [assigning, setAssigning] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  // "Teach the Anril AI": offered to the owner after they answer a chat the AI handed over.
+  const [teach, setTeach] = useState<{ when: string; say: string } | null>(null);
+  const [teachSaving, setTeachSaving] = useState(false);
+  const pendingHandover = handovers.find((h) => h.lead_id === current.id);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [resolvingHandover, setResolvingHandover] = useState(false);
@@ -263,6 +298,7 @@ export function ChatThread({
   const scheduledKey = scheduled.items.map((s) => `${s.id}:${s.status}:${s.send_at}`).join("|");
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
@@ -274,7 +310,13 @@ export function ChatThread({
     setEditingName(false);
     setSelectedFile(null);
     setFileCaption("");
+    setTeach(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Who "you" is, so your own replies read "(you)".
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setMyUserId(data.session?.user.id ?? null)).catch(() => {});
+  }, []);
 
   // Sync fields that the right panel may update externally
   useEffect(() => {
@@ -301,28 +343,9 @@ export function ChatThread({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load callers and handovers on mount
+  // Re-read on each lead so the handover reason belongs to the chat on screen.
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.callers.list();
-        const callerMap: Record<string, string> = {};
-        (res.data || []).forEach((c: { id: string; name: string }) => {
-          callerMap[c.id] = c.name;
-        });
-        setCallers(callerMap);
-      } catch {
-        // Silent fail
-      }
-
-      try {
-        const ho = await fetchHandovers();
-        setHandovers(ho);
-      } catch {
-        // Silent fail
-      }
-    })();
-    // Re-read on each lead so the escalation reason belongs to the chat on screen.
+    fetchHandovers().then(setHandovers).catch(() => {});
   }, [lead.id]);
 
   async function saveName() {
@@ -413,15 +436,48 @@ export function ChatThread({
     } finally { setResolvingHandover(false); }
   }
 
-  function getSegmentPill() {
-    const segmentInfo: Record<string, { icon: string; label: string; bg: string; text: string; border: string }> = {
-      A: { icon: "🔥", label: "Hot lead", bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-200" },
-      B: { icon: "🌡️", label: "Warm lead", bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-200" },
-      C: { icon: "❄️", label: "Cold lead", bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200" },
-      D: { icon: "👋", label: "Not interested", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" },
-    };
-    const info = segmentInfo[current.segment] || segmentInfo.D;
-    return info;
+  async function assignTo(callerIdToSet: string) {
+    setAssigning(true);
+    try {
+      const updated = await api.leads.assign(current.id, callerIdToSet || null);
+      const next = { ...current, ...updated, assigned_to: callerIdToSet || null };
+      setCurrent(next);
+      onLeadUpdate?.(next);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't change who handles this chat");
+    } finally { setAssigning(false); }
+  }
+
+  // "I'll reply": take the handover (so teammates see it's yours) and jump to the reply box.
+  async function claimHandover() {
+    textareaRef.current?.focus();
+    if (!pendingHandover || !callerId || pendingHandover.assigned_to === callerId) return;
+    setClaiming(true);
+    try {
+      await api.chatHandovers.assign(pendingHandover.id, callerId);
+      setHandovers((prev) => prev.map((h) => (h.id === pendingHandover.id ? { ...h, assigned_to: callerId } : h)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't take this chat");
+    } finally { setClaiming(false); }
+  }
+
+  async function offerTeach() {
+    try {
+      const { suggestion } = await api.chats.teachSuggestion(lead.id);
+      if (suggestion) setTeach(suggestion);
+    } catch { /* teaching is optional; a failed suggestion just doesn't show */ }
+  }
+
+  async function saveTeach() {
+    if (!teach || !teach.say.trim()) return;
+    setTeachSaving(true);
+    try {
+      await api.chats.teach(teach.when, teach.say.trim());
+      toast.success("Saved. The Anril AI will answer this itself next time.");
+      setTeach(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save the answer");
+    } finally { setTeachSaving(false); }
   }
 
   async function sendReply() {
@@ -429,6 +485,8 @@ export function ChatThread({
     if (!canReplyToConversations || replyLocked || !text || sending) return;
     setSending(true);
     setSendError(null);
+    // Answering a chat the AI handed over is the moment to teach it (owner only).
+    const answeringHandover = role === "owner" && hasEscalation;
     try {
       const sentMsg = await api.leads.sendMessage(lead.id, text);
       setMessages((prev) => {
@@ -437,6 +495,7 @@ export function ChatThread({
         return [...prev, sentMsg as Message];
       });
       setDraft("");
+      if (answeringHandover) void offerTeach();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Send failed");
     } finally { setSending(false); }
@@ -533,10 +592,13 @@ export function ChatThread({
   // WhatsApp drops free-text replies after 24h, so the reply box is blurred and only templates go out.
   // Wait for messages to load, or every thread would flash locked before its last inbound arrives.
   const replyLocked = !loading && outsideWindow && isWhatsApp && canReplyToConversations;
+  const replyWindowLeft = (() => {
+    if (loading || !isWhatsApp || outsideWindow || !lastInbound) return null;
+    const minsLeft = Math.floor((24 - hoursSinceInbound) * 60);
+    if (minsLeft >= 60) return `${Math.floor(minsLeft / 60)}h`;
+    return `${Math.max(1, minsLeft)}m`;
+  })();
 
-  const segmentPill = getSegmentPill();
-  const hasEscalation = current.needs_human_attention || current.needs_human_intervention;
-  const pendingHandover = handovers.find((h) => h.lead_id === current.id);
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
@@ -556,57 +618,41 @@ export function ChatThread({
         {/* Lead initials avatar */}
         <ChannelAvatar source={current.source} size={38} />
 
-        {/* Name + segment pill + subtitle */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {editingName ? (
-              <input
-                autoFocus
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                onBlur={saveName}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveName();
-                  if (e.key === "Escape") setEditingName(false);
-                }}
-                placeholder="Add a name"
-                className="font-display text-[15px] font-bold text-[#0A1528] bg-slate-50 px-2 py-0.5 rounded border border-primary focus:outline-none focus:ring-1 focus:ring-primary flex-1"
-              />
-            ) : (
-              <button
-                onClick={() => { setNameDraft(current.name || ""); setEditingName(true); }}
-                className="group flex items-center gap-1.5"
-                title="Click to rename"
-              >
-                <span className="font-display text-[15px] font-bold text-[#0A1528] truncate">
-                  {current.name || current.phone || "Unknown"}
-                </span>
-                <Pencil size={13} className="opacity-0 group-hover:opacity-50 text-[#94a3b8] shrink-0" />
-              </button>
-            )}
-            <div className={cn(
-              "rounded-full px-2 py-0.5 text-[10.5px] font-bold border",
-              segmentPill.bg,
-              segmentPill.text,
-              segmentPill.border
-            )}>
-              {segmentPill.icon} {segmentPill.label}
-            </div>
-          </div>
-          <p className="font-label text-[11px] text-[#64748b] flex items-center gap-1 flex-wrap">
-            {formatPhone(current.phone) || "—"}
-            <span className="text-[#cbd5e1]">·</span>
-            {CHANNEL_LABEL[getChannel(current.source)]}
+        {/* Name, then phone · channel · ad */}
+        <div className="min-w-[120px] flex-1">
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveName();
+                if (e.key === "Escape") setEditingName(false);
+              }}
+              placeholder="Add a name"
+              className="w-full max-w-[260px] font-display text-[15px] font-bold text-[#0A1528] bg-slate-50 px-2 py-0.5 rounded border border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          ) : (
+            <button
+              onClick={() => { setNameDraft(current.name || ""); setEditingName(true); }}
+              className="group flex max-w-full items-center gap-1.5"
+              title="Click to rename"
+            >
+              <span className="font-display text-[15px] font-bold leading-tight text-[#0A1528] truncate">
+                {current.name || formatPhone(current.phone) || "Unknown"}
+              </span>
+              <Pencil size={13} className="opacity-0 group-hover:opacity-50 text-[#94a3b8] shrink-0" />
+            </button>
+          )}
+          <p className="mt-0.5 font-label text-[11.5px] text-[#64748b] flex items-center gap-1 min-w-0">
+            {current.phone && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
+            {current.phone && <span className="text-[#cbd5e1]">·</span>}
+            <span className="whitespace-nowrap">{CHANNEL_LABEL[getChannel(current.source)]}</span>
             {current.ad_campaign_id || current.ad_campaign_name ? (
               <>
                 <span className="text-[#cbd5e1]">·</span>
-                <span>From Meta Ad{current.ad_campaign_name ? ` (${current.ad_campaign_name})` : ""}</span>
-              </>
-            ) : null}
-            {current.assigned_to ? (
-              <>
-                <span className="text-[#cbd5e1]">·</span>
-                <span>Assigned to {callers[current.assigned_to] || "a teammate"}</span>
+                <span className="truncate">from {current.ad_campaign_name || "a Meta ad"}</span>
               </>
             ) : null}
           </p>
@@ -614,38 +660,52 @@ export function ChatThread({
 
         {/* Right side controls */}
         <div className="ml-auto flex items-center gap-2">
-          {/* AI replies switch */}
+          {/* Who handles this chat. Only the owner can change it (the API is owner-only). */}
           <div
-            className={`rounded-xl border border-[#e2e8f0] px-3 py-1.5 flex items-center gap-2${masterAiEnabled ? "" : " opacity-50"}`}
-            title={masterAiEnabled ? undefined : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
+            className="hidden w-[132px] shrink-0 md:block"
+            title={role === "owner" ? "Who handles this chat" : "Only the owner can change who handles a chat"}
           >
-            <span className="text-[12px] font-semibold text-[#0A1528]">AI replies</span>
-            <SwitchPill on={masterAiEnabled && aiEnabled} disabled={!masterAiEnabled} onChange={() => toggleAI()} size="sm" aria-label="AI replies" />
-            <span className="text-[11px] text-[#64748b]">{!masterAiEnabled ? "Off (account)" : aiEnabled ? "On" : "Off"}</span>
+            <Select
+              size="sm"
+              value={current.assigned_to ?? ""}
+              onChange={(v) => void assignTo(v)}
+              disabled={role !== "owner" || assigning}
+              aria-label="Assigned to"
+              className="rounded-xl"
+              options={[
+                { value: "", text: "Unassigned", label: <span className="flex items-center gap-1.5 text-[#64748b]"><UserRound size={13} />Unassigned</span> },
+                ...team.map((t) => ({ value: t.value, text: t.label, label: <span className="flex items-center gap-1.5"><UserRound size={13} className="text-primary" />{t.label}</span> })),
+                ...(current.assigned_to && !team.some((t) => t.value === current.assigned_to)
+                  ? [{ value: current.assigned_to, text: "A teammate", label: <span className="flex items-center gap-1.5"><UserRound size={13} />A teammate</span> }]
+                  : []),
+              ]}
+            />
           </div>
 
-          {/* Mark resolved button - only show if escalated */}
-          {hasEscalation && (
-            <button
-              onClick={markResolved}
-              disabled={resolvingHandover}
-              className="rounded-xl bg-primary px-3.5 py-2 text-[12px] font-bold text-white hover:bg-[var(--primary-900)] disabled:opacity-50 flex items-center gap-1.5"
-              title="Mark this escalation as resolved"
-            >
-              <Check size={14} />
-              {resolvingHandover ? "Resolving…" : "Mark resolved"}
-            </button>
-          )}
+          {/* AI agent switch */}
+          <label
+            className={cn("flex items-center gap-2 rounded-xl px-2 py-1.5", !masterAiEnabled && "opacity-50")}
+            title={masterAiEnabled ? (aiEnabled ? "The AI agent replies in this chat" : "The AI agent is off for this chat") : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
+          >
+            <span className="hidden text-[12.5px] font-semibold text-[#334155] 2xl:inline">AI agent</span>
+            <SwitchPill on={masterAiEnabled && aiEnabled} disabled={!masterAiEnabled} onChange={() => toggleAI()} size="sm" aria-label="AI agent" />
+          </label>
 
-          {/* Lead info button - only at xl and up */}
+          {/* Customer panel toggle (wide screens, where the panel fits) */}
           {onToggleDetails && (
             <button
               onClick={onToggleDetails}
-              className="hidden xl:flex rounded-xl border border-[#e2e8f0] px-3 py-2 text-[12px] font-semibold text-primary items-center gap-1 hover:bg-slate-50"
-              title={detailsOpen ? "Hide lead info" : "Show lead info"}
+              aria-pressed={detailsOpen}
+              aria-label={detailsOpen ? "Hide customer panel" : "Show customer panel"}
+              title={detailsOpen ? "Hide customer panel" : "Show customer panel"}
+              className={cn(
+                "hidden h-9 w-9 items-center justify-center rounded-xl border transition-colors xl:flex",
+                detailsOpen
+                  ? "border-primary/30 bg-primary-light text-primary"
+                  : "border-[#e2e8f0] text-[#64748b] hover:bg-slate-50 hover:text-[#0A1528]"
+              )}
             >
-              <Info size={13} />
-              {detailsOpen ? "Hide info" : "Lead info ›"}
+              {detailsOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
             </button>
           )}
 
@@ -692,19 +752,6 @@ export function ChatThread({
         </div>
       </div>
 
-      {/* Escalation banner */}
-      {hasEscalation && (
-        <div className="mx-5 mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] text-red-700 flex items-center gap-2">
-          <Flag size={13} className="fill-red-600 text-red-600 shrink-0" />
-          <span>
-            <span className="font-bold">Escalated</span>
-            {" – "}
-            {pendingHandover?.reason || "The customer needs a person to reply."}
-            {" Reply soon so this lead isn't lost."}
-          </span>
-        </div>
-      )}
-
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-white">
         {loading ? (
@@ -723,7 +770,7 @@ export function ChatThread({
               return (
                 <Fragment key={msg.id}>
                   {showDivider && <DateDivider dateStr={msg.created_at} />}
-                  <MessageBubble msg={msg} />
+                  <MessageBubble msg={msg} myUserId={myUserId} />
                 </Fragment>
               );
             })}
@@ -737,6 +784,82 @@ export function ChatThread({
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* The AI handed this chat over: say why, and let a person take it. */}
+      {hasEscalation && !teach && (
+        <div className="flex items-center gap-3 border-t border-amber-200 bg-amber-50 px-5 py-2.5">
+          <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-amber-900">
+            <span className="mr-1">🙋</span>
+            <span className="font-bold">The AI agent needs you:</span>{" "}
+            {pendingHandover?.reason || current.escalation_reason || "the customer is waiting for a person."}
+          </p>
+          {canReplyToConversations && (
+            callerId && pendingHandover && pendingHandover.assigned_to !== callerId ? (
+              <button
+                type="button"
+                onClick={() => void claimHandover()}
+                disabled={claiming}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-[12.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
+              >
+                {claiming && <Loader2 size={13} className="animate-spin" />} I&apos;ll reply
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={markResolved}
+                disabled={resolvingHandover}
+                title="The customer has what they needed: close this handover"
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-4 text-[12.5px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <Check size={14} /> {resolvingHandover ? "Closing…" : "Mark done"}
+              </button>
+            )
+          )}
+        </div>
+      )}
+
+      {/* Teach the Anril AI: turn the reply just sent into an answer it can give next time. */}
+      {teach && (
+        <div className="border-t border-sky-200 bg-sky-50 px-5 py-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] leading-snug text-[#0c4a6e]">
+                <span className="mr-1">🤖</span>
+                <span className="font-bold">Teach the Anril AI?</span> Next time {teach.when}, it will say:
+              </p>
+              <input
+                value={teach.say}
+                onChange={(e) => setTeach({ ...teach, say: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") void saveTeach(); }}
+                maxLength={400}
+                aria-label="What the Anril AI will say"
+                className="mt-2 h-10 w-full rounded-xl border border-sky-200 bg-white px-3 text-[13px] text-[#0A1528] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+            <div className="flex w-[112px] shrink-0 flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => void saveTeach()}
+                disabled={teachSaving || !teach.say.trim()}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[12.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
+              >
+                {teachSaving && <Loader2 size={13} className="animate-spin" />} Save answer
+              </button>
+              <button
+                type="button"
+                onClick={() => setTeach(null)}
+                disabled={teachSaving}
+                className="h-9 rounded-xl border border-sky-200 bg-white text-[12.5px] font-semibold text-[#334155] hover:bg-sky-100"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-[#64748b]">
+            Only the owner can save answers. It&apos;s added to Anril Setup › Knowledge Base › Description, where you can change or undo it.
+          </p>
+        </div>
+      )}
 
       {/* Input area */}
       <div className="border-t border-[#e2e8f0] bg-white px-5 pt-3 pb-4">
@@ -774,7 +897,7 @@ export function ChatThread({
               type="button"
               onClick={() => setPaymentDealOpen(true)}
               className="rounded-lg bg-[#f1f5f9] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center gap-1.5 transition-colors"
-              title="Create a deal and send its payment link on WhatsApp"
+              title="Record a payment or send a payment link on WhatsApp"
             >
               <CreditCard size={13} />
               Payment link
@@ -807,16 +930,14 @@ export function ChatThread({
           }}
         />
 
-        <NewDealDialog
+        <RecordPaymentDialog
           open={paymentDealOpen}
           onClose={() => setPaymentDealOpen(false)}
-          onCreated={() => {
-            setPaymentDealOpen(false);
-            void pollMessages();
-          }}
-          defaultLead={{ id: current.id, name: current.name ?? null, phone: current.phone ?? null }}
-          defaultSource="manual"
-          defaultOutcome="link"
+          lead={current}
+          team={team}
+          defaultMethod="link"
+          defaultSoldBy={current.assigned_to ?? callerId}
+          onRecorded={() => void pollMessages()}
         />
 
         {/* Template modal */}
@@ -861,6 +982,7 @@ export function ChatThread({
               )}
             >
               <textarea
+                ref={textareaRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -868,7 +990,7 @@ export function ChatThread({
                 }}
                 rows={1}
                 disabled={!canReplyToConversations || replyLocked || sending}
-                placeholder={canReplyToConversations ? "Type your reply…" : "Read-only conversation"}
+                placeholder={canReplyToConversations ? "Type a message…" : "Read-only conversation"}
                 className="flex-1 bg-transparent font-body text-[13px] resize-none focus:outline-none disabled:opacity-50 max-h-28 leading-relaxed"
                 style={{ minHeight: "24px" }}
                 onInput={(e) => {
@@ -877,6 +999,16 @@ export function ChatThread({
                   t.style.height = `${Math.min(t.scrollHeight, 112)}px`;
                 }}
               />
+
+              {/* WhatsApp's free-reply window: how long a normal message still goes through. */}
+              {replyWindowLeft && (
+                <span
+                  className="hidden shrink-0 whitespace-nowrap text-[11.5px] text-[#94a3b8] sm:inline"
+                  title="WhatsApp lets you send normal messages for 24 hours after the customer's last message. After that, only templates."
+                >
+                  free to reply for {replyWindowLeft}
+                </span>
+              )}
 
               {/* Emoji button */}
               <div className="relative" ref={emojiRef}>

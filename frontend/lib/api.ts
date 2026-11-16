@@ -45,6 +45,24 @@ export interface Lead {
   needs_human_attention?: boolean;
   archived_at?: string | null;
   blocked_at?: string | null;
+  escalation_reason?: string | null;
+  collected_data?: Record<string, unknown> | null;
+  /** Result of the chat (migration 272). Came / Paid comes from won deals or converted_at. */
+  booked_at?: string | null;
+  booked_for?: string | null;
+  booking_note?: string | null;
+  lost_at?: string | null;
+  lost_reason?: string | null;
+  team_seen_at?: string | null;
+  /** Chats list only: 0 = needs you, 1 = AI agent is handling, 2 = handled by the team. */
+  inbox_group?: 0 | 1 | 2 | null;
+  /** Chats list only: when the customer's unanswered message arrived. */
+  waiting_since?: string | null;
+  unread_count?: number;
+  /** Chats list only: why the AI handed this chat to a person. */
+  needs_reason?: string | null;
+  /** Chats list only: the newest open deal -- what they want and for how much. */
+  wants?: { items: string; total_paise: number; stage: string } | null;
 }
 
 export interface CatalogVariantGroup {
@@ -110,6 +128,12 @@ export interface Message {
   media_filename?: string | null;
   media_mime_type?: string | null;
   created_at: string;
+  /** Real WhatsApp/Meta receipt: sent ✓, delivered ✓✓, read ✓✓ (blue), failed. */
+  delivery_status?: "sent" | "delivered" | "read" | "failed" | null;
+  delivery_error_title?: string | null;
+  /** The teammate who sent an outbound reply (null for AI, automations and older rows). */
+  sent_by_user_id?: string | null;
+  sent_by_name?: string | null;
 }
 
 export interface Caller {
@@ -3641,6 +3665,25 @@ export const api = {
         method: "DELETE",
       }),
   },
+  chats: {
+    seen: (leadId: string) =>
+      apiFetch<{ seen: boolean }>(`/api/v1/chats/${leadId}/seen`, { method: "POST" }),
+    book: (leadId: string, data: { booked_for?: string | null; note?: string | null }) =>
+      apiFetch<Lead>(`/api/v1/chats/${leadId}/booking`, { method: "PUT", body: JSON.stringify(data) }),
+    cancelBooking: (leadId: string) =>
+      apiFetch<Lead>(`/api/v1/chats/${leadId}/booking`, { method: "DELETE" }),
+    notBuying: (leadId: string, reason: string) =>
+      apiFetch<Lead>(`/api/v1/chats/${leadId}/not-buying`, { method: "PUT", body: JSON.stringify({ reason }) }),
+    undoNotBuying: (leadId: string) =>
+      apiFetch<Lead>(`/api/v1/chats/${leadId}/not-buying`, { method: "DELETE" }),
+    teachSuggestion: (leadId: string) =>
+      apiFetch<{ suggestion: { when: string; say: string } | null }>(`/api/v1/chats/${leadId}/teach-suggestion`),
+    teach: (when: string, say: string) =>
+      apiFetch<{ saved: boolean; line: string }>(`/api/v1/chats/teach`, {
+        method: "POST",
+        body: JSON.stringify({ when, say }),
+      }),
+  },
   chatHandovers: {
     count: (todayOnly?: boolean) =>
       apiFetch<{ count: number }>(
@@ -3668,6 +3711,21 @@ export const api = {
     summary: (filters: Omit<DealFilters, "stage"> = {}) =>
       apiFetch<DealSummaryStats>(`/api/v1/deals/summary?${dealFilterParams(filters)}`),
     get: (dealId: string) => apiFetch<Deal>(`/api/v1/deals/${dealId}`),
+    recordPaymentOptions: (leadId: string) =>
+      apiFetch<{ prices_include_gst: boolean; gstin_set: boolean; suggested_item_ids: string[] }>(
+        `/api/v1/deals/record-payment/options?lead_id=${encodeURIComponent(leadId)}`
+      ),
+    recordPayment: (payload: {
+      lead_id: string;
+      method: "link" | "cash" | "upi" | "card";
+      amount_paise: number;
+      item_ids: string[];
+      sold_by: string | null;
+    }) =>
+      apiFetch<DealMutationResult>("/api/v1/deals/record-payment", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
     create: (payload: NewDealPayload) =>
       apiFetch<DealMutationResult>("/api/v1/deals", {
         method: "POST",

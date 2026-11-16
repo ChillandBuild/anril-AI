@@ -3,6 +3,7 @@ import mimetypes
 from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.db.supabase import get_supabase
+from app.services.actor import sender_fields
 from app.dependencies.tenant import require_permission
 from app.services.meta_cloud import (
     upload_media_to_meta,
@@ -156,6 +157,7 @@ async def send_media_to_lead(
         "media_type": wa_type,
         "media_filename": filename,
         "media_mime_type": mime_type,
+        **sender_fields(db, ctx),
     }).execute()
 
     return row.data[0] if row.data else {"sent": True, "media_id": media_id, "wa_type": wa_type}

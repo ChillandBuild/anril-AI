@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from app.db.supabase import get_supabase
+from app.services.actor import actor_name
 from app.dependencies.tenant import get_tenant_and_role, require_permission
 
 logger = logging.getLogger(__name__)
@@ -90,31 +91,8 @@ def handover_count(
 
 
 def _resolver_name(db, ctx: dict) -> str | None:
-    """Display name for whoever is acting, snapshotted at resolve time so the
-    history survives a caller being renamed or removed. Owners can act without
-    a caller profile, so fall back to their tenant_users.full_name."""
-    caller_id = ctx.get("caller_id")
-    if caller_id:
-        try:
-            row = db.table("callers").select("name").eq("id", caller_id).limit(1).execute()
-            if row.data and row.data[0].get("name"):
-                return row.data[0]["name"]
-        except Exception:
-            pass
-    try:
-        row = (
-            db.table("tenant_users")
-            .select("full_name")
-            .eq("user_id", ctx["user_id"])
-            .eq("tenant_id", ctx["tenant_id"])
-            .limit(1)
-            .execute()
-        )
-        if row.data and row.data[0].get("full_name"):
-            return row.data[0]["full_name"]
-    except Exception:
-        pass
-    return None
+    """Snapshotted at resolve time so the history survives a caller being renamed or removed."""
+    return actor_name(db, ctx)
 
 
 def _duration_seconds(opened_at: str | None, resolved_at: str | None) -> int | None:

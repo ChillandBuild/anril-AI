@@ -44,7 +44,9 @@ def window_open(last_inbound_at: str | None, now: datetime) -> bool:
     return now - at < timedelta(hours=24)
 
 
-async def share_product(db, tenant_id: str, lead_id: str, item_id: str, *, now: datetime | None = None) -> dict:
+async def share_product(
+    db, tenant_id: str, lead_id: str, item_id: str, *, now: datetime | None = None, sender: dict | None = None,
+) -> dict:
     now = now or datetime.now(timezone.utc)
     leads = (
         db.table("leads").select("id,phone,source,opted_out,last_inbound_at")
@@ -93,7 +95,7 @@ async def share_product(db, tenant_id: str, lead_id: str, item_id: str, *, now: 
 
     rows = db.table("messages").insert({
         "lead_id": lead_id, "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
-        "content": caption, "is_ai_generated": False, "meta_message_id": sid, **media,
+        "content": caption, "is_ai_generated": False, "meta_message_id": sid, **media, **(sender or {}),
     }).execute().data or []
     db.table("leads").update({"needs_human_intervention": False}).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
     return rows[0] if rows else {"sent": True}

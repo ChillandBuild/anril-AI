@@ -225,7 +225,7 @@ def share_context(db, tenant_id: str, lead_id: str, *, now: datetime) -> dict | 
 
 
 async def send_details(db, tenant_id: str, lead_id: str, *, text: str | None, template_id: str | None,
-                       variables: list[str], now: datetime) -> dict:
+                       variables: list[str], now: datetime, sender: dict | None = None) -> dict:
     lead = _lead(db, tenant_id, lead_id)
     if not lead:
         raise ShareError("Lead not found.")
@@ -245,6 +245,6 @@ async def send_details(db, tenant_id: str, lead_id: str, *, text: str | None, te
         sid, content = await send_approved_template(db, tenant_id, lead["phone"], template_id or "", variables)
     rows = db.table("messages").insert({
         "lead_id": lead_id, "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
-        "content": content, "is_ai_generated": False, "meta_message_id": sid,
+        "content": content, "is_ai_generated": False, "meta_message_id": sid, **(sender or {}),
     }).execute().data or []
     return rows[0] if rows else {"sent": True}

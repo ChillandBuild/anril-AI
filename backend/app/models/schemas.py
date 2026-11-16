@@ -69,6 +69,18 @@ class Message(MessageBase):
     lead_id: UUID
     conversation_id: Optional[UUID] = None
     created_at: datetime
+    # The chat thread needs these after a reload too, not only from realtime inserts:
+    # where an AI reply came from, the media, the real delivery ticks, and which
+    # teammate sent a reply (migration 272).
+    reply_source: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    media_filename: Optional[str] = None
+    media_mime_type: Optional[str] = None
+    delivery_status: Optional[str] = None
+    delivery_error_title: Optional[str] = None
+    sent_by_user_id: Optional[UUID] = None
+    sent_by_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 # --- Conversation Models ---

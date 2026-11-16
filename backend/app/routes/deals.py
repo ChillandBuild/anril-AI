@@ -412,6 +412,113 @@ def deals_for_lead(lead_id: str, ctx: dict = Depends(require_deals_view)):
     return {"data": [_summary(r) for r in rows]}
 
 
+# ------------------------------------------------------------ Chats: Record payment
+
+@router.get("/record-payment/options")
+def record_payment_options(lead_id: str, ctx: dict = Depends(require_deals_manage)):
+    """What the Record payment pop-up needs besides the catalogue and the team: the GST
+    setup, and the products this customer was already quoted (suggested first)."""
+    from app.services.business_details import get_business_details, prices_include_gst
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    quoted = (
+        db.table("deals").select("id").eq("tenant_id", tenant_id).eq("lead_id", lead_id)
+        .neq("stage", "lost").order("created_at", desc=True).limit(5).execute()
+    ).data or []
+    suggested: list[str] = []
+    if quoted:
+        items = (
+            db.table("deal_items").select("catalog_item_id").eq("tenant_id", tenant_id)
+            .in_("deal_id", [d["id"] for d in quoted]).execute()
+        ).data or []
+        for it in items:
+            item_id = it.get("catalog_item_id")
+            if item_id and item_id not in suggested:
+                suggested.append(item_id)
+    details = get_business_details(tenant_id, db) or {}
+    return {
+        "prices_include_gst": prices_include_gst(tenant_id, db),
+        "gstin_set": bool((details.get("gstin") or "").strip()),
+        "suggested_item_ids": suggested[:3],
+    }
+
+
+class RecordPaymentIn(BaseModel):
+    lead_id: str = Field(..., max_length=64)
+    method: Literal["link", "cash", "upi", "card"]
+    amount_paise: int = Field(..., ge=100, le=10_000_000_00)
+    item_ids: list[str] = Field(default_factory=list, max_length=10)
+    sold_by: str | None = Field(None, max_length=64)
+
+
+def record_payment_lines(amount_paise: int, items: list[dict]) -> list[dict]:
+    """Deal lines whose prices add up to the typed amount. Each product keeps its catalogue
+    price except the last, which takes the difference (a discount or an extra); with no
+    product picked it is one "Payment" line."""
+    if not items:
+        return [{"name": "Payment", "qty": 1, "unit_price_paise": amount_paise}]
+    lines = [
+        {"catalog_item_id": it["id"], "name": it["name"], "qty": 1, "unit_price_paise": int(it.get("price_paise") or 0)}
+        for it in items
+    ]
+    others = sum(li["unit_price_paise"] for li in lines[:-1])
+    last = amount_paise - others
+    if last < 0:
+        raise HTTPException(status_code=400, detail="The amount is less than the other products' prices. Remove a product or raise the amount.")
+    lines[-1]["unit_price_paise"] = last
+    return lines
+
+
+@router.post("/record-payment")
+async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_deals_manage)):
+    """Chats > Record payment: a paid order (cash / UPI / card), or a Razorpay link sent on
+    WhatsApp that turns the order paid by itself when the customer pays."""
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    lead = (
+        db.table("leads").select("id, source").eq("id", payload.lead_id).eq("tenant_id", tenant_id)
+        .is_("deleted_at", "null").maybe_single().execute()
+    )
+    if not lead or not lead.data:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if payload.sold_by:
+        caller = db.table("callers").select("id").eq("id", payload.sold_by).eq("tenant_id", tenant_id).limit(1).execute()
+        if not caller.data:
+            raise HTTPException(status_code=400, detail="That teammate isn't on your team")
+    items: list[dict] = []
+    if payload.item_ids:
+        ids = list(dict.fromkeys(payload.item_ids))
+        rows = (
+            db.table("catalog_items").select("id, name, price_paise").eq("tenant_id", tenant_id).in_("id", ids).execute()
+        ).data or []
+        by_id = {r["id"]: r for r in rows}
+        if len(by_id) != len(ids):
+            raise HTTPException(status_code=400, detail="Product not found")
+        items = [by_id[i] for i in ids]
+    lines = record_payment_lines(payload.amount_paise, items)
+    paid_now = payload.method != "link"
+    try:
+        result = await deals_service.create_deal(
+            tenant_id, payload.lead_id, lines,
+            "whatsapp" if (lead.data.get("source") or "whatsapp") not in ("instagram", "facebook", "telegram") else "manual",
+            "won" if paid_now else "awaiting_payment",
+            payment_method=payload.method if paid_now else None,
+            created_by=ctx.get("user_id"), send_link=not paid_now, db=db,
+        )
+    except DealError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal_id = result["deal"]["id"]
+    if payload.sold_by:
+        db.table("deals").update({"sold_by": payload.sold_by}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+    deal = _full(_load_deal(db, tenant_id, deal_id), db, tenant_id)
+    return {
+        "deal": deal,
+        "payment_link": result["payment_link"],
+        "message_sent": result["message_sent"],
+        "stock_warnings": result["stock_warnings"],
+    }
+
+
 @router.get("/{deal_id}")
 def get_deal(deal_id: str, ctx: dict = Depends(require_deals_view)):
     db = get_supabase()

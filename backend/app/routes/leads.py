@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.supabase import get_supabase
+from app.services.actor import sender_fields
 from app.services.call_evaluation import strip_evaluation
 from app.services.call_transcript import mask_transcripts
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, get_owner_tenant_id, require_permission
@@ -972,6 +973,7 @@ async def send_human_message(
         "content": content,
         "is_ai_generated": False,
         sid_field: sid,
+        **sender_fields(db, ctx),
     }).execute()
     
     # Clear needs_human_intervention flag
@@ -988,7 +990,8 @@ class ShareProductIn(BaseModel):
 async def share_product_route(lead_id: UUID, payload: ShareProductIn, ctx: dict = Depends(require_conversations_reply)):
     """Conversations 'Share product': one catalogue item, photo + name + price, on WhatsApp."""
     try:
-        return await share_product(get_supabase(), ctx["tenant_id"], str(lead_id), payload.item_id)
+        db = get_supabase()
+        return await share_product(db, ctx["tenant_id"], str(lead_id), payload.item_id, sender=sender_fields(db, ctx))
     except ShareProductError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1109,6 +1112,7 @@ async def compose_new_message(
         "content": content,
         "is_ai_generated": False,
         "meta_message_id": sid,
+        **sender_fields(db, ctx),
     }).execute()
     return {"lead_id": lead_id, "sid": sid, "phone": phone}
 
