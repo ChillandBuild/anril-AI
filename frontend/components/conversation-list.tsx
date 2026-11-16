@@ -10,6 +10,7 @@ import { formatRupees } from "./deals/money";
 import { ChatFilterPopover } from "./chats/ChatFilterPopover";
 import {
   activeFilterCount,
+  filterPills,
   type InboxChannel,
   type InboxCounts,
   type InboxFilters,
@@ -158,12 +159,20 @@ export function ConversationList(props: Props) {
   const showSections = view === "inbox";
   const anyNarrowing = Boolean(searchQuery) || filterCount > 0 || channel !== "all";
 
+  // The full-width Needs you page keeps its original header and left-aligned tabs; the narrow
+  // chat list uses the 68px band (level with the chat header) and tabs locked to its width.
+  const fullScreen = view === "needs_you" && Boolean(escalationPanelContent);
+
   const headerAndTabs = (
     <>
-      {/* ── Header: same 68px band as the chat header and the customer panel header ── */}
-      <div className="flex h-[68px] shrink-0 items-center border-b border-[#e2e8f0] pr-4 pl-16 lg:pl-4">
+      {/* ── Header ── */}
+      <div className={cn(
+        "shrink-0 pr-4 pl-16 lg:pl-4",
+        fullScreen ? "pt-4 pb-2" : "flex h-[68px] items-center border-b border-[#e2e8f0]"
+      )}>
         <div className="flex w-full items-center justify-between">
           <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
+          {!fullScreen && (
           <div className="relative" ref={menuRef}>
             <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
               <MoreVertical size={18} />
@@ -179,11 +188,18 @@ export function ConversationList(props: Props) {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
       {/* ── Tabs row ── */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#e2e8f0] px-4" role="tablist">
+      <div
+        className={cn(
+          "flex shrink-0 items-center border-b border-[#e2e8f0] px-4",
+          fullScreen ? "gap-4" : "justify-between gap-2"
+        )}
+        role="tablist"
+      >
         {tabs.map((tab) => {
           const isActive = view === tab.id;
           return (
@@ -302,12 +318,38 @@ export function ConversationList(props: Props) {
           open={filterOpen}
           value={filters}
           onClose={() => setFilterOpen(false)}
-          onApply={(next) => { onFiltersChange(next); setFilterOpen(false); }}
+          onChange={onFiltersChange}
           countFor={countFor}
           team={team}
           tags={tags}
         />
       </div>
+
+      {/* ── Active filters: one click on × removes one, no need to open the panel ── */}
+      {filterCount > 0 && (
+        <div className="mx-4 mt-2 flex flex-wrap items-center gap-1.5">
+          {filterPills(filters, team, tags).map((pill) => (
+            <span key={pill.id} className="inline-flex h-6 items-center gap-0.5 rounded-full bg-primary-light pl-2.5 pr-1 text-[11.5px] font-semibold text-primary">
+              {pill.label}
+              <button
+                type="button"
+                onClick={() => onFiltersChange(pill.without)}
+                aria-label={`Remove ${pill.label}`}
+                className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-primary/15"
+              >
+                <X size={12} strokeWidth={2.5} />
+              </button>
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => onFiltersChange({ segments: [], results: [], cameFrom: [], handledBy: [], waiting: [], date: "any", customFrom: "", tagId: "" })}
+            className="h-6 rounded-full px-2 text-[11.5px] font-semibold text-[#64748b] hover:bg-slate-100 hover:text-[#0A1528]"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* ── Conversation list ── */}
       <div className="mt-2.5 flex-1 overflow-y-auto border-t border-[#f1f5f9]">

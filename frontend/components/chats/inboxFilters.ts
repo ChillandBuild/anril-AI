@@ -127,3 +127,32 @@ export interface InboxCounts {
 }
 
 export const EMPTY_COUNTS: InboxCounts = { needs_you: 0, ai_handling: 0, all_active: 0, channels: {} };
+
+/** One removable pill per picked filter value, shown under the search box. */
+export function filterPills(
+  f: InboxFilters,
+  team: Option[],
+  tags: Option[]
+): { id: string; label: string; without: InboxFilters }[] {
+  const name = (opts: Option[], v: string) => opts.find((o) => o.value === v)?.label ?? v;
+  const handled: Option[] = [{ value: "ai", label: "AI agent" }, ...team, { value: "nobody", label: "Nobody yet" }];
+  const lists: { key: "segments" | "results" | "waiting" | "handledBy" | "cameFrom"; opts: Option[] }[] = [
+    { key: "segments", opts: INTEREST_OPTIONS },
+    { key: "results", opts: RESULT_OPTIONS },
+    { key: "waiting", opts: WAITING_OPTIONS },
+    { key: "handledBy", opts: handled },
+    { key: "cameFrom", opts: CAME_FROM_OPTIONS },
+  ];
+  const pills: { id: string; label: string; without: InboxFilters }[] = [];
+  for (const { key, opts } of lists) {
+    for (const v of f[key]) {
+      pills.push({ id: `${key}:${v}`, label: name(opts, v), without: { ...f, [key]: f[key].filter((x) => x !== v) } });
+    }
+  }
+  if (sinceFor(f)) {
+    const label = f.date === "custom" ? `From ${f.customFrom}` : `Last ${DATE_OPTIONS.find((o) => o.value === f.date)?.label.toLowerCase()}`;
+    pills.push({ id: "date", label: f.date === "today" ? "Today" : label, without: { ...f, date: "any", customFrom: "" } });
+  }
+  if (f.tagId) pills.push({ id: "tag", label: `Tag: ${name(tags, f.tagId)}`, without: { ...f, tagId: "" } });
+  return pills;
+}
