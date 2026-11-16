@@ -278,8 +278,8 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
   return (
     <div className="w-80 flex-shrink-0 border-l border-surface-mid bg-surface flex flex-col h-full overflow-hidden">
       {/* Panel header */}
-      <div className="px-4 py-2.5 border-b border-surface-mid">
-        <div className="flex items-center justify-between">
+      <div className="flex h-[68px] shrink-0 items-center px-4 border-b border-[#e2e8f0]">
+        <div className="flex w-full items-center justify-between">
           <p className="font-label text-[11px] font-semibold text-on-surface-muted uppercase tracking-wider">
             {lead.name || "Contact"}
           </p>

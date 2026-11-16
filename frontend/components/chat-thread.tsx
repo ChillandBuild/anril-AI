@@ -603,7 +603,8 @@ export function ChatThread({
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-[#e2e8f0] bg-white flex items-center gap-3">
+      {/* Same 68px band as the chat list header and the customer panel header. */}
+      <div className="flex h-[68px] shrink-0 items-center gap-3 border-b border-[#e2e8f0] bg-white px-5">
         {onBack && (
           <button
             type="button"
@@ -646,8 +647,9 @@ export function ChatThread({
             </button>
           )}
           <p className="mt-0.5 font-label text-[11.5px] text-[#64748b] flex items-center gap-1 min-w-0">
-            {current.phone && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
-            {current.phone && <span className="text-[#cbd5e1]">·</span>}
+            {/* The phone is already the title when there's no name, so don't repeat it. */}
+            {current.phone && current.name && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
+            {current.phone && current.name && <span className="text-[#cbd5e1]">·</span>}
             <span className="whitespace-nowrap">{CHANNEL_LABEL[getChannel(current.source)]}</span>
             {current.ad_campaign_id || current.ad_campaign_name ? (
               <>

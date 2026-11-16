@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, Fragment } from "react";
 import { api, Lead } from "@/lib/api";
 import { ChannelAvatar } from "./channel-avatar";
 import { formatConvoTime, formatPhone, cn } from "@/lib/utils";
-import { Trash2, MoreVertical, MoreHorizontal, Search, X, SearchX, Pin, RefreshCw, Archive, Ban, SlidersHorizontal, Flag } from "lucide-react";
+import { Trash2, MoreVertical, MoreHorizontal, Search, X, SearchX, Pin, RefreshCw, Archive, Ban, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { CheckTick } from "@/components/ui/controls";
 import { AiraLoader } from "@/components/AiraLoader";
@@ -67,14 +67,19 @@ const SECTION_TITLE: Record<number, string> = {
   2: "Your team is handling",
 };
 
-/** "2m", "32m", "5h", "3d": how long the customer has been waiting. */
-function waitedFor(since: string): string {
+/** Hover text for a red time: "Waiting 5 minutes", "Waiting 3 hours", "Waiting 35 days". */
+function waitingTitle(since: string): string {
   const mins = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 60000));
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
+  const plural = (n: number, unit: string) => `Waiting ${n} ${unit}${n === 1 ? "" : "s"} for a reply`;
+  if (mins < 60) return plural(Math.max(1, mins), "minute");
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  if (hours < 24) return plural(hours, "hour");
+  return plural(Math.floor(hours / 24), "day");
+}
+
+/** Tab badges stay one short pill so the tab row never has to scroll. */
+function tabCount(n: number): string {
+  return n > 999 ? "999+" : n.toLocaleString("en-IN");
 }
 
 export function ConversationList(props: Props) {
@@ -155,9 +160,9 @@ export function ConversationList(props: Props) {
 
   const headerAndTabs = (
     <>
-      {/* ── Header ── */}
-      <div className="pr-4 pl-16 pt-4 pb-2 lg:pl-4">
-        <div className="flex items-center justify-between">
+      {/* ── Header: same 68px band as the chat header and the customer panel header ── */}
+      <div className="flex h-[68px] shrink-0 items-center border-b border-[#e2e8f0] pr-4 pl-16 lg:pl-4">
+        <div className="flex w-full items-center justify-between">
           <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
           <div className="relative" ref={menuRef}>
             <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
@@ -178,7 +183,7 @@ export function ConversationList(props: Props) {
       </div>
 
       {/* ── Tabs row ── */}
-      <div className="border-b border-[#e2e8f0] px-4 flex gap-3 overflow-x-auto [scrollbar-width:none]" role="tablist">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#e2e8f0] px-4" role="tablist">
         {tabs.map((tab) => {
           const isActive = view === tab.id;
           return (
@@ -192,14 +197,13 @@ export function ConversationList(props: Props) {
                 isActive ? "text-primary" : "text-[#64748b] hover:text-[#0A1528]"
               )}
             >
-              {tab.urgent && <Flag size={11} className="text-red-500" />}
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={cn(
                   "rounded-full px-1.5 py-0.5 text-[9px] font-bold",
                   tab.urgent ? "bg-red-50 text-red-600" : "bg-primary-light text-primary"
                 )}>
-                  {tab.count.toLocaleString("en-IN")}
+                  {tabCount(tab.count)}
                 </span>
               )}
               {isActive && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-primary" />}
@@ -422,15 +426,13 @@ export function ConversationList(props: Props) {
                           <Pin size={10} className="text-amber-500 fill-current shrink-0" />
                         ) : null}
                       </div>
-                      {waitingSince ? (
-                        <span className="text-[10.5px] font-bold text-red-600 whitespace-nowrap" title="Waiting for a reply">
-                          {waitedFor(waitingSince)}
-                        </span>
-                      ) : (
-                        <span className="text-[10.5px] text-[#94a3b8] whitespace-nowrap">
-                          {formatConvoTime((lead as ConversationLead).last_reply_at || lead.created_at)}
-                        </span>
-                      )}
+                      {/* One format everywhere: when the last message came. Red = the customer is waiting. */}
+                      <span
+                        className={cn("text-[10.5px] whitespace-nowrap", waitingSince ? "font-bold text-red-600" : "text-[#94a3b8]")}
+                        title={waitingSince ? waitingTitle(waitingSince) : undefined}
+                      >
+                        {formatConvoTime((lead as ConversationLead).last_reply_at || lead.created_at)}
+                      </span>
                     </div>
 
                     {/* Line 2: why it needs you / who is handling + unread */}
