@@ -163,16 +163,6 @@ export function ArchivedBlockedPanel({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary-200/60 bg-primary-100 shadow-xs">
-            <Archive size={18} className="text-[var(--primary-800)]" />
-          </div>
-          <div>
-            <h2 className="font-display text-xl font-bold tracking-tight text-gray-900">Archived &amp; blocked</h2>
-            <p className="mt-0.5 font-body text-xs font-medium text-gray-500">Archived chats come back by themselves when the customer writes again.</p>
-          </div>
-        </div>
-
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           {/* ── Archived ── */}
           <div className="flex min-w-0 flex-col gap-3">
