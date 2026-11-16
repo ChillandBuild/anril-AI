@@ -5,15 +5,28 @@ import { toast } from "sonner";
 import { API_URL, getAuthHeaders, Lead, api } from "@/lib/api";
 import { cn, formatConvoTime, formatPhone } from "@/lib/utils";
 import { CheckTick } from "@/components/ui/controls";
+import { Select } from "@/components/ui/Select";
 import { ChannelAvatar } from "@/components/channel-avatar";
 import { channelLabel, downloadCsv, istDateTime, segmentLabel, today, type CsvColumn } from "./exportCsv";
 
 const PAGE = 50;
 
-async function fetchView(view: "archived" | "blocked", q: string, limit: number, offset: number): Promise<{ leads: Lead[]; total: number }> {
+type ArchivedFilters = { q: string; channel: string; segment: string; within: string };
+const NO_FILTERS: ArchivedFilters = { q: "", channel: "", segment: "", within: "" };
+
+/** Every filter goes to the server, so the count, Load more and Export match what's shown. */
+async function fetchView(
+  view: "archived" | "blocked",
+  f: ArchivedFilters,
+  limit: number,
+  offset: number,
+): Promise<{ leads: Lead[]; total: number }> {
   const auth = await getAuthHeaders();
   const qs = new URLSearchParams({ view, limit: String(limit), offset: String(offset) });
-  if (q) qs.set("q", q);
+  if (f.q) qs.set("q", f.q);
+  if (f.channel) qs.set("channels", f.channel);
+  if (f.segment) qs.set("segments", f.segment);
+  if (f.within) qs.set("since", new Date(Date.now() - Number(f.within) * 86_400_000).toISOString());
   const res = await fetch(`${API_URL}/api/v1/conversations?${qs}`, { headers: auth });
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
   const data = await res.json();
@@ -25,6 +38,46 @@ function shortDate(iso: string | null | undefined): string {
 }
 
 const displayName = (l: Lead) => l.name || formatPhone(l.phone) || (l.tg_username ? `@${l.tg_username}` : "Unknown");
+
+const CHANNEL_OPTIONS = [
+  { value: "", label: "All channels" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook", label: "Facebook" },
+  { value: "telegram", label: "Telegram" },
+];
+const INTEREST_OPTIONS = [
+  { value: "", label: "Any interest" },
+  { value: "A", label: "Hot" },
+  { value: "B", label: "Warm" },
+  { value: "C", label: "Cold" },
+  { value: "D", label: "Not interested" },
+];
+const WITHIN_OPTIONS = [
+  { value: "", label: "Any time" },
+  { value: "7", label: "Last message: 7 days" },
+  { value: "30", label: "Last message: 30 days" },
+  { value: "90", label: "Last message: 90 days" },
+];
+
+const BLOCKED_COLUMNS: CsvColumn<Lead>[] = [
+  { header: "Name", value: (l) => l.name },
+  { header: "Phone", value: (l) => l.phone },
+  { header: "Channel", value: (l) => channelLabel(l.source) },
+  { header: "Blocked at", value: (l) => istDateTime(l.blocked_at) },
+  { header: "Blocked by", value: (l) => l.blocked_by_name },
+];
+
+/** Every row of a view, page by page (Export takes all matches, not just the loaded page). */
+async function fetchAll(view: "archived" | "blocked", f: ArchivedFilters): Promise<Lead[]> {
+  const rows: Lead[] = [];
+  for (let offset = 0; offset < 10000; offset += 200) {
+    const page = await fetchView(view, f, 200, offset);
+    rows.push(...page.leads);
+    if (rows.length >= page.total || page.leads.length === 0) break;
+  }
+  return rows;
+}
 
 const COLUMNS: CsvColumn<Lead>[] = [
   { header: "Name", value: (l) => l.name },
@@ -52,6 +105,10 @@ export function ArchivedBlockedPanel({
 }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [channel, setChannel] = useState("");
+  const [segment, setSegment] = useState("");
+  const [within, setWithin] = useState("");
+  const [exportingBlocked, setExportingBlocked] = useState(false);
   const [archived, setArchived] = useState<Lead[]>([]);
   const [archivedTotal, setArchivedTotal] = useState(0);
   const [blocked, setBlocked] = useState<Lead[]>([]);
@@ -67,9 +124,13 @@ export function ArchivedBlockedPanel({
     return () => clearTimeout(h);
   }, [query]);
 
+  const filters: ArchivedFilters = { q: debounced, channel, segment, within };
+  const anyFilter = Boolean(debounced || channel || segment || within);
+
   const load = useCallback(async () => {
+    const f: ArchivedFilters = { q: debounced, channel, segment, within };
     try {
-      const [a, b] = await Promise.all([fetchView("archived", debounced, PAGE, 0), fetchView("blocked", "", 200, 0)]);
+      const [a, b] = await Promise.all([fetchView("archived", f, PAGE, 0), fetchView("blocked", NO_FILTERS, 200, 0)]);
       setArchived(a.leads);
       setArchivedTotal(a.total);
       setBlocked(b.leads);
@@ -79,7 +140,7 @@ export function ArchivedBlockedPanel({
     } finally {
       setLoading(false);
     }
-  }, [debounced]);
+  }, [debounced, channel, segment, within]);
 
   useEffect(() => {
     setPicked(new Set());
@@ -90,7 +151,7 @@ export function ArchivedBlockedPanel({
     if (loadingMore || archived.length >= archivedTotal) return;
     setLoadingMore(true);
     try {
-      const page = await fetchView("archived", debounced, PAGE, archived.length);
+      const page = await fetchView("archived", filters, PAGE, archived.length);
       setArchived((prev) => {
         const seen = new Set(prev.map((l) => l.id));
         return [...prev, ...page.leads.filter((l) => !seen.has(l.id))];
@@ -138,15 +199,7 @@ export function ArchivedBlockedPanel({
     try {
       let rows: Lead[];
       if (picked.size) rows = archived.filter((l) => picked.has(l.id));
-      else {
-        // Everything the search matches, not just the loaded page.
-        rows = [];
-        for (let offset = 0; offset < 10000; offset += 200) {
-          const page = await fetchView("archived", debounced, 200, offset);
-          rows.push(...page.leads);
-          if (rows.length >= page.total || page.leads.length === 0) break;
-        }
-      }
+      else rows = await fetchAll("archived", filters); // everything the filters match
       downloadCsv(`archived-chats-${today()}.csv`, rows, COLUMNS);
       toast.success("Export downloaded");
     } catch {
@@ -154,6 +207,26 @@ export function ArchivedBlockedPanel({
     } finally {
       setExporting(false);
     }
+  }
+
+  async function exportBlocked() {
+    if (exportingBlocked) return;
+    setExportingBlocked(true);
+    try {
+      downloadCsv(`blocked-contacts-${today()}.csv`, await fetchAll("blocked", NO_FILTERS), BLOCKED_COLUMNS);
+      toast.success("Export downloaded");
+    } catch {
+      toast.error("Couldn't export. Try again.");
+    } finally {
+      setExportingBlocked(false);
+    }
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setChannel("");
+    setSegment("");
+    setWithin("");
   }
 
   const allPicked = archived.length > 0 && archived.every((l) => picked.has(l.id));
@@ -167,7 +240,7 @@ export function ArchivedBlockedPanel({
           {/* ── Archived ── */}
           <div className="flex min-w-0 flex-col gap-3">
             <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-card">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3">
+              <div className="flex flex-col gap-3 border-b border-border/70 px-5 py-3">
                 <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink">
                   <Archive size={15} className="text-ink-muted" /> Archived
                   <span className="font-body text-[13px] font-semibold text-ink-muted">{archivedTotal.toLocaleString("en-IN")}</span>
@@ -188,12 +261,21 @@ export function ArchivedBlockedPanel({
                       </button>
                     )}
                   </div>
+                  <Select size="sm" className="w-[132px] rounded-xl" aria-label="Channel" value={channel} onChange={setChannel} options={CHANNEL_OPTIONS} />
+                  <Select size="sm" className="w-[128px] rounded-xl" aria-label="Interest" value={segment} onChange={setSegment} options={INTEREST_OPTIONS} />
+                  <Select size="sm" className="w-[176px] rounded-xl" aria-label="Last message" value={within} onChange={setWithin} options={WITHIN_OPTIONS} />
+                  {anyFilter && (
+                    <button type="button" onClick={clearFilters} className="h-8 rounded-xl px-2.5 text-xs font-semibold text-primary hover:bg-primary-light">
+                      Clear
+                    </button>
+                  )}
+                  <span className="flex-1" />
                   {canExport && (
                     <button
                       type="button"
                       onClick={() => void exportRows()}
                       disabled={exporting || exportCount === 0}
-                      title={picked.size ? "Download the ticked chats as a spreadsheet" : "Download every archived chat this search shows"}
+                      title={picked.size ? "Download the ticked chats as a spreadsheet" : "Download every archived chat these filters show"}
                       className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 shadow-xs hover:border-primary-200 hover:bg-primary-50/50 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
@@ -230,9 +312,9 @@ export function ArchivedBlockedPanel({
                     ) : archived.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-5 py-12 text-center">
-                          <p className="font-display text-[15px] font-semibold text-slate-700">{debounced ? "No matches" : "Nothing archived"}</p>
+                          <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : "Nothing archived"}</p>
                           <p className="mt-1 text-[13px] text-ink-muted">
-                            {debounced ? "No archived chat matches that search." : "Archive a chat from its ⋯ menu in the Inbox to tidy it away."}
+                            {anyFilter ? "No archived chat matches these filters." : "Archive a chat from its ⋯ menu in the Inbox to tidy it away."}
                           </p>
                         </td>
                       </tr>
@@ -315,10 +397,24 @@ export function ArchivedBlockedPanel({
           <div className="flex min-w-0 flex-col gap-4">
             <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-card">
               <div className="border-b border-border/70 px-5 py-3">
-                <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink">
-                  <Ban size={15} className="text-red-500" /> Blocked
-                  <span className="font-body text-[13px] font-semibold text-ink-muted">{blockedTotal.toLocaleString("en-IN")}</span>
-                </h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink">
+                    <Ban size={15} className="text-red-500" /> Blocked
+                    <span className="font-body text-[13px] font-semibold text-ink-muted">{blockedTotal.toLocaleString("en-IN")}</span>
+                  </h3>
+                  {canExport && (
+                    <button
+                      type="button"
+                      onClick={() => void exportBlocked()}
+                      disabled={exportingBlocked || blockedTotal === 0}
+                      title="Download every blocked contact as a spreadsheet"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 shadow-xs hover:border-primary-200 hover:bg-primary-50/50 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {exportingBlocked ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                      Export
+                    </button>
+                  )}
+                </div>
                 <p className="mt-0.5 text-[12px] text-ink-muted">Hidden from your chats, and the AI agent doesn&apos;t reply to them.</p>
               </div>
               <div className="max-h-[360px] overflow-y-auto">
