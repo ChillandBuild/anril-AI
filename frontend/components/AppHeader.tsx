@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
-import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List, Plus, ScrollText, Send, ShieldCheck, TrendingUp, Users } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List, Plus, ScrollText, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
@@ -126,6 +126,17 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "roles", label: "Roles", icon: ShieldCheck },
       { value: "users", label: "Users", icon: Users },
       { value: "audit", label: "Audit Log", icon: ScrollText },
+    ],
+  },
+  // Customers. The inner "New leads / Re-engagement" toggle still writes
+  // tab=leads / tab=reengagement; both open All people.
+  "/dashboard/leads": {
+    aliases: { reengagement: "people", leads: "people" },
+    tabs: [
+      { value: "people", label: "All people" },
+      { value: "groups", label: "Groups" },
+      { value: "said-stop", label: "Said stop" },
+      { value: "feedback", label: "Feedback" },
     ],
   },
 };
@@ -304,12 +315,9 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/leads") {
-    if (tab === "reengagement") {
-      return { title: "Segments / Re-engagement", description: "Group and manage your leads by attributes and behavior." };
-    }
     return {
-      title: "Segments",
-      description: "Your leads, sorted by how ready they are to buy",
+      title: "Customers",
+      description: "Everyone who chatted with you or bought from you, in one list",
     };
   }
   if (pathname === "/dashboard/numbers") {
@@ -425,7 +433,6 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
   // Owners and managers get Call Review on this route; telecallers keep the notes page and its switchers.
   const isCallReview = pathname === "/dashboard/notes" && (role === "owner" || permissions.includes("team.manage"));
   const tab = searchParams.get("tab") || "";
-  const leadSegment = searchParams.get("segment") || "A";
   const headerTabs = HEADER_TABS[pathname || ""];
   const [callingProvider, setCallingProvider] = useState<"telecmi" | "sim_basic">("telecmi");
 
@@ -592,35 +599,6 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
               );
             })}
           </nav>
-        )}
-
-        {pathname === "/dashboard/leads" && tab !== "reengagement" && (
-          <div className="mr-2 hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("compose", "1");
-                router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
-              }}
-              className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-2 font-label text-xs font-bold text-[#0A1528] shadow-sm hover:bg-[#f1f5f9]"
-            >
-              <Plus size={14} className="mr-1.5 inline" />
-              New message
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("broadcast", "1");
-                router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
-              }}
-              className="rounded-xl bg-primary px-3.5 py-2 font-label text-xs font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
-            >
-              <Send size={14} className="mr-1.5 inline" />
-              Message {({ A: "Hot", B: "Warm", C: "Cold", D: "Not interested" }[leadSegment] || "Hot")} leads
-            </button>
-          </div>
         )}
 
         {pathname === "/dashboard/deals" && (

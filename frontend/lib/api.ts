@@ -10,6 +10,58 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${session.access_token}` };
 }
 
+/** Filters shared by the leads list, its summary and the export, so the numbers match the table. */
+export interface LeadFilters {
+  segment?: string;
+  /** Only people who have bought (sent as buyer=true). */
+  buyer?: boolean;
+  group_id?: string;
+  /** A caller id, "unassigned", or "ai_agent" (nobody assigned; the AI agent handles it). */
+  assigned_to?: string;
+  source_filter?: string;
+  broadcast_id?: string;
+  ad_campaign_id?: string;
+  date_from?: string;
+  date_to?: string;
+  search?: string;
+  reply_window?: "open" | "closed";
+}
+
+function leadFilterQuery(params: LeadFilters): URLSearchParams {
+  const qs = new URLSearchParams();
+  if (params.segment) qs.set("segment", params.segment);
+  if (params.buyer) qs.set("buyer", "true");
+  if (params.group_id) qs.set("group_id", params.group_id);
+  if (params.search) qs.set("search", params.search);
+  if (params.assigned_to) qs.set("assigned_to", params.assigned_to);
+  if (params.source_filter) qs.set("source_filter", params.source_filter);
+  if (params.broadcast_id) qs.set("broadcast_id", params.broadcast_id);
+  if (params.ad_campaign_id) qs.set("ad_campaign_id", params.ad_campaign_id);
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
+  if (params.reply_window) qs.set("reply_window", params.reply_window);
+  return qs;
+}
+
+export interface LeadsSummary {
+  people: number;
+  leads: number;
+  buyers: number;
+  repeat_buyers: number;
+  spent_paise: number;
+  not_back_90: number;
+  said_stop: number;
+}
+
+export interface CustomerGroup {
+  id: string;
+  name: string;
+  /** "picked" = people added by hand; "rule" = fills itself. */
+  kind: "picked" | "rule";
+  member_count: number;
+  created_at: string;
+}
+
 export interface Lead {
   id: string;
   phone: string | null;
@@ -58,6 +110,14 @@ export interface Lead {
   archived_by_name?: string | null;
   /** How it was archived (migration 274): null = by a teammate, "idle_30d" = by itself after 30 quiet days. */
   archived_reason?: string | null;
+  /** Bought at least once (any paid order or won deal). */
+  is_buyer?: boolean;
+  spent_paise?: number;
+  last_activity_at?: string | null;
+  /** Customer groups this person is in. */
+  groups?: { id: string; name: string }[];
+  /** Latest broadcast this person was in, with the interest it gave them. */
+  broadcast_score?: { broadcast_id: string; broadcast_name: string | null; segment: string } | null;
   blocked_by_name?: string | null;
   /** Chats list only: 0 = needs you, 1 = AI agent is handling, 2 = handled by the team. */
   inbox_group?: 0 | 1 | 2 | null;
@@ -2310,6 +2370,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question }),
     }),
+  customerGroups: {
+    list: () => apiFetch<CustomerGroup[]>("/api/v1/customer-groups"),
+    create: (name: string) =>
+      apiFetch<CustomerGroup>("/api/v1/customer-groups", { method: "POST", body: JSON.stringify({ name }) }),
+    rename: (id: string, name: string) =>
+      apiFetch<CustomerGroup>(`/api/v1/customer-groups/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    remove: (id: string) =>
+      apiFetchNoContent(`/api/v1/customer-groups/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    addMembers: (id: string, leadIds: string[]) =>
+      apiFetch<{ added: number }>(`/api/v1/customer-groups/${encodeURIComponent(id)}/members`, {
+        method: "POST",
+        body: JSON.stringify({ lead_ids: leadIds }),
+      }),
+    removeMembers: (id: string, leadIds: string[]) =>
+      apiFetch<{ removed: number }>(`/api/v1/customer-groups/${encodeURIComponent(id)}/members`, {
+        method: "DELETE",
+        body: JSON.stringify({ lead_ids: leadIds }),
+      }),
+  },
   leads: {
     list: async (params?: {
       segment?: string;
@@ -2340,30 +2422,12 @@ export const api = {
       const res = await apiFetch<{ data: Lead[] }>(`/api/v1/leads/?${qs}`);
       return res.data || [];
     },
-    listPage: async (params: {
-      segment?: string;
+    listPage: async (params: LeadFilters & {
       page?: number;
       limit?: number;
-      assigned_to?: string;
-      source_filter?: string;
-      broadcast_id?: string;
-      ad_campaign_id?: string;
-      date_from?: string;
-      date_to?: string;
-      search?: string;
-      reply_window?: "open" | "closed";
       sort?: "newest" | "oldest" | "urgent";
     }) => {
-      const qs = new URLSearchParams();
-      if (params?.segment) qs.set("segment", params.segment);
-      if (params?.search) qs.set("search", params.search);
-      if (params?.assigned_to) qs.set("assigned_to", params.assigned_to);
-      if (params?.source_filter) qs.set("source_filter", params.source_filter);
-      if (params?.broadcast_id) qs.set("broadcast_id", params.broadcast_id);
-      if (params?.ad_campaign_id) qs.set("ad_campaign_id", params.ad_campaign_id);
-      if (params?.date_from) qs.set("date_from", params.date_from);
-      if (params?.date_to) qs.set("date_to", params.date_to);
-      if (params?.reply_window) qs.set("reply_window", params.reply_window);
+      const qs = leadFilterQuery(params);
       if (params?.sort) qs.set("sort", params.sort);
       if (typeof params?.page === "number" && Number.isFinite(params.page)) {
         qs.set("page", String(params.page));
@@ -2512,15 +2576,18 @@ export const api = {
       ),
     exportUrl: (segment?: string) =>
       `${API_URL}/api/v1/leads/export${segment ? `?segment=${segment}` : ""}`,
-    exportLeads: async (segment?: string) => {
+    summary: (params: LeadFilters = {}) =>
+      apiFetch<LeadsSummary>(`/api/v1/leads/summary?${leadFilterQuery(params)}`),
+    exportLeads: async (params: LeadFilters = {}) => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/leads/export${segment ? `?segment=${segment}` : ""}`, { headers });
+      const qs = leadFilterQuery(params);
+      const res = await fetch(`${API_URL}/api/v1/leads/export?${qs}`, { headers });
       if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `leads_${segment || "all"}.csv`;
+      a.download = `leads_${params.segment || "all"}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -134,7 +134,7 @@ const SEGMENTS: NavLeaf = {
   kind: "link",
   key: "segments",
   href: "/dashboard/leads",
-  label: "Segments",
+  label: "Customers",
   icon: Users,
   visible: (a) => a.isSubscribed && a.can("leads.view") && a.messagingOn,
   isActive: (p) => p.startsWith("/dashboard/leads"),

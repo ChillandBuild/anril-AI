@@ -4,6 +4,7 @@ import {
   AnalyticsOverview,
   Caller,
   Lead,
+  LeadsSummary,
   TeamMember,
   CallerStats,
   CallLog,
@@ -105,6 +106,11 @@ export function useLeads(
 export function useLeadsPage(params: Parameters<typeof api.leads.listPage>[0], enabled = true) {
   const key = enabled ? `leadsPage:${JSON.stringify(params)}` : null;
   return useSWR<{ data: Lead[]; total: number }>(key, () => api.leads.listPage(params), { ...defaultConfig, keepPreviousData: true });
+}
+
+export function useLeadsSummary(params: Parameters<typeof api.leads.summary>[0], enabled = true) {
+  const key = enabled ? `leadsSummary:${JSON.stringify(params)}` : null;
+  return useSWR<LeadsSummary>(key, () => api.leads.summary(params), { ...defaultConfig, keepPreviousData: true });
 }
 
 export function useTeamList(

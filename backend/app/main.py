@@ -28,6 +28,7 @@ from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
+from app.routes import customer_groups
 from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
@@ -412,6 +413,7 @@ app.include_router(intake.router, prefix="/api/v1/expert-handoff", tags=["intake
 app.include_router(lead_details_share.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
 app.include_router(scheduled_overview.router, prefix="/api/v1/scheduled-overview", tags=["scheduled-overview"], dependencies=_auth)
 app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], dependencies=_auth)
+app.include_router(customer_groups.router, prefix="/api/v1/customer-groups", tags=["customer-groups"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 app.include_router(ask.router, prefix="/api/v1", tags=["ask"], dependencies=_auth)

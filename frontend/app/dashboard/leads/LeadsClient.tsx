@@ -1,24 +1,23 @@
 "use client";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
-import { api, Lead, Caller, SegmentTemplate, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info } from "lucide-react";
+import { api, Lead, LeadFilters, Caller, CustomerGroup, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
+import { Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AssignButton } from "./AssignButton";
 import ReengagementBuilder from "./ReengagementBuilder";
-import { useLeadsPage } from "@/hooks/useApi";
+import { useLeadsPage, useLeadsSummary } from "@/hooks/useApi";
 import { useSearchParams, useRouter } from "next/navigation";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
-import { SegmentBadge } from "@/components/segment-badge";
 import { FilterMenu, FilterMenuOption } from "./FilterMenu";
-import { SegmentBroadcastModal } from "./SegmentBroadcastModal";
-import { ComposeModal } from "./ComposeModal";
 import { Select } from "@/components/ui/Select";
 import { CheckTick } from "@/components/ui/controls";
 import { SendMessageModal } from "./SendMessageModal";
 import { SendTemplateModal } from "./SendTemplateModal";
+import { GroupsPanel } from "./GroupsPanel";
 
 function NameCell({ lead, onUpdate, compact }: { lead: Lead; onUpdate: (l: Lead) => void; compact?: boolean }) {
   const [editing, setEditing] = useState(false);
@@ -90,6 +89,10 @@ function NameCell({ lead, onUpdate, compact }: { lead: Lead; onUpdate: (l: Lead)
 }
 
 const SEGMENTS = ["A", "B", "C", "D"] as const;
+/** Status filter: All, one interest level (A-D), or buyers. */
+type StatusFilter = "ALL" | (typeof SEGMENTS)[number] | "BUYERS";
+/** Which header tab of Customers is showing. */
+type HeaderView = "people" | "groups" | "said-stop" | "feedback";
 
 const SEGMENT_LABELS: Record<string, string> = {
   A: "Hot",
@@ -98,19 +101,23 @@ const SEGMENT_LABELS: Record<string, string> = {
   D: "Not interested",
 };
 
-const SEGMENT_EMOJIS: Record<string, string> = {
-  A: "🔥",
-  B: "",
-  C: "",
-  D: "",
+/** Interest-word colours, the same tokens the segment badge uses. */
+const SEGMENT_TEXT: Record<string, string> = {
+  A: "text-segment-a-text",
+  B: "text-segment-b-text",
+  C: "text-segment-c-text",
+  D: "text-segment-d-text",
 };
 
-const SEGMENT_COLORS: Record<string, { text: string; edge: string }> = {
-  A: { text: "text-orange-600", edge: "bg-orange-500" },
-  B: { text: "text-[#0A1528]", edge: "bg-amber-400" },
-  C: { text: "text-[#0A1528]", edge: "bg-blue-600" },
-  D: { text: "text-[#0A1528]", edge: "bg-slate-400" },
-};
+const STATUS_OPTIONS: FilterMenuOption[] = [
+  { value: "all", label: "All" },
+  { value: "A", label: "Hot" },
+  { value: "B", label: "Warm" },
+  { value: "C", label: "Cold" },
+  { value: "buyers", label: "Buyers" },
+];
+
+const STATUS_BY_OPTION: Record<string, StatusFilter> = { A: "A", B: "B", C: "C", D: "D", buyers: "BUYERS" };
 
 const SOURCE_FILTERS: FilterMenuOption[] = [
   { value: "ALL", label: "All" },
@@ -139,16 +146,85 @@ function getInitialColor(leadId: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS[number] }) {
+/** Buyer or Lead, the interest word, and the broadcast they came from (the name is the only part that cuts short). */
+function StatusCell({ lead }: { lead: Lead }) {
+  const segment = lead.broadcast_score?.segment ?? lead.segment;
+  const broadcastName = lead.broadcast_score?.broadcast_name ?? null;
+  return (
+    <div className="flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap text-xs">
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
+          lead.is_buyer ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-700"
+        )}
+      >
+        {lead.is_buyer ? "Buyer" : "Lead"}
+      </span>
+      <span className={cn("shrink-0 font-bold", SEGMENT_TEXT[segment])}>{SEGMENT_LABELS[segment] ?? segment}</span>
+      {broadcastName && (
+        <span className="min-w-0 truncate text-[#64748b]" title={broadcastName}>
+          · {broadcastName}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function GroupsCell({ lead }: { lead: Lead }) {
+  const groups = lead.groups ?? [];
+  if (groups.length === 0) return <span className="text-xs text-[#64748b]">—</span>;
+  return (
+    <div className="flex items-center gap-1.5 whitespace-nowrap" title={groups.map((g) => g.name).join(", ")}>
+      <span className="max-w-[120px] truncate rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+        {groups[0].name}
+      </span>
+      {groups.length > 1 && <span className="text-[11px] font-semibold text-[#64748b]">+{groups.length - 1}</span>}
+    </div>
+  );
+}
+
+function LeadStatCard({ label, value, hint, onClick }: { label: string; value: string; hint: string; onClick?: () => void }) {
+  const className =
+    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 text-left";
+  const body = (
+    <>
+      <div className="font-display text-2xl font-bold text-[#0A1528] sm:text-3xl">{value}</div>
+      <div className="min-w-0">
+        <div className="text-sm font-bold text-[#0A1528]">{label}</div>
+        <div className="mt-0.5 text-xs text-[#64748b]">{hint}</div>
+      </div>
+    </>
+  );
+  if (!onClick) return <div className={className}>{body}</div>;
+  return (
+    <button type="button" onClick={onClick} className={cn(className, "transition-all hover:border-slate-300")}>
+      {body}
+    </button>
+  );
+}
+
+function ComingSoonCard({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-[#e2e8f0] bg-white px-6 py-12 text-center shadow-sm">
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Icon size={20} />
+      </div>
+      <h2 className="mt-4 font-display text-lg font-bold text-[#0A1528]">{title}</h2>
+      <p className="mx-auto mt-1 max-w-md text-sm text-[#64748b]">{text}</p>
+    </div>
+  );
+}
+
+const fmtCount = (n: number | undefined) => (n === undefined ? "—" : n.toLocaleString("en-IN"));
+
+export function LeadsClient() {
   const { role, permissions } = useAuthRole();
   const canManageLeads = role === "owner" || permissions.includes("leads.manage");
   // Sending a chat message needs the same right as replying in Conversations.
   const canReply = role === "owner" || permissions.includes("conversations.reply");
-  const [tab, setTab] = useState<typeof SEGMENTS[number]>(initialTab);
-  const [templates, setTemplates] = useState<Record<string, SegmentTemplate>>({});
-  const [composing, setComposing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [callers, setCallers] = useState<Caller[]>([]);
+  const [groups, setGroups] = useState<CustomerGroup[]>([]);
 
   // Filtering states
   const [sourceFilter, setSourceFilter] = useState("ALL");
@@ -163,10 +239,9 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assigned, setAssigned] = useState<string | undefined>();
   const [replyWindow, setReplyWindow] = useState<"open" | "closed" | undefined>();
-  const [sort, setSort] = useState<"newest" | "oldest" | "urgent" | undefined>();
+  const [sort, setSort] = useState<"urgent" | undefined>();
   const [now, setNow] = useState(new Date());
   const [tipsDismissed, setTipsDismissed] = useState(false);
-  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
 
   // Modal states
   const [sendMessageLeads, setSendMessageLeads] = useState<Lead[]>([]);
@@ -177,30 +252,37 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const assignPopoverRef = useRef<HTMLDivElement>(null);
 
+  // Add to group popover state
+  const [groupPopoverOpen, setGroupPopoverOpen] = useState(false);
+  const groupPopoverRef = useRef<HTMLDivElement>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+
   // Change segment popover state
   const [changeSegmentPopoverOpen, setChangeSegmentPopoverOpen] = useState(false);
   const changeSegmentPopoverRef = useRef<HTMLDivElement>(null);
-
-  // Checkbox ref for indeterminate state
 
   // Re-engagement states
   const [wabaTemplates, setWabaTemplates] = useState<WabaTemplate[]>([]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
+  const headerView: HeaderView =
+    rawTab === "groups" || rawTab === "said-stop" || rawTab === "feedback" ? rawTab : "people";
   const pageView: "leads" | "reengagement" = rawTab === "reengagement" ? "reengagement" : "leads";
+  const listEnabled = headerView === "people" && pageView === "leads";
   const dateFrom = searchParams.get("date_from") ?? undefined;
   const dateTo = searchParams.get("date_to") ?? undefined;
+  const groupId = searchParams.get("group_id") || undefined;
+  // The status lives in the URL (?segment=A-D, or ?buyer=1), so links like the dashboard's Hot card still land on it.
   const requestedSegment = searchParams.get("segment");
-  const composeParam = searchParams.get("compose");
-  const broadcastParam = searchParams.get("broadcast");
+  const status: StatusFilter = (SEGMENTS as readonly string[]).includes(requestedSegment ?? "")
+    ? (requestedSegment as (typeof SEGMENTS)[number])
+    : searchParams.get("buyer") === "1"
+      ? "BUYERS"
+      : "ALL";
+  const segmentFilter = status === "ALL" || status === "BUYERS" ? undefined : status;
   const [reengageTrigger, setReengageTrigger] = useState<"broadcast" | "inbound">("inbound");
-
-  useEffect(() => {
-    if ((SEGMENTS as readonly string[]).includes(requestedSegment ?? "")) {
-      setTab(requestedSegment as typeof SEGMENTS[number]);
-    }
-  }, [requestedSegment]);
 
   // Read tips dismiss state from localStorage
   useEffect(() => {
@@ -220,35 +302,42 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     return () => clearInterval(interval);
   }, []);
 
-  const setPageView = (val: "leads" | "reengagement") => {
+  /** One URL update for any mix of params (two back-to-back replaces would drop the first). */
+  function replaceLeadsUrl(mutate: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", val);
+    mutate(params);
     router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
+  }
+
+  const setPageView = (val: "leads" | "reengagement") => {
+    replaceLeadsUrl((params) => params.set("tab", val));
   };
 
   // Both dates in ONE url update: two back-to-back router.replace calls each start
   // from the same old url, so the second would silently drop the first date.
   const setDates = (from: string, to: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (from) params.set("date_from", from);
-    else params.delete("date_from");
-    if (to) params.set("date_to", to);
-    else params.delete("date_to");
-    router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
+    replaceLeadsUrl((params) => {
+      if (from) params.set("date_from", from);
+      else params.delete("date_from");
+      if (to) params.set("date_to", to);
+      else params.delete("date_to");
+    });
   };
 
-  const setSegment = (segment: typeof SEGMENTS[number]) => {
-    setTab(segment);
-    setPage(1);
-    setSelectedIds(new Set());
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("tab");
-    params.set("segment", segment);
-    router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
-  };
+  function setStatus(next: StatusFilter) {
+    replaceLeadsUrl((params) => {
+      params.delete("segment");
+      params.delete("buyer");
+      if (next === "BUYERS") params.set("buyer", "1");
+      else if (next !== "ALL") params.set("segment", next);
+    });
+  }
 
-  // Shared filters for counts and table (excludes segment, page, limit, sort)
-  const sharedFilters = {
+  // Filters shared by the list, the summary cards and the export, so the numbers always match the table.
+  const listFilters: LeadFilters = {
+    segment: segmentFilter,
+    buyer: status === "BUYERS" ? true : undefined,
+    group_id: groupId,
     search: search || undefined,
     source_filter: sourceFilter !== "ALL" ? sourceFilter.toLowerCase() : undefined,
     ad_campaign_id: sourceFilter === "META_ADS" && selectedCampaignId ? selectedCampaignId : undefined,
@@ -262,36 +351,31 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
   // SWR Hooks for page data
   const { data: pageData, mutate: mutateList, isLoading } = useLeadsPage(
     {
-      segment: tab,
+      ...listFilters,
       page,
       limit: PAGE_SIZE,
-      ...sharedFilters,
       sort,
     },
-    pageView === "leads"
+    listEnabled
   );
+  const { data: summary, mutate: mutateSummary } = useLeadsSummary(listFilters, listEnabled);
 
   const leads = pageData?.data ?? [];
   const totalLeads = pageData?.total ?? 0;
-  const hasFilters = !!(search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow);
-
-  // Hooks for segment counts - keep mutate functions to refresh them after bulk operations
-  const { data: countA, mutate: mutateCountA } = useLeadsPage({ segment: "A", page: 1, limit: 1, ...sharedFilters }, pageView === "leads");
-  const { data: countB, mutate: mutateCountB } = useLeadsPage({ segment: "B", page: 1, limit: 1, ...sharedFilters }, pageView === "leads");
-  const { data: countC, mutate: mutateCountC } = useLeadsPage({ segment: "C", page: 1, limit: 1, ...sharedFilters }, pageView === "leads");
-  const { data: countD, mutate: mutateCountD } = useLeadsPage({ segment: "D", page: 1, limit: 1, ...sharedFilters }, pageView === "leads");
-
-  const segmentCounts = {
-    A: countA?.total,
-    B: countB?.total,
-    C: countC?.total,
-    D: countD?.total,
-  };
+  const hasFilters = !!(
+    search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId
+  );
+  const groupName = groups.find((g) => g.id === groupId)?.name ?? "Group";
+  const statusValue = status === "ALL" ? "all" : status === "BUYERS" ? "buyers" : status;
+  const statusOptions: FilterMenuOption[] =
+    status === "D" ? [...STATUS_OPTIONS, { value: "D", label: "Not interested" }] : STATUS_OPTIONS;
+  // What the table is showing, in words: "hot leads", "buyers", "all people".
+  const listName = status === "ALL" ? "people" : status === "BUYERS" ? "buyers" : `${SEGMENT_LABELS[status].toLowerCase()} leads`;
 
   async function refreshLeads() {
     setRefreshing(true);
     try {
-      await Promise.all([mutateList(), mutateCountA(), mutateCountB(), mutateCountC(), mutateCountD()]);
+      await Promise.all([mutateList(), mutateSummary()]);
     } finally {
       setRefreshing(false);
     }
@@ -301,7 +385,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
   useEffect(() => {
     setPage(1);
     setSelectedIds(new Set());
-  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort]);
+  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort, status, groupId]);
 
   // Search debounce effect
   useEffect(() => {
@@ -316,6 +400,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     // Same scope as the Meta Ads table: only the ad account connected now.
     api.inboundLeads.campaigns({ currentAccount: true }).then(setCampaigns).catch(() => {});
     api.broadcasts.history().then(setBroadcastHistory).catch(() => {});
+    api.customerGroups.list().then(setGroups).catch(() => {});
 
     // Fetch WABA templates
     getAuthHeaders().then(auth => {
@@ -328,40 +413,17 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     });
   }, []);
 
+  // Close the add-to-group popover on an outside click.
   useEffect(() => {
-    api.segments.templates().then((rows) => {
-      const map: Record<string, SegmentTemplate> = {};
-      rows.forEach((r) => (map[r.segment] = r));
-      setTemplates(map);
-    });
-  }, []);
-
-  // Handle compose and broadcast URL params
-  useEffect(() => {
-    if (composeParam === "1") {
-      setComposing(true);
+    if (!groupPopoverOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (groupPopoverRef.current && !groupPopoverRef.current.contains(event.target as Node)) {
+        setGroupPopoverOpen(false);
+      }
     }
-  }, [composeParam]);
-
-  useEffect(() => {
-    if (broadcastParam === "1") {
-      setBroadcastModalOpen(true);
-    }
-  }, [broadcastParam]);
-
-  function closeCompose() {
-    setComposing(false);
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("compose");
-    router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
-  }
-
-  function closeBroadcast() {
-    setBroadcastModalOpen(false);
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("broadcast");
-    router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
-  }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [groupPopoverOpen]);
 
   function openSendMessageModal() {
     const selectedLeads = leads.filter((l) => selectedIds.has(l.id));
@@ -386,6 +448,39 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     }
   }
 
+  function finishGroupAdd(groupLabel: string, count: number) {
+    toast.success(`Added ${count} to ${groupLabel}`);
+    setSelectedIds(new Set());
+    setGroupPopoverOpen(false);
+    setCreatingGroup(false);
+    setNewGroupName("");
+    mutateList();
+    api.customerGroups.list().then(setGroups).catch(() => {});
+  }
+
+  async function addSelectedToGroup(group: CustomerGroup) {
+    const ids = Array.from(selectedIds);
+    try {
+      await api.customerGroups.addMembers(group.id, ids);
+      finishGroupAdd(group.name, ids.length);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add to group");
+    }
+  }
+
+  async function createGroupAndAdd() {
+    const name = newGroupName.trim();
+    if (!name) return;
+    const ids = Array.from(selectedIds);
+    try {
+      const group = await api.customerGroups.create(name);
+      await api.customerGroups.addMembers(group.id, ids);
+      finishGroupAdd(group.name, ids.length);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create group");
+    }
+  }
+
   async function bulkChangeSegment(newSegment: typeof SEGMENTS[number]) {
     const ids = Array.from(selectedIds);
     try {
@@ -394,9 +489,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
       toast.success(`Moved ${ids.length} leads to ${label}`);
       setSelectedIds(new Set());
       setChangeSegmentPopoverOpen(false);
-      await mutateList();
-      // Refresh all counts
-      await Promise.all([mutateCountA(), mutateCountB(), mutateCountC(), mutateCountD()]);
+      await Promise.all([mutateList(), mutateSummary()]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to change segment");
     }
@@ -509,36 +602,6 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     return `${c.campaign_name} · ${month}`;
   }
 
-  // Helper to get campaign name
-  function getSelectedCampaignName(): string | undefined {
-    const selected = campaigns.find((c) => c.id === selectedCampaignId);
-    return selected ? campaignLabel(selected) : undefined;
-  }
-
-  // Helper to compute date preset from URL dates (using local dates)
-  // Shown in the broadcast window so it's clear which leads the message goes to.
-  function activeFilterLabels(): string[] {
-    const out: string[] = [];
-    if (search) out.push(`Search: "${search}"`);
-    if (sourceFilter !== "ALL") {
-      const source = SOURCE_FILTERS.find((o) => o.value === sourceFilter)?.label ?? sourceFilter;
-      const detail =
-        sourceFilter === "META_ADS" ? getSelectedCampaignName()
-        : sourceFilter === "BROADCAST" ? broadcastHistory.find((b) => b.broadcast_id === selectedBroadcastId)?.template_name
-        : undefined;
-      out.push(`Source: ${source}${detail ? ` · ${detail}` : ""}`);
-    }
-    const preset = getDatePreset();
-    if (preset !== "any") {
-      out.push(`Added: ${{ today: "Today", "7d": "Last 7 days", "30d": "Last 30 days" }[preset] ?? `${dateFrom} to ${dateTo}`}`);
-    }
-    if (assigned) {
-      out.push(`Assigned: ${assigned === "unassigned" ? "Unassigned" : callers.find((c) => c.id === assigned)?.name ?? "Caller"}`);
-    }
-    if (replyWindow) out.push(`Reply window: ${replyWindow === "open" ? "Open" : "Closed"}`);
-    return out;
-  }
-
   function clearFilters() {
     setSearchInput("");
     setSourceFilter("ALL");
@@ -546,7 +609,9 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
     setSelectedBroadcastId("");
     setAssigned(undefined);
     setReplyWindow(undefined);
-    setDates("", "");
+    replaceLeadsUrl((params) => {
+      for (const key of ["date_from", "date_to", "segment", "buyer", "group_id"]) params.delete(key);
+    });
   }
 
   function getDatePreset(): string {
@@ -584,35 +649,10 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
 
   return (
     <div className="min-w-0">
-      {composing && (
-        <ComposeModal
-          onClose={closeCompose}
-          canManageLeads={canManageLeads}
-          onSent={() => {
-            mutateList();
-            closeCompose();
-          }}
-        />
-      )}
-
-      {broadcastModalOpen && (
-        <SegmentBroadcastModal
-          segment={tab}
-          filters={sharedFilters}
-          filterLabels={activeFilterLabels()}
-          templates={templates}
-          canManageLeads={canManageLeads}
-          onClose={closeBroadcast}
-          onAfterBroadcast={() => {
-            mutateList();
-          }}
-        />
-      )}
-
       {sendMessageModalOpen && (
         <SendMessageModal
           selectedLeads={sendMessageLeads}
-          batchLabel={`${SEGMENT_LABELS[tab]} leads`}
+          batchLabel={listName}
           onClose={closeSendMessageModal}
           onAfterSend={() => {
             mutateList();
@@ -630,7 +670,25 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
         />
       )}
 
-      {pageView === "reengagement" && (
+      {headerView === "groups" && <GroupsPanel />}
+
+      {headerView === "said-stop" && (
+        <ComingSoonCard
+          icon={BellOff}
+          title="Said stop"
+          text="People who asked you to stop messaging them will be listed here. This list is being built next."
+        />
+      )}
+
+      {headerView === "feedback" && (
+        <ComingSoonCard
+          icon={Star}
+          title="Feedback"
+          text="Star ratings customers give after a purchase or visit will show here. This list is being built next."
+        />
+      )}
+
+      {headerView === "people" && pageView === "reengagement" && (
         <div className="space-y-6">
           {viewToggle}
           <div className="flex gap-2">
@@ -676,43 +734,36 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
         </div>
       )}
 
-      {pageView === "leads" && (
+      {headerView === "people" && pageView === "leads" && (
         <div className="space-y-4">
-          {/* Segment stat cards */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {SEGMENTS.map((seg) => {
-              const count = segmentCounts[seg];
-              const colors = SEGMENT_COLORS[seg];
-              const isSelected = tab === seg;
-              return (
-                <button
-                  key={seg}
-                  onClick={() => setSegment(seg)}
-                  className={cn(
-                    "relative flex flex-col items-start gap-1 overflow-hidden rounded-2xl border bg-white py-4 pl-5 pr-4 text-left transition-all sm:flex-row sm:items-center sm:gap-4",
-                    isSelected
-                      ? "border-2 border-primary ring-4 ring-primary/10"
-                      : "border-[#e2e8f0] hover:border-slate-300"
-                  )}
-                >
-                  <div className={cn("absolute left-0 top-3 bottom-3 w-1 rounded-r", colors.edge)} />
-                  <div className="min-w-[3ch] font-display text-3xl font-bold text-[#0A1528]">
-                    {count === undefined ? "—" : count}
-                  </div>
-                  <div className="min-w-0">
-                    <div className={cn("font-bold text-sm", colors.text)}>
-                      {SEGMENT_EMOJIS[seg] ? `${SEGMENT_EMOJIS[seg]} ` : ""}{SEGMENT_LABELS[seg]}
-                    </div>
-                    <div className="text-xs text-[#64748b] mt-0.5">
-                      {seg === "A" && "Ready to buy · reply first"}
-                      {seg === "B" && "Interested · follow up"}
-                      {seg === "C" && "Just browsing · nurture"}
-                      {seg === "D" && "No action needed"}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+          {/* Customer summary cards: they follow the same filters as the table below. */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <LeadStatCard
+              label="People"
+              value={fmtCount(summary?.people)}
+              hint={summary ? `${fmtCount(summary.leads)} leads · ${fmtCount(summary.buyers)} buyers` : ""}
+            />
+            <LeadStatCard
+              label="Repeat buyers"
+              value={fmtCount(summary?.repeat_buyers)}
+              hint="bought 2+ times"
+            />
+            <LeadStatCard
+              label="Spent with you"
+              value={summary ? `₹${(summary.spent_paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—"}
+              hint="all time"
+            />
+            <LeadStatCard
+              label="Not back in 90 days"
+              value={fmtCount(summary?.not_back_90)}
+              hint="bought before, quiet since"
+            />
+            <LeadStatCard
+              label="Said stop"
+              value={fmtCount(summary?.said_stop)}
+              hint="no offers go to them"
+              onClick={() => router.push("/dashboard/leads?tab=said-stop")}
+            />
           </div>
 
           {/* Main card with filters and table */}
@@ -731,7 +782,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                 <Search size={14} className="absolute left-3 top-2.5 text-[#64748b]" />
                 <input
                   type="text"
-                  placeholder="Search name or number"
+                  placeholder="Search name, number, broadcast or ad"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-10 pr-3 py-2 w-full text-xs border border-[#e2e8f0] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -739,6 +790,14 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
               </div>
 
               {/* Filter dropdowns */}
+              <FilterMenu
+                label="Status"
+                options={statusOptions}
+                value={statusValue}
+                onChange={(val) => setStatus(STATUS_BY_OPTION[val ?? ""] ?? "ALL")}
+                showValue={true}
+              />
+
               {/* With the picker beside it, "Meta Ads" / "Broadcast" alone says enough and saves room. */}
               <FilterMenu
                 label={showsSourcePicker ? SOURCE_FILTERS.find((o) => o.value === sourceFilter)?.label ?? "Source" : "Source"}
@@ -821,10 +880,11 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
 
               {role === "owner" && (
                 <FilterMenu
-                  label="Assigned"
+                  label="Handled by"
                   options={[
                     { value: "all", label: "All" },
                     { value: "unassigned", label: "Unassigned" },
+                    { value: "ai_agent", label: "AI agent" },
                     ...callers.map((c) => ({ value: c.id, label: c.name })),
                   ]}
                   value={assigned}
@@ -857,6 +917,20 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                 showValue={true}
               />
 
+              {groupId && (
+                <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary/10 py-1 pl-3 pr-1.5 text-xs font-bold text-primary">
+                  Group: {groupName}
+                  <button
+                    type="button"
+                    onClick={() => replaceLeadsUrl((params) => params.delete("group_id"))}
+                    aria-label="Remove group filter"
+                    className="rounded p-0.5 hover:bg-primary/10"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+
               {hasFilters && (
                 <button
                   type="button"
@@ -881,22 +955,24 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                   {/* With a filter set, "Clear" takes the label's room so nothing wraps. */}
                   <span className={cn("min-[1360px]:hidden", !hasFilters && "2xl:inline")}>Refresh</span>
                 </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.leads.exportLeads(tab);
-                      toast.success("Export downloaded");
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Export failed");
-                    }
-                  }}
-                  title="Export"
-                  aria-label="Export"
-                  className="flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-bold text-[#0A1528] hover:bg-[#f8fafc] transition-colors"
-                >
-                  <Download size={14} />
-                  <span className={cn("min-[1360px]:hidden", !hasFilters && "2xl:inline")}>Export</span>
-                </button>
+                {role === "owner" && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.leads.exportLeads(listFilters);
+                        toast.success("Export downloaded");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Export failed");
+                      }
+                    }}
+                    title="Export"
+                    aria-label="Export"
+                    className="flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-bold text-[#0A1528] hover:bg-[#f8fafc] transition-colors"
+                  >
+                    <Download size={14} />
+                    <span className={cn("min-[1360px]:hidden", !hasFilters && "2xl:inline")}>Export</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -935,6 +1011,68 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                     <MessageSquare size={12} />
                     Send message
                   </button>
+                )}
+                {canManageLeads && (
+                  <div ref={groupPopoverRef} className="relative">
+                    <button
+                      onClick={() => setGroupPopoverOpen(!groupPopoverOpen)}
+                      className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <FolderPlus size={12} />
+                      Add to group
+                    </button>
+                    {groupPopoverOpen && (
+                      <div className="absolute top-full left-0 mt-1 z-30 min-w-[220px] rounded-xl border border-[#e2e8f0] bg-white shadow-lg">
+                        {groups.filter((g) => g.kind === "picked").length === 0 && (
+                          <div className="px-4 py-2.5 text-xs text-[#64748b]">No groups yet</div>
+                        )}
+                        {groups
+                          .filter((g) => g.kind === "picked")
+                          .map((group) => (
+                            <button
+                              key={group.id}
+                              onClick={() => addSelectedToGroup(group)}
+                              className="flex w-full items-center justify-between gap-3 border-t border-[#f1f5f9] px-4 py-2.5 text-left text-xs font-semibold text-[#334155] transition-colors first:border-t-0 hover:bg-slate-50"
+                            >
+                              <span className="truncate">{group.name}</span>
+                              <span className="shrink-0 text-[#64748b]">{group.member_count}</span>
+                            </button>
+                          ))}
+                        {creatingGroup ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              createGroupAndAdd();
+                            }}
+                            className="flex items-center gap-2 border-t border-[#f1f5f9] p-2.5"
+                          >
+                            <input
+                              autoFocus
+                              value={newGroupName}
+                              onChange={(e) => setNewGroupName(e.target.value)}
+                              placeholder="Group name"
+                              className="min-w-0 flex-1 rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                            <button
+                              type="submit"
+                              disabled={!newGroupName.trim()}
+                              className="shrink-0 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                            >
+                              {"Create & add"}
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCreatingGroup(true)}
+                            className="w-full border-t border-[#f1f5f9] px-4 py-2.5 text-left text-xs font-bold text-primary hover:bg-slate-50"
+                          >
+                            + New group
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {role === "owner" && (
                   <div ref={assignPopoverRef} className="relative">
@@ -1012,12 +1150,8 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                   {hasFilters && (
                     <button
                       onClick={() => {
-                        setSearchInput("");
-                        setSourceFilter("ALL");
-                        setAssigned(undefined);
-                        setReplyWindow(undefined);
+                        clearFilters();
                         setSort(undefined);
-                        setDates("", "");
                       }}
                       className="text-primary text-xs font-semibold mt-2 hover:opacity-70"
                     >
@@ -1038,13 +1172,19 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                         />
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
-                        Customer
+                        Name
+                      </th>
+                      <th className="w-[220px] max-w-[220px] px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
+                        Status
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
-                        Lead
+                        Spent
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
-                        Source
+                        Last
+                      </th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
+                        Came from
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
                         <button
@@ -1071,20 +1211,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                         Assigned to
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
-                        <button
-                          onClick={() => {
-                            if (sort === "newest") {
-                              setSort("oldest");
-                            } else if (sort === "oldest") {
-                              setSort(undefined);
-                            } else {
-                              setSort("newest");
-                            }
-                          }}
-                          className="uppercase tracking-wider hover:opacity-70"
-                        >
-                          Added ⇅
-                        </button>
+                        Groups
                       </th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#64748b]">
                         Action
@@ -1135,17 +1262,23 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                                 />
                               </div>
                               <div className="min-w-0">
-                                <div className="font-bold text-sm text-[#0A1528]">
+                                <div className="whitespace-nowrap font-bold text-sm text-[#0A1528]">
                                   {getPrimaryLine(lead)}
                                 </div>
                                 {getSecondaryLine(lead) && (
-                                  <div className="text-xs text-[#64748b]">{getSecondaryLine(lead)}</div>
+                                  <div className="whitespace-nowrap text-xs text-[#64748b]">{getSecondaryLine(lead)}</div>
                                 )}
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
-                            <SegmentBadge segment={lead.segment} />
+                          <td className="w-[220px] max-w-[220px] px-4 py-3">
+                            <StatusCell lead={lead} />
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-[#334155]">
+                            {lead.spent_paise ? `₹${(lead.spent_paise / 100).toLocaleString("en-IN")}` : "—"}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-[#64748b]">
+                            {lead.last_activity_at ? timeAgo(lead.last_activity_at) : "—"}
                           </td>
                           <td className="px-4 py-3 text-sm text-[#334155]">
                             {sourceLabel(lead.source)}
@@ -1173,8 +1306,8 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                               <span className="text-xs text-[#64748b]">Unassigned</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-xs text-[#64748b]">
-                            {timeAgo(lead.created_at)}
+                          <td className="px-4 py-3">
+                            <GroupsCell lead={lead} />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
@@ -1182,7 +1315,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                                 e.stopPropagation();
                                 setSendTemplateLeadId(lead.id);
                               }}
-                              className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                              className="whitespace-nowrap rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
                             >
                               Send template
                             </button>
@@ -1211,15 +1344,15 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                     <MobileRecordHeader
                       title={getPrimaryLine(lead)}
                       subtitle={getSecondaryLine(lead) as string | undefined}
-                      aside={<SegmentBadge segment={lead.segment} />}
                     />
                     <MobileRecordGrid>
+                      <MobileRecordField label="Status" value={<StatusCell lead={lead} />} className="col-span-2" />
                       <MobileRecordField
-                        label="Source"
-                        value={sourceLabel(lead.source)}
+                        label="Spent"
+                        value={lead.spent_paise ? `₹${(lead.spent_paise / 100).toLocaleString("en-IN")}` : "—"}
                       />
-                      <MobileRecordField label="Assigned" value={lead.assigned_to ? callers.find((c) => c.id === lead.assigned_to)?.name || "Caller" : "Unassigned"} />
-                      <MobileRecordField label="Added" value={timeAgo(lead.created_at)} />
+                      <MobileRecordField label="Came from" value={sourceLabel(lead.source)} />
+                      <MobileRecordField label="Last" value={lead.last_activity_at ? timeAgo(lead.last_activity_at) : "—"} />
                       <MobileRecordField
                         label="Reply window"
                         value={(() => {
@@ -1230,6 +1363,8 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                           return "Closed";
                         })()}
                       />
+                      <MobileRecordField label="Assigned" value={lead.assigned_to ? callers.find((c) => c.id === lead.assigned_to)?.name || "Caller" : "Unassigned"} />
+                      <MobileRecordField label="Groups" value={<GroupsCell lead={lead} />} className="col-span-2" />
                     </MobileRecordGrid>
                     <div className="mt-4 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
                       <div>
@@ -1245,7 +1380,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
                       <div>
                         <button
                           onClick={() => setSendTemplateLeadId(lead.id)}
-                          className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                          className="whitespace-nowrap rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
                         >
                           Send template
                         </button>
@@ -1260,7 +1395,7 @@ export function LeadsClient({ initialTab = "A" }: { initialTab?: typeof SEGMENTS
             {!isLoading && leads.length > 0 && (
               <div className="flex items-center justify-between border-t border-[#f1f5f9] px-4 py-3">
                 <div className="text-xs text-[#64748b]">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalLeads)} of {totalLeads} {SEGMENT_LABELS[tab]} leads
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalLeads)} of {totalLeads} {listName}
                 </div>
                 <div className="flex items-center gap-2">
                   <button

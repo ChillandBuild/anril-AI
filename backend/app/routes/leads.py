@@ -92,6 +92,10 @@ class LeadFilters(BaseModel):
     date_to: str | None = None
     search: str | None = Field(None, max_length=100)
     reply_window: str | None = Field(None, pattern="^(open|closed)$")
+    # Customers: True = people who have bought, False = people who have not.
+    buyer: bool | None = None
+    # A Customers group (customer_groups.id): only its members.
+    group_id: str | None = None
 
 
 class CustomBroadcastRequest(LeadFilters):
@@ -100,10 +104,254 @@ class CustomBroadcastRequest(LeadFilters):
 
 INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form')
 
+# Reads of whole tables go through PostgREST, which caps one response at 1000 rows.
+_PAGE = 1000
+# How many ids go into one `in.(...)` filter or lookup.
+_IN_CHUNK = 200
+# The search box matches at most this many leads through broadcast names.
+_SEARCH_BROADCAST_CAP = 1000
+BUYER_QUIET_DAYS = 90
+_MIN_DT = datetime.min.replace(tzinfo=timezone.utc)
 
-def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None):
-    """Leads matching the Segments filters, or None when nothing can match."""
+
+def _fetch_all(build, order_by: tuple[str, ...] = ("id",)) -> list[dict]:
+    """Every row of a query, paged through the 1000-row cap. `build` returns a fresh query
+    each time; the order must be unique per row so pages cannot overlap."""
+    rows: list[dict] = []
+    while True:
+        q = build()
+        for column in order_by:
+            q = q.order(column)
+        page = q.range(len(rows), len(rows) + _PAGE - 1).execute().data or []
+        rows.extend(page)
+        if len(page) < _PAGE:
+            return rows
+
+
+def _in_scopes(ids: list[str] | None) -> list[list[str] | None]:
+    """[None] for "the whole tenant", else the ids in chunks for `in.(...)` filters."""
+    if ids is None:
+        return [None]
+    return [ids[i:i + _IN_CHUNK] for i in range(0, len(ids), _IN_CHUNK)]
+
+
+def _parse_ts(raw) -> datetime | None:
+    """A timestamp from PostgREST (or a datetime) as an aware datetime, None when unknown."""
+    if not raw:
+        return None
+    if isinstance(raw, datetime):
+        dt = raw
+    else:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _memo_get(memo: dict, key, compute):
+    """One lookup per request: a paged list re-runs the query builder for each page, and
+    the lookups behind it (buyers, groups, search matches) must not repeat per page."""
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
+
+
+def _buyer_facts(db, tenant_id: str, lead_ids: list[str] | None = None) -> dict:
+    """Who has bought, from the won deals and the converted / booked marks.
+
+    BUYER = converted_at or booked_at set, or at least one won deal.
+    Returns {"buyers": set of lead ids,
+             "per_lead": {lead_id: {won_count, spent_paise, last_purchase_at}}}.
+    last_purchase_at = latest of the won deals' won_at, converted_at, booked_at (aware datetime).
+    lead_ids limits the lookup to those leads; None reads the whole tenant."""
+    per_lead: dict[str, dict] = {}
+    milestone_buyers: set[str] = set()
+
+    def entry(lead_id: str) -> dict:
+        return per_lead.setdefault(lead_id, {"won_count": 0, "spent_paise": 0, "last_purchase_at": None})
+
+    def note_time(lead_id: str, when: datetime | None) -> None:
+        if when is not None:
+            current = entry(lead_id)["last_purchase_at"]
+            if current is None or when > current:
+                entry(lead_id)["last_purchase_at"] = when
+
+    for scope in _in_scopes(lead_ids):
+        def won_deals(scope=scope):
+            q = db.table("deals").select("id,lead_id,total_paise,won_at").eq("tenant_id", tenant_id).eq("stage", "won")
+            return q.in_("lead_id", scope) if scope is not None else q
+
+        for deal in _fetch_all(won_deals):
+            lead_id = deal.get("lead_id")
+            if not lead_id:
+                continue
+            fact = entry(lead_id)
+            fact["won_count"] += 1
+            fact["spent_paise"] += int(deal.get("total_paise") or 0)
+            note_time(lead_id, _parse_ts(deal.get("won_at")))
+
+        for column in ("converted_at", "booked_at"):
+            def marked(scope=scope, column=column):
+                q = db.table("leads").select(f"id,{column}").eq("tenant_id", tenant_id).not_.is_(column, "null")
+                return q.in_("id", scope) if scope is not None else q
+
+            for lead in _fetch_all(marked):
+                milestone_buyers.add(lead["id"])
+                note_time(lead["id"], _parse_ts(lead.get(column)))
+
+    buyers = milestone_buyers | {lid for lid, fact in per_lead.items() if fact["won_count"] > 0}
+    return {"buyers": buyers, "per_lead": per_lead}
+
+
+def _broadcast_history(db, tenant_id: str) -> list[dict]:
+    """The broadcast_history list kept in app_settings (see get_broadcast_history)."""
+    try:
+        row = (db.table("app_settings").select("value").eq("tenant_id", tenant_id)
+               .eq("key", "broadcast_history").maybe_single().execute())
+        raw = row.data.get("value") if row and row.data else None
+        history = json.loads(raw) if raw else []
+        return [h for h in history if isinstance(h, dict)] if isinstance(history, list) else []
+    except Exception:
+        return []
+
+
+def _broadcast_names(db, tenant_id: str, broadcast_ids: set[str]) -> dict[str, str]:
+    """broadcast id -> template name, from broadcast_history first, scheduled_broadcasts after."""
+    names: dict[str, str] = {}
+    for h in _broadcast_history(db, tenant_id):
+        bid = str(h.get("broadcast_id") or "")
+        if bid in broadcast_ids and h.get("template_name"):
+            names[bid] = h["template_name"]
+    missing = [b for b in broadcast_ids if b not in names]
+    for scope in _in_scopes(missing):
+        for r in _fetch_all(lambda scope=scope: db.table("scheduled_broadcasts").select("id,template_name")
+                            .eq("tenant_id", tenant_id).in_("id", scope)):
+            if r.get("template_name") and str(r["id"]) not in names:
+                names[str(r["id"])] = r["template_name"]
+    return names
+
+
+def _groups_by_lead(db, tenant_id: str, lead_ids: list[str] | None = None) -> dict[str, list[dict]]:
+    """lead id -> [{id, name}] for the customer groups it is in."""
+    members: list[dict] = []
+    for scope in _in_scopes(lead_ids):
+        def rows(scope=scope):
+            q = db.table("customer_group_members").select("group_id,lead_id").eq("tenant_id", tenant_id)
+            return q.in_("lead_id", scope) if scope is not None else q
+
+        members.extend(_fetch_all(rows, order_by=("group_id", "lead_id")))
+    group_ids = sorted({str(m["group_id"]) for m in members})
+    names: dict[str, str] = {}
+    for scope in _in_scopes(group_ids):
+        for g in _fetch_all(lambda scope=scope: db.table("customer_groups").select("id,name")
+                            .eq("tenant_id", tenant_id).in_("id", scope)):
+            names[str(g["id"])] = g["name"]
+    out: dict[str, list[dict]] = {}
+    for m in members:
+        gid = str(m["group_id"])
+        if gid in names:
+            out.setdefault(str(m["lead_id"]), []).append({"id": gid, "name": names[gid]})
+    return out
+
+
+def _group_member_ids(db, tenant_id: str, group_id: str) -> list[str]:
+    """Lead ids in a group of this tenant. Empty for a group of another tenant, or a bad id."""
+    try:
+        gid = str(UUID(group_id))
+    except ValueError:
+        return []
+    owned = (db.table("customer_groups").select("id").eq("id", gid).eq("tenant_id", tenant_id)
+             .maybe_single().execute())
+    if not (owned and owned.data):
+        return []
+    rows = _fetch_all(lambda: db.table("customer_group_members").select("lead_id")
+                      .eq("group_id", gid).eq("tenant_id", tenant_id),
+                      order_by=("lead_id",))
+    return [str(r["lead_id"]) for r in rows if r.get("lead_id")]
+
+
+def _open_broadcast_scores(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dict]:
+    """lead id -> {broadcast_id, broadcast_name, segment} from the lead's latest broadcast
+    score row that is still open (finalized_at null)."""
+    rows: list[dict] = []
+    for scope in _in_scopes(lead_ids):
+        rows.extend(_fetch_all(lambda scope=scope: db.table("broadcast_lead_scores")
+                               .select("id,lead_id,broadcast_id,segment,broadcast_sent_at")
+                               .eq("tenant_id", tenant_id).is_("finalized_at", "null").in_("lead_id", scope)))
+    latest: dict[str, dict] = {}
+    for r in rows:
+        lead_id = r.get("lead_id")
+        if not lead_id:
+            continue
+        sent = _parse_ts(r.get("broadcast_sent_at")) or _MIN_DT
+        current = latest.get(lead_id)
+        if current is None or sent > (_parse_ts(current.get("broadcast_sent_at")) or _MIN_DT):
+            latest[lead_id] = r
+    names = _broadcast_names(db, tenant_id, {str(r["broadcast_id"]) for r in latest.values() if r.get("broadcast_id")})
+    out = {}
+    for lead_id, r in latest.items():
+        bid = str(r["broadcast_id"]) if r.get("broadcast_id") else None
+        out[lead_id] = {"broadcast_id": bid, "broadcast_name": names.get(bid) if bid else None,
+                        "segment": r.get("segment")}
+    return out
+
+
+def _latest_iso(*candidates) -> str | None:
+    """The latest of several timestamps, as the string it was given as."""
+    best: tuple[datetime, str] | None = None
+    for raw in candidates:
+        dt = _parse_ts(raw)
+        if dt is not None and (best is None or dt > best[0]):
+            best = (dt, raw if isinstance(raw, str) else dt.isoformat())
+    return best[1] if best else None
+
+
+def _campaign_ids_matching(db, tenant_id: str, term: str) -> list[str]:
+    """Ad campaigns whose name contains the term, plus their placeholder rows."""
+    from app.services.ad_performance import campaign_ids_with_placeholders
+
+    campaigns = _fetch_all(lambda: db.table("ad_campaigns").select("id").eq("tenant_id", tenant_id)
+                           .ilike("campaign_name", f"%{term}%"))
+    ids: list[str] = []
+    for c in campaigns:
+        ids.extend(campaign_ids_with_placeholders(db, tenant_id, str(c["id"])))
+    return list(dict.fromkeys(ids))
+
+
+def _broadcast_lead_ids_matching(db, tenant_id: str, term: str) -> list[str]:
+    """Leads that were sent a broadcast whose template name contains the term (capped)."""
+    needle = term.lower()
+    broadcast_ids = {
+        str(h["broadcast_id"]) for h in _broadcast_history(db, tenant_id)
+        if h.get("broadcast_id") and needle in str(h.get("template_name") or "").lower()
+    }
+    for r in _fetch_all(lambda: db.table("scheduled_broadcasts").select("id,template_name").eq("tenant_id", tenant_id)):
+        if needle in str(r.get("template_name") or "").lower():
+            broadcast_ids.add(str(r["id"]))
+    lead_ids: list[str] = []
+    seen: set[str] = set()
+    for scope in _in_scopes(sorted(broadcast_ids)):
+        for r in _fetch_all(lambda scope=scope: db.table("broadcast_recipients").select("lead_id")
+                            .eq("tenant_id", tenant_id).eq("send_status", "sent").in_("broadcast_id", scope)):
+            lead_id = r.get("lead_id")
+            if lead_id and lead_id not in seen:
+                seen.add(lead_id)
+                lead_ids.append(lead_id)
+                if len(lead_ids) >= _SEARCH_BROADCAST_CAP:
+                    return lead_ids
+    return lead_ids
+
+
+def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None,
+                          memo: dict | None = None, opted_out_only: bool = False):
+    """Leads matching the Segments filters, or None when nothing can match.
+
+    memo: pass one dict per request when the same filters are run again (paging); it keeps
+    the lookups from being repeated. opted_out_only: the said-stop people instead of the
+    rest (same filters otherwise)."""
     tenant_id = ctx["tenant_id"]
+    memo = {} if memo is None else memo
     # NULL-safe "IS NOT TRUE": a bare .neq("col", True) compiles to `col <> true`,
     # which SQL evaluates to NULL (row excluded) whenever the column is NULL rather
     # than explicitly false. Both columns were added via manual ALTER outside the
@@ -114,9 +362,12 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     # which never applied this filter in the first place.
     query = (db.table("leads").select(columns, count=count)
              .eq("tenant_id", tenant_id)
-             .is_("deleted_at", "null")
-             .or_("opted_out.is.null,opted_out.eq.false")
-             .or_("whatsapp_undeliverable.is.null,whatsapp_undeliverable.eq.false"))
+             .is_("deleted_at", "null"))
+    if opted_out_only:
+        query = query.eq("opted_out", True)
+    else:
+        query = query.or_("opted_out.is.null,opted_out.eq.false")
+    query = query.or_("whatsapp_undeliverable.is.null,whatsapp_undeliverable.eq.false")
     if f.date_from:
         try:
             date.fromisoformat(f.date_from)
@@ -136,14 +387,43 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     # match — hence a contains match on both sides rather than a prefix one.
     search_term = _sanitize_search(f.search)
     if search_term:
-        query = query.or_(f"name.ilike.*{search_term}*,phone.ilike.*{search_term}*")
+        # One OR across everything a person can be found by: name, phone, the ad they came
+        # from, the ad campaign, and the broadcasts they were sent.
+        clauses = [f"name.ilike.*{search_term}*", f"phone.ilike.*{search_term}*", f"ad_name.ilike.*{search_term}*"]
+        campaign_ids = _memo_get(memo, ("search-campaigns", search_term),
+                                 lambda: _campaign_ids_matching(db, tenant_id, search_term))
+        if campaign_ids:
+            clauses.append(f"ad_campaign_id.in.({','.join(campaign_ids)})")
+        broadcast_lead_ids = _memo_get(memo, ("search-broadcasts", search_term),
+                                       lambda: _broadcast_lead_ids_matching(db, tenant_id, search_term))
+        if broadcast_lead_ids:
+            clauses.append(f"id.in.({','.join(broadcast_lead_ids)})")
+        query = query.or_(",".join(clauses))
     if ctx.get("role") == "caller" and ctx.get("caller_id"):
         query = query.eq("assigned_to", ctx["caller_id"])
     elif f.assigned_to:
         if f.assigned_to == "unassigned":
             query = query.is_("assigned_to", "null")
+        elif f.assigned_to == "ai_agent":
+            # Nobody holds the lead and the AI has not been switched off for it.
+            query = query.is_("assigned_to", "null").or_("ai_enabled.is.null,ai_enabled.eq.true")
         else:
             query = query.eq("assigned_to", f.assigned_to)
+
+    if f.buyer is not None:
+        buyers = _memo_get(memo, "buyers", lambda: _buyer_facts(db, tenant_id)["buyers"])
+        if f.buyer:
+            if not buyers:
+                return None
+            query = query.in_("id", list(buyers))
+        elif buyers:
+            query = query.not_.in_("id", list(buyers))
+
+    if f.group_id:
+        group_lead_ids = _memo_get(memo, ("group", f.group_id), lambda: _group_member_ids(db, tenant_id, f.group_id))
+        if not group_lead_ids:
+            return None
+        query = query.in_("id", group_lead_ids)
 
     # Medium / campaign / broadcast filters
     if f.source_filter == "inbound":
@@ -175,8 +455,7 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     return query
 
 
-@router.get("/", response_model=PaginatedResponse)
-async def list_leads(
+def _lead_filters(
     segment: str | None = Query(None, pattern="^[ABCD]$"),
     assigned_to: str | None = Query(None),
     source_filter: str | None = Query(None),
@@ -186,18 +465,47 @@ async def list_leads(
     date_to: str | None = Query(None),
     search: str | None = Query(None, max_length=100),
     reply_window: str | None = Query(None, pattern="^(open|closed)$"),
+    buyer: bool | None = Query(None),
+    group_id: str | None = Query(None, max_length=64),
+) -> LeadFilters:
+    """The Segments filter query parameters, shared by the list, summary and export routes."""
+    return LeadFilters(
+        segment=segment, assigned_to=assigned_to, source_filter=source_filter, broadcast_id=broadcast_id,
+        ad_campaign_id=ad_campaign_id, date_from=date_from, date_to=date_to, search=search,
+        reply_window=reply_window, buyer=buyer, group_id=group_id,
+    )
+
+
+def _customer_fields(db, tenant_id: str, leads_data: list[dict]) -> None:
+    """Adds is_buyer, spent_paise, last_activity_at, groups and broadcast_score to each lead.
+    Batched per page: no query per lead. Expects `last_inbound_at` already set."""
+    lead_ids = [l["id"] for l in leads_data]
+    facts = _buyer_facts(db, tenant_id, lead_ids=lead_ids)
+    groups = _groups_by_lead(db, tenant_id, lead_ids=lead_ids)
+    scores = _open_broadcast_scores(db, tenant_id, lead_ids)
+    for lead in leads_data:
+        lead_id = lead["id"]
+        fact = facts["per_lead"].get(lead_id) or {}
+        last_purchase = fact.get("last_purchase_at")
+        lead["is_buyer"] = lead_id in facts["buyers"]
+        lead["spent_paise"] = int(fact.get("spent_paise") or 0)
+        lead["last_activity_at"] = _latest_iso(lead.get("last_inbound_at"), last_purchase) or lead.get("created_at")
+        lead["groups"] = groups.get(lead_id, [])
+        lead["broadcast_score"] = scores.get(lead_id)
+
+
+@router.get("/", response_model=PaginatedResponse)
+async def list_leads(
     sort: str | None = Query(None, pattern="^(newest|oldest|urgent)$"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
+    filters: LeadFilters = Depends(_lead_filters),
     ctx: dict = Depends(require_leads_view),
 ):
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     offset = (page - 1) * limit
-    filters = LeadFilters(
-        segment=segment, assigned_to=assigned_to, source_filter=source_filter, broadcast_id=broadcast_id,
-        ad_campaign_id=ad_campaign_id, date_from=date_from, date_to=date_to, search=search, reply_window=reply_window,
-    )
+    source_filter, broadcast_id = filters.source_filter, filters.broadcast_id
     query = _filtered_leads_query(db, ctx, filters, count="exact")
     if query is None:
         return PaginatedResponse(data=[], total=0, page=page, limit=limit)
@@ -249,6 +557,8 @@ async def list_leads(
             lead["last_inbound_at"] = last_inbound_by_lead.get(lead["id"])
             if lead["id"] in br_time_by_lead:
                 lead["broadcast_sent_at"] = br_time_by_lead[lead["id"]]
+
+        _customer_fields(db, tenant_id, leads_data)
 
     return PaginatedResponse(
         data=leads_data,
@@ -575,31 +885,116 @@ async def bulk_assign(
             
     return {"success": True, "count": len(leads)}
 
+def _matching_rows(db, ctx: dict, f: LeadFilters, columns: str, memo: dict, opted_out_only: bool = False) -> list[dict]:
+    """Every lead row the filters match, paged. [] when nothing can match."""
+    def build():
+        return _filtered_leads_query(db, ctx, f, columns=columns, memo=memo, opted_out_only=opted_out_only)
+
+    if build() is None:
+        return []
+    return _fetch_all(build)
+
+
+@router.get("/summary")
+async def leads_summary(f: LeadFilters = Depends(_lead_filters), ctx: dict = Depends(require_leads_view)):
+    """Headline numbers for the Customers page, over the leads these filters match.
+    Declared before the /{lead_id} routes so "summary" is not read as an id."""
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    memo: dict = {}
+    ids = {r["id"] for r in _matching_rows(db, ctx, f, "id", memo)}
+
+    said_stop = 0
+    stop_query = _filtered_leads_query(db, ctx, f, columns="id", count="exact", memo=memo, opted_out_only=True)
+    if stop_query is not None:
+        said_stop = stop_query.range(0, 0).execute().count or 0
+
+    buyers = repeat_buyers = not_back_90 = spent_paise = 0
+    if ids:
+        facts = _buyer_facts(db, tenant_id)
+        quiet_since = datetime.now(timezone.utc) - timedelta(days=BUYER_QUIET_DAYS)
+        for lead_id in ids:
+            if lead_id not in facts["buyers"]:
+                continue
+            buyers += 1
+            fact = facts["per_lead"].get(lead_id) or {}
+            if fact.get("won_count", 0) >= 2:
+                repeat_buyers += 1
+            spent_paise += fact.get("spent_paise", 0)
+            last_purchase = fact.get("last_purchase_at")
+            if last_purchase is not None and last_purchase < quiet_since:
+                not_back_90 += 1
+
+    return {
+        "people": len(ids),
+        "leads": len(ids) - buyers,
+        "buyers": buyers,
+        "repeat_buyers": repeat_buyers,
+        "spent_paise": spent_paise,
+        "not_back_90": not_back_90,
+        "said_stop": said_stop,
+    }
+
+
+INTEREST_LABELS = {"A": "Hot", "B": "Warm", "C": "Cold", "D": "Not interested"}
+
+
 @router.get("/export")
 async def export_leads(
-    segment: str | None = Query(None, pattern="^[ABCD]$"),
+    f: LeadFilters = Depends(_lead_filters),
     tenant_id: str = Depends(get_owner_tenant_id),
 ):
     db = get_supabase()
-    query = db.table("leads").select("id,phone,name,source,score,segment,notes,created_at").eq("tenant_id", tenant_id).is_("deleted_at", "null").neq("opted_out", True).neq("whatsapp_undeliverable", True)
-    if segment:
-        query = query.eq("segment", segment)
-    result = query.order("segment").order("last_inbound_at", desc=True, nullsfirst=False).order("created_at", desc=True).execute()
-    leads = result.data or []
+    ctx = {"tenant_id": tenant_id, "role": "owner"}
+    leads = _matching_rows(db, ctx, f, "id,phone,name,source,ad_name,segment,assigned_to,created_at,last_inbound_at", {})
 
     # Exclude leads that appear only in failed broadcasts (never successfully sent to)
-    any_br = db.table("broadcast_recipients").select("lead_id").eq("tenant_id", tenant_id).execute()
-    any_br_ids = {r["lead_id"] for r in (any_br.data or []) if r.get("lead_id")}
-    sent_br = db.table("broadcast_recipients").select("lead_id").eq("tenant_id", tenant_id).eq("send_status", "sent").execute()
-    sent_br_ids = {r["lead_id"] for r in (sent_br.data or []) if r.get("lead_id")}
+    any_br_ids: set[str] = set()
+    sent_br_ids: set[str] = set()
+    lead_ids = [l["id"] for l in leads]
+    for scope in _in_scopes(lead_ids):
+        for r in _fetch_all(lambda scope=scope: db.table("broadcast_recipients").select("lead_id,send_status")
+                            .eq("tenant_id", tenant_id).in_("lead_id", scope)):
+            if r.get("lead_id"):
+                any_br_ids.add(r["lead_id"])
+                if r.get("send_status") == "sent":
+                    sent_br_ids.add(r["lead_id"])
     leads = [l for l in leads if l["id"] not in any_br_ids or l["id"] in sent_br_ids]
 
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id","phone","name","source","score","segment","notes","created_at"])
-    writer.writeheader()
-    writer.writerows(leads)
+    facts = _buyer_facts(db, tenant_id)
+    groups = _groups_by_lead(db, tenant_id)
+    caller_ids = sorted({str(l["assigned_to"]) for l in leads if l.get("assigned_to")})
+    caller_names: dict[str, str] = {}
+    for scope in _in_scopes(caller_ids):
+        for c in _fetch_all(lambda scope=scope: db.table("callers").select("id,name").eq("tenant_id", tenant_id).in_("id", scope)):
+            caller_names[str(c["id"])] = c.get("name") or ""
 
-    filename = f"leads_{segment or 'all'}.csv"
+    fieldnames = ["Name", "Phone", "Status", "Interest", "Came from", "Ad", "Assigned to",
+                  "Spent", "Groups", "Added", "Last message"]
+    rows = []
+    for l in leads:
+        lead_id = l["id"]
+        spent = (facts["per_lead"].get(lead_id) or {}).get("spent_paise", 0)
+        rows.append({
+            "Name": l.get("name") or "",
+            "Phone": l.get("phone") or "",
+            "Status": "Buyer" if lead_id in facts["buyers"] else "Lead",
+            "Interest": INTEREST_LABELS.get(l.get("segment"), ""),
+            "Came from": l.get("source") or "",
+            "Ad": l.get("ad_name") or "",
+            "Assigned to": caller_names.get(str(l["assigned_to"]), "") if l.get("assigned_to") else "",
+            "Spent": f"{spent / 100:.2f}",
+            "Groups": "; ".join(g["name"] for g in groups.get(lead_id, [])),
+            "Added": l.get("created_at") or "",
+            "Last message": l.get("last_inbound_at") or "",
+        })
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+
+    filename = f"leads_{f.segment or 'all'}.csv"
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode()),
         media_type="text/csv",

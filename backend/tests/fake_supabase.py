@@ -52,6 +52,30 @@ def _kb_cascade(db: "FakeSupabase", table: str, ids: set) -> None:
             _kb_cascade(db, child, gone)
 
 
+def _split_top_level(filter_string: str) -> list[str]:
+    """Splits an or=(...) string on commas that are not inside parentheses (for `in.(a,b)`)."""
+    parts, depth, cur = [], 0, ""
+    for ch in filter_string:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    return parts
+
+
+def _like_regex(pattern: str):
+    """A compiled case-insensitive regex for a PostgREST like/ilike pattern (% and * are wildcards)."""
+    import re
+    body = "".join(".*" if ch in "%*" else "." if ch == "_" else re.escape(ch) for ch in pattern)
+    return re.compile("^" + body + "$", re.S | re.I)
+
+
 class FakeSupabase:
     def __init__(self):
         self.tables: dict[str, list[dict]] = {}
@@ -283,6 +307,12 @@ class _Query:
         self._single = True
         return self
 
+    def ilike(self, column, pattern: str):
+        """PostgREST `ilike`: % or * is any run of characters, case-insensitive."""
+        regex = _like_regex(pattern)
+        return self._add_filter(lambda r: r.get(column) is not None and bool(regex.match(str(r.get(column)))),
+                                null_matches_neither=column)
+
     def like(self, column, pattern: str):
         """PostgREST `like`: % is any run of characters, _ is one character (case-sensitive)."""
         import re
@@ -298,12 +328,18 @@ class _Query:
         """Minimal PostgREST `or_` support: "col.op.val,col2.op2.val2", OR'd together.
         Mirrors real Postgres null semantics: `neq`/`eq` never match a NULL column --
         that's why a conditional update needs an explicit `is.null` clause alongside `neq`."""
-        clauses = [part.split(".", 2) for part in filter_string.split(",")]
+        clauses = [part.split(".", 2) for part in _split_top_level(filter_string)]
 
         def predicate(r, clauses=clauses):
             for column, op, value in clauses:
                 actual = r.get(column)
-                if op == "is":
+                if op == "in":
+                    if actual is not None and str(actual) in set(value.strip("()").split(",")):
+                        return True
+                elif op == "ilike":
+                    if actual is not None and _like_regex(value).match(str(actual)):
+                        return True
+                elif op == "is":
                     if value == "null" and actual is None:
                         return True
                 elif op == "neq":

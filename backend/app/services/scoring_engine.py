@@ -327,6 +327,72 @@ def _apply_segment_lock(
     return current, new_count
 
 
+async def _update_open_broadcast_score(
+    db,
+    lead_id: str,
+    tenant_id: str | None,
+    now_iso: str,
+    message: str,
+    *,
+    rejection: bool = False,
+    lines: list[str] | None = None,
+    line_times: list[datetime | None] | None = None,
+    global_classified: str | None = None,
+) -> None:
+    """Score the lead's latest broadcast on its own.
+
+    Every broadcast restarts the lead at Cold (seeded at send, see broadcast_executor).
+    This judges only what was said since that broadcast went out, so a Hot chat about
+    silk sarees does not make the Diwali broadcast Hot. The lead's global segment is
+    untouched. Never raises: a failure here must not break global scoring.
+    """
+    try:
+        rows = (
+            db.table("broadcast_lead_scores")
+            .select("id,segment,segment_drop_count,broadcast_sent_at,arc_message_count")
+            .eq("lead_id", str(lead_id))
+            .is_("finalized_at", "null")
+            .order("broadcast_sent_at", desc=True)
+            .limit(1)
+            .execute()
+        ).data or []
+        if not rows:
+            return
+        row = rows[0]
+        if rejection:
+            segment, drop = "D", 0
+        else:
+            lines = lines or []
+            line_times = line_times or []
+            sent_at = _parse_dt(row.get("broadcast_sent_at"))
+            since = [
+                line for line, t in zip(lines, line_times)
+                if sent_at is None or (t is not None and t >= sent_at)
+            ]
+            current = row.get("segment") or "C"
+            if since and len(since) == len(lines) and global_classified:
+                # Nothing before the broadcast in the window: same conversation, same answer.
+                proposed = global_classified
+            else:
+                conversation = "\n".join(since) if since else f"User: {message}"
+                proposed, _ = await _classify_segment(conversation, tenant_id, fallback=current)
+            segment, drop = _apply_segment_lock(
+                proposed, current, row.get("segment_drop_count") or 0, big_drop=False
+            )
+        score = {"A": 9, "B": 6, "C": 2, "D": 0}.get(segment, 2)
+        db.table("broadcast_lead_scores").update({
+            "segment": segment,
+            "score": score,
+            "arc_score": score,
+            "segment_drop_count": drop,
+            "arc_message_count": (row.get("arc_message_count") or 0) + 1,
+            "last_inbound_at": now_iso,
+            "updated_at": now_iso,
+        }).eq("id", row["id"]).execute()
+    except Exception as e:
+        logger.warning(f"Lead {lead_id}: broadcast score update failed: {e}")
+
+
 def _parse_dt(raw: str | None) -> datetime | None:
     if not raw:
         return None
@@ -466,6 +532,7 @@ async def compute_score(
             "opted_out_at": now_iso,
         }
         db.table("leads").update(rejection_payload).eq("id", str(lead_id)).execute()
+        await _update_open_broadcast_score(db, lead_id, tenant_id, now_iso, message, rejection=True)
 
         logger.info(f"Lead {lead_id} rejection detected — immediate D")
         return {
@@ -530,6 +597,7 @@ async def compute_score(
             escalation_windows = []
 
         lines = []
+        line_times: list[datetime | None] = []  # created_at per line, for the per-broadcast score
         for m in reversed(msgs):
             role = "Bot" if m.get("direction") == "outbound" else "User"
             content = (m.get("content") or "").strip()[:200]
@@ -549,12 +617,15 @@ async def compute_score(
                     # Drop the ad's own words: an ad that reads "I want detailed guidance"
                     # was otherwise taken as the lead's stated need, even with a marker.
                     lines.append(f"{role}: {_AD_PREFILL_MARKER}")
+                    line_times.append(created)
                     continue
                 prefix = f"{_ESCALATION_MARKER} " if is_escalation_followup else ""
                 lines.append(f"{role}: {prefix}{content}")
+                line_times.append(created)
         conversation = "\n".join(lines) if lines else f"User: {message}"
     except Exception:
         conversation = f"User: {message}"
+        lines, line_times = [], []
 
     classified_segment, classification_reason = await _classify_segment(conversation, tenant_id, fallback=current_seg)
     arc_updated = True
@@ -583,6 +654,11 @@ async def compute_score(
     logger.info(
         f"Lead {lead_id} classified: {classified_segment} → score {final_score} "
         f"({final_segment}) [reason={classification_reason}]"
+    )
+
+    await _update_open_broadcast_score(
+        db, lead_id, tenant_id, now_iso, message,
+        lines=lines, line_times=line_times, global_classified=classified_segment,
     )
 
     return {

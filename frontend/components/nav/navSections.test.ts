@@ -47,7 +47,7 @@ const noAccess: NavAccess = {
 const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Analytics", href: "/dashboard/analytics" },
   { label: "Conversations", href: "/dashboard/conversations" },
-  { label: "Segments", href: "/dashboard/leads" },
+  { label: "Customers", href: "/dashboard/leads" },
   { label: "Inbound Leads", href: "/dashboard/inbound-leads" },
   { label: "Meta Ads", href: "/dashboard/meta-ads" },
   { label: "Auto-Messages", href: "/dashboard/auto-messages" },
