@@ -16,6 +16,8 @@ export interface LeadFilters {
   /** Only people who have bought (sent as buyer=true). */
   buyer?: boolean;
   group_id?: string;
+  /** The clickable KPI cards: "repeat" = bought 2+ times, "quiet" = bought before, not in 90 days. */
+  bought?: "repeat" | "quiet";
   /** A caller id, "unassigned", or "ai_agent" (nobody assigned; the AI agent handles it). */
   assigned_to?: string;
   source_filter?: string;
@@ -32,6 +34,7 @@ function leadFilterQuery(params: LeadFilters): URLSearchParams {
   if (params.segment) qs.set("segment", params.segment);
   if (params.buyer) qs.set("buyer", "true");
   if (params.group_id) qs.set("group_id", params.group_id);
+  if (params.bought) qs.set("bought", params.bought);
   if (params.search) qs.set("search", params.search);
   if (params.assigned_to) qs.set("assigned_to", params.assigned_to);
   if (params.source_filter) qs.set("source_filter", params.source_filter);

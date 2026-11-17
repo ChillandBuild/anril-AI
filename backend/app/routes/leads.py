@@ -96,6 +96,9 @@ class LeadFilters(BaseModel):
     buyer: bool | None = None
     # A Customers group (customer_groups.id): only its members.
     group_id: str | None = None
+    # The clickable KPI cards: "repeat" = 2+ won deals, "quiet" = bought before but not
+    # in the last BUYER_QUIET_DAYS days.
+    bought: str | None = Field(None, pattern="^(repeat|quiet)$")
 
 
 class CustomBroadcastRequest(LeadFilters):
@@ -393,6 +396,13 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     if f.buyer is not None:
         # leads.is_buyer is kept by triggers (migration 279): paid, booked or a won deal.
         query = query.eq("is_buyer", f.buyer)
+    # Computed fields won_deal_count / last_purchase_at (migration 280), so the same rule
+    # as the summary cards runs inside the database.
+    if f.bought == "repeat":
+        query = query.gte("won_deal_count", 2)
+    elif f.bought == "quiet":
+        quiet_since = (datetime.now(timezone.utc) - timedelta(days=BUYER_QUIET_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        query = query.eq("is_buyer", True).lt("last_purchase_at", quiet_since)
 
     # Medium / campaign / broadcast filters
     if f.source_filter == "inbound":
@@ -429,12 +439,13 @@ def _lead_filters(
     reply_window: str | None = Query(None, pattern="^(open|closed)$"),
     buyer: bool | None = Query(None),
     group_id: str | None = Query(None, max_length=64),
+    bought: str | None = Query(None, pattern="^(repeat|quiet)$"),
 ) -> LeadFilters:
     """The Segments filter query parameters, shared by the list, summary and export routes."""
     return LeadFilters(
         segment=segment, assigned_to=assigned_to, source_filter=source_filter, broadcast_id=broadcast_id,
         ad_campaign_id=ad_campaign_id, date_from=date_from, date_to=date_to, search=search,
-        reply_window=reply_window, buyer=buyer, group_id=group_id,
+        reply_window=reply_window, buyer=buyer, group_id=group_id, bought=bought,
     )
 
 

@@ -2,7 +2,7 @@
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { api, Lead, LeadFilters, Caller, CustomerGroup, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star } from "lucide-react";
+import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
@@ -189,11 +189,17 @@ const STAT_TONES = {
   stop: "text-[#dc2626]",
 } as const;
 
-function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick }: {
-  emoji: string; label: string; value: string; hint: string; tone?: keyof typeof STAT_TONES; onClick?: () => void;
+function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, active, title }: {
+  emoji: string; label: string; value: string; hint: string; tone?: keyof typeof STAT_TONES;
+  onClick?: () => void;
+  /** A filter card that is on: the list below shows only these people. */
+  active?: boolean;
+  title?: string;
 }) {
-  const className =
-    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 text-left";
+  const className = cn(
+    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border bg-white px-5 py-4 text-left",
+    active ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-[#e2e8f0]",
+  );
   const body = (
     <>
       <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#334155]">
@@ -206,7 +212,13 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick }: 
   );
   if (!onClick) return <div className={className}>{body}</div>;
   return (
-    <button type="button" onClick={onClick} className={cn(className, "transition-all hover:border-slate-300")}>
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={cn(className, "transition-all", !active && "hover:border-slate-300")}
+    >
       {body}
     </button>
   );
@@ -278,11 +290,20 @@ export function LeadsClient() {
   const rawTab = searchParams.get("tab");
   const headerView: HeaderView =
     rawTab === "groups" || rawTab === "said-stop" || rawTab === "feedback" ? rawTab : "people";
-  const pageView: "leads" | "reengagement" = rawTab === "reengagement" ? "reengagement" : "leads";
+  // Follow-ups is a header tab (old links say tab=reengagement).
+  const pageView: "leads" | "reengagement" = rawTab === "follow-ups" || rawTab === "reengagement" ? "reengagement" : "leads";
   const listEnabled = headerView === "people" && pageView === "leads";
   const dateFrom = searchParams.get("date_from") ?? undefined;
   const dateTo = searchParams.get("date_to") ?? undefined;
   const groupId = searchParams.get("group_id") || undefined;
+  // Repeat buyers / Not back in 90 days cards, as a filter (?bought=repeat|quiet).
+  const rawBought = searchParams.get("bought");
+  const bought = rawBought === "repeat" || rawBought === "quiet" ? rawBought : undefined;
+  const toggleBought = (value: "repeat" | "quiet") =>
+    replaceLeadsUrl((params) => {
+      if (bought === value) params.delete("bought");
+      else params.set("bought", value);
+    });
   // The status lives in the URL (?segment=A-D, or ?buyer=1), so links like the dashboard's Hot card still land on it.
   const requestedSegment = searchParams.get("segment");
   const status: StatusFilter = (SEGMENTS as readonly string[]).includes(requestedSegment ?? "")
@@ -318,10 +339,6 @@ export function LeadsClient() {
     router.replace(`/dashboard/leads?${params.toString()}`, { scroll: false });
   }
 
-  const setPageView = (val: "leads" | "reengagement") => {
-    replaceLeadsUrl((params) => params.set("tab", val));
-  };
-
   // Both dates in ONE url update: two back-to-back router.replace calls each start
   // from the same old url, so the second would silently drop the first date.
   const setDates = (from: string, to: string) => {
@@ -347,6 +364,7 @@ export function LeadsClient() {
     segment: segmentFilter,
     buyer: status === "BUYERS" ? true : undefined,
     group_id: groupId,
+    bought,
     search: search || undefined,
     source_filter: sourceFilter !== "ALL" ? sourceFilter.toLowerCase() : undefined,
     ad_campaign_id: sourceFilter === "META_ADS" && selectedCampaignId ? selectedCampaignId : undefined,
@@ -372,7 +390,7 @@ export function LeadsClient() {
   const leads = pageData?.data ?? [];
   const totalLeads = pageData?.total ?? 0;
   const hasFilters = !!(
-    search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId
+    search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId || bought
   );
   const groupName = groups.find((g) => g.id === groupId)?.name ?? "Group";
   const statusValue = status === "ALL" ? "all" : status === "BUYERS" ? "buyers" : status;
@@ -394,7 +412,7 @@ export function LeadsClient() {
   useEffect(() => {
     setPage(1);
     setSelectedIds(new Set());
-  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort, status, groupId]);
+  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort, status, groupId, bought]);
 
   // Search debounce effect
   useEffect(() => {
@@ -619,7 +637,7 @@ export function LeadsClient() {
     setAssigned(undefined);
     setReplyWindow(undefined);
     replaceLeadsUrl((params) => {
-      for (const key of ["date_from", "date_to", "segment", "buyer", "group_id"]) params.delete(key);
+      for (const key of ["date_from", "date_to", "segment", "buyer", "group_id", "bought"]) params.delete(key);
     });
   }
 
@@ -637,24 +655,6 @@ export function LeadsClient() {
     if (dateFrom === thirtyDaysAgoStr && dateTo === todayStr) return "30d";
     return "custom";
   }
-
-  const viewToggle = (
-    <div className="flex w-max shrink-0 gap-1 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-1">
-      {([["leads", "New leads"], ["reengagement", "Re-engagement"]] as const).map(([view, label]) => (
-        <button
-          key={view}
-          type="button"
-          onClick={() => setPageView(view)}
-          className={cn(
-            "rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all",
-            pageView === view ? "bg-white text-[#0A1528] shadow-sm" : "text-[#64748b] hover:text-[#0A1528]"
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <div className="min-w-0">
@@ -699,7 +699,6 @@ export function LeadsClient() {
 
       {headerView === "people" && pageView === "reengagement" && (
         <div className="space-y-6">
-          {viewToggle}
           <div className="flex gap-2">
             <button
               onClick={() => setReengageTrigger("inbound")}
@@ -756,6 +755,9 @@ export function LeadsClient() {
             <LeadStatCard
               emoji="🔁"
               label="Repeat buyers"
+              active={bought === "repeat"}
+              onClick={() => toggleBought("repeat")}
+              title={bought === "repeat" ? "Showing repeat buyers. Click to show everyone" : "Show only repeat buyers"}
               value={fmtCount(summary?.repeat_buyers)}
               hint="bought 2+ times"
             />
@@ -768,6 +770,9 @@ export function LeadsClient() {
             <LeadStatCard
               emoji="😴"
               label="Not back in 90 days"
+              active={bought === "quiet"}
+              onClick={() => toggleBought("quiet")}
+              title={bought === "quiet" ? "Showing buyers not back in 90 days. Click to show everyone" : "Show only buyers not back in 90 days"}
               tone="warn"
               value={fmtCount(summary?.not_back_90)}
               hint="bought before, quiet since"
@@ -787,10 +792,8 @@ export function LeadsClient() {
             {/* Filter bar: one line. It wraps (never overlaps) only when the card is too narrow for
                 every control, e.g. a small screen with the sidebar open and long filter values. */}
             <div className="flex flex-wrap items-center gap-1.5 p-4 border-b border-[#e2e8f0]">
-              {viewToggle}
-
               {/* Search input */}
-              <div className="relative min-w-[120px] flex-1">
+              <div className="relative min-w-[200px] flex-1">
                 <Search size={14} className="absolute left-3 top-2.5 text-[#64748b]" />
                 <input
                   type="text"
@@ -1205,14 +1208,18 @@ export function LeadsClient() {
                               setReplyWindow("open");
                             }
                           }}
-                          className="flex items-center gap-1.5 uppercase tracking-wider text-primary hover:opacity-70"
+                          title={sort === "urgent" ? "Most urgent first. Click to undo" : "Show the most urgent first"}
+                          aria-pressed={sort === "urgent"}
+                          className="flex items-center gap-1 whitespace-nowrap uppercase tracking-wider text-primary hover:opacity-70"
                         >
-                          Reply window ↑
-                          {sort === "urgent" && (
-                            <span className="inline-block bg-primary/10 text-primary text-[9px] rounded px-1.5 py-0.5 font-semibold">
-                              Most urgent first
-                            </span>
-                          )}
+                          Reply window
+                          {/* The arrow turns over when "most urgent first" is on. */}
+                          <ArrowUp
+                            size={12}
+                            strokeWidth={2.5}
+                            aria-hidden
+                            className={cn("transition-transform duration-300", sort === "urgent" && "rotate-180")}
+                          />
                         </button>
                       </th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]">

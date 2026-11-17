@@ -255,11 +255,17 @@ class _Query:
 
     def _value(self, r: dict, column: str):
         """A row's column, plus the database-side values the real schema derives
-        (migration 279): leads.is_buyer (kept by triggers there) and the computed field
-        leads.sent_broadcast_names."""
+        (migrations 279, 280): leads.is_buyer (kept by triggers there) and the computed
+        fields leads.sent_broadcast_names, won_deal_count and last_purchase_at."""
         if self.name == "leads" and column == "is_buyer" and column not in r:
             return bool(r.get("converted_at") or r.get("booked_at") or any(
                 d.get("lead_id") == r.get("id") and d.get("stage") == "won" for d in self.db.rows("deals")))
+        if self.name == "leads" and column in ("won_deal_count", "last_purchase_at"):
+            won = [d for d in self.db.rows("deals") if d.get("lead_id") == r.get("id") and d.get("stage") == "won"]
+            if column == "won_deal_count":
+                return len(won)
+            stamps = [str(t) for t in (r.get("converted_at"), r.get("booked_at"), *(d.get("won_at") for d in won)) if t]
+            return max(stamps) if stamps else None
         if self.name == "leads" and column == "sent_broadcast_names":
             names = {b.get("template_name") for br in self.db.rows("broadcast_recipients")
                      if br.get("lead_id") == r.get("id") and br.get("send_status") == "sent"
@@ -281,7 +287,7 @@ class _Query:
 
     def lt(self, column, value):
         def compare(r, col=column, v=value):
-            actual = r.get(col)
+            actual = self._value(r, col)
             if actual is None:
                 return False
             # Numeric comparison when both are numbers (but not booleans)
@@ -293,7 +299,7 @@ class _Query:
 
     def gt(self, column, value):
         def compare(r, col=column, v=value):
-            actual = r.get(col)
+            actual = self._value(r, col)
             if actual is None:
                 return False
             if isinstance(actual, (int, float)) and not isinstance(actual, bool) and isinstance(v, (int, float)) and not isinstance(v, bool):
@@ -304,7 +310,7 @@ class _Query:
 
     def gte(self, column, value):
         def compare(r, col=column, v=value):
-            actual = r.get(col)
+            actual = self._value(r, col)
             if actual is None:
                 return False
             # Numeric comparison when both are numbers (but not booleans)
@@ -316,7 +322,7 @@ class _Query:
 
     def lte(self, column, value):
         def compare(r, col=column, v=value):
-            actual = r.get(col)
+            actual = self._value(r, col)
             if actual is None:
                 return False
             # Numeric comparison when both are numbers (but not booleans)

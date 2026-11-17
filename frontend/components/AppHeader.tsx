@@ -128,15 +128,15 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "audit", label: "Audit Log", icon: ScrollText },
     ],
   },
-  // Customers. The inner "New leads / Re-engagement" toggle still writes
-  // tab=leads / tab=reengagement; both open All people.
+  // Customers. Old links say tab=leads (All people) or tab=reengagement (Follow-ups).
   "/dashboard/leads": {
-    aliases: { reengagement: "people", leads: "people" },
+    aliases: { reengagement: "follow-ups", leads: "people" },
     tabs: [
       { value: "people", label: "All people" },
       { value: "groups", label: "Groups" },
       { value: "said-stop", label: "Said stop" },
       { value: "feedback", label: "Feedback" },
+      { value: "follow-ups", label: "Follow-ups" },
     ],
   },
 };

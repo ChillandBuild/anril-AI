@@ -279,6 +279,18 @@ class LeadsCustomerFieldsTests(unittest.TestCase):
         self.assertEqual(ids("festive"), [U("L3")])    # sent broadcast; the failed send does not count
         self.assertEqual(ids(U("L4")), [U("L4")])         # plain name match still works
 
+    def test_repeat_and_quiet_cards_filter_the_list_and_the_summary(self):
+        # L1: two won deals, last 5 days ago (repeat, not quiet). L2: converted 200 days ago
+        # (quiet). L3: booked yesterday (neither). Same rules as the summary's card numbers.
+        ids = lambda bought: sorted(r["id"] for r in self.client.get("/api/v1/leads/", params={"bought": bought}).json()["data"])
+        self.assertEqual(ids("repeat"), [U("L1")])
+        self.assertEqual(ids("quiet"), [U("L2")])
+        summary = self.client.get("/api/v1/leads/summary", params={"bought": "repeat"}).json()
+        self.assertEqual((summary["people"], summary["repeat_buyers"]), (1, 1))
+        summary = self.client.get("/api/v1/leads/summary", params={"bought": "quiet"}).json()
+        self.assertEqual((summary["people"], summary["not_back_90"]), (1, 1))
+        self.assertEqual(self.client.get("/api/v1/leads/", params={"bought": "other"}).status_code, 422)
+
     def test_broadcast_picker_filters_in_the_database(self):
         # Source → Broadcast is an inner embed on broadcast_recipients, not an id list in the
         # URL (PostgREST refuses ~1000 ids). Another tenant's recipient row never counts.
