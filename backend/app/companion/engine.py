@@ -115,6 +115,11 @@ def handoff_line(companion: dict) -> str:
     return own or HANDOFF_LINES.get(companion.get("language") or "", HANDOFF_LINES["en"])
 
 
+def _person_today(companion: dict, person: dict):
+    """The person's own date: their app's zone -> else the character's -> else India. Never the server's."""
+    return memory_card.local_today(None, memory_card.zone_for(companion, person.get("timezone")))
+
+
 def character_model(companion: dict | None) -> str:
     """The model this character replies with (companions.model). Missing, or a model since removed
     from the list, is the default, so a reply never fails over a stale value."""
@@ -311,7 +316,7 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     if agentic:
         return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
                               memory_context, mood, tools, started, model, ov)
-    prompt = build_messages(companion, mood, kb, memory_context, history, message)
+    prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person))
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb)
@@ -351,14 +356,14 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
         offered = [t for t in offered if t is not SEARCH_KNOWLEDGE]
     if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
         ov.note("Agentic: no search tool to offer, replied as usual")
-        prompt = build_messages(companion, mood, None, memory_context, history, message)
+        prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person))
         return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
                                  started, model=model)
     search_names = {t.name for t in offered}
     # The app's own tools are offered too (search tool names win a clash). An app-tool call here is not
     # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
     app_offered = [t for t in tools if t.name not in search_names]
-    prompt = build_messages(companion, mood, None, memory_context, history, message)
+    prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person))
     prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
     llm_started = time.monotonic()
     raw, calls, wants_app = None, [], False
@@ -392,7 +397,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
             ov.note(f'Round 1: called search_memory("{query}") -> {len(hits)} hits')
         log.append({"name": call["name"], "args": call["args"], "ok": True})
     context = "\n".join(part for part in [memory_context] + found if part)
-    prompt = build_messages(companion, mood, kb, context, history, message)
+    prompt = build_messages(companion, mood, kb, context, history, message, _person_today(companion, person))
     reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
                               model=model, kb=kb)
     total = int((time.monotonic() - started) * 1000)

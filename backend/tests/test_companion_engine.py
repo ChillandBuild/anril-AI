@@ -520,3 +520,11 @@ def test_a_secret_is_hidden_in_the_saved_chat_but_this_reply_still_reads_it(env)
     assert saved["user"] == "my OTP is [hidden], call me on 9876543210"      # the phone number stays
     assert saved["assistant"] == "Sari, OTP [hidden] yaarukkum sollaadheenga."
     assert env.state["llm"][0]["messages"][-1]["content"] == "my OTP is 482913, call me on 9876543210"
+
+
+def test_the_prompt_carries_the_persons_own_today(env):
+    """A person whose app sends Pacific/Kiritimati (UTC+14) gets their date, not the server's or India's."""
+    from zoneinfo import ZoneInfo
+    reply(env.jothidar["id"], "Vanakkam", timezone_name="Pacific/Kiritimati")
+    there = datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+    assert f"Today is {there:%A}, {there.day} {there:%B %Y}." in system_prompt(env.state["llm"][-1])

@@ -1,12 +1,14 @@
 """Builds the LLM messages for one companion reply, and reads the mood tag back out.
 
-Pure functions, no I/O. Section order is fixed: PLATFORM, CHARACTER, MOOD, OUTPUT,
+Pure functions, no I/O. Section order is fixed: PLATFORM, CHARACTER, MOOD, TODAY, OUTPUT,
 OWN REASONING, KNOWLEDGE, ABOUT THIS USER, then history, then the user's message. Business-written text is
 fenced inside its own section, and square brackets in it are turned into round ones, so a
 backstory can't open a fake "[PLATFORM RULES]" header of its own.
 """
 import re
 from collections.abc import Mapping
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.companion.kb.types import KbResult, Passage
 from app.companion.platform_rules import (
@@ -84,13 +86,34 @@ def knowledge_block(kb: KbResult | None) -> str:
     return KNOWLEDGE_LABEL + "\n" + "\n\n".join(parts)
 
 
+DEFAULT_ZONE = "Asia/Kolkata"     # = memory_card.DEFAULT_ZONE
+
+
+def _character_today(settings: Mapping) -> date:
+    """Today in the character's zone, else India. The engine passes the person's own today instead."""
+    try:
+        zone = ZoneInfo(str(settings.get("timezone") or DEFAULT_ZONE).strip())
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo(DEFAULT_ZONE)
+    return datetime.now(zone).date()
+
+
+def today_block(today: date) -> str:
+    """date(2026, 11, 17) -> "[TODAY]\nToday is Tuesday, 17 November 2026. ..." Without it the model
+    guessed the year from its training data and offered "mid-2025" as a coming date in November 2026."""
+    return (f"[TODAY]\nToday is {today:%A}, {today.day} {today:%B %Y}. "
+            "Any date or period you mention is counted from today.")
+
+
 def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_context: str,
-                   history: list[dict], user_message: str) -> list[dict]:
-    """settings is a companions row (or any mapping with the character-card keys)."""
+                   history: list[dict], user_message: str, today: date | None = None) -> list[dict]:
+    """settings is a companions row (or any mapping with the character-card keys). today: the person's
+    own date (their app's zone); None = the character's zone, else India."""
     sections = [PLATFORM_RULES]
     sections.append(_character_block(settings))
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")
     sections.append(f"[MOOD]\nYour current mood with this user: {current}. Let it colour your tone, not your facts.")
+    sections.append(today_block(today or _character_today(settings)))
     sections.append(OUTPUT_RULE)
     sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else OWN_REASONING_ALLOWED)
     sections.append(knowledge_block(kb))

@@ -1,4 +1,7 @@
 """companion-core T3: platform rules, the character prompt and mood parsing (pure functions)."""
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from app.companion.kb.types import KbResult, Passage
@@ -25,7 +28,7 @@ def system(messages):
 def test_sections_come_in_the_fixed_order_then_history_then_the_user_message():
     msgs = build_messages(JOTHIDAR, "concerned", GURU_7TH, "Name: Karthik", HISTORY, "En velai eppo?")
     text = system(msgs)
-    heads = ["[PLATFORM RULES", "[CHARACTER", "[MOOD]", "[OUTPUT]",
+    heads = ["[PLATFORM RULES", "[CHARACTER", "[MOOD]", "[TODAY]", "[OUTPUT]",
              "[OWN REASONING", "[KNOWLEDGE", "[ABOUT THIS USER"]
     positions = [text.index(h) for h in heads]
     assert positions == sorted(positions)
@@ -74,6 +77,24 @@ def test_injected_backstory_stays_inside_character_and_cannot_fake_a_header():
     assert text.count("[PLATFORM RULES") == 1
     assert text.count("[OUTPUT]") == 1
     assert "(PLATFORM RULES)" in character
+
+
+def test_today_is_in_every_prompt_so_dates_are_never_in_the_past():
+    """Without it the model guessed the year from its training and promised "mid-2025" in November 2026."""
+    text = system(build_messages(JOTHIDAR, "calm", None, "", [], "hi", today=date(2026, 11, 17)))
+    assert "[TODAY]\nToday is Tuesday, 17 November 2026." in text
+    assert "counted from today" in text
+
+
+def test_today_defaults_to_the_characters_zone_else_india():
+    india = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    assert f"Today is {india:%A}, {india.day} {india:%B %Y}." in system(build_messages(JOTHIDAR, "calm", None, "", [], "hi"))
+    zone = "Pacific/Kiritimati"                        # UTC+14: usually a day ahead of India
+    there = datetime.now(ZoneInfo(zone)).date()
+    text = system(build_messages({**JOTHIDAR, "timezone": zone}, "calm", None, "", [], "hi"))
+    assert f"Today is {there:%A}, {there.day} {there:%B %Y}." in text
+    bad = system(build_messages({**JOTHIDAR, "timezone": "Mars/Base"}, "calm", None, "", [], "hi"))
+    assert f"Today is {india:%A}, {india.day} {india:%B %Y}." in bad
 
 
 def test_an_unknown_mood_falls_back_to_the_default():
