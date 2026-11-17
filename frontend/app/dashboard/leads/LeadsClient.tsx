@@ -518,7 +518,7 @@ export function LeadsClient() {
 
     return (
       <div className="space-y-1">
-        <div className="h-1 rounded-full bg-[#e2e8f0] w-40" style={{ overflow: "hidden" }}>
+        <div className="h-1 rounded-full bg-[#e2e8f0] w-24" style={{ overflow: "hidden" }}>
           <div
             className={`h-full transition-all ${
               status.isOpen ? (status.isUrgent ? "bg-orange-500" : "bg-primary") : "bg-[#e2e8f0]"
@@ -818,7 +818,7 @@ export function LeadsClient() {
                   value={selectedCampaignId}
                   onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className="w-[132px] shrink-0"
+                  className="w-[150px] shrink-0 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All campaigns" },
                     ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
@@ -832,7 +832,7 @@ export function LeadsClient() {
                   value={selectedBroadcastId}
                   onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className="w-[132px] shrink-0"
+                  className="w-[150px] shrink-0 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All broadcasts" },
                     ...broadcastHistory.flatMap((h) =>
@@ -949,11 +949,9 @@ export function LeadsClient() {
                   title="Refresh"
                   aria-label="Refresh"
                   disabled={refreshing}
-                  className="flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-bold text-[#0A1528] hover:bg-[#f8fafc] transition-colors disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] transition-colors disabled:opacity-40"
                 >
                   <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
-                  {/* With a filter set, "Clear" takes the label's room so nothing wraps. */}
-                  <span className={cn("min-[1360px]:hidden", !hasFilters && "2xl:inline")}>Refresh</span>
                 </button>
                 {role === "owner" && (
                   <button
@@ -967,10 +965,9 @@ export function LeadsClient() {
                     }}
                     title="Export"
                     aria-label="Export"
-                    className="flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-bold text-[#0A1528] hover:bg-[#f8fafc] transition-colors"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] transition-colors"
                   >
                     <Download size={14} />
-                    <span className={cn("min-[1360px]:hidden", !hasFilters && "2xl:inline")}>Export</span>
                   </button>
                 )}
               </div>
