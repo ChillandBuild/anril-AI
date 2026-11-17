@@ -243,7 +243,30 @@ class _Query:
         return self
 
     def eq(self, column, value):
-        return self._add_filter(lambda r: r.get(column) == value)
+        if "." in column:
+            # Filter on an inner embed (`select("*, child!inner()")` + `.eq("child.col", v)`):
+            # keep the parent rows with a child row matching it. Children point back via
+            # `<parent singular>_id` (leads -> lead_id).
+            child, col = column.split(".", 1)
+            fk = f"{self.name.rstrip('s')}_id"
+            return self._add_filter(lambda r: any(
+                c.get(fk) == r.get("id") and c.get(col) == value for c in self.db.rows(child)))
+        return self._add_filter(lambda r: self._value(r, column) == value)
+
+    def _value(self, r: dict, column: str):
+        """A row's column, plus the database-side values the real schema derives
+        (migration 279): leads.is_buyer (kept by triggers there) and the computed field
+        leads.sent_broadcast_names."""
+        if self.name == "leads" and column == "is_buyer" and column not in r:
+            return bool(r.get("converted_at") or r.get("booked_at") or any(
+                d.get("lead_id") == r.get("id") and d.get("stage") == "won" for d in self.db.rows("deals")))
+        if self.name == "leads" and column == "sent_broadcast_names":
+            names = {b.get("template_name") for br in self.db.rows("broadcast_recipients")
+                     if br.get("lead_id") == r.get("id") and br.get("send_status") == "sent"
+                     for b in self.db.rows("scheduled_broadcasts") if b.get("id") == br.get("broadcast_id")}
+            names.discard(None)
+            return " | ".join(sorted(names)) or None
+        return r.get(column)
 
     def neq(self, column, value):
         if value == "{}":
@@ -332,7 +355,7 @@ class _Query:
 
         def predicate(r, clauses=clauses):
             for column, op, value in clauses:
-                actual = r.get(column)
+                actual = self._value(r, column)
                 if op == "in":
                     if actual is not None and str(actual) in set(value.strip("()").split(",")):
                         return True

@@ -108,8 +108,6 @@ INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart',
 _PAGE = 1000
 # How many ids go into one `in.(...)` filter or lookup.
 _IN_CHUNK = 200
-# The search box matches at most this many leads through broadcast names.
-_SEARCH_BROADCAST_CAP = 1000
 BUYER_QUIET_DAYS = 90
 _MIN_DT = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -255,21 +253,6 @@ def _groups_by_lead(db, tenant_id: str, lead_ids: list[str] | None = None) -> di
     return out
 
 
-def _group_member_ids(db, tenant_id: str, group_id: str) -> list[str]:
-    """Lead ids in a group of this tenant. Empty for a group of another tenant, or a bad id."""
-    try:
-        gid = str(UUID(group_id))
-    except ValueError:
-        return []
-    owned = (db.table("customer_groups").select("id").eq("id", gid).eq("tenant_id", tenant_id)
-             .maybe_single().execute())
-    if not (owned and owned.data):
-        return []
-    rows = _fetch_all(lambda: db.table("customer_group_members").select("lead_id")
-                      .eq("group_id", gid).eq("tenant_id", tenant_id),
-                      order_by=("lead_id",))
-    return [str(r["lead_id"]) for r in rows if r.get("lead_id")]
-
 
 def _open_broadcast_scores(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dict]:
     """lead id -> {broadcast_id, broadcast_name, segment} from the lead's latest broadcast
@@ -319,29 +302,6 @@ def _campaign_ids_matching(db, tenant_id: str, term: str) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
-def _broadcast_lead_ids_matching(db, tenant_id: str, term: str) -> list[str]:
-    """Leads that were sent a broadcast whose template name contains the term (capped)."""
-    needle = term.lower()
-    broadcast_ids = {
-        str(h["broadcast_id"]) for h in _broadcast_history(db, tenant_id)
-        if h.get("broadcast_id") and needle in str(h.get("template_name") or "").lower()
-    }
-    for r in _fetch_all(lambda: db.table("scheduled_broadcasts").select("id,template_name").eq("tenant_id", tenant_id)):
-        if needle in str(r.get("template_name") or "").lower():
-            broadcast_ids.add(str(r["id"]))
-    lead_ids: list[str] = []
-    seen: set[str] = set()
-    for scope in _in_scopes(sorted(broadcast_ids)):
-        for r in _fetch_all(lambda scope=scope: db.table("broadcast_recipients").select("lead_id")
-                            .eq("tenant_id", tenant_id).eq("send_status", "sent").in_("broadcast_id", scope)):
-            lead_id = r.get("lead_id")
-            if lead_id and lead_id not in seen:
-                seen.add(lead_id)
-                lead_ids.append(lead_id)
-                if len(lead_ids) >= _SEARCH_BROADCAST_CAP:
-                    return lead_ids
-    return lead_ids
-
 
 def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None,
                           memo: dict | None = None, opted_out_only: bool = False):
@@ -360,9 +320,31 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     # here and were silently vanishing from this endpoint's callers (Segments page,
     # telecaller Dialer queue) while still showing up via Conversations' RPC path,
     # which never applied this filter in the first place.
-    query = (db.table("leads").select(columns, count=count)
+    # Group and broadcast filters are answered by the database with an empty inner embed
+    # (`table!inner()` joins without adding a key to the rows), never by shipping the
+    # member ids back in the URL: PostgREST refuses `id=in.(...)` at ~1000 uuids.
+    embeds: list[str] = []
+    group_id = None
+    if f.group_id:
+        try:
+            group_id = str(UUID(f.group_id))
+        except ValueError:
+            return None
+        embeds.append("customer_group_members!inner()")
+    broadcast_id = f.broadcast_id if f.source_filter == "broadcast" and f.broadcast_id else None
+    if broadcast_id:
+        embeds.append("broadcast_recipients!inner()")
+    select_cols = ",".join([columns, *embeds]) if embeds else columns
+    query = (db.table("leads").select(select_cols, count=count)
              .eq("tenant_id", tenant_id)
              .is_("deleted_at", "null"))
+    if group_id:
+        # Members carry tenant_id, so another tenant's group matches nobody.
+        query = (query.eq("customer_group_members.group_id", group_id)
+                 .eq("customer_group_members.tenant_id", tenant_id))
+    if broadcast_id:
+        query = (query.eq("broadcast_recipients.broadcast_id", broadcast_id)
+                 .eq("broadcast_recipients.tenant_id", tenant_id))
     if opted_out_only:
         query = query.eq("opted_out", True)
     else:
@@ -388,16 +370,14 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     search_term = _sanitize_search(f.search)
     if search_term:
         # One OR across everything a person can be found by: name, phone, the ad they came
-        # from, the ad campaign, and the broadcasts they were sent.
-        clauses = [f"name.ilike.*{search_term}*", f"phone.ilike.*{search_term}*", f"ad_name.ilike.*{search_term}*"]
+        # from, the ad campaign, and the broadcasts they were sent (sent_broadcast_names is a
+        # computed field, migration 279, so this stays one short request at any size).
+        clauses = [f"name.ilike.*{search_term}*", f"phone.ilike.*{search_term}*", f"ad_name.ilike.*{search_term}*",
+                   f"sent_broadcast_names.ilike.*{search_term}*"]
         campaign_ids = _memo_get(memo, ("search-campaigns", search_term),
                                  lambda: _campaign_ids_matching(db, tenant_id, search_term))
         if campaign_ids:
             clauses.append(f"ad_campaign_id.in.({','.join(campaign_ids)})")
-        broadcast_lead_ids = _memo_get(memo, ("search-broadcasts", search_term),
-                                       lambda: _broadcast_lead_ids_matching(db, tenant_id, search_term))
-        if broadcast_lead_ids:
-            clauses.append(f"id.in.({','.join(broadcast_lead_ids)})")
         query = query.or_(",".join(clauses))
     if ctx.get("role") == "caller" and ctx.get("caller_id"):
         query = query.eq("assigned_to", ctx["caller_id"])
@@ -411,19 +391,8 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
             query = query.eq("assigned_to", f.assigned_to)
 
     if f.buyer is not None:
-        buyers = _memo_get(memo, "buyers", lambda: _buyer_facts(db, tenant_id)["buyers"])
-        if f.buyer:
-            if not buyers:
-                return None
-            query = query.in_("id", list(buyers))
-        elif buyers:
-            query = query.not_.in_("id", list(buyers))
-
-    if f.group_id:
-        group_lead_ids = _memo_get(memo, ("group", f.group_id), lambda: _group_member_ids(db, tenant_id, f.group_id))
-        if not group_lead_ids:
-            return None
-        query = query.in_("id", group_lead_ids)
+        # leads.is_buyer is kept by triggers (migration 279): paid, booked or a won deal.
+        query = query.eq("is_buyer", f.buyer)
 
     # Medium / campaign / broadcast filters
     if f.source_filter == "inbound":
@@ -438,13 +407,6 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
             from app.services.ad_performance import campaign_ids_with_placeholders
 
             query = query.in_("ad_campaign_id", campaign_ids_with_placeholders(db, tenant_id, f.ad_campaign_id))
-    elif f.source_filter == "broadcast":
-        if f.broadcast_id:
-            br_result = db.table("broadcast_recipients").select("lead_id").eq("broadcast_id", f.broadcast_id).eq("tenant_id", tenant_id).execute()
-            lead_ids = [r["lead_id"] for r in (br_result.data or []) if r.get("lead_id")]
-            if not lead_ids:
-                return None
-            query = query.in_("id", lead_ids)
 
     if f.reply_window:
         cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")

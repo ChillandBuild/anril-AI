@@ -267,8 +267,7 @@ class LeadsCustomerFieldsTests(unittest.TestCase):
     def test_search_reaches_people_through_ad_campaign_and_broadcast_names(self):
         self.db.rows("ad_campaigns").append({"id": "camp-1", "tenant_id": "tenant-1", "campaign_name": "Winter Sale"})
         self.db.rows("leads")[1]["ad_campaign_id"] = "camp-1"  # L2
-        self.db.rows("app_settings").append({"tenant_id": "tenant-1", "key": "broadcast_history",
-                                             "value": '[{"broadcast_id": "b1", "template_name": "festive_offer"}]'})
+        self.db.rows("scheduled_broadcasts").append({"id": "b1", "tenant_id": "tenant-1", "template_name": "festive_offer"})
         self.db.rows("broadcast_recipients").append({"tenant_id": "tenant-1", "broadcast_id": "b1",
                                                      "lead_id": U("L3"), "send_status": "sent"})
         self.db.rows("broadcast_recipients").append({"tenant_id": "tenant-1", "broadcast_id": "b1",
@@ -279,6 +278,19 @@ class LeadsCustomerFieldsTests(unittest.TestCase):
         self.assertEqual(ids("winter"), [U("L2")])     # ad campaign name
         self.assertEqual(ids("festive"), [U("L3")])    # sent broadcast; the failed send does not count
         self.assertEqual(ids(U("L4")), [U("L4")])         # plain name match still works
+
+    def test_broadcast_picker_filters_in_the_database(self):
+        # Source → Broadcast is an inner embed on broadcast_recipients, not an id list in the
+        # URL (PostgREST refuses ~1000 ids). Another tenant's recipient row never counts.
+        for lead, tenant in ((U("L2"), "tenant-1"), (U("L3"), "tenant-1"), (U("L4"), "tenant-2")):
+            self.db.rows("broadcast_recipients").append({"tenant_id": tenant, "broadcast_id": "b9",
+                                                         "lead_id": lead, "send_status": "sent",
+                                                         "created_at": "2026-11-01T00:00:00Z"})
+        res = self.client.get("/api/v1/leads/", params={"source_filter": "broadcast", "broadcast_id": "b9"})
+        self.assertEqual(sorted(r["id"] for r in res.json()["data"]), sorted([U("L2"), U("L3")]))
+        self.assertNotIn("broadcast_recipients", res.json()["data"][0])
+        res = self.client.get("/api/v1/leads/", params={"source_filter": "broadcast", "broadcast_id": "nope"})
+        self.assertEqual(res.json()["total"], 0)
 
 
 if __name__ == "__main__":

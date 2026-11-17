@@ -82,7 +82,8 @@ class LeadsSearchRouteTests(unittest.TestCase):
         res = self.client.get("/api/v1/leads/?search=6369781582")
 
         self.assertEqual(res.status_code, 200)
-        base.or_.assert_called_with("name.ilike.*6369781582*,phone.ilike.*6369781582*,ad_name.ilike.*6369781582*")
+        base.or_.assert_called_with("name.ilike.*6369781582*,phone.ilike.*6369781582*,ad_name.ilike.*6369781582*,"
+                                       "sent_broadcast_names.ilike.*6369781582*")
 
     @patch("app.routes.leads.get_supabase")
     def test_no_search_term_adds_no_filter(self, mock_get_db):
@@ -113,7 +114,8 @@ class LeadsSearchRouteTests(unittest.TestCase):
         self.client.get("/api/v1/leads/?search=a,phone.ilike.*")
 
         sent = base.or_.call_args[0][0]
-        self.assertEqual(sent, "name.ilike.*aphoneilike*,phone.ilike.*aphoneilike*,ad_name.ilike.*aphoneilike*")
+        self.assertEqual(sent, "name.ilike.*aphoneilike*,phone.ilike.*aphoneilike*,ad_name.ilike.*aphoneilike*,"
+                               "sent_broadcast_names.ilike.*aphoneilike*")
 
     @patch("app.routes.leads.get_supabase")
     def test_overlong_search_is_rejected(self, mock_get_db):
