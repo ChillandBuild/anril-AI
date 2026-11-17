@@ -155,13 +155,59 @@ def test_a_reply_that_forgot_the_used_tag_has_no_label_and_is_not_logged(env):
     assert "basis" not in env.db.rows("companion_messages")[-1] and env.state["logged"] == []
 
 
-def test_documents_only_character_that_declines_shows_no_label_but_the_gap_is_still_counted(env):
-    next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])["own_reasoning"] = False
+def _strict(env, companion):
+    next(c for c in env.db.rows("companions") if c["id"] == companion["id"])["own_reasoning"] = False
+
+
+def test_strict_character_hands_off_an_answer_not_from_the_files_and_the_gap_is_still_counted(env):
+    _strict(env, env.jothidar)
     env.state["kb_result"] = KbResult(topic="Rahu in the twelfth house")
-    env.state["replies"] = ["[mood: calm] [used: none] En noolgalil idhu illai."]
+    env.state["replies"] = ["[mood: calm] [used: none] Rahu 12th la irundha veli naadu poga vaaippu."]
     r = reply(env.jothidar["id"], "Rahu 12th house?")
-    assert r.basis is None and "basis" not in env.db.rows("companion_messages")[-1]
+    assert r.text == "Idharku nam jothidaridam ketpadhu nalladhu."
+    saved = env.db.rows("companion_messages")[-1]
+    assert saved["content"] == r.text and "basis" not in saved and r.basis is None
     assert [entry[3] for entry in env.state["logged"]] == ["own"]
+
+
+def test_strict_hands_off_even_when_passages_were_found_but_not_used(env):
+    _strict(env, env.jothidar)
+    env.state["replies"] = ["[mood: calm] [used: none] En karuthu idhu."]
+    assert reply(env.jothidar["id"], "Innum sollunga").text == "Idharku nam jothidaridam ketpadhu nalladhu."
+
+
+def test_strict_keeps_asking_back_and_small_talk_as_chat(env):
+    _strict(env, env.jothidar)
+    env.state["kb_result"] = KbResult(topic="Future")
+    env.state["replies"] = ["[mood: warm] [used: talk] Endha vishayam pathi theriyanum? Velai, kalyanam?"]
+    r = reply(env.jothidar["id"], "En future eppadi?")
+    assert r.text == "Endha vishayam pathi theriyanum? Velai, kalyanam?" and r.basis == "chat"
+    assert [entry[3] for entry in env.state["logged"]] == ["chat"]
+
+
+def test_strict_keeps_an_answer_from_the_files(env):
+    _strict(env, env.jothidar)
+    env.state["replies"] = ["[mood: calm] [used: 1] Guru partnership tharum."]
+    r = reply(env.jothidar["id"], "Guru 7th house?")
+    assert (r.text, r.basis) == ("Guru partnership tharum.", "primary")
+
+
+def test_strict_handoff_line_follows_the_industry_and_language(env):
+    _strict(env, env.vastu)
+    next(c for c in env.db.rows("companions") if c["id"] == env.vastu["id"])["knowledge_collection_id"] = "col-vastu"
+    env.state["kb_result"] = KbResult(topic="Shop name")
+    env.state["replies"] = ["[mood: calm] [used: none] Name it Lakshmi Stores."]
+    assert reply(env.vastu["id"], "What should I name my shop?").text == "Our team can help you with this better."
+    assert engine.handoff_line({"industry": "astrology", "language": "ta"}) == "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."
+    assert engine.handoff_line({"industry": "astrology", "language": "xx"}) == "Our astrologer can answer this better."
+
+
+def test_strict_compare_reply_without_memory_hands_off_too(env):
+    _strict(env, env.jothidar)
+    companion = next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])
+    env.state["replies"] = ["[mood: calm] [used: none] En karuthu idhu."]
+    r = asyncio.run(engine._reply_without_memory(companion, "t1", "Innum sollunga", None))
+    assert r.text == "Idharku nam jothidaridam ketpadhu nalladhu." and r.basis is None
 
 
 def test_the_used_tag_before_the_mood_tag_is_still_read_and_hidden(env):

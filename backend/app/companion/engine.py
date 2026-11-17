@@ -25,7 +25,7 @@ from app.companion.kb import learning as kb_learning
 from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
-from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used
+from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used, said_talk
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,22 @@ FALLBACK_LINES = {
     "ta-en": "Mannikkavum, ippo konjam technical problem irukku. Konja neram kazhichu thirumba kelunga.",
     "ta": "மன்னிக்கவும், இப்போது ஒரு சிறிய தொழில்நுட்பச் சிக்கல். சிறிது நேரம் கழித்து மீண்டும் கேளுங்கள்.",
     "en": "Sorry, I'm having a small technical problem right now. Please ask me again in a little while.",
+}
+
+
+# What a Strict character (own_reasoning off) says instead of an answer that came from no file:
+# send the person to the business's own people. Per industry, then per language; English when unknown.
+HANDOFF_LINES = {
+    "astrology": {
+        "ta-en": "Idharku nam jothidaridam ketpadhu nalladhu.",
+        "ta": "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.",
+        "en": "Our astrologer can answer this better.",
+    },
+    "general": {
+        "ta-en": "Idharku engal team-idam ketpadhu nalladhu.",
+        "ta": "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது.",
+        "en": "Our team can help you with this better.",
+    },
 }
 
 
@@ -94,6 +110,12 @@ def _slots() -> asyncio.Semaphore:
 
 def fallback_line(language: str | None) -> str:
     return FALLBACK_LINES.get(language or "", FALLBACK_LINES["en"])
+
+
+def handoff_line(companion: dict) -> str:
+    """{"industry": "astrology", "language": "ta"} -> "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது." """
+    lines = HANDOFF_LINES.get(companion.get("industry") or "", HANDOFF_LINES["general"])
+    return lines.get(companion.get("language") or "", lines["en"])
 
 
 def character_model(companion: dict | None) -> str:
@@ -447,13 +469,19 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
     """'[mood: calm] [used: 1] Sani 7th house la…' -> (text, mood, basis, sources), both tags removed.
     The label is decided by code from the passages really supplied. An empty reply becomes the
     fallback line with no label: it came from no book and from no reasoning.
-    [used: ...] is taken out first, so the mood tag is found even when the model wrote it second."""
+    [used: ...] is taken out first, so the mood tag is found even when the model wrote it second.
+    [used: talk] (a question back, small talk, a polite decline) is "chat", not a gap. A Strict
+    character's "own" answer becomes the handoff line; the label stays "own" so the gap is counted."""
     text, used = parse_used(raw or "", len(kb.passages) if kb else 0)
     text, mood = parse_mood(text, previous_mood)
     text = text.strip()
     if not text:
         return fallback_line(companion.get("language")), previous_mood, None, []
     basis, sources = label_reply(kb, used)
+    if basis == "own" and said_talk(raw):
+        basis = "chat"
+    if basis == "own" and companion.get("own_reasoning") is False:
+        text = handoff_line(companion)
     return text, mood, basis, sources
 
 
@@ -465,8 +493,8 @@ def _has_text(raw: str | None) -> bool:
 
 
 def _shown_basis(basis: str | None, companion: dict) -> str | None:
-    """The label the person sees. A documents-only character (own_reasoning off) that found nothing
-    says "my material does not cover this"; showing "own reading" on that would be wrong. The
+    """The label the person sees. A Strict character (own_reasoning off) answers "own" with the
+    handoff line; showing "own reading" on that would be wrong. The
     question log still gets "own", so the owner's missing-answers list keeps counting it."""
     return None if basis == "own" and companion.get("own_reasoning") is False else basis
 

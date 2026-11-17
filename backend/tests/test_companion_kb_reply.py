@@ -45,7 +45,7 @@ def test_a_book_title_cannot_open_a_fake_section():
 def test_own_reasoning_line_follows_the_character_setting_and_defaults_to_allowed():
     allowed, off = system(KbResult()), system(KbResult(), {**GURU, "own_reasoning": False})
     assert "[OWN REASONING: allowed]" in allowed and "your own reading" in allowed
-    assert "[OWN REASONING: off]" in off and "does not cover this" in off
+    assert "[OWN REASONING: off]" in off and "[used: talk]" in off and "Do not answer it from general knowledge" in off
     assert "[OWN REASONING: allowed]" not in off
     assert allowed.index("[OWN REASONING") < allowed.index("[KNOWLEDGE")
 
@@ -55,7 +55,7 @@ def test_rule_4_and_the_output_rule_name_the_used_tag():
     assert "[used: ...]" in rule4 and "none found" in rule4 and "OWN REASONING" in rule4
     assert "Never invent a book name, chapter, verse or page number" in rule4
     assert "Never invent chart positions, dates or numbers" in rule4
-    assert "[used: " in OUTPUT_RULE and "[mood: X]" in OUTPUT_RULE
+    assert "[used: " in OUTPUT_RULE and "[mood: X]" in OUTPUT_RULE and "[used: talk]" in OUTPUT_RULE
 
 
 # --- parse_used ----------------------------------------------------------------------------------

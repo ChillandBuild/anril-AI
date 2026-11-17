@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { Archive, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionModel, type CompanionStatus, type KbCollection } from "@/lib/api";
-import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, ownReasoningOn } from "@/components/agents/characterForm";
+import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, answerModeOf, type AnswerMode } from "@/components/agents/characterForm";
 import { saveErrorMessage } from "@/components/agents/formErrors";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
 import { CharacterDeleteDialog } from "@/components/agents/CharacterDeleteDialog";
 import { Select } from "@/components/ui/Select";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { SegmentedControl, type SegmentOption } from "@/components/ui/SegmentedControl";
 
 /** Status dots: grey Draft, green Live, amber Paused. */
 export const STATUS_OPTIONS: { value: CompanionStatus; label: string; dot: string }[] = [
@@ -405,6 +405,50 @@ function fileCount(n: number): string {
   return `${n} ${n === 1 ? "file" : "files"}`;
 }
 
+const ANSWER_MODE_OPTIONS: SegmentOption<AnswerMode>[] = [
+  { value: "mixed", label: "Mixed" },
+  { value: "strict", label: "Strict" },
+];
+
+/** What the character does in each case, for the example "When will I marry?". Only the last row
+ *  depends on Mixed / Strict: a fully or partly covered question is answered the same either way. */
+function AnswerModeTable({ mode }: { mode: AnswerMode }) {
+  const rows: { files: string; example: string; does: string; changes?: boolean }[] = [
+    {
+      files: "Fully cover it",
+      example: "Your file says: look at the 7th house; Saturn there means delay, not denial",
+      does: "Answers from your files",
+    },
+    {
+      files: "Partly cover it",
+      example: "“Is a late marriage bad for me?” Your file has the delay rule, not the comfort",
+      does: "Uses your file and explains it in its own words",
+    },
+    {
+      files: "Don’t cover it",
+      example: "“What should I name my shop?”",
+      does: mode === "mixed"
+        ? "Answers anyway and says it is its own reading"
+        : "Hands off to your team instead of answering. Asking back and small talk still work",
+      changes: true,
+    },
+  ];
+  return (
+    <div className="overflow-hidden rounded-xl border border-border-subtle text-xs" aria-live="polite">
+      <div className="hidden grid-cols-[7rem_1fr_1fr] gap-3 bg-surface-mid px-3 py-2 text-ink-muted sm:grid">
+        <span>Your files</span><span>Example: &ldquo;When will I marry?&rdquo;</span><span>What it does</span>
+      </div>
+      {rows.map((r) => (
+        <div key={r.files} className="grid gap-1 border-t border-border-subtle px-3 py-2 first:border-t-0 sm:grid-cols-[7rem_1fr_1fr] sm:gap-3 sm:first:border-t">
+          <span className="font-medium text-ink">{r.files}</span>
+          <span className="text-ink-secondary">{r.example}</span>
+          <span className={r.changes ? "font-medium text-primary" : "text-ink"}>{r.does}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function KnowledgeTab({ draft, set, errors }: TabProps) {
   const [collections, setCollections] = useState<KbCollection[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -455,23 +499,19 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor="own_reasoning" className="flex items-start gap-3 text-sm font-medium text-ink">
-          <input
-            id="own_reasoning"
-            type="checkbox"
-            role="switch"
-            checked={ownReasoningOn(draft)}
-            onChange={(e) => set("own_reasoning", e.target.checked)}
-            aria-describedby="own_reasoning-hint"
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-subtle accent-primary"
-          />
-          Answer from its own reasoning when no file covers the question
-        </label>
-        <p id="own_reasoning-hint" className="pl-7 text-xs text-ink-muted">
-          Off = documents only. The character says politely that its material does not cover the question.
-        </p>
-        {errors.own_reasoning && <p role="alert" className="pl-7 text-xs text-danger">{errors.own_reasoning}</p>}
+      <div className="space-y-2">
+        <span id="own_reasoning-label" className="block text-sm font-medium text-ink">
+          When your files don&apos;t cover a question
+        </span>
+        <SegmentedControl
+          id="own_reasoning"
+          aria-labelledby="own_reasoning-label"
+          value={answerModeOf(draft)}
+          onChange={(v) => set("own_reasoning", v === "mixed")}
+          options={ANSWER_MODE_OPTIONS}
+        />
+        <AnswerModeTable mode={answerModeOf(draft)} />
+        {errors.own_reasoning && <p role="alert" className="text-xs text-danger">{errors.own_reasoning}</p>}
       </div>
     </div>
   );

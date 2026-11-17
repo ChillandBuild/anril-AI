@@ -137,6 +137,12 @@ def parse_used(text: str, supplied: int) -> tuple[str, list[int] | None]:
     return _USED_TAG.sub("", text).lstrip(), used
 
 
+def said_talk(raw: str | None) -> bool:
+    """'[used: talk] Which topic?' -> True: a question back, small talk or a polite decline, which
+    a Strict character may write without passages (read before parse_used strips the tag)."""
+    return any(re.search(r"\btalk\b", inner, re.I) for inner in _USED_TAG.findall(raw or ""))
+
+
 def label_reply(kb: KbResult | None, used: list[int] | None) -> tuple[str | None, list[dict]]:
     """Where the answer came from, decided here and never taken from the model's word.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Companion } from "@/lib/api";
-import { changedFields, collectionIdOf, linesToList, nameMatches, nextDraftName, ownReasoningOn } from "./characterForm";
+import { changedFields, collectionIdOf, linesToList, nameMatches, nextDraftName, ownReasoningOn, answerModeOf } from "./characterForm";
 
 const jothidar: Companion = {
   id: "c1", name: "Maya", industry: "general", role: "Support guide", backstory: "", speaking_style: "",
@@ -67,6 +67,14 @@ describe("changedFields", () => {
     expect(changedFields(older, { ...older })).toEqual({});
     expect(changedFields(older, { ...older, own_reasoning: false })).toEqual({ own_reasoning: false });
     expect(changedFields(older, { ...older, own_reasoning: true })).toEqual({});
+  });
+
+  it("shows own reasoning on as Mixed and off as Strict; an older character is Mixed", () => {
+    const older: Companion = { ...jothidar };
+    delete older.own_reasoning;
+    expect(answerModeOf(jothidar)).toBe("mixed");
+    expect(answerModeOf({ ...jothidar, own_reasoning: false })).toBe("strict");
+    expect(answerModeOf(older)).toBe("mixed");
   });
 });
 

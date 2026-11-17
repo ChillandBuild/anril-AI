@@ -36,6 +36,13 @@ export function ownReasoningOn(c: Companion): boolean {
   return c.own_reasoning ?? true;
 }
 
+/** Knowledge tab "When your files don't cover a question": Mixed = own_reasoning on, Strict = off. */
+export type AnswerMode = "mixed" | "strict";
+
+export function answerModeOf(c: Companion): AnswerMode {
+  return ownReasoningOn(c) ? "mixed" : "strict";
+}
+
 /** The collection a character reads, or null for "No files". */
 export function collectionIdOf(c: Companion): string | null {
   return c.knowledge_collection_id ?? null;

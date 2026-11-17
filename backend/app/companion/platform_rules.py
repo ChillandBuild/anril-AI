@@ -26,7 +26,8 @@ INDUSTRY_RULES: dict[str, str] = {
 OUTPUT_RULE = (
     "[OUTPUT]\nStart every reply with [mood: X] where X is one of: "
     + ", ".join(MOODS)
-    + ". Then [used: n, n] with the numbers of the KNOWLEDGE passages you relied on, or [used: none]. "
+    + ". Then [used: n, n] with the numbers of the KNOWLEDGE passages you relied on; [used: talk] when the "
+    "reply only asks a question back, makes small talk or politely declines; otherwise [used: none]. "
     "Then write the reply. Never write a passage number or a page number in the reply itself."
 )
 
@@ -36,7 +37,11 @@ OWN_REASONING_ALLOWED = (
     "subject, in character, but you must not say or imply it comes from the books. Say naturally that it is "
     "your own reading."
 )
+# "Strict" on the Knowledge tab. A reply labelled [used: none] is replaced by the app with a line that
+# sends the person to the business's own people (engine.handoff_line), so the model need not write one.
 OWN_REASONING_OFF = (
-    "[OWN REASONING: off]\nWhen KNOWLEDGE says \"none found\", say politely that your material does not cover this. "
-    "Do not answer it."
+    "[OWN REASONING: off]\nAnswer only from the KNOWLEDGE passages. When they do not answer the question, or "
+    "KNOWLEDGE says \"none found\": Do not answer it from general knowledge. You may ask one question back to "
+    "understand what they need, make small talk, or decline politely in one line; then write [used: talk]. "
+    "Anything else you write without passages is replaced by the app."
 )
