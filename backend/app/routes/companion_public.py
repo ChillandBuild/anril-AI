@@ -25,7 +25,7 @@ from starlette.background import BackgroundTask
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.companion import engine, keys, store
-from app.companion.models import AppTool, ToolResult
+from app.companion.models import AppData, AppTool, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.routes.auto_messages import _SlidingWindow, _client_ip
 
@@ -108,6 +108,7 @@ class ServerChatIn(_Body):
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
+    app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 4,000 chars)
 
 
 class ServerContinueIn(_Body):
@@ -128,6 +129,7 @@ class WidgetChatIn(WidgetAuthIn):
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
+    app_data: AppData = None
 
 
 class WidgetContinueIn(WidgetAuthIn):
@@ -227,8 +229,9 @@ async def _run(call, kind: str, log: dict) -> JSONResponse:
 
 @public_router.post("/chat")
 async def server_chat(body: ServerChatIn, request: Request):
-    """{"companion_id", "user_id", "message", "display_name"?, "timezone"?, "tools"?} → the reply, or
-    status "tool_call" with a turn_id: run the tools and POST /chat/continue."""
+    """{"companion_id", "user_id", "message", "display_name"?, "timezone"?, "tools"?, "app_data"?} → the reply,
+    or status "tool_call" with a turn_id: run the tools and POST /chat/continue. app_data rides with every
+    message (e.g. AstroTamil's chart for this user) and is never stored."""
     log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
 
     async def call():
@@ -237,7 +240,7 @@ async def server_chat(body: ServerChatIn, request: Request):
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
-                                    timezone_name=body.timezone)
+                                    timezone_name=body.timezone, app_data=body.app_data)
         return result.model_dump()
     return await _run(call, "chat", log)
 
@@ -291,7 +294,7 @@ async def widget_chat(body: WidgetChatIn, request: Request):
         _require_text(body.message)
         result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
-                                    timezone_name=body.timezone)
+                                    timezone_name=body.timezone, app_data=body.app_data)
         return result.model_dump()
     return await _run(call, "widget_chat", log)
 

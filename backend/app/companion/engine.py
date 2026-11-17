@@ -169,20 +169,23 @@ async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
     model: str | None = None, use_memory: bool = True, timezone_name: str | None = None,
+    app_data: str | None = None,
 ) -> CompanionReply:
     """model and use_memory are for the dashboard Playground only; the public API never sets them.
     use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
     nothing saved. It shows how the character answers a stranger.
-    timezone_name: the person's IANA zone from their app (validated by the API), saved on the person."""
+    timezone_name: the person's IANA zone from their app (validated by the API), saved on the person.
+    app_data: what the app knows about this person, sent with this message (models.app_data_text). It goes
+    into this reply's prompt only; it is never saved (a paused tool turn keeps its prompt for 2 minutes)."""
     tools = tools or []
     app_tools.validate_tools(tools)
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
     sem = await _take_slot(companion_id)
     try:
         if not use_memory:
-            return await _reply_without_memory(companion, tenant_id, message, model)
+            return await _reply_without_memory(companion, tenant_id, message, model, app_data)
         return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools,
-                            model, timezone_name)
+                            model, timezone_name, app_data)
     finally:
         sem.release()
 
@@ -261,13 +264,14 @@ async def _memory(provider, tenant_id: str, companion: dict, person: dict, messa
 
 
 async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
-                                model: str | None) -> CompanionReply:
+                                model: str | None, app_data: str | None = None) -> CompanionReply:
     """One stateless reply: books only, no facts, no history, and no DB write at all (no person,
-    no conversation), so it can run beside the normal reply without racing it."""
+    no conversation), so it can run beside the normal reply without racing it. The app's data still
+    comes along: it is what the app sends, not what the character remembers."""
     started = time.monotonic()
     kb = await _knowledge(tenant_id, companion, message, [])
     mood = companion.get("default_mood") or "calm"
-    prompt = build_messages(companion, mood, kb, "", [], message)
+    prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data)
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
@@ -284,7 +288,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
 
 async def _reply(companion: dict, provider: str, tenant_id: str, external_user_id: str, message: str,
                  display_name: str | None, tools: list[AppTool], model: str | None = None,
-                 timezone_name: str | None = None) -> CompanionReply:
+                 timezone_name: str | None = None, app_data: str | None = None) -> CompanionReply:
     started = time.monotonic()
     companion_id = companion["id"]
     person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name)
@@ -315,8 +319,9 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     mood = _mood(conversation, companion)
     if agentic:
         return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
-                              memory_context, mood, tools, started, model, ov)
-    prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person))
+                              memory_context, mood, tools, started, model, ov, app_data)
+    prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person),
+                            app_data=app_data)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb)
@@ -349,21 +354,24 @@ AGENTIC_NOTE = (
 
 async def _agentic(companion: dict, provider: str, tenant_id: str, conversation: dict, person: dict,
                    message: str, history: list[dict], memory_context: str, mood: str, tools: list[AppTool],
-                   started: float, model: str | None, ov: "playground.Overrides") -> CompanionReply:
+                   started: float, model: str | None, ov: "playground.Overrides",
+                   app_data: str | None = None) -> CompanionReply:
     offered = [t for t in (SEARCH_MEMORY, SEARCH_KNOWLEDGE)
                if ov.sources == "all" or (ov.sources == "memories") == (t is SEARCH_MEMORY)]
     if not companion.get("knowledge_collection_id"):
         offered = [t for t in offered if t is not SEARCH_KNOWLEDGE]
     if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
         ov.note("Agentic: no search tool to offer, replied as usual")
-        prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person))
+        prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
+                                app_data=app_data)
         return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
                                  started, model=model)
     search_names = {t.name for t in offered}
     # The app's own tools are offered too (search tool names win a clash). An app-tool call here is not
     # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
     app_offered = [t for t in tools if t.name not in search_names]
-    prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person))
+    prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
+                            app_data=app_data)
     prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
     llm_started = time.monotonic()
     raw, calls, wants_app = None, [], False
@@ -397,7 +405,8 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
             ov.note(f'Round 1: called search_memory("{query}") -> {len(hits)} hits')
         log.append({"name": call["name"], "args": call["args"], "ok": True})
     context = "\n".join(part for part in [memory_context] + found if part)
-    prompt = build_messages(companion, mood, kb, context, history, message, _person_today(companion, person))
+    prompt = build_messages(companion, mood, kb, context, history, message, _person_today(companion, person),
+                            app_data=app_data)
     reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
                               model=model, kb=kb)
     total = int((time.monotonic() - started) * 1000)

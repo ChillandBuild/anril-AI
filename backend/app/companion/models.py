@@ -3,7 +3,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.companion.platform_rules import MOODS
 
@@ -19,6 +19,26 @@ MAX_RULES = 40      # = companions_rules_check (migration 275)
 
 
 DEFAULT_MODEL = "google/gemini-3.1-flash-lite"   # = ai_reply.DEFAULT_REPLY_MODEL (a test keeps them equal)
+
+MAX_APP_DATA_CHARS = 4000   # = companion_end_users_test_app_data_check (migration 277)
+
+
+def app_data_text(value: str | dict | None) -> str | None:
+    """What the client's app knows about this person, as one block of text for the prompt.
+
+    Example: {"lagna": "மீனம்", "dasa": "ராகு"} -> '{"lagna": "மீனம்", "dasa": "ராகு"}' (Tamil kept as is);
+    "plan: Gold, ends 30 Nov" stays as typed. None or blank -> None. Over 4,000 characters -> ValueError."""
+    if value is None:
+        return None
+    text = (value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)).strip()
+    if not text:
+        return None
+    if len(text) > MAX_APP_DATA_CHARS:
+        raise ValueError(f"app_data is over {MAX_APP_DATA_CHARS} characters")
+    return text
+
+
+AppData = Annotated[str | dict | None, AfterValidator(app_data_text)]
 
 
 def _known_model(value: str | None) -> str | None:

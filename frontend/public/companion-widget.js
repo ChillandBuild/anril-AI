@@ -3,8 +3,10 @@
  *
  * On the business's page:
  *   <script src="https://www.anrilaitech.com/companion-widget.js" defer></script>
- *   AnrilCompanion.init({ companionId, userId, exp, signature, displayName, tools, onToolCall })
+ *   AnrilCompanion.init({ companionId, userId, exp, signature, displayName, appData, tools, onToolCall })
  *
+ * appData (optional): what your app knows about this person (text or an object, up to 4,000
+ * characters), e.g. their chart. Sent with every message; Anril never stores it.
  * userId, exp and signature come from the business's SERVER (it signs the user id with its
  * secret key). The secret key never reaches this page.
  *
@@ -68,6 +70,7 @@
         auth: { companion_id: o.companionId, user_id: String(o.userId), exp: Number(o.exp), signature: o.signature },
         displayName: o.displayName || null,
         tools: o.tools || [],
+        appData: o.appData || null,
       });
     } else if (data.type === "anril:tool_calls") {
       runTools(data.requestId, data.calls);

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { companionsApi, type CompanionAppTool, type CompanionModel, type PlaygroundDefaults, type PlaygroundSources } from "@/lib/api";
+import { companionsApi, type CompanionAppTool, type CompanionModel, type PlaygroundDefaults, type PlaygroundSources, type TestPerson } from "@/lib/api";
 import { useCharacters } from "@/components/agents/CharacterSelect";
 import { PlaygroundAdvanced } from "@/components/agents/PlaygroundAdvanced";
 import { PlaygroundChat } from "@/components/agents/PlaygroundChat";
@@ -29,6 +29,7 @@ export default function PlaygroundPage() {
   const [models, setModels] = useState<CompanionModel[]>([]);
   const [sources, setSources] = useState<PlaygroundSources>("all");
   const [tools, setTools] = useState<CompanionAppTool[]>([]);
+  const [person, setPerson] = useState<TestPerson | undefined>(undefined);   // who the chat is testing as
   const [techLines, setTechLines] = useState(false);   // off until the browser says otherwise (no server/client mismatch)
   useEffect(() => setTechLines(readTech()), []);
 
@@ -73,6 +74,7 @@ export default function PlaygroundPage() {
             models={models}
             tools={tools}
             techLines={techLines}
+            onPerson={setPerson}
           />
           <PlaygroundAdvanced
             character={selected}
@@ -83,6 +85,7 @@ export default function PlaygroundPage() {
             onTechLines={changeTechLines}
             tools={tools}
             onTools={setTools}
+            person={person}
           />
         </section>
       )}

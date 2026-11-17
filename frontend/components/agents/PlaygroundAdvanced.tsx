@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Companion, CompanionAppTool, PlaygroundDefaults, PlaygroundSources } from "@/lib/api";
+import type { Companion, CompanionAppTool, PlaygroundDefaults, PlaygroundSources, TestPerson } from "@/lib/api";
+import { AppDataBox } from "@/components/agents/AppDataBox";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { PlaygroundSearch } from "@/components/agents/PlaygroundSearch";
 import { AppTools } from "@/components/agents/AppTools";
@@ -39,6 +40,7 @@ export function PlaygroundAdvanced({
   onTechLines,
   tools,
   onTools,
+  person,
 }: {
   character: Companion;
   live: PlaygroundDefaults;
@@ -50,6 +52,8 @@ export function PlaygroundAdvanced({
   /** Pretend app tools the chat sends along. */
   tools: CompanionAppTool[];
   onTools: (t: CompanionAppTool[]) => void;
+  /** Who the chat is testing as; their saved app data is shown and edited here. */
+  person: TestPerson | undefined;
 }) {
   const [open, setOpen] = useState(false);   // closed until the browser says otherwise (no server/client mismatch)
   useEffect(() => setOpen(readOpen()), []);
@@ -101,6 +105,10 @@ export function PlaygroundAdvanced({
               <span className="mt-0.5 block text-xs font-normal text-ink-muted">What was searched under each reply, e.g. Memories: 0 candidates</span>
             </span>
           </label>
+        </div>
+
+        <div className="py-3.5">
+          <AppDataBox person={person} />
         </div>
 
         <div className="py-3.5">

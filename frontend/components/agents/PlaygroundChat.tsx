@@ -106,6 +106,7 @@ export function PlaygroundChat({
   models,
   tools,
   techLines,
+  onPerson,
 }: {
   character: Companion;
   characters: Companion[];
@@ -120,6 +121,8 @@ export function PlaygroundChat({
   tools: CompanionAppTool[];
   /** Show the grey "what was searched" lines under each reply. */
   techLines: boolean;
+  /** Told who the owner is testing as, so Advanced can show that person's app data. */
+  onPerson?: (p: TestPerson | undefined) => void;
 }) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [text, setText] = useState("");
@@ -144,6 +147,7 @@ export function PlaygroundChat({
   const [epoch, setEpoch] = useState(0);   // bumped by Start over so the screen clears even though the id is the same
   const you = people?.find((p) => p.is_you);
   const person: TestPerson | undefined = people?.find((p) => p.external_user_id === personId) ?? you;
+  useEffect(() => onPerson?.(person), [person, onPerson]);
 
   const [memory, setMemory] = useState<CompanionMemoryStatus | null>(null);
   const [saving, setSaving] = useState(false);

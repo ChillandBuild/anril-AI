@@ -510,6 +510,15 @@ async def list_test_people(tenant_id: str, prefix: str) -> list[dict]:
     return await asyncio.to_thread(_q)
 
 
+async def set_test_app_data(tenant_id: str, end_user_id: str, app_data: str | None) -> None:
+    """A Playground test person's sample app data (None clears it). The DB check (migration 277) refuses
+    it for anyone who is not an "owner-test:" person."""
+    def _q():
+        (get_supabase().table("companion_end_users").update({"test_app_data": app_data})
+         .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
+    await asyncio.to_thread(_q)
+
+
 async def revive_end_user(tenant_id: str, end_user_id: str, display_name: str | None) -> None:
     """A Playground "Start over": after forget_end_user, the same test customer is usable again
     (forgotten_at cleared, name put back), with no chats and no memories."""

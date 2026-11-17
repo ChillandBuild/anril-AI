@@ -92,3 +92,19 @@ async def start_over(tenant_id: str, login_id: str, external_user_id: str) -> di
         await engine.forget_person(tenant_id, external_user_id)
         await store.revive_end_user(tenant_id, person["id"], person.get("display_name"))
     return _row(external_user_id, (person or {}).get("display_name"), login_id)
+
+
+async def app_data(tenant_id: str, login_id: str, external_user_id: str) -> str | None:
+    """The sample app data saved for this test person (sent with each Playground message), or None."""
+    await require_usable(tenant_id, login_id, external_user_id)
+    person = await store.find_end_user(tenant_id, external_user_id)
+    return (person or {}).get("test_app_data") or None
+
+
+async def set_app_data(tenant_id: str, login_id: str, external_user_id: str, text: str | None) -> str | None:
+    """Saves (or with None clears) a test person's sample app data, e.g. Meena's chart. "You" gets its row
+    here if it has never chatted. Start over keeps it: it is the app's profile, not something remembered."""
+    await require_usable(tenant_id, login_id, external_user_id)
+    person = await store.find_or_create_end_user(tenant_id, external_user_id)
+    await store.set_test_app_data(tenant_id, person["id"], text)
+    return text

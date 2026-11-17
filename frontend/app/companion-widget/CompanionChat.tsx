@@ -62,6 +62,7 @@ export default function CompanionChat() {
   const parentOrigin = useRef<string | null>(null);
   const displayName = useRef<string | null>(null);
   const tools = useRef<unknown[]>([]);
+  const appData = useRef<unknown>(null);   // what the business's page knows about this person (string or object)
   const pendingTools = useRef(new Map<string, (results: unknown[]) => void>());
   const listEnd = useRef<HTMLDivElement>(null);
 
@@ -82,6 +83,8 @@ export default function CompanionChat() {
         parentOrigin.current = event.origin;
         displayName.current = data.displayName || null;
         tools.current = Array.isArray(data.tools) ? data.tools : [];
+        appData.current = typeof data.appData === "string" || (data.appData && typeof data.appData === "object")
+          ? data.appData : null;
         setAuth(a);
       } else if (data.type === "anril:tool_results") {
         const resolve = pendingTools.current.get(data.requestId);
@@ -137,6 +140,7 @@ export default function CompanionChat() {
     try {
       let reply = await call<Reply>("/chat", {
         ...auth, message: text, display_name: displayName.current, tools: tools.current,
+        ...(appData.current ? { app_data: appData.current } : {}),
       });
       while (reply.status === "tool_call" && reply.turn_id) {
         const results = await askParentForTools(reply.turn_id, reply.tool_calls || []);

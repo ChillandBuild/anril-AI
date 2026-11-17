@@ -4542,6 +4542,15 @@ export const companionsApi = {
   /** Wipe the chats and memories but keep the name; the next chat is a first visit. Same id comes back. */
   startOverTestPerson: (externalUserId: string) =>
     apiFetch<TestPerson>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/start-over`, { method: "POST" }),
+  /** The sample app data saved for a test person (e.g. Meena's chart); null when none. */
+  testPersonAppData: (externalUserId: string) =>
+    apiFetch<{ app_data: string | null }>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`),
+  /** Save a test person's sample app data; every Playground message as them sends it. Blank clears it. 422 over 4,000 characters. */
+  saveTestPersonAppData: (externalUserId: string, appData: string) =>
+    apiFetch<{ app_data: string | null }>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`, {
+      method: "PUT",
+      body: JSON.stringify({ app_data: appData }),
+    }),
   /** Memory status of one test customer with one character. */
   testPersonMemory: (id: string, externalUserId: string) =>
     apiFetch<CompanionMemoryStatus>(`${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/memory`),

@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.companion import (engine, install, keys, memory, memory_card, memory_refresh, memory_search,
                            playground, playground_people, store)
 from app.companion.kb import search as kb_search, store as kb_store
-from app.companion.models import AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
+from app.companion.models import AppData, AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
@@ -203,6 +203,34 @@ async def delete_test_person(external_user_id: str = ExternalUserIdPath, ctx: di
         raise HTTPException(status_code=exc.status, detail=exc.detail)
     if person:
         _audit_forget(ctx, person["id"], test=True)
+
+
+class TestAppDataIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    app_data: AppData = None   # blank or null clears it
+
+
+@router.get("/test-people/{external_user_id}/app-data")
+async def get_test_app_data(external_user_id: str = ExternalUserIdPath, ctx: dict = Depends(require_companions_manage)):
+    """The Playground's "This person's app data" box: the sample saved for this test person."""
+    try:
+        text = await playground_people.app_data(ctx["tenant_id"], ctx["user_id"], external_user_id)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    return {"app_data": text}
+
+
+@router.put("/test-people/{external_user_id}/app-data")
+async def put_test_app_data(payload: TestAppDataIn, external_user_id: str = ExternalUserIdPath,
+                            ctx: dict = Depends(require_companions_manage)):
+    """Saves a test person's sample app data (e.g. Meena's chart); every Playground message as Meena
+    then sends it, the way a client's server sends app_data on /chat."""
+    try:
+        text = await playground_people.set_app_data(ctx["tenant_id"], ctx["user_id"], external_user_id,
+                                                    payload.app_data)
+    except playground_people.PersonError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    return {"app_data": text}
 
 
 @router.post("/test-people/{external_user_id}/start-over")
@@ -431,15 +459,15 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
         if payload.model not in allowed:
             raise HTTPException(status_code=422, detail="That model isn't set up for your business")
     ov = (payload.settings or PlaygroundSettings()).overrides()
-    if payload.retry and payload.use_memory:
-        before = await store.find_end_user(tenant_id, person_id)
-        if before:
-            await store.drop_last_turn(tenant_id, str(companion_id), before["id"], memory_card.mask_secrets(message))
+    before = await store.find_end_user(tenant_id, person_id)
+    if payload.retry and payload.use_memory and before:
+        await store.drop_last_turn(tenant_id, str(companion_id), before["id"], memory_card.mask_secrets(message))
     try:
         with playground.use(ov):
             result = await engine.reply(
                 str(companion_id), tenant_id, person_id, message,
-                tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory)
+                tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory,
+                app_data=(before or {}).get("test_app_data") or None)
     except _EXPECTED as exc:
         raise _http_error(exc)
     companion = await store.get_companion(tenant_id, str(companion_id)) or {}
