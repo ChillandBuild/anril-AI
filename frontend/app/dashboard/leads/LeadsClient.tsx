@@ -183,16 +183,25 @@ function GroupsCell({ lead }: { lead: Lead }) {
   );
 }
 
-function LeadStatCard({ label, value, hint, onClick }: { label: string; value: string; hint: string; onClick?: () => void }) {
+const STAT_TONES = {
+  default: "text-[#0A1528]",
+  warn: "text-[#b45309]",
+  stop: "text-[#dc2626]",
+} as const;
+
+function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick }: {
+  emoji: string; label: string; value: string; hint: string; tone?: keyof typeof STAT_TONES; onClick?: () => void;
+}) {
   const className =
     "flex min-w-0 flex-col items-start gap-1 rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 text-left";
   const body = (
     <>
-      <div className="font-display text-2xl font-bold text-[#0A1528] sm:text-3xl">{value}</div>
-      <div className="min-w-0">
-        <div className="text-sm font-bold text-[#0A1528]">{label}</div>
-        <div className="mt-0.5 text-xs text-[#64748b]">{hint}</div>
+      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#334155]">
+        <span aria-hidden className="text-base leading-none">{emoji}</span>
+        <span className="truncate">{label}</span>
       </div>
+      <div className={cn("font-display text-2xl font-bold sm:text-3xl", STAT_TONES[tone])}>{value}</div>
+      <div className="text-xs text-[#64748b]">{hint}</div>
     </>
   );
   if (!onClick) return <div className={className}>{body}</div>;
@@ -637,7 +646,7 @@ export function LeadsClient() {
           type="button"
           onClick={() => setPageView(view)}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-bold transition-all",
+            "rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all",
             pageView === view ? "bg-white text-[#0A1528] shadow-sm" : "text-[#64748b] hover:text-[#0A1528]"
           )}
         >
@@ -739,27 +748,34 @@ export function LeadsClient() {
           {/* Customer summary cards: they follow the same filters as the table below. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <LeadStatCard
+              emoji="👥"
               label="People"
               value={fmtCount(summary?.people)}
               hint={summary ? `${fmtCount(summary.leads)} leads · ${fmtCount(summary.buyers)} buyers` : ""}
             />
             <LeadStatCard
+              emoji="🔁"
               label="Repeat buyers"
               value={fmtCount(summary?.repeat_buyers)}
               hint="bought 2+ times"
             />
             <LeadStatCard
+              emoji="💰"
               label="Spent with you"
               value={summary ? `₹${(summary.spent_paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—"}
               hint="all time"
             />
             <LeadStatCard
+              emoji="😴"
               label="Not back in 90 days"
+              tone="warn"
               value={fmtCount(summary?.not_back_90)}
               hint="bought before, quiet since"
             />
             <LeadStatCard
+              emoji="⛔"
               label="Said stop"
+              tone="stop"
               value={fmtCount(summary?.said_stop)}
               hint="no offers go to them"
               onClick={() => router.push("/dashboard/leads?tab=said-stop")}
@@ -768,17 +784,13 @@ export function LeadsClient() {
 
           {/* Main card with filters and table */}
           <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
-            {/* Filter bar: Refresh and Export stay on the first line; the filters wrap beside them. */}
-            <div className="flex flex-col gap-2 p-4 border-b border-[#e2e8f0] min-[1360px]:flex-row min-[1360px]:items-center">
-              {/* One line on wide screens. The campaign/broadcast picker adds a control, so with it the row needs 1440px+. */}
-              <div className={cn(
-                "flex min-w-0 flex-1 flex-wrap items-center gap-2",
-                showsSourcePicker ? "min-[1440px]:flex-nowrap" : "min-[1360px]:flex-nowrap",
-              )}>
+            {/* Filter bar: one line. It wraps (never overlaps) only when the card is too narrow for
+                every control, e.g. a small screen with the sidebar open and long filter values. */}
+            <div className="flex flex-wrap items-center gap-1.5 p-4 border-b border-[#e2e8f0]">
               {viewToggle}
 
               {/* Search input */}
-              <div className={cn("relative min-w-[150px] flex-1 min-[1360px]:max-w-xs", showsSourcePicker && "min-[1440px]:min-w-[100px]")}>
+              <div className="relative min-w-[120px] flex-1">
                 <Search size={14} className="absolute left-3 top-2.5 text-[#64748b]" />
                 <input
                   type="text"
@@ -818,7 +830,7 @@ export function LeadsClient() {
                   value={selectedCampaignId}
                   onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className="w-[150px] shrink-0 text-xs font-bold text-[#0A1528]"
+                  className="w-[138px] shrink-0 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All campaigns" },
                     ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
@@ -832,7 +844,7 @@ export function LeadsClient() {
                   value={selectedBroadcastId}
                   onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className="w-[150px] shrink-0 text-xs font-bold text-[#0A1528]"
+                  className="w-[138px] shrink-0 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All broadcasts" },
                     ...broadcastHistory.flatMap((h) =>
@@ -940,10 +952,9 @@ export function LeadsClient() {
                   Clear
                 </button>
               )}
-              </div>
 
               {/* Right side buttons */}
-              <div className="flex shrink-0 gap-2 self-end min-[1360px]:self-auto">
+              <div className="ml-auto flex shrink-0 gap-1.5">
                 <button
                   onClick={refreshLeads}
                   title="Refresh"
