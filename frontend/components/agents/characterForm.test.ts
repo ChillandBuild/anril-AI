@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Companion } from "@/lib/api";
-import { changedFields, collectionIdOf, linesToList, nameMatches, nextDraftName, ownReasoningOn, answerModeOf } from "./characterForm";
+import { STARTER_RULES, changedFields, collectionIdOf, genericHandoff, linesToList, nameMatches, nextDraftName, ownReasoningOn, answerModeOf, withIndustry } from "./characterForm";
 
 const jothidar: Companion = {
   id: "c1", name: "Maya", industry: "general", role: "Support guide", backstory: "", speaking_style: "",
@@ -86,5 +86,45 @@ describe("nameMatches (typing a Live character's name before Delete permanently)
     expect(nameMatches("Jothidar", "Jothidar AI")).toBe(false);
     expect(nameMatches("", "Jothidar AI")).toBe(false);
     expect(nameMatches("   ", "   ")).toBe(false);
+  });
+});
+
+describe("Strict handoff line", () => {
+  it("sends the trimmed line, and null when the box is emptied", () => {
+    expect(changedFields(jothidar, { ...jothidar, handoff_line: "  Ask our astrologer.  " })).toEqual({ handoff_line: "Ask our astrologer." });
+    const own = { ...jothidar, handoff_line: "Ask our astrologer." };
+    expect(changedFields(own, { ...own, handoff_line: "   " })).toEqual({ handoff_line: null });
+  });
+
+  it("sends nothing for an older character with no line, or spaces only", () => {
+    expect(changedFields(jothidar, { ...jothidar })).toEqual({});
+    expect(changedFields(jothidar, { ...jothidar, handoff_line: "" })).toEqual({});
+    expect(changedFields({ ...jothidar, handoff_line: null }, { ...jothidar, handoff_line: "  " })).toEqual({});
+  });
+
+  it("shows the generic line in the character's language as the placeholder", () => {
+    expect(genericHandoff("en")).toBe("Our team can help you with this better.");
+    expect(genericHandoff("xx")).toBe("Our team can help you with this better.");
+    expect(genericHandoff("ta")).toBe("இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது.");
+  });
+});
+
+describe("withIndustry", () => {
+  it("fills the astrology starter rules into an empty Rules box, editable like any rule", () => {
+    const astro = withIndustry(jothidar, "astrology");
+    expect(astro.industry).toBe("astrology");
+    expect(astro.rules).toEqual(STARTER_RULES.astrology);
+    expect(astro.rules[0]).toContain("Never predict death");
+    expect(changedFields(jothidar, astro)).toEqual({ industry: "astrology", rules: STARTER_RULES.astrology });
+  });
+
+  it("never touches rules the owner already wrote", () => {
+    const written = { ...jothidar, rules: ["Speak only Tamil"] };
+    expect(withIndustry(written, "astrology").rules).toBe(written.rules);
+    expect(withIndustry({ ...written, industry: "astrology" }, "general").rules).toBe(written.rules);
+  });
+
+  it("gives General no rules of its own", () => {
+    expect(withIndustry(jothidar, "general").rules).toEqual([]);
   });
 });

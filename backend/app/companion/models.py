@@ -15,6 +15,7 @@ Goal = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Rule = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 Language = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=16)]
+MAX_RULES = 40      # = companions_rules_check (migration 275)
 
 
 DEFAULT_MODEL = "google/gemini-3.1-flash-lite"   # = ai_reply.DEFAULT_REPLY_MODEL (a test keeps them equal)
@@ -36,6 +37,12 @@ class _CardFields(BaseModel):
     def _model_is_known(cls, value: str | None) -> str | None:
         return _known_model(value)
 
+    @field_validator("handoff_line", check_fields=False)
+    @classmethod
+    def _blank_handoff_is_none(cls, value: str | None) -> str | None:
+        """"  " -> None, so a cleared box goes back to the generic line."""
+        return (value or "").strip() or None
+
 
 class CompanionSettings(_CardFields):
     """A new character. Example: Jothidar AI, astrology, Tanglish, books tag = 'astrology books'."""
@@ -50,10 +57,11 @@ class CompanionSettings(_CardFields):
     default_mood: Mood = "calm"
     language: Language = "ta-en"
     model: str = DEFAULT_MODEL                 # the AI model every reply uses, e.g. "google/gemini-3.5-flash-lite"
-    rules: list[Rule] = Field(default_factory=list, max_length=30)
+    rules: list[Rule] = Field(default_factory=list, max_length=MAX_RULES)
     knowledge_tag_id: UUID | None = None     # old Anril Sales books tag: still accepted, no longer read
     knowledge_collection_id: UUID | None = None   # the collection of books this character reads
-    own_reasoning: bool = True               # False = "documents only": no answer when no book covers it
+    own_reasoning: bool = True               # False = "Strict": an answer from no file becomes the handoff line
+    handoff_line: str | None = Field(None, max_length=300)   # Strict's line; None = the generic one
     memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
     memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
     history_messages: int = Field(10, ge=2, le=50)   # recent messages every reply reads
@@ -74,10 +82,11 @@ class CompanionUpdate(_CardFields):
     default_mood: Mood | None = None
     language: Language | None = None
     model: str | None = None
-    rules: list[Rule] | None = Field(None, max_length=30)
+    rules: list[Rule] | None = Field(None, max_length=MAX_RULES)
     knowledge_tag_id: UUID | None = None
     knowledge_collection_id: UUID | None = None
     own_reasoning: bool | None = None
+    handoff_line: str | None = Field(None, max_length=300)
     memory_level: Literal[1, 2] | None = None
     memory_engine: Literal["card", "mem0"] | None = None
     history_messages: int | None = Field(None, ge=2, le=50)
@@ -85,10 +94,10 @@ class CompanionUpdate(_CardFields):
     status: Literal["draft", "live", "paused"] | None = None
 
     def changes(self) -> dict:
-        """Fields the caller actually sent. Only knowledge_tag_id and knowledge_collection_id may be sent
-        as null (clears them); a null for any other field is ignored, since those columns are NOT NULL."""
+        """Fields the caller actually sent. Only knowledge_tag_id, knowledge_collection_id and handoff_line
+        may be sent as null (clears them); a null for any other field is ignored, since those columns are NOT NULL."""
         sent = self.model_dump(mode="json", exclude_unset=True)
-        clearable = ("knowledge_tag_id", "knowledge_collection_id")
+        clearable = ("knowledge_tag_id", "knowledge_collection_id", "handoff_line")
         return {k: v for k, v in sent.items() if v is not None or k in clearable}
 
 

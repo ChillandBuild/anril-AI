@@ -164,7 +164,7 @@ def test_strict_character_hands_off_an_answer_not_from_the_files_and_the_gap_is_
     env.state["kb_result"] = KbResult(topic="Rahu in the twelfth house")
     env.state["replies"] = ["[mood: calm] [used: none] Rahu 12th la irundha veli naadu poga vaaippu."]
     r = reply(env.jothidar["id"], "Rahu 12th house?")
-    assert r.text == "Idharku nam jothidaridam ketpadhu nalladhu."
+    assert r.text == "Idharku engal team-idam ketpadhu nalladhu."
     saved = env.db.rows("companion_messages")[-1]
     assert saved["content"] == r.text and "basis" not in saved and r.basis is None
     assert [entry[3] for entry in env.state["logged"]] == ["own"]
@@ -173,7 +173,7 @@ def test_strict_character_hands_off_an_answer_not_from_the_files_and_the_gap_is_
 def test_strict_hands_off_even_when_passages_were_found_but_not_used(env):
     _strict(env, env.jothidar)
     env.state["replies"] = ["[mood: calm] [used: none] En karuthu idhu."]
-    assert reply(env.jothidar["id"], "Innum sollunga").text == "Idharku nam jothidaridam ketpadhu nalladhu."
+    assert reply(env.jothidar["id"], "Innum sollunga").text == "Idharku engal team-idam ketpadhu nalladhu."
 
 
 def test_strict_keeps_asking_back_and_small_talk_as_chat(env):
@@ -198,8 +198,19 @@ def test_strict_handoff_line_follows_the_industry_and_language(env):
     env.state["kb_result"] = KbResult(topic="Shop name")
     env.state["replies"] = ["[mood: calm] [used: none] Name it Lakshmi Stores."]
     assert reply(env.vastu["id"], "What should I name my shop?").text == "Our team can help you with this better."
-    assert engine.handoff_line({"industry": "astrology", "language": "ta"}) == "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."
-    assert engine.handoff_line({"industry": "astrology", "language": "xx"}) == "Our astrologer can answer this better."
+    # No industry gets its own fixed line: astrology falls back to the generic one too.
+    assert engine.handoff_line({"industry": "astrology", "language": "ta"}) == "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது."
+    assert engine.handoff_line({"industry": "astrology", "language": "xx"}) == "Our team can help you with this better."
+
+
+def test_strict_says_the_businesss_own_handoff_line(env):
+    _strict(env, env.jothidar)
+    row = next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])
+    row["handoff_line"] = "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."
+    env.state["kb_result"] = KbResult(topic="Shop name")
+    env.state["replies"] = ["[mood: calm] [used: none] Lakshmi Stores nu vainga."]
+    assert reply(env.jothidar["id"], "En kadaikku peru?").text == "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."
+    assert engine.handoff_line({"handoff_line": "   ", "language": "en"}) == "Our team can help you with this better."
 
 
 def test_strict_compare_reply_without_memory_hands_off_too(env):
@@ -207,7 +218,7 @@ def test_strict_compare_reply_without_memory_hands_off_too(env):
     companion = next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])
     env.state["replies"] = ["[mood: calm] [used: none] En karuthu idhu."]
     r = asyncio.run(engine._reply_without_memory(companion, "t1", "Innum sollunga", None))
-    assert r.text == "Idharku nam jothidaridam ketpadhu nalladhu." and r.basis is None
+    assert r.text == "Idharku engal team-idam ketpadhu nalladhu." and r.basis is None
 
 
 def test_the_used_tag_before_the_mood_tag_is_still_read_and_hidden(env):

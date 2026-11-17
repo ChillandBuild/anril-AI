@@ -4187,8 +4187,10 @@ export interface Companion {
   knowledge_tag_id: string | null;
   /** The collection of books this character reads (Anril Agents knowledge base). */
   knowledge_collection_id?: string | null;
-  /** True: when no book covers the question, the character may answer from its own general knowledge and says it is its own reading. False: it says its material does not cover this. */
+  /** Knowledge tab Mixed (true): when no file covers the question, the character answers anyway and says it is its own reading. Strict (false): that answer is replaced by handoff_line. */
   own_reasoning?: boolean;
+  /** What a Strict character says instead of an answer from no file, e.g. "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.". Null = the generic line in its language. */
+  handoff_line?: string | null;
   memory_level: 1 | 2;
   memory_engine: "card" | "mem0";
   history_messages: number;

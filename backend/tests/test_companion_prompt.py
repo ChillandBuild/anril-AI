@@ -2,7 +2,7 @@
 import pytest
 
 from app.companion.kb.types import KbResult, Passage
-from app.companion.platform_rules import INDUSTRY_RULES, MOODS, PLATFORM_RULES
+from app.companion.platform_rules import MOODS, PLATFORM_RULES
 from app.companion.prompt import MEMORY_LABEL, build_messages, parse_mood
 
 JOTHIDAR = {
@@ -25,7 +25,7 @@ def system(messages):
 def test_sections_come_in_the_fixed_order_then_history_then_the_user_message():
     msgs = build_messages(JOTHIDAR, "concerned", GURU_7TH, "Name: Karthik", HISTORY, "En velai eppo?")
     text = system(msgs)
-    heads = ["[PLATFORM RULES", "[INDUSTRY RULES: astrology]", "[CHARACTER", "[MOOD]", "[OUTPUT]",
+    heads = ["[PLATFORM RULES", "[CHARACTER", "[MOOD]", "[OUTPUT]",
              "[OWN REASONING", "[KNOWLEDGE", "[ABOUT THIS USER"]
     positions = [text.index(h) for h in heads]
     assert positions == sorted(positions)
@@ -89,7 +89,17 @@ def test_history_drops_bad_roles_and_empty_turns():
 
 def test_output_rule_lists_every_mood():
     assert all(m in system(build_messages(JOTHIDAR, "calm", None, "", [], "hi")) for m in MOODS)
-    assert "astrology" in INDUSTRY_RULES
+
+
+def test_no_industry_gets_fixed_rules_of_its_own():
+    """Astrology's rules (no death predictions, low-cost remedies) are the character's own, editable
+    Persona rules now. The fixed part of the prompt is the same for every industry."""
+    astro, general = (system(build_messages({**JOTHIDAR, "industry": i, "rules": []}, "calm", None, "", [], "hi"))
+                      for i in ("astrology", "general"))
+    assert astro == general
+    assert "[INDUSTRY RULES" not in astro and "death" not in astro and "poojas" not in astro
+    for word in ("chart", "reading", "astrolog", "jothi"):
+        assert word not in PLATFORM_RULES.lower()
 
 
 @pytest.mark.parametrize("raw,previous,expected", [

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { companionKbApi, companionsApi, type ApiError, type Companion, type CompanionModel, type CompanionStatus, type KbCollection } from "@/lib/api";
-import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, answerModeOf, type AnswerMode } from "@/components/agents/characterForm";
+import { LANGUAGES, LANGUAGE_LABEL, MOODS, changedFields, collectionIdOf, linesToList, answerModeOf, genericHandoff, handoffLineOf, withIndustry, type AnswerMode } from "@/components/agents/characterForm";
 import { saveErrorMessage } from "@/components/agents/formErrors";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, Field, INPUT, StatusPill } from "@/components/agents/ui";
 import { CharacterDeleteDialog } from "@/components/agents/CharacterDeleteDialog";
@@ -188,7 +188,7 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
 const MEMORY_FIELDS = new Set(["memory_level", "memory_engine", "history_messages", "privacy_mode"]);
 function tabOf(field: string): Tab {
   if (MEMORY_FIELDS.has(field)) return "memory";
-  if (field === "knowledge_collection_id" || field === "own_reasoning") return "knowledge";
+  if (field === "knowledge_collection_id" || field === "own_reasoning" || field === "handoff_line") return "knowledge";
   return "persona";
 }
 
@@ -248,7 +248,12 @@ function PersonaTab({ draft, set, errors }: TabProps) {
             id="industry"
             aria-labelledby="industry-label"
             value={draft.industry}
-            onChange={(v) => set("industry", v)}
+            onChange={(v) => {
+              // An empty Rules box gets the industry's starter rules (editable, nothing fixed).
+              const next = withIndustry(draft, v);
+              set("industry", next.industry);
+              if (next.rules !== draft.rules) set("rules", next.rules);
+            }}
             options={[
               { value: "general", label: "General" },
               { value: "astrology", label: "Astrology" },
@@ -263,7 +268,7 @@ function PersonaTab({ draft, set, errors }: TabProps) {
         <ListField id="sample_lines" label="Sample lines" hint="Up to 10, one per line." value={draft.sample_lines} onChange={(v) => set("sample_lines", v)} errors={errors} />
       </div>
       <ListField id="goals" label="Goals" hint="Up to 5, one per line." value={draft.goals} onChange={(v) => set("goals", v)} errors={errors} />
-      <ListField id="rules" label="Rules" hint="Up to 30, one per line." value={draft.rules} onChange={(v) => set("rules", v)} errors={errors} />
+      <ListField id="rules" label="Rules" hint="Up to 40, one per line." value={draft.rules} onChange={(v) => set("rules", v)} errors={errors} />
       {text("temperament", "Temperament", "e.g. Patient, never preachy.")}
       <Field id="default_mood" label="Default mood" error={errors.default_mood}>
         <Select
@@ -514,6 +519,25 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
         <AnswerModeTable mode={answerModeOf(draft)} />
         {errors.own_reasoning && <p role="alert" className="text-xs text-danger">{errors.own_reasoning}</p>}
       </div>
+
+      {answerModeOf(draft) === "strict" && (
+        <Field
+          id="handoff_line"
+          label="What it says when it hands off"
+          hint="Your own words, e.g. who to ask. Leave empty to use the line shown."
+          error={errors.handoff_line}
+        >
+          <input
+            id="handoff_line"
+            value={handoffLineOf(draft)}
+            maxLength={300}
+            placeholder={genericHandoff(draft.language)}
+            onChange={(e) => set("handoff_line", e.target.value)}
+            className={INPUT}
+            {...invalid(errors, "handoff_line")}
+          />
+        </Field>
+      )}
     </div>
   );
 }

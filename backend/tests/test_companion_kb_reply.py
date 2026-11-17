@@ -54,7 +54,7 @@ def test_rule_4_and_the_output_rule_name_the_used_tag():
     rule4 = next(line for line in PLATFORM_RULES.splitlines() if line.startswith("4."))
     assert "[used: ...]" in rule4 and "none found" in rule4 and "OWN REASONING" in rule4
     assert "Never invent a book name, chapter, verse or page number" in rule4
-    assert "Never invent chart positions, dates or numbers" in rule4
+    assert "Never invent facts about the user (dates, numbers, details)" in rule4
     assert "[used: " in OUTPUT_RULE and "[mood: X]" in OUTPUT_RULE and "[used: talk]" in OUTPUT_RULE
 
 

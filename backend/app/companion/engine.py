@@ -44,19 +44,14 @@ FALLBACK_LINES = {
 }
 
 
-# What a Strict character (own_reasoning off) says instead of an answer that came from no file:
-# send the person to the business's own people. Per industry, then per language; English when unknown.
+# What a Strict character (own_reasoning off) says instead of an answer that came from no file, when the
+# business has not written its own on the Knowledge tab (companions.handoff_line). Per language;
+# English when unknown. Generic on purpose: "our astrologer" is AstroTamil's own line, not ours.
+# Same text as frontend characterForm.GENERIC_HANDOFF (the box's placeholder): change both.
 HANDOFF_LINES = {
-    "astrology": {
-        "ta-en": "Idharku nam jothidaridam ketpadhu nalladhu.",
-        "ta": "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.",
-        "en": "Our astrologer can answer this better.",
-    },
-    "general": {
-        "ta-en": "Idharku engal team-idam ketpadhu nalladhu.",
-        "ta": "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது.",
-        "en": "Our team can help you with this better.",
-    },
+    "ta-en": "Idharku engal team-idam ketpadhu nalladhu.",
+    "ta": "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது.",
+    "en": "Our team can help you with this better.",
 }
 
 
@@ -113,9 +108,11 @@ def fallback_line(language: str | None) -> str:
 
 
 def handoff_line(companion: dict) -> str:
-    """{"industry": "astrology", "language": "ta"} -> "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது." """
-    lines = HANDOFF_LINES.get(companion.get("industry") or "", HANDOFF_LINES["general"])
-    return lines.get(companion.get("language") or "", lines["en"])
+    """The business's own line, else the generic one in the character's language.
+    {"handoff_line": "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."} -> that line;
+    {"language": "ta"} -> "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது." """
+    own = (companion.get("handoff_line") or "").strip()
+    return own or HANDOFF_LINES.get(companion.get("language") or "", HANDOFF_LINES["en"])
 
 
 def character_model(companion: dict | None) -> str:

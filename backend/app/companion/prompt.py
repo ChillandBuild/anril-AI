@@ -1,6 +1,6 @@
 """Builds the LLM messages for one companion reply, and reads the mood tag back out.
 
-Pure functions, no I/O. Section order is fixed: PLATFORM, INDUSTRY, CHARACTER, MOOD, OUTPUT,
+Pure functions, no I/O. Section order is fixed: PLATFORM, CHARACTER, MOOD, OUTPUT,
 OWN REASONING, KNOWLEDGE, ABOUT THIS USER, then history, then the user's message. Business-written text is
 fenced inside its own section, and square brackets in it are turned into round ones, so a
 backstory can't open a fake "[PLATFORM RULES]" header of its own.
@@ -10,7 +10,7 @@ from collections.abc import Mapping
 
 from app.companion.kb.types import KbResult, Passage
 from app.companion.platform_rules import (
-    INDUSTRY_RULES, MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES,
+    MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES,
 )
 
 LANGUAGES = {
@@ -88,9 +88,6 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
                    history: list[dict], user_message: str) -> list[dict]:
     """settings is a companions row (or any mapping with the character-card keys)."""
     sections = [PLATFORM_RULES]
-    industry = INDUSTRY_RULES.get(settings.get("industry") or "general")
-    if industry:
-        sections.append(industry)
     sections.append(_character_block(settings))
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")
     sections.append(f"[MOOD]\nYour current mood with this user: {current}. Let it colour your tone, not your facts.")

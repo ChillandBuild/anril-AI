@@ -43,6 +43,43 @@ export function answerModeOf(c: Companion): AnswerMode {
   return ownReasoningOn(c) ? "mixed" : "strict";
 }
 
+/** Strict's line when the owner wrote none (= backend engine.HANDOFF_LINES): the box's placeholder. */
+export const GENERIC_HANDOFF: Record<string, string> = {
+  "ta-en": "Idharku engal team-idam ketpadhu nalladhu.",
+  ta: "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது.",
+  en: "Our team can help you with this better.",
+};
+
+export function genericHandoff(language: string): string {
+  return GENERIC_HANDOFF[language] ?? GENERIC_HANDOFF.en;
+}
+
+/** The owner's own handoff line, "" when none (null and missing mean the generic line). */
+export function handoffLineOf(c: Companion): string {
+  return c.handoff_line ?? "";
+}
+
+/**
+ * Persona rules a character starts with when the owner picks its industry. Nothing here is fixed:
+ * they land in the Rules box, where the owner can edit or delete them before saving.
+ * Only rules common to every industry are fixed (backend platform_rules.PLATFORM_RULES).
+ */
+export const STARTER_RULES: Record<Companion["industry"], string[]> = {
+  astrology: [
+    "Never predict death, accidents or serious illness. Never frighten the user.",
+    "Present astrology as guidance, not certainty. The user's own choices matter most.",
+    "Remedies must be free or low-cost (prayer, a temple visit, charity, simple habits). Never present paid poojas, gemstones or yantras as required.",
+  ],
+  general: [],
+};
+
+/** Switching industry fills the starter rules only into an empty Rules box; rules already written stay as they are.
+ * Example: a new draft (no rules) switched to Astrology gets the 3 astrology rules; Jothidar AI's 30 rules are untouched. */
+export function withIndustry(c: Companion, industry: Companion["industry"]): Companion {
+  const rules = c.rules.length === 0 ? [...STARTER_RULES[industry]] : c.rules;
+  return { ...c, industry, rules };
+}
+
 /** The collection a character reads, or null for "No files". */
 export function collectionIdOf(c: Companion): string | null {
   return c.knowledge_collection_id ?? null;
@@ -61,6 +98,7 @@ export function changedFields(original: Companion, draft: Companion): CompanionI
   // Missing means "No files" / "on", so an untouched older character sends nothing.
   if (collectionIdOf(original) !== collectionIdOf(draft)) out.knowledge_collection_id = collectionIdOf(draft);
   if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
+  if (handoffLineOf(original).trim() !== handoffLineOf(draft).trim()) out.handoff_line = handoffLineOf(draft).trim() || null;
   return out as CompanionInput;
 }
 

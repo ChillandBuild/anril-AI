@@ -72,8 +72,9 @@ def test_a_full_character_card_is_accepted():
     {"sample_lines": ["x" * 301]},
     {"goals": ["g"] * 6},
     {"goals": ["x" * 201]},
-    {"rules": ["r"] * 31},
+    {"rules": ["r"] * 41},
     {"rules": ["x" * 301]},
+    {"handoff_line": "x" * 301},
     {"knowledge_tag_id": "not-a-uuid"},
     {"tenant_id": "someone-else"},
 ])
@@ -87,6 +88,15 @@ def test_update_rejects_memory_level_3_and_drops_nulls_except_the_tag():
         CompanionUpdate(memory_level=3)
     assert CompanionUpdate(name=None, knowledge_tag_id=None).changes() == {"knowledge_tag_id": None}
     assert CompanionUpdate(role="New role").changes() == {"role": "New role"}
+
+
+def test_forty_rules_fit_and_a_blank_handoff_line_clears_it():
+    assert len(CompanionSettings(**{**JOTHIDAR, "rules": ["r"] * 40}).rules) == 40
+    assert CompanionUpdate(rules=["r"] * 40).changes() == {"rules": ["r"] * 40}
+    assert CompanionUpdate(handoff_line="  Ask our astrologer.  ").changes() == {"handoff_line": "Ask our astrologer."}
+    assert CompanionUpdate(handoff_line="   ").changes() == {"handoff_line": None}     # back to the generic line
+    assert CompanionUpdate(handoff_line=None).changes() == {"handoff_line": None}
+    assert CompanionSettings(name="Vastu Guru").handoff_line is None
 
 
 # --- store -------------------------------------------------------------------------------------
