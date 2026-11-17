@@ -410,25 +410,26 @@ const ANSWER_MODE_OPTIONS: SegmentOption<AnswerMode>[] = [
   { value: "strict", label: "Strict" },
 ];
 
-/** What the character does in each case, for the example "When will I marry?". Only the last row
- *  depends on Mixed / Strict: a fully or partly covered question is answered the same either way. */
+/** What the character does in each case, for a shop's "Do you deliver on Sundays?" (generic: every
+ *  business sees it). Only the last row depends on Mixed / Strict: a fully or partly covered question
+ *  is answered the same either way. */
 function AnswerModeTable({ mode }: { mode: AnswerMode }) {
   const rows: { files: string; example: string; does: string; changes?: boolean }[] = [
     {
       files: "Fully cover it",
-      example: "Your file says: look at the 7th house; Saturn there means delay, not denial",
+      example: "Your file says: we deliver Monday to Saturday",
       does: "Answers from your files",
     },
     {
       files: "Partly cover it",
-      example: "“Is a late marriage bad for me?” Your file has the delay rule, not the comfort",
+      example: "“Can it reach me before Sunday’s party?” Your file has the days, not the advice",
       does: "Uses your file and explains it in its own words",
     },
     {
       files: "Don’t cover it",
-      example: "“What should I name my shop?”",
+      example: "“Can you suggest a gift for my mother?”",
       does: mode === "mixed"
-        ? "Answers anyway and says it is its own reading"
+        ? "Answers anyway and says it is its own suggestion"
         : "Hands off to your team instead of answering. Asking back and small talk still work",
       changes: true,
     },
@@ -436,7 +437,7 @@ function AnswerModeTable({ mode }: { mode: AnswerMode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border-subtle text-xs" aria-live="polite">
       <div className="hidden grid-cols-[7rem_1fr_1fr] gap-3 bg-surface-mid px-3 py-2 text-ink-muted sm:grid">
-        <span>Your files</span><span>Example: &ldquo;When will I marry?&rdquo;</span><span>What it does</span>
+        <span>Your files</span><span>Example: &ldquo;Do you deliver on Sundays?&rdquo;</span><span>What it does</span>
       </div>
       {rows.map((r) => (
         <div key={r.files} className="grid gap-1 border-t border-border-subtle px-3 py-2 first:border-t-0 sm:grid-cols-[7rem_1fr_1fr] sm:gap-3 sm:first:border-t">
