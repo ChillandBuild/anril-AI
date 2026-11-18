@@ -1,68 +1,40 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, InboundLead } from "@/lib/api";
-import { useInboundLeads, useInboundCampaigns } from "@/hooks/useApi";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
+import { api, InboundLead, InboundLeadFilters, InboundResult, InboundResultLabels, Lead, Message } from "@/lib/api";
+import { useInboundLeads, useInboundCampaigns, useInboundLeadsSummary } from "@/hooks/useApi";
 import {
-  Download, Megaphone, Filter, X,
-  Info, RefreshCw, RadioTower,
-  Link2, Copy, Check,
+  Download, X, RefreshCw, Link2, Copy, Check, Search, MessageSquare, Clock, CheckCircle2,
+  CalendarCheck, ChevronLeft, ChevronRight, Bot, UserRound, AlertCircle, Inbox, Receipt, Pencil, Undo2, Repeat,
 } from "lucide-react";
-import { cn, formatPhone } from "@/lib/utils";
-import { SegmentBadge } from "@/components/segment-badge";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
-import { AiraLoader } from "@/components/AiraLoader";
-import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
+import { FilterMenu, FilterMenuOption } from "@/app/dashboard/leads/FilterMenu";
+import { LeadDetailsPanel } from "@/components/lead-details-panel";
+import type { Option } from "@/components/chats/inboxFilters";
+import { CheckTick } from "@/components/ui/controls";
+import { SendMessageModal } from "@/app/dashboard/leads/SendMessageModal";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CHANNEL_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  whatsapp: {
-    label: "WhatsApp",
-    color: "text-emerald-700",
-    bg: "bg-emerald-50 border-emerald-200",
-    dot: "bg-emerald-500",
-  },
-  instagram: {
-    label: "Instagram",
-    color: "text-pink-700",
-    bg: "bg-pink-50 border-pink-200",
-    dot: "bg-pink-500",
-  },
-  facebook: {
-    label: "Facebook",
-    color: "text-blue-700",
-    bg: "bg-blue-50 border-blue-200",
-    dot: "bg-blue-500",
-  },
-  meta_form: {
-    label: "Instant form",
-    color: "text-violet-700",
-    bg: "bg-violet-50 border-violet-200",
-    dot: "bg-violet-500",
-  },
-  telegram: {
-    label: "Telegram",
-    color: "text-sky-700",
-    bg: "bg-sky-50 border-sky-200",
-    dot: "bg-sky-500",
-  },
-  indiamart: {
-    label: "IndiaMART",
-    color: "text-amber-800",
-    bg: "bg-amber-50 border-amber-200",
-    dot: "bg-amber-500",
-  },
-  justdial: {
-    label: "JustDial",
-    color: "text-orange-800",
-    bg: "bg-orange-50 border-orange-200",
-    dot: "bg-orange-500",
-  },
+const PAGE_SIZE = 50;
+const TZ = "Asia/Kolkata";
+
+const CHANNEL_DOT: Record<string, string> = {
+  whatsapp: "bg-emerald-500",
+  instagram: "bg-pink-500",
+  facebook: "bg-blue-500",
+  meta_form: "bg-violet-500",
+  telegram: "bg-sky-500",
+  indiamart: "bg-amber-500",
+  justdial: "bg-orange-500",
 };
 
-const SOURCE_OPTIONS = [
-  { value: "", label: "All Channels" },
+const CAME_FROM_OPTIONS: FilterMenuOption[] = [
+  { value: "all", label: "All" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "instagram", label: "Instagram" },
   { value: "facebook", label: "Facebook" },
@@ -72,62 +44,387 @@ const SOURCE_OPTIONS = [
   { value: "justdial", label: "JustDial" },
 ];
 
-const ORIGIN_OPTIONS = [
+const ORIGIN_OPTIONS: FilterMenuOption[] = [
   { value: "all", label: "All" },
-  { value: "organic", label: "Organic" },
-  { value: "ad", label: "Ad" },
-] as const;
-
-const SEGMENT_FILTER_OPTIONS = [
-  { value: "", label: "All Segments" },
-  { value: "A", label: "Hot" },
-  { value: "B", label: "Warm" },
-  { value: "C", label: "Cold" },
-  { value: "D", label: "Not Interested" },
+  { value: "ad", label: "From an ad" },
+  { value: "organic", label: "No ad" },
 ];
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+const ADDED_OPTIONS: FilterMenuOption[] = [
+  { value: "any", label: "Any time" },
+  { value: "1", label: "Today" },
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+];
 
-function ChannelBadge({ source }: { source: string }) {
-  const cfg = CHANNEL_CONFIG[source] ?? {
-    label: source,
-    color: "text-[#334155]",
-    bg: "bg-[#f1f5f9] border-[#e2e8f0]",
-    dot: "bg-[#94a3b8]",
-  };
-  return (
-    <span className={cn(
-      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border",
-      cfg.bg, cfg.color
-    )}>
-      <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", cfg.dot)} />
-      {cfg.label}
-    </span>
-  );
+const INTEREST_CHIPS: { value: "A" | "B" | "C" | "D"; label: string; on: string; off: string }[] = [
+  { value: "A", label: "Hot", on: "bg-[#b93815] text-white", off: "bg-[#fef6ee] text-[#b93815] hover:bg-[#fdead7]" },
+  { value: "B", label: "Warm", on: "bg-[#b54708] text-white", off: "bg-[#fffaeb] text-[#b54708] hover:bg-[#fef0c7]" },
+  { value: "C", label: "Cold", on: "bg-[#175cd3] text-white", off: "bg-[#eff8ff] text-[#175cd3] hover:bg-[#d1e9ff]" },
+  { value: "D", label: "Not interested", on: "bg-[#475467] text-white", off: "bg-[#f2f4f7] text-[#475467] hover:bg-[#e4e7ec]" },
+];
+
+const DEFAULT_LABELS: InboundResultLabels = { booked: "Booked", paid: "Came / Paid", lost: "Lost" };
+
+const RESULT_CHIPS: { value: Exclude<InboundResult, "none">; label: string; on: string; off: string }[] = [
+  { value: "booked", label: "Booked", on: "bg-[#3538cd] text-white", off: "bg-[#eef4ff] text-[#3538cd] hover:bg-[#e0eaff]" },
+  { value: "paid", label: "Came / Paid", on: "bg-[#067647] text-white", off: "bg-[#ecfdf3] text-[#067647] hover:bg-[#dcfae6]" },
+  { value: "lost", label: "Lost", on: "bg-[#475467] text-white", off: "bg-[#f2f4f7] text-[#475467] hover:bg-[#e4e7ec]" },
+];
+
+const SEGMENT_PILL: Record<string, { label: string; className: string }> = {
+  A: { label: "Hot", className: "bg-[#fef6ee] text-[#b93815]" },
+  B: { label: "Warm", className: "bg-[#fffaeb] text-[#b54708]" },
+  C: { label: "Cold", className: "bg-[#eff8ff] text-[#175cd3]" },
+  D: { label: "Not interested", className: "bg-[#f2f4f7] text-[#475467]" },
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function istDate(daysBack: number): string {
+  const d = new Date(Date.now() - (daysBack - 1) * 86400000);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d); // YYYY-MM-DD
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  const sameYear = new Intl.DateTimeFormat("en-IN", { year: "numeric", timeZone: TZ }).format(d)
+    === new Intl.DateTimeFormat("en-IN", { year: "numeric", timeZone: TZ }).format(new Date());
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }), timeZone: TZ });
+}
+
+function dateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: TZ,
+  });
+}
+
+/** "12m", "3h", "2d" since a moment. */
+function waitedFor(iso: string, now: number): string {
+  const mins = Math.max(1, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+function rupees(paise: number): string {
+  return `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+function displayName(lead: InboundLead): string {
+  return lead.name && lead.name !== "—" ? lead.name : lead.phone;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter((p) => /\w/.test(p));
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "#";
 }
 
 
-function EmptyState() {
+// ─── Cells ───────────────────────────────────────────────────────────────────
+
+function SegmentPill({ segment }: { segment: string }) {
+  const s = SEGMENT_PILL[segment];
+  if (!s) return null;
+  return <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", s.className)}>{s.label}</span>;
+}
+
+function LatestMessage({ lead }: { lead: InboundLead }) {
+  const m = lead.last_message;
+  if (!m || !m.content) return <span className="text-xs text-[#94a3b8]">No messages yet</span>;
+  const who = m.direction === "inbound" ? null : m.ai ? "AI agent" : "You";
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center px-4">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-light flex items-center justify-center mb-4 shadow-sm">
-        <RadioTower size={28} className="text-primary-400" />
-      </div>
-      <h3 className="font-bold text-[#1e293b] text-lg mb-1">No Inbound Leads Yet</h3>
-      <p className="text-sm text-[#94a3b8] max-w-sm leading-relaxed">
-        Leads will appear here when users message you via WhatsApp, Instagram DM,
-        Facebook Messenger, or Telegram — whether from an ad or organically.
-      </p>
-      <div className="mt-5 flex items-center gap-2 flex-wrap justify-center">
-        {["WhatsApp", "Instagram DM", "Facebook Messenger", "Telegram"].map((ch) => (
-          <span key={ch} className="px-3 py-1.5 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-medium border border-[#e2e8f0]">
-            {ch}
+    <p className="line-clamp-2 text-[13px] leading-snug text-[#334155]" title={m.content}>
+      {who && <span className="font-semibold text-[#64748b]">{who}: </span>}
+      {m.content}
+    </p>
+  );
+}
+
+/** `onOpen` / `onUndo` make "Set result", the order and Undo buttons; leave them out inside another button (phone cards). */
+function ResultCell({ lead, labels, onOpen, onUndo }: {
+  lead: InboundLead; labels: InboundResultLabels; onOpen?: () => void; onUndo?: () => void;
+}) {
+  if (lead.result === "paid") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] px-2.5 py-0.5 text-xs font-semibold text-[#067647]">
+          <CheckCircle2 size={12} aria-hidden /> {labels.paid}
+        </span>
+        {lead.order && (onOpen ? (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+            <Receipt size={12} aria-hidden /> Order{lead.order.number ? ` #${lead.order.number}` : ""} · {rupees(lead.order.total_paise)}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+            <Receipt size={12} aria-hidden /> Order{lead.order.number ? ` #${lead.order.number}` : ""} · {rupees(lead.order.total_paise)}
           </span>
         ))}
       </div>
+    );
+  }
+  if (lead.result === "booked") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#eef4ff] px-2.5 py-0.5 text-xs font-semibold text-[#3538cd]">
+          <CalendarCheck size={12} aria-hidden /> {labels.booked}
+        </span>
+        {lead.booked_for && <p className="text-xs text-[#64748b]">for {dateTime(lead.booked_for)}</p>}
+      </div>
+    );
+  }
+  if (lead.result === "lost") {
+    return (
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#f2f4f7] px-2.5 py-0.5 text-xs font-semibold text-[#475467]">
+          {labels.lost}
+          {lead.lost_auto && <span className="rounded bg-white px-1 text-[10px] font-bold uppercase tracking-wide text-[#64748b]" title="Anril marked this by itself">auto</span>}
+        </span>
+        {lead.lost_reason && <p className="line-clamp-1 text-xs text-[#64748b]">{lead.lost_reason}</p>}
+        {lead.lost_auto && onUndo && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onUndo(); }}
+            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+            <Undo2 size={12} aria-hidden /> Undo
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (!onOpen) {
+    return <span className="rounded-full border border-dashed border-[#cbd5e1] px-2.5 py-0.5 text-xs font-semibold text-[#64748b]">No result yet</span>;
+  }
+  return (
+    <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }}
+      className="rounded-full border border-dashed border-[#cbd5e1] px-2.5 py-0.5 text-xs font-semibold text-[#64748b] hover:border-primary hover:text-primary">
+      Set result
+    </button>
+  );
+}
+
+function HandledBy({ lead }: { lead: InboundLead }) {
+  const h = lead.handled_by;
+  if (h.kind === "ai") {
+    return <span className="inline-flex items-center gap-1 text-xs text-[#475467]"><Bot size={13} aria-hidden /> AI agent</span>;
+  }
+  if (h.kind === "person") {
+    return <span className="inline-flex items-center gap-1 text-xs text-[#475467]"><UserRound size={13} aria-hidden /> {h.name}</span>;
+  }
+  return <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#b42318]"><AlertCircle size={13} aria-hidden /> Nobody</span>;
+}
+
+function CameFrom({ lead }: { lead: InboundLead }) {
+  const ad = lead.ad_name || (lead.campaign_name !== "—" ? lead.campaign_name : null);
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-[13px] font-semibold text-[#0A1528]">
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", CHANNEL_DOT[lead.source] ?? "bg-slate-400")} aria-hidden />
+        {lead.channel_label}
+      </p>
+      <p className="truncate text-xs text-[#64748b]" title={ad ?? undefined}>
+        {ad ? `Ad · ${ad}` : lead.origin === "ad" ? "From an ad" : "No ad"} · {shortDate(lead.created_at)}
+      </p>
     </div>
   );
 }
+
+function ReplyCell({ lead, now }: { lead: InboundLead; now: number }) {
+  if (lead.waiting_since) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#fffaeb] px-2.5 py-0.5 text-xs font-semibold text-[#b54708]">
+        <Clock size={12} aria-hidden /> Waiting {waitedFor(lead.waiting_since, now)}
+      </span>
+    );
+  }
+  if (lead.last_message) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#ecfdf3] px-2.5 py-0.5 text-xs font-semibold text-[#067647]">
+        <Check size={12} aria-hidden /> Answered
+      </span>
+    );
+  }
+  return <span className="text-xs text-[#94a3b8]">—</span>;
+}
+
+function Chip({ active, onClick, label, count, on, off }: {
+  active: boolean; onClick: () => void; label: string; count: number | undefined; on: string; off: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active}
+      className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors", active ? on : off)}>
+      {label}
+      <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{count ?? "–"}</span>
+    </button>
+  );
+}
+
+function RenameSteps({ labels, onSaved }: { labels: InboundResultLabels; onSaved: (l: InboundResultLabels) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(labels);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const saved = await api.inboundLeads.saveResultLabels({
+        booked: draft.booked.trim(), paid: draft.paid.trim(), lost: draft.lost.trim(),
+      });
+      onSaved(saved);
+      setOpen(false);
+      toast.success("Step names saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the names");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => { setDraft(labels); setOpen(!open); }} aria-expanded={open}
+        className="flex items-center gap-1 text-xs font-semibold text-primary hover:opacity-80">
+        <Pencil size={12} aria-hidden /> Rename steps
+      </button>
+      {open && (
+        <form onSubmit={(e) => { e.preventDefault(); void save(); }}
+          className="absolute right-0 top-full z-30 mt-2 w-[300px] space-y-2.5 rounded-xl border border-[#e2e8f0] bg-white p-4 shadow-lg">
+          <p className="text-xs font-bold text-[#0A1528]">Name the steps your way</p>
+          <p className="text-xs text-[#64748b]">For example &quot;Site visit booked&quot; and &quot;Advance paid&quot;. Only the names change.</p>
+          {([["booked", "First step"], ["paid", "Done step"], ["lost", "Lost step"]] as const).map(([key, hint]) => (
+            <label key={key} className="block">
+              <span className="text-[11px] font-semibold text-[#64748b]">{hint}</span>
+              <input value={draft[key]} maxLength={30} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                className="mt-0.5 w-full rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </label>
+          ))}
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving || !draft.booked.trim() || !draft.paid.trim() || !draft.lost.trim()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button type="button" onClick={() => setDraft(DEFAULT_LABELS)} className="px-2 text-xs font-semibold text-[#64748b] hover:text-[#0A1528]">
+              Back to defaults
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ─── Drawer: one lead, with the same actions as Chats ────────────────────────
+
+function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
+  leadId: string;
+  row: InboundLead | undefined;
+  team: Option[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const router = useRouter();
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [messages, setMessages] = useState<Message[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLead(null);
+    setMessages(null);
+    setFailed(false);
+    Promise.all([api.leads.get(leadId), api.leads.messages(leadId)])
+      .then(([l, m]) => { if (alive) { setLead(l); setMessages(m); } })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [leadId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const recent = (messages ?? []).slice(-6);
+  const name = row ? displayName(row) : lead?.name || "Lead";
+
+  // Portaled to <body> so no transformed parent can shift or clip the overlay.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex justify-end bg-[#0A1528]/30" onClick={onClose}>
+      <aside role="dialog" aria-modal="true" aria-label={`${name}: details`}
+        className="flex h-full w-full max-w-[440px] flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <header className="flex items-start gap-3 border-b border-[#e2e8f0] p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+            {initials(name)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate font-display text-base font-bold text-[#0A1528]">{name}</h2>
+              {row && <SegmentPill segment={row.segment} />}
+            </div>
+            <p className="mt-0.5 truncate text-xs text-[#64748b]">
+              {row ? `${row.channel_label}${row.ad_name ? ` · Ad · ${row.ad_name}` : ""} · came ${dateTime(row.created_at)}` : ""}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-[#64748b] hover:bg-slate-50 hover:text-[#0A1528]">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex gap-2 border-b border-[#e2e8f0] px-4 py-3">
+            <button type="button" onClick={() => router.push(`/dashboard/conversations?lead=${leadId}`)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark">
+              <MessageSquare size={14} /> Open chat
+            </button>
+          </div>
+
+          <section className="border-b border-[#e2e8f0] px-4 py-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">Latest messages</p>
+            {failed ? (
+              <p className="text-xs text-[#b42318]">Couldn&apos;t load this lead. Close and try again.</p>
+            ) : messages === null ? (
+              <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-8 animate-pulse rounded-xl bg-slate-100" />)}</div>
+            ) : recent.length === 0 ? (
+              <p className="text-xs text-[#64748b]">No messages yet.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {recent.map((m) => (
+                  <li key={m.id} className={cn("flex", m.direction === "inbound" ? "justify-start" : "justify-end")}>
+                    <div className={cn("max-w-[85%] rounded-2xl px-3 py-1.5 text-[13px] leading-snug",
+                      m.direction === "inbound" ? "bg-slate-100 text-[#0A1528]" : "bg-primary/10 text-[#0A1528]")}>
+                      {m.direction === "outbound" && (
+                        <span className="block text-[11px] font-semibold text-primary">
+                          {m.is_ai_generated ? "AI agent" : m.sent_by_name || "You"}
+                        </span>
+                      )}
+                      <span className="line-clamp-4 whitespace-pre-line break-words">{m.content || (m.media_type ? `[${m.media_type}]` : "")}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* The Chats customer panel: Book a visit, Record payment, Not buying, orders, score. */}
+          {lead && (
+            <div className="[&>div]:h-auto [&>div]:w-full [&>div]:overflow-visible [&>div]:border-l-0 [&>div>div:first-child]:hidden">
+              <LeadDetailsPanel
+                lead={lead}
+                team={team}
+                onCollapse={onClose}
+                onLeadUpdate={(updated) => { setLead(updated); onChanged(); }}
+              />
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>,
+    document.body,
+  );
+}
+
+// ─── Google Ads link (unchanged) ─────────────────────────────────────────────
 
 // Generates a tracked wa.me link for a Google Ads campaign CTA. The link carries
 // a [GADS:<slug>] tag so inbound WhatsApp leads get attributed to Google.
@@ -247,6 +544,7 @@ function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+
 // ─── Client UI Component ───────────────────────────────────────────────────────
 
 interface InboundLeadsClientProps {
@@ -254,430 +552,403 @@ interface InboundLeadsClientProps {
   fallbackCampaigns: { id: string; campaign_name: string; platform: string }[] | null;
 }
 
-export function InboundLeadsClient({
-  fallbackInboundLeads,
-  fallbackCampaigns,
-}: InboundLeadsClientProps) {
+export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: InboundLeadsClientProps) {
+  const router = useRouter();
   const [exporting, setExporting] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
-  // Filters
-  const [selectedCampaign, setSelectedCampaign] = useState("");
-  const [selectedSource, setSelectedSource] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  const [origin, setOrigin] = useState<"all" | "organic" | "ad">("all");
-  const [selectedSegment, setSelectedSegment] = useState("");
-
-  // Hook integrations
-  const {
-    data: inboundLeadsData,
-    error: leadsError,
-    mutate: mutateLeads,
-    isValidating: leadsValidating,
-  } = useInboundLeads(
-    {
-      origin: origin === "all" ? undefined : origin,
-      segment: selectedSegment || undefined,
-      ad_campaign_id: origin === "organic" ? undefined : (selectedCampaign || undefined),
-      source: selectedSource || undefined,
-      date_from: dateFrom || undefined,
-      date_to: dateTo || undefined,
-      limit: 200,
-    },
-    true,
-    fallbackInboundLeads ?? undefined,
-  );
-
-  const { data: campaignsData } = useInboundCampaigns(
-    true,
-    fallbackCampaigns ?? undefined,
-  );
-
-  const leads = inboundLeadsData?.data ?? [];
-  const total = inboundLeadsData?.total ?? 0;
-  const campaigns = campaignsData ?? [];
-  const loading = !inboundLeadsData && !leadsError;
-
-  const hasFilters = !!(selectedCampaign || selectedSource || dateFrom || dateTo || origin !== "all" || selectedSegment);
-  const activeFilterCount = [
-    selectedCampaign,
-    selectedSource,
-    dateFrom,
-    dateTo,
-    origin !== "all" ? origin : "",
-    selectedSegment,
-  ].filter(Boolean).length;
-  const uniqueKeywords = new Set(leads.filter((l) => l.keyword !== "—").map((l) => l.keyword.toLowerCase().trim())).size;
-  const uniqueCampaigns = new Set(leads.filter((l) => l.ad_campaign_id).map((l) => l.ad_campaign_id)).size;
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [source, setSource] = useState("all");
+  const [origin, setOrigin] = useState("all");
+  const [campaign, setCampaign] = useState("");
+  const [added, setAdded] = useState("30");
+  const [segment, setSegment] = useState<string | undefined>();
+  const [result, setResult] = useState<InboundResult | undefined>();
+  const [waiting, setWaiting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [team, setTeam] = useState<Option[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sendOpen, setSendOpen] = useState(false);
+  const [labels, setLabels] = useState<InboundResultLabels>(DEFAULT_LABELS);
+  const { role } = useAuthRole();
 
   useEffect(() => {
-    if (leadsError) {
-      toast.error(leadsError instanceof Error ? leadsError.message : "Failed to load inbound leads");
-    }
-  }, [leadsError]);
+    api.inboundLeads.resultLabels().then(setLabels).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    api.callers.list()
+      .then(({ data }) => setTeam(data.filter((c) => c.active !== false).map((c) => ({ value: c.id, label: c.name }))))
+      .catch(() => {});
+  }, []);
+
+  // Everything except the chips: the counts on the chips use these.
+  const baseFilters: InboundLeadFilters = useMemo(() => ({
+    origin: origin === "all" ? undefined : (origin as "ad" | "organic"),
+    source: source === "all" ? undefined : source,
+    ad_campaign_id: origin === "organic" ? undefined : campaign || undefined,
+    search: search || undefined,
+    date_from: added === "any" ? undefined : istDate(Number(added)),
+  }), [origin, source, campaign, search, added]);
+  const filters: InboundLeadFilters = { ...baseFilters, segment, result, waiting: waiting || undefined };
+
+  useEffect(() => { setPage(1); }, [origin, source, campaign, search, added, segment, result, waiting]);
+  useEffect(() => { setSelected(new Set()); }, [origin, source, campaign, search, added, segment, result, waiting, page]);
+
+  const isFirstView = page === 1 && !search && source === "all" && origin === "all" && !campaign && added === "30"
+    && !segment && !result && !waiting;
+  const { data, error, mutate, isValidating } = useInboundLeads(
+    { ...filters, page, limit: PAGE_SIZE, sort: waiting ? "waiting" : "newest" },
+    true,
+    isFirstView ? fallbackInboundLeads ?? undefined : undefined,
+  );
+  const { data: summary, mutate: mutateSummary } = useInboundLeadsSummary(filters);
+  const { data: campaignsData } = useInboundCampaigns(true, fallbackCampaigns ?? undefined);
+
+  const leads = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const loading = !data && !error;
+  const campaigns = campaignsData ?? [];
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasFilters = !!(search || source !== "all" || origin !== "all" || campaign || added !== "30" || segment || result || waiting);
+
+  function clearFilters() {
+    setSearchInput(""); setSearch(""); setSource("all"); setOrigin("all"); setCampaign("");
+    setAdded("30"); setSegment(undefined); setResult(undefined); setWaiting(false);
+  }
+
+  function refresh() {
+    void mutate();
+    void mutateSummary();
+  }
 
   async function handleExport() {
     setExporting(true);
     try {
-      await api.inboundLeads.exportCsv({
-        origin: origin === "all" ? undefined : origin,
-        segment: selectedSegment || undefined,
-        ad_campaign_id: origin === "organic" ? undefined : (selectedCampaign || undefined),
-        source: selectedSource || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-      });
-      toast.success("Downloaded: inbound_leads.csv");
+      await api.inboundLeads.exportCsv(filters);
+      toast.success("Downloaded the list on screen: inbound_leads.csv");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Export failed");
+      toast.error(err instanceof Error ? err.message : "Download failed");
     } finally {
       setExporting(false);
     }
   }
 
-  function formatDate(iso: string) {
-    try {
-      return new Date(iso).toLocaleString("en-IN", {
-        day: "2-digit", month: "short", year: "numeric",
-        hour: "2-digit", minute: "2-digit", hour12: true,
-      });
-    } catch { return iso; }
+  const openRow = leads.find((l) => l.id === openId);
+  const selectedRows = leads.filter((l) => selected.has(l.id));
+  const allOnPage = leads.length > 0 && leads.every((l) => selected.has(l.id));
+
+  function toggle(id: string, on: boolean) {
+    const next = new Set(selected);
+    if (on) next.add(id);
+    else next.delete(id);
+    setSelected(next);
   }
 
+  async function undoAutoLost(lead: InboundLead) {
+    try {
+      await api.chats.undoNotBuying(lead.id);
+      toast.success(`${displayName(lead)} is back to no result. Anril won't mark them again for that follow-up.`);
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not undo");
+    }
+  }
+  const bookedOrPaid = summary?.booked_or_paid ?? 0;
+  const paid = summary?.results.paid ?? 0;
+  const neverHadLeads = !loading && !error && total === 0 && !hasFilters && added === "30" && (summary?.total ?? 0) === 0;
+
   return (
-    <div>
-      <>
-
-      {/* ── Filter Panel ───────────────────────────────────────── */}
-      <div className={cn(
-        "overflow-hidden transition-all duration-300 ease-in-out",
-        showFilters ? "max-h-64 opacity-100 mb-4" : "max-h-0 opacity-0 mb-0"
-      )}>
-        <div className="rounded-2xl border border-surface-mid/80 bg-white/95 p-3 shadow-sm">
-          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-700 ring-1 ring-primary-100">
-                <Filter size={13} />
-              </span>
-              <div>
-                <span className="block font-label text-[13px] font-bold text-on-surface">Filter Results</span>
-                <span className="block font-body text-[10px] text-on-surface-muted">
-                  {activeFilterCount > 0 ? `${activeFilterCount} active` : "All inbound leads"}
-                </span>
-              </div>
-            </div>
-            {hasFilters && (
-              <button
-                onClick={() => {
-                  setSelectedCampaign("");
-                  setSelectedSource("");
-                  setDateFrom("");
-                  setDateTo("");
-                  setOrigin("all");
-                  setSelectedSegment("");
-                }}
-                className="flex h-7 items-center gap-1 rounded-full border border-transparent px-2.5 text-[11px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
-              >
-                <X size={11} /> Clear all
-              </button>
-            )}
+    <div className="space-y-4">
+      {/* ── Toolbar ─────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5 p-4">
+          <div className="relative min-w-[160px] flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" aria-hidden />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search name, number or ad"
+              aria-label="Search inbound leads"
+              className="h-9 w-full rounded-xl border border-[#e2e8f0] pl-9 pr-3 text-xs text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
           </div>
-          <div className="flex flex-wrap items-end gap-2.5">
-            <div className="w-full sm:w-[165px]">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Segment</label>
-              <Select
-                size="sm"
-                value={selectedSegment}
-                onChange={setSelectedSegment}
-                aria-label="Segment"
-                options={SEGMENT_FILTER_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
-              />
-            </div>
-
-            <div className="min-w-[230px] flex-1">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Ad Campaign</label>
-              <Select
-                size="sm"
-                value={selectedCampaign}
-                onChange={setSelectedCampaign}
-                disabled={origin === "organic"}
-                aria-label="Ad Campaign"
-                options={[
-                  { value: "", label: "All Campaigns" },
-                  ...campaigns.map((c) => ({ value: c.id, label: c.campaign_name })),
-                ]}
-              />
-            </div>
-
-            <div className="w-full sm:w-[165px]">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">Channel</label>
-              <Select
-                size="sm"
-                value={selectedSource}
-                onChange={setSelectedSource}
-                aria-label="Channel"
-                options={SOURCE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              />
-            </div>
-
-            <div className="w-[145px]">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">From Date</label>
-              <input
-                type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                className="h-9 w-full rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              />
-            </div>
-
-            <div className="w-[145px]">
-              <label className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">To Date</label>
-              <input
-                type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                className="h-9 w-full rounded-xl border border-surface-mid bg-white px-3 font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              />
-            </div>
+          <FilterMenu label="Came from" options={CAME_FROM_OPTIONS} value={source} onChange={(v) => setSource(v ?? "all")} />
+          <FilterMenu label="Ad" options={ORIGIN_OPTIONS} value={origin} onChange={(v) => { setOrigin(v ?? "all"); setCampaign(""); }} />
+          {origin !== "organic" && campaigns.length > 0 && (
+            <Select
+              size="sm"
+              value={campaign}
+              onChange={setCampaign}
+              aria-label="Ad campaign"
+              className="w-auto min-w-0 max-w-fit basis-[140px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528] [&>span>span]:min-w-0 [&>span>span]:overflow-hidden"
+              options={[{ value: "", label: "All campaigns" }, ...campaigns.map((c) => ({ value: c.id, label: c.campaign_name }))]}
+            />
+          )}
+          <FilterMenu label="Added" options={ADDED_OPTIONS} value={added} onChange={(v) => setAdded(v ?? "30")} />
+          {hasFilters && (
+            <button type="button" onClick={clearFilters} className="shrink-0 whitespace-nowrap px-1 text-xs font-semibold text-primary hover:opacity-70">
+              Clear
+            </button>
+          )}
+          <div className="ml-auto flex shrink-0 gap-1.5">
+            <button type="button" onClick={refresh} title="Refresh" aria-label="Refresh"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc]">
+              <RefreshCw size={14} className={cn(isValidating && "animate-spin")} />
+            </button>
+            <button type="button" onClick={() => setShowGoogleModal(true)} title="Make a tracked WhatsApp link for a Google ad" aria-label="Google Ads link"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc]">
+              <Link2 size={14} />
+            </button>
+            <button type="button" onClick={handleExport} disabled={exporting || total === 0} title="Download the list on screen" aria-label="Download"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] disabled:opacity-40">
+              <Download size={14} />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* ── Toolbar & Stats ─────────────────────────────────────── */}
-      <div className="mb-3 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Origin" className="grid h-9 w-[240px] grid-cols-3 gap-1 rounded-full border border-[#e2e8f0] bg-[#f8f5ef] p-1">
-            {ORIGIN_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => setOrigin(o.value)}
-                aria-pressed={origin === o.value}
-                className={`rounded-full px-2 text-xs font-bold transition ${
-                  origin === o.value
-                    ? "bg-white text-primary shadow-sm ring-1 ring-primary-100"
-                    : "text-[#475569] hover:bg-white/60 hover:text-[#1e293b]"
-                }`}
-              >
-                {o.label}
-              </button>
+        {/* Interest and Result chips, each with its count */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#f1f5f9] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-semibold text-[#64748b]">Interest</span>
+            {INTEREST_CHIPS.map((c) => (
+              <Chip key={c.value} active={segment === c.value} onClick={() => setSegment(segment === c.value ? undefined : c.value)}
+                label={c.label} count={summary?.segments[c.value]} on={c.on} off={c.off} />
             ))}
           </div>
-            <button
-              onClick={() => setShowFilters((p) => !p)}
-              className={cn(
-                "flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl font-label text-xs font-bold border transition-all shadow-sm",
-                showFilters || hasFilters
-                  ? "bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100"
-                  : "bg-white border-surface-mid text-on-surface hover:border-primary-300 hover:text-primary-700"
-              )}
-            >
-              <Filter size={12} />
-              <span>Filters</span>
-              {activeFilterCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-primary-600 text-white text-[9px] font-bold flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => mutateLeads()}
-              disabled={leadsValidating}
-              className="flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] font-label text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
-            >
-              <RefreshCw size={12} className={leadsValidating ? "animate-spin" : ""} />
-              <span>Refresh</span>
-            </button>
-          <button
-            onClick={() => setShowGoogleModal(true)}
-            className="flex h-9 items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary-50 border border-primary-200 text-primary-700 hover:bg-primary-100 font-label text-xs font-bold transition-all shadow-sm"
-          >
-            <Link2 size={12} />
-            <span>Google Ads Link</span>
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={exporting || leads.length === 0}
-            className="flex h-9 items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-xl font-label text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-40 shadow-sm"
-          >
-            <Download size={12} />
-            <span>{exporting ? "Downloading…" : "Download CSV"}</span>
-          </button>
+          <span className="hidden h-5 w-px bg-[#e2e8f0] sm:block" aria-hidden />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-semibold text-[#64748b]">Result</span>
+            {RESULT_CHIPS.map((c, i) => (
+              <span key={c.value} className="inline-flex items-center gap-1.5">
+                {i === 1 && <ChevronRight size={12} className="text-[#94a3b8]" aria-hidden />}
+                <Chip active={result === c.value} onClick={() => setResult(result === c.value ? undefined : c.value)}
+                  label={labels[c.value]} count={summary?.results[c.value]} on={c.on} off={c.off} />
+              </span>
+            ))}
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-surface-mid bg-surface-mid lg:grid-cols-4">
-          {[
-            { label: "total inbound", value: total, hint: "Organic + Meta Ad" },
-            { label: "showing", value: leads.length, hint: "Rows in the table, up to 200" },
-            { label: "unique keywords", value: uniqueKeywords, hint: "Distinct first messages shown" },
-            { label: uniqueCampaigns === 1 ? "ad campaign" : "ad campaigns", value: uniqueCampaigns, hint: "Ad campaigns in the rows shown" },
-          ].map((stat) => (
-            <div key={stat.hint} title={stat.hint} className="flex items-baseline gap-2 bg-white px-4 py-2.5">
-              <span className="font-label text-lg font-bold tabular-nums text-on-surface">{loading ? "–" : stat.value}</span>
-              <span className="font-body text-xs text-on-surface-muted">{stat.label}</span>
-            </div>
-          ))}
+          {role === "owner" && <div className="ml-auto"><RenameSteps labels={labels} onSaved={setLabels} /></div>}
         </div>
       </div>
 
-      {showGoogleModal && <GoogleAdsLinkModal onClose={() => setShowGoogleModal(false)} />}
+      {/* ── Cards ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 shadow-sm">
+          <p className="text-xs font-semibold text-[#64748b]">Leads in this view</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[#0A1528]">{summary ? summary.total.toLocaleString("en-IN") : "–"}</p>
+          <p className="mt-0.5 text-xs text-[#64748b]">{added === "any" ? "all time" : ADDED_OPTIONS.find((o) => o.value === added)?.label.toLowerCase()}</p>
+        </div>
+        <button type="button" onClick={() => setWaiting(!waiting)} aria-pressed={waiting}
+          className={cn("rounded-2xl border px-5 py-4 text-left shadow-sm transition-colors",
+            waiting ? "border-[#fdb022] bg-[#fffaeb]" : "border-[#e2e8f0] bg-white hover:border-[#fedf89]")}>
+          <p className="text-xs font-semibold text-[#64748b]">Waiting for your reply</p>
+          <p className={cn("mt-1 text-2xl font-bold tabular-nums", (summary?.waiting ?? 0) > 0 ? "text-[#b54708]" : "text-[#0A1528]")}>
+            {summary ? summary.waiting.toLocaleString("en-IN") : "–"}
+          </p>
+          <p className="mt-0.5 text-xs text-[#64748b]">{waiting ? "showing these, longest wait first · tap to show all" : "their message is the latest · tap to see them"}</p>
+        </button>
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 shadow-sm">
+          <p className="text-xs font-semibold text-[#64748b]">{labels.booked} → {labels.paid.toLowerCase()}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[#0A1528]">
+            {summary ? <>{bookedOrPaid.toLocaleString("en-IN")} <span className="text-[#94a3b8]">→</span> <span className="text-[#067647]">{paid.toLocaleString("en-IN")}</span></> : "–"}
+          </p>
+          <p className="mt-0.5 text-xs text-[#64748b]">
+            {bookedOrPaid > 0 ? `${Math.round((paid / bookedOrPaid) * 100)}% reached ${labels.paid.toLowerCase()}` : "nobody booked yet in this view"}
+          </p>
+        </div>
+      </div>
 
-      {/* ── Table ──────────────────────────────────────────────── */}
-      <div className="card rounded-2xl overflow-hidden !p-0">
-        {loading ? (
-          <AiraLoader inline className="min-h-[300px]" />
-        ) : leads.length === 0 ? (
-          <EmptyState />
+      {/* ── Table ───────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
+        {selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 bg-[#0A1528] px-4 py-2.5 text-white">
+            <span className="text-xs font-bold">{selected.size} selected</span>
+            <button type="button" onClick={() => setSendOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20">
+              <MessageSquare size={12} /> Send message or template
+            </button>
+            <button type="button" onClick={() => router.push("/dashboard/leads?tab=follow-ups")}
+              title="Follow-ups run by rule (e.g. Hot leads who went quiet) and are set up in Customers › Follow-ups"
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20">
+              <Repeat size={12} /> Start a follow-up
+            </button>
+            <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-xs font-semibold text-white/70 hover:text-white">
+              Clear
+            </button>
+          </div>
+        )}
+        {error && !data ? (
+          <div className="px-6 py-12 text-center">
+            <p className="text-sm font-semibold text-[#0A1528]">Couldn&apos;t load inbound leads.</p>
+            <p className="mt-1 text-xs text-[#64748b]">Nothing is lost. Check your connection and try again.</p>
+            <button type="button" onClick={refresh} className="mt-4 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-white">Try again</button>
+          </div>
+        ) : neverHadLeads ? (
+          <div className="px-6 py-14 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary"><Inbox size={22} /></div>
+            <h3 className="mt-4 font-display text-lg font-bold text-[#0A1528]">No leads in the last 30 days</h3>
+            <p className="mx-auto mt-1 max-w-lg text-sm text-[#64748b]">
+              When someone messages you on WhatsApp, Instagram or Facebook, or fills an Instant form, they show here and the AI agent replies straight away. Nobody has to add them by hand.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <button type="button" onClick={() => setAdded("any")} className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-2 text-xs font-bold text-[#0A1528] hover:bg-slate-50">
+                Show all time
+              </button>
+              <button type="button" onClick={() => router.push("/dashboard/channels")} className="rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-white hover:bg-primary-dark">
+                Check connected channels
+              </button>
+            </div>
+          </div>
+        ) : !loading && leads.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <p className="text-sm font-semibold text-[#0A1528]">No leads match these filters.</p>
+            <button type="button" onClick={clearFilters} className="mt-2 text-xs font-semibold text-primary hover:opacity-70">Clear filters</button>
+          </div>
         ) : (
           <>
-            <div className="space-y-3 p-3 md:hidden">
-              {leads.map((lead) => (
-                <MobileRecordCard key={lead.id}>
-                  <MobileRecordHeader
-                    title={lead.name !== "—" ? lead.name : formatPhone(lead.phone)}
-                    subtitle={lead.phone !== "—" ? formatPhone(lead.phone) : "No phone"}
-                    aside={<ChannelBadge source={lead.source} />}
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className={cn(
-                      "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-                      lead.origin === "ad"
-                        ? "border-primary-200 bg-primary-50 text-primary-700"
-                        : "border-[#e2e8f0] bg-[#f1f5f9] text-[#334155]"
-                    )}>
-                      {lead.origin.charAt(0).toUpperCase() + lead.origin.slice(1)}
-                    </span>
-                    <SegmentBadge segment={lead.segment as "A" | "B" | "C" | "D"} />
-                  </div>
-                  <MobileRecordGrid>
-                    <MobileRecordField label="Joined" value={formatDate(lead.created_at)} />
-                    <MobileRecordField
-                      label="Keyword"
-                      className="col-span-2"
-                      value={lead.keyword !== "—" ? <span className="line-clamp-2 text-xs leading-snug">&ldquo;{lead.keyword}&rdquo;</span> : "No message yet"}
-                    />
-                    <MobileRecordField
-                      label="Campaign"
-                      className="col-span-2"
-                      value={<span className="line-clamp-2 text-xs leading-snug">{lead.campaign_name}</span>}
-                    />
-                  </MobileRecordGrid>
-                </MobileRecordCard>
-              ))}
-            </div>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full">
+            {/* Desktop */}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[1080px]">
                 <thead>
-                  <tr className="border-b border-surface-mid bg-surface-low/60">
-                    {["Contact", "Channel", "Origin", "Keyword (First Message)", "Ad Campaign", "Segment", "Date & Time Joined"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left font-label text-[10px] font-bold text-on-surface-muted uppercase tracking-widest whitespace-nowrap">
-                        {h}
-                        {h === "Origin" && (
-                          <span
-                            title="Ad: the lead clicked a Meta ad, so it has a campaign. Organic: the lead messaged you directly."
-                            aria-label="Ad: the lead clicked a Meta ad, so it has a campaign. Organic: the lead messaged you directly."
-                            className="ml-1 inline-flex cursor-help align-middle"
-                          >
-                            <Info size={11} />
-                          </span>
-                        )}
+                  <tr className="border-b border-[#f1f5f9] bg-[#f8fafc]">
+                    <th className="w-10 py-3 pl-4">
+                      <CheckTick checked={allOnPage} indeterminate={selected.size > 0 && !allOnPage}
+                        onChange={(on) => setSelected(on ? new Set(leads.map((l) => l.id)) : new Set())}
+                        aria-label="Select everyone on this page" />
+                    </th>
+                    {["Customer", "Latest message", "Result", "Handled by", "Came from", "Reply", ""].map((h, i) => (
+                      <th key={i} className={cn("px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]", i === 6 && "text-right")}>
+                        {h || <span className="sr-only">Actions</span>}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-surface-mid/50">
-                  {leads.map((lead, i) => (
-                    <tr
-                      key={lead.id}
-                      className={cn(
-                        "hover:bg-surface-low/60 transition-colors",
-                        i % 2 === 1 ? "bg-surface-low/20" : ""
-                      )}
-                    >
-                      {/* Contact */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className="font-label text-sm font-semibold text-on-surface">
-                          {lead.name !== "—" ? lead.name : (
-                            <span className="text-on-surface-muted italic font-normal text-xs">No name</span>
-                          )}
-                        </span>
-                        <span className="font-body text-xs text-on-surface-muted">
-                          {" · "}{lead.phone !== "—" ? formatPhone(lead.phone) : "—"}
-                        </span>
-                      </td>
-
-                      {/* Channel */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <ChannelBadge source={lead.source} />
-                      </td>
-
-                      {/* Origin */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className={cn(
-                          "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border",
-                          lead.origin === "ad"
-                            ? "bg-primary-50 border-primary-200 text-primary-700"
-                            : "bg-[#f1f5f9] border-[#e2e8f0] text-[#334155]"
-                        )}>
-                          {lead.origin.charAt(0).toUpperCase() + lead.origin.slice(1)}
-                        </span>
-                      </td>
-
-                      {/* Keyword */}
-                      <td className="px-4 py-2.5 max-w-[240px]">
-                        {lead.keyword !== "—" ? (
-                          <span
-                            title={lead.keyword}
-                            className="inline-block font-body text-xs text-amber-800 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg max-w-full truncate"
-                          >
-                            &ldquo;{lead.keyword}&rdquo;
-                          </span>
-                        ) : (
-                          <span className="text-on-surface-muted text-xs italic">no message yet</span>
-                        )}
-                      </td>
-
-                      {/* Campaign */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        {lead.campaign_name === "—" ? (
-                          <span className="text-xs text-on-surface-muted">—</span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <Megaphone size={11} className="text-primary-400 flex-shrink-0" />
-                            <span
-                              className="font-label text-xs font-semibold text-on-surface truncate max-w-[160px]"
-                              title={lead.campaign_name}
-                            >
-                              {lead.campaign_name}
-                            </span>
+                <tbody>
+                  {loading
+                    ? Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i} className="border-t border-[#f1f5f9]">
+                        {Array.from({ length: 8 }).map((__, j) => <td key={j} className="px-4 py-4"><div className="h-4 animate-pulse rounded bg-slate-100" /></td>)}
+                      </tr>
+                    ))
+                    : leads.map((lead) => (
+                      <tr key={lead.id} onClick={() => setOpenId(lead.id)}
+                        className={cn("cursor-pointer border-t border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]",
+                          lead.waiting_since && "bg-[#fffcf5]", selected.has(lead.id) && "bg-primary/5")}>
+                        <td className="w-10 py-3 pl-4" onClick={(e) => e.stopPropagation()}>
+                          <CheckTick checked={selected.has(lead.id)} onChange={(on) => toggle(lead.id, on)}
+                            aria-label={`Select ${displayName(lead)}`} />
+                        </td>
+                        <td className="max-w-[240px] px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-bold text-[#0A1528]">{displayName(lead)}</span>
+                            <SegmentPill segment={lead.segment} />
                           </div>
-                        )}
-                      </td>
-
-                      {/* Segment */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <SegmentBadge segment={lead.segment as "A" | "B" | "C" | "D"} />
-                      </td>
-
-                      {/* Date joined */}
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <p className="font-body text-xs text-on-surface-muted">{formatDate(lead.created_at)}</p>
-                      </td>
-                    </tr>
-                  ))}
+                          <p className="truncate text-xs text-[#64748b]">
+                            {[lead.business, lead.city].filter(Boolean).join(" · ") || lead.phone}
+                          </p>
+                        </td>
+                        <td className="max-w-[280px] px-4 py-3"><LatestMessage lead={lead} /></td>
+                        <td className="px-4 py-3">
+                          <ResultCell lead={lead} labels={labels} onOpen={() => setOpenId(lead.id)} onUndo={() => void undoAutoLost(lead)} />
+                        </td>
+                        <td className="px-4 py-3"><HandledBy lead={lead} /></td>
+                        <td className="max-w-[220px] px-4 py-3"><CameFrom lead={lead} /></td>
+                        <td className="px-4 py-3"><ReplyCell lead={lead} now={now} /></td>
+                        <td className="px-4 py-3 text-right">
+                          <button type="button"
+                            onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/conversations?lead=${lead.id}`); }}
+                            className={cn("whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold",
+                              lead.waiting_since ? "bg-primary text-white hover:bg-primary-dark" : "border border-[#e2e8f0] text-[#0A1528] hover:bg-slate-50")}>
+                            {lead.waiting_since ? "Reply" : "Open chat"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Table footer */}
-            <div className="flex items-center justify-between border-t border-surface-mid bg-surface-low/40 px-4 py-3 md:px-5">
-              <p className="font-label text-xs text-on-surface-muted">
-                Showing <strong className="text-on-surface">{leads.length}</strong> of{" "}
-                <strong className="text-on-surface">{total}</strong> inbound leads
-                {hasFilters && " (filtered)"}
+            {/* Phone and tablet */}
+            <ul className="divide-y divide-[#f1f5f9] lg:hidden">
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => <li key={i} className="p-4"><div className="h-16 animate-pulse rounded-xl bg-slate-100" /></li>)
+                : leads.map((lead) => (
+                  <li key={lead.id}>
+                    <button type="button" onClick={() => setOpenId(lead.id)}
+                      className={cn("w-full space-y-2 p-4 text-left", lead.waiting_since && "bg-[#fffcf5]")}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-bold text-[#0A1528]">{displayName(lead)}</span>
+                            <SegmentPill segment={lead.segment} />
+                          </div>
+                          <p className="truncate text-xs text-[#64748b]">{lead.channel_label} · {shortDate(lead.created_at)}</p>
+                        </div>
+                        <ReplyCell lead={lead} now={now} />
+                      </div>
+                      <LatestMessage lead={lead} />
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <ResultCell lead={lead} labels={labels} />
+                        <HandledBy lead={lead} />
+                      </div>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+
+            {/* Pages */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f1f5f9] px-4 py-3">
+              <p className="text-xs text-[#64748b]">
+                {total > 0 ? `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString("en-IN")}` : ""}
               </p>
+              {pages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setPage(page - 1)} disabled={page <= 1} aria-label="Previous page"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e2e8f0] text-[#0A1528] hover:bg-slate-50 disabled:opacity-40">
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="px-1 text-xs font-semibold text-[#334155]">Page {page} of {pages}</span>
+                  <button type="button" onClick={() => setPage(page + 1)} disabled={page >= pages} aria-label="Next page"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e2e8f0] text-[#0A1528] hover:bg-slate-50 disabled:opacity-40">
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
-      </>
+
+      {openId && (
+        <LeadDrawer
+          leadId={openId}
+          row={openRow}
+          team={team}
+          onClose={() => { setOpenId(null); refresh(); }}
+          onChanged={refresh}
+        />
+      )}
+      {showGoogleModal && <GoogleAdsLinkModal onClose={() => setShowGoogleModal(false)} />}
+      {sendOpen && selectedRows.length > 0 && (
+        <SendMessageModal
+          selectedLeads={selectedRows.map((l) => ({ id: l.id, name: l.name === "—" ? null : l.name, last_inbound_at: l.last_inbound_at }))}
+          batchLabel="Inbound leads"
+          onClose={() => setSendOpen(false)}
+          onAfterSend={() => { setSendOpen(false); setSelected(new Set()); refresh(); }}
+        />
+      )}
     </div>
   );
 }

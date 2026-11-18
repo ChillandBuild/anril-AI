@@ -21,9 +21,10 @@ from fastapi.responses import StreamingResponse
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_permission
+from app.dependencies.tenant import get_tenant_id, require_owner, require_permission
 from app.services.inbound_leads_logic import INBOUND_SOURCES
 from app.services.google_ads_attribution import build_tracked_wa_link, slugify_campaign
+from app.routes.leads import _sanitize_search
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,63 +76,120 @@ def _fmt_ist(iso: str) -> str:
         return iso
 
 
-def _fetch_inbound_leads(
-    db,
-    tenant_id: str,
-    *,
-    origin: str = "all",
-    segment: str | None = None,
-    ad_campaign_id: str | None = None,
-    source: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    limit: int = 200,
-    offset: int = 0,
-) -> tuple[list[dict], int]:
-    """
-    Fetch inbound leads (source in INBOUND_SOURCES). Returns (rows, total_count).
-    origin: "all" | "organic" | "ad". Two simple queries, no JOIN.
-    """
-    def _apply_common(q):
-        q = (
-            q.eq("tenant_id", tenant_id)
-            .in_("source", list(INBOUND_SOURCES))
-            .is_("deleted_at", "null")
-        )
-        # Instant form leads are ad leads without an ad_campaigns row.
-        if origin == "ad":
-            q = q.or_("ad_campaign_id.not.is.null,source.eq.meta_form")
-        elif origin == "organic":
-            q = q.is_("ad_campaign_id", "null").neq("source", "meta_form")
-        if segment:
-            q = q.eq("segment", segment)
-        if ad_campaign_id:
-            q = q.eq("ad_campaign_id", ad_campaign_id)
-        if source:
-            q = q.eq("source", source)
-        if date_from:
-            q = q.gte("created_at", date_from)
-        if date_to:
-            q = q.lte("created_at", date_to)
-        return q
+class InboundFilters:
+    """Engage > Inbound leads filters. One object feeds the list, the counts (/summary) and
+    the CSV, so the chips, the cards, the table and the download always agree."""
 
-    data_q = _apply_common(
-        db.table("leads").select(
-            "id,phone,name,source,score,segment,created_at,ad_campaign_id"
-        )
+    def __init__(self, *, origin: str = "all", segment: str | None = None, result: str | None = None,
+                 waiting: bool = False, search: str | None = None, ad_campaign_id: str | None = None,
+                 source: str | None = None, date_from: str | None = None, date_to: str | None = None):
+        self.origin = origin
+        self.segment = segment
+        self.result = result
+        self.waiting = waiting
+        self.search = _sanitize_search(search)
+        self.ad_campaign_id = ad_campaign_id
+        self.source = source
+        self.date_from = date_from
+        self.date_to = date_to
+
+    def but(self, **changes) -> "InboundFilters":
+        copy = InboundFilters()
+        copy.__dict__.update(self.__dict__)
+        copy.__dict__.update(changes)
+        return copy
+
+
+def _inbound_filters(
+    origin: str = Query("all", pattern="^(all|organic|ad)$"),
+    segment: str | None = Query(None, pattern="^[ABCD]$"),
+    result: str | None = Query(None, pattern="^(none|booked|paid|lost)$"),
+    waiting: bool = Query(False),
+    search: str | None = Query(None, max_length=100),
+    ad_campaign_id: str | None = Query(None),
+    source: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+) -> InboundFilters:
+    return InboundFilters(origin=origin, segment=segment, result=result, waiting=waiting, search=search,
+                          ad_campaign_id=ad_campaign_id, source=source, date_from=date_from, date_to=date_to)
+
+
+# Result of a lead, the same order as Chats' inbox (migration 272 inbox_chat_rows):
+# Came / Paid (marked converted, or a won order) > Lost > Booked > none.
+_PAID = "converted_at.not.is.null,won_deal_count.gte.1"
+
+
+def _not_paid(q):
+    return q.is_("converted_at", "null").eq("won_deal_count", 0)
+
+
+def _apply_result(q, result: str | None):
+    if result == "paid":
+        return q.or_(_PAID)
+    if result == "lost":
+        return _not_paid(q.not_.is_("lost_at", "null"))
+    if result == "booked":
+        return _not_paid(q.not_.is_("booked_at", "null").is_("lost_at", "null"))
+    if result == "none":
+        return _not_paid(q.is_("booked_at", "null").is_("lost_at", "null"))
+    return q
+
+
+def _apply_inbound(q, tenant_id: str, f: InboundFilters):
+    q = (
+        q.eq("tenant_id", tenant_id)
+        .in_("source", list(INBOUND_SOURCES))
+        .is_("deleted_at", "null")
     )
-    data_result = (
-        data_q.order("created_at", desc=True)
-        .range(offset, offset + limit - 1)
-        .execute()
-    )
-    rows = data_result.data or []
+    origin = f.origin
+    segment = f.segment
+    # Instant form leads are ad leads without an ad_campaigns row.
+    if origin == "ad":
+        q = q.or_("ad_campaign_id.not.is.null,source.eq.meta_form")
+    elif origin == "organic":
+        q = q.is_("ad_campaign_id", "null").neq("source", "meta_form")
+    if segment:
+        q = q.eq("segment", segment)
+    q = _apply_result(q, f.result)
+    if f.waiting:
+        # waiting_since is a computed field (migrations 282/283): an inbound message nothing was sent after.
+        q = q.not_.is_("last_inbound_at", "null").not_.is_("waiting_since", "null")
+    if f.search:
+        term = f.search
+        q = q.or_(f"name.ilike.*{term}*,phone.ilike.*{term}*,ad_name.ilike.*{term}*")
+    if f.ad_campaign_id:
+        q = q.eq("ad_campaign_id", f.ad_campaign_id)
+    if f.source:
+        q = q.eq("source", f.source)
+    if f.date_from:
+        q = q.gte("created_at", f.date_from)
+    if f.date_to:
+        q = q.lte("created_at", f.date_to)
+    return q
 
-    count_q = _apply_common(db.table("leads").select("id", count="exact"))
-    count_result = count_q.execute()
-    total = count_result.count or len(rows)
 
-    return rows, total
+_ROW_COLUMNS = (
+    "id,phone,name,source,score,segment,created_at,ad_campaign_id,ad_name,assigned_to,ai_enabled,"
+    "needs_human_attention,needs_human_intervention,converted_at,booked_at,booked_for,lost_at,lost_reason,lost_auto,"
+    "collected_data,last_inbound_at,waiting_since,last_message,won_deal_count"
+)
+
+
+def _fetch_inbound_leads(db, tenant_id: str, f: InboundFilters, *, sort: str = "newest",
+                         limit: int = 200, offset: int = 0) -> tuple[list[dict], int]:
+    """A page of inbound leads (source in INBOUND_SOURCES) and the total. Two queries, no JOIN.
+    sort "waiting": longest waiting first, then newest."""
+    q = _apply_inbound(db.table("leads").select(_ROW_COLUMNS), tenant_id, f)
+    if sort == "waiting":
+        q = q.order("waiting_since", desc=False, nullsfirst=False)
+    rows = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute().data or []
+    count = _apply_inbound(db.table("leads").select("id", count="exact"), tenant_id, f).limit(1).execute()
+    return rows, count.count or len(rows)
+
+
+def _count(db, tenant_id: str, f: InboundFilters) -> int:
+    return _apply_inbound(db.table("leads").select("id", count="exact"), tenant_id, f).limit(1).execute().count or 0
 
 
 def _fetch_campaign_names(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, str]:
@@ -175,16 +233,87 @@ def _fetch_first_keywords(db, tenant_id: str, lead_ids: list[str]) -> dict[str, 
     return keyword_map
 
 
+def _fetch_caller_names(db, tenant_id: str, ids: list[str]) -> dict[str, str]:
+    if not ids:
+        return {}
+    rows = (db.table("callers").select("id,name").eq("tenant_id", tenant_id).in_("id", ids).execute()).data or []
+    return {str(r["id"]): r.get("name") or "" for r in rows}
+
+
+def _fetch_open_orders(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dict]:
+    """The order each row's "Open order" points at: the newest won or waiting-for-payment deal."""
+    if not lead_ids:
+        return {}
+    out: dict[str, dict] = {}
+    for i in range(0, len(lead_ids), _KEYWORD_CHUNK):
+        rows = (db.table("deals").select("id,lead_id,deal_number,stage,total_paise,created_at,won_at")
+                .eq("tenant_id", tenant_id).in_("lead_id", lead_ids[i:i + _KEYWORD_CHUNK])
+                .in_("stage", ["won", "awaiting_payment"]).execute()).data or []
+        for d in rows:
+            at = d.get("won_at") or d.get("created_at") or ""
+            current = out.get(d["lead_id"])
+            if current is None or at > current["_at"]:
+                out[d["lead_id"]] = {"id": str(d["id"]), "number": d.get("deal_number"), "stage": d.get("stage"),
+                                     "total_paise": int(d.get("total_paise") or 0), "_at": at}
+    for d in out.values():
+        d.pop("_at", None)
+    return out
+
+
+# Business / city as a form gave them (Instant form answers, IndiaMART / JustDial enquiry).
+# Chat leads have neither until the AI saves details from chats (backlog: Inbound leads v2, Q2).
+_BUSINESS_KEYS = ("business", "business_name", "company", "company_name", "shop_name", "organisation",
+                  "organization", "firm")
+_CITY_KEYS = ("city", "town", "location", "district")
+
+
+def _from_collected(collected, keys: tuple[str, ...]) -> str | None:
+    if not isinstance(collected, dict):
+        return None
+    lowered = {str(k).strip().lower().replace(" ", "_"): v for k, v in collected.items()}
+    for key in keys:
+        value = lowered.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:80]
+    return None
+
+
+def _result_of(lead: dict) -> str:
+    if lead.get("converted_at") or int(lead.get("won_deal_count") or 0) > 0:
+        return "paid"
+    if lead.get("lost_at"):
+        return "lost"
+    if lead.get("booked_at"):
+        return "booked"
+    return "none"
+
+
+def _handled_by(lead: dict, callers: dict[str, str]) -> dict:
+    """Who has the chat: a team member, the AI agent, or nobody (AI off and nobody assigned)."""
+    needs_you = bool(lead.get("needs_human_attention") or lead.get("needs_human_intervention"))
+    if lead.get("assigned_to"):
+        return {"kind": "person", "name": callers.get(str(lead["assigned_to"])) or "A team member",
+                "needs_you": needs_you}
+    if lead.get("ai_enabled") is not False and not needs_you:
+        return {"kind": "ai", "name": "AI agent", "needs_you": False}
+    return {"kind": "nobody", "name": None, "needs_you": needs_you}
+
+
 def _enrich(
     leads: list[dict],
     campaign_map: dict[str, str],
     keyword_map: dict[str, str],
+    callers: dict[str, str] | None = None,
+    orders: dict[str, dict] | None = None,
 ) -> list[dict]:
-    """Attach campaign name, keyword, and origin to each lead row."""
+    """Attach campaign name, keyword, origin, result, reply status and who handles it."""
+    callers = callers or {}
+    orders = orders or {}
     enriched = []
     for lead in leads:
         cid = lead.get("ad_campaign_id") or ""
         src = lead.get("source", "whatsapp")
+        last = lead.get("last_message") if isinstance(lead.get("last_message"), dict) else None
         enriched.append({
             "id": lead.get("id", ""),
             "phone": lead.get("phone") or "—",
@@ -200,14 +329,91 @@ def _enrich(
             # No campaign id (organic, or an instant form) means no campaign:
             # "Unknown Campaign" is only for an id we can't find a name for.
             "campaign_name": campaign_map.get(cid, "Unknown Campaign") if cid else "—",
+            "ad_name": lead.get("ad_name"),
             "keyword": keyword_map.get(lead.get("id", ""), "—") or "—",
+            "business": _from_collected(lead.get("collected_data"), _BUSINESS_KEYS),
+            "city": _from_collected(lead.get("collected_data"), _CITY_KEYS),
+            "last_message": last,
+            "waiting_since": lead.get("waiting_since"),
+            "last_inbound_at": lead.get("last_inbound_at"),
+            "result": _result_of(lead),
+            "booked_for": lead.get("booked_for"),
+            "lost_reason": lead.get("lost_reason"),
+            "lost_auto": bool(lead.get("lost_auto")),
+            "order": orders.get(lead.get("id", "")),
+            "handled_by": _handled_by(lead, callers),
         })
     return enriched
+
+
+def _enrich_page(db, tenant_id: str, leads: list[dict]) -> list[dict]:
+    lead_ids = [l["id"] for l in leads]
+    campaign_ids = list({l["ad_campaign_id"] for l in leads if l.get("ad_campaign_id")})
+    caller_ids = sorted({str(l["assigned_to"]) for l in leads if l.get("assigned_to")})
+    return _enrich(
+        leads,
+        _fetch_campaign_names(db, tenant_id, campaign_ids),
+        _fetch_first_keywords(db, tenant_id, lead_ids),
+        _fetch_caller_names(db, tenant_id, caller_ids),
+        _fetch_open_orders(db, tenant_id, lead_ids),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ── Result step names (Booked / Came / Paid / Lost), renamable by the owner ──────────────────
+RESULT_LABELS_KEY = "inbound_result_labels"
+DEFAULT_RESULT_LABELS = {"booked": "Booked", "paid": "Came / Paid", "lost": "Lost"}
+
+
+class ResultLabelsIn(BaseModel):
+    booked: str = Field(min_length=1, max_length=30)
+    paid: str = Field(min_length=1, max_length=30)
+    lost: str = Field(min_length=1, max_length=30)
+
+
+def result_labels(tenant_id: str) -> dict:
+    """The tenant's names for the result steps, defaults filled in for any not renamed."""
+    import json
+    from app.config_dynamic import get_setting
+    raw = get_setting(RESULT_LABELS_KEY, fallback=None, tenant_id=tenant_id)
+    try:
+        saved = json.loads(raw) if raw else {}
+    except ValueError:
+        saved = {}
+    out = dict(DEFAULT_RESULT_LABELS)
+    for key in out:
+        value = saved.get(key) if isinstance(saved, dict) else None
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()[:30]
+    return out
+
+
+@router.get("/result-labels")
+async def get_result_labels(tenant_id: str = Depends(get_tenant_id)):
+    return result_labels(tenant_id)
+
+
+@router.put("/result-labels")
+async def put_result_labels(body: ResultLabelsIn, ctx: dict = Depends(require_owner)):
+    """Owner only: e.g. "Site visit booked" / "Advance paid" / "Lost". Names only; the rules stay."""
+    import json
+    from app.config_dynamic import invalidate_cache
+    labels = {k: " ".join(v.split()) for k, v in body.model_dump().items()}
+    if len({v.lower() for v in labels.values()}) < 3:
+        raise HTTPException(status_code=400, detail="Give each step a different name")
+    get_supabase().table("app_settings").upsert({
+        "tenant_id": ctx["tenant_id"],
+        "key": RESULT_LABELS_KEY,
+        "value": json.dumps(labels),
+        "is_secret": False,
+        "updated_at": "now()",
+    }, on_conflict="tenant_id,key").execute()
+    invalidate_cache(RESULT_LABELS_KEY)
+    return result_labels(ctx["tenant_id"])
+
 
 @router.get("/campaigns")
 async def list_campaigns(
@@ -292,100 +498,109 @@ async def generate_google_ads_link(
 
 @router.get("/")
 async def list_inbound_leads(
-    origin: str = Query("all", pattern="^(all|organic|ad)$"),
-    segment: str | None = Query(None, pattern="^[ABCD]$"),
-    ad_campaign_id: str | None = Query(None),
-    source: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
+    f: InboundFilters = Depends(_inbound_filters),
+    sort: str = Query("newest", pattern="^(newest|waiting)$"),
     page: int = Query(1, ge=1),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=200),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """List inbound leads (organic + ad) with optional origin/segment/channel filters."""
+    """Inbound leads (organic + ad) with their result, reply status and who handles them."""
     db = get_supabase()
     offset = (page - 1) * limit
     try:
-        leads, total = _fetch_inbound_leads(
-            db, tenant_id,
-            origin=origin, segment=segment,
-            ad_campaign_id=ad_campaign_id, source=source,
-            date_from=date_from, date_to=date_to,
-            limit=limit, offset=offset,
-        )
+        leads, total = _fetch_inbound_leads(db, tenant_id, f, sort=sort, limit=limit, offset=offset)
     except Exception as e:
         logger.error(f"inbound-leads list error: {e}")
-        return {"data": [], "total": 0, "page": page, "limit": limit}
-
+        raise HTTPException(status_code=503, detail="Couldn't load inbound leads right now. Nothing is lost; try again.")
     if not leads:
         return {"data": [], "total": total, "page": page, "limit": limit}
-
     try:
-        lead_ids = [l["id"] for l in leads]
-        campaign_ids = list({l["ad_campaign_id"] for l in leads if l.get("ad_campaign_id")})
-        campaign_map = _fetch_campaign_names(db, tenant_id, campaign_ids)
-        keyword_map = _fetch_first_keywords(db, tenant_id, lead_ids)
-        enriched = _enrich(leads, campaign_map, keyword_map)
+        enriched = _enrich_page(db, tenant_id, leads)
     except Exception as e:
         logger.error(f"inbound-leads enrich error: {e}")
-        return {"data": [], "total": total, "page": page, "limit": limit}
+        raise HTTPException(status_code=503, detail="Couldn't load inbound leads right now. Nothing is lost; try again.")
     return {"data": enriched, "total": total, "page": page, "limit": limit}
+
+
+@router.get("/summary")
+async def inbound_leads_summary(
+    f: InboundFilters = Depends(_inbound_filters),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Counts for the Interest and Result chips and the top cards. Each chip group is
+    counted without its own filter (so picking Hot still shows how many Warm there are),
+    but with every other filter on screen."""
+    db = get_supabase()
+    try:
+        base = f.but(segment=None, result=None, waiting=False)
+        by_segment = {s: _count(db, tenant_id, f.but(segment=s, waiting=False)) for s in ("A", "B", "C", "D")}
+        by_result = {r: _count(db, tenant_id, f.but(result=r, waiting=False)) for r in ("booked", "paid", "lost")}
+        return {
+            "total": _count(db, tenant_id, base.but(segment=f.segment, result=f.result)),
+            "segments": by_segment,
+            "results": by_result,
+            "waiting": _count(db, tenant_id, f.but(waiting=True)),
+            # Booked > came / paid: everyone booked or paid in these filters, and how many paid.
+            "booked_or_paid": by_result["booked"] + by_result["paid"],
+        }
+    except Exception as e:
+        logger.error(f"inbound-leads summary error: {e}")
+        raise HTTPException(status_code=503, detail="Couldn't count inbound leads right now.")
 
 
 @router.get("/export")
 async def export_inbound_leads(
-    origin: str = Query("all", pattern="^(all|organic|ad)$"),
-    segment: str | None = Query(None, pattern="^[ABCD]$"),
-    ad_campaign_id: str | None = Query(None),
-    source: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
+    f: InboundFilters = Depends(_inbound_filters),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    """CSV export for inbound leads. Respects origin/segment/channel/campaign/date filters."""
+    """CSV of exactly the list on screen (every filter, up to 5000 rows)."""
     db = get_supabase()
     try:
-        leads, _ = _fetch_inbound_leads(
-            db, tenant_id,
-            origin=origin, segment=segment,
-            ad_campaign_id=ad_campaign_id, source=source,
-            date_from=date_from, date_to=date_to,
-            limit=5000, offset=0,
-        )
+        leads, _ = _fetch_inbound_leads(db, tenant_id, f, limit=5000, offset=0)
     except Exception as e:
         logger.error(f"inbound-leads export error: {e}")
-        leads = []
+        raise HTTPException(status_code=503, detail="Couldn't prepare the download right now.")
 
     FIELDNAMES = [
-        "phone", "name", "origin", "channel", "keyword",
-        "ad_campaign", "date_joined_ist", "segment", "score",
+        "name", "phone", "business", "city", "interest", "result", "booking_date", "came_from",
+        "origin", "ad_campaign", "ad", "handled_by", "last_message_date", "first_message", "date_joined_ist",
+        "score",
     ]
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=FIELDNAMES, extrasaction="ignore")
     writer.writeheader()
 
+    enriched: list[dict] = []
     if leads:
         try:
-            lead_ids = [l["id"] for l in leads]
-            campaign_ids = list({l["ad_campaign_id"] for l in leads if l.get("ad_campaign_id")})
-            campaign_map = _fetch_campaign_names(db, tenant_id, campaign_ids)
-            keyword_map = _fetch_first_keywords(db, tenant_id, lead_ids)
-            enriched = _enrich(leads, campaign_map, keyword_map)
+            enriched = []
+            for i in range(0, len(leads), _KEYWORD_CHUNK):
+                enriched.extend(_enrich_page(db, tenant_id, leads[i:i + _KEYWORD_CHUNK]))
         except Exception as e:
             logger.error(f"inbound-leads export enrich error: {e}")
-            enriched = []
-        for lead in enriched:
-            writer.writerow({
-                "phone": lead["phone"],
-                "name": lead["name"],
-                "origin": lead["origin"],
-                "channel": lead["channel_label"],
-                "keyword": lead["keyword"],
-                "ad_campaign": lead["campaign_name"],
-                "date_joined_ist": _fmt_ist(lead["created_at"]),
-                "segment": lead["segment_label"],
-                "score": lead["score"],
-            })
+            raise HTTPException(status_code=503, detail="Couldn't prepare the download right now.")
+    labels = result_labels(tenant_id)
+    for lead in enriched:
+        last = lead.get("last_message") or {}
+        handled = lead.get("handled_by") or {}
+        writer.writerow({
+            "name": lead["name"],
+            "phone": lead["phone"],
+            "business": lead.get("business") or "",
+            "city": lead.get("city") or "",
+            "interest": lead["segment_label"],
+            "result": labels.get(lead["result"], ""),
+            "booking_date": _fmt_ist(lead["booked_for"]) if lead.get("booked_for") else "",
+            "came_from": lead["channel_label"],
+            "origin": lead["origin"],
+            "ad_campaign": lead["campaign_name"],
+            "ad": lead.get("ad_name") or "",
+            "handled_by": handled.get("name") or ("Nobody" if handled.get("kind") == "nobody" else ""),
+            "last_message_date": _fmt_ist(last["at"]) if last.get("at") else "",
+            "first_message": lead["keyword"],
+            "date_joined_ist": _fmt_ist(lead["created_at"]),
+            "score": lead["score"],
+        })
 
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),

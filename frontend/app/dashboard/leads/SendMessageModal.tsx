@@ -11,7 +11,8 @@ import { defaultWhen, formatSendTime, resolveWhen, type WhenValue } from "@/lib/
 import { VARIABLE_LABEL, blankVariables, renderTemplate, templateLabel } from "@/app/dashboard/telecalling/lib/send-details";
 
 interface SendMessageModalProps {
-  selectedLeads: Lead[];
+  /** Only id, name and last_inbound_at are read, so other lists (Inbound leads) can pass their rows. */
+  selectedLeads: Pick<Lead, "id" | "name" | "last_inbound_at">[];
   onClose: () => void;
   onAfterSend: () => void;
   /** Names the batch on the Scheduled templates page, e.g. "Hot leads". Only used when several leads are scheduled together. */
@@ -24,7 +25,7 @@ const INPUT =
   "w-full px-4 py-2.5 bg-[#f8fafc] rounded-xl font-body text-sm text-[#0A1528] border border-[#e2e8f0] focus:outline-none focus:ring-2 focus:ring-primary";
 const LABEL = "mb-1 block font-label text-[10px] font-bold uppercase tracking-wider text-[#64748b]";
 
-function windowOpen(lead: Lead, now: number): boolean {
+function windowOpen(lead: Pick<Lead, "last_inbound_at">, now: number): boolean {
   return !!lead.last_inbound_at && now - new Date(lead.last_inbound_at).getTime() < 24 * 60 * 60 * 1000;
 }
 
@@ -82,7 +83,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLab
     setValues(template ? template.variables.map((v) => (v.role === "customer_name" ? "" : v.value)) : []);
   }, [template]);
 
-  function valuesFor(lead: Lead): string[] {
+  function valuesFor(lead: Pick<Lead, "name">): string[] {
     if (nameIndex < 0) return values;
     return values.map((v, i) => (i === nameIndex ? (lead.name || "").trim() || nameFallback.trim() : v));
   }

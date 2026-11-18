@@ -266,6 +266,21 @@ class _Query:
                 return len(won)
             stamps = [str(t) for t in (r.get("converted_at"), r.get("booked_at"), *(d.get("won_at") for d in won)) if t]
             return max(stamps) if stamps else None
+        if self.name == "leads" and column in ("waiting_since", "last_message") and column not in r:
+            # Migrations 282/283: waiting since the first unanswered inbound message; newest message.
+            msgs = sorted((m for m in self.db.rows("messages") if m.get("lead_id") == r.get("id")),
+                          key=lambda m: str(m.get("created_at") or ""))
+            if column == "last_message":
+                if not msgs:
+                    return None
+                m = msgs[-1]
+                return {"content": (m.get("content") or "")[:300], "direction": m.get("direction"),
+                        "at": m.get("created_at"), "ai": bool(m.get("is_ai_generated"))}
+            # Migration 283: the first inbound message with nothing sent after it.
+            last_out = max((str(m.get("created_at") or "") for m in msgs if m.get("direction") == "outbound"), default="")
+            unanswered = [m.get("created_at") for m in msgs
+                          if m.get("direction") == "inbound" and str(m.get("created_at") or "") > last_out]
+            return unanswered[0] if unanswered else None
         if self.name == "leads" and column == "sent_broadcast_names":
             names = {b.get("template_name") for br in self.db.rows("broadcast_recipients")
                      if br.get("lead_id") == r.get("id") and br.get("send_status") == "sent"
@@ -283,7 +298,7 @@ class _Query:
     def is_(self, column, value):
         assert value == "null", "fake only supports is_(col, 'null')"
         # Through _add_filter so `.not_.is_(col, "null")` means IS NOT NULL, as in PostgREST.
-        return self._add_filter(lambda r: r.get(column) is None)
+        return self._add_filter(lambda r: self._value(r, column) is None)
 
     def lt(self, column, value):
         def compare(r, col=column, v=value):
@@ -377,6 +392,13 @@ class _Query:
                 elif op == "eq":
                     if actual is not None and str(actual) == value:
                         return True
+                elif op == "not":
+                    # "col.not.is.null" -> IS NOT NULL
+                    if value == "is.null" and actual is not None:
+                        return True
+                elif op == "gte":
+                    if actual is not None and (actual >= int(value) if isinstance(actual, int) else str(actual) >= value):
+                        return True
                 elif op == "lte":
                     if actual is not None and str(actual) <= value:
                         return True
@@ -469,6 +491,12 @@ class _Query:
             return SimpleNamespace(data=[dict(r) for r in matched], count=len(matched))
 
         rows = [dict(r) for r in matched]
+        if self.name == "leads":
+            # Computed fields come back as columns, like PostgREST's select of a computed field.
+            for out, src in zip(rows, matched):
+                for column in ("waiting_since", "last_message", "won_deal_count"):
+                    if column not in out:
+                        out[column] = self._value(src, column)
         for column, desc in reversed(self._order):  # stable sorts, last key first
             nullsfirst = self._nullsfirst.get(column, desc)
             rows.sort(key=lambda r, c=column, n=nullsfirst, d=desc: (

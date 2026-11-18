@@ -1,0 +1,124 @@
+"""Engage > Inbound leads list, counts and download (/api/v1/inbound-leads) on the fake database.
+
+tenant-1 is the caller's; tenant-2 must never show. Results follow Chats' inbox order:
+Came / Paid (converted or a won order) > Lost > Booked > none. Waiting = their message is the latest.
+"""
+import csv
+import io
+import sys
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from fastapi.testclient import TestClient
+from app.dependencies.auth import get_current_user
+from app.dependencies.tenant import get_tenant_and_role, get_tenant_id
+from app.main import app
+from tests.fake_supabase import FakeSupabase
+
+NOW = datetime.now(timezone.utc)
+ago = lambda hours: (NOW - timedelta(hours=hours)).isoformat()
+
+
+class InboundLeadsListTests(unittest.TestCase):
+    def setUp(self):
+        self.db = FakeSupabase()
+        self.db.rpc = lambda name, params: type("R", (), {"execute": lambda s: type("D", (), {"data": []})()})()
+
+        def lead(lid, **extra):
+            row = {"id": lid, "tenant_id": "tenant-1", "name": lid, "phone": "+91" + lid, "source": "whatsapp",
+                   "segment": "C", "score": 10, "created_at": ago(48), "deleted_at": None, "ad_campaign_id": None,
+                   "ai_enabled": True, "last_inbound_at": None}
+            row.update(extra)
+            self.db.rows("leads").append(row)
+
+        def msg(lid, hours, direction, ai=False, content="hi"):
+            self.db.rows("messages").append({"id": f"{lid}-{hours}-{direction}", "tenant_id": "tenant-1", "lead_id": lid,
+                                             "created_at": ago(hours), "direction": direction,
+                                             "is_ai_generated": ai, "content": content})
+
+        lead("priya", segment="A", booked_at=ago(5), booked_for=ago(-48), assigned_to="k1", last_inbound_at=ago(2),
+             collected_data={"Business name": "Priya Boutique", "City": "Coimbatore"})
+        msg("priya", 3, "outbound", ai=True)
+        msg("priya", 2, "inbound", content="Saturday 11 AM visit varen")
+        lead("suresh", segment="A", lost_at=ago(30), last_inbound_at=ago(20))
+        msg("suresh", 20, "inbound")
+        msg("suresh", 19, "outbound")
+        self.db.rows("deals").append({"id": "d1", "tenant_id": "tenant-1", "lead_id": "suresh", "stage": "won",
+                                      "total_paise": 450000, "deal_number": 1042, "won_at": ago(10)})
+        lead("divya", segment="C", lost_at=ago(10), lost_reason="Just looking", last_inbound_at=ago(40))
+        msg("divya", 40, "inbound")
+        msg("divya", 39, "outbound")
+        lead("meena", segment="B", last_inbound_at=ago(1), ai_enabled=False)
+        msg("meena", 1, "inbound", content="Tamil-la reply pannuma?")
+        lead("upload", source="upload", segment="A")
+        lead("other", tenant_id="tenant-2", segment="A", last_inbound_at=ago(1))
+
+        self.db.rows("callers").append({"id": "k1", "tenant_id": "tenant-1", "name": "Karthik"})
+        self.patch = patch("app.routes.inbound_leads.get_supabase", return_value=self.db)
+        self.patch.start()
+        app.dependency_overrides[get_tenant_id] = lambda: "tenant-1"
+        app.dependency_overrides[get_tenant_and_role] = lambda: {"tenant_id": "tenant-1", "role": "owner", "user_id": "u1", "permissions": []}
+        app.dependency_overrides[get_current_user] = lambda: {"user_id": "u1"}
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
+        self.patch.stop()
+
+    def _list(self, **params):
+        res = self.client.get("/api/v1/inbound-leads/", params=params)
+        self.assertEqual(res.status_code, 200, res.text)
+        return res.json()
+
+    def test_rows_carry_result_reply_handler_and_form_details(self):
+        rows = {r["id"]: r for r in self._list()["data"]}
+        self.assertEqual(set(rows), {"priya", "suresh", "divya", "meena"})  # no upload, no other tenant
+        priya = rows["priya"]
+        self.assertEqual(priya["result"], "booked")
+        self.assertEqual(priya["handled_by"], {"kind": "person", "name": "Karthik", "needs_you": False})
+        self.assertEqual(priya["last_message"]["content"], "Saturday 11 AM visit varen")
+        self.assertEqual(priya["waiting_since"], ago(2)[:13] + priya["waiting_since"][13:])
+        self.assertEqual((priya["business"], priya["city"]), ("Priya Boutique", "Coimbatore"))
+        self.assertEqual(rows["suresh"]["result"], "paid")  # a won order beats Lost
+        self.assertEqual(rows["suresh"]["order"]["number"], 1042)
+        self.assertIsNone(rows["suresh"]["waiting_since"])
+        self.assertEqual(rows["divya"]["result"], "lost")
+        self.assertEqual(rows["meena"]["handled_by"]["kind"], "nobody")  # AI off, nobody assigned
+        self.assertIsNone(rows["meena"]["business"])
+
+    def test_result_and_waiting_filters(self):
+        ids = lambda **p: sorted(r["id"] for r in self._list(**p)["data"])
+        self.assertEqual(ids(result="paid"), ["suresh"])
+        self.assertEqual(ids(result="lost"), ["divya"])
+        self.assertEqual(ids(result="booked"), ["priya"])
+        self.assertEqual(ids(result="none"), ["meena"])
+        self.assertEqual(ids(waiting="true"), ["meena", "priya"])
+        self.assertEqual(ids(search="boutique"), [])  # search is name / phone / ad, not form answers
+        self.assertEqual(ids(search="mee"), ["meena"])
+
+    def test_waiting_sort_puts_the_longest_wait_first(self):
+        rows = self._list(sort="waiting")["data"]
+        self.assertEqual([r["id"] for r in rows[:2]], ["priya", "meena"])
+
+    def test_summary_counts_each_chip_group_without_its_own_filter(self):
+        res = self.client.get("/api/v1/inbound-leads/summary", params={"segment": "A"})
+        self.assertEqual(res.status_code, 200, res.text)
+        body = res.json()
+        self.assertEqual(body["segments"], {"A": 2, "B": 1, "C": 1, "D": 0})
+        self.assertEqual(body["results"], {"booked": 1, "paid": 1, "lost": 0})  # within Hot
+        self.assertEqual(body["total"], 2)
+        self.assertEqual(body["waiting"], 1)  # Hot and waiting: priya
+        self.assertEqual(body["booked_or_paid"], 2)
+
+    def test_export_matches_the_list_and_has_the_new_columns(self):
+        res = self.client.get("/api/v1/inbound-leads/export", params={"result": "paid"})
+        self.assertEqual(res.status_code, 200, res.text)
+        rows = list(csv.DictReader(io.StringIO(res.content.decode("utf-8-sig"))))
+        self.assertEqual([r["name"] for r in rows], ["suresh"])
+        for column in ("business", "city", "result", "booking_date", "handled_by", "last_message_date"):
+            self.assertIn(column, rows[0])
+        self.assertEqual(rows[0]["result"], "Came / Paid")

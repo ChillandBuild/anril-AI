@@ -3560,42 +3560,21 @@ export const api = {
         `/api/v1/inbound-leads/google-link?${qs}`
       );
     },
-    list: async (params?: {
-      origin?: string;
-      segment?: string;
-      ad_campaign_id?: string;
-      source?: string;
-      date_from?: string;
-      date_to?: string;
-      page?: number;
-      limit?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.origin) qs.set("origin", params.origin);
-      if (params?.segment) qs.set("segment", params.segment);
-      if (params?.ad_campaign_id) qs.set("ad_campaign_id", params.ad_campaign_id);
-      if (params?.source) qs.set("source", params.source);
-      if (params?.date_from) qs.set("date_from", params.date_from);
-      if (params?.date_to) qs.set("date_to", params.date_to);
+    list: async (params?: InboundLeadFilters & { page?: number; limit?: number; sort?: "newest" | "waiting" }) => {
+      const qs = inboundQuery(params);
+      if (params?.sort) qs.set("sort", params.sort);
       if (params?.page) qs.set("page", String(params.page));
       if (params?.limit) qs.set("limit", String(params.limit));
       return apiFetch<{ data: InboundLead[]; total: number; page: number; limit: number }>(`/api/v1/inbound-leads/?${qs}`);
     },
-    exportCsv: async (params?: {
-      origin?: string;
-      segment?: string;
-      ad_campaign_id?: string;
-      source?: string;
-      date_from?: string;
-      date_to?: string;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.origin) qs.set("origin", params.origin);
-      if (params?.segment) qs.set("segment", params.segment);
-      if (params?.ad_campaign_id) qs.set("ad_campaign_id", params.ad_campaign_id);
-      if (params?.source) qs.set("source", params.source);
-      if (params?.date_from) qs.set("date_from", params.date_from);
-      if (params?.date_to) qs.set("date_to", params.date_to);
+    summary: async (params?: InboundLeadFilters) =>
+      apiFetch<InboundLeadsSummary>(`/api/v1/inbound-leads/summary?${inboundQuery(params)}`),
+    resultLabels: () => apiFetch<InboundResultLabels>("/api/v1/inbound-leads/result-labels"),
+    saveResultLabels: (labels: InboundResultLabels) =>
+      apiFetch<InboundResultLabels>("/api/v1/inbound-leads/result-labels", { method: "PUT", body: JSON.stringify(labels) }),
+    /** Downloads exactly the list on screen. */
+    exportCsv: async (params?: InboundLeadFilters) => {
+      const qs = inboundQuery(params);
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/inbound-leads/export?${qs}`, { headers });
       if (!res.ok) throw new Error(`Export failed: ${res.status}`);
@@ -3977,6 +3956,9 @@ export interface Todo {
   updated_at: string;
 }
 
+/** Result of a lead, the same order as Chats: Came / Paid > Lost > Booked > none. */
+export type InboundResult = "none" | "booked" | "paid" | "lost";
+
 export interface InboundLead {
   id: string;
   phone: string;
@@ -3990,8 +3972,68 @@ export interface InboundLead {
   created_at: string;
   ad_campaign_id: string | null;
   campaign_name: string;
-  campaign_platform: string;
+  ad_name: string | null;
+  /** Their first message (for an ad lead, the pre-filled text). */
   keyword: string;
+  /** From a form (Instant form, IndiaMART, JustDial) only; chat leads have none yet. */
+  business: string | null;
+  city: string | null;
+  last_message: { content: string | null; direction: "inbound" | "outbound"; at: string; ai: boolean } | null;
+  /** Set when their message is the latest one (nobody has answered it). */
+  waiting_since: string | null;
+  result: InboundResult;
+  booked_for: string | null;
+  lost_reason: string | null;
+  /** Anril marked it "Lost · stopped replying" by itself; Undo is offered. */
+  lost_auto: boolean;
+  /** Their last message, for the 24-hour free-reply window. */
+  last_inbound_at: string | null;
+  /** The newest won or waiting-for-payment order, for "Open order". */
+  order: { id: string; number: number | null; stage: "won" | "awaiting_payment"; total_paise: number } | null;
+  handled_by: { kind: "person" | "ai" | "nobody"; name: string | null; needs_you: boolean };
+}
+
+/** Filters shared by the Inbound leads list, its counts and the download. */
+export interface InboundLeadFilters {
+  origin?: "organic" | "ad";
+  segment?: string;
+  result?: InboundResult;
+  waiting?: boolean;
+  search?: string;
+  ad_campaign_id?: string;
+  source?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+/** The owner's names for the result steps (defaults: Booked / Came / Paid / Lost). */
+export interface InboundResultLabels {
+  booked: string;
+  paid: string;
+  lost: string;
+}
+
+export interface InboundLeadsSummary {
+  total: number;
+  segments: Record<"A" | "B" | "C" | "D", number>;
+  results: Record<"booked" | "paid" | "lost", number>;
+  waiting: number;
+  booked_or_paid: number;
+}
+
+function inboundQuery(f?: InboundLeadFilters): URLSearchParams {
+  const qs = new URLSearchParams();
+  if (!f) return qs;
+  if (f.origin) qs.set("origin", f.origin);
+  if (f.segment) qs.set("segment", f.segment);
+  if (f.result) qs.set("result", f.result);
+  if (f.waiting) qs.set("waiting", "true");
+  if (f.search) qs.set("search", f.search);
+  if (f.ad_campaign_id) qs.set("ad_campaign_id", f.ad_campaign_id);
+  if (f.source) qs.set("source", f.source);
+  if (f.date_from) qs.set("date_from", f.date_from);
+  if (f.date_to) qs.set("date_to", f.date_to);
+  return qs;
 }
 
 export interface AdPerformanceRow {

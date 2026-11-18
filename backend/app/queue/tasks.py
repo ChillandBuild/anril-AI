@@ -1,4 +1,4 @@
-"""The 32 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 34 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -38,6 +38,8 @@ RETRY_CLASS: dict[str, str] = {
     "companion-diary": "A",
     "companion-kb-ingest": "A",
     "companion-kb-learning": "A",
+    "inbound-stopped-replying": "A",
+    "unmarked-bookings": "C",
 }
 
 
@@ -255,6 +257,22 @@ def call_alert_summary(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.call_alerts import send_morning_summaries
     send_morning_summaries(get_supabase())
+
+
+# Class A: the update re-checks every condition, so a re-run or overlap marks nobody twice.
+@queue_app.periodic(cron="17 * * * *", periodic_id="inbound-stopped-replying")
+@queue_app.task(name="inbound-stopped-replying", queue="maintenance")
+def inbound_stopped_replying(timestamp: int) -> None:
+    from app.services.inbound_auto_results import mark_stopped_replying
+    mark_stopped_replying()
+
+
+# Class C: one bell per owner per day (it checks for today's bell first), never two at once.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(20, 0), periodic_id="unmarked-bookings")
+@queue_app.task(name="unmarked-bookings", **_one_at_a_time("unmarked-bookings"), queue="messages")
+def unmarked_bookings(timestamp: int) -> None:
+    from app.services.inbound_auto_results import remind_unmarked_bookings
+    remind_unmarked_bookings()
 
 
 @queue_app.periodic(cron="30 3 * * 1", periodic_id="brain-weekly-digest")  # Monday 09:00 IST

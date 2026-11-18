@@ -10,6 +10,8 @@ import {
   CallLog,
   NoteWithLead,
   InboundLead,
+  InboundLeadFilters,
+  InboundLeadsSummary,
   AdFilterTree,
   AdPerformanceRow,
   AdPerformanceParams,
@@ -179,16 +181,7 @@ export function useLeadsWithActivity(enabled = true, fallbackData?: { data: Lead
 }
 
 export function useInboundLeads(
-  params: {
-    origin?: string;
-    segment?: string;
-    ad_campaign_id?: string;
-    source?: string;
-    date_from?: string;
-    date_to?: string;
-    page?: number;
-    limit?: number;
-  },
+  params: InboundLeadFilters & { page?: number; limit?: number; sort?: "newest" | "waiting" },
   enabled = true,
   fallbackData?: { data: InboundLead[]; total: number; page: number; limit: number },
 ) {
@@ -196,8 +189,13 @@ export function useInboundLeads(
   return useSWR<{ data: InboundLead[]; total: number; page: number; limit: number }>(
     key,
     () => api.inboundLeads.list(params),
-    { ...defaultConfig, fallbackData },
+    { ...defaultConfig, fallbackData, keepPreviousData: true },
   );
+}
+
+export function useInboundLeadsSummary(params: InboundLeadFilters, enabled = true) {
+  const key = enabled ? `inbound-leads-summary:${JSON.stringify(params)}` : null;
+  return useSWR<InboundLeadsSummary>(key, () => api.inboundLeads.summary(params), { ...defaultConfig, keepPreviousData: true });
 }
 
 export function useInboundCampaigns(

@@ -3,6 +3,10 @@ import { serverFetchJson } from "@/lib/serverApi";
 import type { InboundLead } from "@/lib/api";
 import { InboundLeadsClient } from "./InboundLeadsClient";
 
+function last30DaysIst(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(Date.now() - 29 * 86400000));
+}
+
 export default async function InboundLeadsPage() {
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
@@ -10,7 +14,8 @@ export default async function InboundLeadsPage() {
 
   const [inboundLeadsRes, campaignsRes] = await Promise.all([
     serverFetchJson<{ data: InboundLead[]; total: number; page: number; limit: number }>(
-      "/api/v1/inbound-leads/?limit=200",
+      // The page opens on the last 30 days, 50 a page (InboundLeadsClient's first view).
+      `/api/v1/inbound-leads/?limit=50&date_from=${last30DaysIst()}`,
       token,
     ),
     serverFetchJson<{ data: { id: string; campaign_name: string; platform: string }[] }>(

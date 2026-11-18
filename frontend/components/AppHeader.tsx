@@ -267,7 +267,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   if (pathname === "/dashboard/inbound-leads") {
     return {
       title: "Inbound Leads",
-      description: "All inbound leads — organic and Meta Ad, across messaging channels.",
+      description: "Everyone who messaged you, what happened, and who is waiting for a reply.",
     };
   }
   if (pathname?.startsWith("/dashboard/meta-ads/all-ads")) {

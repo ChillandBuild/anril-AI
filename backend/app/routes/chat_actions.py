@@ -54,6 +54,7 @@ def book_visit(lead_id: UUID, payload: BookingIn, ctx: dict = Depends(require_co
         "booking_note": (payload.note or "").strip() or None,
         "lost_at": None,
         "lost_reason": None,
+        "lost_auto": False,
     })
     return lead
 
@@ -73,6 +74,7 @@ def mark_not_buying(lead_id: UUID, payload: NotBuyingIn, ctx: dict = Depends(req
     return _update_lead(lead_id, ctx["tenant_id"], {
         "lost_at": _now(),
         "lost_reason": payload.reason.strip(),
+        "lost_auto": False,
         "booked_at": None,
         "booked_for": None,
         "booking_note": None,
@@ -81,7 +83,14 @@ def mark_not_buying(lead_id: UUID, payload: NotBuyingIn, ctx: dict = Depends(req
 
 @router.delete("/{lead_id}/not-buying")
 def undo_not_buying(lead_id: UUID, ctx: dict = Depends(require_conversations_reply)):
-    return _update_lead(lead_id, ctx["tenant_id"], {"lost_at": None, "lost_reason": None})
+    """Back to no result. Undoing an automatic "stopped replying" is remembered
+    (auto_lost_dismissed_at), so Anril does not mark them again for the same follow-up."""
+    current = (get_supabase().table("leads").select("lost_auto").eq("id", str(lead_id))
+               .eq("tenant_id", ctx["tenant_id"]).limit(1).execute()).data or []
+    patch = {"lost_at": None, "lost_reason": None, "lost_auto": False}
+    if current and current[0].get("lost_auto"):
+        patch["auto_lost_dismissed_at"] = _now()
+    return _update_lead(lead_id, ctx["tenant_id"], patch)
 
 
 @router.get("/{lead_id}/teach-suggestion")
