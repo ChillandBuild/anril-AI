@@ -140,7 +140,7 @@ async def find_or_create_end_user(tenant_id: str, external_user_id: str, display
     """One row per person per business. first_seen_at / forgotten_at are never sent, so they survive.
     timezone_name (an IANA zone the API already validated) is saved when the app sends one.
     external_user_id is keys.person_key: "u42", or "u42~p7" for one of u42's profiles (its own row).
-    profile_name (e.g. "Karthik", whose chart "u42~p7" is) is saved when the app sends one (migration 282)."""
+    profile_name (e.g. "Karthik", whose chart "u42~p7" is) is saved when the app sends one (migration 290)."""
     payload = {"tenant_id": tenant_id, "external_user_id": external_user_id, "last_seen_at": _now()}
     name = (display_name or "").strip()[:100]
     if name:

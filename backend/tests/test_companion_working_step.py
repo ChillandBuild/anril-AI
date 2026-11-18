@@ -1,4 +1,4 @@
-"""working_step: the reply thinks in a hidden <working> block first (migration 285). The person and the
+"""working_step: the reply thinks in a hidden <working> block first (migration 293). The person and the
 saved chat never see it; the Playground does."""
 from types import SimpleNamespace
 

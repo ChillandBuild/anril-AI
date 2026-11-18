@@ -1,4 +1,4 @@
--- 282_companion_profile_name.sql
+-- 290_companion_profile_name.sql
 -- One app user can ask about more than one profile (AstroTamil: Vivek asks about his own chart, his
 -- brother Karthik's and his sister Priya's). The app sends profile_id + profile_name with each message.
 -- Each (user, profile) becomes its own person row, so memory, history and mood never mix between charts:
@@ -7,7 +7,7 @@
 -- profile_name ("Karthik") is the profile's display name: the prompt says whose profile this is, and the
 -- dashboard shows it next to the user's name. NULL when the app sends none.
 -- Additive: one nullable column. Apply BEFORE the code deploy (the code writes this column).
--- Undo: undo/282_companion_profile_name_undo.sql
+-- Undo: undo/290_companion_profile_name_undo.sql
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.companion_end_users

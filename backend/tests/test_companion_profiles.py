@@ -1,6 +1,6 @@
 """Profiles: one app user asking about several profiles (AstroTamil: Vivek asks about Karthik's chart and
 Priya's). Each (user, profile) is its own person row, "u42~p7", so memory and history never mix, and the
-prompt's WHO line says who is talking and whose profile it is (migration 282).
+prompt's WHO line says who is talking and whose profile it is (migration 290).
 """
 import pytest
 

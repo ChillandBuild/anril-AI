@@ -1,5 +1,5 @@
 """Small talk on a cheaper model: a character can answer "வணக்கம்" on 3.5 Flash Lite and real questions on
-3.8 Flash (migration 283). The question step's needs_docs decides; unknown is never small talk."""
+3.8 Flash (migration 291). The question step's needs_docs decides; unknown is never small talk."""
 from types import SimpleNamespace
 
 import pytest

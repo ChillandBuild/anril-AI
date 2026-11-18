@@ -1,5 +1,5 @@
 """full_main_resource: the main resource goes in whole with every real question, plus the other books'
-best pieces (migration 284). AstroTamil's 29-page Rule Book holds the steps for every topic; 3 judged
+best pieces (migration 292). AstroTamil's 29-page Rule Book holds the steps for every topic; 3 judged
 pieces of it left those steps out and replies said "own reasoning, 0 pages"."""
 from app.companion.kb import search
 from app.companion.kb.types import KbResult
