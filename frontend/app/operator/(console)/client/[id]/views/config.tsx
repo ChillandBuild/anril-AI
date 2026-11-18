@@ -30,7 +30,7 @@ const IDLE_CLOSE_DAYS_DEFAULT = 30;
 
 type MediaRecommendationSettingKey = "ai_media_recommendations_enabled" | "catalog_ai_max_images_ceiling";
 
-type ReplyModelId = "google/gemini-3.1-flash-lite" | "google/gemini-3.5-flash-lite";
+type ReplyModelId = "google/gemini-3.1-flash-lite" | "google/gemini-3.5-flash-lite" | "google/gemini-3.8-flash";
 
 type AiProviderKey = "gemini" | "jina";
 
@@ -45,6 +45,7 @@ const AI_PROVIDERS: { key: AiProviderKey; label: string; credKey: string; settin
 const REPLY_MODELS: { id: ReplyModelId; label: string; provider: AiProviderKey; desc: string }[] = [
   { id: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", provider: "gemini", desc: "The default. Cheap and fast, good general quality." },
   { id: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite", provider: "gemini", desc: "The newer Flash Lite generation." },
+  { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash", provider: "gemini", desc: "Stronger reasoning, about 3-4x the Flash Lite cost (price doubles 1 Jan 2027)." },
 ];
 
 // Keys already surfaced as their own checkbox in the client sidebar (see ../sidebar.tsx's

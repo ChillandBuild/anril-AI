@@ -126,13 +126,24 @@ def character_model(companion: dict | None) -> str:
     return ai_reply.reply_model_or_default((companion or {}).get("model"))
 
 
-def _model_kw(companion: dict, model: str | None) -> dict:
+def is_small_talk(kb: KbResult | None) -> bool:
+    """True when the question step said no file is needed ("வணக்கம்", "thanks"). Unknown (no search ran) is
+    not small talk, so a real question is never sent to the cheap model by mistake."""
+    return kb is not None and not kb.needs_docs
+
+
+def _model_kw(companion: dict, model: str | None, kb: KbResult | None = None) -> dict:
     """The model keywords for ai_reply. model = the Playground's pick: exactly that model, no fallback
     (a test of one model must not be answered by the other). None = the character's own model, with
-    the usual one retry on the other model when Google struggles.
-    Example: Jothidar saved on 3.5 -> {"model": "google/gemini-3.5-flash-lite", "fallback": True}."""
+    the usual one retry on the other model when Google struggles. Small talk goes to the character's
+    small_talk_model when one is set (and still offered).
+    Example: Jothidar on 3.8 Flash, small talk on 3.5 Flash Lite: "வணக்கம்" -> 3.5 Flash Lite;
+    "வெளிநாட்டு வேலை கிடைக்குமா?" -> {"model": "google/gemini-3.8-flash", "fallback": True}."""
     if model:
         return {"model": model}
+    small = (companion or {}).get("small_talk_model")
+    if small in ai_reply.REPLY_MODELS and is_small_talk(kb):
+        return {"model": small, "fallback": True}
     return {"model": character_model(companion), "fallback": True}
 
 
@@ -279,7 +290,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
-                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model))
+                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
         playground.problem(ai_reply.describe_llm_error(exc))
@@ -444,13 +455,13 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         if use_tools:
             raw, raw_calls = await ai_reply._llm_chat_with_tools(
                 prompt, app_tools.to_llm_tools(tools), max_tokens=LLM_MAX_TOKENS,
-                tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model),
+                tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model, kb),
             )
             calls = app_tools.normalize_calls(raw_calls)
         else:
             raw = await ai_reply._llm_chat(
                 prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
-                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model),
+                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb),
             )
     except Exception as exc:
         logger.warning("companion %s: LLM call failed on round %d (%s)", companion_id, round_no, type(exc).__name__)

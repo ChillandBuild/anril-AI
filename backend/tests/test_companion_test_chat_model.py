@@ -119,7 +119,7 @@ def test_a_stale_saved_model_falls_back_to_the_default(env, spy):  # noqa: F811
 def test_models_lists_only_providers_with_keys(env, spy):  # noqa: F811
     body = env.client.get(f"{DASH}/models").json()
     ids = [m["id"] for m in body["models"]]
-    assert ids == ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash-lite"]
+    assert ids == ["google/gemini-3.1-flash-lite", "google/gemini-3.5-flash-lite", "google/gemini-3.8-flash"]
     assert body["default"] == "google/gemini-3.1-flash-lite"
 
 

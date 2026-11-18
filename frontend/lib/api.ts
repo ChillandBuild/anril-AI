@@ -4392,6 +4392,8 @@ export interface Companion {
    * The label to show comes from companionsApi.models().
    */
   model: string;
+  /** Cheaper model for greetings and chit-chat (no file needed), e.g. "google/gemini-3.5-flash-lite". Missing or null = model. */
+  small_talk_model?: string | null;
   rules: string[];
   knowledge_tag_id: string | null;
   /** The collection of books this character reads (Anril Agents knowledge base). */

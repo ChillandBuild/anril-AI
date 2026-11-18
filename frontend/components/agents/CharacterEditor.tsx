@@ -293,6 +293,7 @@ function PersonaTab({ draft, set, errors }: TabProps) {
         </div>
       </Field>
       <ModelField draft={draft} set={set} errors={errors} />
+      <SmallTalkModelField draft={draft} set={set} errors={errors} />
     </div>
   );
 }
@@ -342,6 +343,42 @@ function ModelField({ draft, set, errors }: TabProps) {
           ]}
         />
       )}
+    </Field>
+  );
+}
+
+/**
+ * "Small talk model" under AI model. Example: Jothidar answers chart questions on Gemini 3.8 Flash and
+ * "வணக்கம்" / "thanks" on Gemini 3.5 Flash Lite, which costs less. "Same as AI model" = no split.
+ */
+function SmallTalkModelField({ draft, set }: TabProps) {
+  const [models, setModels] = useState<CompanionModel[] | null>(null);
+  useEffect(() => {
+    companionsApi
+      .models()
+      .then((r) => setModels(r.models))
+      .catch(() => setModels([]));
+  }, []);
+
+  const picked = draft.small_talk_model ?? "";
+  if (models !== null && models.length === 0) return null;   // no Gemini key: nothing to choose (see AI model)
+  return (
+    <Field
+      id="small_talk_model"
+      label="Small talk model"
+      hint="Greetings and chit-chat that need no file use this model; real questions use the AI model above."
+    >
+      <Select
+        id="small_talk_model"
+        disabled={models === null}
+        value={picked}
+        onChange={(v) => set("small_talk_model", v || null)}
+        options={[
+          { value: "", label: "Same as AI model" },
+          ...(models ?? []).map((m) => ({ value: m.id, label: m.label })),
+          ...(!picked || (models ?? []).some((m) => m.id === picked) ? [] : [{ value: picked, label: picked }]),
+        ]}
+      />
     </Field>
   );
 }

@@ -33,6 +33,9 @@ _GEMINI_PREFIX = "google/"
 REPLY_MODELS: dict[str, str] = {
     "google/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
     "google/gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
+    # Stronger, for chart reasoning (AstroTamil review 2026-11-17). Launch price until 31 Dec 2026
+    # ($0.75 in / $3.75 out per 1M); from 1 Jan 2027 $1.50 / $7.50.
+    "google/gemini-3.8-flash": "Gemini 3.8 Flash",
 }
 DEFAULT_REPLY_MODEL = "google/gemini-3.1-flash-lite"
 

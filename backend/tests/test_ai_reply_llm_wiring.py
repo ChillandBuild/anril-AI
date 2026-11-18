@@ -29,10 +29,11 @@ MESSAGES = [{"role": "system", "content": "sys"}, {"role": "user", "content": "h
 TOOLS = [{"type": "function", "function": {"name": "recommend_catalog_item"}}]
 
 
-def test_reply_models_are_the_two_gemini_models():
+def test_reply_models_are_the_three_gemini_models():
     assert ai_reply.REPLY_MODELS == {
         "google/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
         "google/gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
+        "google/gemini-3.8-flash": "Gemini 3.8 Flash",
     }
     assert ai_reply.DEFAULT_REPLY_MODEL in ai_reply.REPLY_MODELS
 

@@ -99,6 +99,8 @@ export function changedFields(original: Companion, draft: Companion): CompanionI
   if (collectionIdOf(original) !== collectionIdOf(draft)) out.knowledge_collection_id = collectionIdOf(draft);
   if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
   if (handoffLineOf(original).trim() !== handoffLineOf(draft).trim()) out.handoff_line = handoffLineOf(draft).trim() || null;
+  // Missing and null both mean "same as the AI model", so an untouched older character sends nothing.
+  if ((original.small_talk_model ?? null) !== (draft.small_talk_model ?? null)) out.small_talk_model = draft.small_talk_model ?? null;
   return out as CompanionInput;
 }
 

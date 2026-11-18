@@ -33,6 +33,10 @@ describe("changedFields", () => {
   it("sends only the model when the AI model changes", () => {
     expect(changedFields(jothidar, { ...jothidar, model: "google/gemini-3.5-flash-lite" })).toEqual({ model: "google/gemini-3.5-flash-lite" });
     expect(changedFields(jothidar, { ...jothidar })).not.toHaveProperty("model");
+    // Small talk model: missing and null are the same ("same as AI model"); a pick or a clear is sent.
+    expect(changedFields(jothidar, { ...jothidar, small_talk_model: null })).not.toHaveProperty("small_talk_model");
+    expect(changedFields(jothidar, { ...jothidar, small_talk_model: "google/gemini-3.5-flash-lite" })).toEqual({ small_talk_model: "google/gemini-3.5-flash-lite" });
+    expect(changedFields({ ...jothidar, small_talk_model: "google/gemini-3.5-flash-lite" }, { ...jothidar, small_talk_model: null })).toEqual({ small_talk_model: null });
   });
 
   it("never sends the old books tag", () => {

@@ -52,7 +52,7 @@ def _known_model(value: str | None) -> str | None:
 class _CardFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("model", check_fields=False)
+    @field_validator("model", "small_talk_model", check_fields=False)
     @classmethod
     def _model_is_known(cls, value: str | None) -> str | None:
         return _known_model(value)
@@ -76,7 +76,8 @@ class CompanionSettings(_CardFields):
     temperament: str = Field("", max_length=300)
     default_mood: Mood = "calm"
     language: Language = "ta-en"
-    model: str = DEFAULT_MODEL                 # the AI model every reply uses, e.g. "google/gemini-3.5-flash-lite"
+    model: str = DEFAULT_MODEL                 # the AI model every reply uses, e.g. "google/gemini-3.8-flash"
+    small_talk_model: str | None = None        # cheaper model for greetings and chit-chat; None = model
     rules: list[Rule] = Field(default_factory=list, max_length=MAX_RULES)
     knowledge_tag_id: UUID | None = None     # old Anril Sales books tag: still accepted, no longer read
     knowledge_collection_id: UUID | None = None   # the collection of books this character reads
@@ -102,6 +103,7 @@ class CompanionUpdate(_CardFields):
     default_mood: Mood | None = None
     language: Language | None = None
     model: str | None = None
+    small_talk_model: str | None = None
     rules: list[Rule] | None = Field(None, max_length=MAX_RULES)
     knowledge_tag_id: UUID | None = None
     knowledge_collection_id: UUID | None = None
@@ -114,10 +116,11 @@ class CompanionUpdate(_CardFields):
     status: Literal["draft", "live", "paused"] | None = None
 
     def changes(self) -> dict:
-        """Fields the caller actually sent. Only knowledge_tag_id, knowledge_collection_id and handoff_line
-        may be sent as null (clears them); a null for any other field is ignored, since those columns are NOT NULL."""
+        """Fields the caller actually sent. Only knowledge_tag_id, knowledge_collection_id, handoff_line and
+        small_talk_model may be sent as null (clears them); a null for any other field is ignored, since those
+        columns are NOT NULL."""
         sent = self.model_dump(mode="json", exclude_unset=True)
-        clearable = ("knowledge_tag_id", "knowledge_collection_id", "handoff_line")
+        clearable = ("knowledge_tag_id", "knowledge_collection_id", "handoff_line", "small_talk_model")
         return {k: v for k, v in sent.items() if v is not None or k in clearable}
 
 
