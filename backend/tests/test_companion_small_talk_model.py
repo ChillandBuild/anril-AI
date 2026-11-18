@@ -41,3 +41,11 @@ def test_the_small_talk_model_must_be_a_listed_model_and_can_be_cleared():
     with pytest.raises(ValidationError):
         CompanionSettings(name="J", small_talk_model="openai/gpt-x")
     assert CompanionUpdate(small_talk_model=None).changes() == {"small_talk_model": None}
+
+
+def test_every_listed_model_gets_a_thinking_level_it_accepts():
+    """3.8 Flash answered every call with a 400 on "minimal" (live 2026-11-18)."""
+    from app.services import ai_reply, gemini_client
+    assert gemini_client.thinking_level("gemini-3.8-flash") == "low"
+    assert gemini_client.thinking_level("gemini-3.1-flash-lite") == "minimal"
+    assert {gemini_client.thinking_level(m.removeprefix("google/")) for m in ai_reply.REPLY_MODELS} <= {"minimal", "low"}

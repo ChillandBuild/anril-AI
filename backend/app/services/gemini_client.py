@@ -112,6 +112,17 @@ def _gemini_steps_to_tool_calls(steps: list[dict]) -> list[dict]:
     return tool_calls
 
 
+# Most Gemini 3.x models take thinking_level "minimal" (see gemini_chat_completion). Gemini 3.8 Flash refuses
+# it with a 400 ("THINKING_LEVEL_MINIMAL is not supported for this model", live-probed 2026-11-18); "low"
+# works and spent 0 thought tokens on a short prompt.
+_LOWEST_THINKING = {"gemini-3.8-flash": "low"}
+
+
+def thinking_level(model: str) -> str:
+    """The lowest thinking level this model accepts: "minimal", or "low" for 3.8 Flash."""
+    return _LOWEST_THINKING.get(model, "minimal")
+
+
 async def gemini_chat_completion(
     messages: list[dict],
     model: str,
@@ -138,7 +149,7 @@ async def gemini_chat_completion(
         "generation_config": {
             "temperature": temperature,
             "max_output_tokens": max_tokens,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     if system_instruction:
@@ -174,7 +185,7 @@ async def gemini_chat_completion_with_tools(
         "generation_config": {
             "temperature": temperature,
             "max_output_tokens": max_tokens,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     if system_instruction:
@@ -220,7 +231,7 @@ async def gemini_speech_to_text(
         "generation_config": {
             "temperature": 0.2,
             "max_output_tokens": 4000,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -278,7 +289,7 @@ async def gemini_transcribe_audio(
         "generation_config": {
             "temperature": temperature,
             "max_output_tokens": max_tokens,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -315,7 +326,7 @@ async def gemini_analysis_json(
         "generation_config": {
             "temperature": temperature,
             "max_output_tokens": max_tokens,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     last_error: Exception = ValueError("gemini_analysis_json: no attempts made")
@@ -371,7 +382,7 @@ def _gemini_document_interaction(
         "generation_config": {
             "temperature": 0.2,
             "max_output_tokens": 4000,
-            "thinking_level": "minimal",
+            "thinking_level": thinking_level(model),
         },
     }
     with httpx.Client(timeout=60.0) as client:
