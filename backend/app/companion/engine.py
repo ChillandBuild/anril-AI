@@ -25,13 +25,19 @@ from app.companion.kb import learning as kb_learning
 from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
-from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used, said_talk, who_block
+from app.companion.prompt import (build_messages, label_reply, parse_mood, parse_used, said_talk, split_working,
+                                  who_block)
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 10   # default when a character has no history_messages set
 LLM_MAX_TOKENS = 700
+LLM_MAX_TOKENS_WORKING = 1800   # working_step: the hidden working comes first, then the reply
+
+
+def _max_tokens(companion: dict) -> int:
+    return LLM_MAX_TOKENS_WORKING if (companion or {}).get("working_step") else LLM_MAX_TOKENS
 LLM_TEMPERATURE = 0.5
 LLM_PURPOSE = "companion_reply"
 SLOT_WAIT_SECONDS = 5.0
@@ -290,7 +296,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data, who=who)
     raw = None
     try:
-        raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
+        raw = await ai_reply._llm_chat(prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id,
                                        purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
@@ -396,7 +402,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     raw, calls, wants_app = None, [], False
     try:
         raw, raw_calls = await ai_reply._llm_chat_with_tools(
-            prompt, app_tools.to_llm_tools(offered + app_offered), max_tokens=LLM_MAX_TOKENS,
+            prompt, app_tools.to_llm_tools(offered + app_offered), max_tokens=_max_tokens(companion),
             tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model))
         normalized = app_tools.normalize_calls(raw_calls)
         calls = [c for c in normalized if c["name"] in search_names]
@@ -455,13 +461,13 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
     try:
         if use_tools:
             raw, raw_calls = await ai_reply._llm_chat_with_tools(
-                prompt, app_tools.to_llm_tools(tools), max_tokens=LLM_MAX_TOKENS,
+                prompt, app_tools.to_llm_tools(tools), max_tokens=_max_tokens(companion),
                 tenant_id=tenant_id, purpose=LLM_PURPOSE, **_model_kw(companion, model, kb),
             )
             calls = app_tools.normalize_calls(raw_calls)
         else:
             raw = await ai_reply._llm_chat(
-                prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
+                prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id,
                 purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb),
             )
     except Exception as exc:
@@ -501,7 +507,12 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
     fallback line with no label: it came from no book and from no reasoning.
     [used: ...] is taken out first, so the mood tag is found even when the model wrote it second.
     [used: talk] (a question back, small talk, a polite decline) is "chat", not a gap. A Strict
-    character's "own" answer becomes the handoff line; the label stays "own" so the gap is counted."""
+    character's "own" answer becomes the handoff line; the label stays "own" so the gap is counted.
+    A <working> block (working_step) is cut off first; the Playground shows it."""
+    raw, working = split_working(raw)
+    ov = playground.current()
+    if ov is not None:
+        ov.working = working
     text, used = parse_used(raw or "", len(kb.passages) if kb else 0)
     text, mood = parse_mood(text, previous_mood)
     text = text.strip()
@@ -518,7 +529,7 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
 def _has_text(raw: str | None) -> bool:
     """False when the model gave nothing to show (the call failed or only tags came back), i.e. when
     _read_reply answers with the fallback line."""
-    text, _ = parse_used(raw or "", 0)
+    text, _ = parse_used(split_working(raw)[0] or "", 0)
     return bool(parse_mood(text, "calm")[0].strip())
 
 

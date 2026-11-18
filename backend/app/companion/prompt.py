@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.companion.kb.types import KbResult, Passage
 from app.companion.platform_rules import (
-    MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES,
+    MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES, WORKING_RULE,
 )
 
 LANGUAGES = {
@@ -145,6 +145,8 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")
     sections.append(f"[MOOD]\nYour current mood with this user: {current}. Let it colour your tone, not your facts.")
     sections.append(today_block(today or _character_today(settings)))
+    if settings.get("working_step") and not (kb is not None and not kb.needs_docs):   # not for small talk
+        sections.append(WORKING_RULE)
     sections.append(OUTPUT_RULE)
     sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else OWN_REASONING_ALLOWED)
     sections.append(knowledge_block(kb))
@@ -159,6 +161,25 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
                  if m.get("role") in ("user", "assistant") and m.get("content")]
     messages.append({"role": "user", "content": user_message})
     return messages
+
+
+_WORKING_RE = re.compile(r"<working>(.*?)</working>", re.S | re.I)
+
+
+def split_working(raw: str | None) -> tuple[str | None, str | None]:
+    """('<working>12th lord Mars in 12th…</working>[mood: calm] Vivek, …') -> ('[mood: calm] Vivek, …',
+    '12th lord Mars in 12th…'). The working never reaches the person or the saved chat. An unclosed
+    <working> (the reply hit the token cap) keeps only what follows a [mood: tag, else nothing.
+    No working -> (raw, None)."""
+    if not raw or "<working>" not in raw.lower():
+        return raw, None
+    found = _WORKING_RE.search(raw)
+    if found:
+        return (raw[:found.start()] + raw[found.end():]).strip(), found.group(1).strip() or None
+    start = raw.lower().index("<working>")
+    tag = raw.find("[mood:", start)
+    working = raw[start + len("<working>"):tag if tag >= 0 else None].strip() or None
+    return (raw[:start] + (raw[tag:] if tag >= 0 else "")).strip(), working
 
 
 def parse_mood(raw: str, previous: str) -> tuple[str, str]:

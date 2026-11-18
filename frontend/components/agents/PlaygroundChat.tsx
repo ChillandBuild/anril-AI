@@ -49,6 +49,8 @@ type ReplyBubble = {
   sources?: CompanionReply["sources"];
   used?: CompanionReply["used"];
   trace: string[];
+  /** The hidden working the reply wrote first (working_step), e.g. "12th lord Mars in 12th, own house ...". */
+  working?: string | null;
   /** A saved reply from "Earlier chat": no time, model or trace, and no "Try again". */
   earlier?: boolean;
   /** Why the AI call failed (owner-only), e.g. "Your Google AI Studio credits are used up...". */
@@ -244,6 +246,7 @@ export function PlaygroundChat({
     sources: reply.sources ?? [],
     used: reply.used,
     trace: [...priorTrace, ...(reply.trace ?? [])],
+    working: reply.working ?? null,
     problem: reply.problem ?? null,
   });
 
@@ -624,6 +627,12 @@ function ReplyView({
         <div className="px-1 text-xs text-ink-secondary">
           <span className="font-semibold">Used:</span> {used}
         </div>
+      )}
+      {b.working && (
+        <details className="rounded-lg border border-border bg-surface-mid px-2.5 py-1.5 text-xs text-ink-secondary">
+          <summary className="cursor-pointer font-semibold text-ink">Working (only you see this)</summary>
+          <p className="mt-1 whitespace-pre-wrap">{b.working}</p>
+        </details>
       )}
       {techLines && b.trace.length > 0 && (
         <ul aria-label="What was searched" className="space-y-0.5 border-l-2 border-primary/20 pl-2 text-xs text-ink-secondary">

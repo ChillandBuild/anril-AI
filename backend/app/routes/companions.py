@@ -478,6 +478,7 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
     person = await store.find_end_user(tenant_id, person_id)
     status = await memory_refresh.status({**companion, "tenant_id": tenant_id}, person and person["id"])
     return {**result.model_dump(), "model": ai_reply.REPLY_MODELS.get(model, model), "trace": ov.trace,
+            "working": ov.working,
             "memory": status, "problem": ov.problem,
             "used": {"memory_hits": ov.memory_hits or 0, "card_lines": ov.card_lines or 0}}
 

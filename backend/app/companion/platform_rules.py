@@ -29,6 +29,16 @@ OUTPUT_RULE = (
     "Then write the reply. Never write a passage number or a page number in the reply itself."
 )
 
+# A character with working_step on gets this before the reply (not for small talk). The working is cut
+# off by code (prompt.split_working) before anything is shown or saved; the Playground shows it.
+WORKING_RULE = (
+    "[WORKING]\nBefore the tags, think it through inside <working> and </working>, in English, step by step: "
+    "the facts from APP DATA and the rules or steps from KNOWLEDGE that decide this question, which of them "
+    "agree and which clash, and any period or date and why it fits. If KNOWLEDGE gives steps for this kind of "
+    "question, follow them in order. The person never sees the working. After </working> write the tags and "
+    "the reply as usual; the reply must agree with the working and name the facts it rests on."
+)
+
 # One of these two lines goes into every prompt; the character's own_reasoning setting picks which.
 OWN_REASONING_ALLOWED = (
     "[OWN REASONING: allowed]\nWhen KNOWLEDGE says \"none found\" you may reason from general knowledge of the "

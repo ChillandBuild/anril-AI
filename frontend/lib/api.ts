@@ -4400,6 +4400,8 @@ export interface Companion {
   knowledge_collection_id?: string | null;
   /** Send the main resource whole (up to 40,000 characters) with every real question. Missing = off. */
   full_main_resource?: boolean;
+  /** Think in a hidden working block before replying; visitors never see it, the Playground does. Missing = off. */
+  working_step?: boolean;
   /** Knowledge tab Mixed (true): when no file covers the question, the character answers anyway and says it is its own reading. Strict (false): that answer is replaced by handoff_line. */
   own_reasoning?: boolean;
   /** What a Strict character says instead of an answer from no file, e.g. "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.". Null = the generic line in its language. */
@@ -4464,6 +4466,8 @@ export interface CompanionReply {
   sources?: { document: string; page_from: number; page_to: number }[];
   /** What was searched for this reply, one plain line per step (test chat only). Example: "Memory card: 6 lines". */
   trace?: string[];
+  /** The hidden working the reply wrote first, cut from what visitors see (test chat only; working_step on). */
+  working?: string | null;
   /** Where this test customer's memory stands after the reply (test chat only). */
   memory?: CompanionMemoryStatus;
   /** Why the reply failed, in plain words, when the AI call failed (test chat only; visitors see only the sorry line). */

@@ -294,6 +294,22 @@ function PersonaTab({ draft, set, errors }: TabProps) {
       </Field>
       <ModelField draft={draft} set={set} errors={errors} />
       <SmallTalkModelField draft={draft} set={set} errors={errors} />
+      <label className="flex cursor-pointer items-start gap-2 text-sm font-medium text-ink">
+        <input
+          type="checkbox"
+          id="working_step"
+          checked={draft.working_step ?? false}
+          onChange={(e) => set("working_step", e.target.checked)}
+          className="mt-1 h-3.5 w-3.5 accent-primary"
+        />
+        <span>
+          Think before replying
+          <span className="mt-0.5 block text-xs font-normal text-ink-muted">
+            Before each real answer the AI writes its working (the facts and steps it used), then the reply. Visitors see
+            only the reply; you see the working in the Playground. Slower and costs more per reply.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

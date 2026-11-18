@@ -45,6 +45,7 @@ class Overrides:
     # What memory reached the reply, for the plain "Used:" line. None: not looked at this turn.
     memory_hits: int | None = None      # past moments found by the memory search
     card_lines: int | None = None       # lines of the memory card (its notes about the person)
+    working: str | None = None          # the hidden working the reply wrote first (working_step), cut from the reply
 
     def note(self, line: str) -> None:
         self.trace.append(line)

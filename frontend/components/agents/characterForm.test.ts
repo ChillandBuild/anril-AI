@@ -35,6 +35,7 @@ describe("changedFields", () => {
     expect(changedFields(jothidar, { ...jothidar })).not.toHaveProperty("model");
     expect(changedFields(jothidar, { ...jothidar, full_main_resource: false })).not.toHaveProperty("full_main_resource");
     expect(changedFields(jothidar, { ...jothidar, full_main_resource: true })).toEqual({ full_main_resource: true });
+    expect(changedFields(jothidar, { ...jothidar, working_step: true })).toEqual({ working_step: true });
     // Small talk model: missing and null are the same ("same as AI model"); a pick or a clear is sent.
     expect(changedFields(jothidar, { ...jothidar, small_talk_model: null })).not.toHaveProperty("small_talk_model");
     expect(changedFields(jothidar, { ...jothidar, small_talk_model: "google/gemini-3.5-flash-lite" })).toEqual({ small_talk_model: "google/gemini-3.5-flash-lite" });
