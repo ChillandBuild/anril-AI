@@ -188,7 +188,7 @@ export function CharacterEditor({ initial }: { initial: Companion }) {
 const MEMORY_FIELDS = new Set(["memory_level", "memory_engine", "history_messages", "privacy_mode"]);
 function tabOf(field: string): Tab {
   if (MEMORY_FIELDS.has(field)) return "memory";
-  if (field === "knowledge_collection_id" || field === "own_reasoning" || field === "handoff_line") return "knowledge";
+  if (field === "knowledge_collection_id" || field === "own_reasoning" || field === "handoff_line" || field === "full_main_resource") return "knowledge";
   return "persona";
 }
 
@@ -541,6 +541,25 @@ function KnowledgeTab({ draft, set, errors }: TabProps) {
           </p>
         )}
       </div>
+
+      {current && (
+        <label className="flex cursor-pointer items-start gap-2 text-sm font-medium text-ink">
+          <input
+            type="checkbox"
+            id="full_main_resource"
+            checked={draft.full_main_resource ?? false}
+            onChange={(e) => set("full_main_resource", e.target.checked)}
+            className="mt-1 h-3.5 w-3.5 accent-primary"
+          />
+          <span>
+            Send the main resource whole
+            <span className="mt-0.5 block text-xs font-normal text-ink-muted">
+              Every real question gets your whole main file (up to 40,000 characters), plus the best pieces of the other
+              files. For a short rule book that holds the steps for every topic. Greetings still get nothing. Costs more per reply.
+            </span>
+          </span>
+        </label>
+      )}
 
       <div className="space-y-2">
         <span id="own_reasoning-label" className="block text-sm font-medium text-ink">

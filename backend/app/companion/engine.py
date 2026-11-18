@@ -245,8 +245,9 @@ async def _knowledge(tenant_id: str, companion: dict, message: str, history: lis
     if not collection_id:
         return None
     try:
+        whole = {"full_main": True} if companion.get("full_main_resource") else {}   # only when switched on
         return await kb_search.search(tenant_id, collection_id, message, history, companion_id=companion["id"],
-                                      rewrite=rewrite)
+                                      rewrite=rewrite, **whole)
     except Exception as exc:
         logger.warning("companion %s: knowledge search failed (%s)", companion["id"], type(exc).__name__)
         return KbResult(failed=True)

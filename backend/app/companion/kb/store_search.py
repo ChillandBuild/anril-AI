@@ -123,6 +123,21 @@ async def match_chunks(tenant_id: str, collection_id: str, tier: int, *, model: 
     return await _run(lambda: get_supabase().rpc("match_companion_kb_chunks", params))
 
 
+async def main_resource_chunks(tenant_id: str, collection_id: str) -> list[dict]:
+    """Every passage of the collection's main resource (tier 1), each book in reading order, each row with
+    document_title. For a character that sends its main resource whole (companions.full_main_resource).
+    Example: AstroTamil's Rule Book -> its 17 passages, pages 1-29."""
+    rows = await fetch_all_rows(
+        lambda: get_supabase().table(_CHUNKS).select(_CHUNK_COLUMNS)
+        .eq("tenant_id", tenant_id).eq("collection_id", collection_id).eq("tier", 1)
+        .order("document_id").order("seq"), page_size=200)
+    titles: dict[str, str] = {}
+    for document_id in {r["document_id"] for r in rows}:
+        document = await _document(tenant_id, document_id)
+        titles[document_id] = (document or {}).get("title") or ""
+    return [{**row, "document_title": titles.get(row["document_id"], "")} for row in rows]
+
+
 async def chunks_for_pages(tenant_id: str, document_id: str, pages: list[dict]) -> list[dict]:
     """The book's passages that overlap any of the page ranges, in reading order, each with
     document_title, tier and collection_id. A shortcut remembers pages, not passage ids: re-reading a page gives

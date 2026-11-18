@@ -98,6 +98,7 @@ export function changedFields(original: Companion, draft: Companion): CompanionI
   // Missing means "No files" / "on", so an untouched older character sends nothing.
   if (collectionIdOf(original) !== collectionIdOf(draft)) out.knowledge_collection_id = collectionIdOf(draft);
   if (ownReasoningOn(original) !== ownReasoningOn(draft)) out.own_reasoning = ownReasoningOn(draft);
+  if ((original.full_main_resource ?? false) !== (draft.full_main_resource ?? false)) out.full_main_resource = draft.full_main_resource ?? false;
   if (handoffLineOf(original).trim() !== handoffLineOf(draft).trim()) out.handoff_line = handoffLineOf(draft).trim() || null;
   // Missing and null both mean "same as the AI model", so an untouched older character sends nothing.
   if ((original.small_talk_model ?? null) !== (draft.small_talk_model ?? null)) out.small_talk_model = draft.small_talk_model ?? null;

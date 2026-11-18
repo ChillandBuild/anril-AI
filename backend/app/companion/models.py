@@ -83,6 +83,7 @@ class CompanionSettings(_CardFields):
     knowledge_collection_id: UUID | None = None   # the collection of books this character reads
     own_reasoning: bool = True               # False = "Strict": an answer from no file becomes the handoff line
     handoff_line: str | None = Field(None, max_length=300)   # Strict's line; None = the generic one
+    full_main_resource: bool = False         # send the main resource whole with every real question (≤40,000 chars)
     memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
     memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
     history_messages: int = Field(10, ge=2, le=50)   # recent messages every reply reads
@@ -109,6 +110,7 @@ class CompanionUpdate(_CardFields):
     knowledge_collection_id: UUID | None = None
     own_reasoning: bool | None = None
     handoff_line: str | None = Field(None, max_length=300)
+    full_main_resource: bool | None = None
     memory_level: Literal[1, 2] | None = None
     memory_engine: Literal["card", "mem0"] | None = None
     history_messages: int | None = Field(None, ge=2, le=50)

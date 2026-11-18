@@ -37,6 +37,11 @@ STEP_B_CANDIDATES, STEP_B_KEEP = 20, 4
 SHORTCUT_PASSAGES = 4       # at most this many passages of a shortcut's pages join step A's judge call
 SEARCH_TIMEOUT_SECONDS = 20.0   # the whole search (rewrite, embed, both judge steps). A slow model must not hold the reply
 RRF_K = 60                  # the usual constant: rank 1 in a list is worth 1/61
+# A character can send its main resource whole with every real question (companions.full_main_resource):
+# AstroTamil's 29-page Rule Book holds the steps for every topic, and 3 judged pieces of it left out the
+# steps the answer needed. Over this size the normal step A runs instead, so a big book can't flood the prompt.
+MAX_WHOLE_MAIN_CHARS = 40_000
+OVERLAP_SCAN = 600          # chunks overlap by about 15% of 1,800 characters; the join looks this far back
 
 # The SQL function returns one row per (passage, list). The English and the Tamil meaning lists
 # count as ONE list here (best of the two), so meaning does not get two votes against words.
@@ -149,8 +154,42 @@ def _record(step: str, passages: list[Passage], scores: list[int | None], kept: 
             "score": s, "meaning": (ov.kb_scores.get(p.id) or {}).get("meaning"), "kept": p.id in kept_ids})
 
 
+def join_chunks(texts: list[str]) -> str:
+    """One book's passages, in reading order, as one text with the shared overlap written once.
+    Example: ["... Saturn in the 7th delays", "the 7th delays marriage until ..."] ->
+    "... Saturn in the 7th delays marriage until ..."."""
+    out = ""
+    for text in texts:
+        if not out:
+            out = text
+            continue
+        k = min(OVERLAP_SCAN, len(out), len(text))
+        while k > 20 and not out.endswith(text[:k]):   # under 20 shared characters is a coincidence, not overlap
+            k -= 1
+        out += text[k:] if k > 20 else "\n" + text
+    return out
+
+
+async def whole_main(tenant_id: str, collection_id: str) -> list[Passage] | None:
+    """The main resource as one passage per book, joined. None when it has no passages or is over
+    MAX_WHOLE_MAIN_CHARS (the normal search runs then). Passed straight to the prompt, not judged: the owner
+    chose to send it whole."""
+    rows = await store_search.main_resource_chunks(tenant_id, collection_id)
+    books: dict[str, list[dict]] = {}
+    for row in rows:
+        books.setdefault(row["document_id"], []).append(row)
+    passages = [
+        Passage(id=f"whole:{document_id}", document_id=document_id, document_title=chunks[0]["document_title"],
+                tier=TIER_MAIN, heading_path="", text=join_chunks([c.get("text") or "" for c in chunks]),
+                page_from=min(c["page_from"] for c in chunks), page_to=max(c["page_to"] for c in chunks), score=3)
+        for document_id, chunks in books.items()]
+    if not passages or sum(len(p.text) for p in passages) > MAX_WHOLE_MAIN_CHARS:
+        return None
+    return passages
+
+
 async def _search(tenant_id: str, collection_id: str, message: str, history: list[dict] | None,
-                  companion_id: str | None, rewrite=None) -> KbResult:
+                  companion_id: str | None, rewrite=None, full_main: bool = False) -> KbResult:
     ov = playground.current()
     if ov is not None and not ov.rewrite:
         rw = kb_rewrite.fallback_rewrite(message)
@@ -173,6 +212,18 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
         return KbResult(failed=True)
     question = rw.english_query or message
     found = dict(topic=rw.topic_query, topic_embedding=tuple(topic_vector) if topic_vector else None)
+
+    whole = await whole_main(tenant_id, collection_id) if full_main else None
+    if whole:   # the whole main resource, plus the other books' best pieces for this question
+        books = await candidates(tenant_id, collection_id, TIER_BOOKS, rw, STEP_B_CANDIDATES, vectors=vectors)
+        scores = await _judge(tenant_id, question, books) if books else []
+        kept = _passing(books, scores, STEP_B_KEEP) if scores is not None else []
+        _record("books", books, scores or [], kept)
+        playground.note(f"Knowledge: main files sent whole ({sum(len(p.text) for p in whole):,} characters); "
+                        f"other files {len(books)} candidates, kept {len(kept)}")
+        logger.info("companion kb: whole main=%d chars, step B candidates=%d kept=%d",
+                    sum(len(p.text) for p in whole), len(books), len(kept))
+        return KbResult(passages=tuple(whole) + tuple(kept), **found)
 
     # Step A: the main resource, plus the shortcut's pages, in one judge call.
     main = await candidates(tenant_id, collection_id, TIER_MAIN, rw, STEP_A_CANDIDATES, vectors=vectors)
@@ -208,15 +259,17 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
 
 
 async def search(tenant_id: str, collection_id: str, message: str, history: list[dict] | None = None,
-                 *, companion_id: str | None = None, rewrite=None) -> KbResult:
+                 *, companion_id: str | None = None, rewrite=None, full_main: bool = False) -> KbResult:
     """The passages that answer `message` from one collection of one business. Never raises.
     companion_id switches on the learned shortcuts of that character.
     rewrite: a rewrite task the caller already started for this message (the engine shares one with
     memory search); left out, the rewrite call is made here.
+    full_main: send the main resource whole (whole_main) for every question that needs the books, plus the
+    other books' best pieces; small talk still searches nothing.
     Slower than SEARCH_TIMEOUT_SECONDS counts as a failure: the reply goes on without passages."""
     try:
-        return await asyncio.wait_for(_search(tenant_id, collection_id, message, history, companion_id, rewrite),
-                                      SEARCH_TIMEOUT_SECONDS)
+        return await asyncio.wait_for(_search(tenant_id, collection_id, message, history, companion_id, rewrite,
+                                              full_main), SEARCH_TIMEOUT_SECONDS)
     except Exception as exc:        # includes TimeoutError
         logger.warning("companion kb: search failed tenant=%s collection=%s (%s)",
                        tenant_id, collection_id, type(exc).__name__)

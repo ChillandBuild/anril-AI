@@ -4398,6 +4398,8 @@ export interface Companion {
   knowledge_tag_id: string | null;
   /** The collection of books this character reads (Anril Agents knowledge base). */
   knowledge_collection_id?: string | null;
+  /** Send the main resource whole (up to 40,000 characters) with every real question. Missing = off. */
+  full_main_resource?: boolean;
   /** Knowledge tab Mixed (true): when no file covers the question, the character answers anyway and says it is its own reading. Strict (false): that answer is replaced by handoff_line. */
   own_reasoning?: boolean;
   /** What a Strict character says instead of an answer from no file, e.g. "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.". Null = the generic line in its language. */
