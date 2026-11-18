@@ -26,7 +26,7 @@ def _level2(env, history=10):
 # --- the list --------------------------------------------------------------------------------
 
 def test_you_is_always_first_and_test_customers_follow(env):  # noqa: F811
-    assert _people(env) == {"people": [{"external_user_id": YOU, "name": "You", "is_you": True}], "max": 10}
+    assert _people(env) == {"people": [{"external_user_id": YOU, "name": "You", "is_you": True, "profile_name": None}], "max": 10}
     r = _add(env, "  மீனா   அக்கா ")
     assert r.status_code == 201
     made = r.json()

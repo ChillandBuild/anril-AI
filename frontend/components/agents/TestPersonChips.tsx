@@ -194,9 +194,11 @@ export function TestPersonChips({
                   type="button"
                   aria-pressed={on}
                   onClick={() => !on && onPick(p.external_user_id)}
-                  className={cn("max-w-[140px] truncate rounded-full py-0.5 pl-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", p.is_you && "pr-2.5", !p.is_you && "pr-0.5")}
+                  title={p.profile_name ? `${p.is_you ? "You" : p.name}, asking about ${p.profile_name}'s profile` : undefined}
+                  className={cn("max-w-[220px] truncate rounded-full py-0.5 pl-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", p.is_you && "pr-2.5", !p.is_you && "pr-0.5")}
                 >
                   {p.is_you ? "You" : p.name}
+                  {p.profile_name && <span className="opacity-75"> · {p.profile_name}</span>}
                 </button>
                 {!p.is_you && (
                   <button

@@ -4496,6 +4496,8 @@ export interface TestPerson {
   external_user_id: string;
   name: string;
   is_you: boolean;
+  /** Whose profile this person's sample app data is, e.g. Vivek testing Karthik's chart -> "Karthik". */
+  profile_name?: string | null;
 }
 
 /** What "Save now" did. saved = facts written; nothing_new = no unread messages; busy = a save was already running; waiting = the last reply is still being written. */
@@ -4751,15 +4753,17 @@ export const companionsApi = {
   /** Wipe the chats and memories but keep the name; the next chat is a first visit. Same id comes back. */
   startOverTestPerson: (externalUserId: string) =>
     apiFetch<TestPerson>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/start-over`, { method: "POST" }),
-  /** The sample app data saved for a test person (e.g. Meena's chart); null when none. */
+  /** The sample app data saved for a test person (e.g. Meena's chart) and whose profile it is; null when none. */
   testPersonAppData: (externalUserId: string) =>
-    apiFetch<{ app_data: string | null }>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`),
-  /** Save a test person's sample app data; every Playground message as them sends it. Blank clears it. 422 over 4,000 characters. */
-  saveTestPersonAppData: (externalUserId: string, appData: string) =>
-    apiFetch<{ app_data: string | null }>(`${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`, {
-      method: "PUT",
-      body: JSON.stringify({ app_data: appData }),
-    }),
+    apiFetch<{ app_data: string | null; profile_name: string | null }>(
+      `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,
+    ),
+  /** Save a test person's sample app data and whose profile it is; every Playground message as them sends both. Blank clears. 422 over 4,000 characters. */
+  saveTestPersonAppData: (externalUserId: string, appData: string, profileName: string) =>
+    apiFetch<{ app_data: string | null; profile_name: string | null }>(
+      `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,
+      { method: "PUT", body: JSON.stringify({ app_data: appData, profile_name: profileName }) },
+    ),
   /** Memory status of one test customer with one character. */
   testPersonMemory: (id: string, externalUserId: string) =>
     apiFetch<CompanionMemoryStatus>(`${COMPANIONS}/${id}/test-people/${encodeURIComponent(externalUserId)}/memory`),

@@ -147,10 +147,11 @@ async def forget_person(external_user_id: str = ExternalUserIdPath,
     """"Delete this person": their chats with every character and every remembered fact,
     business-wide (engine.forget_person). Audited by our person id, never the external id."""
     tenant_id = ctx["tenant_id"]
-    person = await store.find_end_user(tenant_id, external_user_id)
-    if not person or not await engine.forget_person(tenant_id, external_user_id):
+    people = await store.find_person_rows(tenant_id, external_user_id)   # with their profiles (keys.person_key)
+    if not people or not await engine.forget_person(tenant_id, external_user_id):
         raise HTTPException(status_code=404, detail="Person not found")
-    _audit_forget(ctx, person["id"])
+    for person in people:
+        _audit_forget(ctx, person["id"])
 
 
 def _audit_forget(ctx: dict, end_user_id: str, *, test: bool = False) -> None:
@@ -208,16 +209,17 @@ async def delete_test_person(external_user_id: str = ExternalUserIdPath, ctx: di
 class TestAppDataIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     app_data: AppData = None   # blank or null clears it
+    profile_name: str | None = Field(None, max_length=100)   # whose profile it is, e.g. "Karthik"; blank clears
 
 
 @router.get("/test-people/{external_user_id}/app-data")
 async def get_test_app_data(external_user_id: str = ExternalUserIdPath, ctx: dict = Depends(require_companions_manage)):
     """The Playground's "This person's app data" box: the sample saved for this test person."""
     try:
-        text = await playground_people.app_data(ctx["tenant_id"], ctx["user_id"], external_user_id)
+        text, profile_name = await playground_people.app_data(ctx["tenant_id"], ctx["user_id"], external_user_id)
     except playground_people.PersonError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail)
-    return {"app_data": text}
+    return {"app_data": text, "profile_name": profile_name}
 
 
 @router.put("/test-people/{external_user_id}/app-data")
@@ -226,11 +228,11 @@ async def put_test_app_data(payload: TestAppDataIn, external_user_id: str = Exte
     """Saves a test person's sample app data (e.g. Meena's chart); every Playground message as Meena
     then sends it, the way a client's server sends app_data on /chat."""
     try:
-        text = await playground_people.set_app_data(ctx["tenant_id"], ctx["user_id"], external_user_id,
-                                                    payload.app_data)
+        text, profile_name = await playground_people.set_app_data(
+            ctx["tenant_id"], ctx["user_id"], external_user_id, payload.app_data, payload.profile_name)
     except playground_people.PersonError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail)
-    return {"app_data": text}
+    return {"app_data": text, "profile_name": profile_name}
 
 
 @router.post("/test-people/{external_user_id}/start-over")
@@ -467,7 +469,8 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
             result = await engine.reply(
                 str(companion_id), tenant_id, person_id, message,
                 tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory,
-                app_data=(before or {}).get("test_app_data") or None)
+                app_data=(before or {}).get("test_app_data") or None,
+                display_name=(before or {}).get("display_name"), profile_name=(before or {}).get("profile_name"))
     except _EXPECTED as exc:
         raise _http_error(exc)
     companion = await store.get_companion(tenant_id, str(companion_id)) or {}
@@ -520,6 +523,7 @@ async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
     return {
         "people": [
             {"external_user_id": p["external_user_id"], "display_name": p["display_name"],
+             "profile_name": p.get("profile_name"),
              "fact_count": None if private else p["fact_count"], "message_count": p["message_count"],
              "last_seen_at": p["last_seen_at"], "is_test": p.get("is_test", False)}
             for p in people

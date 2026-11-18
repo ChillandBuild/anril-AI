@@ -136,13 +136,18 @@ def _parse_ts(value: str) -> datetime:
 
 
 async def find_or_create_end_user(tenant_id: str, external_user_id: str, display_name: str | None = None,
-                                  timezone_name: str | None = None) -> dict:
+                                  timezone_name: str | None = None, profile_name: str | None = None) -> dict:
     """One row per person per business. first_seen_at / forgotten_at are never sent, so they survive.
-    timezone_name (an IANA zone the API already validated) is saved when the app sends one."""
+    timezone_name (an IANA zone the API already validated) is saved when the app sends one.
+    external_user_id is keys.person_key: "u42", or "u42~p7" for one of u42's profiles (its own row).
+    profile_name (e.g. "Karthik", whose chart "u42~p7" is) is saved when the app sends one (migration 282)."""
     payload = {"tenant_id": tenant_id, "external_user_id": external_user_id, "last_seen_at": _now()}
     name = (display_name or "").strip()[:100]
     if name:
         payload["display_name"] = name
+    profile = " ".join((profile_name or "").split())[:100]
+    if profile:
+        payload["profile_name"] = profile
     if timezone_name:
         payload["timezone"] = timezone_name
 
@@ -499,32 +504,63 @@ async def find_end_user(tenant_id: str, external_user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+PERSON_ROWS_PAGE = 500
+
+
+async def find_person_rows(tenant_id: str, external_user_id: str) -> list[dict]:
+    """The person row for this id plus, for a plain user id, every one of its profile rows
+    ("u42" -> "u42", "u42~p7", "u42~p9"). "Forget me" uses it so no family chart is left behind.
+    LIKE treats "_" in a user id as "any character", so the rows are re-checked here exactly."""
+    from app.companion.keys import PROFILE_SEP
+    def _q():
+        db = get_supabase()
+        exact = (db.table("companion_end_users").select("*")
+                 .eq("tenant_id", tenant_id).eq("external_user_id", external_user_id).execute().data or [])
+        if PROFILE_SEP in external_user_id:   # already one profile's row: just that one
+            return exact
+        profiles, start = [], 0
+        while True:   # paged: PostgREST caps one answer (1,000 rows), and forget must not leave any behind
+            page = (db.table("companion_end_users").select("*")
+                    .eq("tenant_id", tenant_id).like("external_user_id", external_user_id + PROFILE_SEP + "%")
+                    .order("id").range(start, start + PERSON_ROWS_PAGE - 1).execute().data or [])
+            profiles += page
+            if len(page) < PERSON_ROWS_PAGE:
+                break
+            start += PERSON_ROWS_PAGE
+        return exact + [r for r in profiles if r["external_user_id"].startswith(external_user_id + PROFILE_SEP)]
+    return await asyncio.to_thread(_q)
+
+
 async def list_test_people(tenant_id: str, prefix: str) -> list[dict]:
     """One dashboard login's Playground test customers (external id starts with prefix, e.g.
     "owner-test:<login id>:"), oldest first. Deleted ones (forgotten_at set) are left out."""
     def _q():
         return (
-            get_supabase().table("companion_end_users").select("id, external_user_id, display_name")
+            get_supabase().table("companion_end_users").select("id, external_user_id, display_name, profile_name")
             .eq("tenant_id", tenant_id).like("external_user_id", prefix + "%").is_("forgotten_at", "null")
             .order("first_seen_at").execute().data or [])
     return await asyncio.to_thread(_q)
 
 
-async def set_test_app_data(tenant_id: str, end_user_id: str, app_data: str | None) -> None:
-    """A Playground test person's sample app data (None clears it). The DB check (migration 277) refuses
-    it for anyone who is not an "owner-test:" person."""
+async def set_test_app_data(tenant_id: str, end_user_id: str, app_data: str | None,
+                            profile_name: str | None = None) -> None:
+    """A Playground test person's sample app data (None clears it) and whose profile it is (e.g. "Karthik";
+    None clears it). The DB check (migration 277) refuses app data for anyone who is not an "owner-test:" person."""
+    profile = " ".join((profile_name or "").split())[:100] or None
+
     def _q():
-        (get_supabase().table("companion_end_users").update({"test_app_data": app_data})
+        (get_supabase().table("companion_end_users").update({"test_app_data": app_data, "profile_name": profile})
          .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
     await asyncio.to_thread(_q)
 
 
-async def revive_end_user(tenant_id: str, end_user_id: str, display_name: str | None) -> None:
+async def revive_end_user(tenant_id: str, end_user_id: str, display_name: str | None,
+                          profile_name: str | None = None) -> None:
     """A Playground "Start over": after forget_end_user, the same test customer is usable again
-    (forgotten_at cleared, name put back), with no chats and no memories."""
+    (forgotten_at cleared, names put back), with no chats and no memories."""
     def _q():
         (get_supabase().table("companion_end_users")
-         .update({"forgotten_at": None, "display_name": display_name})
+         .update({"forgotten_at": None, "display_name": display_name, "profile_name": profile_name})
          .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
     await asyncio.to_thread(_q)
 
@@ -544,7 +580,7 @@ async def forget_end_user(tenant_id: str, end_user_id: str) -> None:
         db.table("companion_messages").delete().eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute()
         (db.table("companion_conversations").delete()
          .eq("tenant_id", tenant_id).eq("end_user_id", end_user_id).execute())
-        (db.table("companion_end_users").update({"display_name": None, "forgotten_at": _now()})
+        (db.table("companion_end_users").update({"display_name": None, "profile_name": None, "forgotten_at": _now()})
          .eq("tenant_id", tenant_id).eq("id", end_user_id).execute())
     await asyncio.to_thread(_q)
 
@@ -615,18 +651,19 @@ async def list_people(tenant_id: str, companion_id: str, q: str = "", limit: int
         ids, users = list(stats), []
         for i in range(0, len(ids), 200):   # keeps each in.(...) filter well under URL limits
             users += (
-                db.table("companion_end_users").select("id, external_user_id, display_name, forgotten_at")
+                db.table("companion_end_users").select("id, external_user_id, display_name, profile_name, forgotten_at")
                 .eq("tenant_id", tenant_id).in_("id", ids[i:i + 200]).execute().data or [])
         needle = q.strip().lower()
         people = [
             {"end_user_id": u["id"], "external_user_id": u["external_user_id"],
-             "display_name": u.get("display_name"),
+             "display_name": u.get("display_name"), "profile_name": u.get("profile_name"),
              "is_test": u["external_user_id"].startswith("owner-test:"),   # a Playground test customer
              **stats[u["id"]]}
             for u in users
             if not u.get("forgotten_at") and (
                 not needle or needle in u["external_user_id"].lower()
-                or needle in (u.get("display_name") or "").lower())
+                or needle in (u.get("display_name") or "").lower()
+                or needle in (u.get("profile_name") or "").lower())
         ]
         people.sort(key=lambda p: p["last_seen_at"], reverse=True)
         page = people[offset:offset + limit]

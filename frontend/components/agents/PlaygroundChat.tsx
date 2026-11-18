@@ -35,6 +35,7 @@ import {
 import { CharacterSelect } from "@/components/agents/CharacterSelect";
 import { Hero, PromptBox, chipClass } from "@/components/agents/PlaygroundParts";
 import { TestPersonChips, useTestPeople } from "@/components/agents/TestPersonChips";
+import { PROFILE_SAVED_EVENT } from "@/components/agents/AppDataBox";
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT } from "@/components/agents/ui";
 
 type ReplyBubble = {
@@ -148,6 +149,15 @@ export function PlaygroundChat({
   const you = people?.find((p) => p.is_you);
   const person: TestPerson | undefined = people?.find((p) => p.external_user_id === personId) ?? you;
   useEffect(() => onPerson?.(person), [person, onPerson]);
+  // A saved "Whose profile is this?" shows on that person's chip at once (AppDataBox fires the event).
+  useEffect(() => {
+    const onSaved = (e: Event) => {
+      const { external_user_id, profile_name } = (e as CustomEvent<{ external_user_id: string; profile_name: string | null }>).detail;
+      setPeople((list) => (list ? list.map((x) => (x.external_user_id === external_user_id ? { ...x, profile_name } : x)) : list));
+    };
+    window.addEventListener(PROFILE_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(PROFILE_SAVED_EVENT, onSaved);
+  }, [setPeople]);
 
   const [memory, setMemory] = useState<CompanionMemoryStatus | null>(null);
   const [saving, setSaving] = useState(false);

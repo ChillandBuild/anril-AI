@@ -39,16 +39,19 @@ def is_own(external_user_id: str, login_id: str) -> bool:
     return external_user_id == you or external_user_id.startswith(you + ":")
 
 
-def _row(external_user_id: str, name: str | None, login_id: str) -> dict:
+def _row(external_user_id: str, name: str | None, login_id: str, profile_name: str | None = None) -> dict:
+    """profile_name: whose profile the person's sample app data is (e.g. Vivek's chip says "Karthik")."""
     is_you = external_user_id == you_id(login_id)
-    return {"external_user_id": external_user_id, "name": YOU_NAME if is_you else (name or ""), "is_you": is_you}
+    return {"external_user_id": external_user_id, "name": YOU_NAME if is_you else (name or ""), "is_you": is_you,
+            "profile_name": profile_name or None}
 
 
 async def list_people(tenant_id: str, login_id: str) -> list[dict]:
     """"You" first, then the test customers, oldest first."""
     rows = await store.list_test_people(tenant_id, you_id(login_id) + ":")
-    return [_row(you_id(login_id), None, login_id)] + [
-        _row(r["external_user_id"], r.get("display_name"), login_id) for r in rows]
+    you = await store.find_end_user(tenant_id, you_id(login_id)) or {}   # "You" has no row before its first chat
+    return [_row(you_id(login_id), None, login_id, you.get("profile_name"))] + [
+        _row(r["external_user_id"], r.get("display_name"), login_id, r.get("profile_name")) for r in rows]
 
 
 async def create(tenant_id: str, login_id: str, name: str) -> dict:
@@ -90,21 +93,25 @@ async def start_over(tenant_id: str, login_id: str, external_user_id: str) -> di
     person = await store.find_end_user(tenant_id, external_user_id)
     if person:   # "You" before its first chat has no row yet: nothing to wipe
         await engine.forget_person(tenant_id, external_user_id)
-        await store.revive_end_user(tenant_id, person["id"], person.get("display_name"))
-    return _row(external_user_id, (person or {}).get("display_name"), login_id)
+        await store.revive_end_user(tenant_id, person["id"], person.get("display_name"), person.get("profile_name"))
+    return _row(external_user_id, (person or {}).get("display_name"), login_id, (person or {}).get("profile_name"))
 
 
-async def app_data(tenant_id: str, login_id: str, external_user_id: str) -> str | None:
-    """The sample app data saved for this test person (sent with each Playground message), or None."""
+async def app_data(tenant_id: str, login_id: str, external_user_id: str) -> tuple[str | None, str | None]:
+    """(sample app data, whose profile it is) saved for this test person, sent with each Playground message.
+    Example: Vivek -> (Karthik's chart, "Karthik"). None for what isn't set."""
     await require_usable(tenant_id, login_id, external_user_id)
-    person = await store.find_end_user(tenant_id, external_user_id)
-    return (person or {}).get("test_app_data") or None
+    person = await store.find_end_user(tenant_id, external_user_id) or {}
+    return person.get("test_app_data") or None, person.get("profile_name") or None
 
 
-async def set_app_data(tenant_id: str, login_id: str, external_user_id: str, text: str | None) -> str | None:
-    """Saves (or with None clears) a test person's sample app data, e.g. Meena's chart. "You" gets its row
-    here if it has never chatted. Start over keeps it: it is the app's profile, not something remembered."""
+async def set_app_data(tenant_id: str, login_id: str, external_user_id: str, text: str | None,
+                       profile_name: str | None = None) -> tuple[str | None, str | None]:
+    """Saves (or with None clears) a test person's sample app data, e.g. Meena's chart, and whose profile
+    it is ("Karthik"). "You" gets its row here if it has never chatted. Start over keeps both: they are the
+    app's profile, not something remembered."""
     await require_usable(tenant_id, login_id, external_user_id)
     person = await store.find_or_create_end_user(tenant_id, external_user_id)
-    await store.set_test_app_data(tenant_id, person["id"], text)
-    return text
+    profile = " ".join((profile_name or "").split())[:100] or None
+    await store.set_test_app_data(tenant_id, person["id"], text, profile)
+    return text, profile

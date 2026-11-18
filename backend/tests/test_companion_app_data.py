@@ -96,7 +96,7 @@ def test_each_test_person_keeps_their_own_app_data_and_it_rides_with_their_messa
     meena, ravi = _add(env, "Meena"), _add(env, "Ravi")
     assert env.client.put(f"{DASH}/test-people/{meena}/app-data", json={"app_data": CHART}).json()["app_data"].startswith('{"lagna"')
     env.client.put(f"{DASH}/test-people/{ravi}/app-data", json={"app_data": "lagna: சிம்மம்"})
-    assert env.client.get(f"{DASH}/test-people/{ravi}/app-data").json() == {"app_data": "lagna: சிம்மம்"}
+    assert env.client.get(f"{DASH}/test-people/{ravi}/app-data").json() == {"app_data": "lagna: சிம்மம்", "profile_name": None}
 
     env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "கல்யாணம் எப்போ?", "test_person": meena})
     env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "கல்யாணம் எப்போ?", "test_person": ravi})
@@ -107,7 +107,7 @@ def test_each_test_person_keeps_their_own_app_data_and_it_rides_with_their_messa
 def test_you_can_have_app_data_before_its_first_chat_and_clearing_it_removes_the_section(env, monkeypatch):  # noqa: F811
     seen = _capture(env, monkeypatch)
     you = "owner-test:u1"
-    assert env.client.get(f"{DASH}/test-people/{you}/app-data").json() == {"app_data": None}
+    assert env.client.get(f"{DASH}/test-people/{you}/app-data").json() == {"app_data": None, "profile_name": None}
     env.client.put(f"{DASH}/test-people/{you}/app-data", json={"app_data": "plan: Gold"})
     env.client.post(f"{DASH}/{env.live['id']}/test-chat", json={"message": "hi"})
     env.client.put(f"{DASH}/test-people/{you}/app-data", json={"app_data": ""})

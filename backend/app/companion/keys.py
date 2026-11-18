@@ -49,6 +49,22 @@ def valid_user_id(user_id: str) -> bool:
     return bool(USER_ID_RE.fullmatch(user_id)) and not user_id.startswith(OWNER_TEST_PREFIX)
 
 
+# A profile the user is asking about (AstroTamil: one login, several family charts). Same characters as a
+# user id, up to 64, so "<user_id>~<profile_id>" stays within the 200 a person's external id may have.
+PROFILE_SEP = "~"   # never in a user id (USER_ID_RE), so "u42~p7" can't be another user's id
+PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@:\-]{0,63}$")
+
+
+def valid_profile_id(profile_id: str) -> bool:
+    return bool(PROFILE_ID_RE.fullmatch(profile_id))
+
+
+def person_key(user_id: str, profile_id: str | None = None) -> str:
+    """The person row's external id: one per (user, profile), so charts never share memory or history.
+    person_key("u42") -> "u42"; person_key("u42", "p7") -> "u42~p7". Validate both ids first."""
+    return f"{user_id}{PROFILE_SEP}{profile_id}" if profile_id else user_id
+
+
 def sign_user(key_hash: str, user_id: str, exp: int) -> str:
     """What the business's server computes (key_hash = sha256 hex of its secret key)."""
     return hmac.new(key_hash.encode(), f"{exp}.{user_id}".encode(), hashlib.sha256).hexdigest()

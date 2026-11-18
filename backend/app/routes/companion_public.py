@@ -80,6 +80,9 @@ def _engine_error(exc: Exception) -> ApiError:
 # --- request bodies (extra="forbid": a tenant_id in the body is a 422, never used) --------------
 
 UserId = Field(min_length=1, max_length=128)
+# Which profile this message is about (AstroTamil: which family chart). Optional; see keys.person_key.
+ProfileId = Field(None, min_length=1, max_length=64)
+ProfileName = Field(None, max_length=100)
 Message = Field(min_length=1, max_length=4000)
 
 
@@ -104,6 +107,8 @@ Timezone = Annotated[str | None, Field(None, max_length=64), AfterValidator(_zon
 class ServerChatIn(_Body):
     companion_id: UUID
     user_id: str = UserId
+    profile_id: str | None = ProfileId       # e.g. "p7": one memory per (user, profile)
+    profile_name: str | None = ProfileName   # e.g. "Karthik": whose profile (chart) this is
     message: str = Message
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
@@ -113,6 +118,7 @@ class ServerChatIn(_Body):
 
 class ServerContinueIn(_Body):
     user_id: str = UserId
+    profile_id: str | None = ProfileId
     turn_id: UUID
     results: list[ToolResult] = Field(default_factory=list, max_length=MAX_TOOLS)
 
@@ -120,11 +126,13 @@ class ServerContinueIn(_Body):
 class WidgetAuthIn(_Body):
     companion_id: UUID
     user_id: str = UserId
+    profile_id: str | None = ProfileId   # not signed: it only picks among this signed user's own profiles
     exp: int
     signature: str = Field(min_length=64, max_length=64)
 
 
 class WidgetChatIn(WidgetAuthIn):
+    profile_name: str | None = ProfileName
     message: str = Message
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
@@ -144,12 +152,16 @@ def _check_ip(request: Request) -> None:
         raise _RATE
 
 
-def _check_person(tenant_id: str, user_id: str) -> None:
+def _check_person(tenant_id: str, user_id: str, profile_id: str | None = None) -> str:
+    """The person's key (keys.person_key): "u42", or "u42~p7" when the app names a profile."""
     if not keys.valid_user_id(user_id):
         raise ApiError(422, "invalid_user_id", "user_id may use letters, digits and _ . @ : - (up to 128)")
+    if profile_id is not None and not keys.valid_profile_id(profile_id):
+        raise ApiError(422, "invalid_profile_id", "profile_id may use letters, digits and _ . @ : - (up to 64)")
     # Person first: a person over their own limit must not use up the business-wide budget.
     if not _person_limiter.allow(f"{tenant_id}:{user_id}") or not _tenant_limiter.allow(tenant_id):
         raise _RATE
+    return keys.person_key(user_id, profile_id)
 
 
 async def _touch(tenant_id: str, key_id: str) -> None:
@@ -229,18 +241,20 @@ async def _run(call, kind: str, log: dict) -> JSONResponse:
 
 @public_router.post("/chat")
 async def server_chat(body: ServerChatIn, request: Request):
-    """{"companion_id", "user_id", "message", "display_name"?, "timezone"?, "tools"?, "app_data"?} → the reply,
+    """{"companion_id", "user_id", "message", "display_name"?, "profile_id"?, "profile_name"?, "timezone"?,
+    "tools"?, "app_data"?} → the reply,
     or status "tool_call" with a turn_id: run the tools and POST /chat/continue. app_data rides with every
     message (e.g. AstroTamil's chart for this user) and is never stored."""
     log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
 
     async def call():
         tenant_id = log["tenant_id"] = await _server_tenant(request)
-        _check_person(tenant_id, body.user_id)
+        person_key = _check_person(tenant_id, body.user_id, body.profile_id)
         _require_text(body.message)
-        result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
+        result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
-                                    timezone_name=body.timezone, app_data=body.app_data)
+                                    timezone_name=body.timezone, app_data=body.app_data,
+                                    profile_name=body.profile_name)
         return result.model_dump()
     return await _run(call, "chat", log)
 
@@ -251,9 +265,9 @@ async def server_continue(body: ServerContinueIn, request: Request):
 
     async def call():
         tenant_id = log["tenant_id"] = await _server_tenant(request)
-        _check_person(tenant_id, body.user_id)
+        person_key = _check_person(tenant_id, body.user_id, body.profile_id)
         result = await engine.continue_reply(str(body.turn_id), tenant_id, body.results,
-                                             external_user_id=body.user_id, require_live=True)
+                                             external_user_id=person_key, require_live=True)
         return result.model_dump()
     return await _run(call, "chat_continue", log)
 
@@ -268,11 +282,11 @@ async def widget_session(body: WidgetAuthIn, request: Request):
 
     async def call():
         tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
-        _check_person(tenant_id, body.user_id)
+        person_key = _check_person(tenant_id, body.user_id, body.profile_id)
         companion = await store.get_companion(tenant_id, str(body.companion_id))
         if not companion or companion.get("status") != "live" or companion.get("archived_at"):
             raise ApiError(409, "companion_not_live", "This character isn't live yet.")
-        person = await store.find_end_user(tenant_id, body.user_id)
+        person = await store.find_end_user(tenant_id, person_key)
         history = []
         if person:
             history = await store.recent_messages(tenant_id, companion["id"], person["id"], HISTORY_ON_OPEN)
@@ -290,11 +304,12 @@ async def widget_chat(body: WidgetChatIn, request: Request):
 
     async def call():
         tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
-        _check_person(tenant_id, body.user_id)
+        person_key = _check_person(tenant_id, body.user_id, body.profile_id)
         _require_text(body.message)
-        result = await engine.reply(str(body.companion_id), tenant_id, body.user_id, body.message.strip(),
+        result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
-                                    timezone_name=body.timezone, app_data=body.app_data)
+                                    timezone_name=body.timezone, app_data=body.app_data,
+                                    profile_name=body.profile_name)
         return result.model_dump()
     return await _run(call, "widget_chat", log)
 
@@ -307,8 +322,8 @@ async def widget_continue(body: WidgetContinueIn, request: Request):
 
     async def call():
         tenant_id = log["tenant_id"] = await _widget_tenant(request, body)
-        _check_person(tenant_id, body.user_id)
+        person_key = _check_person(tenant_id, body.user_id, body.profile_id)
         result = await engine.continue_reply(str(body.turn_id), tenant_id, body.results,
-                                             external_user_id=body.user_id, require_live=True)
+                                             external_user_id=person_key, require_live=True)
         return result.model_dump()
     return await _run(call, "widget_continue", log)

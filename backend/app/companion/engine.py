@@ -25,7 +25,7 @@ from app.companion.kb import learning as kb_learning
 from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
-from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used, said_talk
+from app.companion.prompt import build_messages, label_reply, parse_mood, parse_used, said_talk, who_block
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -169,23 +169,26 @@ async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
     model: str | None = None, use_memory: bool = True, timezone_name: str | None = None,
-    app_data: str | None = None,
+    app_data: str | None = None, profile_name: str | None = None,
 ) -> CompanionReply:
     """model and use_memory are for the dashboard Playground only; the public API never sets them.
     use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
     nothing saved. It shows how the character answers a stranger.
     timezone_name: the person's IANA zone from their app (validated by the API), saved on the person.
     app_data: what the app knows about this person, sent with this message (models.app_data_text). It goes
-    into this reply's prompt only; it is never saved (a paused tool turn keeps its prompt for 2 minutes)."""
+    into this reply's prompt only; it is never saved (a paused tool turn keeps its prompt for 2 minutes).
+    profile_name: whose profile this person row is about (e.g. "Karthik" for the chart in app_data); saved on
+    the person like display_name, and both go into the prompt's WHO line (prompt.who_block)."""
     tools = tools or []
     app_tools.validate_tools(tools)
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
     sem = await _take_slot(companion_id)
     try:
         if not use_memory:
-            return await _reply_without_memory(companion, tenant_id, message, model, app_data)
+            return await _reply_without_memory(companion, tenant_id, message, model, app_data,
+                                               who_block(display_name, profile_name))
         return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools,
-                            model, timezone_name, app_data)
+                            model, timezone_name, app_data, profile_name)
     finally:
         sem.release()
 
@@ -264,14 +267,15 @@ async def _memory(provider, tenant_id: str, companion: dict, person: dict, messa
 
 
 async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
-                                model: str | None, app_data: str | None = None) -> CompanionReply:
+                                model: str | None, app_data: str | None = None,
+                                who: str | None = None) -> CompanionReply:
     """One stateless reply: books only, no facts, no history, and no DB write at all (no person,
     no conversation), so it can run beside the normal reply without racing it. The app's data still
     comes along: it is what the app sends, not what the character remembers."""
     started = time.monotonic()
     kb = await _knowledge(tenant_id, companion, message, [])
     mood = companion.get("default_mood") or "calm"
-    prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data)
+    prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data, who=who)
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=LLM_MAX_TOKENS, tenant_id=tenant_id,
@@ -288,10 +292,13 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
 
 async def _reply(companion: dict, provider: str, tenant_id: str, external_user_id: str, message: str,
                  display_name: str | None, tools: list[AppTool], model: str | None = None,
-                 timezone_name: str | None = None, app_data: str | None = None) -> CompanionReply:
+                 timezone_name: str | None = None, app_data: str | None = None,
+                 profile_name: str | None = None) -> CompanionReply:
     started = time.monotonic()
     companion_id = companion["id"]
-    person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name)
+    person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name,
+                                                 profile_name=profile_name)
+    who = who_block(person.get("display_name"), person.get("profile_name"))   # the saved names, not just this message's
     conversation = await store.open_conversation(
         tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm")
     memory = _provider(companion)
@@ -319,9 +326,9 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     mood = _mood(conversation, companion)
     if agentic:
         return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
-                              memory_context, mood, tools, started, model, ov, app_data)
+                              memory_context, mood, tools, started, model, ov, app_data, who)
     prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person),
-                            app_data=app_data)
+                            app_data=app_data, who=who)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb)
@@ -355,7 +362,7 @@ AGENTIC_NOTE = (
 async def _agentic(companion: dict, provider: str, tenant_id: str, conversation: dict, person: dict,
                    message: str, history: list[dict], memory_context: str, mood: str, tools: list[AppTool],
                    started: float, model: str | None, ov: "playground.Overrides",
-                   app_data: str | None = None) -> CompanionReply:
+                   app_data: str | None = None, who: str | None = None) -> CompanionReply:
     offered = [t for t in (SEARCH_MEMORY, SEARCH_KNOWLEDGE)
                if ov.sources == "all" or (ov.sources == "memories") == (t is SEARCH_MEMORY)]
     if not companion.get("knowledge_collection_id"):
@@ -363,7 +370,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
         ov.note("Agentic: no search tool to offer, replied as usual")
         prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
-                                app_data=app_data)
+                                app_data=app_data, who=who)
         return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
                                  started, model=model)
     search_names = {t.name for t in offered}
@@ -371,7 +378,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
     app_offered = [t for t in tools if t.name not in search_names]
     prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
-                            app_data=app_data)
+                            app_data=app_data, who=who)
     prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
     llm_started = time.monotonic()
     raw, calls, wants_app = None, [], False
@@ -406,7 +413,7 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
         log.append({"name": call["name"], "args": call["args"], "ok": True})
     context = "\n".join(part for part in [memory_context] + found if part)
     prompt = build_messages(companion, mood, kb, context, history, message, _person_today(companion, person),
-                            app_data=app_data)
+                            app_data=app_data, who=who)
     reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
                               model=model, kb=kb)
     total = int((time.monotonic() - started) * 1000)
@@ -553,12 +560,12 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
 
 async def forget_person(tenant_id: str, external_user_id: str) -> bool:
     """'Forget me', business-wide: wipes this person's chats with every character of the tenant,
-    then wipes their facts in every memory engine. False if the person never talked to this tenant."""
-    person = await store.find_end_user(tenant_id, external_user_id)
-    if not person:
-        return False
-    await store.forget_end_user(tenant_id, person["id"])
-    for provider in forget_providers():
-        await provider.forget(tenant_id, person["id"])
-    logger.info("companion: forgot end user %s for tenant %s", person["id"], tenant_id)
-    return True
+    then wipes their facts in every memory engine. A plain user id takes every profile of theirs with it
+    ("u42" also forgets "u42~p7"); a profile id forgets just that profile. False if none ever talked here."""
+    people = await store.find_person_rows(tenant_id, external_user_id)
+    for person in people:
+        await store.forget_end_user(tenant_id, person["id"])
+        for provider in forget_providers():
+            await provider.forget(tenant_id, person["id"])
+        logger.info("companion: forgot end user %s for tenant %s", person["id"], tenant_id)
+    return bool(people)
