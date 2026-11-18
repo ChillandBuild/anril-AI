@@ -273,4 +273,12 @@ async def search(tenant_id: str, collection_id: str, message: str, history: list
     except Exception as exc:        # includes TimeoutError
         logger.warning("companion kb: search failed tenant=%s collection=%s (%s)",
                        tenant_id, collection_id, type(exc).__name__)
+        if full_main:   # the other books' step was slow or broke: the main resource still goes in whole
+            try:
+                whole = await whole_main(tenant_id, collection_id)
+            except Exception:
+                whole = None
+            if whole:
+                playground.note("Knowledge: search failed, main files sent whole anyway")
+                return KbResult(passages=tuple(whole), failed=True)
         return KbResult(failed=True)

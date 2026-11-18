@@ -78,3 +78,14 @@ def test_the_engine_passes_the_characters_switch(monkeypatch):
     seen.clear()
     run(engine._knowledge("t", {"id": "j", "knowledge_collection_id": "c1"}, "q", []))
     assert "full_main" not in seen
+
+
+def test_a_slow_search_still_sends_the_whole_main_resource(fx, monkeypatch):  # noqa: F811
+    """Live eval 2026-11-18: under load the other books' judge step ran past the 20 s limit and the reply
+    went out with no Rule Book at all."""
+    async def slow(*a, **kw):
+        raise TimeoutError
+    monkeypatch.setattr(search, "_search", slow)
+    kb = ask(full_main=True)
+    assert kb.failed and [p.id for p in kb.passages] == ["whole:main"]
+    assert ask().passages == ()   # off: a failed search still sends nothing, as before
