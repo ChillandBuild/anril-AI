@@ -826,14 +826,16 @@ export function LeadsClient() {
                 showValue={!showsSourcePicker}
               />
 
-              {/* Which campaign / broadcast, in the same row as the Source it narrows. */}
+              {/* Which campaign / broadcast, in the same row as the Source it narrows. It starts at 124px when
+                  the row decides line breaks, then grows only up to its text, so a long name truncates
+                  instead of pushing Refresh / Download to a second line. */}
               {showsSourcePicker && sourceFilter === "META_ADS" && (
                 <Select
                   size="sm"
                   value={selectedCampaignId}
                   onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className="w-auto max-w-[200px] shrink-0 gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
+                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All campaigns" },
                     ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
@@ -847,7 +849,7 @@ export function LeadsClient() {
                   value={selectedBroadcastId}
                   onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className="w-auto max-w-[200px] shrink-0 gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
+                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All broadcasts" },
                     ...broadcastHistory.flatMap((h) =>
