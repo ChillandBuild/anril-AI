@@ -835,7 +835,7 @@ export function LeadsClient() {
                   value={selectedCampaignId}
                   onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
+                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 [&>span>span]:min-w-0 [&>span>span]:overflow-hidden pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All campaigns" },
                     ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
@@ -849,7 +849,7 @@ export function LeadsClient() {
                   value={selectedBroadcastId}
                   onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
+                  className="w-auto min-w-0 max-w-fit basis-[124px] grow gap-1.5 [&>span>span]:min-w-0 [&>span>span]:overflow-hidden pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All broadcasts" },
                     ...broadcastHistory.flatMap((h) =>
