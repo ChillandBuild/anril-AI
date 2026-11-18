@@ -35,7 +35,8 @@ WORKING_RULE = (
     "[WORKING]\nBefore the tags, think it through inside <working> and </working>, in English, step by step: "
     "the facts from APP DATA and the rules or steps from KNOWLEDGE that decide this question, which of them "
     "agree and which clash, and any period or date and why it fits. If KNOWLEDGE gives steps for this kind of "
-    "question, follow them in order. The person never sees the working. After </working> write the tags and "
+    "question, follow them in order. Keep it short: at most 10 lines, notes not sentences, no copying of "
+    "APP DATA or KNOWLEDGE. The person never sees the working. After </working> write the tags and "
     "the reply as usual; the reply must agree with the working and name the facts it rests on."
 )
 

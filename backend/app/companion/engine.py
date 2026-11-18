@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 10   # default when a character has no history_messages set
 LLM_MAX_TOKENS = 700
-LLM_MAX_TOKENS_WORKING = 1800   # working_step: the hidden working comes first, then the reply
+# working_step: the hidden working comes first, then the reply. 1,800 was too few: on 3.8 Flash a long
+# working used all of it and no reply came (the sorry line), live eval 2026-11-18.
+LLM_MAX_TOKENS_WORKING = 3000
 
 
 def _max_tokens(companion: dict) -> int:
