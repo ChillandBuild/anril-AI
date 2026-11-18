@@ -793,7 +793,7 @@ export function LeadsClient() {
                 every control, e.g. a small screen with the sidebar open and long filter values. */}
             <div className="flex flex-wrap items-center gap-1.5 p-4 border-b border-[#e2e8f0]">
               {/* Search input */}
-              <div className="relative min-w-[200px] flex-1">
+              <div className="relative min-w-[120px] flex-1">
                 <Search size={14} className="absolute left-3 top-2.5 text-[#64748b]" />
                 <input
                   type="text"
@@ -833,7 +833,7 @@ export function LeadsClient() {
                   value={selectedCampaignId}
                   onChange={setSelectedCampaignId}
                   aria-label="Campaign"
-                  className="w-[138px] shrink-0 text-xs font-bold text-[#0A1528]"
+                  className="w-auto max-w-[200px] shrink-0 gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All campaigns" },
                     ...campaigns.map((c) => ({ value: c.id, label: campaignLabel(c) })),
@@ -847,7 +847,7 @@ export function LeadsClient() {
                   value={selectedBroadcastId}
                   onChange={setSelectedBroadcastId}
                   aria-label="Broadcast"
-                  className="w-[138px] shrink-0 text-xs font-bold text-[#0A1528]"
+                  className="w-auto max-w-[200px] shrink-0 gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528]"
                   options={[
                     { value: "", label: "All broadcasts" },
                     ...broadcastHistory.flatMap((h) =>

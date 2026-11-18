@@ -70,6 +70,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [purchasedFeatures, setPurchasedFeatures] = useState<string[]>([]);
   const pathname = usePathname();
   const isMetaAds = pathname?.startsWith("/dashboard/meta-ads") ?? false;
+  // Customers keeps the standard side padding but uses Meta Ads' tighter gap under the header.
+  const isCustomers = pathname?.startsWith("/dashboard/leads") ?? false;
   // Call Review fills the whole pane (its filter bar and KPIs lock to the top); NotesGate pads the telecaller view itself.
   const isCallReviewPage = pathname === "/dashboard/notes";
   // The conversations route renders its own thin inbox rail (Bulkwise-style) and
@@ -176,6 +178,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                     ? "w-full min-w-0 max-w-none"
                     : isMetaAds
                     ? "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
+                    : isCustomers
+                    ? "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:px-7 md:py-5"
                     : "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:p-7"}>
                     {children}
                   </div>
