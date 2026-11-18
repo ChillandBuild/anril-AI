@@ -95,7 +95,7 @@ class CustomerGroupsRouteTests(unittest.TestCase):
         self.assertEqual(rows[0]["member_count"], 1)
         self.assertEqual(rows[1]["member_count"], 0)
         self.assertEqual(rows[1]["id"], first["id"])
-        self.assertEqual(set(rows[0]), {"id", "name", "kind", "member_count", "created_at"})
+        self.assertEqual(set(rows[0]), {"id", "name", "kind", "rule", "rule_text", "member_count", "stop_count", "made_by", "created_at"})
 
     def test_rename_follows_the_same_duplicate_rule(self):
         self._create("Alpha")

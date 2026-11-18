@@ -238,21 +238,25 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
     matched_lead_name: str | None = None
 
     if payload.lead_id:
-        lead = db.table("leads").select("phone,name,do_not_call").eq("id", str(payload.lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
+        lead = db.table("leads").select("phone,name,do_not_call,opted_out").eq("id", str(payload.lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
         if not lead.data:
             raise HTTPException(status_code=404, detail="Lead not found")
         if lead.data.get("do_not_call"):
             raise HTTPException(status_code=400, detail="Lead is on Do Not Call")
+        if lead.data.get("opted_out"):
+            raise HTTPException(status_code=400, detail="This customer is on Said stop, so they can't be called")
         lead_phone = lead.data["phone"]
         matched_lead_id = str(payload.lead_id)
         matched_lead_name = lead.data.get("name")
     else:
         lead_phone = payload.phone
         # try to find a lead by phone so live notes can be linked
-        match = db.table("leads").select("id,name,do_not_call").eq("phone", lead_phone).eq("tenant_id", tenant_id).maybe_single().execute()
+        match = db.table("leads").select("id,name,do_not_call,opted_out").eq("phone", lead_phone).eq("tenant_id", tenant_id).maybe_single().execute()
         if match and match.data:
             if match.data.get("do_not_call"):
                 raise HTTPException(status_code=400, detail="Lead is on Do Not Call")
+            if match.data.get("opted_out"):
+                raise HTTPException(status_code=400, detail="This customer is on Said stop, so they can't be called")
             matched_lead_id = match.data["id"]
             matched_lead_name = match.data.get("name")
         else:
@@ -1228,6 +1232,7 @@ def _open_unassigned_query(db, tenant_id: str):
         .is_("converted_at", "null")
         .is_("deleted_at", "null")
         .neq("do_not_call", True)
+        .or_("opted_out.is.null,opted_out.eq.false")  # Said stop: no calls either
         .neq("call_status", "converted")
         .neq("call_status", "not_interested")
         .neq("call_status", "dnc")
@@ -1377,6 +1382,7 @@ async def next_lead(
         .is_("converted_at", "null")
         .is_("deleted_at", "null")
         .neq("do_not_call", True)
+        .or_("opted_out.is.null,opted_out.eq.false")  # Said stop: no calls either
         .neq("call_status", "converted")
         .neq("call_status", "dnc")
         .neq("call_status", "disqualified")

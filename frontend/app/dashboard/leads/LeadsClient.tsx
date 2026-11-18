@@ -1,8 +1,8 @@
 "use client";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
-import { api, Lead, LeadFilters, Caller, CustomerGroup, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star } from "lucide-react";
+import { api, Lead, LeadFilters, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
+import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star, Bookmark } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
@@ -17,7 +17,9 @@ import { Select } from "@/components/ui/Select";
 import { CheckTick } from "@/components/ui/controls";
 import { SendMessageModal } from "./SendMessageModal";
 import { SendTemplateModal } from "./SendTemplateModal";
-import { GroupsPanel } from "./GroupsPanel";
+import { GroupsPanel, RuleChoices } from "./GroupsPanel";
+import { SaidStopPanel } from "./SaidStopPanel";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 function NameCell({ lead, onUpdate, compact }: { lead: Lead; onUpdate: (l: Lead) => void; compact?: boolean }) {
   const [editing, setEditing] = useState(false);
@@ -485,6 +487,67 @@ export function LeadsClient() {
     api.customerGroups.list().then(setGroups).catch(() => {});
   }
 
+  const ruleChoices: RuleChoices = {
+    callers: callers.map((c) => ({ id: c.id, name: c.name })),
+    campaigns: campaigns.map((c) => ({ id: c.id, label: campaignLabel(c) })),
+    broadcasts: broadcastHistory.flatMap((h) =>
+      h.broadcast_id ? [{ id: h.broadcast_id, label: `${h.template_name} · ${new Date(h.timestamp).toLocaleDateString()}` }] : [],
+    ),
+  };
+
+  // "Save as a group": the filters on screen become a group that fills itself. Rules use rolling
+  // dates, so only the Added presets carry over; a typed search or a custom date range does not.
+  const savedRule: GroupRule = {
+    ...(segmentFilter ? { segment: segmentFilter } : {}),
+    ...(status === "BUYERS" ? { buyer: true as const } : {}),
+    ...(sourceFilter !== "ALL" ? { source_filter: sourceFilter.toLowerCase() as GroupRule["source_filter"] } : {}),
+    ...(listFilters.broadcast_id ? { broadcast_id: listFilters.broadcast_id } : {}),
+    ...(listFilters.ad_campaign_id ? { ad_campaign_id: listFilters.ad_campaign_id } : {}),
+    ...({ today: { added_days: 1 }, "7d": { added_days: 7 }, "30d": { added_days: 30 } } as Record<string, GroupRule>)[getDatePreset()] ?? {},
+    ...(assigned ? { assigned_to: assigned } : {}),
+    ...(replyWindow ? { reply_window: replyWindow } : {}),
+    ...(bought ? { bought } : {}),
+  };
+  const canSaveAsGroup = canManageLeads && Object.keys(savedRule).length > 0;
+  const [savingGroupOpen, setSavingGroupOpen] = useState(false);
+  const [savedGroupName, setSavedGroupName] = useState("");
+
+  async function saveFiltersAsGroup() {
+    const name = savedGroupName.trim();
+    if (!name) return;
+    try {
+      const group = await api.customerGroups.create(name, savedRule);
+      const left = [search && "the search", getDatePreset() === "custom" && "the custom dates", groupId && "the group filter"].filter(Boolean);
+      toast.success(
+        `Saved "${group.name}": ${group.member_count} people today. It updates by itself.` +
+          (left.length ? ` (${left.join(" and ")} isn't part of it.)` : ""),
+      );
+      setSavingGroupOpen(false);
+      setSavedGroupName("");
+      api.customerGroups.list().then(setGroups).catch(() => {});
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the group");
+    }
+  }
+
+  const [confirmSaidStop, setConfirmSaidStop] = useState(false);
+  const [saidStopBusy, setSaidStopBusy] = useState(false);
+
+  async function addSelectedToSaidStop() {
+    setSaidStopBusy(true);
+    try {
+      const { added } = await api.saidStop.add(Array.from(selectedIds));
+      toast.success(`${added} added to Said stop. No offers or calls will go to them.`);
+      setConfirmSaidStop(false);
+      setSelectedIds(new Set());
+      await Promise.all([mutateList(), mutateSummary()]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add to Said stop");
+    } finally {
+      setSaidStopBusy(false);
+    }
+  }
+
   async function addSelectedToGroup(group: CustomerGroup) {
     const ids = Array.from(selectedIds);
     try {
@@ -679,15 +742,21 @@ export function LeadsClient() {
         />
       )}
 
-      {headerView === "groups" && <GroupsPanel />}
+      <ConfirmModal
+        open={confirmSaidStop}
+        onClose={() => setConfirmSaidStop(false)}
+        onConfirm={addSelectedToSaidStop}
+        title={`Add ${selectedIds.size} to Said stop?`}
+        description="Offers, follow-ups, auto-messages and telecaller calls stop for them. The AI agent still answers if they message you, and payment messages still go. Only do this when they asked."
+        tone="danger"
+        confirmLabel="Add to said stop"
+        loading={saidStopBusy}
+        loadingLabel="Adding…"
+      />
 
-      {headerView === "said-stop" && (
-        <ComingSoonCard
-          icon={BellOff}
-          title="Said stop"
-          text="People who asked you to stop messaging them will be listed here. This list is being built next."
-        />
-      )}
+      {headerView === "groups" && <GroupsPanel choices={ruleChoices} />}
+
+      {headerView === "said-stop" && <SaidStopPanel />}
 
       {headerView === "feedback" && (
         <ComingSoonCard
@@ -960,6 +1029,53 @@ export function LeadsClient() {
 
               {/* Right side buttons */}
               <div className="ml-auto flex shrink-0 gap-1.5">
+                {canSaveAsGroup && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setSavingGroupOpen(!savingGroupOpen)}
+                      title="Save these filters as a group that fills itself"
+                      aria-label="Save these filters as a group"
+                      aria-expanded={savingGroupOpen}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] transition-colors"
+                    >
+                      <Bookmark size={14} />
+                    </button>
+                    {savingGroupOpen && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          saveFiltersAsGroup();
+                        }}
+                        className="absolute right-0 top-full z-30 mt-1 w-[280px] rounded-xl border border-[#e2e8f0] bg-white p-3 shadow-lg"
+                      >
+                        <p className="text-xs font-bold text-[#0A1528]">Save as a group</p>
+                        <p className="mt-0.5 text-xs text-[#64748b]">
+                          Everyone who matches these filters, now and later. It updates by itself.
+                        </p>
+                        <input
+                          autoFocus
+                          value={savedGroupName}
+                          onChange={(e) => setSavedGroupName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setSavingGroupOpen(false);
+                          }}
+                          maxLength={80}
+                          placeholder="Group name"
+                          aria-label="Group name"
+                          className="mt-2 w-full rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!savedGroupName.trim()}
+                          className="mt-2 w-full rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                        >
+                          Save group
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
                 <button
                   onClick={refreshLeads}
                   title="Refresh"
@@ -1086,6 +1202,15 @@ export function LeadsClient() {
                       </div>
                     )}
                   </div>
+                )}
+                {canManageLeads && (
+                  <button
+                    onClick={() => setConfirmSaidStop(true)}
+                    className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5"
+                  >
+                    <BellOff size={12} />
+                    Add to said stop
+                  </button>
                 )}
                 {role === "owner" && (
                   <div ref={assignPopoverRef} className="relative">
@@ -1242,7 +1367,7 @@ export function LeadsClient() {
                       return (
                         <tr
                           key={lead.id}
-                          onClick={() => router.push(`/dashboard/conversations?lead=${lead.id}`)}
+                          onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
                           className={cn(
                             "border-t border-[#f1f5f9] hover:bg-[#f8fafc] transition-colors cursor-pointer",
                             selectedIds.has(lead.id) && "bg-primary-light/60"
@@ -1355,7 +1480,7 @@ export function LeadsClient() {
                 leads.map((lead) => (
                   <MobileRecordCard
                     key={lead.id}
-                    onClick={() => router.push(`/dashboard/conversations?lead=${lead.id}`)}
+                    onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
                     className="cursor-pointer"
                   >
                     <MobileRecordHeader

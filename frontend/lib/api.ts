@@ -56,13 +56,91 @@ export interface LeadsSummary {
   said_stop: number;
 }
 
+/** A group that fills itself: the All people filters it keeps re-checking (backend services/group_rules.py). */
+export interface GroupRule {
+  segment?: "A" | "B" | "C" | "D";
+  buyer?: true;
+  source_filter?: "inbound" | "organic" | "meta_ads" | "broadcast";
+  broadcast_id?: string;
+  ad_campaign_id?: string;
+  /** Added in the last N days (rolling). */
+  added_days?: number;
+  /** A caller id, "unassigned" or "ai_agent". */
+  assigned_to?: string;
+  reply_window?: "open" | "closed";
+  bought?: "repeat" | "quiet";
+}
+
 export interface CustomerGroup {
   id: string;
   name: string;
   /** "picked" = people added by hand; "rule" = fills itself. */
   kind: "picked" | "rule";
+  rule: GroupRule | null;
+  /** The rule in words, with names filled in ("Hot · came from broadcast diwali_offer"). */
+  rule_text: string | null;
+  /** Everyone in it today, Said-stop people included. */
   member_count: number;
+  /** How many of them are on Said stop (nothing is sent to them). */
+  stop_count: number;
+  made_by: string | null;
   created_at: string;
+}
+
+/** How a person got on Said stop. null = before Anril recorded it. */
+export type SaidStopSource = "stop_reply" | "chat_ai" | "call" | "staff" | null;
+
+export interface SaidStopPerson {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  opted_out_at: string | null;
+  source: SaidStopSource;
+  /** Broadcast name, what they wrote, the caller's or staff member's name. */
+  detail: string | null;
+}
+
+export interface SaidStopList {
+  people: SaidStopPerson[];
+  summary: {
+    on_list: number;
+    this_week: number;
+    this_week_by_source: Record<string, number>;
+    stopped_in_window: number;
+    messaged_in_window: number;
+    /** Percent; null when nobody was messaged in the window. */
+    stop_rate: number | null;
+    window_days: number;
+  };
+}
+
+export type CustomerEvent =
+  | { kind: "order"; at: string; stage: "quoted" | "awaiting_payment" | "won" | "lost"; number: number | null;
+      amount_paise: number; items: string[]; source: string | null; payment_method: string | null;
+      by: string | null; lost_reason: string | null }
+  | { kind: "booking"; at: string; for: string | null; note: string | null }
+  | { kind: "chat"; at: string; channel: string; inbound: number; outbound: number; ai_replies: number; team: string[] }
+  | { kind: "call"; at: string; by: string | null; outcome: string | null; reason: string | null;
+      seconds: number | null; direction: string | null; notes: string | null }
+  | { kind: "broadcast"; at: string; name: string | null; status: string | null; reply: string | null }
+  | { kind: "said_stop"; at: string; source: SaidStopSource; detail: string | null }
+  | { kind: "joined"; at: string; source: string | null; ad: string | null };
+
+export interface CustomerProfile {
+  lead: {
+    id: string; name: string | null; phone: string | null; source: string | null; ad_name: string | null;
+    created_at: string | null; segment: string | null; score: number | null; handled_by: string | null;
+    ai_enabled: boolean;
+  };
+  said_stop: { on_list: boolean; at: string | null; source: SaidStopSource; detail: string | null; do_not_call: boolean };
+  totals: {
+    spent_paise: number; orders_won: number; average_paise: number; last_bought_at: string | null;
+    to_pay_paise: number; orders_waiting: number;
+  };
+  reached_on: { chat_days: Record<string, number>; calls: number; broadcasts: number; store_bills: number };
+  timeline: CustomerEvent[];
+  notes: { id: string; content: string | null; created_at: string; is_pinned: boolean; by: string | null }[];
+  groups: { id: string; name: string; kind: "picked" | "rule" }[];
 }
 
 export interface Lead {
@@ -2375,8 +2453,17 @@ export const api = {
     }),
   customerGroups: {
     list: () => apiFetch<CustomerGroup[]>("/api/v1/customer-groups"),
-    create: (name: string) =>
-      apiFetch<CustomerGroup>("/api/v1/customer-groups", { method: "POST", body: JSON.stringify({ name }) }),
+    /** Pass a rule to make a group that fills itself; leave it out for a picked group. */
+    create: (name: string, rule?: GroupRule) =>
+      apiFetch<CustomerGroup>("/api/v1/customer-groups", {
+        method: "POST",
+        body: JSON.stringify(rule ? { name, rule } : { name }),
+      }),
+    updateRule: (id: string, rule: GroupRule) =>
+      apiFetch<CustomerGroup>(`/api/v1/customer-groups/${encodeURIComponent(id)}/rule`, {
+        method: "PUT",
+        body: JSON.stringify({ rule }),
+      }),
     rename: (id: string, name: string) =>
       apiFetch<CustomerGroup>(`/api/v1/customer-groups/${encodeURIComponent(id)}`, {
         method: "PATCH",
@@ -2394,6 +2481,16 @@ export const api = {
         method: "DELETE",
         body: JSON.stringify({ lead_ids: leadIds }),
       }),
+  },
+  saidStop: {
+    list: () => apiFetch<SaidStopList>("/api/v1/said-stop"),
+    add: (leadIds: string[]) =>
+      apiFetch<{ added: number }>("/api/v1/said-stop/add", { method: "POST", body: JSON.stringify({ lead_ids: leadIds }) }),
+    remove: (leadIds: string[]) =>
+      apiFetch<{ removed: number }>("/api/v1/said-stop/remove", { method: "POST", body: JSON.stringify({ lead_ids: leadIds }) }),
+  },
+  customerProfile: {
+    get: (leadId: string) => apiFetch<CustomerProfile>(`/api/v1/customer-profile/${encodeURIComponent(leadId)}`),
   },
   leads: {
     list: async (params?: {

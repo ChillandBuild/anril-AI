@@ -42,7 +42,7 @@ EXPIRY = timedelta(minutes=30)
 
 _WAITING_LIMIT = 500
 _ONLINE_STATUSES = ("active", "break")
-_WAITING_COLUMNS = "id,assigned_to,source,segment,created_at,do_not_call,call_status,converted_at,deleted_at"
+_WAITING_COLUMNS = "id,assigned_to,source,segment,created_at,do_not_call,opted_out,call_status,converted_at,deleted_at"
 
 
 def _now(now: datetime | None) -> datetime:

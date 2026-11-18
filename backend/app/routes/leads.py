@@ -23,7 +23,7 @@ from app.services.growth import record_stage_event, sync_follow_up_jobs
 from app.services.assignment import get_telecalling_config, record_assignment_event
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.share_product import ShareProductError, share_product
-from app.services import scheduled_templates
+from app.services import group_rules, scheduled_templates
 from app.services.call_details_share import ShareError, _whatsapp_ready, compose_templates, prepare_template, send_approved_template
 
 logger = logging.getLogger(__name__)
@@ -148,6 +148,16 @@ def _parse_ts(raw) -> datetime | None:
         except ValueError:
             return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _group_kind_and_rule(db, tenant_id: str, group_id: str) -> dict | None:
+    """{"kind", "rule"} of this tenant's group, None when it is not theirs (matches nobody)."""
+    rows = (db.table("customer_groups").select("kind,rule").eq("id", group_id)
+            .eq("tenant_id", tenant_id).limit(1).execute()).data or []
+    if not rows:
+        return None
+    kind = rows[0].get("kind") or "picked"
+    return {"kind": kind, "rule": group_rules.parse_rule(rows[0].get("rule")) if kind == "rule" else None}
 
 
 def _memo_get(memo: dict, key, compute):
@@ -333,7 +343,20 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
             group_id = str(UUID(f.group_id))
         except ValueError:
             return None
-        embeds.append("customer_group_members!inner()")
+        group = _memo_get(memo, ("group", group_id), lambda: _group_kind_and_rule(db, tenant_id, group_id))
+        if group is None:
+            return None
+        if group["kind"] == "rule":
+            # A group that fills itself is its saved filters (services/group_rules.py), applied
+            # on top of the page's own filters; nothing is stored per member.
+            if not group["rule"]:
+                return None
+            f = group_rules.apply_rule(f, group["rule"])
+            if f is None:
+                return None
+            group_id = None
+        else:
+            embeds.append("customer_group_members!inner()")
     broadcast_id = f.broadcast_id if f.source_filter == "broadcast" and f.broadcast_id else None
     if broadcast_id:
         embeds.append("broadcast_recipients!inner()")

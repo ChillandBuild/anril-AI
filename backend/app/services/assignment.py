@@ -57,6 +57,7 @@ def _open_lead_count(db, tenant_id: str, caller_id: str) -> int:
         .neq("segment", "D")
         .is_("converted_at", "null")
         .neq("do_not_call", True)
+        .or_("opted_out.is.null,opted_out.eq.false")  # Said stop: no calls either
         .neq("call_status", "converted")
         .neq("call_status", "dnc")
         .neq("call_status", "disqualified")
@@ -376,9 +377,10 @@ def assign_upload_batch(db, tenant_id: str, lead_ids: list[str], cfg: dict) -> t
 
 
 def _lead_is_open(lead: dict) -> bool:
-    """Not do-not-call, not in a closed call status, not converted, not deleted."""
+    """Not do-not-call or Said stop, not in a closed call status, not converted, not deleted."""
     return (
         not lead.get("do_not_call")
+        and not lead.get("opted_out")
         and lead.get("call_status") not in CLOSED_LEAD_STATUSES
         and not lead.get("converted_at")
         and not lead.get("deleted_at")
@@ -395,6 +397,7 @@ def _unassigned_open_query(db, tenant_id: str, columns: str):
         .is_("converted_at", "null")
         .is_("deleted_at", "null")
         .neq("do_not_call", True)
+        .or_("opted_out.is.null,opted_out.eq.false")  # Said stop: no calls either
     )
     for status in CLOSED_LEAD_STATUSES:
         query = query.neq("call_status", status)
@@ -482,7 +485,7 @@ def assign_by_rule(
 
     lead_res = (
         db.table("leads")
-        .select("id,source,segment,assigned_to,do_not_call,call_status,converted_at,deleted_at")
+        .select("id,source,segment,assigned_to,do_not_call,opted_out,call_status,converted_at,deleted_at")
         .eq("id", lead_id)
         .eq("tenant_id", tenant_id)
         .maybe_single()
@@ -624,7 +627,7 @@ def sweep_tenant(tenant_id: str, cfg: dict | None = None, limit: int = 200, db=N
         upload_rule = rules["upload"]
         pending_leads = _load_leads_by_ids(
             db, tenant_id, pending,
-            "id,assigned_to,source,segment,do_not_call,call_status,converted_at,deleted_at",
+            "id,assigned_to,source,segment,do_not_call,opted_out,call_status,converted_at,deleted_at",
         )
         still_open: list[str] = []
         drop: list[str] = []

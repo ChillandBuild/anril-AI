@@ -221,6 +221,18 @@ async def _record_per_broadcast_opt_out(lead_id: str, phone: str, tenant_id: str
     except Exception as e:
         logger.error(f"Per-broadcast opt-out: leads.opted_out update failed for {phone}: {e}")
 
+    # Customers > Said stop shows how they stopped and which broadcast they answered.
+    broadcast_name = None
+    if recipient_row and recipient_row.get("broadcast_id"):
+        try:
+            sb = (db.table("scheduled_broadcasts").select("template_name")
+                  .eq("id", recipient_row["broadcast_id"]).eq("tenant_id", tenant_id).limit(1).execute()).data or []
+            broadcast_name = sb[0].get("template_name") if sb else None
+        except Exception:
+            broadcast_name = None
+    from app.services.said_stop import record_source
+    record_source(db, tenant_id, lead_id, "stop_reply", broadcast_name)
+
     logger.info(f"Per-broadcast opt-out recorded for {phone} (broadcast_recipient={recipient_row is not None}, tag_id={tag_id})")
 
 

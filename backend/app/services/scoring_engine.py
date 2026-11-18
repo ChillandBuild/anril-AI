@@ -532,6 +532,9 @@ async def compute_score(
             "opted_out_at": now_iso,
         }
         db.table("leads").update(rejection_payload).eq("id", str(lead_id)).execute()
+        if tenant_id:
+            from app.services.said_stop import record_source
+            record_source(db, tenant_id, str(lead_id), "chat_ai", message)
         await _update_open_broadcast_score(db, lead_id, tenant_id, now_iso, message, rejection=True)
 
         logger.info(f"Lead {lead_id} rejection detected — immediate D")

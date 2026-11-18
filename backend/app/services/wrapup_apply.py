@@ -109,7 +109,7 @@ async def apply_wrapup(
     if not lead_id:
         return summary
     rows = (
-        db.table("leads").select("segment,phone,ai_enabled,converted_at,assigned_to")
+        db.table("leads").select("segment,phone,ai_enabled,converted_at,assigned_to,opted_out")
         .eq("id", lead_id).eq("tenant_id", tenant_id).limit(1).execute()
     ).data or []
     if not rows:
@@ -123,9 +123,22 @@ async def apply_wrapup(
             lead_updates["conversion_notes"] = notes
     if outcome in STOP_ALL_FOLLOW_UPS:
         lead_updates["do_not_call"] = True
-    if outcome == "do_not_call" and wrapup.get("stop_messages"):
+    stops_messages = outcome == "do_not_call" and wrapup.get("stop_messages") and not lead.get("opted_out")
+    if stops_messages:
         lead_updates["opted_out"] = True
+        lead_updates["opted_out_at"] = now.isoformat()
     updated = db.table("leads").update(lead_updates).eq("id", lead_id).eq("tenant_id", tenant_id).execute().data or []
+    if stops_messages:
+        from app.services.said_stop import record_source
+        caller_name = None
+        if caller_id:
+            try:
+                found = (db.table("callers").select("name").eq("id", caller_id)
+                         .eq("tenant_id", tenant_id).limit(1).execute()).data or []
+                caller_name = found[0].get("name") if found else None
+            except Exception:
+                caller_name = None
+        record_source(db, tenant_id, lead_id, "call", caller_name, by=user_id)
     lead_after = {**lead, **(updated[0] if updated else lead_updates)}
     summary["call_status"] = status
 

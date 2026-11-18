@@ -128,7 +128,7 @@ async def upload_telecalling_contacts(
     all_upload_phones = list(rows_by_phone.keys())
     all_leads = (
         db.table("leads")
-        .select("id,phone,name,assigned_to,do_not_call,call_status,converted_at")
+        .select("id,phone,name,assigned_to,do_not_call,opted_out,call_status,converted_at")
         .in_("phone", all_upload_phones)
         .eq("tenant_id", tenant_id)
         .is_("deleted_at", "null")
@@ -143,6 +143,7 @@ async def upload_telecalling_contacts(
         ld["id"] for ld in lead_by_phone.values()
         if not ld.get("assigned_to")
         and not ld.get("do_not_call")
+        and not ld.get("opted_out")
         and ld.get("call_status") not in CLOSED_LEAD_STATUSES
         and not ld.get("converted_at")
     ]

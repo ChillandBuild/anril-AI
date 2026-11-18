@@ -62,6 +62,7 @@ def recycle_leads_for_tenant(tenant_id: str) -> int:
         .is_("converted_at", "null")
         .is_("deleted_at", "null")
         .neq("do_not_call", True)
+        .or_("opted_out.is.null,opted_out.eq.false")  # Said stop: no calls either
         .limit(200)
         .execute()
     )
