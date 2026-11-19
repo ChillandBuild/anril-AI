@@ -5,6 +5,7 @@ import {
   Users, Layers, Minus, Plus, Brain, ChevronDown,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+import { featureLabel, formatRupees } from "@/lib/displayLabels";
 
 interface CatalogRow {
   feature_key: string;
@@ -345,7 +346,7 @@ export function CartBuilder({
   const hasTelecallingCoverage = telecallingTypeSelected || TELECALLING_TYPE_KEYS.some((k) => existingQtyFor(k) > 0);
 
   function fmt(n: number) {
-    return `₹${n.toLocaleString("en-IN")}`;
+    return `₹${formatRupees(n)}`;
   }
 
   function formatPricingText(row: CatalogRow, qty = 1, forceUnit = false) {
@@ -481,7 +482,7 @@ export function CartBuilder({
                       if (!row) return null;
                       return (
                         <div key={item.feature_key} className="flex items-center justify-between text-xs text-ink-muted">
-                          <span>{row.display_name}</span>
+                          <span>{featureLabel(row.feature_key, row.display_name)}</span>
                           {item.quantity > 1 && (
                             <span className="font-semibold font-mono text-[10px] bg-surface-mid px-1 rounded-xs">
                               ×{item.quantity}
@@ -542,7 +543,7 @@ export function CartBuilder({
                 selected={tier.feature_key in selected}
                 onClick={() => selectAiTier(tier.feature_key)}
                 icon={ICONS[tier.feature_key] ?? Brain}
-                title={tier.display_name}
+                title={featureLabel(tier.feature_key, tier.display_name)}
                 subtitle={formatPricingText(tier)}
               />
             ))}

@@ -9,7 +9,7 @@ export const HOME_FAQ: readonly FaqEntry[] = [
   },
   {
     q: "How much does Anril AI cost?",
-    a: "Plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. Your exact plan depends on how many replies and users you need. WhatsApp message charges from Meta are separate.",
+    a: "Plans start from ₹999 a month (plus GST). Your exact plan depends on how many replies and users you need. WhatsApp message charges from Meta are separate.",
   },
   {
     q: "Which channels does it work on?",
@@ -71,7 +71,7 @@ export const WEBSITE_FAQ: readonly FaqEntry[] = [
 export const PRICING_FAQ: readonly FaqEntry[] = [
   {
     q: "How much does Anril AI cost?",
-    a: "Plans start from ₹999 a month (plus GST), or ₹799 a month on a yearly plan. The exact price depends on the modules, AI replies and users you need. WhatsApp message charges from Meta are separate. Email anrilaitech@gmail.com or book a demo for your plan.",
+    a: "Plans start from ₹999 a month (plus GST). The exact price depends on the modules, AI replies and users you need. WhatsApp message charges from Meta are separate. Email anrilaitech@gmail.com or book a demo for your plan.",
   },
   {
     q: "What will my quote include?",

@@ -3,7 +3,7 @@ import ui from "@/components/site/site.module.css";
 import { HOURS, OFFICE_LINE, PHONE } from "@/components/site/content";
 import { ContactCard } from "@/components/site/ContactCard";
 import { DemoSection } from "@/components/site/DemoSection";
-import { MakerPanel, OfficePhotos, Principles } from "@/components/site/AboutBlocks";
+import { MakerPanel, OfficePhotos, Principles, WhoIsBehind } from "@/components/site/AboutBlocks";
 import { PageIntro } from "@/components/site/PageIntro";
 import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
@@ -24,6 +24,7 @@ export default function AboutPage() {
         lede="From first message to final sale. Anril AI answers enquiries, shows you which leads are ready to buy, and helps your team call the right lead first."
       />
       <Principles />
+      <WhoIsBehind />
       <MakerPanel />
       <OfficePhotos />
       <section className={ui.band} id="contact" aria-labelledby="contact-h">

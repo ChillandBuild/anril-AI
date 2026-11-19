@@ -6,11 +6,11 @@ import { Faq } from "./Faq";
 import { findPost, postPath } from "./blog-posts";
 import { ALL_LANDINGS, READ_MORE, findLanding, type Landing } from "./landing-content";
 import { PageIntro } from "./PageIntro";
-import { Eg, Frame, Kicker } from "./primitives";
+import { Frame, Kicker } from "./primitives";
 import { JsonLd, breadcrumbSchema, faqSchema } from "./schema";
 import s from "./Landing.module.css";
 
-/** One product or industry page: the answer under the H1, question headings, FAQs, related pages and the demo form. */
+/** One product page: the answer under the H1, question headings, FAQs, related pages and the demo form. */
 export function LandingPage({ page, parent }: { page: Landing; parent?: readonly [name: string, path: string] }) {
   const trail: [string, string][] = parent ? [[parent[0], parent[1]], [page.label, page.path]] : [[page.label, page.path]];
   const related = page.related.map((slug) => findLanding(ALL_LANDINGS, slug)).filter((l): l is Landing => Boolean(l));
@@ -39,16 +39,6 @@ export function LandingPage({ page, parent }: { page: Landing; parent?: readonly
               <p key={para.slice(0, 40)}>{para}</p>
             ))}
           </div>
-          {i === 0 && page.example && (
-            <>
-              <div className={s.chat}>
-                <span className={s.q}>{page.example.q}</span>
-                <span className={s.r}>{page.example.r}</span>
-              </div>
-              <p className={s.outcome}>{page.example.outcome}</p>
-              <Eg>Example conversation, not customer data</Eg>
-            </>
-          )}
         </section>
       ))}
 

@@ -28,7 +28,7 @@ export function HeroInbox() {
       <div className={s.inbox}>
         <div className={s.inboxTop}>
           <span className={s.wa} />
-          WhatsApp · example
+          WhatsApp
           <b className={s.hot}>HOT</b>
         </div>
         <p className={`${s.bubble} ${s.them}`}>Is the showroom open on Sunday?</p>
@@ -38,7 +38,7 @@ export function HeroInbox() {
           <span>TC</span>
           Assigned to a telecaller, full chat on screen
         </div>
-        <small className={s.note}>Example conversation, not real data</small>
+        <small className={s.note}>Example</small>
       </div>
     </div>
   );

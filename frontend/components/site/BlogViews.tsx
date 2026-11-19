@@ -19,7 +19,7 @@ export function BlogIndex() {
       <JsonLd data={breadcrumbSchema([["Blog", "/blog"]])} />
       <PageIntro
         title="Anril AI blog"
-        lede="Plain answers on WhatsApp chatbots, bulk WhatsApp messaging, lead scoring and telecalling for Indian businesses."
+        lede="Plain answers on WhatsApp AI agents, bulk WhatsApp messaging, lead scoring and telecalling for Indian businesses."
       />
       <section className={ui.band} aria-label="Articles">
         <ul className={s.list}>

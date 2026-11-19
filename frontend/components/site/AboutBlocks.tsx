@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import ui from "./site.module.css";
-import { HOURS, MAKER, OFFICE_LINE } from "./content";
+import { HOURS, MAKER, OFFICE, OFFICE_LINE } from "./content";
 import office1 from "./images/office-1.jpg";
 import office2 from "./images/office-2.jpg";
 import office3 from "./images/office-3.jpg";
@@ -58,6 +58,37 @@ export function MakerPanel() {
             </li>
           </ul>
         </div>
+      </div>
+    </section>
+  );
+}
+
+// Facts about the team. A box goes in only once its fact is confirmed; "Started" (year) and
+// "Team" (size) are not confirmed yet, and the legal company name and GSTIN are left out until they are.
+const BEHIND: readonly { label: string; lines: readonly string[] }[] = [
+  { label: "Company", lines: [`Built by ${MAKER.name}`, `2, Sree Narayana Guru Road, ${OFFICE.city} ${OFFICE.postalCode}`] },
+];
+
+/** Who builds Anril: an office photo (no faces) beside plain fact boxes. */
+export function WhoIsBehind() {
+  return (
+    <section className={ui.band} id="team" aria-labelledby="who-h">
+      <span className={`${ui.kicker} ${ui.num}`}>Who is behind Anril</span>
+      <h2 className={ui.secH} id="who-h">A software team in Coimbatore</h2>
+      <div className={s.who}>
+        <div className={s.whoPhoto} data-reveal>
+          <Image src={office2} alt="Bright workspace with a green wall, shared desks and large windows at the Anril AI office in Coimbatore" sizes="(max-width: 860px) 100vw, 50vw" quality={75} />
+        </div>
+        <ul className={s.facts}>
+          {BEHIND.map((b) => (
+            <li key={b.label} data-reveal>
+              <span className={ui.kicker}>{b.label}</span>
+              {b.lines.map((l) => (
+                <p key={l}>{l}</p>
+              ))}
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

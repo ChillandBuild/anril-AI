@@ -19,7 +19,7 @@ export function ChatCard() {
 export function ScoreCard() {
   return (
     <div className={s.card}>
-      <h3>Example lead</h3>
+      <h3>New lead</h3>
       <div className={s.sig}>Asked about fees</div>
       <div className={s.sig}>Wants a weekend batch</div>
       <div className={s.sig}>Asked to visit this week</div>
@@ -27,7 +27,7 @@ export function ScoreCard() {
         <span className={s.marked}>Lead scored</span>
         <span className={s.chip}>HOT</span>
       </div>
-      <Eg>Example data</Eg>
+      <Eg>Example</Eg>
     </div>
   );
 }
@@ -45,7 +45,7 @@ export function RouteCard() {
       </div>
       <div className={s.li}><span>Asked about</span><b>Course fees</b></div>
       <div className={s.li}><span>Channel</span><b>WhatsApp</b></div>
-      <Eg>Example data</Eg>
+      <Eg>Example</Eg>
     </div>
   );
 }
