@@ -2568,6 +2568,7 @@ def list_audit_logs(
     limit: int = 50,
     tenant_id: str | None = None,
     action: str | None = None,
+    include_mcp: bool = False,
     _admin: dict = Depends(get_system_admin),
 ):
     db = get_supabase()
@@ -2575,6 +2576,10 @@ def list_audit_logs(
         "id, tenant_id, actor_user_id, actor_role, action, target_type, target_id, metadata, created_at",
         count="exact",
     )
+    # Claude Access writes one row per tool call. Hidden unless asked for, so they do not bury
+    # what operators did by hand.
+    if not include_mcp:
+        q = q.neq("action", "mcp.tool_call")
     # Global operator audit shows only developer/operator activity. Tenant-user
     # events are surfaced separately via the per-tenant audit view
     # (/clients/{tenant_id}/audit-logs), which reads the same table by tenant_id.

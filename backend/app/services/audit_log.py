@@ -23,6 +23,30 @@ def _sanitize(value: Any) -> Any:
     return value
 
 
+def write_audit_event(
+    db,
+    *,
+    tenant_id: str | None,
+    actor_user_id: str | None,
+    actor_role: str | None,
+    action: str,
+    target_type: str,
+    target_id: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Append one audit row. Raises when the insert fails: for callers that must not go on
+    without the row (Claude Access withholds a tool's answer if its row cannot be written)."""
+    db.table("app_audit_logs").insert({
+        "tenant_id": tenant_id,
+        "actor_user_id": actor_user_id,
+        "actor_role": actor_role,
+        "action": action,
+        "target_type": target_type,
+        "target_id": target_id,
+        "metadata": _sanitize(metadata or {}),
+    }).execute()
+
+
 def record_audit_event(
     db,
     *,
@@ -40,14 +64,9 @@ def record_audit_event(
     rollout the table may not exist yet, so failures are logged and swallowed.
     """
     try:
-        db.table("app_audit_logs").insert({
-            "tenant_id": tenant_id,
-            "actor_user_id": actor_user_id,
-            "actor_role": actor_role,
-            "action": action,
-            "target_type": target_type,
-            "target_id": target_id,
-            "metadata": _sanitize(metadata or {}),
-        }).execute()
+        write_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, actor_role=actor_role,
+            action=action, target_type=target_type, target_id=target_id, metadata=metadata,
+        )
     except Exception as exc:
         logger.warning("audit log insert failed action=%s target=%s:%s err=%s", action, target_type, target_id, exc)

@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/operator/scheduler", label: "Schedulers" },
   { href: "/operator/prompt-template", label: "Master Prompt" },
   { href: "/operator/audit-log", label: "Audit Log" },
+  { href: "/operator/claude-access", label: "Claude Access" },
 ];
 
 export function OperatorSidebar({ userEmail }: { userEmail: string }) {

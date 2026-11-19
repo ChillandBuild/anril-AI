@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Scheduled jobs run on Procrastinate (Postgres queue, SPEC.md). DATABASE_URL is the Supabase
     # session pooler string (port 5432); without it no scheduled job runs.
     database_url: str | None = None
+    # Claude Access (read-only admin MCP, docs/specs/anril-admin-mcp.md). Off = the /mcp address
+    # does not exist. MCP_OAUTH_CLIENT_ID is the OAuth client registered for Claude in Supabase;
+    # when set, tokens from any other client are refused.
+    mcp_enabled: bool = False
+    mcp_oauth_client_id: str | None = None
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
 

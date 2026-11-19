@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/api";
+import { safeOperatorNext } from "@/lib/claude-access";
 import { AnrilLogo } from "@/components/logo";
 
 export default function OperatorLoginPage() {
@@ -49,7 +50,9 @@ export default function OperatorLoginPage() {
         return;
       }
 
-      router.push("/operator");
+      // Coming from the Claude consent screen? Go back there. Anything else is ignored.
+      const next = safeOperatorNext(new URLSearchParams(window.location.search).get("next"));
+      router.push(next ?? "/operator");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {
