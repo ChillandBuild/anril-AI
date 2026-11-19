@@ -5,6 +5,7 @@ import { API_URL, getAuthHeaders } from "@/lib/api";
 import { CartBuilder, SubscriptionItem } from "../subscriptions/CartBuilder";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AiraLoader } from "@/components/AiraLoader";
+import { featureLabel, formatRupees } from "@/lib/displayLabels";
 
 interface CatalogRow { feature_key: string; display_name: string }
 interface UsageMetric { metric: string; used: number; included: number; hard_cap: number | null }
@@ -137,7 +138,7 @@ export default function SubscriptionPage() {
           </span>
         </div>
         <p className="mb-1 text-4xl font-bold text-ink">
-          ₹{me.mrr.toLocaleString("en-IN")}<span className="text-sm font-medium text-ink-muted">/mo</span>
+          ₹{formatRupees(me.mrr)}<span className="text-sm font-medium text-ink-muted">/mo</span>
         </p>
         {me.period_start && me.period_end && (
           <p className="mb-4 text-xs text-ink-muted">
@@ -147,9 +148,9 @@ export default function SubscriptionPage() {
         <div className="divide-y divide-border-subtle rounded-2xl bg-white/70 px-4">
           {me.items.length > 0 ? me.items.map((item) => (
             <div key={item.feature_key} className="flex justify-between py-2.5 text-sm">
-              <span className="text-ink">{catalogByKey.get(item.feature_key)?.display_name ?? item.feature_key}</span>
+              <span className="text-ink">{featureLabel(item.feature_key, catalogByKey.get(item.feature_key)?.display_name)}</span>
               <span className="text-ink-muted">
-                {item.quantity > 1 && `×${item.quantity} · `}₹{item.unit_price_snapshot.toLocaleString("en-IN")}
+                {item.quantity > 1 && `×${item.quantity} · `}₹{formatRupees(item.unit_price_snapshot)}
               </span>
             </div>
           )) : (
@@ -173,7 +174,7 @@ export default function SubscriptionPage() {
 
       {isPending ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          A request for ₹{me.latest_request!.total_amount.toLocaleString("en-IN")}/mo is awaiting admin approval.
+          A request for ₹{formatRupees(me.latest_request!.total_amount)}/mo is awaiting admin approval.
         </div>
       ) : showAddon ? (
         <div className="rounded-3xl border border-border bg-white p-6 shadow-sm">

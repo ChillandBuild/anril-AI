@@ -18,6 +18,18 @@ import { CatalogueHeaderSwitch } from "@/app/dashboard/catalog/CatalogueTabs";
 
 import { cn } from "@/lib/utils";
 
+const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
+  account: "Your profile and business details.",
+  general: "Basic account preferences.",
+  business: "Your business details.",
+  "connect-channels": "Connect WhatsApp, forms and other lead sources.",
+  "auto-reply": "How the AI replies to new messages.",
+  "follow-ups": "When and how the AI follows up with leads.",
+  inbox: "How chats are assigned and handed to your team.",
+  "telecalling-behavior": "How calls are assigned and your cloud calling setup.",
+  notifications: "Choose which alerts you receive.",
+};
+
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
   account: "Profile & Business",
   "connect-channels": "Connect Channels",
@@ -331,7 +343,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     const label = SETTINGS_ROUTE_LABELS[segment] ?? "Settings";
     return {
       title: `Account Settings / ${label}`,
-      description: "Configure global parameters, voice calling and AI behavior.",
+      description: SETTINGS_ROUTE_DESCRIPTIONS[segment] ?? "Account and AI settings.",
     };
   }
   if (pathname === "/dashboard/auto-messages") {
@@ -530,7 +542,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
         <AnrilWordmark height={20} className="hidden w-auto shrink-0 text-ink md:block" />
         <span className="hidden h-6 w-px shrink-0 bg-[#e2e8f0] md:block" aria-hidden="true" />
         <div className="flex min-w-0 flex-col justify-center select-none">
-          <h1 className="font-display text-sm font-bold leading-tight text-on-surface md:text-base">
+          <h1 className="whitespace-nowrap truncate font-display text-sm font-bold leading-tight text-on-surface md:text-base">
             {title}
           </h1>
           {description && (

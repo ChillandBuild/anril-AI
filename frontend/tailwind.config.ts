@@ -50,7 +50,7 @@ const config: Config = {
 
         ink: "#0A1528",
         "ink-secondary": "#475569",
-        "ink-muted": "#94a3b8",
+        "ink-muted": "#667085",
 
         border: "#e2e8f0",
         "border-subtle": "#f1f5f9",
@@ -65,7 +65,7 @@ const config: Config = {
         "secondary-text": "#0A1528",
         tertiary: "#13284A",
         "on-surface": "#0A1528",
-        "on-surface-muted": "#94a3b8",
+        "on-surface-muted": "#667085",
 
         "segment-a-bg": "#ecfdf5",
         "segment-a-text": "#15803d",
