@@ -14,6 +14,19 @@ def lead_origin(lead: dict) -> str:
     return "ad" if lead.get("ad_campaign_id") or lead.get("source") == "meta_form" else "organic"
 
 
+def lead_result(lead: dict) -> str:
+    """A lead's result, the same order as Chats' inbox (migration 272 inbox_chat_rows):
+    Came / Paid (marked converted, or a won order) > Lost > Booked > "none".
+    Reads won_deal_count (the leads computed field) for the won orders."""
+    if lead.get("converted_at") or int(lead.get("won_deal_count") or 0) > 0:
+        return "paid"
+    if lead.get("lost_at"):
+        return "lost"
+    if lead.get("booked_at"):
+        return "booked"
+    return "none"
+
+
 def aggregate_inbound(leads: list[dict], days_iso: list[str], today_iso: str) -> dict:
     """
     Aggregate already-fetched inbound leads into the analytics payload.

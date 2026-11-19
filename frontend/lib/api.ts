@@ -3665,6 +3665,16 @@ export const api = {
         `/api/v1/inbound-leads/ad-creatives/${encodeURIComponent(adCreativeId)}/breakdown?${qs}`,
       );
     },
+    getAdPeople: (adCreativeId: string, params: { date_from?: string; date_to?: string }) => {
+      const qs = new URLSearchParams();
+      if (params.date_from) qs.set("date_from", params.date_from);
+      if (params.date_to) qs.set("date_to", params.date_to);
+      return apiFetch<{ data: AdPerson[] }>(
+        `/api/v1/inbound-leads/ad-creatives/${encodeURIComponent(adCreativeId)}/people?${qs}`,
+      );
+    },
+    /** Every messaging ad, one per Meta ad, for the Inbound leads "which ad" filter. */
+    ads: async () => (await apiFetch<{ data: { meta_ad_id: string; name: string }[] }>("/api/v1/inbound-leads/ads")).data ?? [],
     getSyncStart: async () =>
       apiFetch<SyncStartInfo>(`/api/v1/inbound-leads/meta-ads/sync-start`),
     setSyncStart: async (startDate: string) =>
@@ -4000,7 +4010,8 @@ export interface InboundLeadFilters {
   result?: InboundResult;
   waiting?: boolean;
   search?: string;
-  ad_campaign_id?: string;
+  /** One Meta ad: the people who messaged from it. */
+  meta_ad_id?: string;
   source?: string;
   date_from?: string;
   date_to?: string;
@@ -4029,7 +4040,7 @@ function inboundQuery(f?: InboundLeadFilters): URLSearchParams {
   if (f.result) qs.set("result", f.result);
   if (f.waiting) qs.set("waiting", "true");
   if (f.search) qs.set("search", f.search);
-  if (f.ad_campaign_id) qs.set("ad_campaign_id", f.ad_campaign_id);
+  if (f.meta_ad_id) qs.set("meta_ad_id", f.meta_ad_id);
   if (f.source) qs.set("source", f.source);
   if (f.date_from) qs.set("date_from", f.date_from);
   if (f.date_to) qs.set("date_to", f.date_to);
@@ -4100,6 +4111,30 @@ export interface AdPerformanceRow {
   ctr: number | null;
   cpm: number | null;
   cost_per_hot: number | null;
+  /** Of the people who first messaged in the dates: booked (or already paid), paid, lost. */
+  booked: number;
+  paid: number;
+  lost: number;
+  /** ₹ those payers paid in won orders, whenever they paid. */
+  revenue: number;
+  /** Earned for every ₹1 spent. */
+  roas: number | null;
+  cost_per_booking: number | null;
+  /** The ad's ready-made first message in Meta, if it has one. */
+  prefilled_greeting_text?: string | null;
+}
+
+/** One person behind a messaging ad's "Actually messaged" count. */
+export interface AdPerson {
+  lead_id: string;
+  name: string | null;
+  phone: string | null;
+  segment: string | null;
+  result: "none" | "booked" | "paid" | "lost";
+  /** ₹ paid in won orders. */
+  earned: number;
+  booked_for: string | null;
+  messaged_at: string | null;
 }
 
 export interface AdFilterTree {

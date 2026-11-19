@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { api, InboundLead, InboundLeadFilters, InboundResult, InboundResultLabels, Lead, Message } from "@/lib/api";
-import { useInboundLeads, useInboundCampaigns, useInboundLeadsSummary } from "@/hooks/useApi";
+import { useInboundAds, useInboundLeads, useInboundLeadsSummary } from "@/hooks/useApi";
 import {
   Download, X, RefreshCw, Link2, Copy, Check, Search, MessageSquare, Clock, CheckCircle2,
   CalendarCheck, ChevronLeft, ChevronRight, Bot, UserRound, AlertCircle, Inbox, Receipt, Pencil, Undo2, Repeat,
@@ -549,10 +549,9 @@ function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
 
 interface InboundLeadsClientProps {
   fallbackInboundLeads: { data: InboundLead[]; total: number; page: number; limit: number } | null;
-  fallbackCampaigns: { id: string; campaign_name: string; platform: string }[] | null;
 }
 
-export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: InboundLeadsClientProps) {
+export function InboundLeadsClient({ fallbackInboundLeads }: InboundLeadsClientProps) {
   const router = useRouter();
   const [exporting, setExporting] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
@@ -560,7 +559,8 @@ export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: 
   const [search, setSearch] = useState("");
   const [source, setSource] = useState("all");
   const [origin, setOrigin] = useState("all");
-  const [campaign, setCampaign] = useState("");
+  /** One Meta ad (its Meta id), offered once "Ad: From an ad" is picked. */
+  const [adId, setAdId] = useState("");
   const [added, setAdded] = useState("30");
   const [segment, setSegment] = useState<string | undefined>();
   const [result, setResult] = useState<InboundResult | undefined>();
@@ -598,16 +598,16 @@ export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: 
   const baseFilters: InboundLeadFilters = useMemo(() => ({
     origin: origin === "all" ? undefined : (origin as "ad" | "organic"),
     source: source === "all" ? undefined : source,
-    ad_campaign_id: origin === "organic" ? undefined : campaign || undefined,
+    meta_ad_id: origin === "ad" ? adId || undefined : undefined,
     search: search || undefined,
     date_from: added === "any" ? undefined : istDate(Number(added)),
-  }), [origin, source, campaign, search, added]);
+  }), [origin, source, adId, search, added]);
   const filters: InboundLeadFilters = { ...baseFilters, segment, result, waiting: waiting || undefined };
 
-  useEffect(() => { setPage(1); }, [origin, source, campaign, search, added, segment, result, waiting]);
-  useEffect(() => { setSelected(new Set()); }, [origin, source, campaign, search, added, segment, result, waiting, page]);
+  useEffect(() => { setPage(1); }, [origin, source, adId, search, added, segment, result, waiting]);
+  useEffect(() => { setSelected(new Set()); }, [origin, source, adId, search, added, segment, result, waiting, page]);
 
-  const isFirstView = page === 1 && !search && source === "all" && origin === "all" && !campaign && added === "30"
+  const isFirstView = page === 1 && !search && source === "all" && origin === "all" && !adId && added === "30"
     && !segment && !result && !waiting;
   const { data, error, mutate, isValidating } = useInboundLeads(
     { ...filters, page, limit: PAGE_SIZE, sort: waiting ? "waiting" : "newest" },
@@ -615,17 +615,17 @@ export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: 
     isFirstView ? fallbackInboundLeads ?? undefined : undefined,
   );
   const { data: summary, mutate: mutateSummary } = useInboundLeadsSummary(filters);
-  const { data: campaignsData } = useInboundCampaigns(true, fallbackCampaigns ?? undefined);
+  const { data: adsData } = useInboundAds(origin === "ad");
 
   const leads = data?.data ?? [];
   const total = data?.total ?? 0;
   const loading = !data && !error;
-  const campaigns = campaignsData ?? [];
+  const ads = adsData ?? [];
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = !!(search || source !== "all" || origin !== "all" || campaign || added !== "30" || segment || result || waiting);
+  const hasFilters = !!(search || source !== "all" || origin !== "all" || adId || added !== "30" || segment || result || waiting);
 
   function clearFilters() {
-    setSearchInput(""); setSearch(""); setSource("all"); setOrigin("all"); setCampaign("");
+    setSearchInput(""); setSearch(""); setSource("all"); setOrigin("all"); setAdId("");
     setAdded("30"); setSegment(undefined); setResult(undefined); setWaiting(false);
   }
 
@@ -686,15 +686,15 @@ export function InboundLeadsClient({ fallbackInboundLeads, fallbackCampaigns }: 
             />
           </div>
           <FilterMenu label="Came from" options={CAME_FROM_OPTIONS} value={source} onChange={(v) => setSource(v ?? "all")} />
-          <FilterMenu label="Ad" options={ORIGIN_OPTIONS} value={origin} onChange={(v) => { setOrigin(v ?? "all"); setCampaign(""); }} />
-          {origin !== "organic" && campaigns.length > 0 && (
+          <FilterMenu label="Ad" options={ORIGIN_OPTIONS} value={origin} onChange={(v) => { setOrigin(v ?? "all"); setAdId(""); }} />
+          {origin === "ad" && ads.length > 0 && (
             <Select
               size="sm"
-              value={campaign}
-              onChange={setCampaign}
-              aria-label="Ad campaign"
+              value={adId}
+              onChange={setAdId}
+              aria-label="Which ad"
               className="w-auto min-w-0 max-w-fit basis-[140px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528] [&>span>span]:min-w-0 [&>span>span]:overflow-hidden"
-              options={[{ value: "", label: "All campaigns" }, ...campaigns.map((c) => ({ value: c.id, label: c.campaign_name }))]}
+              options={[{ value: "", label: "All ads" }, ...ads.map((a) => ({ value: a.meta_ad_id, label: a.name }))]}
             />
           )}
           <FilterMenu label="Added" options={ADDED_OPTIONS} value={added} onChange={(v) => setAdded(v ?? "30")} />

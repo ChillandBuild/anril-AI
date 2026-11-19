@@ -122,3 +122,35 @@ class InboundLeadsListTests(unittest.TestCase):
         for column in ("business", "city", "result", "booking_date", "handled_by", "last_message_date"):
             self.assertIn(column, rows[0])
         self.assertEqual(rows[0]["result"], "Came / Paid")
+
+    def test_one_ad_filter_keeps_the_people_who_messaged_from_that_ad(self):
+        for lid, ad in (("priya", "111"), ("suresh", "111"), ("suresh", "222"), ("meena", "222")):
+            self.db.rows("lead_meta_ad_attributions").append({"tenant_id": "tenant-1", "lead_id": lid, "meta_ad_id": ad})
+        data = self._list(meta_ad_id="111")
+        self.assertEqual({r["id"] for r in data["data"]}, {"priya", "suresh"})
+        self.assertEqual(data["total"], 2)
+        summary = self.client.get("/api/v1/inbound-leads/summary", params={"meta_ad_id": "222"}).json()
+        self.assertEqual((summary["total"], summary["results"]["paid"]), (2, 1))
+        # Meta ad ids are digits only; anything else is refused before it reaches a query.
+        self.assertEqual(self.client.get("/api/v1/inbound-leads/", params={"meta_ad_id": "1,2"}).status_code, 422)
+
+    def test_ads_list_is_one_per_meta_ad_and_names_campaigns_only_for_twins(self):
+        self.db.rows("ad_campaigns").extend([
+            {"id": "c1", "tenant_id": "tenant-1", "campaign_name": "Diwali"},
+            {"id": "c2", "tenant_id": "tenant-1", "campaign_name": "Pongal"},
+        ])
+        for meta_id, label, campaign, channels in (
+            ("1", "Free reading", "c1", ["whatsapp"]), ("1", "Free reading", "c1", ["whatsapp"]),
+            ("2", "Free reading", "c2", ["whatsapp"]), ("3", "Astro offer", "c1", ["instagram"]),
+            ("4", "Website ad", "c1", []),
+        ):
+            self.db.rows("ad_creatives").append({"tenant_id": "tenant-1", "meta_ad_id": meta_id, "creative_label": label,
+                                                 "campaign_id": campaign, "messaging_channels": channels})
+        self.db.rows("ad_creatives").append({"tenant_id": "tenant-2", "meta_ad_id": "9", "creative_label": "Theirs",
+                                             "campaign_id": None, "messaging_channels": ["whatsapp"]})
+        ads = self.client.get("/api/v1/inbound-leads/ads").json()["data"]
+        self.assertEqual(ads, [
+            {"meta_ad_id": "3", "name": "Astro offer"},
+            {"meta_ad_id": "1", "name": "Free reading · Diwali"},
+            {"meta_ad_id": "2", "name": "Free reading · Pongal"},
+        ])

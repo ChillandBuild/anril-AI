@@ -6,6 +6,7 @@ import { CalendarDays, Check, ChevronDown, MoreHorizontal, Search, type LucideIc
 import { useSyncStart } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import { DataFromPicker } from "./DataFromPicker";
+import { HoverTip } from "./HoverTip";
 
 /** Shared look for the one-line toolbar on both Meta Ads tabs. */
 export const TOOLBAR_BUTTON =
@@ -431,5 +432,55 @@ export function SummaryCard({
         ))}
       </span>
     </button>
+  );
+}
+
+/** A summary card that is not a filter: same look as SummaryCard, nothing to click. */
+export function InfoCard({
+  icon: Icon,
+  tint,
+  label,
+  badge,
+  value,
+  caption,
+  help,
+  stats,
+}: {
+  icon: LucideIcon;
+  tint: string;
+  label: string;
+  /** Which ads the numbers cover, e.g. the card picked beside it. */
+  badge: string;
+  value: string;
+  caption: string;
+  help: string;
+  stats: { label: string; value: string }[];
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3.5 rounded-2xl border-2 border-[#e8edf2] bg-white p-4 shadow-sm sm:p-[18px]">
+      <span className="flex items-center gap-2.5">
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", tint)} aria-hidden="true">
+          <Icon size={16} />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-label text-[13px] font-bold text-[#0A1528]">
+          <HoverTip text={help} side="bottom">{label}</HoverTip>
+        </span>
+        <span className="shrink-0 truncate rounded-full bg-[#f1f5f9] px-2 py-0.5 font-label text-[11px] font-bold text-[#475569]">
+          {badge}
+        </span>
+      </span>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="font-display text-[28px] font-extrabold leading-none tracking-tight text-emerald-700 tabular-nums">{value}</span>
+        <span className="min-w-0 truncate font-label text-xs font-semibold text-[#64748b]">{caption}</span>
+      </span>
+      <span className="grid grid-cols-3 gap-2 border-t border-dashed border-[#e2e8f0] pt-3">
+        {stats.map((stat) => (
+          <span key={stat.label} className="min-w-0">
+            <span className="block truncate font-label text-[10px] font-bold uppercase tracking-wider text-[#64748b]">{stat.label}</span>
+            <span className="mt-0.5 block truncate font-label text-[13px] font-bold text-[#0A1528] tabular-nums">{stat.value}</span>
+          </span>
+        ))}
+      </span>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import type { AdBreakdownKey, AdBreakdownValues, AdPerformanceRow } from "@/lib/
 import { useAdBreakdown } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import { ChannelMarks } from "./metaFields";
+import { AdJourney } from "./AdJourney";
 import {
   BREAKDOWN_TABS,
   cheapestSentence,
@@ -43,6 +44,20 @@ function formatRange(from: string, to: string) {
   const startText = start.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
   const endText = end.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   return `${startText} – ${endText}`;
+}
+
+/** "Running since 12 Oct 2026 · ₹500/day": when it started and what it may spend. */
+function runningLine(row: AdPerformanceRow): string | null {
+  const started = row.schedule_start || row.campaign_created_at;
+  const day = started
+    ? new Date(started).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+  const running = (row.delivery_status ?? "").toUpperCase() === "ACTIVE";
+  const budget = row.daily_budget != null
+    ? `${moneyText(row.daily_budget)}/day`
+    : row.lifetime_budget != null ? `${moneyText(row.lifetime_budget)} lifetime` : null;
+  const parts = [day ? `${running ? "Running since" : "Started"} ${day}` : null, budget].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function ValueCells({ values }: { values: AdBreakdownValues | null }) {
@@ -123,6 +138,7 @@ export function AdDetailPanel({
             <p className="mt-1.5 font-body text-xs leading-5 text-on-surface-muted">
               {row.campaign_name} · {row.adset_name ?? "No ad set"}
             </p>
+            {runningLine(row) && <p className="font-body text-xs leading-5 text-on-surface-muted">{runningLine(row)}</p>}
             <p className="font-body text-xs leading-5 text-on-surface-muted">
               {formatRange(shownFrom, shownTo)}
               {clippedToHistory && " · from your history start date"}
@@ -267,6 +283,8 @@ export function AdDetailPanel({
           <p className="mt-4 text-[10px] text-on-surface-muted">
             Meta splits its own numbers only. Messages and hot leads are for the whole ad, because Meta doesn&apos;t share who the people are.
           </p>
+
+          <AdJourney row={row} dateFrom={dateFrom} dateTo={dateTo} />
         </div>
       </aside>
     </div>

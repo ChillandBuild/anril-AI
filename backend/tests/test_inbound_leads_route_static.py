@@ -40,7 +40,8 @@ def test_ad_performance_export_headers_match_table_labels():
     meta_identity = ["Reporting starts", "Reporting ends", "Ad ID", "Campaign name", "Ad set name", "Ad name"]
     assert export_labels[:len(meta_identity)] == meta_identity
     export_labels = export_labels[len(meta_identity):]
-    table_labels = re.findall(r'label: "([^"]+)"', metrics_block)
+    # Advice is worked out on screen from every ad in the dates (adAdvice.ts); the CSV has the numbers behind it.
+    table_labels = [label for label in re.findall(r'label: "([^"]+)"', metrics_block) if label != "Advice"]
 
     # The per-app split shows inside the Messages sent cell on screen; the CSV
     # gives it its own columns right after Messages sent.

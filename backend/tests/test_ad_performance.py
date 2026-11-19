@@ -547,3 +547,62 @@ def test_build_all_ads_without_connected_account_raises(settings, meta):
     with pytest.raises(ValueError, match="Connect a Meta Ads account first"):
         ad_performance.build_all_ads(FakeSupabase(), "t1", date_from="2026-09-01",
                                      date_to="2026-09-30", fields=["results"], breakdown=None)
+
+
+# --- Booked / paid / earned per ad, and the people behind an ad ---
+
+def _person(db, lead_id, segment="B", meta_ad_id="m1", first_seen="2026-09-05T10:00:00+00:00", **lead):
+    db.add("leads", id=lead_id, tenant_id="t1", segment=segment, name=lead_id, **lead)
+    db.add("lead_meta_ad_attributions", tenant_id="t1", meta_ad_account_id=ACCOUNT, lead_id=lead_id,
+           meta_ad_id=meta_ad_id, first_seen_at=first_seen)
+
+
+def _results_db():
+    db = _perf_db()
+    _person(db, "paid", "A", booked_at="2026-09-06T10:00:00+00:00")
+    _person(db, "paid-no-booking", "A", converted_at="2026-09-20T10:00:00+00:00")
+    _person(db, "booked", "B", booked_at="2026-09-07T10:00:00+00:00")
+    _person(db, "lost", "C", lost_at="2026-09-08T10:00:00+00:00")
+    _person(db, "chatting", "B")
+    # Messaged before the dates: not one of this period's people, even though they paid.
+    _person(db, "old", "A", first_seen="2026-08-01T10:00:00+00:00", converted_at="2026-09-10T10:00:00+00:00")
+    # Paid on 10 Nov for a chat that began on 5 Sep: still September's money.
+    db.add("deals", id="d1", tenant_id="t1", lead_id="paid", stage="won", total_paise=500000)
+    db.add("deals", id="d2", tenant_id="t1", lead_id="paid", stage="won", total_paise=150000)
+    db.add("deals", id="d3", tenant_id="t1", lead_id="booked", stage="awaiting_payment", total_paise=900000)
+    db.add("deals", id="d4", tenant_id="t1", lead_id="old", stage="won", total_paise=700000)
+    db.add("ad_insights_daily", tenant_id="t1", meta_ad_account_id=ACCOUNT, ad_creative_id="ad-1",
+           insight_date="2026-09-05", spend=1000, inline_link_clicks=50, clicks=60, impressions=4000, reach=3000,
+           actions=[])
+    return db
+
+
+def test_rows_count_booked_paid_lost_and_earned_for_the_people_in_the_dates(settings):
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(
+        _results_db(), "t1", date_from="2026-09-01", date_to="2026-09-30")}
+    row = rows["ad-1"]
+    assert row["messages"] == 5
+    assert (row["booked"], row["paid"], row["lost"]) == (3, 2, 1)  # booked counts everyone booked or paid
+    assert row["revenue"] == 6500  # won orders only; a waiting payment is not earned
+    assert row["roas"] == 6.5
+    assert row["cost_per_booking"] == 1000 / 3
+
+
+def test_ad_with_no_people_has_zero_results_and_no_cost_per_booking(settings):
+    rows = {r["ad_creative_id"]: r for r in ad_performance.build_creative_performance(_results_db(), "t1")}
+    assert (rows["ad-3"]["booked"], rows["ad-3"]["paid"], rows["ad-3"]["revenue"]) == (0, 0, 0)
+    assert rows["ad-3"]["cost_per_booking"] is None
+
+
+def test_people_are_the_same_set_as_the_count_paid_first(settings):
+    db = _results_db()
+    people = ad_performance.build_ad_people(db, "t1", "ad-1", date_from="2026-09-01", date_to="2026-09-30")
+    assert [p["lead_id"] for p in people] == ["paid", "paid-no-booking", "booked", "chatting", "lost"]
+    assert people[0]["earned"] == 6500
+    assert people[0]["result"] == "paid"
+
+
+def test_people_for_another_tenants_ad_is_none(settings):
+    db = _results_db()
+    assert ad_performance.build_ad_people(db, "t2", "ad-1") is None
+    assert ad_performance.build_ad_people(db, "t1", "missing") is None

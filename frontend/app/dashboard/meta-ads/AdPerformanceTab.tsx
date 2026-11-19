@@ -11,6 +11,7 @@ import {
   Columns3,
   Copy,
   Download,
+  IndianRupee,
   KeyRound,
   LayoutGrid,
   Loader2,
@@ -42,6 +43,7 @@ import { TickMark } from "@/components/ui/controls";
 import { ChannelMarks, deliveryLabel } from "./metaFields";
 import {
   DatesMenu,
+  InfoCard,
   LevelSwitch,
   MoreMenu,
   SummaryCard,
@@ -51,6 +53,7 @@ import {
 } from "./reportControls";
 import { AdDetailPanel } from "./AdDetailPanel";
 import { HoverTip } from "./HoverTip";
+import { adviceFor, type Advice, type AdviceKey } from "./adAdvice";
 
 type MetricKey =
   | "delivery_status"
@@ -86,10 +89,18 @@ type MetricKey =
   | "cpm"
   | "hot"
   | "hot_rate"
-  | "cost_per_hot";
+  | "cost_per_hot"
+  | "booked"
+  | "paid"
+  | "lost"
+  | "revenue"
+  | "cost_per_booking"
+  | "roas"
+  | "advice";
 
 const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: string }[] = [
   { key: "delivery_status", label: "Delivery", defaultVisible: true, help: "The ad's own delivery status in Meta. Ads removed in Ads Manager show as Deleted." },
+  { key: "advice", label: "Advice", defaultVisible: true, help: "A short tip for each ad from its numbers in these dates. Hover a tip to see why." },
   { key: "budget", label: "Budget", defaultVisible: false, help: "Daily or lifetime budget from the campaign or ad set in Meta" },
   { key: "schedule", label: "Schedule", defaultVisible: false, help: "When the ad set starts and ends. An ongoing ad has no end date." },
   { key: "last_significant_edit", label: "Last significant edit", defaultVisible: false, help: "The latest update time Meta reports for the campaign or ad set." },
@@ -123,6 +134,12 @@ const METRICS: { key: MetricKey; label: string; defaultVisible: boolean; help: s
   { key: "hot", label: "Hot", defaultVisible: false, help: "Anril leads currently in the Hot segment" },
   { key: "hot_rate", label: "Hot lead rate", defaultVisible: false, help: "Hot leads divided by Anril-confirmed messages" },
   { key: "cost_per_hot", label: "Cost / hot lead", defaultVisible: false, help: "Spend divided by Hot leads" },
+  { key: "booked", label: "Booked", defaultVisible: false, help: "People who first messaged from this ad in these dates and booked, including those who already paid" },
+  { key: "paid", label: "Paid", defaultVisible: false, help: "People who first messaged from this ad in these dates and paid (marked Came / Paid, or a won order)" },
+  { key: "lost", label: "Lost", defaultVisible: false, help: "People who first messaged from this ad in these dates and were marked Lost" },
+  { key: "revenue", label: "Earned", defaultVisible: true, help: "Money from won orders by the people who first messaged from this ad in these dates, whenever they paid" },
+  { key: "cost_per_booking", label: "Cost / booking", defaultVisible: false, help: "Spend divided by Booked" },
+  { key: "roas", label: "Earned per ₹1", defaultVisible: false, help: "Earned divided by spend: what came back for every ₹1 spent on this ad" },
 ];
 
 /** Numbers Meta reports as-is. */
@@ -251,7 +268,7 @@ const LEVEL_HEADINGS: Record<ReportLevel, string> = { campaign: "Campaign", adse
 const LEVEL_NOUNS: Record<ReportLevel, [string, string]> = { campaign: ["campaign", "campaigns"], adset: ["ad set", "ad sets"], ad: ["ad", "ads"] };
 
 /** Columns that hold words rather than numbers, so they read left-aligned. */
-const TEXT_METRICS = new Set<MetricKey>(["delivery_status", "budget", "schedule", "last_significant_edit"]);
+const TEXT_METRICS = new Set<MetricKey>(["delivery_status", "budget", "schedule", "last_significant_edit", "advice"]);
 
 /** "8 Nov, 11:45 am" in the viewer's own clock. */
 function syncedAt(iso: string) {
@@ -436,6 +453,9 @@ const TOTAL_FORMULAS: Partial<Record<MetricKey, string>> = {
   cpm: "Total spend ÷ total impressions × 1,000.",
   hot_rate: "Total hot leads ÷ total messages sent × 100.",
   cost_per_hot: "Total spend ÷ total hot leads.",
+  cost_per_booking: "Total spend ÷ total booked.",
+  roas: "Total earned ÷ total spend.",
+  advice: "Each ad has its own tip.",
 };
 
 function totalExplanation(metric: MetricKey, reachEstimated: boolean): string {
@@ -462,6 +482,10 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     acc.clicked_no_message += row.clicked_no_message;
     acc.hot += row.hot;
     acc.spend += row.spend;
+    acc.booked += row.booked ?? 0;
+    acc.paid += row.paid ?? 0;
+    acc.lost += row.lost ?? 0;
+    acc.revenue += row.revenue ?? 0;
     acc.byChannel.whatsapp += row.messages_by_channel?.whatsapp ?? 0;
     acc.byChannel.instagram += row.messages_by_channel?.instagram ?? 0;
     acc.byChannel.messenger += row.messages_by_channel?.messenger ?? 0;
@@ -480,6 +504,10 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     clicked_no_message: 0,
     hot: 0,
     spend: 0,
+    booked: 0,
+    paid: 0,
+    lost: 0,
+    revenue: 0,
     byChannel: { whatsapp: 0, instagram: 0, messenger: 0 } as ChannelCounts,
   });
 
@@ -519,7 +547,35 @@ function aggregateRows(rows: AdPerformanceRow[]): AdPerformanceRow {
     messaging_block_rate: total.meta_conversations ? (total.meta_blocks / total.meta_conversations) * 100 : null,
     meta_anril_contact_match_rate: total.meta_conversations ? (total.messages / total.meta_conversations) * 100 : null,
     cost_per_hot: total.hot ? total.spend / total.hot : null,
+    cost_per_booking: total.booked ? total.spend / total.booked : null,
+    roas: total.spend ? total.revenue / total.spend : null,
   };
+}
+
+/** Earned per ₹1 spent: "₹1.48". */
+function perRupee(value: number | null | undefined) {
+  return value == null ? "—" : `₹${value.toFixed(2)}`;
+}
+
+const ADVICE_TONES: Record<AdviceKey, string> = {
+  too_early: "bg-slate-100 text-slate-600",
+  best: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  no_customers: "bg-amber-50 text-amber-800",
+  costly_stopped: "bg-red-50 text-red-700",
+  costly_running: "bg-orange-50 text-orange-700",
+  ended: "bg-slate-100 text-slate-600",
+  ok: "bg-sky-50 text-sky-700",
+};
+
+function AdviceBadge({ advice }: { advice: Advice | undefined }) {
+  if (!advice) return <>—</>;
+  return (
+    <HoverTip text={advice.reason}>
+      <span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-1 font-label text-[11px] font-bold", ADVICE_TONES[advice.key])}>
+        {advice.label}
+      </span>
+    </HoverTip>
+  );
 }
 
 function metricValue(metric: MetricKey, row: AdPerformanceRow) {
@@ -550,6 +606,9 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
     case "meta_blocks":
     case "clicked_no_message":
     case "hot":
+    case "booked":
+    case "paid":
+    case "lost":
       return count(row[metric]);
     case "attribution_gap":
       return signedCount(row.attribution_gap);
@@ -570,7 +629,13 @@ function metricValue(metric: MetricKey, row: AdPerformanceRow) {
     case "cost_per_new_messaging_contact":
     case "cpm":
     case "cost_per_hot":
+    case "revenue":
+    case "cost_per_booking":
       return money(row[metric]);
+    case "roas":
+      return perRupee(row.roas);
+    case "advice":
+      return "—";
     case "frequency":
       return decimal(row.frequency);
   }
@@ -664,6 +729,8 @@ export function AdPerformanceTab() {
       reach_estimated: rows.some((row) => row.reach_estimated) || (metaFailed && rows.length > 1 && summed.reach > 0),
     };
   }, [rows, totalReach, totalReachError]);
+  // Compared across every ad in the dates, so a tip doesn't change with the card picked.
+  const advice = useMemo(() => adviceFor(allRows, localDate()), [allRows]);
   const selectedMetrics = useMemo(
     () => METRICS.filter((metric) => visibleMetrics.has(metric.key)),
     [visibleMetrics],
@@ -874,7 +941,7 @@ export function AdPerformanceTab() {
       <div
         role="group"
         aria-label="Filter ads by delivery"
-        className={cn("grid grid-cols-1 gap-3.5 sm:grid-cols-2", deliveryCards.length > 4 ? "xl:grid-cols-5" : "xl:grid-cols-4")}
+        className={cn("grid grid-cols-1 gap-3.5 sm:grid-cols-2", deliveryCards.length > 4 ? "lg:grid-cols-3 2xl:grid-cols-6" : "lg:grid-cols-3 xl:grid-cols-5")}
       >
         {deliveryCards.map((card) => (
           <SummaryCard
@@ -894,6 +961,21 @@ export function AdPerformanceTab() {
             ]}
           />
         ))}
+        {/* Not a filter: what the ads in the table brought in, so it follows the card picked and the search. */}
+        <InfoCard
+          icon={IndianRupee}
+          tint="bg-violet-50 text-violet-700"
+          label="Earned"
+          badge={DELIVERY_CARDS.find((card) => card.key === deliveryStatus)?.label ?? "All ads"}
+          value={isLoading ? "—" : money(totals.revenue)}
+          caption={isLoading ? "" : `from ${money(totals.spend)} spent`}
+          help="Money from won orders by the people who first messaged from these ads in these dates, whenever they paid."
+          stats={[
+            { label: "Booked", value: isLoading ? "—" : count(totals.booked) },
+            { label: "Paid", value: isLoading ? "—" : count(totals.paid) },
+            { label: "Per ₹1", value: isLoading ? "—" : perRupee(totals.roas) },
+          ]}
+        />
       </div>
 
       <section aria-label="Messaging ads" className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
@@ -1096,7 +1178,7 @@ export function AdPerformanceTab() {
                       <tr
                         key={item.key}
                         onClick={() => openRow(item)}
-                        title={item.level === "ad" ? "See where this ad works best" : `Show this ${item.level === "campaign" ? "campaign's ad sets" : "ad set's ads"}`}
+                        title={item.level === "ad" ? "See this ad from first look to payment" : `Show this ${item.level === "campaign" ? "campaign's ad sets" : "ad set's ads"}`}
                         className={cn(
                           "group cursor-pointer transition-colors hover:bg-[#f8fafc]",
                           removed && "opacity-55 hover:opacity-100",
@@ -1122,11 +1204,14 @@ export function AdPerformanceTab() {
                             metric.key === "messages" && "font-bold text-on-surface",
                             metric.key === "inline_link_clicks" && "font-semibold text-primary-700",
                             metric.key === "hot" && "font-semibold text-rose-600",
+                            metric.key === "revenue" && "font-bold text-emerald-700",
                           )}>
                             {metric.key === "conversation_rate" ? (
                               <RateBar value={row.conversation_rate} />
                             ) : metric.key === "delivery_status" && item.level !== "ad" ? (
                               <StatusBadge status={row.delivery_status} />
+                            ) : metric.key === "advice" ? (
+                              item.level === "ad" ? <AdviceBadge advice={advice.get(row.ad_creative_id)} /> : "—"
                             ) : metricValue(metric.key, row)}
                             {metric.key === "messages" && channelSplit(row.messages_by_channel) && (
                               <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(row.messages_by_channel)}</span>
@@ -1148,7 +1233,7 @@ export function AdPerformanceTab() {
                         TEXT_METRICS.has(metric.key) ? "text-left" : "text-right",
                       )}>
                         <HoverTip text={totalExplanation(metric.key, Boolean(totals.reach_estimated))}>
-                          {metric.key === "delivery_status" || metric.key === "budget" ? "—" : metricValue(metric.key, totals)}
+                          {metric.key === "delivery_status" || metric.key === "budget" || metric.key === "advice" ? "—" : metricValue(metric.key, totals)}
                         </HoverTip>
                         {metric.key === "messages" && channelSplit(totals.messages_by_channel) && (
                           <span className="mt-0.5 block text-[10px] font-normal text-on-surface-muted">{channelSplit(totals.messages_by_channel)}</span>
@@ -1279,7 +1364,11 @@ export function AdPerformanceTab() {
           stats={[
             { label: "Messages sent", value: count(detailRow.messages), sub: channelSplit(detailRow.messages_by_channel) },
             { label: "Hot leads", value: count(detailRow.hot), tone: "text-rose-600" },
-            { label: "Cost / sent message", value: money(detailRow.cost_per_message) },
+            {
+              label: "Cost / sent message",
+              value: money(detailRow.cost_per_message),
+              sub: detailRow.cost_per_meta_conversation != null ? `Meta says ${money(detailRow.cost_per_meta_conversation)}` : null,
+            },
             { label: "Cost / hot lead", value: money(detailRow.cost_per_hot) },
           ]}
         />

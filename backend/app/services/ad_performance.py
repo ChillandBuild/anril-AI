@@ -139,6 +139,116 @@ def _clip_date_from(date_from: str | None, start: str | None) -> str | None:
     return date_from
 
 
+def _empty_funnel() -> dict:
+    return {"messages": 0, "hot": 0, "booked": 0, "paid": 0, "lost": 0, "earned_paise": 0,
+            "by_channel": _empty_channel_counts()}
+
+
+_ID_CHUNK = 200  # lead ids per query: keeps each request URL short
+
+
+def _ad_leads(db, tenant_id: str, account: str, meta_ad_ids: list[str],
+              date_from: str | None, date_to: str | None) -> tuple[list[dict], dict[str, dict]]:
+    """The people who first messaged from these Meta ads inside the dates.
+
+    Returns (attributions, leads_by_id). The attribution primary key stops a lead
+    counting twice for the same ad. Each lead carries "result" (lead_result: paid >
+    lost > booked > none) and "earned_paise", the total of their won orders -- paid
+    whenever, so a person who messaged on 25 Oct and paid on 10 Nov counts in October."""
+    from app.services.inbound_leads_logic import lead_result
+
+    if not meta_ad_ids:
+        return [], {}
+    attribution_q = (
+        db.table("lead_meta_ad_attributions")
+        .select("lead_id,meta_ad_id,first_seen_at,channel")
+        .eq("tenant_id", tenant_id)
+        .eq("meta_ad_account_id", account)
+        .in_("meta_ad_id", meta_ad_ids)
+    )
+    if date_from:
+        attribution_q = attribution_q.gte("first_seen_at", date_from)
+    if date_to:
+        attribution_q = attribution_q.lte("first_seen_at", date_to + "T23:59:59")
+    attributions = (attribution_q.execute().data) or []
+
+    lead_ids = sorted({row["lead_id"] for row in attributions if row.get("lead_id")})
+    leads_by_id: dict[str, dict] = {}
+    earned: dict[str, int] = {}
+    won: dict[str, int] = {}
+    for i in range(0, len(lead_ids), _ID_CHUNK):
+        chunk = lead_ids[i:i + _ID_CHUNK]
+        leads = (
+            db.table("leads")
+            .select("id,name,phone,segment,booked_at,booked_for,converted_at,lost_at")
+            .eq("tenant_id", tenant_id)
+            .in_("id", chunk)
+            .is_("deleted_at", "null")
+            .execute()
+            .data
+        ) or []
+        leads_by_id.update({lead["id"]: lead for lead in leads})
+        deals = (
+            db.table("deals")
+            .select("lead_id,total_paise")
+            .eq("tenant_id", tenant_id)
+            .eq("stage", "won")
+            .in_("lead_id", chunk)
+            .execute()
+            .data
+        ) or []
+        for deal in deals:
+            lid = deal.get("lead_id")
+            earned[lid] = earned.get(lid, 0) + int(deal.get("total_paise") or 0)
+            won[lid] = won.get(lid, 0) + 1
+    for lid, lead in leads_by_id.items():
+        lead["result"] = lead_result({**lead, "won_deal_count": won.get(lid, 0)})
+        lead["earned_paise"] = earned.get(lid, 0)
+    return attributions, leads_by_id
+
+
+_RESULT_ORDER = {"paid": 0, "booked": 1, "none": 2, "lost": 3}
+_SEGMENT_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
+def build_ad_people(db, tenant_id: str, ad_creative_id: str, *,
+                    date_from: str | None = None, date_to: str | None = None) -> list[dict] | None:
+    """Everyone the ad's "Actually messaged" count is made of (the same dates and the
+    same history start date as build_creative_performance). Paid first, then booked,
+    then hot. None when the ad isn't this tenant's, on the ad account connected now."""
+    from app.services.meta_ads_insights_sync import get_ads_setting, get_current_ads_account_id
+
+    account = get_current_ads_account_id(db, tenant_id)
+    if not account:
+        return None
+    creative = (
+        db.table("ad_creatives").select("meta_ad_id")
+        .eq("tenant_id", tenant_id).eq("meta_ad_account_id", account).eq("id", ad_creative_id)
+        .limit(1).execute().data
+    ) or []
+    if not creative or not creative[0].get("meta_ad_id"):
+        return None
+    date_from = _clip_date_from(date_from, get_ads_setting(db, tenant_id, "meta_ads_sync_start_date"))
+    attributions, leads_by_id = _ad_leads(db, tenant_id, account, [creative[0]["meta_ad_id"]], date_from, date_to)
+    first_seen = {a["lead_id"]: a.get("first_seen_at") for a in attributions if a.get("lead_id")}
+    people = [
+        {
+            "lead_id": lid,
+            "name": lead.get("name"),
+            "phone": lead.get("phone"),
+            "segment": lead.get("segment"),
+            "result": lead["result"],
+            "earned": round(lead["earned_paise"] / 100, 2),
+            "booked_for": lead.get("booked_for"),
+            "messaged_at": first_seen.get(lid),
+        }
+        for lid, lead in leads_by_id.items()
+    ]
+    people.sort(key=lambda p: str(p["messaged_at"] or ""), reverse=True)
+    people.sort(key=lambda p: (_RESULT_ORDER.get(p["result"], 9), _SEGMENT_ORDER.get(p["segment"] or "", 9)))
+    return people
+
+
 def build_creative_performance(
     db,
     tenant_id: str,
@@ -180,7 +290,7 @@ def build_creative_performance(
     q = db.table("ad_creatives").select(
         "id,creative_label,meta_ad_id,meta_adset_id,meta_adset_name,meta_campaign_id,"
         "campaign_id,effective_status,ad_effective_status,"
-        "destination_type,tracked_in_anril,messaging_channels"
+        "destination_type,tracked_in_anril,messaging_channels,prefilled_greeting_text"
     ).eq("tenant_id", tenant_id).eq(
         "meta_ad_account_id", account
     ).neq("messaging_channels", "{}").eq("tracked_in_anril", True)
@@ -259,37 +369,8 @@ def build_creative_performance(
         for key, action_type in _META_MESSAGING_ACTIONS.items():
             acc[key] += sum_actions(r.get("actions"), {action_type})
 
-    # Unique lead/ad relationships. The table primary key prevents the same
-    # lead from being counted twice for the same Meta ad.
     meta_ad_ids = [c["meta_ad_id"] for c in creatives if c.get("meta_ad_id")]
-    attributions: list[dict] = []
-    if meta_ad_ids:
-        attribution_q = (
-            db.table("lead_meta_ad_attributions")
-            .select("lead_id,meta_ad_id,first_seen_at,channel")
-            .eq("tenant_id", tenant_id)
-            .eq("meta_ad_account_id", account)
-            .in_("meta_ad_id", meta_ad_ids)
-        )
-        if date_from:
-            attribution_q = attribution_q.gte("first_seen_at", date_from)
-        if date_to:
-            attribution_q = attribution_q.lte("first_seen_at", date_to + "T23:59:59")
-        attributions = (attribution_q.execute().data) or []
-
-    lead_ids = sorted({row["lead_id"] for row in attributions if row.get("lead_id")})
-    leads_by_id: dict[str, dict] = {}
-    if lead_ids:
-        leads = (
-            db.table("leads")
-            .select("id,segment")
-            .eq("tenant_id", tenant_id)
-            .in_("id", lead_ids)
-            .is_("deleted_at", "null")
-            .execute()
-            .data
-        ) or []
-        leads_by_id = {lead["id"]: lead for lead in leads}
+    attributions, leads_by_id = _ad_leads(db, tenant_id, account, meta_ad_ids, date_from, date_to)
 
     funnel: dict[str, dict] = {}
     for attribution in attributions:
@@ -297,13 +378,21 @@ def build_creative_performance(
         ad_id = attribution.get("meta_ad_id")
         if not lead or not ad_id:
             continue
-        f = funnel.setdefault(ad_id, {"messages": 0, "hot": 0, "by_channel": _empty_channel_counts()})
+        f = funnel.setdefault(ad_id, _empty_funnel())
         f["messages"] += 1
         channel = attribution.get("channel") or "whatsapp"
         if channel in f["by_channel"]:
             f["by_channel"][channel] += 1
         if lead.get("segment") == "A":
             f["hot"] += 1
+        result = lead["result"]
+        if result in ("booked", "paid"):
+            f["booked"] += 1
+        if result == "paid":
+            f["paid"] += 1
+            f["earned_paise"] += lead["earned_paise"]
+        elif result == "lost":
+            f["lost"] += 1
 
     def _status(c: dict) -> str | None:
         # The ad's own status first -- it is the only one that reflects an ad
@@ -323,7 +412,7 @@ def build_creative_performance(
     out: list[dict] = []
     for c in creatives:
         ins = ins_by_creative.get(c["id"]) or _empty_insights()
-        fn = funnel.get(c["meta_ad_id"], {"messages": 0, "hot": 0, "by_channel": _empty_channel_counts()})
+        fn = funnel.get(c["meta_ad_id"]) or _empty_funnel()
         campaign = campaigns.get(c.get("campaign_id"), {})
         adset = adsets.get(c.get("meta_adset_id"), {})
         uses_adset_budget = (
@@ -417,7 +506,14 @@ def build_creative_performance(
                 if messages else None
             ),
             "attribution_gap": messages - ins["meta_conversations"],
-            "revenue": 0,
+            # The people who first messaged in these dates: booked (or paid), paid, lost,
+            # and what the payers paid in won orders, whenever they paid.
+            "booked": fn["booked"],
+            "paid": fn["paid"],
+            "lost": fn["lost"],
+            "revenue": round(fn["earned_paise"] / 100, 2),
+            "cost_per_booking": _safe_div(spend, fn["booked"]),
+            "prefilled_greeting_text": c.get("prefilled_greeting_text"),
             "destination_type": c.get("destination_type"),
             "is_multi_destination": is_multi_destination(c.get("destination_type")),
             "messaging_channels": c.get("messaging_channels") or [],

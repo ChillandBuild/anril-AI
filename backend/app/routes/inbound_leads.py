@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_id, require_owner, require_permission
-from app.services.inbound_leads_logic import INBOUND_SOURCES
+from app.services.inbound_leads_logic import INBOUND_SOURCES, lead_result
 from app.services.google_ads_attribution import build_tracked_wa_link, slugify_campaign
 from app.routes.leads import _sanitize_search
 
@@ -81,14 +81,14 @@ class InboundFilters:
     the CSV, so the chips, the cards, the table and the download always agree."""
 
     def __init__(self, *, origin: str = "all", segment: str | None = None, result: str | None = None,
-                 waiting: bool = False, search: str | None = None, ad_campaign_id: str | None = None,
+                 waiting: bool = False, search: str | None = None, meta_ad_id: str | None = None,
                  source: str | None = None, date_from: str | None = None, date_to: str | None = None):
         self.origin = origin
         self.segment = segment
         self.result = result
         self.waiting = waiting
         self.search = _sanitize_search(search)
-        self.ad_campaign_id = ad_campaign_id
+        self.meta_ad_id = meta_ad_id
         self.source = source
         self.date_from = date_from
         self.date_to = date_to
@@ -106,13 +106,13 @@ def _inbound_filters(
     result: str | None = Query(None, pattern="^(none|booked|paid|lost)$"),
     waiting: bool = Query(False),
     search: str | None = Query(None, max_length=100),
-    ad_campaign_id: str | None = Query(None),
+    meta_ad_id: str | None = Query(None, pattern="^[0-9]{1,30}$"),
     source: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
 ) -> InboundFilters:
     return InboundFilters(origin=origin, segment=segment, result=result, waiting=waiting, search=search,
-                          ad_campaign_id=ad_campaign_id, source=source, date_from=date_from, date_to=date_to)
+                          meta_ad_id=meta_ad_id, source=source, date_from=date_from, date_to=date_to)
 
 
 # Result of a lead, the same order as Chats' inbox (migration 272 inbox_chat_rows):
@@ -158,8 +158,9 @@ def _apply_inbound(q, tenant_id: str, f: InboundFilters):
     if f.search:
         term = f.search
         q = q.or_(f"name.ilike.*{term}*,phone.ilike.*{term}*,ad_name.ilike.*{term}*")
-    if f.ad_campaign_id:
-        q = q.eq("ad_campaign_id", f.ad_campaign_id)
+    if f.meta_ad_id:
+        # One ad: the people with an attribution row for it (the rows Meta Ads counts).
+        q = q.eq("lead_meta_ad_attributions.meta_ad_id", f.meta_ad_id)
     if f.source:
         q = q.eq("source", f.source)
     if f.date_from:
@@ -176,20 +177,27 @@ _ROW_COLUMNS = (
 )
 
 
+def _leads_query(db, columns: str, tenant_id: str, f: InboundFilters, count: str | None = None):
+    """leads filtered by f. The one-ad filter needs the attribution rows joined in."""
+    if f.meta_ad_id:
+        columns += ",lead_meta_ad_attributions!inner(meta_ad_id)"
+    return _apply_inbound(db.table("leads").select(columns, count=count), tenant_id, f)
+
+
 def _fetch_inbound_leads(db, tenant_id: str, f: InboundFilters, *, sort: str = "newest",
                          limit: int = 200, offset: int = 0) -> tuple[list[dict], int]:
     """A page of inbound leads (source in INBOUND_SOURCES) and the total. Two queries, no JOIN.
     sort "waiting": longest waiting first, then newest."""
-    q = _apply_inbound(db.table("leads").select(_ROW_COLUMNS), tenant_id, f)
+    q = _leads_query(db, _ROW_COLUMNS, tenant_id, f)
     if sort == "waiting":
         q = q.order("waiting_since", desc=False, nullsfirst=False)
     rows = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute().data or []
-    count = _apply_inbound(db.table("leads").select("id", count="exact"), tenant_id, f).limit(1).execute()
+    count = _leads_query(db, "id", tenant_id, f, count="exact").limit(1).execute()
     return rows, count.count or len(rows)
 
 
 def _count(db, tenant_id: str, f: InboundFilters) -> int:
-    return _apply_inbound(db.table("leads").select("id", count="exact"), tenant_id, f).limit(1).execute().count or 0
+    return _leads_query(db, "id", tenant_id, f, count="exact").limit(1).execute().count or 0
 
 
 def _fetch_campaign_names(db, tenant_id: str, campaign_ids: list[str]) -> dict[str, str]:
@@ -278,16 +286,6 @@ def _from_collected(collected, keys: tuple[str, ...]) -> str | None:
     return None
 
 
-def _result_of(lead: dict) -> str:
-    if lead.get("converted_at") or int(lead.get("won_deal_count") or 0) > 0:
-        return "paid"
-    if lead.get("lost_at"):
-        return "lost"
-    if lead.get("booked_at"):
-        return "booked"
-    return "none"
-
-
 def _handled_by(lead: dict, callers: dict[str, str]) -> dict:
     """Who has the chat: a team member, the AI agent, or nobody (AI off and nobody assigned)."""
     needs_you = bool(lead.get("needs_human_attention") or lead.get("needs_human_intervention"))
@@ -336,7 +334,7 @@ def _enrich(
             "last_message": last,
             "waiting_since": lead.get("waiting_since"),
             "last_inbound_at": lead.get("last_inbound_at"),
-            "result": _result_of(lead),
+            "result": lead_result(lead),
             "booked_for": lead.get("booked_for"),
             "lost_reason": lead.get("lost_reason"),
             "lost_auto": bool(lead.get("lost_auto")),
@@ -446,6 +444,43 @@ async def list_campaigns(
     except Exception as e:
         logger.error(f"inbound-leads campaigns fetch error: {e}")
         return {"data": []}
+
+
+@router.get("/ads")
+async def list_ads(tenant_id: str = Depends(get_tenant_id)):
+    """Every messaging ad, one per Meta ad, for the Inbound leads "which ad" filter.
+    Ads that share a name get their campaign added so they can be told apart."""
+    db = get_supabase()
+    try:
+        ads = (
+            db.table("ad_creatives")
+            .select("meta_ad_id,creative_label,campaign_id")
+            .eq("tenant_id", tenant_id)
+            .neq("messaging_channels", "{}")
+            .execute()
+            .data
+        ) or []
+    except Exception as e:
+        logger.error(f"inbound-leads ads fetch error: {e}")
+        return {"data": []}
+    by_id: dict[str, dict] = {}
+    for ad in ads:
+        if ad.get("meta_ad_id") and ad["meta_ad_id"] not in by_id:
+            by_id[ad["meta_ad_id"]] = ad
+    names = _fetch_campaign_names(db, tenant_id, sorted({a["campaign_id"] for a in by_id.values() if a.get("campaign_id")}))
+    label_count: dict[str, int] = {}
+    for ad in by_id.values():
+        label = (ad.get("creative_label") or "Untitled ad").strip()
+        label_count[label.lower()] = label_count.get(label.lower(), 0) + 1
+    out = []
+    for meta_ad_id, ad in by_id.items():
+        label = (ad.get("creative_label") or "Untitled ad").strip()
+        campaign = names.get(ad.get("campaign_id") or "")
+        if label_count[label.lower()] > 1 and campaign:
+            label = f"{label} · {campaign}"
+        out.append({"meta_ad_id": meta_ad_id, "name": label})
+    out.sort(key=lambda a: a["name"].lower())
+    return {"data": out}
 
 
 def _primary_whatsapp_number(db, tenant_id: str) -> str | None:
@@ -888,6 +923,24 @@ async def ad_creative_breakdown(
     return result
 
 
+@router.get("/ad-creatives/{ad_creative_id}/people", dependencies=[Depends(require_meta_ads_view)])
+async def ad_creative_people(
+    ad_creative_id: str,
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """The people behind one messaging ad's "Actually messaged" count, for its panel."""
+    from app.services.ad_performance import build_ad_people
+
+    d_from = _parse_day(date_from, "date_from") if date_from else None
+    d_to = _parse_day(date_to, "date_to") if date_to else None
+    people = build_ad_people(get_supabase(), tenant_id, ad_creative_id, date_from=d_from, date_to=d_to)
+    if people is None:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    return {"data": people}
+
+
 def _sync_start_payload(db, tenant_id: str) -> dict:
     from app.services.meta_ads_insights_sync import (
         _MAX_HISTORY_DAYS,
@@ -1001,6 +1054,12 @@ AD_PERFORMANCE_EXPORT_COLUMNS = [
     ("hot", "Hot"),
     ("hot_rate", "Hot lead rate"),
     ("cost_per_hot", "Cost / hot lead"),
+    ("booked", "Booked"),
+    ("paid", "Paid"),
+    ("lost", "Lost"),
+    ("revenue", "Earned"),
+    ("cost_per_booking", "Cost / booking"),
+    ("roas", "Earned per ₹1"),
 ]
 
 

@@ -12,25 +12,11 @@ export default async function InboundLeadsPage() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const [inboundLeadsRes, campaignsRes] = await Promise.all([
-    serverFetchJson<{ data: InboundLead[]; total: number; page: number; limit: number }>(
-      // The page opens on the last 30 days, 50 a page (InboundLeadsClient's first view).
-      `/api/v1/inbound-leads/?limit=50&date_from=${last30DaysIst()}`,
-      token,
-    ),
-    serverFetchJson<{ data: { id: string; campaign_name: string; platform: string }[] }>(
-      "/api/v1/inbound-leads/campaigns",
-      token,
-    ),
-  ]);
-
-  const inboundLeads = inboundLeadsRes;
-  const campaigns = campaignsRes?.data ?? null;
-
-  return (
-    <InboundLeadsClient
-      fallbackInboundLeads={inboundLeads}
-      fallbackCampaigns={campaigns}
-    />
+  const inboundLeads = await serverFetchJson<{ data: InboundLead[]; total: number; page: number; limit: number }>(
+    // The page opens on the last 30 days, 50 a page (InboundLeadsClient's first view).
+    `/api/v1/inbound-leads/?limit=50&date_from=${last30DaysIst()}`,
+    token,
   );
+
+  return <InboundLeadsClient fallbackInboundLeads={inboundLeads} />;
 }

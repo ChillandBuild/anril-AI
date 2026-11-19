@@ -22,6 +22,7 @@ import {
   TrackedAd,
   AdBreakdownKey,
   AdBreakdownResponse,
+  AdPerson,
   InstantFormDetail,
   InstantFormLeadsResponse,
   InstantFormRange,
@@ -198,14 +199,11 @@ export function useInboundLeadsSummary(params: InboundLeadFilters, enabled = tru
   return useSWR<InboundLeadsSummary>(key, () => api.inboundLeads.summary(params), { ...defaultConfig, keepPreviousData: true });
 }
 
-export function useInboundCampaigns(
-  enabled = true,
-  fallbackData?: { id: string; campaign_name: string; platform: string }[],
-) {
-  return useSWR<{ id: string; campaign_name: string; platform: string }[]>(
-    enabled ? "inbound-leads/campaigns" : null,
-    () => api.inboundLeads.campaigns(),
-    { ...defaultConfig, fallbackData },
+export function useInboundAds(enabled = true) {
+  return useSWR<{ meta_ad_id: string; name: string }[]>(
+    enabled ? "inbound-leads/ads" : null,
+    () => api.inboundLeads.ads(),
+    defaultConfig,
   );
 }
 
@@ -312,6 +310,15 @@ export function useAdBreakdown(
       ? `ad-breakdown:${adCreativeId}:${params.breakdown}:${params.date_from ?? ""}:${params.date_to ?? ""}`
       : null,
     () => api.inboundLeads.getAdBreakdown(adCreativeId!, params),
+    defaultConfig,
+  );
+}
+
+/** The people behind one messaging ad, loaded only when the panel's list is opened. */
+export function useAdPeople(adCreativeId: string | null, params: { date_from?: string; date_to?: string }) {
+  return useSWR<{ data: AdPerson[] }>(
+    adCreativeId ? `ad-people:${adCreativeId}:${params.date_from ?? ""}:${params.date_to ?? ""}` : null,
+    () => api.inboundLeads.getAdPeople(adCreativeId!, params),
     defaultConfig,
   );
 }
