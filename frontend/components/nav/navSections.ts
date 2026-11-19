@@ -243,7 +243,7 @@ const DEALS: NavLeaf = {
   kind: "link",
   key: "deals",
   href: "/dashboard/deals",
-  label: "Deals",
+  label: "Orders & payments",
   icon: HandCoins,
   visible: (a) => a.isSubscribed && a.canAny(["deals.view", "deals.manage"]),
   isActive: (p) => p.startsWith("/dashboard/deals") || p.startsWith("/dashboard/intake"),

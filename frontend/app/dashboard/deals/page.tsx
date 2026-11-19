@@ -5,7 +5,6 @@ import { Plus } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { NewDealDialog } from "@/components/deals/NewDealDialog";
 import { OrdersTab } from "./OrdersTab";
 import { InsightsTab } from "./InsightsTab";
 import { FormAnswersTab } from "./FormAnswersTab";
@@ -13,7 +12,7 @@ import { FormAnswersTab } from "./FormAnswersTab";
 type PageTab = "deals" | "insights" | "forms";
 
 const TABS: { id: PageTab; label: string }[] = [
-  { id: "deals", label: "Orders & payments" },
+  { id: "deals", label: "Orders" },
   { id: "insights", label: "Insights" },
   { id: "forms", label: "Form answers" },
 ];
@@ -25,7 +24,6 @@ export default function DealsPage() {
   const rawTab = searchParams.get("tab");
   const [intakeEnabled, setIntakeEnabled] = useState(false);
   const [intakeLoaded, setIntakeLoaded] = useState(false);
-  const [reloadToken, setReloadToken] = useState(0);
 
   const canManage = role === "owner" || permissions.includes("deals.manage");
   const canView = role === "owner" || permissions.includes("deals.view") || canManage;
@@ -35,15 +33,6 @@ export default function DealsPage() {
   // A ?tab=forms link can't be honoured until the intake config says forms exist;
   // wait for it rather than mounting the Deals tab and swapping.
   const tabPending = rawTab === "forms" && !intakeLoaded;
-
-  const showNewDeal = canManage && searchParams.get("new") === "1";
-
-  function closeNewDeal() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("new");
-    const qs = params.toString();
-    router.replace(`/dashboard/deals${qs ? `?${qs}` : ""}`, { scroll: false });
-  }
 
   function setTab(next: PageTab) {
     const params = new URLSearchParams(searchParams.toString());
@@ -68,10 +57,6 @@ export default function DealsPage() {
     })();
   }, []);
 
-  function handleCreated() {
-    setReloadToken((n) => n + 1);
-  }
-
   if (roleLoading) {
     return <div className="min-h-[320px] animate-pulse rounded-2xl bg-border-subtle m-6" />;
   }
@@ -79,7 +64,7 @@ export default function DealsPage() {
   if (!canView) {
     return (
       <div className="py-20 text-center">
-        <p className="font-body text-sm text-ink-muted">You do not have access to deals.</p>
+        <p className="font-body text-sm text-ink-muted">You do not have access to orders & payments.</p>
       </div>
     );
   }
@@ -116,17 +101,9 @@ export default function DealsPage() {
       </div>
 
       {tabPending && <AiraLoader inline className="min-h-[200px]" />}
-      {!tabPending && tab === "deals" && <OrdersTab key={reloadToken} canManage={canManage} />}
+      {!tabPending && tab === "deals" && <OrdersTab canManage={canManage} />}
       {!tabPending && tab === "insights" && <InsightsTab />}
       {!tabPending && tab === "forms" && intakeEnabled && <FormAnswersTab />}
-
-      {showNewDeal && (
-        <NewDealDialog
-          open={showNewDeal}
-          onClose={closeNewDeal}
-          onCreated={handleCreated}
-        />
-      )}
 
     </div>
   );

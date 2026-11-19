@@ -64,7 +64,7 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "History", href: "/dashboard/otp/history" },
   { label: "Settings", href: "/dashboard/otp/settings" },
   { label: "API & docs", href: "/dashboard/otp/api" },
-  { label: "Deals", href: "/dashboard/deals" },
+  { label: "Orders & payments", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
   { label: "Anril Brain", href: "/dashboard/brain" },
