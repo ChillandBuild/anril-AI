@@ -2,6 +2,8 @@
 // the Anril AI pamphlet, plain facts about the product, and examples marked as such.
 
 export const SITE_URL = "https://www.anrilaitech.com";
+// Switch to "hello@anrilaitech.com" once that mailbox is live (18 Nov 2026 brief). As of 19 Nov 2026
+// anrilaitech.com has no MX record, so mail to it would bounce.
 export const CONTACT_EMAIL = "anrilaitech@gmail.com";
 export const PHONE = { display: "+91 90473 70380", tel: "+919047370380", whatsapp: "https://wa.me/919047370380" } as const;
 export const OFFICE = {
@@ -118,19 +120,27 @@ export const CHANNELS = ["WhatsApp", "Instagram", "Facebook Messenger", "Telegra
 export type NavLink = { label: string; href: string };
 export type NavItem = NavLink & { children?: readonly NavLink[] };
 
-/** Industries that have their own page; the rest still live as anchors on /industries. Keep in step with INDUSTRY_PAGES. */
-export const INDUSTRY_PAGE_PATHS: Record<string, string> = {
-  education: "/industries/education",
-  "real-estate": "/industries/real-estate",
-  healthcare: "/industries/healthcare",
-};
+/** Every industry in INDUSTRIES has its own page (see industry-pages.ts). */
+export const INDUSTRY_PAGE_PATHS: Record<string, string> = Object.fromEntries(INDUSTRIES.map((i) => [i.id, `/industries/${i.id}`]));
+
+/** The Industries menu, in the order agreed on 18 Nov 2026. Keep in step with industry-pages.ts. */
+const INDUSTRY_MENU: readonly NavLink[] = [
+  { label: "Education", href: "/industries/education" },
+  { label: "Study abroad", href: "/industries/study-abroad" },
+  { label: "Real estate", href: "/industries/real-estate" },
+  { label: "Healthcare", href: "/industries/healthcare" },
+  { label: "Automotive", href: "/industries/automotive" },
+  { label: "Manufacturing", href: "/industries/manufacturing" },
+  { label: "Financial services", href: "/industries/financial-services" },
+  { label: "D2C brands", href: "/industries/d2c" },
+];
 
 export const NAV: readonly NavItem[] = [
   {
     label: "Products",
     href: "/product",
     children: [
-      { label: "WhatsApp AI chatbot", href: "/whatsapp-chatbot" },
+      { label: "WhatsApp AI agent", href: "/whatsapp-chatbot" },
       { label: "Bulk WhatsApp sender", href: "/bulk-whatsapp-sender" },
       { label: "WhatsApp CRM", href: "/whatsapp-crm" },
       { label: "Telecaller software", href: "/telecaller-software" },
@@ -141,15 +151,7 @@ export const NAV: readonly NavItem[] = [
     ],
   },
   { label: "Plans", href: "/pricing" },
-  {
-    label: "Resources",
-    href: "/industries",
-    children: [
-      ...INDUSTRIES.map((i) => ({ label: i.name, href: INDUSTRY_PAGE_PATHS[i.id] ?? `/industries#${i.id}` })),
-      { label: "Study abroad", href: "/industries/study-abroad" },
-      { label: "D2C brands", href: "/industries/d2c" },
-    ],
-  },
+  { label: "Industries", href: "/industries", children: INDUSTRY_MENU },
   { label: "Blog", href: "/blog" },
   {
     label: "Company",

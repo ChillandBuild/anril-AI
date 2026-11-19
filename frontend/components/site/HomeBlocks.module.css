@@ -3,10 +3,13 @@
 .figs > p:first-child { border-left: 0; }
 .big { font: 300 clamp(4.2rem, 9.4vw, 8rem) var(--serif); line-height: 0.95; letter-spacing: -0.04em; color: var(--teal); font-variant-numeric: tabular-nums; }
 .figs > p:nth-child(2) .big { color: var(--copper); }
+/* A label in words rather than a number: smaller, so it fits the column. */
+.bigWords { font-size: clamp(2rem, 3.6vw, 3.1rem); line-height: 1.05; letter-spacing: -0.02em; }
 @media (max-width: 760px) {
   .figs { grid-template-columns: minmax(0, 1fr); }
   .figs > p { flex-direction: row; align-items: center; gap: 16px; padding: 16px 20px; }
   .big { font-size: 3rem; min-width: 5.2rem; }
+  .bigWords { font-size: 1.5rem; min-width: 7.5rem; }
   .figs > p { border-left: 0; border-top: 1px solid var(--line); }
   .figs > p:first-child { border-top: 0; }
 }
@@ -92,3 +95,20 @@
   .mods h3 { font-size: 1.3rem; }
   .mods p { font-size: 0.95rem; }
 }
+
+/* Proof: three square number boxes side by side. */
+.proof { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 4px 0 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
+.proof > li { background: var(--white); padding: clamp(20px, 3vw, 32px); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.proof b { font: 300 clamp(2.4rem, 4.6vw, 3.8rem) var(--serif); line-height: 1; letter-spacing: -0.03em; color: var(--teal); font-variant-numeric: tabular-nums; }
+.proof > li:nth-child(2) b { color: var(--copper); }
+.proof span { color: var(--body); font-size: 0.95rem; }
+@media (max-width: 700px) {
+  .proof { grid-template-columns: minmax(0, 1fr); }
+  .proof > li { flex-direction: row; align-items: baseline; gap: 14px; padding: 16px 18px; }
+  .proof b { font-size: 2rem; min-width: 6.4rem; }
+}
+
+/* What your team sees: copy beside the lead list on wide screens. */
+.sees.sees { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 32px 48px; align-items: center; }
+.seesText { display: flex; flex-direction: column; gap: 18px; align-items: flex-start; min-width: 0; }
+@media (max-width: 960px) { .sees.sees { grid-template-columns: minmax(0, 1fr); } }

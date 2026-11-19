@@ -4,17 +4,18 @@
 
 ## Modules
 - Reach: bulk WhatsApp campaigns with approved templates, contact lists and segments, scheduling, delivery and engagement reports.
-- Engage: AI replies on WhatsApp, Instagram DMs, Facebook Messenger, Telegram and website chat, from the business's own knowledge base. Replies in Tanglish by default, any language possible, understands voice notes. Scores leads Hot, Warm or Cold, follows up, and hands over to a human.
+- Engage: a WhatsApp AI agent that replies on WhatsApp, Instagram DMs, Facebook Messenger, Telegram and website chat, from the business's own knowledge base. Replies in Tanglish by default, any language possible, understands voice notes. Scores leads Hot, Warm or Cold, follows up, and hands over to a human.
 - Commerce: payment links (Razorpay) with status, orders from enquiries, catalogue, stock and low-stock alerts, dispatch status.
 - CallIQ: call intelligence that understands Tamil calls, with call recording and telecaller performance measures.
 - Website development (service): static, dynamic and AI-powered websites built for each business; can connect to Anril so website enquiries land in the same dashboard. Price on quote. Page: https://www.anrilaitech.com/website-development
 - Anril Attract: a done-for-you social media and Meta/Google ads service whose leads flow into Anril's AI chat.
 
 ## Key facts
-- Pricing: from ₹999/month (₹799/month billed yearly), plus GST. WhatsApp message charges from Meta are separate. Overseas plans are priced in US dollars.
+- Pricing: from ₹999 a month (+GST). WhatsApp message charges from Meta are separate. Overseas plans are priced in US dollars.
 - Free, unlimited demos online or at the Coimbatore office. No free trial.
 - Upgrade, downgrade or cancel anytime. GST invoices.
-- Built for: schools and colleges, study-abroad consultants, hospitals and clinics, real estate, D2C brands, and any business whose customers ask before they buy.
+- Built for: schools and colleges, study-abroad consultancies, real estate, hospitals and clinics, car and bike dealers, manufacturers and B2B suppliers, loans and insurance, D2C brands, and any business whose customers ask before they buy.
+- Proof: a customer-facing business in Anril's own group has used it for 6 to 7 months to answer customer enquiries, 24/7.
 
 ## Contact
 - Address: 2, Sree Narayana Guru Road, Mission Road, Saibaba Koil, Coimbatore, Tamil Nadu 641011, India
@@ -27,19 +28,22 @@
 - [Products](https://www.anrilaitech.com/product): features in detail
 - [Plans](https://www.anrilaitech.com/pricing): pricing and pricing FAQ
 - [Industries](https://www.anrilaitech.com/industries): how each industry uses it
-- [WhatsApp AI chatbot](https://www.anrilaitech.com/whatsapp-chatbot): AI replies in Tanglish, lead scoring, human handover
+- [WhatsApp AI agent](https://www.anrilaitech.com/whatsapp-chatbot): AI replies in Tanglish, lead scoring, human handover
 - [Bulk WhatsApp sender](https://www.anrilaitech.com/bulk-whatsapp-sender): official-API campaigns with approved templates
 - [WhatsApp CRM](https://www.anrilaitech.com/whatsapp-crm): one lead list, Hot/Warm/Cold scoring, follow-ups
 - [Telecaller software](https://www.anrilaitech.com/telecaller-software): CallIQ call recording and Tamil call analysis
 - [WhatsApp payments and orders](https://www.anrilaitech.com/whatsapp-payments): Razorpay payment links, orders, stock
 - [Website development](https://www.anrilaitech.com/website-development): static, dynamic and AI-powered websites, free AI website audit
 - [Social media and ads](https://www.anrilaitech.com/social-media-ads): Anril Attract, done-for-you posts and ads
-- [Real estate](https://www.anrilaitech.com/industries/real-estate)
-- [Education](https://www.anrilaitech.com/industries/education)
-- [Healthcare](https://www.anrilaitech.com/industries/healthcare)
-- [Study-abroad consultants](https://www.anrilaitech.com/industries/study-abroad)
-- [D2C brands](https://www.anrilaitech.com/industries/d2c)
-- [Blog](https://www.anrilaitech.com/blog): guides on WhatsApp chatbots, bulk messaging, lead scoring and telecalling
+- [Education](https://www.anrilaitech.com/industries/education): WhatsApp AI agent for schools and colleges
+- [Study abroad](https://www.anrilaitech.com/industries/study-abroad): WhatsApp AI agent for study-abroad consultancies
+- [Real estate](https://www.anrilaitech.com/industries/real-estate): WhatsApp AI agent for builders and real estate agents
+- [Healthcare](https://www.anrilaitech.com/industries/healthcare): WhatsApp AI agent for hospitals and clinics
+- [Automotive](https://www.anrilaitech.com/industries/automotive): WhatsApp AI agent for car and bike dealers
+- [Manufacturing](https://www.anrilaitech.com/industries/manufacturing): WhatsApp AI agent for manufacturers and B2B suppliers
+- [Financial services](https://www.anrilaitech.com/industries/financial-services): WhatsApp AI agent for loans and insurance
+- [D2C brands](https://www.anrilaitech.com/industries/d2c): WhatsApp AI agent for D2C brands and online sellers
+- [Blog](https://www.anrilaitech.com/blog): guides on WhatsApp AI agents, bulk messaging, lead scoring and telecalling
 - [Contact](https://www.anrilaitech.com/contact): office, WhatsApp, hours
 - [About](https://www.anrilaitech.com/about): company and contact
 
@@ -49,7 +53,7 @@
 - [Case study: how a customer-facing business in our own group uses Anril](https://www.anrilaitech.com/blog/case-study-customer-business-ai-replies)
 - [How Meta's per-message pricing works in India](https://www.anrilaitech.com/blog/whatsapp-business-api-pricing-india)
 - [What a lead management system does](https://www.anrilaitech.com/blog/what-is-a-lead-management-system)
-- [What a WhatsApp chatbot is and who needs one](https://www.anrilaitech.com/blog/what-is-a-whatsapp-chatbot)
+- [What a WhatsApp AI agent is and who needs one](https://www.anrilaitech.com/blog/what-is-a-whatsapp-chatbot)
 - [Replying to Instagram DMs automatically](https://www.anrilaitech.com/blog/instagram-auto-dm-reply-automatically)
 - [Bulk WhatsApp messaging the safe way](https://www.anrilaitech.com/blog/send-bulk-whatsapp-messages-without-getting-blocked)
 - [A simple telecaller scorecard](https://www.anrilaitech.com/blog/how-to-track-telecaller-performance)

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 const LINKS = [
   { href: "/", label: "Home", note: "What Anril AI does" },
-  { href: "/product", label: "Products", note: "Chatbot, bulk WhatsApp, CRM, telecalling and payments" },
+  { href: "/product", label: "Products", note: "AI agent, bulk WhatsApp, CRM, telecalling and payments" },
   { href: "/pricing", label: "Pricing", note: "Plans from ₹999 a month" },
   { href: "/contact", label: "Contact", note: "Our Coimbatore office and WhatsApp" },
 ] as const;

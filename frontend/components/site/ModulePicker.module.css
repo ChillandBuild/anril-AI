@@ -29,7 +29,7 @@
 .combo { font: 300 clamp(1.6rem, 3vw, 2.2rem) var(--serif); letter-spacing: -0.02em; color: var(--navy); line-height: 1.1; margin-top: 4px; }
 .flows { font: 500 0.78rem var(--mono); color: var(--teal-d); margin-top: 4px; }
 .quote {
-  display: inline-flex; align-items: center; min-height: 48px; padding: 0 24px;
+  display: inline-flex; align-items: center; min-height: 48px; padding: 0 24px; border-radius: 99px;
   background: var(--navy); color: var(--white); font-weight: 700; text-decoration: none;
   transition: transform 0.16s var(--ease), background-color 0.2s var(--ease);
 }

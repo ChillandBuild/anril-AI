@@ -1,0 +1,11 @@
+/* Four square boxes in a row (two on tablets, one on phones), then the map. */
+.boxes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
+.boxes > li { background: var(--white); padding: clamp(20px, 2.6vw, 28px); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; min-width: 0; }
+.boxes h2 { color: var(--copper); }
+.boxes p, .boxes address { color: var(--body); font-style: normal; line-height: 1.5; }
+.big.big { font: 400 1.35rem var(--serif); line-height: 1.2; color: var(--navy); overflow-wrap: anywhere; }
+.big a { text-decoration: underline; text-underline-offset: 4px; }
+.map { width: 100%; height: 320px; border: 1px solid var(--line); display: block; }
+.note { color: var(--body); font-size: 0.92rem; max-width: 72ch; }
+@media (max-width: 1000px) { .boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .boxes { grid-template-columns: minmax(0, 1fr); } .map { height: 260px; } }

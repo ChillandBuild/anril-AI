@@ -6,7 +6,7 @@ import { DemoSection } from "@/components/site/DemoSection";
 import { FeatureRow } from "@/components/site/FeatureRow";
 import { FEATURES } from "@/components/site/features";
 import { HomeHero } from "@/components/site/HomeHero";
-import { BuiltOnEnquiries, ChannelStrip, HomeModules, IndustryList, ProductFacts } from "@/components/site/HomeBlocks";
+import { BuiltOnEnquiries, ChannelStrip, HomeModules, IndustryList, ProductFacts, TeamSees } from "@/components/site/HomeBlocks";
 import { HoursRuler } from "@/components/site/HoursRuler";
 import { Faq } from "@/components/site/Faq";
 import { HOME_FAQ } from "@/components/site/faqs";
@@ -68,6 +68,7 @@ export default function NewHomePage() {
 
         <ProductFacts />
         <BuiltOnEnquiries />
+        <TeamSees />
         <HomeModules />
         <IndustryList />
         <section className={ui.band} id="faq" aria-labelledby="faq-h">

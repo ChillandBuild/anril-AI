@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Building2, Camera, Car, Factory, Globe, GraduationCap, Landmark, MessageCircle, MessagesSquare, Phone, Send, Sparkles, Stethoscope, type LucideIcon } from "lucide-react";
 import ui from "./site.module.css";
-import { CHANNELS, INDUSTRIES, INDUSTRY_PAGE_PATHS } from "./content";
-import { CountUp } from "./CountUp";
+import { CHANNELS, DEMO_HREF, DEMO_LABEL, INDUSTRIES, INDUSTRY_PAGE_PATHS } from "./content";
+import { HOME_LEAD_ROWS, LeadsPreview } from "./LeadsPreview";
 import { MarqueePause } from "./MarqueePause";
-import { Kicker } from "./primitives";
+import { Eg, Kicker } from "./primitives";
 import s from "./HomeBlocks.module.css";
 
 // Plain stand-ins for each channel (not the brands' own logos).
@@ -56,25 +56,20 @@ export function ChannelStrip() {
   );
 }
 
-// Facts about the product, not customer results.
+// Facts about the product, not customer results. Words, not counts: "4 modules" and "3 lead marks"
+// read like internal numbers (18 Nov 2026 brief).
 const FACTS = [
-  { mark: 4, suffix: "", label: "4", text: "modules in one platform: Reach, Engage, CallIQ and Commerce." },
-  { mark: 24, suffix: "/7", label: "24/7", text: "AI replies to enquiries, including nights, weekends and holidays." },
-  { mark: 3, suffix: "", label: "3", text: "lead marks, hot, warm and cold, updated with every new message." },
+  { big: "Hot · Warm · Cold", text: "Every lead marked Hot, Warm or Cold" },
+  { big: "24/7", text: "AI replies to enquiries, including nights, weekends and holidays." },
+  { big: "One inbox", text: "WhatsApp, Instagram, Facebook and Telegram in one inbox" },
 ] as const;
 
 export function ProductFacts() {
   return (
     <section className={s.figs} aria-label="Anril AI at a glance">
-      {FACTS.map(({ mark, suffix, label, text }, i) => (
+      {FACTS.map(({ big, text }, i) => (
         <p key={text} data-reveal style={{ "--rd": `${i * 90}ms` } as React.CSSProperties}>
-          <span className={s.big}>
-            <span aria-hidden="true">
-              <CountUp to={mark} suffix={suffix} />
-            </span>
-            <span className={ui.sr}>{label}</span>
-          </span>{" "}
-          {text}
+          <span className={`${s.big} ${big.length > 5 ? s.bigWords : ""}`}>{big}</span> {text}
         </p>
       ))}
     </section>
@@ -97,19 +92,19 @@ export function IndustryList() {
       <Kicker>Industries</Kicker>
       <h2 className={ui.secH} id="ind-h">Built for businesses that run on enquiries</h2>
       <p className={ui.lede}>Built for businesses in India and overseas that run on enquiries.</p>
+      <Eg>Hover or tap a tile for an example conversation.</Eg>
       <ul className={s.tiles}>
         {INDUSTRIES.map((i, idx) => {
           const Icon = INDUSTRY_ICON[i.id] ?? Sparkles;
           return (
             <li key={i.id} data-reveal style={{ "--rd": `${idx * 60}ms` } as React.CSSProperties}>
-              <Link prefetch={false} href={INDUSTRY_PAGE_PATHS[i.id] ?? `/industries#${i.id}`} className={s.tile}>
+              <Link prefetch={false} href={INDUSTRY_PAGE_PATHS[i.id]} className={s.tile}>
                 <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
                 <span className={s.tname}>{i.name}</span>
                 <span className={s.peek} aria-hidden="true">
                   <span>
                     <span className={s.q}>{i.example}</span>
                     <span className={s.r}>{i.reply}</span>
-                    <small>Example conversation</small>
                   </span>
                 </span>
               </Link>
@@ -147,7 +142,7 @@ export function HomeModules() {
   return (
     <section className={ui.band} id="modules" aria-labelledby="mod-h">
       <Kicker>Modules</Kicker>
-      <h2 className={ui.secH} id="mod-h">WhatsApp campaigns, AI chatbot, payments and call tracking in one platform</h2>
+      <h2 className={ui.secH} id="mod-h">WhatsApp campaigns, AI agent, payments and call tracking in one platform</h2>
       <p className={ui.lede}>
         Use one module or all of them. Every enquiry, payment and call lands in the same place.
       </p>
@@ -164,18 +159,52 @@ export function HomeModules() {
   );
 }
 
-/** Replaces the customer reviews: a plain, checkable fact about our own use. */
+const PROOF = [
+  { big: "1,800+", text: "enquiries answered every month" },
+  { big: "6–7 months", text: "running every day, not a pilot" },
+  { big: "24/7", text: "replies, including nights and Sundays" },
+] as const;
+
+/** Replaces the customer reviews: plain facts about our own use, with the case study behind them. */
 export function BuiltOnEnquiries() {
   return (
     <section className={ui.band} id="proof" aria-labelledby="proof-h">
-      <Kicker>In use</Kicker>
+      <Kicker>Proof</Kicker>
       <h2 className={ui.secH} id="proof-h">Built and tested on real enquiries</h2>
       <p className={ui.lede}>
         A customer-facing business in our own group has used Anril for 6 to 7 months to answer customer enquiries.
       </p>
+      <ul className={s.proof}>
+        {PROOF.map((p, i) => (
+          <li key={p.big} data-reveal style={{ "--rd": `${i * 80}ms` } as React.CSSProperties}>
+            <b>{p.big}</b>
+            <span>{p.text}</span>
+          </li>
+        ))}
+      </ul>
       <Link prefetch={false} className={ui.tlink} href="/blog/case-study-customer-business-ai-replies">
         Read the case study
       </Link>
+    </section>
+  );
+}
+
+/** The lead list a team works from, right after the proof. Demo rows, never a client's data. */
+export function TeamSees() {
+  return (
+    <section className={`${ui.band} ${s.sees}`} id="dashboard" aria-labelledby="sees-h">
+      <div className={s.seesText}>
+        <Kicker>Dashboard</Kicker>
+        <h2 className={ui.secH} id="sees-h">What your team sees every day</h2>
+        <p className={ui.lede}>
+          Every enquiry from WhatsApp, Instagram and Facebook lands in one list. Hot leads sit at the top so your team
+          calls them first.
+        </p>
+        <a className={ui.btn} href={DEMO_HREF}>
+          {DEMO_LABEL}
+        </a>
+      </div>
+      <LeadsPreview rows={HOME_LEAD_ROWS} alt="Anril dashboard lead list with enquiries from WhatsApp, Instagram, Facebook and Telegram, hot leads at the top" />
     </section>
   );
 }

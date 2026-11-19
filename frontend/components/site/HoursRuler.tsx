@@ -107,7 +107,7 @@ export function HoursRuler() {
       <div className={s.legend}>
         <span><i />Enquiry during office hours</span>
         <span><i className={s.lateKey} />Enquiry after hours</span>
-        <Eg>Example day, not real data</Eg>
+        <Eg>Example day</Eg>
       </div>
     </div>
   );

@@ -67,6 +67,26 @@ export const SOFTWARE = {
 
 export type FaqEntry = { q: string; a: string };
 
+/** The Service block on an industry page, built from the page's own title line and Google description. */
+export function serviceSchema(page: { h1: string; description: string; path: string }) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: page.h1,
+    serviceType: "WhatsApp AI agent",
+    description: page.description,
+    provider: { "@type": "Organization", name: "Anril AI", url: `${SITE_URL}/` },
+    areaServed: ["IN", "Tamil Nadu"],
+    url: `${SITE_URL}${page.path}`,
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "INR",
+      price: STARTING_PRICE.replace(/[^\d]/g, ""),
+      description: `Plans from ${STARTING_PRICE} a month plus GST`,
+    },
+  };
+}
+
 export function faqSchema(items: readonly FaqEntry[]) {
   return {
     "@context": "https://schema.org",
