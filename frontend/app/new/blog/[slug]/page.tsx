@@ -17,7 +17,20 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     title: { absolute: `${post.seoTitle ?? post.title} | Anril AI` },
     description: post.description,
     alternates: { canonical: postPath(post.slug) },
-    openGraph: { type: "article", publishedTime: post.published, modifiedTime: post.updated, authors: [post.author] },
+    // Setting openGraph here replaces the site-wide one, so the share image is repeated (without it,
+    // Facebook and WhatsApp previews of an article show no picture).
+    openGraph: {
+      type: "article",
+      siteName: "Anril AI",
+      locale: "en_IN",
+      url: `https://www.anrilaitech.com${postPath(post.slug)}`,
+      title: post.seoTitle ?? post.title,
+      description: post.description,
+      publishedTime: post.published,
+      modifiedTime: post.updated,
+      authors: [post.author],
+      images: [{ url: "/og-image-v2.png", width: 1200, height: 630, alt: post.title }],
+    },
   };
 }
 
