@@ -16,6 +16,19 @@ const nextConfig = {
   // The marketing site lives in app/new but is served at clean addresses: "/", "/product", "/pricing",
   // "/industries" and "/about" rewrite to it in place (the address bar stays clean). Any old /new address
   // redirects to the clean one; the #hash is kept by the browser. app/page.tsx is no longer reached.
+  // The Operator Console (the Claude Access consent screen above all) must never be shown inside
+  // another site's frame: a hidden frame could trick an admin into clicking Allow.
+  async headers() {
+    return [
+      {
+        source: "/operator/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: "/new", destination: "/", permanent: true },

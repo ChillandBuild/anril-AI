@@ -28,6 +28,7 @@ from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
+from app.routes import operator_mcp, operator_leads, operator_broadcasts
 from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
 from app.routes import customer_profile
@@ -208,6 +209,21 @@ async def _watch_event_loop_lag() -> None:
             logger.warning(f"Event loop blocked for {lag:.1f}s")
 
 
+# Claude Access (read-only admin MCP). Set at the bottom of this file when MCP_ENABLED is on.
+_mcp_server = None
+
+
+@asynccontextmanager
+async def _mcp_running():
+    """The MCP's session manager has to run inside the host app's lifespan (a mounted app's own
+    lifespan never runs)."""
+    if _mcp_server is None:
+        yield
+        return
+    async with _mcp_server.session_manager.run():
+        yield
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Anril AI backend starting up...")
@@ -226,7 +242,8 @@ async def lifespan(app: FastAPI):
 
     lag_watchdog = asyncio.create_task(_watch_event_loop_lag())
 
-    yield
+    async with _mcp_running():
+        yield
 
     lag_watchdog.cancel()
     if _queue_worker:
@@ -453,6 +470,9 @@ app.include_router(chat_actions.router, prefix="/api/v1/chats", tags=["chats"], 
 app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])
+app.include_router(operator_mcp.router, prefix="/api/v1/operator", tags=["operator"])
+app.include_router(operator_leads.router, prefix="/api/v1/operator", tags=["operator"])
+app.include_router(operator_broadcasts.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"], dependencies=_auth)
 app.include_router(sms_contacts.router, prefix="/api/v1/sms", tags=["sms-contacts"], dependencies=_auth)
 app.include_router(sms_webhooks.router, tags=["sms-webhook"])
@@ -476,4 +496,18 @@ app.include_router(companion_kb.router, prefix="/api/v1/companion-kb", tags=["co
 # Public companion chat API: secret key or signed user id, checked in each handler (no login).
 app.include_router(companion_public.public_router, prefix="/api/v1/companion", tags=["companion-public"])
 
+# Claude Access: the read-only admin MCP at /mcp (docs/specs/anril-admin-mcp.md). A gateway in
+# front of the API takes only /mcp and the MCP's sign-in document
+# (/.well-known/oauth-protected-resource/mcp); every other path reaches the routes above as before.
+# Never app.mount("/") here: a root mount turns the API's slash redirects and 405s into 404s.
+# MCP_ENABLED off (the default) = no gateway = /mcp answers 404.
+if settings.mcp_enabled and not settings.mcp_oauth_client_id:
+    logger.error("MCP_ENABLED is on but MCP_OAUTH_CLIENT_ID is empty: Claude Access NOT started")
+elif settings.mcp_enabled:
+    from app.admin_mcp.server import (
+        McpGateway as _McpGateway, build_app as _build_mcp_app, build_server as _build_mcp_server,
+    )
 
+    _mcp_server = _build_mcp_server()
+    app.add_middleware(_McpGateway, mcp_app=_build_mcp_app(_mcp_server))
+    logger.info("Claude Access (admin MCP) serving at /mcp")

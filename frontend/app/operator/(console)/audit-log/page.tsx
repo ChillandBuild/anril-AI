@@ -48,7 +48,7 @@ function formatMeta(meta: Record<string, unknown> | null): string {
     .join(" · ");
 }
 
-export default function AuditLogPage() {
+export default function AuditLogPage({ searchParams }: { searchParams?: { claude?: string } }) {
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -56,6 +56,7 @@ export default function AuditLogPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [includeMcp, setIncludeMcp] = useState(searchParams?.claude === "1");
   const limit = 30;
 
   // Debounce the search input ~300ms before it drives a request.
@@ -73,6 +74,7 @@ export default function AuditLogPage() {
       const auth = await getAuthHeaders();
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) params.set("action", search);
+      if (includeMcp) params.set("include_mcp", "true");
       const res = await fetch(`${API_URL}/api/v1/operator/audit-logs?${params}`, {
         headers: { ...auth },
         cache: "no-store",
@@ -87,20 +89,42 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, includeMcp]);
 
   useEffect(() => { load(); }, [load]);
 
   const totalPages = Math.ceil(total / limit) || 1;
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
         <div>
           <h1 className="text-2xl font-bold text-ink">Audit Log</h1>
           <p className="text-sm text-ink-muted mt-1">Track all operator actions across clients.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              id="show-claude-reads"
+              type="button"
+              role="switch"
+              aria-checked={includeMcp}
+              onClick={() => { setIncludeMcp((v) => !v); setPage(1); }}
+              className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 ${
+                includeMcp ? "bg-primary" : "bg-slate-300"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  includeMcp ? "translate-x-4" : ""
+                }`}
+              />
+            </button>
+            <label htmlFor="show-claude-reads" className="text-sm text-ink-secondary cursor-pointer select-none">
+              Show Claude reads
+            </label>
+          </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
             <input
@@ -125,7 +149,7 @@ export default function AuditLogPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-card border border-border overflow-hidden shadow-sm">
+      <div className="bg-white rounded-card border border-border overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-mid text-left">
@@ -176,7 +200,7 @@ export default function AuditLogPage() {
                     )}
                   </td>
                   <td className="px-5 py-3 text-ink-muted text-xs font-mono">
-                    {log.target_type}{log.target_id ? `:${log.target_id.slice(0, 8)}` : ""}
+                    {log.target_type}{log.target_id ? `:${log.action === "mcp.tool_call" ? log.target_id : log.target_id.slice(0, 8)}` : ""}
                   </td>
                   <td className="px-5 py-3 text-ink-muted text-xs max-w-[300px] truncate" title={formatMeta(log.metadata)}>
                     {formatMeta(log.metadata) || "—"}
@@ -185,7 +209,7 @@ export default function AuditLogPage() {
                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
                       log.actor_role === "system_admin" ? "bg-primary-50 text-primary-700" : "bg-surface-mid text-ink-muted"
                     }`}>
-                      {log.actor_role || "system"}
+                      {log.actor_role || "system"}{log.action === "mcp.tool_call" ? " · Claude" : ""}
                     </span>
                   </td>
                 </tr>
@@ -194,6 +218,12 @@ export default function AuditLogPage() {
           </tbody>
         </table>
       </div>
+
+      {!includeMcp && (
+        <p className="text-xs text-ink-muted mt-3">
+          Claude reads are hidden by default so they do not bury real operator actions.
+        </p>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

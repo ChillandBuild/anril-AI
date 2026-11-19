@@ -116,12 +116,29 @@ def _verify_remote(token: str) -> dict:
     raise _UPSTREAM
 
 
+def _is_oauth_client_token(token: str) -> bool:
+    """True for a token Supabase's OAuth server issued to a client app (it carries `client_id`).
+    Read without checking the signature: this is only ever used to REFUSE a token."""
+    try:
+        return bool(jwt.decode(token, options={"verify_signature": False}).get("client_id"))
+    except jwt.PyJWTError:
+        return False
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> dict:
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     token = credentials.credentials
+    if _is_oauth_client_token(token):
+        # The token Claude holds is good for the read-only MCP and nothing else. Without this it
+        # would also be a full login for this API, writes included. Checked even when MCP_ENABLED
+        # is off: turning the MCP off must not turn Claude's token into a normal login.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This token is only valid for Claude Access",
+        )
     if settings.supabase_jwt_secret:
         user = _verify_local(token)
         if user is not None:

@@ -104,9 +104,85 @@ def _wrap_postgrest_session(client: Client) -> None:
     old.close()
 
 
+# Claude Access (the read-only admin MCP) sets this while one of its tools runs. Until it is
+# reset, get_supabase() hands out a client that refuses every table write and every RPC not
+# listed below, so a tool cannot change data even by calling code that would.
+read_only: contextvars.ContextVar[bool] = contextvars.ContextVar("read_only", default=False)
+_WRITE_METHODS = frozenset({"insert", "upsert", "update", "delete"})
+# RPCs that only read. Anything else is refused in read-only mode.
+READ_ONLY_RPCS = frozenset({"distinct_token_usage_pairs"})
+
+
+class ReadOnlyViolation(RuntimeError):
+    """A write was attempted while the read-only guard was on."""
+
+
+class _ReadOnlyTable:
+    def __init__(self, inner, name: str) -> None:
+        self._inner = inner
+        self._name = name
+
+    def __getattr__(self, attr: str):
+        if attr in _WRITE_METHODS:
+            raise ReadOnlyViolation(f"read-only mode: {attr} on {self._name} refused")
+        return getattr(self._inner, attr)
+
+
+class _ReadOnlyAuthAdmin:
+    """Of the user-admin API, only the lookups. Creating, changing or deleting a user is refused."""
+    _READS = frozenset({"get_user_by_id", "list_users"})
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def __getattr__(self, attr: str):
+        if attr not in self._READS:
+            raise ReadOnlyViolation(f"read-only mode: auth.admin.{attr} refused")
+        return getattr(self._inner, attr)
+
+
+class _ReadOnlyAuth:
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    @property
+    def admin(self):
+        return _ReadOnlyAuthAdmin(self._inner.admin)
+
+    def __getattr__(self, attr: str):
+        raise ReadOnlyViolation(f"read-only mode: auth.{attr} refused")
+
+
+class _ReadOnlyClient:
+    """Deny by default. Only table reads, the listed RPCs and user lookups get through; every
+    other door on the real client (postgrest, schema, storage, functions, ...) is refused."""
+
+    def __init__(self, inner: Client) -> None:
+        self._inner = inner
+
+    def table(self, name: str):
+        return _ReadOnlyTable(self._inner.table(name), name)
+
+    from_ = table
+
+    def rpc(self, fn: str, *args, **kwargs):
+        if fn not in READ_ONLY_RPCS:
+            raise ReadOnlyViolation(f"read-only mode: rpc {fn} refused")
+        return self._inner.rpc(fn, *args, **kwargs)
+
+    @property
+    def auth(self):
+        return _ReadOnlyAuth(self._inner.auth)
+
+    def __getattr__(self, attr: str):
+        raise ReadOnlyViolation(f"read-only mode: client.{attr} refused")
+
+
 def get_supabase() -> Client:
     global _client
     if _client is None:
         _client = create_client(settings.supabase_url, settings.supabase_service_key)
         _wrap_postgrest_session(_client)
+    if read_only.get():
+        return _ReadOnlyClient(_client)  # type: ignore[return-value]
     return _client
