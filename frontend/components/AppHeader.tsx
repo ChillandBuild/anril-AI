@@ -110,7 +110,7 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
   // "Form answers" is hidden unless form intake is on (see AppHeader).
   "/dashboard/deals": {
     tabs: [
-      { value: "deals", label: "All deals" },
+      { value: "deals", label: "Orders & payments" },
       { value: "insights", label: "Insights" },
       { value: "forms", label: "Form answers" },
     ],
@@ -387,10 +387,16 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   if (pathname === "/dashboard/sms" || pathname.startsWith("/dashboard/sms/")) {
     return SMS_TITLES[pathname.split("/")[3] ?? ""] ?? SMS_TITLES[""];
   }
+  if (pathname === "/dashboard/deals/new-bill") {
+    return { title: "Deals / New bill", description: "One button for every sale. Stock goes down by itself; the bill goes on WhatsApp." };
+  }
+  if (pathname.startsWith("/dashboard/deals/orders/")) {
+    return { title: "Deals / Order", description: "Steps, payments and every update sent to the customer." };
+  }
   if (pathname === "/dashboard/deals") {
     return {
       title: "Deals",
-      description: "Every sale in one place — WhatsApp, forms, calls and walk-ins, from quote to paid.",
+      description: "Every order and payment, online and in the shop, from quote to paid.",
     };
   }
   if (pathname === "/dashboard/notes") {
@@ -610,18 +616,28 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
               className=""
             />
             {canManageDeals && tab !== "insights" && tab !== "forms" && (
-              <button
-                type="button"
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("new", "1");
-                  router.replace(`/dashboard/deals?${params.toString()}`, { scroll: false });
-                }}
-                className="rounded-xl bg-primary px-3.5 py-2 font-label text-xs font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
-              >
-                <Plus size={14} className="mr-1.5 inline" />
-                New deal
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("new", "1");
+                    router.replace(`/dashboard/deals?${params.toString()}`, { scroll: false });
+                  }}
+                  title="An online order or quote for someone in your chats"
+                  className="rounded-xl border border-border-subtle bg-white px-3.5 py-2 font-label text-xs font-bold text-ink shadow-sm hover:border-slate-300"
+                >
+                  New deal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard/deals/new-bill")}
+                  className="rounded-xl bg-primary px-3.5 py-2 font-label text-xs font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
+                >
+                  <Plus size={14} className="mr-1.5 inline" />
+                  New bill
+                </button>
+              </>
             )}
           </div>
         )}

@@ -3078,6 +3078,10 @@ export const api = {
     },
   },
   catalog: {
+    variants: (itemId: string) =>
+      apiFetch<CatalogVariantsGrid>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/variants`),
+    saveVariants: (itemId: string, body: { sizes: string[]; colours: string[]; cells: { size: string | null; colour: string | null; stock: number; price_paise?: number | null }[] }) =>
+      apiFetch<CatalogVariantsGrid>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/variants`, { method: "PUT", body: JSON.stringify(body) }),
     adjustStock: (
       itemId: string,
       data: { delta: number; reason: "restock" | "adjustment" | "return"; note?: string }
@@ -3855,6 +3859,47 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ caller_id: callerId }),
       }),
+  },
+  orders: {
+    list: (params: { chip?: OrderChip; channel?: "all" | "online" | "store"; days?: number; q?: string } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.chip) qs.set("chip", params.chip);
+      if (params.channel) qs.set("channel", params.channel);
+      if (params.days != null) qs.set("days", String(params.days));
+      if (params.q) qs.set("q", params.q);
+      return apiFetch<OrdersPage>(`/api/v1/orders?${qs}`);
+    },
+    get: (id: string) => apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}`),
+    billOptions: () => apiFetch<NewBillOptions>("/api/v1/orders/new-bill/options"),
+    findCustomer: (phone: string) =>
+      apiFetch<{ found: boolean; lead_id?: string; name?: string | null; orders?: number }>(
+        `/api/v1/orders/customer?phone=${encodeURIComponent(phone)}`,
+      ),
+    createBill: (body: NewBillInput) =>
+      apiFetch<NewBillResult>("/api/v1/orders/bills", { method: "POST", body: JSON.stringify(body) }),
+    waitlist: (body: { catalog_item_id: string; variant_id?: string | null; phone: string; name?: string }) =>
+      apiFetch<unknown>("/api/v1/orders/waitlist", { method: "POST", body: JSON.stringify(body) }),
+    addPayment: (id: string, body: { amount_paise: number; method: "cash" | "upi" | "card" | "bank_transfer" | "other"; note?: string }) =>
+      apiFetch<{ order: OrderDetail; paid_in_full: boolean; stock_warnings: { name: string; available: number | null }[] }>(
+        `/api/v1/orders/${encodeURIComponent(id)}/payments`, { method: "POST", body: JSON.stringify(body) },
+      ),
+    payLink: (id: string) =>
+      apiFetch<OrderSendResult & { payment_link: string }>(`/api/v1/orders/${encodeURIComponent(id)}/pay-link`, { method: "POST" }),
+    remind: (id: string) =>
+      apiFetch<OrderSendResult & { payment_link: string }>(`/api/v1/orders/${encodeURIComponent(id)}/remind`, { method: "POST" }),
+    delivery: (id: string, body: { action: "working" | "ready" | "shipped" | "delivered"; handover?: "pickup" | "courier"; courier?: string; tracking_id?: string; tell_customer?: boolean }) =>
+      apiFetch<{ message: OrderMessageResult | null; order: OrderDetail }>(
+        `/api/v1/orders/${encodeURIComponent(id)}/delivery`, { method: "POST", body: JSON.stringify(body) },
+      ),
+    setHandover: (id: string, handover: "pickup" | "courier") =>
+      apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}/handover`, { method: "PATCH", body: JSON.stringify({ handover }) }),
+    send: (id: string, kind: "bill" | "ready" | "shipped" | "delivered") =>
+      apiFetch<OrderSendResult>(`/api/v1/orders/${encodeURIComponent(id)}/send`, { method: "POST", body: JSON.stringify({ kind }) }),
+    shared: (id: string, kind: OrderMessageKind, text: string) =>
+      apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}/shared`, { method: "POST", body: JSON.stringify({ kind, text }) }),
+    whatsappSetup: () => apiFetch<OrderTemplatesSetup>("/api/v1/orders/whatsapp-setup"),
+    submitTemplates: () =>
+      apiFetch<OrderTemplatesSetup & { problems: string[] }>("/api/v1/orders/whatsapp-setup", { method: "POST" }),
   },
   deals: {
     list: (
@@ -5035,4 +5080,175 @@ async function apiFetchNoContent(path: string, opts: RequestInit): Promise<void>
     error.status = res.status;
     throw error;
   }
+}
+
+
+// ── Commerce > Orders & payments ───────────────────────────────────────────────
+export type OrderChip = "all" | "waiting" | "advance" | "paid" | "pack" | "quote" | "cancelled";
+export type OrderPaymentState = "paid" | "advance" | "waiting" | "quote" | "cancelled";
+export type OrderDeliveryState = "taken" | "none" | "working" | "ready" | "shipped" | "delivered";
+export type OrderMessageKind = "bill" | "confirmed" | "ready" | "shipped" | "delivered" | "reminder" | "pay_link";
+
+export interface OrderRow {
+  id: string;
+  label: string;
+  created_at: string;
+  channel: "online" | "store";
+  customer: { lead_id: string | null; name: string | null; phone: string | null; came_from: string };
+  items: string;
+  total_paise: number;
+  paid_paise: number;
+  balance_paise: number;
+  payment: OrderPaymentState;
+  payment_note: string;
+  handover: "taken" | "pickup" | "courier" | null;
+  delivery: OrderDeliveryState;
+  courier: string | null;
+  tracking_id: string | null;
+  needs_packing: boolean;
+  next_action: "remind" | "collect" | "tracking" | "ready" | "open";
+  invoice_number: string | null;
+}
+
+export interface OrdersPage {
+  data: OrderRow[];
+  counts: Record<OrderChip, number>;
+  cards: {
+    money_in: { paise: number; orders: number };
+    to_collect: { paise: number; orders: number; reminders_on: number };
+    to_pack: { orders: number; over_2_days: number };
+    gst: { paise: number; bills: number };
+  };
+}
+
+export interface OrderDetail extends OrderRow {
+  stage: "quoted" | "awaiting_payment" | "won" | "lost";
+  source: string;
+  items_full: { id: string; name: string; variant_label: string | null; qty: number; unit_price_paise: number; gst_rate: number | null; line_total_paise: number }[];
+  discount_paise: number;
+  gst_paise: number;
+  bill_type: "gst" | "simple";
+  buyer_gstin: string | null;
+  buyer_business: string | null;
+  prices_include_gst: boolean;
+  notes: string | null;
+  ready_by: string | null;
+  ready_at: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  won_at: string | null;
+  lost_reason: string | null;
+  payment_link: string | null;
+  invoice_issued_at: string | null;
+  bill_url: string | null;
+  sold_by: { name: string | null; ai: boolean };
+  payments: { id: string; amount_paise: number; method: string; method_label: string; kind: string; paid_at: string; received_by_name: string | null; note: string | null }[];
+  messages: { id: string; kind: OrderMessageKind; sent_via: "text" | "template" | "share"; body: string | null; created_at: string; ticks: string }[];
+  upcoming: { kind: string; at: string; note: string }[];
+  customer_full: { lead_id: string | null; name: string | null; phone: string | null; segment: string | null; came_from: string; order_count: number };
+  reminders: { sent: number; from: string | null; last_at: string | null };
+}
+
+export interface OrderMessageResult {
+  sent: boolean;
+  via: "text" | "template" | null;
+  share_url: string | null;
+  text: string;
+  reason: "no_phone" | "opted_out" | "whatsapp_not_connected" | "outside_24h_no_template" | "send_failed" | null;
+}
+
+export type OrderSendResult = OrderMessageResult & { order: OrderDetail };
+
+export interface NewBillVariant {
+  id: string;
+  size: string | null;
+  colour: string | null;
+  stock: number;
+  price_paise: number | null;
+  label: string;
+}
+
+export interface NewBillItem {
+  id: string;
+  name: string;
+  kind: string;
+  group: string | null;
+  price_paise: number | null;
+  gst_rate: number | null;
+  stock: number | null;
+  variants: NewBillVariant[];
+}
+
+export interface NewBillOptions {
+  items: NewBillItem[];
+  team: { id: string; name: string }[];
+  prices_include_gst: boolean;
+  gstin_set: boolean;
+}
+
+export interface NewBillInput {
+  mode: "now" | "later";
+  phone?: string;
+  name?: string;
+  items: { catalog_item_id: string; variant_id?: string | null; qty: number }[];
+  discount_paise: number;
+  bill_type: "gst" | "simple";
+  gstin?: string;
+  business?: string;
+  sold_by?: string | null;
+  sold_by_ai?: boolean;
+  method: "cash" | "upi" | "card" | "link";
+  advance_paise?: number;
+  handover?: "pickup" | "courier";
+  ready_by?: string;
+  notes?: string;
+}
+
+export interface NewBillResult {
+  order: OrderDetail;
+  message: OrderMessageResult | null;
+  payment_link: string | null;
+  stock_short: { name: string; available: number }[];
+  stock_warnings: { name: string; available: number | null }[];
+}
+
+export interface OrderTemplatesSetup {
+  connected: boolean;
+  templates: { key: "bill" | "update" | "reminder"; name: string; body: string; status: string }[];
+}
+
+export interface CatalogVariantsGrid {
+  sizes: string[];
+  colours: string[];
+  variants: { id: string; size: string | null; colour: string | null; stock_quantity: number; price_paise: number | null; sort_order: number }[];
+}
+
+export interface PublicBill {
+  business: { legal_name: string; address: string; city: string; state: string; pincode: string; gstin: string; phone: string; email: string };
+  bill_type: "gst" | "simple";
+  invoice_number: string | null;
+  invoice_date: string;
+  order_label: string;
+  customer: { name: string | null; phone: string | null; business: string | null; gstin: string | null };
+  lines: { name: string; variant: string | null; qty: number; unit_price_paise: number; gst_rate: number | null; amount_paise: number }[];
+  subtotal_paise: number;
+  discount_paise: number;
+  gst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  prices_include_gst: boolean;
+  total_paise: number;
+  paid_paise: number;
+  balance_paise: number;
+  cancelled: boolean;
+  pay_link: string | null;
+}
+
+/** The customer's bill page: public, by its secret link, no sign-in. */
+export async function fetchPublicBill(token: string): Promise<PublicBill | null> {
+  const res = await fetch(`${API_URL}/api/v1/public/bills/${encodeURIComponent(token)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Couldn't load the bill");
+  return res.json();
 }

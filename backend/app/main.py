@@ -23,7 +23,7 @@ from app.routes import call_review
 from app.routes.marketplace_intake import public_router as marketplace_public_router
 from app.routes import marketplace_intake
 from app.routes import instant_forms
-from app.routes import deals, business_details
+from app.routes import deals, business_details, orders
 from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
 from app.routes import brain_sandbox
@@ -399,6 +399,8 @@ app.include_router(intake.router, prefix="/api/v1/intake", tags=["intake"], depe
 # as the ingest token and 401s every "Generate URL" click.
 app.include_router(marketplace_intake.router, prefix="/api/v1/marketplace", tags=["marketplace"], dependencies=_auth)
 app.include_router(deals.router, prefix="/api/v1/deals", tags=["deals"], dependencies=_auth)
+app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"], dependencies=_auth)
+app.include_router(orders.public_router, prefix="/api/v1/public/bills", tags=["bills-public"])
 app.include_router(business_details.router, prefix="/api/v1/business-details", tags=["business-details"], dependencies=_auth)
 app.include_router(marketplace_public_router, prefix="/api/v1/marketplace", tags=["marketplace-webhook"])
 app.include_router(auto_messages.public_router, prefix="/api/v1/auto-messages", tags=["auto-messages-webhook"])

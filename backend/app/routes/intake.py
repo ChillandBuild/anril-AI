@@ -650,7 +650,7 @@ async def _handle_deal_payment_event(payload: dict, event: str, deal_id: str, te
     makes a retried delivery a no-op); expired -> the link is cleared and the deal stays open;
     cancelled -> lost; a failed
     attempt is ignored because the customer can still retry the same link."""
-    from app.services.deals import expire_deal_link, mark_lost, mark_won
+    from app.services.deals import expire_deal_link, mark_lost, mark_won, record_payment
 
     if event in ("payment_link.expired", "payment_link.cancelled"):
         event_plink = payload.get("payload", {}).get("payment_link", {}).get("entity", {}).get("id")
@@ -669,20 +669,39 @@ async def _handle_deal_payment_event(payload: dict, event: str, deal_id: str, te
     if event != "payment_link.paid":
         return {"status": "ignored", "event": event}
 
-    razorpay_payment_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("id", "")
-    result = mark_won(tenant_id, deal_id, payment_method="razorpay", razorpay_payment_id=razorpay_payment_id)
+    payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    razorpay_payment_id = payment.get("id", "")
+    paid_paise = int(payment.get("amount") or 0)
+    if paid_paise > 0:
+        # What was actually paid: an advance link adds an advance, a balance link finishes the
+        # order. record_payment ignores a retried delivery of the same payment id.
+        outcome = record_payment(tenant_id, deal_id, paid_paise, "razorpay", razorpay_payment_id=razorpay_payment_id)
+        status = outcome["status"]
+        result = outcome if status == "recorded" else None
+    else:
+        status = "recorded"
+        result = mark_won(tenant_id, deal_id, payment_method="razorpay", razorpay_payment_id=razorpay_payment_id)
+        if not result:
+            status = "over"
+    if status == "duplicate":
+        return {"status": "ignored", "detail": "already recorded"}
     if not result:
-        # Already won: a retry of the same payment is a no-op, but a DIFFERENT payment id is a
-        # second payment (or a link paid after staff took cash) -- flag it and tell staff.
+        # Already paid (or cancelled): a DIFFERENT payment id is a second payment (or a link
+        # paid after staff took cash) -- flag it and tell staff.
         report_extra_deal_payment(tenant_id, deal_id, razorpay_payment_id, db=get_supabase())
         return {"status": "ignored", "detail": "already won"}
+    lead_id = result["deal"].get("lead_id")
     lead = (
-        get_supabase().table("leads").select("phone").eq("id", result["deal"]["lead_id"])
+        get_supabase().table("leads").select("phone").eq("id", lead_id)
         .eq("tenant_id", tenant_id).maybe_single().execute()
-    )
+    ) if lead_id else None
     phone = (lead.data or {}).get("phone") if lead else None
     if phone:
         receipt = "Payment received, thank you! We'll be in touch shortly to arrange the next steps."
+        if not result.get("won", True):
+            from app.services.deals import balance_paise, _rupees
+            receipt = (f"Payment of {_rupees(paid_paise)} received, thank you! "
+                       f"Balance {_rupees(balance_paise(result['deal']))}.")
         intake_session_id = result["deal"].get("intake_session_id")
         if intake_session_id:
             receipt = _with_gst_line(receipt, _fetch_session_gst(intake_session_id, tenant_id))

@@ -319,6 +319,7 @@ EXEMPT = {
     "services/whatsapp_notify.py": "alerts to the business's own staff, not customers",
     "services/growth.py": "alerts to the business's own staff, not customers",
     "services/deals.py": "payment link / payment messages (owner: keep going)",
+    "services/orders.py": "manual: bill / ready / pay link from Orders; reminders are payment messages (owner: keep going)",
     "services/deal_actions.py": "only runs inside generate_reply, after its switch check",
     "services/deal_turn.py": "only runs inside generate_reply, after its switch check",
     "services/partner_events.py": "only called by intake.partner_send_template, after its switch check",

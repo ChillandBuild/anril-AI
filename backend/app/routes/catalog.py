@@ -135,6 +135,8 @@ async def update_item(
         raise HTTPException(status_code=400, detail="stock_quantity must not be negative")
     _validate_gst_rate(updates.get("gst_rate"))
     stock_delta = None
+    if "stock_quantity" in updates and _has_variants(db, tenant_id, str(item_id)):
+        updates.pop("stock_quantity")  # the sizes and colours grid owns the number
     if "stock_quantity" in updates:
         current = (
             db.table("catalog_items").select("stock_quantity").eq("id", str(item_id)).eq("tenant_id", tenant_id)
@@ -514,6 +516,8 @@ async def change_stock(
     )
     if not item or not item.data:
         raise HTTPException(status_code=404, detail="Catalog item not found")
+    if _has_variants(db, tenant_id, str(item_id)):
+        raise HTTPException(status_code=400, detail="This item has sizes and colours: change the stock in its grid")
     if item.data.get("stock_quantity") is None:
         if delta < 0:
             raise HTTPException(status_code=400, detail="This item doesn't track stock yet — restock it first")
@@ -538,3 +542,131 @@ async def stock_movements(item_id: UUID, tenant_id: str = Depends(get_tenant_id)
         .execute()
     ).data or []
     return {"data": rows}
+
+
+# ── Sizes x colours (migration 294) ──────────────────────────────────────────────
+# Each size/colour has its own stock; the item's stock_quantity is their sum, so the AI
+# and every older screen keep reading one number. Changes go through
+# apply_variant_stock_movement, so the stock history explains every number.
+
+_MAX_OPTIONS = 20
+
+
+def _has_variants(db, tenant_id: str, item_id: str) -> bool:
+    return bool((
+        db.table("catalog_item_variants").select("id").eq("tenant_id", tenant_id)
+        .eq("catalog_item_id", item_id).limit(1).execute()
+    ).data)
+
+
+def _clean_options(values) -> list[str]:
+    out: list[str] = []
+    for v in values or []:
+        text = " ".join(str(v or "").split())[:30]
+        if text and text.lower() not in {o.lower() for o in out}:
+            out.append(text)
+    if len(out) > _MAX_OPTIONS:
+        raise HTTPException(status_code=400, detail=f"At most {_MAX_OPTIONS} sizes and {_MAX_OPTIONS} colours")
+    return out
+
+
+def _variant_key(size, colour) -> tuple[str, str]:
+    return ((size or "").lower(), (colour or "").lower())
+
+
+@router.get("/items/{item_id}/variants")
+async def list_variants(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+    db = get_supabase()
+    rows = (
+        db.table("catalog_item_variants").select("id, size, colour, stock_quantity, price_paise, sort_order")
+        .eq("tenant_id", tenant_id).eq("catalog_item_id", str(item_id)).order("sort_order").execute()
+    ).data or []
+    sizes = _clean_options([r.get("size") for r in rows if r.get("size")])
+    colours = _clean_options([r.get("colour") for r in rows if r.get("colour")])
+    return {"sizes": sizes, "colours": colours, "variants": rows}
+
+
+@router.put("/items/{item_id}/variants")
+async def save_variants(
+    item_id: UUID,
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    ctx: dict = Depends(require_catalog_manage),
+):
+    """Replace the item's sizes and colours. payload: sizes [..], colours [..],
+    cells [{size, colour, stock, price_paise?}]. A size/colour removed from the grid has its
+    stock taken out (logged) and goes away; empty lists turn sizes and colours off."""
+    from app.services.deals import adjust_variant_stock
+    db = get_supabase()
+    item = (
+        db.table("catalog_items").select("id, stock_quantity").eq("id", str(item_id)).eq("tenant_id", tenant_id)
+        .maybe_single().execute()
+    )
+    if not item or not item.data:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    sizes = _clean_options(payload.get("sizes"))
+    colours = _clean_options(payload.get("colours"))
+    wanted: dict[tuple[str, str], dict] = {}
+    combos = [(s_, c_) for c_ in (colours or [None]) for s_ in (sizes or [None]) if s_ or c_]
+    cells = {_variant_key(c.get("size"), c.get("colour")): c for c in payload.get("cells") or [] if isinstance(c, dict)}
+    for order, (size, colour) in enumerate(combos):
+        cell = cells.get(_variant_key(size, colour), {})
+        try:
+            stock = int(cell.get("stock") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Stock must be a whole number")
+        if stock < 0 or stock > 1_000_000:
+            raise HTTPException(status_code=400, detail="Stock must be 0 or more")
+        price = cell.get("price_paise")
+        if price is not None:
+            try:
+                price = int(price)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Price must be a number")
+            if price < 0:
+                raise HTTPException(status_code=400, detail="Price must not be negative")
+        wanted[_variant_key(size, colour)] = {"size": size, "colour": colour, "stock": stock, "price_paise": price,
+                                              "sort_order": order}
+
+    existing = (
+        db.table("catalog_item_variants").select("id, size, colour, stock_quantity")
+        .eq("tenant_id", tenant_id).eq("catalog_item_id", str(item_id)).execute()
+    ).data or []
+    by_key = {_variant_key(r.get("size"), r.get("colour")): r for r in existing}
+    user_id = ctx.get("user_id")
+    if not existing and wanted and item.data.get("stock_quantity"):
+        # The single number is replaced by the grid: log it going out, the grid comes in below.
+        db.table("stock_movements").insert({
+            "tenant_id": tenant_id, "catalog_item_id": str(item_id), "delta": -int(item.data["stock_quantity"]),
+            "quantity_after": 0, "reason": "adjustment", "note": "Moved into sizes and colours", "created_by": user_id,
+        }).execute()
+        db.table("catalog_items").update({"stock_quantity": 0}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
+    for key, row in by_key.items():
+        if key in wanted:
+            continue
+        if int(row.get("stock_quantity") or 0) > 0:
+            adjust_variant_stock(tenant_id, row["id"], -int(row["stock_quantity"]), "adjustment",
+                                 note="Size or colour removed", created_by=user_id, db=db)
+        db.table("catalog_item_variants").delete().eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
+    for key, cell in wanted.items():
+        row = by_key.get(key)
+        if not row:
+            created = db.table("catalog_item_variants").insert({
+                "tenant_id": tenant_id, "catalog_item_id": str(item_id), "size": cell["size"], "colour": cell["colour"],
+                "stock_quantity": 0, "price_paise": cell["price_paise"], "sort_order": cell["sort_order"],
+            }).execute().data or []
+            row = {**(created[0] if created else {}), "stock_quantity": 0}
+        else:
+            db.table("catalog_item_variants").update({
+                "price_paise": cell["price_paise"], "sort_order": cell["sort_order"],
+            }).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
+        delta = cell["stock"] - int(row.get("stock_quantity") or 0)
+        if delta and row.get("id"):
+            result = adjust_variant_stock(tenant_id, row["id"], delta, "restock" if delta > 0 else "adjustment",
+                                          note="Sizes and colours grid", created_by=user_id, db=db)
+            if not result["ok"]:
+                raise HTTPException(status_code=409, detail="Stock changed while you were editing. Reload and try again.")
+    total = sum(c["stock"] for c in wanted.values())
+    if wanted:
+        db.table("catalog_items").update({"stock_quantity": total}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
+    return await list_variants(item_id, tenant_id=tenant_id)

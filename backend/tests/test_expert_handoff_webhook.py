@@ -248,7 +248,9 @@ def test_deal_flow_receipt_gets_the_same_breakdown_for_a_gst_intake_deal():
     won = {"deal": {"lead_id": "lead-1", "intake_session_id": "sess-1"}}
     lead_query = MagicMock()
     lead_query.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {"phone": "+91"}
+    paid = {"status": "recorded", "won": True, "deal": won["deal"], "stock_warnings": []}
     with patch("app.services.deals.mark_won", return_value=won), \
+         patch("app.services.deals.record_payment", return_value=paid), \
          patch("app.routes.intake.get_supabase", return_value=lead_query), \
          patch("app.routes.intake._fetch_session_gst", return_value=_GST_SESSION), \
          patch("app.routes.intake.send_whatsapp", new=AsyncMock(return_value="w")) as send:

@@ -384,6 +384,7 @@ export function SummaryCard({
   value,
   caption,
   stats,
+  compact = false,
 }: {
   selected: boolean;
   onSelect: () => void;
@@ -394,6 +395,8 @@ export function SummaryCard({
   value: string;
   caption: string;
   stats: { label: string; value: string }[];
+  /** Shorter card: less padding and a smaller number (Messaging ads). */
+  compact?: boolean;
 }) {
   return (
     <button
@@ -401,14 +404,15 @@ export function SummaryCard({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "flex min-w-0 flex-col gap-3.5 rounded-2xl border-2 p-4 text-left transition-all duration-200 sm:p-[18px]",
+        "flex min-w-0 flex-col rounded-2xl border-2 text-left transition-all duration-200",
+        compact ? "gap-2 px-4 py-3 sm:px-[18px]" : "gap-3.5 p-4 sm:p-[18px]",
         selected
           ? "border-primary bg-[#fbfefe] ring-4 ring-primary/10"
           : "border-[#e8edf2] bg-white shadow-sm hover:-translate-y-px hover:border-slate-300 hover:shadow",
       )}
     >
       <span className="flex items-center gap-2.5">
-        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", tint)} aria-hidden="true">
+        <span className={cn("flex shrink-0 items-center justify-center rounded-[10px]", compact ? "h-7 w-7" : "h-8 w-8", tint)} aria-hidden="true">
           <Icon size={16} />
         </span>
         <span className="min-w-0 flex-1 truncate font-label text-[13px] font-bold text-[#0A1528]">{label}</span>
@@ -420,10 +424,10 @@ export function SummaryCard({
         </span>
       </span>
       <span className="flex items-baseline gap-2">
-        <span className="font-display text-[28px] font-extrabold leading-none tracking-tight text-[#0A1528] tabular-nums">{value}</span>
+        <span className={cn("font-display font-extrabold leading-none tracking-tight text-[#0A1528] tabular-nums", compact ? "text-2xl" : "text-[28px]")}>{value}</span>
         <span className="font-label text-xs font-semibold text-[#64748b]">{caption}</span>
       </span>
-      <span className="grid grid-cols-3 gap-2 border-t border-dashed border-[#e2e8f0] pt-3">
+      <span className={cn("grid grid-cols-3 gap-2 border-t border-dashed border-[#e2e8f0]", compact ? "pt-2" : "pt-3")}>
         {stats.map((stat) => (
           <span key={stat.label} className="min-w-0">
             <span className="block truncate font-label text-[10px] font-bold uppercase tracking-wider text-[#64748b]">{stat.label}</span>
@@ -445,6 +449,7 @@ export function InfoCard({
   caption,
   help,
   stats,
+  compact = false,
 }: {
   icon: LucideIcon;
   tint: string;
@@ -455,11 +460,15 @@ export function InfoCard({
   caption: string;
   help: string;
   stats: { label: string; value: string }[];
+  compact?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-3.5 rounded-2xl border-2 border-[#e8edf2] bg-white p-4 shadow-sm sm:p-[18px]">
+    <div className={cn(
+      "flex min-w-0 flex-col rounded-2xl border-2 border-[#e8edf2] bg-white shadow-sm",
+      compact ? "gap-2 px-4 py-3 sm:px-[18px]" : "gap-3.5 p-4 sm:p-[18px]",
+    )}>
       <span className="flex items-center gap-2.5">
-        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", tint)} aria-hidden="true">
+        <span className={cn("flex shrink-0 items-center justify-center rounded-[10px]", compact ? "h-7 w-7" : "h-8 w-8", tint)} aria-hidden="true">
           <Icon size={16} />
         </span>
         <span className="min-w-0 flex-1 truncate font-label text-[13px] font-bold text-[#0A1528]">
@@ -470,10 +479,10 @@ export function InfoCard({
         </span>
       </span>
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="font-display text-[28px] font-extrabold leading-none tracking-tight text-emerald-700 tabular-nums">{value}</span>
+        <span className={cn("font-display font-extrabold leading-none tracking-tight text-emerald-700 tabular-nums", compact ? "text-2xl" : "text-[28px]")}>{value}</span>
         <span className="min-w-0 truncate font-label text-xs font-semibold text-[#64748b]">{caption}</span>
       </span>
-      <span className="grid grid-cols-3 gap-2 border-t border-dashed border-[#e2e8f0] pt-3">
+      <span className={cn("grid grid-cols-3 gap-2 border-t border-dashed border-[#e2e8f0]", compact ? "pt-2" : "pt-3")}>
         {stats.map((stat) => (
           <span key={stat.label} className="min-w-0">
             <span className="block truncate font-label text-[10px] font-bold uppercase tracking-wider text-[#64748b]">{stat.label}</span>

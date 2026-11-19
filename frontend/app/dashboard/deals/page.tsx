@@ -6,15 +6,14 @@ import { API_URL, getAuthHeaders } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { NewDealDialog } from "@/components/deals/NewDealDialog";
-import { DealDetailDrawer } from "@/components/deals/DealDetailDrawer";
-import { DealsTab } from "./DealsTab";
+import { OrdersTab } from "./OrdersTab";
 import { InsightsTab } from "./InsightsTab";
 import { FormAnswersTab } from "./FormAnswersTab";
 
 type PageTab = "deals" | "insights" | "forms";
 
 const TABS: { id: PageTab; label: string }[] = [
-  { id: "deals", label: "Deals" },
+  { id: "deals", label: "Orders & payments" },
   { id: "insights", label: "Insights" },
   { id: "forms", label: "Form answers" },
 ];
@@ -26,7 +25,6 @@ export default function DealsPage() {
   const rawTab = searchParams.get("tab");
   const [intakeEnabled, setIntakeEnabled] = useState(false);
   const [intakeLoaded, setIntakeLoaded] = useState(false);
-  const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   const canManage = role === "owner" || permissions.includes("deals.manage");
@@ -39,12 +37,6 @@ export default function DealsPage() {
   const tabPending = rawTab === "forms" && !intakeLoaded;
 
   const showNewDeal = canManage && searchParams.get("new") === "1";
-
-  function openNewDeal() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("new", "1");
-    router.replace(`/dashboard/deals?${params.toString()}`, { scroll: false });
-  }
 
   function closeNewDeal() {
     const params = new URLSearchParams(searchParams.toString());
@@ -77,10 +69,6 @@ export default function DealsPage() {
   }, []);
 
   function handleCreated() {
-    setReloadToken((n) => n + 1);
-  }
-
-  function handleDealChanged() {
     setReloadToken((n) => n + 1);
   }
 
@@ -119,16 +107,16 @@ export default function DealsPage() {
         {canManage && tab === "deals" && (
           <button
             type="button"
-            onClick={openNewDeal}
+            onClick={() => router.push("/dashboard/deals/new-bill")}
             className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-primary/90"
           >
-            <Plus size={14} /> New deal
+            <Plus size={14} /> New bill
           </button>
         )}
       </div>
 
       {tabPending && <AiraLoader inline className="min-h-[200px]" />}
-      {!tabPending && tab === "deals" && <DealsTab onOpenDeal={setOpenDealId} reloadToken={reloadToken} />}
+      {!tabPending && tab === "deals" && <OrdersTab key={reloadToken} canManage={canManage} />}
       {!tabPending && tab === "insights" && <InsightsTab />}
       {!tabPending && tab === "forms" && intakeEnabled && <FormAnswersTab />}
 
@@ -140,14 +128,6 @@ export default function DealsPage() {
         />
       )}
 
-      {openDealId && (
-        <DealDetailDrawer
-          dealId={openDealId}
-          canManage={canManage}
-          onClose={() => setOpenDealId(null)}
-          onChanged={handleDealChanged}
-        />
-      )}
     </div>
   );
 }

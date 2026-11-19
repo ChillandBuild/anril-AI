@@ -154,7 +154,8 @@ def _ad_leads(db, tenant_id: str, account: str, meta_ad_ids: list[str],
     Returns (attributions, leads_by_id). The attribution primary key stops a lead
     counting twice for the same ad. Each lead carries "result" (lead_result: paid >
     lost > booked > none) and "earned_paise", the total of their won orders -- paid
-    whenever, so a person who messaged on 25 Oct and paid on 10 Nov counts in October."""
+    whenever, so a person who messaged on 25 Oct and paid on 10 Nov counts in October.
+    An advance counts as soon as it is paid; the result stays "booked" until paid in full."""
     from app.services.inbound_leads_logic import lead_result
 
     if not meta_ad_ids:
@@ -190,17 +191,23 @@ def _ad_leads(db, tenant_id: str, account: str, meta_ad_ids: list[str],
         leads_by_id.update({lead["id"]: lead for lead in leads})
         deals = (
             db.table("deals")
-            .select("lead_id,total_paise")
+            .select("lead_id,stage,total_paise,paid_paise")
             .eq("tenant_id", tenant_id)
-            .eq("stage", "won")
+            .neq("stage", "lost")
             .in_("lead_id", chunk)
             .execute()
             .data
         ) or []
         for deal in deals:
             lid = deal.get("lead_id")
-            earned[lid] = earned.get(lid, 0) + int(deal.get("total_paise") or 0)
-            won[lid] = won.get(lid, 0) + 1
+            # Money actually received, advances included (paid_paise, migration 294).
+            if "paid_paise" in deal:
+                got = int(deal.get("paid_paise") or 0)
+            else:
+                got = int(deal.get("total_paise") or 0) if deal.get("stage") == "won" else 0
+            earned[lid] = earned.get(lid, 0) + got
+            if deal.get("stage") == "won":
+                won[lid] = won.get(lid, 0) + 1
     for lid, lead in leads_by_id.items():
         lead["result"] = lead_result({**lead, "won_deal_count": won.get(lid, 0)})
         lead["earned_paise"] = earned.get(lid, 0)
@@ -388,9 +395,9 @@ def build_creative_performance(
         result = lead["result"]
         if result in ("booked", "paid"):
             f["booked"] += 1
+        f["earned_paise"] += lead["earned_paise"]  # advances too, not only the fully paid
         if result == "paid":
             f["paid"] += 1
-            f["earned_paise"] += lead["earned_paise"]
         elif result == "lost":
             f["lost"] += 1
 

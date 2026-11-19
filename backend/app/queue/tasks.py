@@ -40,6 +40,7 @@ RETRY_CLASS: dict[str, str] = {
     "companion-kb-learning": "A",
     "inbound-stopped-replying": "A",
     "unmarked-bookings": "C",
+    "order-payment-reminders": "C",
 }
 
 
@@ -265,6 +266,15 @@ def call_alert_summary(timestamp: int) -> None:
 def inbound_stopped_replying(timestamp: int) -> None:
     from app.services.inbound_auto_results import mark_stopped_replying
     mark_stopped_replying()
+
+
+# Class C: a reminder is counted before it is sent, so an overlap or re-run never sends one twice.
+@queue_app.periodic(cron="23 * * * *", periodic_id="order-payment-reminders")
+@queue_app.task(name="order-payment-reminders", **_one_at_a_time("order-payment-reminders"), queue="messages")
+async def order_payment_reminders(timestamp: int) -> None:
+    """Orders & payments: day 1, 3 and 7 reminders while something is left to pay (10 AM-7 PM IST)."""
+    from app.services.orders import send_due_reminders
+    await send_due_reminders()
 
 
 # Class C: one bell per owner per day (it checks for today's bell first), never two at once.

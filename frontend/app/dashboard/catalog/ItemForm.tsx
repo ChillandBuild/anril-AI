@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { GST_RATE_OPTIONS } from "./money";
+import { VariantsEditor, cellKey, variantCells, variantsTotal, type VariantsValue } from "./VariantsEditor";
 
 export const ITEM_TYPES = ["product", "service", "property", "course", "other"];
 
@@ -37,6 +38,24 @@ export function ItemForm({
     itemToEdit?.gst_rate != null ? String(itemToEdit.gst_rate) : ""
   );
   const [variantGroupId, setVariantGroupId] = useState(itemToEdit?.variant_group_id || "");
+  // Sizes x colours, each with its own stock. hadGrid: the item already has one (turning it off empties it).
+  const [gridOn, setGridOn] = useState(false);
+  const [hadGrid, setHadGrid] = useState(false);
+  const [grid, setGrid] = useState<VariantsValue>({ sizes: [], colours: [], stock: {} });
+  const [gridLoading, setGridLoading] = useState(Boolean(itemToEdit));
+
+  useEffect(() => {
+    if (!itemToEdit) return;
+    api.catalog.variants(itemToEdit.id).then((g) => {
+      if (g.variants.length) {
+        const stock: Record<string, string> = {};
+        g.variants.forEach((v) => { stock[cellKey(v.size, v.colour)] = String(v.stock_quantity); });
+        setGrid({ sizes: g.sizes, colours: g.colours, stock });
+        setGridOn(true);
+        setHadGrid(true);
+      }
+    }).catch(() => {}).finally(() => setGridLoading(false));
+  }, [itemToEdit]);
 
   const nextAttrId = useRef(0);
   const [attributes, setAttributes] = useState<{ id: number; key: string; value: string }[]>(() => {
@@ -115,7 +134,12 @@ export function ItemForm({
       setIsSaving(false);
       return;
     }
-    const trimmedStock = itemType === "product" ? stockQuantity.trim() : "";
+    const useGrid = itemType === "product" && gridOn && (grid.sizes.length > 0 || grid.colours.length > 0);
+    if (hadGrid && !useGrid && !window.confirm("Turn off sizes and colours? Their stock goes to 0 and the grid is removed.")) {
+      setIsSaving(false);
+      return;
+    }
+    const trimmedStock = itemType === "product" && !useGrid ? stockQuantity.trim() : "";
     if (trimmedStock && (Number.isNaN(Number(trimmedStock)) || Number(trimmedStock) < 0)) {
       setError("Stock must be a non-negative number");
       setIsSaving(false);
@@ -132,7 +156,7 @@ export function ItemForm({
         attributes: attrRecord,
         price_paise: trimmedPrice ? Math.round(Number(trimmedPrice) * 100) : null,
         price_note: priceNote.trim() || null,
-        stock_quantity: trimmedStock ? Math.round(Number(trimmedStock)) : null,
+        ...(useGrid ? {} : { stock_quantity: trimmedStock ? Math.round(Number(trimmedStock)) : null }),
         gst_rate: gstRate === "" ? null : Number(gstRate),
       };
 
@@ -140,6 +164,12 @@ export function ItemForm({
         savedItem = await api.catalog.updateItem(itemToEdit.id, payload);
       } else {
         savedItem = await api.catalog.createItem(payload);
+      }
+      if (useGrid || hadGrid) {
+        await api.catalog.saveVariants(savedItem.id, useGrid
+          ? { sizes: grid.sizes, colours: grid.colours, cells: variantCells(grid) }
+          : { sizes: [], colours: [], cells: [] });
+        savedItem = { ...savedItem, stock_quantity: useGrid ? variantsTotal(grid) : savedItem.stock_quantity };
       }
       onSaved(savedItem);
     } catch (err) {
@@ -153,7 +183,7 @@ export function ItemForm({
 
   return (
     <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-card bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className={`w-full rounded-card bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto ${gridOn && itemType === "product" ? "max-w-xl" : "max-w-md"}`}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-display text-lg font-bold text-ink">
             {itemToEdit ? "Edit product" : "Add product"}
@@ -218,6 +248,19 @@ export function ItemForm({
             <p className="mt-1 text-xs text-ink-muted">Used on your monthly sales file, not shown to customers.</p>
           </div>
           {itemType === "product" && (
+            <div>
+              <label className="flex cursor-pointer items-center justify-between gap-3">
+                <span>
+                  <span className="block text-xs font-semibold uppercase text-ink-muted">Sizes and colours</span>
+                  <span className="block text-xs text-ink-muted">Each size and colour keeps its own stock. The shop bill picks one.</span>
+                </span>
+                <input type="checkbox" checked={gridOn} disabled={gridLoading} onChange={(e) => setGridOn(e.target.checked)}
+                  className="h-4 w-4 shrink-0 accent-[var(--primary)]" aria-label="Sizes and colours" />
+              </label>
+              {gridOn && <div className="mt-2"><VariantsEditor value={grid} onChange={setGrid} /></div>}
+            </div>
+          )}
+          {itemType === "product" && !gridOn && (
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase text-ink-muted">Stock (optional)</label>
               <input

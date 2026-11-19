@@ -4,7 +4,10 @@ docs/superpowers/specs/2026-09-25-deals-crm-design.md and 204_deals.sql.
 
 This module is the ONLY place that moves a deal between stages or touches
 stock, so the rules live in one spot:
+  - money is deal_payments rows (migration 294); a deal is WON only when paid in full,
+    and mark_won records whatever was still due, so every paid deal's money is counted;
   - stock deducts on WON only, and a won deal later marked lost returns it;
+  - a line with a size/colour (variant_id) moves that size's stock, and the item total with it;
   - prices are snapshotted onto deal_items when written, never re-read live;
   - a stock problem never fails a sale -- the money is real regardless of what
     the ledger says, so callers get stock_warnings instead of an error.
@@ -106,6 +109,35 @@ def adjust_stock(
     }
 
 
+def adjust_variant_stock(
+    tenant_id: str,
+    variant_id: str,
+    delta: int,
+    reason: str,
+    *,
+    note: str | None = None,
+    created_by: str | None = None,
+    deal_id: str | None = None,
+    db=None,
+) -> dict:
+    """apply_variant_stock_movement (294): one size/colour's stock and the item total, logged."""
+    db = db or get_supabase()
+    res = db.rpc(
+        "apply_variant_stock_movement",
+        {
+            "p_tenant_id": tenant_id,
+            "p_variant_id": variant_id,
+            "p_delta": delta,
+            "p_reason": reason,
+            "p_deal_id": deal_id,
+            "p_note": note,
+            "p_created_by": created_by,
+        },
+    ).execute()
+    row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
+    return {"ok": bool(row.get("ok")), "tracked": True, "quantity_after": row.get("quantity_after")}
+
+
 def held_quantities(tenant_id: str, item_ids: list[str], db=None) -> dict[str, int]:
     """Units promised to customers who have a payment link but haven't paid:
     sum of qty on awaiting_payment deals. Computed, never stored, so it can't
@@ -137,7 +169,7 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
     Returns warnings for lines whose stock couldn't be moved."""
     items = (
         db.table("deal_items")
-        .select("catalog_item_id, name, qty")
+        .select("catalog_item_id, variant_id, name, qty")
         .eq("deal_id", deal_id)
         .eq("tenant_id", tenant_id)
         .execute()
@@ -148,8 +180,9 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
         if not item.get("catalog_item_id"):
             continue
         try:
-            result = adjust_stock(
-                tenant_id, item["catalog_item_id"], direction * item["qty"], reason,
+            move = adjust_variant_stock if item.get("variant_id") else adjust_stock
+            result = move(
+                tenant_id, item.get("variant_id") or item["catalog_item_id"], direction * item["qty"], reason,
                 deal_id=deal_id, created_by=created_by, db=db,
             )
             if not result["ok"]:
@@ -174,6 +207,17 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
     """Fill missing price / GST from the real catalog row (tenant-scoped), so
     a caller -- including the AI tool handler -- can never invent a price."""
     item_ids = [li["catalog_item_id"] for li in lines if li.get("catalog_item_id")]
+    variant_ids = [li["variant_id"] for li in lines if li.get("variant_id")]
+    variants: dict[str, dict] = {}
+    if variant_ids:
+        rows = (
+            db.table("catalog_item_variants")
+            .select("id, catalog_item_id, size, colour, price_paise")
+            .eq("tenant_id", tenant_id)
+            .in_("id", variant_ids)
+            .execute()
+        ).data or []
+        variants = {r["id"]: r for r in rows}
     catalog: dict[str, dict] = {}
     if item_ids:
         rows = (
@@ -194,10 +238,17 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
         item = catalog.get(item_id) if item_id else None
         if item_id and not item:
             raise DealError("Product not found")
+        variant = None
+        if li.get("variant_id"):
+            variant = variants.get(li["variant_id"])
+            if not variant or variant["catalog_item_id"] != item_id:
+                raise DealError("That size or colour isn't on this product")
         name = (li.get("name") or (item or {}).get("name") or "").strip()
         if not name:
             raise DealError("Each line needs a product name")
         price = li.get("unit_price_paise")
+        if price is None and variant and variant.get("price_paise") is not None:
+            price = variant["price_paise"]
         if price is None and item:
             price = item.get("price_paise")
         if price is None:
@@ -207,7 +258,9 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
         gst = li.get("gst_rate")
         if gst is None and item:
             gst = item.get("gst_rate")
+        extra = {"variant_id": variant["id"], "variant_label": variant_label(variant)} if variant else {}
         resolved.append({
+            **extra,
             "catalog_item_id": item_id,
             "name": name,
             "qty": qty,
@@ -218,6 +271,11 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
     if not resolved:
         raise DealError("A deal needs at least one item")
     return resolved
+
+
+def variant_label(variant: dict) -> str:
+    """"Red · M"; just "M" or "Red" when the item has only one of them."""
+    return " · ".join(v for v in (variant.get("colour"), variant.get("size")) if v)
 
 
 def _deal_total(tenant_id: str, lines: list[dict], db) -> int:
@@ -336,9 +394,16 @@ def _lead_contact(tenant_id: str, lead_id: str, db) -> dict:
     return (res.data if res else None) or {}
 
 
-async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_message: bool = True, db=None) -> dict:
+def balance_paise(deal: dict) -> int:
+    """What is still to collect on an order."""
+    return max(int(deal.get("total_paise") or 0) - int(deal.get("paid_paise") or 0), 0)
+
+
+async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_message: bool = True,
+                            amount_paise: int | None = None, db=None) -> dict:
     """Create the Razorpay link (notes.deal_id routes the webhook back here),
     move the deal to awaiting_payment, and optionally message the customer.
+    The link charges what is still due (an advance link passes amount_paise).
     A freeform WhatsApp send fails outside the 24h window -- that is reported
     as message_sent=False with the link, so staff can share it themselves."""
     db = db or get_supabase()
@@ -353,11 +418,16 @@ async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_messa
     items = (
         db.table("deal_items").select("name, qty, line_total_paise").eq("deal_id", deal_id).eq("tenant_id", tenant_id).execute()
     ).data or []
-    contact = _lead_contact(tenant_id, deal["lead_id"], db)
+    contact = _lead_contact(tenant_id, deal["lead_id"], db) if deal.get("lead_id") else {}
     phone = contact.get("phone") or ""
-    customer_name = contact.get("name") or phone
+    customer_name = contact.get("name") or deal.get("customer_name") or phone
+    due = balance_paise(deal)
+    amount = due if amount_paise is None else int(amount_paise)
+    if amount <= 0 or amount > due:
+        raise DealError("Nothing is left to pay on this order" if due <= 0 else "The amount is more than what is left to pay")
 
-    live = _link_is_live(deal)
+    # A live link is reused only while it is for the whole order and nothing is paid yet.
+    live = _link_is_live(deal) and amount == due and not deal.get("paid_paise")
     if live:
         link, patch = {"payment_link_url": deal["payment_link"]}, {}
     else:
@@ -367,9 +437,9 @@ async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_messa
         # the dead link.
         previous_plink = deal.get("razorpay_payment_link_id") or ""
         link = await create_payment_link(
-            idempotency_key=f"deal:{deal_id}:{deal['total_paise']}:{previous_plink}:payment_link",
+            idempotency_key=f"deal:{deal_id}:{amount}:{deal.get('paid_paise') or 0}:{previous_plink}:payment_link",
             notes={"deal_id": deal_id},
-            amount_paise=deal["total_paise"],
+            amount_paise=amount,
             customer_name=customer_name,
             customer_phone=phone,
             description=f"{format_deal_number(deal['deal_number'])} — " + ", ".join(i["name"] for i in items)[:200],
@@ -381,13 +451,19 @@ async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_messa
             "razorpay_payment_link_id": link.get("razorpay_payment_link_id"),
             # What Razorpay reports, not a guess: it is the time the customer sees.
             "link_expires_at": link.get("payment_link_expires_at"),
+            # Payment reminders (day 1, 3, 7) count from the newest link.
+            "reminders_from": _now_iso(),
+            "reminders_sent": 0,
         }
         db.table("deals").update(patch).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
         await _cancel_replaced_link(deal, link.get("razorpay_payment_link_id"))
 
     message_sent = False
     if send_whatsapp_message and phone:
-        text = quote_summary_block(items, deal["total_paise"]) + f"\n\nPay here: {link['payment_link_url']}"
+        text = quote_summary_block(items, deal["total_paise"])
+        if amount != deal["total_paise"]:
+            text += f"\nTo pay now: {_rupees(amount)}"
+        text += f"\n\nPay here: {link['payment_link_url']}"
         try:
             from app.services.ai_reply import send_whatsapp
             await send_whatsapp(phone, text, tenant_id=tenant_id)
@@ -439,8 +515,123 @@ def mark_won(
     )
     if not claimed.data:
         return None
+    deal = claimed.data[0]
+    due = balance_paise(deal)
+    if due > 0:
+        # The sale stands even if this row fails (the money is real); it is logged loudly instead.
+        try:
+            _insert_payment(db, tenant_id, deal_id, due, payment_method,
+                            kind="balance" if deal.get("paid_paise") else "full",
+                            razorpay_payment_id=razorpay_payment_id, received_by=created_by)
+        except Exception as e:
+            logger.error(f"Deal {deal_id} won but its payment row failed: {e}")
+        deal = {**deal, "paid_paise": int(deal.get("total_paise") or 0)}
     warnings = _deduct_for_deal(tenant_id, deal_id, created_by, db, direction=-1)
-    return {"deal": claimed.data[0], "stock_warnings": warnings}
+    return {"deal": deal, "stock_warnings": warnings}
+
+
+def _insert_payment(db, tenant_id: str, deal_id: str, amount_paise: int, method: str, *, kind: str = "payment",
+                    razorpay_payment_id: str | None = None, received_by: str | None = None,
+                    received_by_caller: str | None = None, note: str | None = None) -> bool:
+    """One deal_payments row; deals.paid_paise follows by trigger. False when this Razorpay
+    payment is already recorded (the unique index makes a retried webhook a no-op)."""
+    row = {
+        "tenant_id": tenant_id, "deal_id": deal_id, "amount_paise": int(amount_paise), "method": method,
+        "kind": kind, "razorpay_payment_id": razorpay_payment_id or None, "received_by": received_by,
+        "received_by_caller": received_by_caller, "note": note,
+    }
+    if razorpay_payment_id and _payment_seen(db, tenant_id, razorpay_payment_id):
+        return False
+    try:
+        db.table("deal_payments").insert(row).execute()
+    except Exception as e:
+        if razorpay_payment_id and "duplicate" in str(e).lower():
+            return False
+        raise
+    # The first payment gives the order its invoice number (online and shop share it).
+    from app.services.orders import ensure_invoice
+    ensure_invoice(db, tenant_id, deal_id)
+    return True
+
+
+def _payment_seen(db, tenant_id: str, razorpay_payment_id: str) -> bool:
+    return bool((
+        db.table("deal_payments").select("id").eq("tenant_id", tenant_id)
+        .eq("razorpay_payment_id", razorpay_payment_id).limit(1).execute()
+    ).data)
+
+
+def record_payment(
+    tenant_id: str,
+    deal_id: str,
+    amount_paise: int,
+    method: str,
+    *,
+    razorpay_payment_id: str | None = None,
+    received_by: str | None = None,
+    received_by_caller: str | None = None,
+    note: str | None = None,
+    db=None,
+) -> dict:
+    """Money in on an order: an advance, a balance or all of it. When that pays it in full the
+    order becomes won (stock moves, Came / Paid). status:
+      "recorded"  -- saved; "won" says whether it finished the order
+      "duplicate" -- this Razorpay payment was already recorded (a retried webhook)
+      "over"      -- more than what is left (e.g. a link paid after staff took cash)
+      "closed"    -- the order is lost (cancelled)"""
+    db = db or get_supabase()
+    if method not in PAYMENT_METHODS:
+        raise DealError(f"Unknown payment method {method}")
+    amount = int(amount_paise)
+    if amount <= 0:
+        raise DealError("The amount must be more than zero")
+    res = db.table("deals").select("*").eq("id", deal_id).eq("tenant_id", tenant_id).maybe_single().execute()
+    if not res or not res.data:
+        raise DealError("Deal not found")
+    deal = res.data
+    none = {"won": False, "deal": deal, "stock_warnings": []}
+    if razorpay_payment_id and _payment_seen(db, tenant_id, razorpay_payment_id):
+        return {"status": "duplicate", **none}
+    if deal["stage"] == "lost":
+        return {"status": "closed", **none}
+    due = balance_paise(deal)
+    if deal["stage"] == "won" or amount > due:
+        return {"status": "over", **none}
+    if amount == due:
+        won = mark_won(tenant_id, deal_id, payment_method=method, razorpay_payment_id=razorpay_payment_id,
+                       created_by=received_by, db=db)
+        if won is None:  # another payment finished it a moment ago
+            return {"status": "over", **none}
+        if received_by_caller or note:
+            _tag_last_payment(db, tenant_id, deal_id, received_by_caller, note)
+        return {"status": "recorded", "won": True, "deal": won["deal"], "stock_warnings": won["stock_warnings"]}
+    kind = "advance" if not deal.get("paid_paise") else "payment"
+    if not _insert_payment(db, tenant_id, deal_id, amount, method, kind=kind, razorpay_payment_id=razorpay_payment_id,
+                           received_by=received_by, received_by_caller=received_by_caller, note=note):
+        return {"status": "duplicate", **none}
+    # The open link was for the old balance: it must not be paid on top of this.
+    patch: dict = {"payment_link": None, "link_expires_at": None}
+    if deal["stage"] == "quoted":
+        patch["stage"] = "awaiting_payment"
+    db.table("deals").update(patch).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+    deal = {**deal, **patch, "paid_paise": int(deal.get("paid_paise") or 0) + amount}
+    return {"status": "recorded", "won": False, "deal": deal, "stock_warnings": [],
+            "stale_link": res.data if res.data.get("payment_link") else None}
+
+
+def _tag_last_payment(db, tenant_id: str, deal_id: str, caller_id: str | None, note: str | None) -> None:
+    rows = (
+        db.table("deal_payments").select("id").eq("tenant_id", tenant_id).eq("deal_id", deal_id)
+        .order("created_at", desc=True).limit(1).execute()
+    ).data or []
+    if rows:
+        db.table("deal_payments").update({"received_by_caller": caller_id, "note": note}).eq("id", rows[0]["id"]).eq("tenant_id", tenant_id).execute()
+
+
+async def cancel_stale_link(deal: dict | None) -> None:
+    """After a part payment the open link is for the old balance; cancel it (best effort)."""
+    if deal and deal.get("razorpay_payment_link_id"):
+        await _cancel_replaced_link(deal, None)
 
 
 def mark_lost(

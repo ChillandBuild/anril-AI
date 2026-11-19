@@ -945,6 +945,7 @@ export function AdPerformanceTab() {
       >
         {deliveryCards.map((card) => (
           <SummaryCard
+            compact
             key={card.key || "all"}
             selected={deliveryStatus === card.key}
             onSelect={() => setDeliveryStatus(card.key)}
@@ -963,6 +964,7 @@ export function AdPerformanceTab() {
         ))}
         {/* Not a filter: what the ads in the table brought in, so it follows the card picked and the search. */}
         <InfoCard
+          compact
           icon={IndianRupee}
           tint="bg-violet-50 text-violet-700"
           label="Earned"
