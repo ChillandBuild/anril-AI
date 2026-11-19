@@ -92,6 +92,15 @@ export default function DealsPage() {
         {canManage && tab === "deals" && (
           <button
             type="button"
+            onClick={() => router.push("/dashboard/deals/new-quote")}
+            className="inline-flex items-center gap-1 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-bold text-[#0A1528] shadow-sm"
+          >
+            New quote
+          </button>
+        )}
+        {canManage && tab === "deals" && (
+          <button
+            type="button"
             onClick={() => router.push("/dashboard/deals/new-bill")}
             className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-primary/90"
           >

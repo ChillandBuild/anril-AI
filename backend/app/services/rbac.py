@@ -15,6 +15,7 @@ PERMISSION_CATALOG: list[dict] = [
     {"key": "inbound_leads.manage", "label": "Manage inbound leads", "group": "Leads"},
     {"key": "deals.view", "label": "View deals", "group": "Leads"},
     {"key": "deals.manage", "label": "Manage deals", "group": "Leads"},
+    {"key": "deals.refund", "label": "Refund orders", "group": "Leads"},
     {"key": "meta_ads.view", "label": "View Meta ads", "group": "Leads"},
     {"key": "meta_ads.manage", "label": "Manage Meta ads", "group": "Leads"},
     {"key": "outbound_leads.view", "label": "View outbound leads", "group": "Messaging"},

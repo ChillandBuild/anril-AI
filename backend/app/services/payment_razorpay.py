@@ -162,6 +162,37 @@ async def cancel_payment_link(plink_id: str, tenant_id: str) -> bool:
     return True
 
 
+class RefundError(RuntimeError):
+    """Razorpay said no (or couldn't be reached); the message is safe to show staff."""
+
+
+async def create_refund(payment_id: str, amount_paise: int, tenant_id: str, *, idempotency_key: str,
+                        notes: dict | None = None) -> dict:
+    """Refund part or all of one captured Razorpay payment. Returns {"id", "status"} where
+    status is Razorpay's ("processed" or "pending"). The idempotency key makes a retried click
+    return the same refund instead of a second one."""
+    if not tenant_id:
+        raise RefundError("No business for this refund")
+    try:
+        resp = await _post(
+            tenant_id, f"/payments/{payment_id}/refund",
+            json={"amount": int(amount_paise), "speed": "normal", "notes": notes or {}},
+            headers={"X-Refund-Idempotency": idempotency_key[:40]},
+        )
+    except Exception as e:
+        logger.warning(f"Razorpay refund of {payment_id} failed: {type(e).__name__}: {e}")
+        raise RefundError("Couldn't reach Razorpay. Try again in a minute.")
+    if not resp.is_success:
+        try:
+            reason = (resp.json().get("error") or {}).get("description") or ""
+        except ValueError:
+            reason = ""
+        logger.warning(f"Razorpay refund of {payment_id} refused: {resp.status_code} {reason}")
+        raise RefundError(f"Razorpay refused the refund{f': {reason}' if reason else ''}")
+    data = resp.json()
+    return {"id": data.get("id"), "status": data.get("status") or "pending"}
+
+
 def verify_webhook_signature(raw_body: bytes, received_signature: str, tenant_id: str | None = None) -> bool:
     """Verify Razorpay webhook payload using HMAC-SHA256.
 

@@ -149,7 +149,10 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card icon={IndianRupee} tint="bg-emerald-50 text-emerald-700" label="Money in"
           value={cards ? rupees(cards.money_in.paise) : "—"}
-          lines={[{ text: cards ? `${cards.money_in.orders} ${cards.money_in.orders === 1 ? "order" : "orders"} paid · ${period}` : period }]} />
+          lines={[
+            { text: cards ? `${cards.money_in.orders} ${cards.money_in.orders === 1 ? "order" : "orders"} paid · ${period}` : period },
+            ...(cards?.money_in.refunded_paise ? [{ text: `after ${rupees(cards.money_in.refunded_paise)} refunded`, tone: "text-rose-600" }] : []),
+          ]} />
         <Card icon={Hourglass} tint="bg-amber-50 text-amber-700" label="Still to collect"
           value={cards ? rupees(cards.to_collect.paise) : "—"}
           lines={[{

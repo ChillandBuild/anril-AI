@@ -439,6 +439,16 @@ async def _process_inbound_message_background(
             # required details and sending the payment link are tools the reply brain
             # calls itself (services/deal_turn.py). route_intake stays in intake.py,
             # unused, until the legacy state machine is removed.
+            # Accept quote (Orders & payments): it becomes an order and the advance link goes
+            # out. Customer-asked, like a payment, so it runs even with auto-reply off.
+            from app.services.order_quotes import accept_from_chat, deal_from_button
+            quote_deal = deal_from_button(interactive_id)
+            if quote_deal:
+                try:
+                    await accept_from_chat(db, tenant_id, lead_id, quote_deal)
+                except Exception as e:
+                    logger.error(f"Quote accept failed for lead {lead_id}: {e}")
+                return
             try:
                 from app.services.context_builder import build_scorer_context
                 context_block = build_scorer_context(lead_id, db)
@@ -878,6 +888,10 @@ async def whatsapp_webhook(
                         body = msg.get("text", {}).get("body", "").strip()
                     elif msg_type == "button":
                         body = msg.get("button", {}).get("text", "").strip()
+                        # The quote template's Accept / Ask buttons carry "quote_...:<deal id>".
+                        button_payload = (msg.get("button", {}).get("payload") or "").strip()
+                        if button_payload.startswith("quote_"):
+                            interactive_id = button_payload
                     elif msg_type == "interactive":
                         inter = msg.get("interactive", {})
                         reply = inter.get("button_reply") or inter.get("list_reply") or {}

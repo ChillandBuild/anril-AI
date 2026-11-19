@@ -191,9 +191,8 @@ def _ad_leads(db, tenant_id: str, account: str, meta_ad_ids: list[str],
         leads_by_id.update({lead["id"]: lead for lead in leads})
         deals = (
             db.table("deals")
-            .select("lead_id,stage,total_paise,paid_paise")
+            .select("lead_id,stage,total_paise,paid_paise,refunded_paise")
             .eq("tenant_id", tenant_id)
-            .neq("stage", "lost")
             .in_("lead_id", chunk)
             .execute()
             .data
@@ -202,7 +201,8 @@ def _ad_leads(db, tenant_id: str, account: str, meta_ad_ids: list[str],
             lid = deal.get("lead_id")
             # Money actually received, advances included (paid_paise, migration 294).
             if "paid_paise" in deal:
-                got = int(deal.get("paid_paise") or 0)
+                # Money kept: received less refunded (a cancelled order with no refund still counts).
+                got = int(deal.get("paid_paise") or 0) - int(deal.get("refunded_paise") or 0)
             else:
                 got = int(deal.get("total_paise") or 0) if deal.get("stage") == "won" else 0
             earned[lid] = earned.get(lid, 0) + got

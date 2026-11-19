@@ -63,7 +63,9 @@ const ACCESS_MODULES: AccessModule[] = [
   { id: "conversations", title: "Conversations", description: "Open inbox threads and reply to customers.", group: "Messaging", readKeys: ["conversations.view"], writeKeys: ["conversations.reply"] },
   { id: "segments", title: "Segments", description: "View and update lead segments.", group: "Leads", readKeys: ["leads.view"], writeKeys: ["leads.manage"] },
   { id: "inbound", title: "Inbound Leads", description: "Review inbound enquiries and handoffs.", group: "Leads", readKeys: ["inbound_leads.view"], writeKeys: ["inbound_leads.manage"] },
-  { id: "deals", title: "Deals", description: "Track the sales pipeline and move deals between stages.", group: "Leads", readKeys: ["deals.view"], writeKeys: ["deals.manage"] },
+  { id: "deals", title: "Orders & payments", description: "Orders, bills, quotes and payments. Write access makes bills and takes payments.", group: "Leads", readKeys: ["deals.view"], writeKeys: ["deals.manage"] },
+  // Its own row so only a manager gets it: money going back out.
+  { id: "refunds", title: "Refunds", description: "Cancel paid orders and give money back (Razorpay, cash or UPI).", group: "Leads", readKeys: [], writeKeys: ["deals.refund"] },
   { id: "meta_ads", title: "Meta Ads", description: "See ad performance and create ad tracking links.", group: "Leads", readKeys: ["meta_ads.view"], writeKeys: ["meta_ads.manage"] },
   { id: "outbound", title: "Outbound Leads", description: "Review outbound batches and campaign history.", group: "Messaging", readKeys: ["outbound_leads.view"], writeKeys: ["outbound_leads.manage"] },
   { id: "templates", title: "Templates", description: "Review and manage WhatsApp templates.", group: "Messaging", readKeys: ["templates.view"], writeKeys: ["templates.manage"] },

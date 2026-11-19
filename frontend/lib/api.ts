@@ -3898,6 +3898,17 @@ export const api = {
     shared: (id: string, kind: OrderMessageKind, text: string) =>
       apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}/shared`, { method: "POST", body: JSON.stringify({ kind, text }) }),
     whatsappSetup: () => apiFetch<OrderTemplatesSetup>("/api/v1/orders/whatsapp-setup"),
+    advanceRule: () => apiFetch<AdvanceRule>("/api/v1/orders/advance-rule"),
+    saveAdvanceRule: (rule: AdvanceRule) =>
+      apiFetch<AdvanceRule>("/api/v1/orders/advance-rule", { method: "PUT", body: JSON.stringify(rule) }),
+    createQuote: (body: NewQuoteInput) =>
+      apiFetch<{ order: OrderDetail; message: OrderMessageResult | null }>("/api/v1/orders/quotes", { method: "POST", body: JSON.stringify(body) }),
+    sendQuote: (id: string) =>
+      apiFetch<OrderSendResult>(`/api/v1/orders/${encodeURIComponent(id)}/send-quote`, { method: "POST" }),
+    refund: (id: string, body: { mode: "cancel" | "full" | "part"; amount_paise?: number; method?: RefundMethod; reason: string }) =>
+      apiFetch<{ order: OrderDetail; message: OrderMessageResult | null; cancelled: boolean; credit_note: string | null; short_paise: number }>(
+        `/api/v1/orders/${encodeURIComponent(id)}/refund`, { method: "POST", body: JSON.stringify(body) },
+      ),
     submitTemplates: () =>
       apiFetch<OrderTemplatesSetup & { problems: string[] }>("/api/v1/orders/whatsapp-setup", { method: "POST" }),
   },
@@ -5087,7 +5098,8 @@ async function apiFetchNoContent(path: string, opts: RequestInit): Promise<void>
 export type OrderChip = "all" | "waiting" | "advance" | "paid" | "pack" | "quote" | "cancelled";
 export type OrderPaymentState = "paid" | "advance" | "waiting" | "quote" | "cancelled";
 export type OrderDeliveryState = "taken" | "none" | "working" | "ready" | "shipped" | "delivered";
-export type OrderMessageKind = "bill" | "confirmed" | "ready" | "shipped" | "delivered" | "reminder" | "pay_link";
+export type OrderMessageKind = "bill" | "confirmed" | "ready" | "shipped" | "delivered" | "reminder" | "pay_link" | "quote" | "quote_reminder" | "refund";
+export type RefundMethod = "razorpay" | "cash" | "upi" | "bank_transfer";
 
 export interface OrderRow {
   id: string;
@@ -5098,6 +5110,7 @@ export interface OrderRow {
   items: string;
   total_paise: number;
   paid_paise: number;
+  refunded_paise: number;
   balance_paise: number;
   payment: OrderPaymentState;
   payment_note: string;
@@ -5114,7 +5127,7 @@ export interface OrdersPage {
   data: OrderRow[];
   counts: Record<OrderChip, number>;
   cards: {
-    money_in: { paise: number; orders: number };
+    money_in: { paise: number; orders: number; refunded_paise: number };
     to_collect: { paise: number; orders: number; reminders_on: number };
     to_pack: { orders: number; over_2_days: number };
     gst: { paise: number; bills: number };
@@ -5147,6 +5160,31 @@ export interface OrderDetail extends OrderRow {
   upcoming: { kind: string; at: string; note: string }[];
   customer_full: { lead_id: string | null; name: string | null; phone: string | null; segment: string | null; came_from: string; order_count: number };
   reminders: { sent: number; from: string | null; last_at: string | null };
+  refunds: { id: string; amount_paise: number; method: RefundMethod; method_label: string; reason: string | null; status: "done" | "pending" | "failed"; credit_note_number: string | null; created_at: string }[];
+  refundable_paise: number;
+  razorpay_refundable_paise: number;
+  quote: { valid_until: string | null; sent_at: string | null; accepted_at: string | null; advance_paise: number; ready_in_days: number | null };
+  /** What "Mark ready" will send, for the preview box; null once it can't be marked ready. */
+  ready_preview: string | null;
+}
+
+export interface AdvanceRule {
+  kind: "none" | "percent" | "fixed";
+  value: number;
+  min_total_paise: number;
+}
+
+export interface NewQuoteInput {
+  lead_id?: string;
+  phone?: string;
+  name?: string;
+  items: { catalog_item_id?: string; variant_id?: string | null; name?: string; qty: number; unit_price_paise?: number }[];
+  discount_paise: number;
+  valid_until?: string;
+  advance: { kind: "rule" | "none" | "percent" | "fixed"; value?: number };
+  ready_in_days?: number | null;
+  notes?: string;
+  send: boolean;
 }
 
 export interface OrderMessageResult {
@@ -5242,7 +5280,17 @@ export interface PublicBill {
   paid_paise: number;
   balance_paise: number;
   cancelled: boolean;
+  refunded_paise: number;
   pay_link: string | null;
+  /** Set while the quote is open: the page shows Accept. */
+  quote: { valid_until: string | null; expired: boolean; advance_paise: number; ready_in_days: number | null } | null;
+}
+
+/** The customer accepts a quote from its page. */
+export async function acceptPublicQuote(token: string): Promise<{ status: "accepted" | "already" | "expired" | "closed"; payment_link: string | null; advance_paise: number }> {
+  const res = await fetch(`${API_URL}/api/v1/public/bills/${encodeURIComponent(token)}/accept`, { method: "POST" });
+  if (!res.ok) throw new Error("Couldn't accept the quote. Try again.");
+  return res.json();
 }
 
 /** The customer's bill page: public, by its secret link, no sign-in. */

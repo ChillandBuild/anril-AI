@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Download, Loader2 } from "lucide-react";
-import { fetchPublicBill, type PublicBill } from "@/lib/api";
+import { Check, Download, Loader2 } from "lucide-react";
+import { acceptPublicQuote, fetchPublicBill, type PublicBill } from "@/lib/api";
 
 // The customer's bill, opened from the WhatsApp link. No sign-in: the link's secret token is
 // the key. "Download PDF" prints this page (Save as PDF), so the PDF is exactly what they see.
@@ -20,13 +20,26 @@ export default function BillPage() {
   const { token } = useParams<{ token: string }>();
   const [bill, setBill] = useState<PublicBill | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [accepted, setAccepted] = useState<{ status: string; payment_link: string | null; advance_paise: number } | null>(null);
+
+  async function accept() {
+    setAccepting(true);
+    try {
+      setAccepted(await acceptPublicQuote(token));
+    } catch {
+      setAccepted({ status: "error", payment_link: null, advance_paise: 0 });
+    } finally {
+      setAccepting(false);
+    }
+  }
 
   useEffect(() => {
     fetchPublicBill(token).then(setBill).catch(() => setFailed(true));
   }, [token]);
 
   useEffect(() => {
-    if (bill) document.title = `${bill.bill_type === "gst" ? "Tax invoice" : "Bill"} ${bill.invoice_number ?? bill.order_label} · ${bill.business.legal_name}`;
+    if (bill) document.title = `${bill.quote ? "Quotation" : bill.bill_type === "gst" ? "Tax invoice" : "Bill"} ${bill.invoice_number ?? bill.order_label} · ${bill.business.legal_name}`;
   }, [bill]);
 
   if (failed) return <Shell><p className="py-24 text-center text-sm text-slate-500">This bill couldn&apos;t be loaded. Check your connection and open the link again.</p></Shell>;
@@ -34,12 +47,41 @@ export default function BillPage() {
   if (bill === null) return <Shell><p className="py-24 text-center text-sm text-slate-500">This bill link isn&apos;t valid. Ask the shop to send it again.</p></Shell>;
 
   const b = bill.business;
+  const q = bill.quote;
   const isGst = bill.bill_type === "gst";
   const place = [b.address, b.city, b.state, b.pincode].filter(Boolean).join(", ");
   return (
     <Shell>
+      {q && !accepted && (
+        <div className="mx-auto mb-4 flex max-w-[760px] flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 print:hidden">
+          <p className="text-sm text-emerald-900">
+            {q.expired ? "This quote has expired. Ask the shop for a fresh one."
+              : <>Happy with this quote? Accept it{q.advance_paise ? ` and pay the ${rupees(q.advance_paise)} advance` : ""} to confirm your order.</>}
+          </p>
+          {!q.expired && (
+            <button type="button" onClick={accept} disabled={accepting}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60">
+              {accepting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Accept quote
+            </button>
+          )}
+        </div>
+      )}
+      {accepted && (
+        <div className="mx-auto mb-4 flex max-w-[760px] flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 print:hidden">
+          <p className="text-sm font-semibold text-emerald-900">
+            {accepted.status === "accepted" || accepted.status === "already"
+              ? `Order confirmed. Thank you!${accepted.payment_link ? ` Pay the ${rupees(accepted.advance_paise)} advance to start.` : ""}`
+              : accepted.status === "expired" ? "This quote has expired. Ask the shop for a fresh one." : "This quote couldn't be accepted. Please message the shop."}
+          </p>
+          {accepted.payment_link && (
+            <a href={accepted.payment_link} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">
+              Pay {rupees(accepted.advance_paise)}
+            </a>
+          )}
+        </div>
+      )}
       <div className="mx-auto mb-4 flex max-w-[760px] justify-end gap-2 print:hidden">
-        {bill.pay_link && bill.balance_paise > 0 && (
+        {!q && bill.pay_link && bill.balance_paise > 0 && (
           <a href={bill.pay_link} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">
             Pay {rupees(bill.balance_paise)}
           </a>
@@ -59,15 +101,16 @@ export default function BillPage() {
             {isGst && b.gstin && <p className="mt-1 text-xs font-semibold text-slate-700">GSTIN {b.gstin}</p>}
           </div>
           <div className="text-right">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{isGst ? "Tax invoice" : "Bill"}</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{bill.invoice_number ?? bill.order_label}</p>
-            <p className="text-xs text-slate-500">{dateText(bill.invoice_date)} · Order {bill.order_label}</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{q ? "Quotation" : isGst ? "Tax invoice" : "Bill"}</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{q ? bill.order_label : bill.invoice_number ?? bill.order_label}</p>
+            <p className="text-xs text-slate-500">{dateText(bill.invoice_date)}{q ? "" : ` · Order ${bill.order_label}`}</p>
+            {q?.valid_until && <p className="text-xs font-semibold text-slate-600">Valid till {dateText(q.valid_until)}</p>}
             {bill.cancelled && <p className="mt-1 text-xs font-bold text-rose-600">Cancelled</p>}
           </div>
         </header>
 
         <section className="grid gap-1 py-5 text-sm">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Billed to</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{q ? "Quote for" : "Billed to"}</p>
           <p className="font-semibold text-slate-900">{bill.customer.business || bill.customer.name || "Customer"}</p>
           {bill.customer.business && bill.customer.name && <p className="text-xs text-slate-500">{bill.customer.name}</p>}
           {bill.customer.phone && <p className="text-xs text-slate-500">{bill.customer.phone}</p>}
@@ -114,15 +157,18 @@ export default function BillPage() {
           <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
             <dt>Total</dt><dd className="tabular-nums">{rupees(bill.total_paise)}</dd>
           </div>
+          {q && q.advance_paise > 0 && <Row label="Advance to confirm" value={rupees(q.advance_paise)} />}
+          {q?.ready_in_days != null && <Row label="Ready" value={`${q.ready_in_days} days after you accept`} muted />}
           {bill.paid_paise > 0 && bill.paid_paise < bill.total_paise && <Row label="Paid" value={rupees(bill.paid_paise)} />}
-          {bill.balance_paise > 0 && !bill.cancelled && (
+          {bill.refunded_paise > 0 && <Row label="Refunded" value={`− ${rupees(bill.refunded_paise)}`} />}
+          {bill.balance_paise > 0 && !bill.cancelled && !q && (
             <div className="flex justify-between font-bold text-amber-700"><dt>Balance to pay</dt><dd className="tabular-nums">{rupees(bill.balance_paise)}</dd></div>
           )}
           {bill.balance_paise === 0 && bill.paid_paise > 0 && <p className="pt-1 text-right text-xs font-bold text-emerald-700">Paid in full · thank you</p>}
         </dl>
 
         <footer className="mt-10 border-t border-slate-100 pt-4 text-center text-[11px] text-slate-400">
-          {isGst ? "This is a computer-made tax invoice." : "Thank you for shopping with us."} Made with Anril.
+          {q ? "This is a quotation, not a bill." : isGst ? "This is a computer-made tax invoice." : "Thank you for shopping with us."} Made with Anril.
         </footer>
       </article>
     </Shell>

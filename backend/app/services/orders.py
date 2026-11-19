@@ -48,9 +48,18 @@ ORDER_TEMPLATES = {
         "body": "Vanakkam {{1}}, a gentle reminder from {{2}}: {{3}} is still to pay for order {{4}}. You can pay here: {{5}}",
         "examples": ["Priya", "Demo Silks", "₹7,500", "D-1047", "https://rzp.io/l/abc"],
     },
+    "quote": {
+        "name": "anril_order_quote",
+        "body": "Vanakkam {{1}}, here is your quote {{2}} from {{3}}: {{4}}. Total {{5}}. Tap Accept quote to confirm it.",
+        "examples": ["Suresh", "D-1052", "Demo Silks", "Cotton saree x 100, Silk-cotton saree x 40", "₹1,14,000"],
+        "buttons": ["Accept quote", "Ask a question"],
+    },
 }
-TEMPLATE_FOR_KIND = {"bill": "bill", "confirmed": "bill", "ready": "update", "shipped": "update",
-                     "delivered": "update", "pay_link": "reminder", "reminder": "reminder"}
+TEMPLATE_FOR_KIND = {"bill": "bill", "confirmed": "update", "ready": "update", "shipped": "update",
+                     "delivered": "update", "refund": "update", "pay_link": "reminder", "reminder": "reminder",
+                     "quote": "quote", "quote_reminder": "quote"}
+QUOTE_ACCEPT = "quote_accept:"
+QUOTE_ASK = "quote_ask:"
 
 
 class OrderError(ValueError):
@@ -259,7 +268,7 @@ def chip_of(deal: dict) -> set[str]:
 ORDER_SELECT = (
     "id, deal_number, stage, source, channel, handover, delivery_status, total_paise, paid_paise, gst_paise, "
     "bill_type, payment_link, link_expires_at, lost_reason, created_at, won_at, courier, tracking_id, "
-    "customer_name, lead_id, reminders_from, reminders_sent, invoice_number, "
+    "customer_name, lead_id, reminders_from, reminders_sent, invoice_number, refunded_paise, quote_valid_until, "
     "leads(id, name, phone, source, ad_name, ad_campaign_id), "
     "deal_items(name, qty, variant_label, catalog_items(item_type)), deal_payments(amount_paise, method, paid_at)"
 )
@@ -298,6 +307,11 @@ def _items_text(items: list[dict]) -> str:
 
 def _payment_note(deal: dict, payments: list[dict], now: datetime) -> str:
     state = payment_state(deal)
+    refunded = int(deal.get("refunded_paise") or 0)
+    if state == "cancelled" and refunded:
+        return f"Refunded {_rupees(refunded)}"
+    if refunded and state in ("paid", "advance"):
+        return f"{_rupees(refunded)} refunded"
     methods = sorted({METHOD_LABELS.get(p.get("method"), "Other") for p in payments}, key=list(METHOD_LABELS.values()).index)
     if state == "paid":
         return "Paid by link" if methods == ["Link"] else " + ".join(methods) or "Paid"
@@ -311,7 +325,17 @@ def _payment_note(deal: dict, payments: list[dict], now: datetime) -> str:
         return "Not paid yet"
     if state == "cancelled":
         return deal.get("lost_reason") or "Cancelled"
+    if deal.get("quote_valid_until"):
+        return f"Valid till {_day(deal['quote_valid_until'])}"
     return "Price sent"
+
+
+def _day(iso: str) -> str:
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return str(iso)
+    return f"{d.day} {d.strftime('%b')}"
 
 
 def _ago(at: datetime, now: datetime) -> str:
@@ -342,6 +366,7 @@ def order_row(deal: dict, now: datetime | None = None) -> dict:
         "items": _items_text(items),
         "total_paise": int(deal.get("total_paise") or 0),
         "paid_paise": int(deal.get("paid_paise") or 0),
+        "refunded_paise": int(deal.get("refunded_paise") or 0),
         "balance_paise": balance_paise(deal) if deal.get("stage") != "lost" else 0,
         "payment": payment_state(deal),
         "payment_note": _payment_note(deal, payments, now),
@@ -390,17 +415,21 @@ def list_orders(db, tenant_id: str, *, chip: str = "all", channel: str | None = 
 
 
 def _cards(db, tenant_id: str, deals: list[dict], since: datetime | None, channel: str | None, now: datetime) -> dict:
-    # Money in: payments received in the period, on orders not cancelled.
-    pq = (
-        db.table("deal_payments").select("amount_paise, paid_at, deal_id, deals!inner(stage, channel)")
-        .eq("tenant_id", tenant_id).neq("deals.stage", "lost")
+    # Money in: payments received in the period, less refunds given in the period.
+    pq = db.table("deal_payments").select("amount_paise, paid_at, deal_id, deals!inner(channel)").eq("tenant_id", tenant_id)
+    rq = (
+        db.table("deal_refunds").select("amount_paise, created_at, deals!inner(channel)")
+        .eq("tenant_id", tenant_id).neq("status", "failed")
     )
     if since:
         pq = pq.gte("paid_at", since.isoformat())
+        rq = rq.gte("created_at", since.isoformat())
     if channel in ("online", "store"):
         pq = pq.eq("deals.channel", channel)
+        rq = rq.eq("deals.channel", channel)
     payments = pq.limit(10000).execute().data or []
-    money_in = sum(int(p.get("amount_paise") or 0) for p in payments)
+    refunds = rq.limit(10000).execute().data or []
+    money_in = sum(int(p.get("amount_paise") or 0) for p in payments) - sum(int(r.get("amount_paise") or 0) for r in refunds)
     paid_orders = len({p.get("deal_id") for p in payments})
 
     open_deals = [d for d in deals if payment_state(d) in ("waiting", "advance")]
@@ -409,7 +438,8 @@ def _cards(db, tenant_id: str, deals: list[dict], since: datetime | None, channe
     late = sum(1 for d in pack if (_parse(d.get("created_at")) or now) < now - timedelta(days=2))
     gst_bills = [d for d in deals if d.get("stage") == "won" and d.get("bill_type", "gst") == "gst" and int(d.get("gst_paise") or 0) > 0]
     return {
-        "money_in": {"paise": money_in, "orders": paid_orders},
+        "money_in": {"paise": money_in, "orders": paid_orders,
+                     "refunded_paise": sum(int(r.get("amount_paise") or 0) for r in refunds)},
         "to_collect": {"paise": sum(balance_paise(d) for d in open_deals), "orders": len(open_deals), "reminders_on": reminded},
         "to_pack": {"orders": len(pack), "over_2_days": late},
         "gst": {"paise": sum(int(d.get("gst_paise") or 0) for d in gst_bills), "bills": len(gst_bills)},
@@ -462,10 +492,27 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
     if caller_ids:
         rows = db.table("callers").select("id, name").eq("tenant_id", tenant_id).in_("id", caller_ids).execute().data or []
         names = {r["id"]: r.get("name") for r in rows}
+    refunds = (
+        db.table("deal_refunds").select("id, amount_paise, method, reason, status, credit_note_number, created_at")
+        .eq("deal_id", deal_id).eq("tenant_id", tenant_id).order("created_at").execute()
+    ).data or []
     from app.services.business_details import get_business_details
     business = get_business_details(tenant_id, db) or {}
+    ready_preview = None
+    if deal.get("stage") != "lost" and deal.get("handover") not in ("taken",) and deal.get("delivery_status") not in ("ready", "shipped", "delivered"):
+        ready_preview = compose(db, tenant_id, {**deal, "payment_link": deal.get("payment_link") or "(pay link)"}, "ready")[0] \
+            if balance_paise(deal) > 0 else compose(db, tenant_id, deal, "ready")[0]
     return {
         **order_row({**deal, "leads": lead, "deal_items": items, "deal_payments": payments}),
+        "refunds": [{**r, "method_label": METHOD_LABELS.get(r["method"], "Other")} for r in refunds],
+        "refundable_paise": max(int(deal.get("paid_paise") or 0) - int(deal.get("refunded_paise") or 0), 0),
+        "razorpay_refundable_paise": _razorpay_refundable(db, tenant_id, deal_id),
+        "quote": {
+            "valid_until": deal.get("quote_valid_until"), "sent_at": deal.get("quote_sent_at"),
+            "accepted_at": deal.get("accepted_at"), "advance_paise": int(deal.get("advance_paise") or 0),
+            "ready_in_days": deal.get("ready_in_days"),
+        },
+        "ready_preview": ready_preview,
         "stage": deal.get("stage"),
         "source": deal.get("source"),
         "items_full": items,
@@ -504,10 +551,30 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
     }
 
 
+def _razorpay_refundable(db, tenant_id: str, deal_id: str) -> int:
+    """How much of this order was paid by Razorpay and not yet refunded through it."""
+    paid = (
+        db.table("deal_payments").select("amount_paise").eq("tenant_id", tenant_id).eq("deal_id", deal_id)
+        .eq("method", "razorpay").not_.is_("razorpay_payment_id", "null").execute()
+    ).data or []
+    back = (
+        db.table("deal_refunds").select("amount_paise").eq("tenant_id", tenant_id).eq("deal_id", deal_id)
+        .eq("method", "razorpay").neq("status", "failed").execute()
+    ).data or []
+    return max(sum(int(p["amount_paise"]) for p in paid) - sum(int(r["amount_paise"]) for r in back), 0)
+
+
 def _upcoming(deal: dict) -> list[dict]:
     """What goes out next by itself, for the order page."""
     out = []
     if deal.get("stage") in ("won", "lost"):
+        return out
+    if deal.get("stage") == "quoted" and deal.get("quote_sent_at"):
+        sent = _parse(deal["quote_sent_at"])
+        if sent and not deal.get("quote_reminded_at"):
+            out.append({"kind": "quote_reminder", "at": (sent + timedelta(days=2)).isoformat(), "note": "only if no reply"})
+        if deal.get("quote_valid_until"):
+            out.append({"kind": "quote_expiry", "at": f"{deal['quote_valid_until']}T23:59:00+05:30", "note": "marked Quote expired if not accepted"})
         return out
     start = _parse(deal.get("reminders_from"))
     sent = int(deal.get("reminders_sent") or 0)
@@ -532,7 +599,54 @@ def compose(db, tenant_id: str, deal: dict, kind: str, *, pay_link: str | None =
     number = order_label(deal)
     due = balance_paise(deal)
     link = pay_link or deal.get("payment_link") or ""
-    if kind in ("bill", "confirmed"):
+    if kind in ("quote", "quote_reminder"):
+        url = bill_url(deal.get("bill_token")) or ""
+        items = (
+            db.table("deal_items").select("name, qty").eq("deal_id", deal["id"]).eq("tenant_id", tenant_id).execute()
+        ).data or []
+        summary = ", ".join(f"{i['name']} x {i['qty']}" for i in items)[:300] or "your order"
+        total = _rupees(int(deal["total_paise"]))
+        if kind == "quote_reminder":
+            text = f"Vanakkam {first}, a gentle reminder about quote {number} from {shop} ({total})."
+        else:
+            text = f"Quote {number} from {shop}\nVanakkam {first} 🙏\n" + "\n".join(
+                f"• {i['name']} × {i['qty']}" for i in items[:12]) + f"\nTotal {total}"
+            if deal.get("discount_paise"):
+                text += f" (after {_rupees(int(deal['discount_paise']))} discount)"
+        advance = int(deal.get("advance_paise") or 0)
+        extra = []
+        if advance:
+            extra.append(f"Advance {_rupees(advance)} to confirm")
+        if deal.get("ready_in_days"):
+            extra.append(f"ready in {deal['ready_in_days']} days")
+        if extra:
+            text += "\n" + " · ".join(extra)
+        if deal.get("quote_valid_until"):
+            text += f"\nValid till {_day(deal['quote_valid_until'])}"
+        if url:
+            text += f"\nSee or download it: {url}"
+        return text, [first, number, shop, summary, total]
+    if kind == "confirmed":
+        advance = min(int(deal.get("advance_paise") or 0), due)
+        text = f"Nandri {first}! 🎉 Order {number} from {shop} is confirmed."
+        if advance and link:
+            text += f" Pay the {_rupees(advance)} advance here to start: {link}"
+        elif advance:
+            text += f" Advance to start: {_rupees(advance)}."
+        update = f"it is confirmed{f', advance {_rupees(advance)}' if advance else ''}"
+        return text, [first, number, shop, update, link or bill_url(deal.get("bill_token")) or number]
+    if kind == "refund":
+        refund = deal.get("_refund") or {}
+        amount = _rupees(int(refund.get("amount_paise") or 0))
+        if refund.get("method") == "razorpay":
+            text = f"Vanakkam {first}, the refund of {amount} for order {number} from {shop} has started. It reaches your account in 5-7 working days."
+            update = f"refund of {amount} started, 5-7 working days"
+        else:
+            how = METHOD_LABELS.get(refund.get("method"), "")
+            text = f"Vanakkam {first}, {shop} has given back {amount} for order {number}{f' by {how}' if how else ''}."
+            update = f"{amount} refunded{f' by {how}' if how else ''}"
+        return text, [first, number, shop, update, bill_url(deal.get("bill_token")) or number]
+    if kind == "bill":
         url = bill_url(deal.get("bill_token")) or ""
         bill_no = deal.get("invoice_number") or number
         text = f"Vanakkam {first} 🙏 Thank you for shopping at {shop}.\nYour bill {bill_no} for {_rupees(int(deal['total_paise']))}"
@@ -580,12 +694,33 @@ def _approved_order_template(db, tenant_id: str, kind: str) -> dict | None:
     return next((t for t in _approved_templates(db, tenant_id) if t.get("name") == wanted), None)
 
 
+async def _send_order_template(db, tenant_id: str, phone: str, template: dict, values: list[str],
+                               payloads: list[str] | None) -> tuple[str | None, str]:
+    """An approved order template, with quick-reply payloads on its buttons (the quote's
+    Accept / Ask). Returns (Meta message id, the text as the customer sees it)."""
+    from fastapi import HTTPException
+    from app.services.call_details_share import prepare_template
+    from app.services.meta_cloud import send_template_message
+    template, vals, content = prepare_template(db, tenant_id, template["id"], [_one_line(v) for v in values])
+    components = [{"type": "body", "parameters": [{"type": "text", "text": v} for v in vals]}] if vals else []
+    for index, payload in enumerate(payloads or []):
+        components.append({"type": "button", "sub_type": "quick_reply", "index": str(index),
+                           "parameters": [{"type": "payload", "payload": payload}]})
+    try:
+        resp = await send_template_message(phone, template["name"], template.get("language") or "en",
+                                           components=components, tenant_id=tenant_id)
+    except HTTPException as e:
+        raise OrderError(f"WhatsApp didn't send it: {str(e.detail)[:200]}")
+    return ((resp or {}).get("messages") or [{}])[0].get("id"), content
+
+
 async def notify(db, tenant_id: str, deal_id: str, kind: str, *, user_id: str | None = None,
-                 pay_link: str | None = None, sender: dict | None = None) -> dict:
+                 pay_link: str | None = None, sender: dict | None = None, buttons: list[dict] | None = None,
+                 extra: dict | None = None) -> dict:
     """Send the customer one update about their order. Returns
     {"sent": bool, "via": "text"|"template"|None, "share_url": str|None, "text": str, "reason": str|None}.
     Never raises: the order change it follows has already happened."""
-    deal = _load(db, tenant_id, deal_id)
+    deal = {**_load(db, tenant_id, deal_id), **(extra or {})}
     text, values = compose(db, tenant_id, deal, kind, pay_link=pay_link)
     result = {"sent": False, "via": None, "share_url": None, "text": text, "reason": None}
     lead = {}
@@ -611,15 +746,19 @@ async def notify(db, tenant_id: str, deal_id: str, kind: str, *, user_id: str | 
         from app.services.call_details_share import window_open
         sid, via, content = None, None, text
         if window_open(lead.get("last_inbound_at"), _now()):
-            from app.services.ai_reply import send_whatsapp
-            sid = await send_whatsapp(phone, text, tenant_id=tenant_id)
+            if buttons:
+                from app.services.meta_cloud import send_interactive_buttons
+                resp = await send_interactive_buttons(phone, text[:1024], buttons, tenant_id=tenant_id)
+                sid = ((resp or {}).get("messages") or [{}])[0].get("id")
+            else:
+                from app.services.ai_reply import send_whatsapp
+                sid = await send_whatsapp(phone, text, tenant_id=tenant_id)
             via = "text" if sid else None
         if not sid:
             template = _approved_order_template(db, tenant_id, kind)
             if template:
-                from app.services.call_details_share import send_approved_template
-                sid, content = await send_approved_template(db, tenant_id, phone, template["id"],
-                                                            [_one_line(v) for v in values])
+                sid, content = await _send_order_template(db, tenant_id, phone, template, values,
+                                                           [b["id"] for b in buttons] if buttons else None)
                 via = "template" if sid else None
         if not sid:
             result["reason"] = "outside_24h_no_template"
@@ -877,6 +1016,11 @@ async def send_due_reminders(db=None, now: datetime | None = None, limit: int = 
     hour = now.astimezone(IST).hour
     if not (REMINDER_HOURS_IST[0] <= hour < REMINDER_HOURS_IST[1]):
         return 0
+    try:
+        from app.services.order_quotes import sweep_quotes
+        await sweep_quotes(db, now)
+    except Exception as e:
+        logger.warning(f"Quote reminders/expiry failed: {e}")
     rows = (
         db.table("deals").select("*").eq("stage", "awaiting_payment").not_.is_("reminders_from", "null")
         .lt("reminders_sent", len(REMINDER_DAYS)).not_.is_("lead_id", "null").limit(limit).execute()
@@ -1013,8 +1157,20 @@ def public_bill(db, token: str) -> dict | None:
         "paid_paise": int(deal.get("paid_paise") or 0),
         "balance_paise": balance_paise(deal) if deal.get("stage") != "lost" else 0,
         "cancelled": deal.get("stage") == "lost",
+        "refunded_paise": int(deal.get("refunded_paise") or 0),
         "pay_link": deal.get("payment_link") if deal.get("stage") == "awaiting_payment" else None,
+        "quote": _public_quote(deal),
     }
+
+
+def _public_quote(deal: dict) -> dict | None:
+    """Quote details while it is open, so the page can show Accept."""
+    if deal.get("stage") != "quoted" or not deal.get("quote_sent_at"):
+        return None
+    valid = deal.get("quote_valid_until")
+    expired = bool(valid and str(valid)[:10] < _now().astimezone(IST).date().isoformat())
+    return {"valid_until": valid, "expired": expired, "advance_paise": int(deal.get("advance_paise") or 0),
+            "ready_in_days": deal.get("ready_in_days")}
 
 
 def _mask(phone: str | None) -> str | None:

@@ -399,6 +399,9 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   if (pathname === "/dashboard/sms" || pathname.startsWith("/dashboard/sms/")) {
     return SMS_TITLES[pathname.split("/")[3] ?? ""] ?? SMS_TITLES[""];
   }
+  if (pathname === "/dashboard/deals/new-quote") {
+    return { title: "Orders & payments / New quote", description: "Send a price offer. When they tap Accept, it becomes an order." };
+  }
   if (pathname === "/dashboard/deals/new-bill") {
     return { title: "Orders & payments / New bill", description: "One button for every sale. Stock goes down by itself; the bill goes on WhatsApp." };
   }
@@ -629,8 +632,18 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
             />
             {canManageDeals && tab !== "insights" && tab !== "forms" && (
               <button
-                  type="button"
-                  onClick={() => router.push("/dashboard/deals/new-bill")}
+                type="button"
+                onClick={() => router.push("/dashboard/deals/new-quote")}
+                title="A price offer the customer accepts on WhatsApp"
+                className="rounded-xl border border-border-subtle bg-white px-3.5 py-2 font-label text-xs font-bold text-ink shadow-sm hover:border-slate-300"
+              >
+                New quote
+              </button>
+            )}
+            {canManageDeals && tab !== "insights" && tab !== "forms" && (
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/deals/new-bill")}
                   className="rounded-xl bg-primary px-3.5 py-2 font-label text-xs font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
                 >
                   <Plus size={14} className="mr-1.5 inline" />

@@ -6,12 +6,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Bot, Check, ExternalLink, FileText, Loader2, MessageCircle, Send, Store, Truck, User,
+  ArrowLeft, Bot, Check, ExternalLink, FileText, Loader2, MessageCircle, Send, Store, Truck, Undo2, User,
 } from "lucide-react";
 import { api, type OrderDetail } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { DeliveryBadge, PaymentBadge, Ticks, dateTime, reportSend, rupees } from "../orderUi";
+import { RefundDialog } from "../RefundDialog";
 
 type Step = { key: string; label: string; at: string | null; done: boolean };
 
@@ -42,8 +43,23 @@ function stepsFor(o: OrderDetail): Step[] {
 
 const KIND_TITLE: Record<string, string> = {
   bill: "Bill", confirmed: "Order confirmed", ready: "Ready", shipped: "On the way", delivered: "Delivered",
-  reminder: "Payment reminder", pay_link: "Payment link",
+  reminder: "Payment reminder", pay_link: "Payment link", quote: "Quote", quote_reminder: "Quote reminder", refund: "Refund",
 };
+
+function dayOnly(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function MoneyCard({ label, value, sub, tone }: { label: string; value: string; sub?: string | null; tone: string }) {
+  return (
+    <div className={cn("rounded-2xl border px-4 py-3 shadow-sm", tone)}>
+      <p className="font-label text-xs font-bold text-[#475569]">{label}</p>
+      <p className="mt-1 font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums">{value}</p>
+      {sub && <p className="mt-1 truncate text-xs text-[#64748b]">{sub}</p>}
+    </div>
+  );
+}
 
 const METHODS = [
   { value: "cash", label: "Cash" },
@@ -77,6 +93,8 @@ export default function OrderPage() {
   const search = useSearchParams();
   const { role, permissions } = useAuthRole();
   const canManage = role === "owner" || permissions.includes("deals.manage");
+  const canRefund = role === "owner" || permissions.includes("deals.refund");
+  const [refundOpen, setRefundOpen] = useState(false);
   const { data: order, error, mutate } = useSWR<OrderDetail>(["order", id], () => api.orders.get(id));
   const [busy, setBusy] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(search.get("focus") === "payment");
@@ -165,6 +183,22 @@ export default function OrderPage() {
         )}
       </div>
 
+      {(() => {
+        const lastPay = o.payments[o.payments.length - 1];
+        const paidLabel = o.payment === "paid" ? "Paid" : o.payment === "advance" ? "Advance paid" : "Paid";
+        return (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MoneyCard label="Order total" value={rupees(o.total_paise)} sub={o.items} tone="border-[#e2e8f0] bg-white text-[#0A1528]" />
+            <MoneyCard label={paidLabel} value={rupees(o.paid_paise - o.refunded_paise)}
+              sub={o.refunded_paise ? `${rupees(o.refunded_paise)} refunded` : lastPay ? `${lastPay.method_label} · ${dayOnly(lastPay.paid_at)}` : "nothing yet"}
+              tone="border-emerald-100 bg-emerald-50/60 text-emerald-700" />
+            <MoneyCard label="Balance due" value={rupees(o.balance_paise)}
+              sub={o.stage === "lost" ? "cancelled" : o.stage === "quoted" ? "once they accept" : o.balance_paise === 0 ? "nothing left" : o.ready_by ? `when ready · ${dayOnly(o.ready_by)}` : "to collect"}
+              tone="border-amber-100 bg-amber-50/60 text-amber-700" />
+          </div>
+        );
+      })()}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <Panel>
@@ -189,6 +223,29 @@ export default function OrderPage() {
             </div>
           </Panel>
 
+          {o.stage === "lost" ? (
+            <Panel title="Cancelled" right={<PaymentBadge state="cancelled" />}>
+              <p className="text-sm text-[#334155]">{o.lost_reason || "This order was cancelled."}</p>
+              {o.refunded_paise > 0 && <p className="mt-1 text-xs text-on-surface-muted">{rupees(o.refunded_paise)} given back. See the refund under Payments.</p>}
+            </Panel>
+          ) : o.stage === "quoted" ? (
+            <Panel title="Quote" right={<span className="text-[11px] text-on-surface-muted">{o.quote.valid_until ? `valid till ${dayOnly(o.quote.valid_until)}` : ""}</span>}>
+              <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                <div><dt className="text-xs text-on-surface-muted">Sent</dt><dd className="font-label font-bold text-[#0A1528]">{o.quote.sent_at ? dateTime(o.quote.sent_at) : "Not yet (draft)"}</dd></div>
+                <div><dt className="text-xs text-on-surface-muted">Advance on Accept</dt><dd className="font-label font-bold text-[#0A1528]">{o.quote.advance_paise ? rupees(o.quote.advance_paise) : "None"}</dd></div>
+                <div><dt className="text-xs text-on-surface-muted">Ready</dt><dd className="font-label font-bold text-[#0A1528]">{o.quote.ready_in_days != null ? `${o.quote.ready_in_days} days after Accept` : "—"}</dd></div>
+              </dl>
+              <p className="mt-3 text-xs text-on-surface-muted">When {first} taps Accept, this becomes an order by itself{o.quote.advance_paise ? " and the advance link goes out" : ""}. You get an alert.</p>
+              {canManage && (
+                <button type="button" disabled={!!busy || !o.customer_full.phone}
+                  onClick={() => run("quote", () => api.orders.sendQuote(o.id), (out) => reportSend(o.id, "quote", out, () => mutate()))}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-label text-sm font-bold text-white shadow-sm hover:bg-primary/90 disabled:opacity-50">
+                  {busy === "quote" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {o.quote.sent_at ? "Send the quote again" : "Send quote on WhatsApp"}
+                </button>
+              )}
+            </Panel>
+          ) : (
           <Panel title="Steps" right={
             o.handover !== "taken" && canDeliver && !["shipped", "delivered"].includes(o.delivery) ? (
               <div className="flex rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-0.5" role="group" aria-label="How it reaches them">
@@ -246,7 +303,9 @@ export default function OrderPage() {
               </div>
             )}
             {o.tracking_id && <p className="mt-3 text-xs text-on-surface-muted">Tracking: <span className="font-bold text-[#0A1528]">{o.courier} · {o.tracking_id}</span></p>}
+            {o.quote.accepted_at && <p className="mt-3 text-xs text-on-surface-muted">Quote accepted {dateTime(o.quote.accepted_at)}</p>}
           </Panel>
+          )}
 
           <Panel>
             <div className="overflow-hidden rounded-xl border border-[#eef2f6]">
@@ -291,9 +350,21 @@ export default function OrderPage() {
                     {p.received_by_name && <span className="ml-auto text-on-surface-muted">by {p.received_by_name}</span>}
                   </li>
                 ))}
+                {o.refunds.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-2 text-xs">
+                    <Undo2 size={14} className="text-rose-600" />
+                    <span className="font-label font-bold text-[#0A1528]">Refund</span>
+                    <span className="font-bold tabular-nums text-rose-600">− {rupees(r.amount_paise)}</span>
+                    <span className="text-on-surface-muted">{r.method_label} · {dateTime(r.created_at)}{r.status === "pending" ? " · on its way" : r.status === "failed" ? " · failed" : ""}</span>
+                    <span className="ml-auto text-on-surface-muted">{[r.reason, r.credit_note_number].filter(Boolean).join(" · ")}</span>
+                  </li>
+                ))}
               </ul>
             )}
-            {open && o.balance_paise > 0 && (
+            {o.stage === "quoted" && (
+              <p className="mt-2 text-xs text-on-surface-muted">Payments start when they accept{o.quote.advance_paise ? `: the ${rupees(o.quote.advance_paise)} advance link goes out by itself` : ""}.</p>
+            )}
+            {open && o.stage !== "quoted" && o.balance_paise > 0 && (
               <div className="mt-3 rounded-xl bg-amber-50/70 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-label text-sm font-bold text-[#0A1528]">{o.paid_paise ? "Balance" : "To pay"} {rupees(o.balance_paise)}</span>
@@ -341,23 +412,47 @@ export default function OrderPage() {
             {o.payment === "paid" && <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Check size={13} /> Paid in full</p>}
           </Panel>
 
-          {canManage && open && o.paid_paise === 0 && (
-            <div className="flex items-center justify-between rounded-2xl border border-[#e2e8f0] bg-white px-4 py-3 text-xs">
-              <span className="text-on-surface-muted">Customer changed their mind?</span>
-              <button type="button" disabled={!!busy}
-                onClick={() => {
-                  if (!window.confirm(`Cancel order ${o.label}? Nothing has been paid.`)) return;
-                  run("cancel", () => api.deals.updateStage(o.id, { stage: "lost", lost_reason: "Cancelled" }), () => toast.success("Order cancelled"));
-                }}
-                className="font-label font-bold text-rose-600 hover:text-rose-700">Cancel order</button>
+          {(o.stage !== "lost" || o.refundable_paise > 0) && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-white px-4 py-3 text-xs">
+              <span className="text-on-surface-muted">{o.stage === "lost" ? `${rupees(o.refundable_paise)} is still held on this cancelled order.` : "Customer changed their mind?"}</span>
+              {canRefund ? (
+                <button type="button" onClick={() => setRefundOpen(true)} className="font-label font-bold text-rose-600 hover:text-rose-700">
+                  {o.refundable_paise > 0 ? "Cancel or refund" : "Cancel order"}
+                </button>
+              ) : (
+                <span className="text-on-surface-muted">Ask the owner to cancel or refund</span>
+              )}
             </div>
           )}
-          {o.paid_paise > 0 && o.stage !== "lost" && (
-            <p className="px-1 text-[11px] text-on-surface-muted">Refunds and cancelling a paid order come in the next update.</p>
-          )}
+          {refundOpen && <RefundDialog order={o} onClose={() => setRefundOpen(false)} onDone={() => mutate()} />}
         </div>
 
         <div className="space-y-4">
+          {o.ready_preview && canDeliver && o.stage !== "quoted" && (
+            <section className="rounded-2xl border border-primary-100 bg-primary-50/40 p-4 shadow-sm sm:p-5">
+              <h2 className="font-label text-sm font-bold text-[#0A1528]">When you tap &ldquo;{o.handover === "courier" ? "Mark packed" : "Mark ready"}&rdquo;</h2>
+              <p className="text-xs text-on-surface-muted">This goes to {first}{o.balance_paise > 0 ? " with the balance link" : ""}:</p>
+              <div className="mt-3 rounded-2xl bg-[#efe7dd] p-3">
+                <div className="rounded-xl bg-white p-3 text-[13px] leading-5 text-[#111827] shadow-sm">
+                  <p className="whitespace-pre-line">{o.ready_preview.replace(/\nBalance[^\n]*/, "")}</p>
+                  {o.balance_paise > 0 && (
+                    <p className="mt-2 rounded-lg bg-[#0b8a7a] py-2 text-center font-bold text-white">Pay {rupees(o.balance_paise)}</p>
+                  )}
+                </div>
+              </div>
+              {o.balance_paise > 0 && <p className="mt-2 text-[11px] text-on-surface-muted">Not paid? Payment reminders go by themselves on day 1, 3 and 7.</p>}
+            </section>
+          )}
+          {o.customer_full.lead_id && (o.payment === "advance" || o.payment === "paid") && (
+            <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 text-xs leading-6 text-[#334155] shadow-sm">
+              <h2 className="font-label text-sm font-bold text-[#0A1528]">In Engage</h2>
+              {o.payment === "advance" ? (
+                <p>{first} shows <span className="rounded-full bg-sky-50 px-2 py-0.5 font-bold text-sky-700">Advance paid · {rupees(o.paid_paise)}</span> until the balance is paid. Then they become <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">Came / Paid · {rupees(o.total_paise)}</span> by themselves.</p>
+              ) : (
+                <p>{first} shows <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">Came / Paid · {rupees(o.total_paise)}</span> in Inbound leads and Customers.</p>
+              )}
+            </section>
+          )}
           <Panel title={`Updates sent to ${first}`} right={<span className="text-[11px] text-on-surface-muted">on WhatsApp</span>}>
             {o.messages.length === 0 ? (
               <p className="text-xs text-on-surface-muted">{o.customer_full.phone ? "Nothing sent yet." : "No phone number on this order, so nothing goes out."}</p>
@@ -383,13 +478,13 @@ export default function OrderPage() {
                 <p className="mb-2 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Goes out next, by itself</p>
                 {o.upcoming.map((u) => (
                   <div key={u.kind + u.at} className="flex justify-between text-xs">
-                    <span className="font-label font-bold text-[#0A1528]">Payment reminder</span>
+                    <span className="font-label font-bold text-[#0A1528]">{u.kind === "quote_reminder" ? "Quote reminder" : u.kind === "quote_expiry" ? "Quote expires" : "Payment reminder"}</span>
                     <span className="text-on-surface-muted">{dateTime(u.at)}, {u.note}</span>
                   </div>
                 ))}
               </div>
             )}
-            {canManage && o.customer_full.phone && o.bill_url && (
+            {canManage && o.customer_full.phone && o.bill_url && o.stage !== "quoted" && o.stage !== "lost" && (
               <button type="button" disabled={!!busy}
                 onClick={() => run("bill", () => api.orders.send(o.id, "bill"), (out) => reportSend(o.id, "bill", out, () => mutate()))}
                 className="mt-4 inline-flex items-center gap-1.5 font-label text-xs font-bold text-primary-700 hover:text-primary-900 disabled:opacity-50">
@@ -398,13 +493,14 @@ export default function OrderPage() {
             )}
           </Panel>
 
-          <Panel title={<span className="inline-flex items-center gap-1.5"><FileText size={15} /> {o.bill_type === "gst" ? "GST invoice" : "Bill"}</span>}>
+          <Panel title={<span className="inline-flex items-center gap-1.5"><FileText size={15} /> {o.stage === "quoted" ? "Quotation" : o.bill_type === "gst" ? "GST invoice" : "Bill"}</span>}>
             {o.bill_url ? (
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-label text-sm font-bold text-[#0A1528]">{o.invoice_number ?? o.label}</p>
                   <p className="text-xs text-on-surface-muted">
-                    {o.invoice_number ? `Numbered ${dateTime(o.invoice_issued_at)} · same numbering as shop bills` : "Gets its bill number with the first payment"}
+                    {o.stage === "quoted" ? "The page they open from WhatsApp, with Accept and Download PDF"
+                      : o.invoice_number ? `Numbered ${dateTime(o.invoice_issued_at)} · same numbering as shop bills` : "Gets its bill number with the first payment"}
                   </p>
                 </div>
                 <a href={o.bill_url} target="_blank" rel="noopener noreferrer"

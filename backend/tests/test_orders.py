@@ -309,11 +309,26 @@ def test_outside_24_hours_the_approved_order_template_goes(db):
     template = {"id": "tpl", "name": "anril_payment_reminder", "body_text": orders.ORDER_TEMPLATES["reminder"]["body"]}
     with patch("app.config_dynamic.get_setting", side_effect=_connected), \
          patch("app.services.call_details_share._approved_templates", return_value=[template]), \
-         patch("app.services.call_details_share.send_approved_template", AsyncMock(return_value=("wamid.2", "Vanakkam Revathi"))) as tpl:
+         patch("app.services.meta_cloud.send_template_message", AsyncMock(return_value={"messages": [{"id": "wamid.2"}]})) as tpl:
         out = run(orders.notify(db, T, "d1", "reminder", pay_link="https://rzp.io/l/x"))
     assert (out["sent"], out["via"]) == (True, "template")
-    values = tpl.await_args.args[4]
+    assert tpl.await_args.args[1] == "anril_payment_reminder"
+    values = [p["text"] for p in tpl.await_args.kwargs["components"][0]["parameters"]]
     assert values[0] == "Revathi" and values[2] == "₹2,400" and values[4] == "https://rzp.io/l/x"
+    assert len(tpl.await_args.kwargs["components"]) == 1  # no buttons on a reminder
+
+
+def test_the_quote_template_carries_accept_and_ask_payloads(db):
+    _lead(db, inbound_hours_ago=48)
+    _deal(db, lead_id="L1", stage="quoted")
+    template = {"id": "tq", "name": "anril_order_quote", "body_text": orders.ORDER_TEMPLATES["quote"]["body"]}
+    buttons = [{"id": "quote_accept:d1", "title": "Accept quote"}, {"id": "quote_ask:d1", "title": "Ask a question"}]
+    with patch("app.config_dynamic.get_setting", side_effect=_connected),          patch("app.services.call_details_share._approved_templates", return_value=[template]),          patch("app.services.meta_cloud.send_template_message", AsyncMock(return_value={"messages": [{"id": "wamid.3"}]})) as tpl:
+        out = run(orders.notify(db, T, "d1", "quote", buttons=buttons))
+    assert out["sent"]
+    sent_buttons = tpl.await_args.kwargs["components"][1:]
+    assert [b["parameters"][0]["payload"] for b in sent_buttons] == ["quote_accept:d1", "quote_ask:d1"]
+    assert [b["index"] for b in sent_buttons] == ["0", "1"]
 
 
 # ── reminders ───────────────────────────────────────────────────────────────────

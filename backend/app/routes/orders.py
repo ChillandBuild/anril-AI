@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import require_permission
+from app.dependencies.tenant import require_owner, require_permission
 from app.services import orders as orders_service
 from app.services.orders import OrderError
 
@@ -128,6 +128,67 @@ def add_to_waitlist(payload: WaitlistIn, ctx: dict = Depends(require_deals_manag
         raise _bad(e)
 
 
+# ── Quotes ────────────────────────────────────────────────────────────────────
+
+@router.get("/advance-rule")
+def get_advance_rule(ctx: dict = Depends(require_deals_view)):
+    from app.services.order_quotes import advance_rule
+    return advance_rule(ctx["tenant_id"])
+
+
+class AdvanceRuleIn(BaseModel):
+    kind: Literal["none", "percent", "fixed"]
+    value: float = Field(0, ge=0, le=10_000_000)
+    min_total_paise: int = Field(0, ge=0, le=10_000_000_00)
+
+
+@router.put("/advance-rule")
+def put_advance_rule(payload: AdvanceRuleIn, ctx: dict = Depends(require_owner)):
+    """Owner only: the shop's advance rule (quotes and New bill start from it)."""
+    from app.services.order_quotes import save_advance_rule
+    try:
+        return save_advance_rule(get_supabase(), ctx["tenant_id"], payload.model_dump())
+    except OrderError as e:
+        raise _bad(e)
+
+
+class QuoteLine(BaseModel):
+    catalog_item_id: str | None = Field(None, max_length=64)
+    variant_id: str | None = Field(None, max_length=64)
+    name: str | None = Field(None, max_length=200)
+    qty: int = Field(1, ge=1, le=100000)
+    unit_price_paise: int | None = Field(None, ge=0, le=10_000_000_00)
+
+
+class QuoteAdvance(BaseModel):
+    kind: Literal["rule", "none", "percent", "fixed"] = "rule"
+    value: float = Field(0, ge=0, le=10_000_000)
+
+
+class NewQuoteIn(BaseModel):
+    lead_id: str | None = Field(None, max_length=64)
+    phone: str | None = Field(None, max_length=20)
+    name: str | None = Field(None, max_length=120)
+    items: list[QuoteLine] = Field(..., min_length=1, max_length=60)
+    discount_paise: int = Field(0, ge=0, le=10_000_000_00)
+    valid_until: str | None = Field(None, max_length=10)
+    advance: QuoteAdvance = Field(default_factory=QuoteAdvance)
+    ready_in_days: int | None = Field(None, ge=0, le=365)
+    notes: str | None = Field(None, max_length=2000)
+    sold_by: str | None = Field(None, max_length=64)
+    send: bool = True
+
+
+@router.post("/quotes")
+async def create_quote(payload: NewQuoteIn, ctx: dict = Depends(require_deals_manage)):
+    from app.services.order_quotes import create_quote as make
+    try:
+        return await make(get_supabase(), ctx["tenant_id"], payload.model_dump(), user_id=ctx.get("user_id"),
+                          send=payload.send, sender=_sender(ctx))
+    except OrderError as e:
+        raise _bad(e)
+
+
 # ── WhatsApp templates for orders ─────────────────────────────────────────────
 
 def _template_status(db, tenant_id: str) -> list[dict]:
@@ -158,7 +219,7 @@ def whatsapp_setup(ctx: dict = Depends(require_deals_view)):
 async def submit_order_templates(ctx: dict = Depends(require_permission("templates.manage"))):
     """Submit the missing order templates to Meta (utility, English) through the Templates
     page's own path, so they show and update there like any other template."""
-    from app.routes.templates import CreateTemplate, create_template
+    from app.routes.templates import Button, CreateTemplate, create_template
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     problems = []
@@ -169,7 +230,8 @@ async def submit_order_templates(ctx: dict = Depends(require_permission("templat
         try:
             await create_template(
                 CreateTemplate(name=spec["name"], category="UTILITY", language="en", body_text=spec["body"],
-                               body_examples=spec["examples"]),
+                               body_examples=spec["examples"],
+                               buttons=[Button(type="QUICK_REPLY", text=t) for t in spec.get("buttons", [])] or None),
                 tenant_id=tenant_id, _ctx=ctx,
             )
         except HTTPException as e:
@@ -249,6 +311,39 @@ async def delivery(deal_id: str, payload: DeliveryIn, ctx: dict = Depends(requir
     return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}
 
 
+@router.post("/{deal_id}/send-quote")
+async def send_quote(deal_id: str, ctx: dict = Depends(require_deals_manage)):
+    from app.services.order_quotes import send_quote as send
+    db = get_supabase()
+    try:
+        out = await send(db, ctx["tenant_id"], deal_id, user_id=ctx.get("user_id"), sender=_sender(ctx))
+    except OrderError as e:
+        raise _bad(e)
+    return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}
+
+
+class RefundIn(BaseModel):
+    mode: Literal["cancel", "full", "part"]
+    amount_paise: int | None = Field(None, ge=100, le=10_000_000_00)
+    method: Literal["razorpay", "cash", "upi", "bank_transfer"] | None = None
+    reason: str = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/{deal_id}/refund")
+async def refund(deal_id: str, payload: RefundIn, ctx: dict = Depends(require_deals_manage)):
+    """Owner, or a role with "Refund orders" (deals.refund)."""
+    from app.services.order_refunds import can_refund, refund as give_back
+    if not can_refund(ctx):
+        raise HTTPException(status_code=403, detail="Only the owner or a manager with Refund orders can do this")
+    db = get_supabase()
+    try:
+        out = await give_back(db, ctx["tenant_id"], deal_id, mode=payload.mode, amount_paise=payload.amount_paise,
+                              method=payload.method, reason=payload.reason, user_id=ctx.get("user_id"), sender=_sender(ctx))
+    except OrderError as e:
+        raise _bad(e)
+    return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}
+
+
 class HandoverIn(BaseModel):
     handover: Literal["pickup", "courier"]
 
@@ -307,3 +402,18 @@ def get_public_bill(token: str):
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     return bill
+
+
+@public_router.post("/{token}/accept")
+async def accept_public_quote(token: str):
+    """Accept quote from the quote page (works for a quote shared from a staff phone too)."""
+    import re
+    from app.services.order_quotes import accept_quote
+    if not re.match(r"^[A-Za-z0-9_-]{16,64}$", token or ""):
+        raise HTTPException(status_code=404, detail="Quote not found")
+    db = get_supabase()
+    rows = db.table("deals").select("id, tenant_id").eq("bill_token", token).limit(1).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    out = await accept_quote(db, rows[0]["tenant_id"], rows[0]["id"], via="page")
+    return {"status": out["status"], "payment_link": out.get("payment_link"), "advance_paise": out.get("advance_paise", 0)}
