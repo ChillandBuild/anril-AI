@@ -21,6 +21,8 @@ type ParsedData = {
   columns: string[];
   suggested_mapping: { name: string | null; phone: string | null; email: string | null; course: string | null };
   total_rows: number;
+  // Different valid numbers in the file; bulk-send messages each number once.
+  unique_phone_count?: number;
   duplicate_count: number;
   preview: Record<string, string>[];
   csv_file_url: string | null;
@@ -2237,10 +2239,21 @@ export default function OutboundLeadsPage() {
                   ))}
                 </div>
 
+                {/* bulk-send sends once per number, so repeated rows don't get a second message */}
+                {parsedData.unique_phone_count !== undefined && parsedData.unique_phone_count < parsedData.total_rows && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 flex items-start gap-2.5 font-body text-xs text-amber-900">
+                    <Info size={14} className="text-amber-700 shrink-0 mt-0.5" />
+                    <span>
+                      {parsedData.total_rows.toLocaleString()} rows, <strong>{parsedData.unique_phone_count.toLocaleString()} unique numbers</strong> will be messaged.
+                      {" "}The other {(parsedData.total_rows - parsedData.unique_phone_count).toLocaleString()} rows repeat a number already in this file or have no valid number, so they&apos;re skipped. Each person gets one message.
+                    </span>
+                  </div>
+                )}
+
                 {/* The rest carries over to when Meta's moving 24h limit frees up, in the daytime (broadcast_executor.carry_over_time) */}
-                {scheduleType === "now" && sender && senderInfo && parsedData.total_rows > senderInfo.leftToday && (() => {
+                {scheduleType === "now" && sender && senderInfo && (parsedData.unique_phone_count ?? parsedData.total_rows) > senderInfo.leftToday && (() => {
                   const today = Math.max(senderInfo.leftToday, 0);
-                  const rest = parsedData.total_rows - today;
+                  const rest = (parsedData.unique_phone_count ?? parsedData.total_rows) - today;
                   const cap = sender.health?.broadcast_cap ?? 0;
                   return (
                     <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 flex items-start gap-2.5 font-body text-xs text-sky-900">

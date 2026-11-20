@@ -434,6 +434,14 @@ def _suggest_mapping(columns: list[str]) -> dict[str, str | None]:
     return mapping
 
 
+def _count_unique_phones(rows: list[dict], phone_col: str | None) -> int:
+    """How many different valid numbers the file holds -- what a send actually messages,
+    since bulk-send sends once per number."""
+    if not phone_col:
+        return 0
+    return len({p for row in rows if (p := _normalize_phone(row.get(phone_col) or ""))})
+
+
 @router.post("/parse")
 async def parse_csv(file: UploadFile = File(...), tenant_id: str = Depends(get_tenant_id)):
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -483,6 +491,7 @@ async def parse_csv(file: UploadFile = File(...), tenant_id: str = Depends(get_t
         "columns": columns,
         "suggested_mapping": suggested_mapping,
         "total_rows": total_rows,
+        "unique_phone_count": _count_unique_phones(rows, phone_col),
         "duplicate_count": duplicate_count,
         "preview": preview,
         "csv_file_url": csv_file_url,

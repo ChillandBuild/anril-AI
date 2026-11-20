@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.routes.upload import _suggest_mapping
+from app.routes.upload import _count_unique_phones, _suggest_mapping
 
 
 class SuggestMappingTests(unittest.TestCase):
@@ -37,6 +37,22 @@ class SuggestMappingTests(unittest.TestCase):
     def test_other_fields_unchanged(self):
         m = _suggest_mapping(["Full Name", "Email ID", "Course", "Phone"])
         self.assertEqual(m, {"name": "Full Name", "phone": "Phone", "email": "Email ID", "course": "Course"})
+
+
+
+class CountUniquePhonesTests(unittest.TestCase):
+    """The Confirm & Send note: '139 rows, 74 unique numbers will be messaged'."""
+
+    def test_same_number_in_different_formats_counts_once(self):
+        rows = [{"MOBILE NUMBER": v} for v in ("'+919876543210", "9876543210", "91 98765 43210", "+919876543211")]
+        self.assertEqual(_count_unique_phones(rows, "MOBILE NUMBER"), 2)
+
+    def test_blank_and_invalid_numbers_are_not_counted(self):
+        rows = [{"Phone": v} for v in ("", "abc", "12", "9876543210")] + [{}]
+        self.assertEqual(_count_unique_phones(rows, "Phone"), 1)
+
+    def test_no_phone_column(self):
+        self.assertEqual(_count_unique_phones([{"Name": "A"}], None), 0)
 
 
 if __name__ == "__main__":
