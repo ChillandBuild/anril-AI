@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Bot, Check, ExternalLink, FileText, Loader2, MessageCircle, Send, Store, Truck, Undo2, User,
+  ArrowLeft, Bot, Check, Download, ExternalLink, FileText, Loader2, MessageCircle, Send, Store, Truck, Undo2, User,
 } from "lucide-react";
 import { api, type OrderDetail } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -509,10 +509,18 @@ export default function OrderPage() {
                       : o.invoice_number ? `Numbered ${dateTime(o.invoice_issued_at)} · same numbering as shop bills` : "Gets its bill number with the first payment"}
                   </p>
                 </div>
-                <a href={o.bill_url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#e2e8f0] px-3 py-1.5 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
-                  Open · PDF <ExternalLink size={12} />
-                </a>
+                <div className="flex shrink-0 gap-1.5">
+                  <a href={o.bill_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#e2e8f0] px-3 py-1.5 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
+                    Open <ExternalLink size={12} />
+                  </a>
+                  {o.bill_file_url && (
+                    <a href={o.bill_file_url} target="_blank" rel="noopener noreferrer" title="What WhatsApp sends on top of the bill message"
+                      className="inline-flex items-center gap-1 rounded-lg border border-[#e2e8f0] px-3 py-1.5 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
+                      {o.bill_type === "gst" ? "PDF" : "Picture"} <Download size={12} />
+                    </a>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-xs text-on-surface-muted">The bill appears here with the first payment.</p>

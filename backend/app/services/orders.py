@@ -54,7 +54,26 @@ ORDER_TEMPLATES = {
         "examples": ["Suresh", "D-1052", "Demo Silks", "Cotton saree x 100, Silk-cotton saree x 40", "₹1,14,000"],
         "buttons": ["Accept quote", "Ask a question"],
     },
+    # The bill itself on top of the message: a receipt picture for a simple bill, the tax
+    # invoice PDF for a GST bill (services/bill_files.py). {{4}} carries any balance.
+    "bill_picture": {
+        "name": "anril_bill_picture",
+        "header": "IMAGE",
+        "body": "Nandri {{1}}! 🙏 Your bill {{2}} from {{3}} for {{4}} is above.",
+        "examples": ["Kavitha", "2026-27/0045", "Demo Silks", "₹3,800"],
+        "footer": "Again vaanga!",
+        "view_bill": True,
+    },
+    "bill_pdf": {
+        "name": "anril_bill_pdf",
+        "header": "DOCUMENT",
+        "body": "Vanakkam {{1}} 🙏 Your GST invoice {{2}} from {{3}} for {{4}} is attached.",
+        "examples": ["Kavitha", "2026-27/0045", "Demo Silks", "₹3,800"],
+        "footer": "Again vaanga!",
+        "view_bill": True,
+    },
 }
+VIEW_BILL_EXAMPLE = "sample-bill-link"  # what Meta's reviewer sees after /bill/
 TEMPLATE_FOR_KIND = {"bill": "bill", "confirmed": "update", "ready": "update", "shipped": "update",
                      "delivered": "update", "refund": "update", "pay_link": "reminder", "reminder": "reminder",
                      "quote": "quote", "quote_reminder": "quote"}
@@ -573,6 +592,9 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
         "payment_link": deal.get("payment_link"),
         "invoice_issued_at": deal.get("invoice_issued_at"),
         "bill_url": bill_url(deal.get("bill_token")),
+        # The picture / PDF WhatsApp carries; a quote has none.
+        "bill_file_url": bill_file_url(deal["bill_token"], (deal.get("bill_type") or "gst") == "gst")
+        if deal.get("bill_token") and deal.get("stage") != "quoted" else None,
         "sold_by": {"name": names.get(deal.get("sold_by")) if deal.get("sold_by") else None, "ai": bool(deal.get("sold_by_ai"))},
         "payments": [
             {**p, "received_by_name": names.get(p.get("received_by_caller")), "method_label": METHOD_LABELS.get(p["method"], "Other")}
@@ -759,6 +781,92 @@ def _approved_order_template(db, tenant_id: str, kind: str) -> dict | None:
     return next((t for t in _approved_templates(db, tenant_id) if t.get("name") == wanted), None)
 
 
+def _approved_media_template(db, tenant_id: str, name: str) -> dict | None:
+    """An approved template with a picture/document header (the text-only lookup skips those)."""
+    from app.config_dynamic import get_setting
+    waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
+    if not waba_id:
+        return None
+    rows = (
+        db.table("message_templates").select("*").eq("tenant_id", tenant_id).eq("name", name).execute()
+    ).data or []
+    return next((r for r in rows if (r.get("status") or "").upper() == "APPROVED" and r.get("meta_waba_id") == waba_id), None)
+
+
+def public_api_base() -> str:
+    from app.config import settings as env_settings
+    return (env_settings.public_base_url or "https://aira-ai-5tfr.onrender.com").rstrip("/")
+
+
+def bill_file_url(token: str, is_pdf: bool) -> str:
+    return f"{public_api_base()}/api/v1/public/bills/{token}/{'invoice.pdf' if is_pdf else 'picture.png'}"
+
+
+def bill_file(db, token: str) -> tuple[bytes, str, str] | None:
+    """(bytes, content type, file name) of the bill as WhatsApp carries it: the tax invoice
+    PDF for a GST bill, a receipt picture otherwise. None when the link is wrong."""
+    from app.services import bill_files
+    bill = public_bill(db, token)
+    if not bill:
+        return None
+    if bill["bill_type"] == "gst":
+        return bill_files.invoice_pdf(bill), "application/pdf", bill_files.pdf_filename(bill)
+    return bill_files.bill_png(bill), "image/png", f"Bill {bill_files.bill_number(bill).replace('/', '-')}.png"
+
+
+def _bill_amount_text(deal: dict) -> str:
+    total, due = int(deal.get("total_paise") or 0), balance_paise(deal)
+    text = _rupees(total)
+    if 0 < due < total:
+        text += f" (paid {_rupees(int(deal.get('paid_paise') or 0))}, balance {_rupees(due)})"
+    return text
+
+
+async def _send_bill_file(db, tenant_id: str, deal: dict, phone: str, caption: str, first: str,
+                          window: bool) -> tuple[str, str, str, dict] | None:
+    """The bill with the file on top: inside 24 hours as a picture/PDF with the caption,
+    outside as the approved anril_bill_picture / anril_bill_pdf template. Returns
+    (Meta message id, via, the text as the customer sees it, media fields for messages),
+    or None so the caller falls back to the plain-text bill."""
+    import asyncio
+    from app.services.meta_cloud import send_media_message, send_template_message, upload_media_to_meta
+    token = deal.get("bill_token")
+    if not token:
+        return None
+    is_gst = (deal.get("bill_type") or "gst") == "gst"
+    spec = ORDER_TEMPLATES["bill_pdf" if is_gst else "bill_picture"]
+    template = None if window else _approved_media_template(db, tenant_id, spec["name"])
+    if not window and not template:
+        return None
+    made = await asyncio.to_thread(bill_file, db, token)
+    if not made:
+        return None
+    data, content_type, filename = made
+    media_id = await upload_media_to_meta(data, content_type, filename, tenant_id=tenant_id)
+    wa_type = "document" if is_gst else "image"
+    media = {"media_type": wa_type, "media_url": bill_file_url(token, is_gst)}
+    if window:
+        resp = await send_media_message(phone, media_id=media_id, wa_type=wa_type, caption=caption[:1024],
+                                        filename=filename if is_gst else None, tenant_id=tenant_id)
+        sid = ((resp or {}).get("messages") or [{}])[0].get("id")
+        return (sid, "text", caption, media) if sid else None
+    values = [first, deal.get("invoice_number") or order_label(deal), _shop_name(db, tenant_id), _bill_amount_text(deal)]
+    values = [_one_line(v) for v in values]
+    header = {"id": media_id, **({"filename": filename} if is_gst else {})}
+    components = [
+        {"type": "header", "parameters": [{"type": wa_type, wa_type: header}]},
+        {"type": "body", "parameters": [{"type": "text", "text": v} for v in values]},
+        {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": token}]},
+    ]
+    resp = await send_template_message(phone, template["name"], template.get("language") or "en",
+                                       components=components, tenant_id=tenant_id)
+    sid = ((resp or {}).get("messages") or [{}])[0].get("id")
+    body = spec["body"]
+    for n, v in enumerate(values, start=1):
+        body = body.replace(f"{{{{{n}}}}}", v)
+    return (sid, "template", f"{body}\n{spec['footer']}", media) if sid else None
+
+
 async def _send_order_template(db, tenant_id: str, phone: str, template: dict, values: list[str],
                                payloads: list[str] | None) -> tuple[str | None, str]:
     """An approved order template, with quick-reply payloads on its buttons (the quote's
@@ -809,8 +917,17 @@ async def notify(db, tenant_id: str, deal_id: str, kind: str, *, user_id: str | 
             result["reason"] = "whatsapp_not_connected"
             return result
         from app.services.call_details_share import window_open
-        sid, via, content = None, None, text
-        if window_open(lead.get("last_inbound_at"), _now()):
+        sid, via, content, media = None, None, text, {}
+        window = window_open(lead.get("last_inbound_at"), _now())
+        if kind == "bill":
+            try:
+                sent = await _send_bill_file(db, tenant_id, deal, phone, text, values[0], window)
+            except Exception as e:  # the plain-text bill below still goes
+                logger.warning(f"Order {deal_id}: bill file didn't go, sending text: {e}")
+                sent = None
+            if sent:
+                sid, via, content, media = sent
+        if not sid and window:
             if buttons:
                 from app.services.meta_cloud import send_interactive_buttons
                 resp = await send_interactive_buttons(phone, text[:1024], buttons, tenant_id=tenant_id)
@@ -830,7 +947,7 @@ async def notify(db, tenant_id: str, deal_id: str, kind: str, *, user_id: str | 
             return result
         msg = db.table("messages").insert({
             "lead_id": lead["id"], "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
-            "content": content, "is_ai_generated": False, "meta_message_id": sid, **(sender or {}),
+            "content": content, "is_ai_generated": False, "meta_message_id": sid, **media, **(sender or {}),
         }).execute().data or []
         db.table("deal_messages").insert({
             "tenant_id": tenant_id, "deal_id": deal_id, "kind": kind, "sent_via": via, "body": content,
@@ -1219,7 +1336,12 @@ def public_bill(db, token: str) -> dict | None:
         bill_type=deal.get("bill_type") or "gst",
     )
     gst = int(deal.get("gst_paise") or bill["gst_paise"])
+    paid_by = (
+        db.table("deal_payments").select("method").eq("deal_id", deal["id"]).eq("tenant_id", tenant_id).execute()
+    ).data or []
+    methods = list(dict.fromkeys(METHOD_LABELS.get(p.get("method"), "") for p in paid_by if p.get("method")))
     return {
+        "methods": [m for m in methods if m],
         "business": {k: business.get(k) or "" for k in ("legal_name", "address", "city", "state", "pincode", "gstin", "phone", "email")},
         "bill_type": deal.get("bill_type") or "gst",
         "invoice_number": deal.get("invoice_number"),

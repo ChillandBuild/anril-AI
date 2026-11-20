@@ -181,8 +181,8 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           <MessageCircle size={18} className="shrink-0 text-primary-700" />
           <p className="min-w-0 flex-1 font-body text-xs leading-5 text-[#0A1528]">
             <span className="font-bold">Send bills and reminders to anyone on WhatsApp.</span>{" "}
-            WhatsApp needs 3 approved messages for customers who haven&apos;t messaged you in 24 hours. Until then you get a
-            &ldquo;Share on WhatsApp&rdquo; button instead.
+            WhatsApp needs a few approved messages (the bill with its picture or GST invoice PDF, updates, reminders, quotes)
+            for customers who haven&apos;t messaged you in 24 hours. Until then you get a &ldquo;Share on WhatsApp&rdquo; button instead.
           </p>
           {canManage ? (
             <button type="button" onClick={submitTemplates} disabled={submitting}

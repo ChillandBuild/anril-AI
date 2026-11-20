@@ -5,6 +5,7 @@ import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
@@ -321,15 +322,40 @@ async def submit_order_templates(ctx: dict = Depends(require_permission("templat
             continue
         spec = orders_service.ORDER_TEMPLATES[item["key"]]
         try:
+            buttons = [Button(type="QUICK_REPLY", text=t) for t in spec.get("buttons", [])]
+            if spec.get("view_bill"):
+                base = orders_service.bill_url("{{1}}")
+                buttons.append(Button(type="URL", text="View bill", url=base, url_example=orders_service.VIEW_BILL_EXAMPLE))
+            header_handle = await _sample_header_handle(db, tenant_id, spec) if spec.get("header") else None
             await create_template(
                 CreateTemplate(name=spec["name"], category="UTILITY", language="en", body_text=spec["body"],
-                               body_examples=spec["examples"],
-                               buttons=[Button(type="QUICK_REPLY", text=t) for t in spec.get("buttons", [])] or None),
+                               body_examples=spec["examples"], footer_text=spec.get("footer"),
+                               header_media_type=spec.get("header"), header_media_url=header_handle,
+                               buttons=buttons or None),
                 tenant_id=tenant_id, _ctx=ctx,
             )
         except HTTPException as e:
             problems.append(f"{spec['name']}: {e.detail}")
     return {"templates": _template_status(db, tenant_id), "problems": problems}
+
+
+async def _sample_header_handle(db, tenant_id: str, spec: dict) -> str:
+    """Meta reviews a picture/PDF template with an example file: a sample bill in the shop's name."""
+    import asyncio
+    from app.routes.templates import _meta_app_id
+    from app.services import bill_files, template_media
+    from app.services.meta_cloud import upload_media_for_template
+    app_id = _meta_app_id(tenant_id)
+    if not app_id:
+        raise HTTPException(status_code=503, detail="Media upload isn't set up on the server yet. Please contact Anril support.")
+    is_pdf = spec["header"] == "DOCUMENT"
+    sample = bill_files.sample_bill(orders_service._shop_name(db, tenant_id), "gst" if is_pdf else "simple")
+    data = await asyncio.to_thread(bill_files.invoice_pdf if is_pdf else bill_files.bill_png, sample)
+    content_type = "application/pdf" if is_pdf else "image/png"
+    handle = await upload_media_for_template(file_bytes=data, file_type=content_type, file_length=len(data),
+                                             app_id=app_id, tenant_id=tenant_id)
+    template_media.save_upload(db, tenant_id, handle, data, content_type)
+    return handle
 
 
 # ── One order ─────────────────────────────────────────────────────────────────
@@ -502,6 +528,28 @@ def get_public_bill(token: str):
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     return bill
+
+
+def _bill_file_response(token: str, want_pdf: bool) -> Response:
+    """The bill as WhatsApp carried it (shown in Anril's chat and openable by the customer)."""
+    made = orders_service.bill_file(get_supabase(), token)
+    if not made or (made[1] == "application/pdf") != want_pdf:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    data, content_type, filename = made
+    return Response(content=data, media_type=content_type, headers={
+        "Content-Disposition": f'inline; filename="{filename}"', "Cache-Control": "private, max-age=300",
+        "X-Robots-Tag": "noindex",
+    })
+
+
+@public_router.get("/{token}/picture.png")
+def get_public_bill_picture(token: str):
+    return _bill_file_response(token, want_pdf=False)
+
+
+@public_router.get("/{token}/invoice.pdf")
+def get_public_bill_pdf(token: str):
+    return _bill_file_response(token, want_pdf=True)
 
 
 @public_router.post("/{token}/accept")

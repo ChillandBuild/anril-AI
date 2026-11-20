@@ -5165,6 +5165,8 @@ export interface OrderDetail extends OrderRow {
   payment_link: string | null;
   invoice_issued_at: string | null;
   bill_url: string | null;
+  /** The picture (simple bill) or GST invoice PDF that WhatsApp carries on top of the bill message. */
+  bill_file_url: string | null;
   sold_by: { name: string | null; ai: boolean };
   payments: { id: string; amount_paise: number; method: string; method_label: string; kind: string; paid_at: string; received_by_name: string | null; note: string | null }[];
   messages: { id: string; kind: OrderMessageKind; sent_via: "text" | "template" | "share"; body: string | null; created_at: string; ticks: string }[];
