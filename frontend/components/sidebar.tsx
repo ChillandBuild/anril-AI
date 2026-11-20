@@ -1,16 +1,16 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { ChevronRight, ChevronLeft, ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
 import { activeSettingsItem, groupSettingsItems, isSettingsPath, settingsItemsFor, type SettingsNavItem } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
-import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
+import { SidebarSection } from "@/components/nav/SidebarSection";
 import { NavCount, navCountLabel } from "@/components/nav/NavCount";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import { useSidebarRail } from "@/components/nav/useSidebarRail";
@@ -19,10 +19,8 @@ import { SidebarProductSwitch } from "@/components/nav/ProductSwitch";
 import {
   NAV_MENU, NAV_SECTIONS,
   dashboardEntry, leafHref, resolveOpenSection, sectionContainsPage, visibleEntries,
-  type NavBadgeKey, type NavEntry, type NavGroup, type NavLeaf,
+  type NavBadgeKey, type NavLeaf,
 } from "@/components/nav/navSections";
-
-type NavItem = { href: string; label: string; icon?: LucideIcon };
 
 // Styled to the v2 sidebar study: navy (--navy, #0A1528) with white labels
 // (--nav-label) and pale-teal icons. The active row's teal tint wipes in
@@ -44,7 +42,6 @@ function MainNavItem({
   label,
   count = 0,
   nested = false,
-  pad,
 }: {
   href: string;
   active: boolean;
@@ -53,8 +50,6 @@ function MainNavItem({
   /** Waiting items (unanswered chats, call alerts), drawn on the icon's corner. */
   count?: number;
   nested?: boolean;
-  /** Left padding override for rows nested one level deeper (Telecalling pages). */
-  pad?: string;
 }) {
   const router = useRouter();
   return (
@@ -65,7 +60,7 @@ function MainNavItem({
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
         ROW,
-        nested ? cn(ROW_NESTED, "pr-7", pad ?? "pl-4") : ROW_TOP,
+        nested ? cn(ROW_NESTED, "pr-7 pl-4") : ROW_TOP,
         active && "nav-active font-semibold",
       )}
     >
@@ -83,68 +78,6 @@ function MainNavItem({
   );
 }
 
-function TelecallingGroup({
-  group,
-  items,
-  alertCount,
-  open,
-  onToggle,
-  pathname,
-}: {
-  group: NavGroup;
-  items: readonly NavItem[];
-  alertCount: number;
-  open: boolean;
-  onToggle: () => void;
-  pathname: string;
-}) {
-  const active = group.isActive(pathname);
-  // Most specific (longest href) match wins, so Dialer at /dashboard/telecalling
-  // does not also light up on /dashboard/telecalling/scheduled.
-  const bestHref = items
-    .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
-    .reduce<string | null>((best, i) => (!best || i.href.length > best.length ? i.href : best), null);
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className={cn(ROW, ROW_NESTED, "pl-4 font-semibold")}
-      >
-        <span className="relative flex shrink-0">
-          <group.icon size={15} strokeWidth={1.6} className={CARVED} aria-hidden="true" />
-          <NavCount count={alertCount} group shown={!open} />
-        </span>
-        <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
-        <span className={cn("nav-held-dot", !open && active && "is-on")} aria-hidden="true" />
-        <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
-      </button>
-      <div className={cn("nav-expander", open && "open")} {...inertWhen(!open)}>
-        <div>
-          <div className="nav-children-flat">
-            {items.map((item) => {
-              const isActive = bestHref === item.href;
-              return (
-                <MainNavItem
-                  key={item.href}
-                  nested
-                  pad="pl-[34px]"
-                  href={item.href}
-                  active={isActive}
-                  icon={item.icon}
-                  label={item.label}
-                  count={item.href === "/dashboard/telecalling" ? alertCount : 0}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 interface SidebarProps {
   /** Accepted so existing callers compile. The sidebar always renders the full desktop layout. */
   collapsed?: boolean;
@@ -152,22 +85,34 @@ interface SidebarProps {
   hideLogo?: boolean;
 }
 
+const SIDEBAR_BLANK = "swiss-sidebar sb-anril fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl z-20 w-[var(--sidebar-width)]";
+
 // Props are accepted for caller compatibility only; the layout ignores them.
+// The menu reads ?tab= (Calling and Leads to call split the Upload and Team pages by it), and
+// useSearchParams needs a Suspense boundary the sidebar's parents do not provide, so it brings its own.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function Sidebar(_props: SidebarProps) {
+  return (
+    <Suspense fallback={<aside className={SIDEBAR_BLANK} />}>
+      <SidebarMenu />
+    </Suspense>
+  );
+}
+
+function SidebarMenu() {
   const pathname = usePathname();
+  // The ?tab= of the page ("" when none): lets one path light up different rows.
+  const tab = useSearchParams()?.get("tab") ?? "";
+  // Changes with the page or its tab, so the teal square hops on a tab change too.
+  const pageKey = tab ? `${pathname}?tab=${tab}` : pathname;
   const router = useRouter();
-  const { access, tcGroupItems, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures, claudeOn } = useNavAccess();
+  const { access, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures, claudeOn } = useNavAccess();
   const [inboxCount, setInboxCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   // The logo's squares drop in on first show, then wave on each page change.
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
   const fold = useSidebarRail(pathname);
 
-  // Telecalling group open state, unchanged from before.
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    Telecalling: false,
-  });
   // The section the user clicked open (null = all shut), for this page only:
   // a new page reopens the section that holds it. One open at a time.
   const [sectionChoice, setSectionChoice] = useState<{ path: string; key: string | null } | null>(null);
@@ -175,11 +120,8 @@ export function Sidebar(_props: SidebarProps) {
     sectionChoice?.path === pathname ? sectionChoice.key : undefined,
     NAV_SECTIONS,
     pathname,
+    tab,
   );
-
-  const toggleGroup = (groupName: string) => {
-    setExpandedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
-  };
 
   const fetchCount = useCallback(async () => {
     try {
@@ -225,13 +167,10 @@ export function Sidebar(_props: SidebarProps) {
   }, [waEnabled, fetchCount]);
 
   if (roleLoading) {
-    return (
-      <aside className="swiss-sidebar sb-anril fixed left-0 top-0 h-full overflow-hidden rounded-r-3xl z-20 w-[var(--sidebar-width)]" />
-    );
+    return <aside className={SIDEBAR_BLANK} />;
   }
 
   const { isSubscribed, canSettings } = access;
-  const showTc = Boolean(expandedGroups.Telecalling);
   // The Settings row opens /dashboard/settings, so the sidebar swaps to the Settings list
   // exactly when the page is a Settings page (home, its pages, Team & roles, Plans & subscription).
   const showSettings = isSettingsPath(pathname);
@@ -244,42 +183,26 @@ export function Sidebar(_props: SidebarProps) {
 
   const dashboard = dashboardEntry(access);
 
+  // Unseen call alerts ride on the Team row: its Needs attention list is where they are handled.
   const badgeCount = (key: NavBadgeKey | undefined) =>
-    key === "conversations" ? inboxCount : key === "brain" ? (brainCount ?? 0) : 0;
-  // What a menu heading shows on its icon while its rows are hidden.
-  const entryCount = (entry: NavEntry) =>
-    entry.kind === "link" ? badgeCount(entry.badge) : entry.key === "telecalling" ? alertCount : 0;
+    key === "conversations" ? inboxCount : key === "brain" ? (brainCount ?? 0) : key === "alerts" ? alertCount : 0;
 
   const renderLeaf = (leaf: NavLeaf, nested = false) => (
     <MainNavItem
       key={leaf.key}
       nested={nested}
       href={leafHref(leaf, access)}
-      active={leaf.isActive(pathname)}
+      active={leaf.isActive(pathname, tab)}
       icon={leaf.icon}
       label={leaf.label}
       count={badgeCount(leaf.badge)}
     />
   );
 
-  const renderGroup = (group: NavGroup) => (
-    <TelecallingGroup
-      key={group.key}
-      group={group}
-      items={tcGroupItems}
-      alertCount={alertCount}
-      open={showTc}
-      onToggle={() => toggleGroup("Telecalling")}
-      pathname={pathname}
-    />
-  );
-
-  const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry, true) : renderGroup(entry));
-
   const renderSection = (section: (typeof NAV_SECTIONS)[number]) => {
     const entries = visibleEntries(section, access);
     if (entries.length === 0) return null;
-    const holdsActive = sectionContainsPage(section, pathname);
+    const holdsActive = sectionContainsPage(section, pathname, tab);
     const open = openSection === section.key;
     return (
       <SidebarSection
@@ -288,7 +211,8 @@ export function Sidebar(_props: SidebarProps) {
         icon={section.icon}
         open={open}
         holdsActive={holdsActive}
-        count={entries.reduce((sum, entry) => sum + entryCount(entry), 0)}
+        // What a menu heading shows on its icon while its rows are hidden.
+        count={entries.reduce((sum, entry) => sum + badgeCount(entry.badge), 0)}
         onToggle={() => {
           // On the folded strip a group icon peeks the menu with that group open.
           if (fold.folded) {
@@ -299,7 +223,7 @@ export function Sidebar(_props: SidebarProps) {
           setSectionChoice({ path: pathname, key: open ? null : section.key });
         }}
       >
-        {entries.map(renderEntry)}
+        {entries.map((entry) => renderLeaf(entry, true))}
       </SidebarSection>
     );
   };
@@ -369,7 +293,7 @@ export function Sidebar(_props: SidebarProps) {
                 ? item.leaf.visible(access) ? renderLeaf(item.leaf) : null
                 : renderSection(item.section),
             )}
-            <ActiveIndicator pathname={pathname} />
+            <ActiveIndicator pathname={pageKey} />
           </GlowScroll>
         </>
       )}

@@ -23,6 +23,8 @@ export interface NavAccess {
   canSettings: boolean;
   brainGate: boolean;
   telecallingVisible: boolean;
+  /** The Telecalling pages (keys of TC_FEATURE_MAP) this user may open: feature flags and permissions applied. */
+  telecallingPages: readonly string[];
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
 }
@@ -37,7 +39,7 @@ export type SectionKey =
   | "whatsappSetup";
 
 /** Badge slots. The sidebar owns the live counts and renders them by key. */
-export type NavBadgeKey = "conversations" | "brain";
+export type NavBadgeKey = "conversations" | "brain" | "alerts";
 
 /**
  * One address a menu row stands for. A row with `pages` is visible when ANY of
@@ -51,7 +53,8 @@ export interface NavPage {
   label: string;
   href: string;
   visible: (access: NavAccess) => boolean;
-  isActive: (pathname: string) => boolean;
+  /** `tab` is the current ?tab= value ("" when there is none). Most pages ignore it. */
+  isActive: (pathname: string, tab?: string) => boolean;
 }
 
 export interface NavLeaf {
@@ -64,20 +67,11 @@ export interface NavLeaf {
   /** Set on rows that stand for several pages. `visible` and `isActive` are derived from it. */
   pages?: readonly NavPage[];
   visible: (access: NavAccess) => boolean;
-  isActive: (pathname: string) => boolean;
+  isActive: (pathname: string, tab?: string) => boolean;
 }
 
-/** A nested group rendered by sidebar.tsx with its own fold state (Telecalling). */
-export interface NavGroup {
-  kind: "group";
-  key: "telecalling";
-  label: string;
-  icon: LucideIcon;
-  visible: (access: NavAccess) => boolean;
-  isActive: (pathname: string) => boolean;
-}
-
-export type NavEntry = NavLeaf | NavGroup;
+/** Every entry of a section is a plain row (the nested Telecalling group is gone). */
+export type NavEntry = NavLeaf;
 
 export interface NavSection {
   key: SectionKey;
@@ -103,7 +97,7 @@ export interface TelecallingPage {
   icon: LucideIcon;
 }
 
-/** The four pages inside the Telecalling group. Per-page gates live in TC_FEATURE_MAP / TC_PERMISSION_MAP. */
+/** The four Telecalling pages that carry a gate. Per-page gates live in TC_FEATURE_MAP / TC_PERMISSION_MAP; the Call IQ rows reuse them (dial and scripts follow Dialer and Upload). */
 export const TELECALLING_ITEMS: readonly TelecallingPage[] = [
   { href: "/dashboard/telecalling/upload", icon: Upload, label: "Upload" },
   { href: "/dashboard/telecalling", icon: Phone, label: "Dialer" },
@@ -132,7 +126,7 @@ function pagesLeaf(leaf: Pick<NavLeaf, "key" | "label" | "icon"> & { pages: read
     ...leaf,
     href: leaf.pages[0].href,
     visible: (a) => leaf.pages.some((page) => page.visible(a)),
-    isActive: (p) => leaf.pages.some((page) => page.isActive(p)),
+    isActive: (p, tab = "") => leaf.pages.some((page) => page.isActive(p, tab)),
   };
 }
 
@@ -324,23 +318,77 @@ const CATALOGUE: NavLeaf = {
   isActive: (p) => startsWithAny(p, ["/dashboard/catalog", "/dashboard/services", "/dashboard/forms"]),
 };
 
-const TELECALLING_GROUP: NavGroup = {
-  kind: "group",
-  key: "telecalling",
-  label: "Telecalling",
-  icon: PhoneCall,
-  visible: (a) => a.telecallingVisible,
-  isActive: (p) => startsWithAny(p, ["/dashboard/telecalling", "/dashboard/notes"]),
+const TC_QUEUE = "/dashboard/telecalling";
+const TC_DIAL = "/dashboard/telecalling/dial";
+const TC_UPLOAD = "/dashboard/telecalling/upload";
+const TC_SCHEDULED = "/dashboard/telecalling/scheduled";
+const NOTES = "/dashboard/notes";
+const TEAM = "/dashboard/team";
+
+/** A Telecalling page's own gate: bought, subscribed, and that page allowed by feature flag and permission (tcGroupItems). */
+const tcPageVisible = (gateHref: string): NavPage["visible"] => (a) =>
+  a.telecallingVisible && a.telecallingPages.includes(gateHref);
+
+/** Team and its Assignment Log tab share one gate (the Team page has no extra role rule on the log). */
+const teamVisible = (a: NavAccess) => a.isSubscribed && a.can("team.view");
+
+/** The Upload page opens its first view for any ?tab= it does not know, so the Call lists page is every tab but the other two. */
+const uploadTab = (tab: string): "upload" | "history" | "scripts" =>
+  tab === "history" || tab === "scripts" ? tab : "upload";
+
+/** A page at one exact address: no sub-pages, so /dashboard/telecalling does not also light up on /dashboard/telecalling/scheduled. */
+const exactPage = (p: string, href: string) => p === href || p === `${href}/`;
+
+/** Calling: work the queue, dial by hand, read the scripts. Dial follows the Dialer's gate, Scripts the Upload page's. */
+const CALLING_PAGES: readonly NavPage[] = [
+  { key: "calling-queue", label: "Call from the queue", href: TC_QUEUE, visible: tcPageVisible(TC_QUEUE), isActive: (p) => exactPage(p, TC_QUEUE) },
+  { key: "calling-dial", label: "Dial a number", href: TC_DIAL, visible: tcPageVisible(TC_QUEUE), isActive: (p) => p === TC_DIAL || p.startsWith(`${TC_DIAL}/`) },
+  {
+    key: "calling-scripts", label: "Scripts", href: `${TC_UPLOAD}?tab=scripts`, visible: tcPageVisible(TC_UPLOAD),
+    isActive: (p, tab = "") => exactPage(p, TC_UPLOAD) && uploadTab(tab) === "scripts",
+  },
+];
+
+/** Leads to call: the lists you upload, the calls booked for later, and who each lead went to. */
+const LEADS_TO_CALL_PAGES: readonly NavPage[] = [
+  {
+    key: "leads-call-lists", label: "Call lists", href: TC_UPLOAD, visible: tcPageVisible(TC_UPLOAD),
+    isActive: (p, tab = "") => exactPage(p, TC_UPLOAD) && uploadTab(tab) === "upload",
+  },
+  { key: "leads-scheduled", label: "Scheduled calls", href: TC_SCHEDULED, visible: tcPageVisible(TC_SCHEDULED), isActive: (p) => p === TC_SCHEDULED || p.startsWith(`${TC_SCHEDULED}/`) },
+  {
+    key: "leads-uploads", label: "Uploads", href: `${TC_UPLOAD}?tab=history`, visible: tcPageVisible(TC_UPLOAD),
+    isActive: (p, tab = "") => exactPage(p, TC_UPLOAD) && uploadTab(tab) === "history",
+  },
+  {
+    key: "leads-who-got-which", label: "Who got which lead", href: `${TEAM}?tab=log`, visible: teamVisible,
+    isActive: (p, tab = "") => p.startsWith(TEAM) && tab === "log",
+  },
+];
+
+const CALLING = pagesLeaf({ key: "calling", label: "Calling", icon: PhoneCall, pages: CALLING_PAGES });
+const LEADS_TO_CALL = pagesLeaf({ key: "leads-to-call", label: "Leads to call", icon: ListChecks, pages: LEADS_TO_CALL_PAGES });
+
+const CALL_REVIEWS: NavLeaf = {
+  kind: "link",
+  key: "call-reviews",
+  href: NOTES,
+  label: "Call reviews",
+  icon: StickyNote,
+  visible: tcPageVisible(NOTES),
+  isActive: (p) => p.startsWith(NOTES),
 };
 
-const TEAM_PERFORMANCE: NavLeaf = {
+/** The alert count (unseen call alerts, owners and managers) rides on this row: the Needs attention list that handles them is on the Team page. */
+const TEAM_ROW: NavLeaf = {
   kind: "link",
-  key: "team-performance",
-  href: "/dashboard/team",
-  label: "Team Performance",
+  key: "team",
+  href: TEAM,
+  label: "Team",
   icon: Trophy,
-  visible: (a) => a.isSubscribed && a.can("team.view"),
-  isActive: (p) => p.startsWith("/dashboard/team"),
+  badge: "alerts",
+  visible: teamVisible,
+  isActive: (p, tab = "") => p.startsWith(TEAM) && tab !== "log",
 };
 
 const ANRIL_BRAIN: NavLeaf = {
@@ -414,7 +462,7 @@ const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, e
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE] };
-const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] };
+const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
 const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
 
@@ -449,29 +497,32 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
  * The one open section (an accordion, so the menu never grows past the
  * screen). A click wins (null = all shut); otherwise the section holding the
  * current page. Pages outside every section (Home and the plain links) shut all.
+ * `tab` is the current ?tab= value, for rows that split one path by tab.
  */
 export function resolveOpenSection(
   choice: string | null | undefined,
   sections: readonly NavSection[],
   pathname: string,
+  tab = "",
 ): string | null {
   if (choice !== undefined) return choice;
-  return sections.find((s) => sectionContainsPage(s, pathname))?.key ?? null;
+  return sections.find((s) => sectionContainsPage(s, pathname, tab))?.key ?? null;
 }
 
-export function sectionContainsPage(section: NavSection, pathname: string): boolean {
-  return section.entries.some((entry) => entry.isActive(pathname));
+export function sectionContainsPage(section: NavSection, pathname: string, tab = ""): boolean {
+  return section.entries.some((entry) => entry.isActive(pathname, tab));
 }
 
-/** Wide pages that fold the desktop sidebar to its icon strip when opened. */
-const FOLDS_SIDEBAR: readonly NavEntry[] = [CONVERSATIONS, SEGMENTS, INBOUND_LEADS, OUTBOUND_LEADS, DEALS, TELECALLING_GROUP];
+/** Wide pages that fold the desktop sidebar to its icon strip when opened. Telecalling (queue, dial, upload, scheduled) and Call reviews fold, as before; Team does not. */
+const FOLDS_SIDEBAR: readonly NavEntry[] = [CONVERSATIONS, SEGMENTS, INBOUND_LEADS, OUTBOUND_LEADS, DEALS];
+const FOLDING_PREFIXES = ["/dashboard/telecalling", "/dashboard/notes"] as const;
 
 export function sidebarFoldsOn(pathname: string): boolean {
-  return FOLDS_SIDEBAR.some((entry) => entry.isActive(pathname));
+  return FOLDS_SIDEBAR.some((entry) => entry.isActive(pathname)) || startsWithAny(pathname, FOLDING_PREFIXES);
 }
 
 export interface ChipSet {
-  key: "autoMessages" | "replies" | "otpSetup";
+  key: "autoMessages" | "replies" | "otpSetup" | "calling" | "leadsToCall";
   /** The menu row these pages share. */
   leafKey: string;
   chips: readonly NavPage[];
@@ -482,9 +533,37 @@ export const CHIP_SETS: readonly ChipSet[] = [
   { key: "autoMessages", leafKey: AUTO_MESSAGES.key, chips: AUTO_MESSAGE_PAGES },
   { key: "replies", leafKey: REPLIES_AND_HANDOVER.key, chips: REPLY_PAGES },
   { key: "otpSetup", leafKey: "otp-settings", chips: OTP_SETUP_PAGES },
+  { key: "calling", leafKey: CALLING.key, chips: CALLING_PAGES },
+  { key: "leadsToCall", leafKey: LEADS_TO_CALL.key, chips: LEADS_TO_CALL_PAGES },
 ];
 
-/** The chip set for the page you are on, or null when the page has no siblings. */
-export function chipSetFor(pathname: string): ChipSet | null {
-  return CHIP_SETS.find((set) => set.chips.some((chip) => chip.isActive(pathname))) ?? null;
+/** The chip set for the page you are on (`tab` = its ?tab= value), or null when the page has no siblings. */
+export function chipSetFor(pathname: string, tab = ""): ChipSet | null {
+  return CHIP_SETS.find((set) => set.chips.some((chip) => chip.isActive(pathname, tab))) ?? null;
+}
+
+const CALL_IQ_META: Record<string, { title: string; description: string }> = {
+  [TC_QUEUE]: { title: "Calling / Call from the queue", description: "Manage calls, callers, and lead queues in real time." },
+  [TC_DIAL]: { title: "Calling / Dial a number", description: "Call any number by hand, without adding it to a queue." },
+  [TC_SCHEDULED]: { title: "Leads to call / Scheduled calls", description: "View and manage upcoming scheduled calls for leads." },
+  [NOTES]: { title: "Call reviews", description: "Browse and manage notes across your leads." },
+};
+
+/**
+ * The header title and subtitle for the Call IQ pages (Calling, Leads to call,
+ * Call reviews, Team), or null for any other address. The Upload and Team pages
+ * split into several views by ?tab=, so `tab` picks the view's name.
+ */
+export function callIqRouteMeta(pathname: string, tab = ""): { title: string; description: string } | null {
+  if (exactPage(pathname, TC_UPLOAD)) {
+    const view = uploadTab(tab);
+    if (view === "history") return { title: "Leads to call / Uploads", description: "Review past CSV uploads, processing status, and import summaries." };
+    if (view === "scripts") return { title: "Calling / Scripts", description: "Manage call scripts and guidelines for telecallers to follow." };
+    return { title: "Leads to call / Call lists", description: "Upload contacts, assign them to queues, and start call campaigns." };
+  }
+  if (pathname === TEAM) {
+    if (tab === "log") return { title: "Leads to call / Who got which lead", description: "Which telecaller each lead went to, and why." };
+    return { title: "Team", description: "Add and manage telecallers under your account." };
+  }
+  return CALL_IQ_META[pathname] ?? null;
 }

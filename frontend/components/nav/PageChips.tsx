@@ -1,22 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useNavAccess } from "./useNavAccess";
 import { chipRowFor } from "./chipRow";
 
 /**
  * Chips for the pages that share one menu row (Auto-Messages, Replies &
- * handover, OTP Setup). Same look as the Meta Ads view switch in AppHeader.
+ * handover, OTP Setup, Calling, Leads to call). Reads ?tab= too, because Scripts,
+ * Uploads and Who got which lead are views of the Upload and Team pages. Same look as the Meta Ads view switch in AppHeader.
  * "header" sits in the desktop header; "strip" is the phone row under it, which
  * scrolls sideways instead of wrapping. Renders nothing when the page has no
  * siblings or the user can open fewer than two of them.
  */
 export function PageChips({ placement }: { placement: "header" | "strip" }) {
   const pathname = usePathname() ?? "";
+  const tab = useSearchParams()?.get("tab") ?? "";
   const { access } = useNavAccess();
-  const row = chipRowFor(pathname, access);
+  const row = chipRowFor(pathname, access, tab);
   if (!row) return null;
 
   const nav = (

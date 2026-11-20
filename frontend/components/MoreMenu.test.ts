@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MORE_ITEMS, MORE_SECTIONS, getVisibleMoreItems, isItemActive } from "./MoreMenu";
 import { groupSettingsItems, isSettingsPath, settingsItemsForMember } from "./settingsNavigation";
 
-const ALL_FEATURES = ["outbound_messaging", "inbound_messaging", "sms", "telecalling.scheduled", "telecalling.notes"];
+const ALL_FEATURES = ["outbound_messaging", "inbound_messaging", "sms", "telecalling.upload", "telecalling.scheduled", "telecalling.notes"];
 
 function owner() {
   return getVisibleMoreItems("owner", ALL_FEATURES, []);
@@ -34,7 +34,7 @@ describe("More drawer layout", () => {
       ["Anril OTP", ["Send & check", "History", "Setup"]],
       ["Anril SMS", ["Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API"]],
       ["Commerce", ["Orders & payments", "Catalogue"]],
-      ["Call IQ", ["Scheduled Calls", "Call Review", "Team Performance"]],
+      ["Call IQ", ["Leads to call", "Call reviews", "Team"]],
       [null, ["Reports"]],
       [null, []],
     ]);
@@ -54,6 +54,12 @@ describe("pages that moved or merged are each reachable from exactly one row", (
     ["/dashboard/scheduled-templates", "Auto-Messages"],
     ["/dashboard/otp/settings", "Setup"],
     ["/dashboard/otp/api", "Setup"],
+    ["/dashboard/telecalling/upload", "Leads to call"],
+    ["/dashboard/telecalling/upload?tab=history", "Leads to call"],
+    ["/dashboard/telecalling/scheduled", "Leads to call"],
+    ["/dashboard/team?tab=log", "Leads to call"],
+    ["/dashboard/notes", "Call reviews"],
+    ["/dashboard/team", "Team"],
   ])("%s -> %s", (href, label) => {
     expect(rowsFor(href).map((r) => r.label)).toEqual([label]);
   });
@@ -114,6 +120,72 @@ describe("combined rows keep every page's gate", () => {
 
   it("Catalogue still shows for a services-only user", () => {
     expect(member(["services.view"]).some((r) => r.label === "Catalogue")).toBe(true);
+  });
+});
+
+describe("Call IQ in the drawer: Leads to call, Call reviews, Team", () => {
+  const SCHEDULED = ["telecalling.scheduled"];
+  const hrefOf = (label: string, permissions: string[], features = ALL_FEATURES) => member(permissions, features).find((r) => r.label === label)?.href;
+  const row = (label: string) => MORE_ITEMS.find((r) => r.label === label)!;
+
+  it("the old Scheduled Calls, Call Review and Team Performance rows are gone", () => {
+    const labels = MORE_ITEMS.map((r) => r.label);
+    for (const old of ["Scheduled Calls", "Call Review", "Team Performance"]) expect(labels).not.toContain(old);
+  });
+
+  it("Leads to call shows for any one of its gates and opens the first allowed page, in order", () => {
+    expect(hrefOf("Leads to call", ["telecalling.upload"])).toBe("/dashboard/telecalling/upload");
+    expect(hrefOf("Leads to call", ["telecalling.scheduled"])).toBe("/dashboard/telecalling/scheduled");
+    expect(hrefOf("Leads to call", ["team.view"])).toBe("/dashboard/team?tab=log");
+    expect(hrefOf("Leads to call", ["team.manage"])).toBe("/dashboard/team?tab=log");
+    expect(hrefOf("Leads to call", ["telecalling.upload", "telecalling.scheduled", "team.view"])).toBe("/dashboard/telecalling/upload");
+    expect(hrefOf("Leads to call", ["telecalling.scheduled", "team.view"])).toBe("/dashboard/telecalling/scheduled");
+    expect(owner().find((r) => r.label === "Leads to call")?.href).toBe("/dashboard/telecalling/upload");
+  });
+
+  it("each page keeps its gate: the scheduled feature, the upload feature, a permission, or none of them hides the row", () => {
+    expect(hrefOf("Leads to call", SCHEDULED, ["outbound_messaging"])).toBeUndefined();
+    expect(hrefOf("Leads to call", ["telecalling.upload"], ["telecalling.scheduled"])).toBeUndefined();
+    expect(hrefOf("Leads to call", ["analytics.view"])).toBeUndefined();
+  });
+
+  it("Call reviews and Team keep the gates Call Review and Team Performance had", () => {
+    expect(hrefOf("Call reviews", ["telecalling.notes"])).toBe("/dashboard/notes");
+    expect(hrefOf("Call reviews", ["telecalling.notes"], ["outbound_messaging"])).toBeUndefined();
+    expect(hrefOf("Call reviews", ["team.view"])).toBeUndefined();
+    expect(hrefOf("Team", ["team.view"])).toBe("/dashboard/team");
+    expect(hrefOf("Team", ["team.manage"])).toBe("/dashboard/team");
+    expect(hrefOf("Team", ["telecalling.notes"])).toBeUndefined();
+  });
+
+  it.each([
+    ["Leads to call", "/dashboard/telecalling/upload", "", true],
+    ["Leads to call", "/dashboard/telecalling/upload", "history", true],
+    ["Leads to call", "/dashboard/telecalling/upload", "scripts", false],
+    ["Leads to call", "/dashboard/telecalling/scheduled", "", true],
+    ["Leads to call", "/dashboard/team", "log", true],
+    ["Leads to call", "/dashboard/team", "", false],
+    ["Team", "/dashboard/team", "", true],
+    ["Team", "/dashboard/team", "performance", true],
+    ["Team", "/dashboard/team", "log", false],
+    ["Call reviews", "/dashboard/notes", "", true],
+    ["Call reviews", "/dashboard/telecalling/scheduled", "", false],
+  ])("%s active on %s ?tab=%s: %s", (label, path, tab, expected) => {
+    expect(isItemActive(row(label), path, tab)).toBe(expected);
+  });
+
+  it("exactly one Call IQ row is active on each address", () => {
+    const callIq = MORE_ITEMS.filter((r) => r.section === "callIq");
+    for (const [path, tab, expected] of [
+      ["/dashboard/telecalling/upload", "", "Leads to call"],
+      ["/dashboard/telecalling/upload", "history", "Leads to call"],
+      ["/dashboard/telecalling/scheduled", "", "Leads to call"],
+      ["/dashboard/team", "log", "Leads to call"],
+      ["/dashboard/team", "", "Team"],
+      ["/dashboard/notes", "", "Call reviews"],
+    ]) {
+      expect(callIq.filter((r) => isItemActive(r, path, tab)).map((r) => r.label), `${path}?${tab}`).toEqual([expected]);
+    }
   });
 });
 
