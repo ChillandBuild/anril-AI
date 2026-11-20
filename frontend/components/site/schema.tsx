@@ -21,7 +21,7 @@ export const ORGANIZATION = {
   priceRange: `From ${STARTING_PRICE} per month`,
   description:
     "AI-powered business growth and commerce platform: WhatsApp campaigns, AI replies, lead scoring, payments and call intelligence.",
-  parentOrganization: { "@type": "Organization", name: MAKER.name, url: MAKER.href },
+  parentOrganization: { "@type": "Organization", name: MAKER.name, url: MAKER.href, taxID: MAKER.gstin },
   telephone: "+91-9047370380",
   email: CONTACT_EMAIL,
   address: {

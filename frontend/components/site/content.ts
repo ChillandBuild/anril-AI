@@ -23,7 +23,9 @@ export const SOCIAL = [
   { label: "LinkedIn", href: "https://www.linkedin.com/company/143972232/" },
 ] as const;
 /** Anril AI is a product of Bloom Matrix. */
-export const MAKER = { name: "Bloom Matrix", href: "https://www.bloommatrix.in" } as const;
+// GSTIN as published on bloommatrix.in ("Bloom Matrix · Registered in India · GSTIN ..."), checked 20 Nov 2026.
+// No legal-name suffix, start year or team size is published, so none is shown.
+export const MAKER = { name: "Bloom Matrix", href: "https://www.bloommatrix.in", gstin: "33ABEFB3573A1Z0" } as const;
 export const DEMO_LABEL = "Book a demo";
 /** Every /new page ends with the demo form, so the CTA always stays on the page. */
 export const DEMO_HREF = "#demo";
