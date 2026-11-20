@@ -60,7 +60,8 @@ export function SiteFooter() {
             A product of{" "}
             <a href={MAKER.href} rel="noopener">
               {MAKER.name}
-            </a>
+            </a>{" "}
+            · GSTIN {MAKER.gstin}
           </p>
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </div>

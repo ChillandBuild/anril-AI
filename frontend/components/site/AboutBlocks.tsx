@@ -64,9 +64,9 @@ export function MakerPanel() {
 }
 
 // Facts about the team. A box goes in only once its fact is confirmed; "Started" (year) and
-// "Team" (size) are not confirmed yet, and the legal company name and GSTIN are left out until they are.
+// "Team" (size) are not published yet, and neither is a legal-name suffix, so they are left out.
 const BEHIND: readonly { label: string; lines: readonly string[] }[] = [
-  { label: "Company", lines: [`Built by ${MAKER.name}`, `2, Sree Narayana Guru Road, ${OFFICE.city} ${OFFICE.postalCode}`] },
+  { label: "Company", lines: [`Built by ${MAKER.name}`, `GSTIN ${MAKER.gstin}`, `2, Sree Narayana Guru Road, ${OFFICE.city} ${OFFICE.postalCode}`] },
 ];
 
 /** Who builds Anril: an office photo (no faces) beside plain fact boxes. */
