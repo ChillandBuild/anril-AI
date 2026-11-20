@@ -416,6 +416,24 @@ def _insert_scheduled_broadcasts(db, records: list[dict]) -> None:
         db.table("scheduled_broadcasts").insert(fallback).execute()
 
 
+# Most specific first: "Phone" beats "Order Number" when a file has both.
+_PHONE_HEADER_WORDS = ("phone", "mobile", "whatsapp", "cell", "contact", "number")
+
+
+def _suggest_mapping(columns: list[str]) -> dict[str, str | None]:
+    """Guess which CSV column holds each lead field from its header."""
+    mapping: dict[str, str | None] = {"name": None, "phone": None, "email": None, "course": None}
+    for key in ("name", "email", "course"):
+        mapping[key] = next((c for c in columns if key in c.lower()), None)
+    # Phone headers vary ("MOBILE NUMBER", "WhatsApp No"); a name or email column is never the phone.
+    candidates = [c for c in columns if c and "name" not in c.lower() and "email" not in c.lower()]
+    for word in _PHONE_HEADER_WORDS:
+        mapping["phone"] = next((c for c in candidates if word in c.lower()), None)
+        if mapping["phone"]:
+            break
+    return mapping
+
+
 @router.post("/parse")
 async def parse_csv(file: UploadFile = File(...), tenant_id: str = Depends(get_tenant_id)):
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -428,12 +446,7 @@ async def parse_csv(file: UploadFile = File(...), tenant_id: str = Depends(get_t
         raise HTTPException(status_code=400, detail="CSV has no headers")
 
     columns = [f.strip() for f in reader.fieldnames]
-    suggested_mapping: dict[str, str | None] = {"name": None, "phone": None, "email": None, "course": None}
-    for col in columns:
-        col_lower = col.lower()
-        for key in suggested_mapping:
-            if key in col_lower and suggested_mapping[key] is None:
-                suggested_mapping[key] = col
+    suggested_mapping = _suggest_mapping(columns)
 
     db = get_supabase()
     existing_resp = db.table("leads").select("phone").eq("tenant_id", tenant_id).is_("deleted_at", "null").execute()

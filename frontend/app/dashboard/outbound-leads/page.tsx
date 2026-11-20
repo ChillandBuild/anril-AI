@@ -1404,6 +1404,15 @@ export default function OutboundLeadsPage() {
         };
       }).filter((l) => l.phone);
 
+      if (phoneIdx < 0) {
+        setSendError("We couldn't find a phone number column in this CSV. Rename that column to \"Phone\" or \"Mobile\" and upload it again.");
+        return;
+      }
+      if (leads.length === 0) {
+        setSendError(`The "${mapping.phone}" column has no phone numbers in it.`);
+        return;
+      }
+
       setSendingNames(leads.map((l) => l.name || l.phone));
       setSendingIndex(0);
       setSendLoading(true);
