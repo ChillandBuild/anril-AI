@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -131,3 +132,63 @@ async def test_send_gate(balance, needed, expect):
             with pytest.raises(HTTPException) as e:
                 await sms._require_send_ready("k", needed)
             assert e.value.status_code == 409 and expect in e.value.detail
+
+
+def _lose_replies(db, times):
+    """The database saves the balance but its reply never arrives, `times` times in a row: what
+    production saw when the hourly ads job shared the connection. Returns the list of save attempts."""
+    real_table, left, attempts = db.table, [times], []
+
+    class _Query:
+        def __init__(self, query):
+            self._query = query
+
+        def execute(self):
+            out = self._query.execute()
+            attempts.append(1)
+            if left[0]:
+                left[0] -= 1
+                raise httpx.RemoteProtocolError("Server disconnected")
+            return out
+
+    class _Table:
+        def __init__(self, table):
+            self._table = table
+
+        def __getattr__(self, name):
+            return getattr(self._table, name)
+
+        def upsert(self, *args, **kwargs):
+            return _Query(self._table.upsert(*args, **kwargs))
+
+    db.table = lambda name: _Table(real_table(name)) if name == "sms_wallet" else real_table(name)
+    return attempts
+
+
+@pytest.mark.asyncio
+async def test_balance_save_is_repeated_once_when_the_reply_is_lost():
+    db = _db(prev=700)
+    attempts = _lose_replies(db, 1)
+    out, _ = await _sync(db, 700)
+    assert out == "same" and len(attempts) == 2
+    wallet = db.rows("sms_wallet")
+    assert len(wallet) == 1 and wallet[0]["checked_at"] == NOW.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_second_lost_reply_still_fails_the_run():
+    db = _db(prev=700)
+    attempts = _lose_replies(db, 2)
+    with pytest.raises(httpx.RemoteProtocolError):
+        await _sync(db, 700)
+    assert len(attempts) == 2  # one retry, not a loop
+
+
+@pytest.mark.asyncio
+async def test_one_clients_failure_does_not_skip_the_others_and_still_fails_the_job():
+    db = _db()
+    db.add("app_settings", key="bulk9_api_key", value="k2", tenant_id="22222222-2222-2222-2222-222222222222")
+    tick = AsyncMock(side_effect=[RuntimeError("boom"), "same"])
+    with patch.object(sms_wallet, "sync_tenant", tick), pytest.raises(RuntimeError, match="boom"):
+        await sms_wallet.sync_balances(db, now=NOW)
+    assert tick.await_count == 2

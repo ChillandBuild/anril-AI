@@ -17,6 +17,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from app.db.supabase import _TRANSIENT as _CONNECTION_DROPPED
 from app.services import bulk9_client
 from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
 
@@ -89,16 +90,46 @@ async def sync_tenant(db, tenant_id: str, api_key: str, *, now: datetime | None 
     elif count >= LOW_BALANCE_SMS:
         low_alerted_at = None
 
-    db.table("sms_wallet").upsert({"tenant_id": tenant_id, "sms_count": count, "checked_at": now.isoformat(),
-                                   "low_alerted_at": low_alerted_at}, on_conflict="tenant_id").execute()
+    _save_balance(db, {"tenant_id": tenant_id, "sms_count": count, "checked_at": now.isoformat(),
+                       "low_alerted_at": low_alerted_at})
     return result
 
 
+def _save_balance(db, row: dict[str, Any]) -> None:
+    """Saves the balance, once more if the connection drops before the reply arrives.
+
+    The database client replays dropped reads but never writes (app/db/supabase.py). This write
+    is "set the balance to X", so saving it twice leaves the same row. Seen in production: the
+    hourly ads job shares the connection, Supabase logged the save as 200, and the job still
+    failed with "Server disconnected" (44 of 92 runs at minute 0, Nov 2026). The history line
+    above is not repeated: a second copy would count the same change twice.
+    """
+    def save() -> None:
+        db.table("sms_wallet").upsert(row, on_conflict="tenant_id").execute()
+
+    try:
+        save()
+    except _CONNECTION_DROPPED as exc:
+        logger.warning("SMS balance save dropped (%s) for tenant %s, saving once more",
+                       type(exc).__name__, row["tenant_id"])
+        save()
+
+
 async def sync_balances(db, *, now: datetime | None = None) -> dict[str, int]:
+    """Every connected client's tick. One client's failure does not skip the rest; it is raised
+    after the loop so the job still shows as failed on the Scheduler page."""
     stats: dict[str, int] = {}
+    first_failure: Exception | None = None
     for tenant_id, key in _connected_tenants(db):
-        outcome = await sync_tenant(db, tenant_id, key, now=now)
+        try:
+            outcome = await sync_tenant(db, tenant_id, key, now=now)
+        except Exception as exc:
+            logger.warning("SMS balance sync failed for tenant %s: %s", tenant_id, exc)
+            first_failure = first_failure or exc
+            continue
         stats[outcome] = stats.get(outcome, 0) + 1
+    if first_failure:
+        raise first_failure
     return stats
 
 
