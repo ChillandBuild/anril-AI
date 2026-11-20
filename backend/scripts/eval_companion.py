@@ -8,12 +8,14 @@ config's settings laid on top in memory, so settings whose columns are not live 
 Calls bill the character's business's own Gemini key, like the Playground. Token counts are read from the
 same meter the app uses (token_meter.record_tokens still writes them).
 
-Every prediction gets 5 marks:
+Every prediction gets 6 marks:
   1 names    names the planet, the house and the dasa/bhukti it rests on       (grader)
   2 dates    no past date offered as a coming one, nothing beyond 3 years       (grader + year check)
-  3 promise  no promise words ("kandippa")                                      (word list)
+  3 promise  no promise words ("kandippa"); "கண்டிப்பா தேவை" is advice, passes  (word list)
   4 window   any period is a named dasa/bhukti/transit tied to the topic        (grader)
   5 key      gets the question's key point (the answer key in the file)        (grader)
+  6 facts    every chart fact it states is true: the grader lists the claims,
+             scripts/eval_chart.py checks each against the chart (code, no AI)
 The small-talk question is marked on "no prediction" and on which model answered it.
 Output: one table per config (marks, average cost per answer, model used) and a JSON file of every reply.
 """
@@ -30,22 +32,27 @@ from pathlib import Path
 from app.companion import engine, playground, store
 from app.companion.prompt import who_block
 from app.services import ai_reply, gemini_client
+from scripts import eval_chart
 
 GRADER_MODEL = "google/gemini-3.8-flash"
 # Google list price per 1M tokens (input, output incl. thinking), checked 2026-11-18.
 PRICES = {"gemini-3.1-flash-lite": (0.25, 1.50), "gemini-3.5-flash-lite": (0.30, 2.50),
           "gemini-3.8-flash": (0.75, 3.75)}
 PRICES_JAN_2027 = {**PRICES, "gemini-3.8-flash": (1.50, 7.50)}
-MARKS = ("names", "dates", "promise", "window", "key")
+MARKS = ("names", "dates", "promise", "window", "key", "facts")
+# A promise word followed within a few words by one of these is advice ("கடின உழைப்பு கண்டிப்பா தேவை"), not a promise.
+ADVICE_WORDS = ("தேவை", "பண்ணுங்க", "செய்யுங்க", "பண்ணனும்", "செய்யணும்")
 
 GRADER_PROMPT = """You mark one astrology chat reply against a chart and an answer key. Today is {today}.
 Be strict and literal. Reply with JSON only:
-{{"names": true/false, "dates": true/false, "window": true/false, "key": true/false, "note": "one short line"}}
+{{"names": true/false, "dates": true/false, "window": true/false, "key": true/false, "note": "one short line",
+  "claims": [...]}}
 
 names  = the reply itself names at least one planet, at least one house (or its lord) AND the dasa or bhukti it rests on.
 dates  = every date or period it offers as coming is after today and within 3 years of today (unless the question asks for long term).
 window = {window_rule}
 key    = the reply reaches the key point below (same direction of answer, at least one of its main reasons). A reply that says the opposite fails.
+{claims_spec}
 
 CHART (what the app sent):
 {chart}
@@ -90,17 +97,46 @@ def _past_year(text: str, today: date) -> bool:
     return any(int(y) < today.year for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", text))
 
 
-async def _grade(tenant_id, chart, q, reply, today) -> dict:
-    prompt = GRADER_PROMPT.format(today=today.isoformat(), chart=chart, question=q["text"], key=q["key"],
-                                  reply=reply, window_rule=WINDOW_TIMING if q.get("timing") else WINDOW_OTHER)
-    raw = await ai_reply._llm_chat([{"role": "user", "content": prompt}], max_tokens=400, tenant_id=tenant_id,
-                                   purpose="eval_grader", temperature=0.0, model=GRADER_MODEL)
+class GraderError(Exception):
+    """The grader's answer had no usable marks; raw is what it sent (saved in the row for checking)."""
+    def __init__(self, raw: str):
+        super().__init__("grader reply has no usable marks")
+        self.raw = raw
+
+
+def _parse_grade(raw: str) -> dict:
+    """Grader text -> marks. No JSON, or any of the 4 marks missing -> GraderError (tried again, never a silent 0)."""
     found = re.search(r"\{.*\}", raw or "", re.S)
     try:
-        marks = json.loads(found.group(0)) if found else {}
+        marks = json.loads(found.group(0)) if found else None
     except json.JSONDecodeError:
-        marks = {}
-    return {k: bool(marks.get(k)) for k in ("names", "dates", "window", "key")} | {"note": str(marks.get("note", ""))}
+        marks = None
+    if not isinstance(marks, dict) or any(k not in marks for k in ("names", "dates", "window", "key")):
+        raise GraderError(raw or "")
+    claims = marks.get("claims")
+    return ({k: bool(marks[k]) for k in ("names", "dates", "window", "key")}
+            | {"note": str(marks.get("note", "")), "claims": claims if isinstance(claims, list) else []})
+
+
+def _promise_hit(text: str, words) -> bool:
+    """A promise word in the reply, unless the next few words make it advice (ADVICE_WORDS)."""
+    low = text.lower()
+    for w in words:
+        for m in re.finditer(re.escape(w.lower()), low):
+            after = low[m.end():m.end() + 30]
+            if not any(a in after for a in ADVICE_WORDS):
+                return True
+    return False
+
+
+async def _grade(tenant_id, chart, q, reply, today) -> dict:
+    prompt = GRADER_PROMPT.format(today=today.isoformat(), chart=chart, question=q["text"], key=q["key"],
+                                  reply=reply, window_rule=WINDOW_TIMING if q.get("timing") else WINDOW_OTHER,
+                                  claims_spec=eval_chart.CLAIMS_SPEC)
+    # 2,000: 3.8 Flash's "low" thinking counts against this cap, and the claims list is long.
+    raw = await ai_reply._llm_chat([{"role": "user", "content": prompt}], max_tokens=2000, tenant_id=tenant_id,
+                                   purpose="eval_grader", temperature=0.0, model=GRADER_MODEL)
+    return _parse_grade(raw)
 
 
 async def _one(spec, companion, config_name, config, q, run_no, sem, today) -> dict:
@@ -125,19 +161,25 @@ async def _one(spec, companion, config_name, config, q, run_no, sem, today) -> d
             row["marks"] = {"no_prediction": not re.search(r"தசை|புத்தி|dasa|bhukti|\d{4}", reply.text, re.I)}
             return row
         graded = None
-        for _ in range(2):   # a slow grader call (30 s client timeout) is tried once more, then skipped
+        for _ in range(2):   # a slow or unreadable grader answer is tried once more, then shown as NOT GRADED
             try:
                 graded = await _grade(spec["tenant_id"], spec["app_data"], q, reply.text, today)
                 break
             except Exception as exc:
                 row["grader_error"] = type(exc).__name__
+                if isinstance(exc, GraderError):
+                    row["grader_raw"] = exc.raw
         if graded is None:
             row["marks"] = {}
             return row
-        promise = any(w.lower() in reply.text.lower() for w in spec.get("promise_words", []))
+        promise = _promise_hit(reply.text, spec.get("promise_words", []))
+        checks = eval_chart.check_claims(eval_chart.parse_chart(spec["app_data"]), graded["claims"])
+        wrong = [why for verdict, why in checks if verdict == "wrong"]
         row["marks"] = {"names": graded["names"], "dates": graded["dates"] and not _past_year(reply.text, today),
-                        "promise": not promise, "window": graded["window"], "key": graded["key"]}
+                        "promise": not promise, "window": graded["window"], "key": graded["key"], "facts": not wrong}
         row["grader_note"] = graded["note"]
+        row["claims"] = [{**cl, "verdict": v, "why": why} for cl, (v, why) in zip(graded["claims"], checks)]
+        row["fact_errors"] = wrong
         return row
 
 
@@ -161,6 +203,11 @@ def _table(rows, configs):
                   f"model={r['answer_model']}, cost=${r['cost']:.4f}")
         if ungraded:
             print(f"   NOT GRADED (grader failed twice): {len(ungraded)}")
+        checked = [c for r in preds for c in r.get("claims", [])]
+        print(f"   chart claims checked: {sum(c['verdict'] != 'unchecked' for c in checked)}/{len(checked)}")
+        for r in preds:
+            for why in r.get("fact_errors", []):
+                print(f"   WRONG FACT  {r['question']} (run {r['run']}): {why}")
         bad = [r for r in mine if r.get("problem")]
         if bad:
             print(f"   FAILED CALLS: {len(bad)} ({bad[0]['problem']})")
