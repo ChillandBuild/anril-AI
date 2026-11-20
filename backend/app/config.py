@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # when set, tokens from any other client are refused.
     mcp_enabled: bool = False
     mcp_oauth_client_id: str | None = None
+    # The address the Claude app uses for the MCP, when it is not the backend's normal one
+    # (e.g. https://mcp.anrilaitech.com). Claude shows a connector's icon from the favicon of the
+    # address's root domain, so a subdomain of the website shows the Anril icon. MCP only:
+    # PUBLIC_BASE_URL stays as it is (webhook addresses registered with Meta depend on it).
+    mcp_public_base_url: str | None = None
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
 

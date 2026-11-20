@@ -414,6 +414,38 @@ class ServerTests(unittest.TestCase):
         ico = client.get("/favicon.ico")
         self.assertEqual((ico.status_code, ico.headers["content-type"]), (200, "image/x-icon"))
 
+    def test_front_page_names_the_icon_for_favicon_lookups(self):
+        r = TestClient(app).get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r.headers["content-type"])
+        self.assertIn('<link rel="icon" href="/favicon.ico"', r.text)
+        self.assertIn('href="/brand/anril-icon.png"', r.text)
+
+    def test_mcp_can_live_on_its_own_address_without_moving_the_backend(self):
+        from app.admin_mcp import server as mcp_server
+
+        with patch.object(settings, "mcp_public_base_url", "https://mcp.anrilaitech.com/"), \
+             patch.object(settings, "public_base_url", None):
+            self.assertEqual(mcp_server.public_url(), "https://mcp.anrilaitech.com/mcp")
+            fresh = build_app(build_server())
+            body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+            headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+            with StarletteClient(fresh, base_url="https://mcp.anrilaitech.com") as new_host:
+                r = new_host.post("/mcp", json=body, headers=headers)
+                self.assertEqual(r.status_code, 401)  # reaches the login check: the host is accepted
+                self.assertIn("https://mcp.anrilaitech.com/.well-known/", r.headers["www-authenticate"])
+                meta = new_host.get("/.well-known/oauth-protected-resource/mcp").json()
+                self.assertEqual(meta["resource"], "https://mcp.anrilaitech.com/mcp")
+        # The host check runs after the login check, so these calls carry a valid login.
+        good = AccessToken(token="t", client_id="c", scopes=[], subject="user-1", claims={"connection_id": "conn-1"})
+        signed_in = {**headers, "Authorization": "Bearer t"}
+        expected = {"https://mcp.anrilaitech.com": 200, "https://aira-ai-5tfr.onrender.com": 200, "https://evil.example": 421}
+        with patch.object(settings, "mcp_public_base_url", "https://mcp.anrilaitech.com"), \
+             patch.object(settings, "public_base_url", None), patch.object(auth, "verify", return_value=good):
+            for host, status in expected.items():
+                with StarletteClient(build_app(build_server()), base_url=host) as client:
+                    self.assertEqual(client.post("/mcp", json=body, headers=signed_in).status_code, status, host)
+
     def test_mcp_is_not_mounted_when_the_switch_is_off(self):
         self.assertFalse(settings.mcp_enabled)
         r = TestClient(app).post("/mcp", json={})

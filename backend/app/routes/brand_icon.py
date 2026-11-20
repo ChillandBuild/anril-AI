@@ -8,7 +8,7 @@ The files are copies of frontend/public/icons/anril-icon-192.png and frontend/ap
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 public_router = APIRouter()
 
@@ -20,6 +20,23 @@ _CACHE = {"Cache-Control": "public, max-age=86400"}
 @public_router.get(ICON_PATH, include_in_schema=False)
 def anril_icon():
     return FileResponse(_ASSETS / "anril-icon-192.png", media_type="image/png", headers=_CACHE)
+
+
+_HOME = (
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Anril API</title>'
+    '<link rel="icon" href="/favicon.ico" sizes="any">'
+    f'<link rel="icon" type="image/png" sizes="192x192" href="{ICON_PATH}">'
+    f'<link rel="apple-touch-icon" href="{ICON_PATH}">'
+    '</head><body><p>Anril API. The product is at '
+    '<a href="https://www.anrilaitech.com">www.anrilaitech.com</a>.</p></body></html>'
+)
+
+
+@public_router.get("/", include_in_schema=False)
+def home():
+    """A one-line page whose only job is to name the icon: favicon lookup services read a
+    site's front page, and without one (it was a 404) they find no icon for this address."""
+    return HTMLResponse(_HOME, headers=_CACHE)
 
 
 @public_router.get("/favicon.ico", include_in_schema=False)

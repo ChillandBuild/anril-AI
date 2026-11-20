@@ -33,8 +33,13 @@ WEBSITE_URL = "https://www.anrilaitech.com"
 RATE_LIMIT_PER_MINUTE = 120  # per caller address; Claude makes a few calls per question
 
 
-def base_url() -> str:
+def _backend_url() -> str:
     return (settings.public_base_url or _RENDER_BASE_URL).rstrip("/")
+
+
+def base_url() -> str:
+    """The address Claude reaches the MCP on: MCP_PUBLIC_BASE_URL when set, else the backend's."""
+    return (settings.mcp_public_base_url or _backend_url()).rstrip("/")
 
 
 def public_url() -> str:
@@ -83,14 +88,15 @@ def build_server() -> MCPServer:
 
 
 def build_app(server: MCPServer):
-    host = urlparse(base_url()).netloc
+    # Both addresses are accepted, so the old one keeps answering while the connector is moved.
+    hosts = list(dict.fromkeys(urlparse(u).netloc for u in (base_url(), _backend_url())))
     return server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,
         stateless_http=True,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
-            allowed_hosts=[host, "localhost:*", "127.0.0.1:*"],
+            allowed_hosts=[*hosts, "localhost:*", "127.0.0.1:*"],
             allowed_origins=["https://claude.ai", "https://claude.com", "http://localhost:*", "http://127.0.0.1:*"],
         ),
     )
