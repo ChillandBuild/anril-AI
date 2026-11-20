@@ -2,6 +2,7 @@ import {
   Headset,
   Megaphone,
   RadioTower,
+  Sparkles,
   UserCircle,
 } from "lucide-react";
 
@@ -12,13 +13,18 @@ export type SettingsNavItem = {
   icon: typeof UserCircle;
   label: string;
   group: SettingsGroup;
-  entitlement?: "notifications";
+  entitlement?: "notifications" | "claude";
 };
+
+/** The tenant feature key the operator adds to switch on Anril AI (the Claude connector). */
+export const CLAUDE_FEATURE = "claude";
+export const CLAUDE_SETTINGS_HREF = "/dashboard/settings/claude";
 
 // Order here is the order groups and items render in the sidebar and the
 // mobile "More" menu — see sidebar.tsx / MoreMenu.tsx.
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
   { href: "/dashboard/settings/account", icon: UserCircle, label: "Profile & Business", group: "Account" },
+  { href: CLAUDE_SETTINGS_HREF, icon: Sparkles, label: "Anril AI for Claude", group: "Account", entitlement: "claude" },
   { href: "/dashboard/settings/connect-channels", icon: RadioTower, label: "Connect Channels", group: "Channels" },
   { href: "/dashboard/settings/telecalling-behavior", icon: Headset, label: "Telecalling Behavior", group: "Calling" },
   { href: "/dashboard/settings/notifications", icon: Megaphone, label: "Notifications", group: "Alerts", entitlement: "notifications" },
@@ -40,11 +46,17 @@ export function hasNotificationSettings(purchasedFeatures: string[]): boolean {
     || purchasedFeatures.includes("outbound_messaging");
 }
 
-export function getVisibleSettingsItems(purchasedFeatures: string[]): SettingsNavItem[] {
+/** Anril AI for Claude is owner-only, and only for a client the operator has switched on. */
+export function claudeSettingsOn(role: string | null, enabledFeatures: string[]): boolean {
+  return role === "owner" && enabledFeatures.includes(CLAUDE_FEATURE);
+}
+
+export function getVisibleSettingsItems(purchasedFeatures: string[], claudeOn = false): SettingsNavItem[] {
   const showNotifications = hasNotificationSettings(purchasedFeatures);
 
   return SETTINGS_ITEMS.filter((item) => {
     if (item.entitlement === "notifications") return showNotifications;
+    if (item.entitlement === "claude") return claudeOn;
     return true;
   });
 }

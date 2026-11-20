@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, AsyncExitStack
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -30,6 +30,7 @@ from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
 from app.routes import operator_mcp, operator_leads, operator_broadcasts
+from app.routes import claude_connector
 from app.routes import brand_icon
 from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
@@ -213,16 +214,18 @@ async def _watch_event_loop_lag() -> None:
 
 # Claude Access (read-only admin MCP). Set at the bottom of this file when MCP_ENABLED is on.
 _mcp_server = None
+# Anril AI (the client connector). Set at the bottom of this file when MCP_CLIENT_ENABLED is on.
+_client_mcp_server = None
 
 
 @asynccontextmanager
 async def _mcp_running():
     """The MCP's session manager has to run inside the host app's lifespan (a mounted app's own
     lifespan never runs)."""
-    if _mcp_server is None:
-        yield
-        return
-    async with _mcp_server.session_manager.run():
+    async with AsyncExitStack() as running:
+        for server in (_mcp_server, _client_mcp_server):
+            if server is not None:
+                await running.enter_async_context(server.session_manager.run())
         yield
 
 
@@ -474,6 +477,8 @@ app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"]
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])
 app.include_router(operator_mcp.router, prefix="/api/v1/operator", tags=["operator"])
+# Anril AI (client connector): consent screen + Settings page. Each route checks its own login.
+app.include_router(claude_connector.router, prefix="/api/v1/claude", tags=["claude"])
 # The Anril icon and favicon at the backend's own address (public): the Claude app shows it next to the connector.
 app.include_router(brand_icon.public_router)
 app.include_router(operator_leads.router, prefix="/api/v1/operator", tags=["operator"])
@@ -517,3 +522,23 @@ elif settings.mcp_enabled:
     _mcp_server = _build_mcp_server()
     app.add_middleware(_McpGateway, mcp_app=_build_mcp_app(_mcp_server))
     logger.info("Claude Access (admin MCP) serving at /mcp")
+
+# Anril AI: the client connector at /client/mcp (docs/specs/anril-client-mcp.md), behind its own
+# gateway and its own switch. A client's owner signs in; the tools read, edit and send for that
+# one client. MCP_CLIENT_ENABLED off (the default) = /client/mcp answers 404.
+if settings.mcp_client_enabled:
+    from app.services.client_claude import approved_client_ids as _approved_client_apps
+
+    if not _approved_client_apps():
+        logger.error("MCP_CLIENT_ENABLED is on but MCP_CLIENT_OAUTH_CLIENT_IDS has no app: Anril AI NOT started")
+    else:
+        from app.admin_mcp.server import McpGateway as _ClientGateway
+        from app.client_mcp import server as _client_mcp
+
+        _client_mcp_server = _client_mcp.build_server()
+        app.add_middleware(
+            _ClientGateway, mcp_app=_client_mcp.build_app(_client_mcp_server),
+            limit_per_minute=_client_mcp.RATE_LIMIT_PER_MINUTE,
+            mcp_path=_client_mcp.MCP_PATH, well_known_path=_client_mcp.WELL_KNOWN_PATH,
+        )
+        logger.info("Anril AI (client MCP) serving at /client/mcp")

@@ -167,7 +167,7 @@ interface SidebarProps {
 export function Sidebar(_props: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { access, tcGroupItems, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures } = useNavAccess();
+  const { access, tcGroupItems, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures, claudeOn } = useNavAccess();
   const [inboxCount, setInboxCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   // The logo's squares drop in on first show, then wave on each page change.
@@ -243,7 +243,7 @@ export function Sidebar(_props: SidebarProps) {
 
   const { isSubscribed, canSettings } = access;
   const showTc = Boolean(expandedGroups.Telecalling);
-  const visibleSettingsItems = getVisibleSettingsItems(purchasedFeatures);
+  const visibleSettingsItems = getVisibleSettingsItems(purchasedFeatures, claudeOn);
   const isSettingsActive = isSettingsPath(pathname);
   const showSettings = expandedGroups.Settings || isSettingsActive;
 

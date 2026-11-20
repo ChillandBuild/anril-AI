@@ -51,6 +51,119 @@ export interface OperatorMe {
 }
 
 /* ------------------------------------------------------------------ *
+ * Anril AI, the client connector (GET/POST /api/v1/claude...)
+ * ------------------------------------------------------------------ */
+
+/** What the consent screen is told about the app asking for access. */
+export type ConsentKind =
+  | { kind: "admin" }
+  | { kind: "unknown" }
+  | { kind: "client"; can_allow: false; why: string }
+  | { kind: "client"; can_allow: true; business: string; daily_cap: number; connected: boolean };
+
+export interface ClientConnection extends McpConnection {
+  tenant_id: string;
+}
+
+export interface ClientClaudeStatus {
+  available: boolean;
+  mcp_url: string;
+  oauth_client_id: string | null;
+  connections: ClientConnection[];
+  daily_cap: number;
+  max_daily_cap: number;
+  sent_today: number;
+  recent: { id: string; created_at: string | null; action: string; tool: string | null; ok: boolean | null; arguments: Record<string, unknown> }[];
+}
+
+export type ClientRecent = ClientClaudeStatus["recent"][number];
+
+/** What kind of thing a row in "What Claude did recently" was. */
+export type ClientActionKind = "ask" | "edit" | "send" | "setting";
+
+const ACTION_KINDS: Record<string, ClientActionKind> = {
+  "claude.read": "ask",
+  "claude.edit": "edit",
+  "claude.send": "send",
+};
+
+const TOOL_PHRASES: Record<string, string> = {
+  my_business: "Looked at your business summary",
+  dashboard_summary: "Looked at the dashboard numbers",
+  leads_overview: "Looked at the leads overview",
+  lead_details: "Opened a lead and its chat",
+  conversations: "Looked at the inbox",
+  messaging_stats: "Looked at messaging numbers",
+  calling_stats: "Looked at calling numbers",
+  broadcasts: "Looked at broadcasts",
+  templates: "Looked at templates",
+  team: "Looked at the team",
+  plan_and_usage: "Looked at the plan and usage",
+  reply_options: "Checked what can be sent to a lead",
+  add_lead_note: "Added a note to a lead",
+};
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function shorten(value: string, max = 60): string {
+  return value.length > max ? `${value.slice(0, max).trimEnd()}…` : value;
+}
+
+/**
+ * One row of "What Claude did recently" in plain words. The arguments are the audit log's
+ * cut-down copy, so a phone typed into a search already reads "phone ending 4471".
+ */
+export function describeClientAction(row: Pick<ClientRecent, "action" | "tool" | "ok" | "arguments">): {
+  kind: ClientActionKind;
+  text: string;
+} {
+  const args = row.arguments ?? {};
+  if (row.action === "claude.connection.allow") return { kind: "setting", text: "Claude was connected" };
+  if (row.action === "claude.connection.revoke") return { kind: "setting", text: "Claude was disconnected" };
+  if (row.action === "claude.cap.change") return { kind: "setting", text: "The daily sending limit was changed" };
+
+  const kind = ACTION_KINDS[row.action] ?? "ask";
+  const tool = row.tool ?? "";
+  let what: string;
+  if (tool === "find_leads") {
+    const filters = ["search", "segment", "source", "created_from", "created_to"]
+      .map((key) => text(args[key]))
+      .filter(Boolean);
+    what = filters.length ? `Searched leads: ${shorten(filters.join(", "))}` : "Listed leads";
+  } else if (tool === "assign_lead") {
+    const member = text(args.team_member);
+    what = member ? `Assigned a lead to ${shorten(member, 40)}` : "Unassigned a lead";
+  } else if (tool === "send_reply") {
+    const body = text(args.text);
+    what = body ? `Reply to a lead: "${shorten(body)}"` : "Template message to a lead";
+  } else if (tool === "preview_broadcast" || tool === "send_broadcast") {
+    const template = text(args.template_name);
+    const verb = tool === "send_broadcast" ? "Broadcast" : "Previewed a broadcast";
+    what = template ? `${verb}: ${shorten(template, 40)}` : verb;
+  } else {
+    what = TOOL_PHRASES[tool] ?? (tool ? tool.replace(/_/g, " ") : "Used Anril AI");
+  }
+  return { kind, text: row.ok === false ? `Not done: ${what}` : what };
+}
+
+/** The daily limit the owner typed, as a whole number inside 0..max. Null when it is not a number. */
+export function parseDailyCap(input: string, max: number): number | null {
+  const trimmed = input.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return value > max ? null : value;
+}
+
+/** How full today's sending limit is, for the meter (a limit of 0 reads as full). */
+export function capUsage(sent: number, cap: number): { percent: number; left: number } {
+  const left = Math.max(cap - sent, 0);
+  if (cap <= 0) return { percent: 100, left: 0 };
+  return { percent: Math.min(100, Math.round((sent / cap) * 1000) / 10), left };
+}
+
+/* ------------------------------------------------------------------ *
  * Login "come back here" path
  * ------------------------------------------------------------------ */
 

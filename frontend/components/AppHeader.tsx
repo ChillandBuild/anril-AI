@@ -29,6 +29,7 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
   inbox: "How chats are assigned and handed to your team.",
   "telecalling-behavior": "How calls are assigned and your cloud calling setup.",
   notifications: "Choose which alerts you receive.",
+  claude: "Ask about your business, update leads and message customers from your own Claude app.",
 };
 
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
@@ -39,6 +40,7 @@ const SETTINGS_ROUTE_LABELS: Record<string, string> = {
   inbox: "Inbox & Handover",
   "telecalling-behavior": "Telecalling Behavior",
   notifications: "Notifications",
+  claude: "Anril AI for Claude",
 };
 
 // Define a map of exact path matches and dynamic route prefixes

@@ -54,9 +54,9 @@ class TestAuditLogEndpoint(unittest.TestCase):
         self.assertEqual(len(body["data"]), 1)
         audit_tbl.select.return_value.eq.assert_called_with("tenant_id", "tenant-1")
         # Must not return the full app_audit_logs firehose for this tenant --
-        # only team.* / role.* actions belong on the tenant-facing page.
+        # only team.* / role.* actions and what the Anril AI connector did (claude.*) belong there.
         audit_tbl.select.return_value.eq.return_value.or_.assert_called_once_with(
-            "action.like.team.%,action.like.role.%"
+            "action.like.team.%,action.like.role.%,action.like.claude.%"
         )
 
 

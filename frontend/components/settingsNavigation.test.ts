@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "./settingsNavigation";
+import { claudeSettingsOn, getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "./settingsNavigation";
 
 describe("getVisibleSettingsItems", () => {
   it("fails open for legacy tenants with no subscription item rows", () => {
@@ -31,12 +31,27 @@ describe("getVisibleSettingsItems", () => {
   });
 });
 
+describe("Anril AI for Claude", () => {
+  it("is hidden unless the caller says it is on", () => {
+    expect(getVisibleSettingsItems([]).map((item) => item.label)).not.toContain("Anril AI for Claude");
+    expect(getVisibleSettingsItems([], true).map((item) => item.label)).toContain("Anril AI for Claude");
+  });
+
+  it("is on only for the owner of a client the operator switched on", () => {
+    expect(claudeSettingsOn("owner", ["whatsapp", "claude"])).toBe(true);
+    expect(claudeSettingsOn("owner", ["whatsapp"])).toBe(false);
+    expect(claudeSettingsOn("caller", ["whatsapp", "claude"])).toBe(false);
+    expect(claudeSettingsOn(null, ["claude"])).toBe(false);
+  });
+});
+
 describe("isSettingsPath", () => {
   it.each([
     "/dashboard/settings/account",
     "/dashboard/settings/connect-channels",
     "/dashboard/settings/telecalling-behavior",
     "/dashboard/settings/notifications",
+    "/dashboard/settings/claude",
   ])("%s is a Settings page", (path) => {
     expect(isSettingsPath(path)).toBe(true);
   });
@@ -53,7 +68,7 @@ describe("isSettingsPath", () => {
 
   it("the Anril settings group is gone from the list and the group order", () => {
     expect(SETTINGS_ITEMS.map((item) => item.label)).toEqual([
-      "Profile & Business", "Connect Channels", "Telecalling Behavior", "Notifications",
+      "Profile & Business", "Anril AI for Claude", "Connect Channels", "Telecalling Behavior", "Notifications",
     ]);
     expect(SETTINGS_GROUP_ORDER).not.toContain("Anril");
   });

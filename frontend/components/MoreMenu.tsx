@@ -36,7 +36,7 @@ import {
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
-import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
+import { claudeSettingsOn, getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { ProductSwitch } from "@/components/nav/ProductSwitch";
@@ -229,7 +229,7 @@ export function MoreMenu() {
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
   const brainCount = useBrainCount(items.some((item) => item.key === "brain"));
   const canSettings = role === "owner" || permissions.includes("settings.view") || permissions.includes("settings.manage");
-  const settingsItems = getVisibleSettingsItems(purchasedFeatures);
+  const settingsItems = getVisibleSettingsItems(purchasedFeatures, claudeSettingsOn(role, enabledFeatures));
   // Auto-reply, Follow-ups and Inbox live under /dashboard/settings/ but are no longer Settings pages.
   const settingsActive = isSettingsPath(pathname);
 

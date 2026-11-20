@@ -332,13 +332,18 @@ def list_audit_log(
 ):
     db = get_supabase()
     # Tenant-facing scope is deliberately narrower than the operator console's
-    # view of this same table: team membership and role/permission changes
-    # only, not every settings/broadcast/operator action ever logged for this
-    # tenant.
+    # view of this same table: team membership and role/permission changes,
+    # not every settings/broadcast/operator action ever logged for this tenant.
+    # The owner also sees what was done through the Anril AI connector
+    # (claude.*): those rows can hold the text of a message sent to a customer,
+    # so staff who can only view roles do not get them.
+    scope = "action.like.team.%,action.like.role.%"
+    if ctx.get("role") == "owner":
+        scope += ",action.like.claude.%"
     q = db.table("app_audit_logs").select(
         "id, actor_user_id, actor_role, action, target_type, target_id, metadata, created_at",
         count="exact",
-    ).eq("tenant_id", ctx["tenant_id"]).or_("action.like.team.%,action.like.role.%")
+    ).eq("tenant_id", ctx["tenant_id"]).or_(scope)
 
     if date_from:
         q = q.gte("created_at", date_from)

@@ -114,10 +114,14 @@ class McpGateway:
     these paths.
     """
 
-    def __init__(self, app, mcp_app, limit_per_minute: int = RATE_LIMIT_PER_MINUTE) -> None:
+    def __init__(self, app, mcp_app, limit_per_minute: int = RATE_LIMIT_PER_MINUTE,
+                 mcp_path: str = MCP_PATH, well_known_path: str = WELL_KNOWN_PATH) -> None:
         self.app = app
         self.mcp_app = mcp_app
         self.limit = limit_per_minute
+        # The client connector (app.client_mcp) is a second gateway with its own two addresses.
+        self.mcp_path = mcp_path
+        self.well_known_path = well_known_path
         self._hits: dict[str, tuple[int, int]] = {}  # address -> (minute, count)
 
     def _over_limit(self, address: str) -> bool:
@@ -134,10 +138,10 @@ class McpGateway:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         path = scope.get("path") or ""
-        if path == MCP_PATH + "/":
-            path = MCP_PATH
+        if path == self.mcp_path + "/":
+            path = self.mcp_path
             scope = {**scope, "path": path, "raw_path": path.encode()}
-        if path not in (MCP_PATH, WELL_KNOWN_PATH):
+        if path not in (self.mcp_path, self.well_known_path):
             return await self.app(scope, receive, send)
         address = (scope.get("client") or ("unknown",))[0]
         if self._over_limit(address):

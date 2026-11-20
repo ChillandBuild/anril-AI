@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { OAuthAuthorizationDetails, OAuthRedirect } from "@supabase/supabase-js";
 import {
+  capUsage,
   consentLoginHref,
+  describeClientAction,
   formatCallArguments,
+  parseDailyCap,
   isSafeRedirectUrl,
   mapAuthorizationDetails,
   safeOperatorNext,
@@ -115,5 +118,68 @@ describe("formatCallArguments", () => {
     expect(formatCallArguments({ filter: { a: 1 } })).toBe('filter {"a":1}');
     expect(formatCallArguments(null)).toBe("");
     expect(formatCallArguments({})).toBe("");
+  });
+});
+
+describe("describeClientAction", () => {
+  const row = (action: string, tool: string | null, args: Record<string, unknown> = {}, ok: boolean | null = true) =>
+    describeClientAction({ action, tool, ok, arguments: args });
+
+  it("says what a send was, and marks it as a send", () => {
+    expect(row("claude.send", "send_reply", { lead_id: "L1", text: "Your chart is ready" })).toEqual({
+      kind: "send", text: 'Reply to a lead: "Your chart is ready"',
+    });
+    expect(row("claude.send", "send_reply", { lead_id: "L1", template_id: "T1" }).text).toBe("Template message to a lead");
+    expect(row("claude.send", "send_broadcast", { template_name: "diwali_offer" }).text).toBe("Broadcast: diwali_offer");
+  });
+
+  it("describes edits and reads from the cut-down audit arguments", () => {
+    expect(row("claude.edit", "assign_lead", { team_member: "Karthik R" })).toEqual({ kind: "edit", text: "Assigned a lead to Karthik R" });
+    expect(row("claude.edit", "assign_lead", { team_member: "" }).text).toBe("Unassigned a lead");
+    expect(row("claude.read", "find_leads", { search: "phone ending 4471", limit: 20 })).toEqual({
+      kind: "ask", text: "Searched leads: phone ending 4471",
+    });
+    expect(row("claude.read", "find_leads").text).toBe("Listed leads");
+    expect(row("claude.read", "preview_broadcast", { template_name: "diwali_offer" }).text).toBe("Previewed a broadcast: diwali_offer");
+    expect(row("claude.read", "my_business").text).toBe("Looked at your business summary");
+  });
+
+  it("keeps long text short, flags failures and survives a tool it does not know", () => {
+    const long = row("claude.send", "send_reply", { text: "x".repeat(300) }).text;
+    expect(long.length).toBeLessThan(90);
+    expect(row("claude.send", "send_broadcast", { template_name: "diwali_offer" }, false).text).toBe("Not done: Broadcast: diwali_offer");
+    expect(row("claude.read", "some_new_tool")).toEqual({ kind: "ask", text: "some new tool" });
+    expect(row("claude.read", null).text).toBe("Used Anril AI");
+  });
+
+  it("names the owner's own switches", () => {
+    expect(row("claude.connection.allow", null)).toEqual({ kind: "setting", text: "Claude was connected" });
+    expect(row("claude.connection.revoke", null).text).toBe("Claude was disconnected");
+    expect(row("claude.cap.change", null).text).toBe("The daily sending limit was changed");
+  });
+});
+
+describe("parseDailyCap", () => {
+  it("accepts whole numbers from 0 to the ceiling", () => {
+    expect(parseDailyCap("500", 10000)).toBe(500);
+    expect(parseDailyCap(" 0 ", 10000)).toBe(0);
+    expect(parseDailyCap("10000", 10000)).toBe(10000);
+  });
+
+  it.each(["", "abc", "-1", "12.5", "1e3", "10001", "5 00"])("rejects %s", (value) => {
+    expect(parseDailyCap(value, 10000)).toBeNull();
+  });
+});
+
+describe("capUsage", () => {
+  it("gives the meter's fill and what is left", () => {
+    expect(capUsage(42, 500)).toEqual({ percent: 8.4, left: 458 });
+    expect(capUsage(0, 500)).toEqual({ percent: 0, left: 500 });
+  });
+
+  it("is full at or past the limit, and when the limit is 0", () => {
+    expect(capUsage(500, 500)).toEqual({ percent: 100, left: 0 });
+    expect(capUsage(620, 500)).toEqual({ percent: 100, left: 0 });
+    expect(capUsage(0, 0)).toEqual({ percent: 100, left: 0 });
   });
 });

@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # address's root domain, so a subdomain of the website shows the Anril icon. MCP only:
     # PUBLIC_BASE_URL stays as it is (webhook addresses registered with Meta depend on it).
     mcp_public_base_url: str | None = None
+    # Anril AI: the client connector at /client/mcp (docs/specs/anril-client-mcp.md). Off = that
+    # address does not exist. MCP_CLIENT_OAUTH_CLIENT_IDS is a comma-separated list of the OAuth
+    # apps allowed to use it (one per approved app, e.g. Claude). The admin app's id is never
+    # accepted here, and these ids are never accepted at /mcp.
+    mcp_client_enabled: bool = False
+    mcp_client_oauth_client_ids: str = ""
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
 

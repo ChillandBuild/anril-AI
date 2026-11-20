@@ -1,4 +1,5 @@
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { claudeSettingsOn } from "@/components/settingsNavigation";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS, type NavAccess, type TelecallingPage } from "./navSections";
 
@@ -75,12 +76,13 @@ export function buildNavAccess({ role, permissions, enabledFeatures, subStatus }
  * What this user may see in the menu. Shared by the sidebar and the page-header
  * chips so both follow the exact same rules. Call it before any early return.
  */
-export function useNavAccess(): NavAccessState & { roleLoading: boolean; purchasedFeatures: string[] } {
+export function useNavAccess(): NavAccessState & { roleLoading: boolean; purchasedFeatures: string[]; claudeOn: boolean } {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
   const { status: subStatus, purchasedFeatures } = useSubscription();
   return {
     ...buildNavAccess({ role, permissions, enabledFeatures, subStatus }),
     roleLoading,
     purchasedFeatures,
+    claudeOn: claudeSettingsOn(role, enabledFeatures),
   };
 }
