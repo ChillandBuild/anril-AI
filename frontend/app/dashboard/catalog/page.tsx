@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3, Image as ImageIcon, Package, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ConflictsLink } from "@/components/brain/ConflictsLink";
@@ -10,15 +9,13 @@ import { CatalogueTabs } from "./CatalogueTabs";
 import { ItemsTab } from "./ItemsTab";
 import { MediaTab } from "./MediaTab";
 import { AiRulesTab } from "./AiRulesTab";
-import { InsightsTab } from "./InsightsTab";
 
-type CatalogTab = "items" | "media" | "ai-rules" | "insights";
+type CatalogTab = "items" | "media" | "ai-rules";
 
-const TABS: { id: CatalogTab; label: string; icon: typeof Package }[] = [
-  { id: "items", label: "Items", icon: Package },
-  { id: "media", label: "Media", icon: ImageIcon },
-  { id: "ai-rules", label: "AI Rules", icon: Sparkles },
-  { id: "insights", label: "Insights", icon: BarChart3 },
+const TABS: { id: CatalogTab; label: string; icon: string }[] = [
+  { id: "items", label: "Items", icon: "🏷️" },
+  { id: "media", label: "Media", icon: "🖼️" },
+  { id: "ai-rules", label: "AI rules", icon: "🤖" },
 ];
 
 export default function CatalogPage() {
@@ -61,21 +58,21 @@ export default function CatalogPage() {
     <div className="space-y-4">
       <CatalogueTabs />
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex w-full flex-wrap gap-1 rounded-xl border border-border bg-white p-1 shadow-sm sm:w-fit">
+        <div className="flex w-full flex-wrap gap-2 sm:w-fit">
           {TABS.map((item) => {
-            const Icon = item.icon;
             const active = tab === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setTab(item.id)}
+                aria-pressed={active}
                 className={cn(
-                  "inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
-                  active ? "bg-primary text-white" : "text-ink-muted hover:bg-surface-low hover:text-ink"
+                  "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors",
+                  active ? "border-primary bg-primary text-white shadow-sm" : "border-border bg-white text-ink hover:bg-surface-low"
                 )}
               >
-                <Icon size={15} />
+                <span aria-hidden>{item.icon}</span>
                 <span>{item.label}</span>
               </button>
             );
@@ -88,7 +85,6 @@ export default function CatalogPage() {
       {tab === "items" && <ItemsTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "media" && <MediaTab canManage={canManageCatalog} />}
       {tab === "ai-rules" && <AiRulesTab canManage={canManageCatalog} />}
-      {tab === "insights" && <InsightsTab />}
     </div>
   );
 }

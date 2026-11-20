@@ -385,3 +385,50 @@ export function useInstantFormTemplates(enabled = true) {
     defaultConfig,
   );
 }
+
+// ── WhatsApp Forms (Catalogue → Forms) ───────────────────────────────────────
+
+/** Is WhatsApp Forms switched on for this account (and the Services form's state). */
+export function useWhatsappFormsStatus(enabled = true) {
+  return useSWR(enabled ? "whatsapp-forms/status" : null, () => api.whatsappForms.status(), {
+    ...defaultConfig, shouldRetryOnError: false,
+  });
+}
+
+export function useWhatsappFormsSetup(enabled = true) {
+  return useSWR(enabled ? "whatsapp-forms/setup" : null, () => api.whatsappForms.setup(), defaultConfig);
+}
+
+export function useWhatsappForms() {
+  return useSWR("whatsapp-forms/list", () => api.whatsappForms.list(), defaultConfig);
+}
+
+export function useWhatsappForm(id: string | null) {
+  return useSWR(id ? `whatsapp-forms/form:${id}` : null, () => api.whatsappForms.get(id!), defaultConfig);
+}
+
+export function useWhatsappFormResponses(id: string | null, page: number) {
+  return useSWR(id ? `whatsapp-forms/responses:${id}:${page}` : null, () => api.whatsappForms.responses(id!, page), defaultConfig);
+}
+
+export function useLeadFormAnswers(leadId: string | null) {
+  return useSWR(leadId ? `whatsapp-forms/lead:${leadId}` : null, () => api.whatsappForms.leadAnswers(leadId!), {
+    ...defaultConfig, shouldRetryOnError: false,
+  });
+}
+
+export function useTemplateFormOptions() {
+  return useSWR("whatsapp-forms/template-forms", () => api.whatsappForms.templateForms(), {
+    ...defaultConfig, shouldRetryOnError: false,
+  });
+}
+
+export function useFormReachOptions(enabled = true) {
+  return useSWR(enabled ? "whatsapp-forms/reach-options" : null, () => api.whatsappForms.reachOptions(), defaultConfig);
+}
+
+export function useSendableForms(enabled = true) {
+  return useSWR(enabled ? "whatsapp-forms/sendable" : null, () => api.whatsappForms.sendable(), {
+    ...defaultConfig, shouldRetryOnError: false,
+  });
+}

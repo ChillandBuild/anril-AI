@@ -12,6 +12,9 @@ import { AiraLoader } from "@/components/AiraLoader";
 import { slugify } from "../settings/slugify";
 import { PackageEditor, type IntakePackage } from "./PackageEditor";
 import { chargePaise, gstPaise, GST_MAX, GST_MIN, parseGstPercent } from "./gst";
+import type { WaFormLanguage } from "@/lib/api";
+import { useWhatsappFormsSetup } from "@/hooks/useApi";
+import { FormTextsEditor, SERVICES_TEXT_KEYS } from "../forms/shared";
 
 type FieldType = "text" | "date" | "choice";
 
@@ -35,6 +38,8 @@ interface SellConfig {
   service_noun: string;
   gst_percent: number;
   collect_with: CollectWith;
+  /** The WhatsApp Form's language and every word it shows (only edits are stored). */
+  form_texts: { language: WaFormLanguage; texts: Record<string, string> };
 }
 
 type CollectWith = "chat" | "form";
@@ -55,7 +60,14 @@ const DEFAULT: SellConfig = {
   service_noun: "consultation",
   gst_percent: 0,
   collect_with: "chat",
+  form_texts: { language: "en", texts: {} },
 };
+
+function toFormTexts(raw: unknown): SellConfig["form_texts"] {
+  const value = (raw ?? {}) as { language?: string; texts?: Record<string, string> };
+  const language = value.language === "ta" || value.language === "tanglish" ? value.language : "en";
+  return { language, texts: { ...(value.texts ?? {}) } };
+}
 
 function toSellConfig(data: Record<string, unknown>): SellConfig {
   return {
@@ -65,6 +77,7 @@ function toSellConfig(data: Record<string, unknown>): SellConfig {
     service_noun: (data.service_noun as string | undefined) ?? "consultation",
     gst_percent: Number(data.gst_percent) || 0,
     collect_with: data.collect_with === "form" ? "form" : "chat",
+    form_texts: toFormTexts(data.form_texts),
   };
 }
 
@@ -83,6 +96,7 @@ export default function ServicesPage() {
   // The GST box keeps its own text so half-typed values ("1.") and out-of-range entries can show an error.
   const [gstText, setGstText] = useState("0");
   const [formStatus, setFormStatus] = useState<FormStatus>({ available: false });
+  const { data: formSetup } = useWhatsappFormsSetup(formStatus.available);
   const [republishing, setRepublishing] = useState(false);
 
   const loadFormStatus = useCallback(async () => {
@@ -270,6 +284,31 @@ export default function ServicesPage() {
             )}
             {saved.collect_with === "form" && (
               <FormState status={formStatus} canManage={canManageSettings} busy={republishing} onRetry={republishForm} />
+            )}
+            {draft.collect_with === "form" && formSetup && (
+              <div className="space-y-3 pt-2">
+                <div className="space-y-1.5">
+                  <p className="font-label text-xs font-semibold text-ink">Language customers see on the form</p>
+                  <SegmentedControl
+                    aria-label="Form language"
+                    value={draft.form_texts.language}
+                    disabled={!canManageSettings}
+                    onChange={(v) => setDraft({ ...draft, form_texts: { ...draft.form_texts, language: v as WaFormLanguage } })}
+                    options={formSetup.languages.map((l) => ({ value: l.key, label: l.name }))}
+                  />
+                  <p className="font-body text-[11px] text-ink-muted">
+                    Package names and details stay as you wrote them above. Every word below can be changed.
+                  </p>
+                </div>
+                <FormTextsEditor
+                  setup={formSetup}
+                  language={draft.form_texts.language}
+                  texts={draft.form_texts.texts}
+                  keys={SERVICES_TEXT_KEYS}
+                  disabled={!canManageSettings}
+                  onChange={(texts) => setDraft({ ...draft, form_texts: { ...draft.form_texts, texts } })}
+                />
+              </div>
             )}
           </div>
         </Row>

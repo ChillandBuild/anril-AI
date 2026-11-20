@@ -41,8 +41,13 @@ public_router = APIRouter()  # No auth — Meta calls these endpoints directly
 
 
 class Button(BaseModel):
-    type: str  # QUICK_REPLY | URL | PHONE_NUMBER | WHATSAPP_CALL | COPY_CODE | ONE_TAP
+    type: str  # QUICK_REPLY | URL | PHONE_NUMBER | WHATSAPP_CALL | COPY_CODE | ONE_TAP | FLOW
     text: str
+    # FLOW ("Open form"): which WhatsApp Form it opens -- a form id from Catalogue → Forms, or
+    # "services". The server pins the live version's flow id (Meta fixes it at approval).
+    form_ref: str | None = None
+    flow_id: str | None = None
+    navigate_screen: str | None = None
     url: str | None = None
     phone: str | None = None
     country: str | None = None
@@ -221,6 +226,27 @@ async def list_templates(tenant_id: str = Depends(get_tenant_id)):
     return {"data": rows}
 
 
+def _pin_form_buttons(tenant_id: str, buttons: list[dict]) -> list[dict]:
+    """An "Open form" button opens the form version that is live now: pin its flow id. Buttons
+    are stored in Meta's order so a button's position is its send index (whatsapp_form_reach)."""
+    from app.services import whatsapp_form_reach as reach
+    from app.services import whatsapp_forms as wf
+
+    db = get_supabase()
+    if not wf.is_enabled(db, tenant_id):
+        raise HTTPException(status_code=400, detail="WhatsApp Forms is not switched on for this account.")
+    forms = [b for b in buttons if str(b.get("type") or "").upper() == "FLOW"]
+    if len(forms) > 1:
+        raise HTTPException(status_code=400, detail="A template can open one form.")
+    for button in forms:
+        try:
+            button.update(reach.resolve_form_button(db, tenant_id, str(button.get("form_ref") or "")))
+        except wf.FormBuildError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        button["type"] = "FLOW"
+    return reach.group_buttons(buttons)
+
+
 @router.post("/")
 async def create_template(
     payload: CreateTemplate,
@@ -243,6 +269,8 @@ async def create_template(
             raise HTTPException(status_code=400, detail="You can't enter the same text for multiple buttons.")
 
     buttons_dict = [b.model_dump() for b in payload.buttons] if payload.buttons else None
+    if buttons_dict and any(str(b.get("type") or "").upper() == "FLOW" for b in buttons_dict):
+        buttons_dict = _pin_form_buttons(tenant_id, buttons_dict)
     carousel_dict = None
     if payload.carousel_cards:
         carousel_dict = []

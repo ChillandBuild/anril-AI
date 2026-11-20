@@ -1,4 +1,4 @@
-"""The 34 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
+"""The 35 scheduled jobs as Procrastinate periodic tasks (SPEC.md M2). Each task calls its service
 function with no try/except, so a failure marks the job failed. Cron is UTC; IST is UTC+5:30."""
 from app.queue.app import queue_app
 from app.services.scoring_rules import MORNING_SUMMARY_HOUR_IST
@@ -41,6 +41,7 @@ RETRY_CLASS: dict[str, str] = {
     "inbound-stopped-replying": "A",
     "unmarked-bookings": "C",
     "order-payment-reminders": "C",
+    "meta-catalogue-sync": "A",
 }
 
 
@@ -351,3 +352,11 @@ async def rescue_stalled(context, timestamp: int) -> None:
 async def queue_cleanup(context, timestamp: int) -> None:
     from app.queue import safety
     await safety.cleanup(context.app)
+
+
+@queue_app.periodic(cron="* * * * *", periodic_id="meta-catalogue-sync")
+@queue_app.task(name="meta-catalogue-sync", queue="maintenance")
+async def meta_catalogue_sync(timestamp: int) -> None:
+    """Catalogue changes (a sale, a price, a photo) to each shop's Meta catalogue, within a minute."""
+    from app.services.meta_catalog import sync_all_tenants
+    await sync_all_tenants()

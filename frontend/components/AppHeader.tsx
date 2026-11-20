@@ -320,10 +320,24 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Your products, prices and stock — what Anril can recommend and sell.",
     };
   }
+  if (pathname === "/dashboard/catalog/items/new") {
+    return { title: "Catalogue / New item", description: "Name, price, sizes and colours, and the stock you have now." };
+  }
+  if (pathname.startsWith("/dashboard/catalog/items/")) {
+    return { title: "Catalogue / Item", description: "One item, its sizes and colours, and the stock of each." };
+  }
   if (pathname === "/dashboard/services") {
     return {
       title: "Catalogue / Services",
       description: "What you sell in chat: packages, prices, and the details Anril collects before sending the payment link.",
+    };
+  }
+  if (pathname === "/dashboard/forms" || pathname?.startsWith("/dashboard/forms/")) {
+    return {
+      title: "Catalogue / Forms",
+      description: pathname === "/dashboard/forms"
+        ? "WhatsApp Forms that open inside the chat: your Services form and your own forms, in English, Tamil or Tanglish."
+        : "Build the form, check it on the phone preview, then publish it to WhatsApp.",
     };
   }
   if (pathname === "/dashboard/leads") {
@@ -588,7 +602,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
           </div>
         )}
 
-        {(pathname === "/dashboard/catalog" || pathname === "/dashboard/services") && <CatalogueHeaderSwitch />}
+        {(pathname === "/dashboard/catalog" || pathname === "/dashboard/services" || pathname?.startsWith("/dashboard/forms")) && <CatalogueHeaderSwitch />}
 
         {/* Deals renders its own switch below, next to the New deal button. */}
         {headerTabs && pathname !== "/dashboard/deals" && <HeaderTabSwitch pathname={pathname} set={headerTabs} />}

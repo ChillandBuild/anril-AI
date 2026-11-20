@@ -8,6 +8,7 @@ import { NewDealDialog } from "./deals/NewDealDialog";
 import { StageBadge } from "./deals/StageBadge";
 import { formatRupees } from "./deals/money";
 import { CustomerActions } from "./chats/CustomerActions";
+import { LeadForms } from "./chats/LeadForms";
 import type { Option } from "./chats/inboxFilters";
 
 // ─── Channel icons ─────────────────────────────────────────────────────────────
@@ -359,6 +360,8 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
               </div>
             )}
           </Section>
+
+          <LeadForms leadId={lead.id} />
 
           <div ref={dealsRef} className="scroll-mt-3">
             <Section icon={<CheckCircle2 size={12} />} title="Deals">

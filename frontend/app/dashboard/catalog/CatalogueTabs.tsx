@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
+import { useWhatsappFormsStatus } from "@/hooks/useApi";
 
 function useCatalogueTabLinks() {
   const pathname = usePathname();
   const { role, permissions } = useAuthRole();
   const canViewProducts = role === "owner" || permissions.includes("catalog.view") || permissions.includes("catalog.manage");
   const canViewServices = role === "owner" || permissions.includes("services.view") || permissions.includes("services.manage");
+  // Forms shows only for accounts with WhatsApp Forms switched on (Operator Console).
+  const { data: formsStatus } = useWhatsappFormsStatus(canViewServices);
 
   return [
     {
@@ -23,6 +26,12 @@ function useCatalogueTabLinks() {
       label: "Services",
       visible: canViewServices,
       active: pathname.startsWith("/dashboard/services"),
+    },
+    {
+      href: "/dashboard/forms",
+      label: "Forms",
+      visible: canViewServices && Boolean(formsStatus?.available),
+      active: pathname.startsWith("/dashboard/forms"),
     },
   ].filter((tab) => tab.visible);
 }

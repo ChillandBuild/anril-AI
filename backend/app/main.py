@@ -23,6 +23,7 @@ from app.routes import call_review
 from app.routes.marketplace_intake import public_router as marketplace_public_router
 from app.routes import marketplace_intake
 from app.routes import instant_forms
+from app.routes import whatsapp_form_designs
 from app.routes import deals, business_details, orders
 from app.routes import companions, companion_kb, companion_public
 from app.routes import brain
@@ -451,6 +452,7 @@ app.include_router(consistency.router, prefix="/api/v1/consistency", tags=["cons
 app.include_router(brain.router, prefix="/api/v1/brain", tags=["brain"], dependencies=_auth)
 app.include_router(brain_sandbox.client_router, prefix="/api/v1/brain", tags=["brain"], dependencies=_auth)
 app.include_router(catalog.router, prefix="/api/v1/catalog", tags=["catalog"], dependencies=_auth)
+app.include_router(catalog.public_router, prefix="/api/v1/public/items", tags=["items-public"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"], dependencies=_auth)
 app.include_router(follow_ups.router, prefix="/api/v1/follow-ups", tags=["follow-ups"], dependencies=_auth)
 app.include_router(numbers.router, prefix="/api/v1/numbers", tags=["numbers"], dependencies=_auth)
@@ -484,6 +486,7 @@ app.include_router(chat_handovers.router, prefix="/api/v1/chat-handovers", tags=
 app.include_router(tags.router, prefix="/api/v1/broadcast-tags", tags=["broadcast-tags"], dependencies=_auth)
 app.include_router(inbound_leads.router, prefix="/api/v1/inbound-leads", tags=["inbound-leads"], dependencies=_auth)
 app.include_router(instant_forms.router, prefix="/api/v1/instant-forms", tags=["instant-forms"], dependencies=_auth)
+app.include_router(whatsapp_form_designs.router, prefix="/api/v1/whatsapp-forms", tags=["whatsapp-forms"], dependencies=_auth)
 app.include_router(reengagement.router, prefix="/api/v1/reengagement", tags=["reengagement"], dependencies=_auth)
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"], dependencies=_auth)
 app.include_router(assignment_log.router, prefix="/api/v1/assignment-log", tags=["assignment-log"], dependencies=_auth)

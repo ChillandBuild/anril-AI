@@ -1,6 +1,8 @@
 export type Button = {
-  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'WHATSAPP_CALL' | 'COPY_CODE' | 'ONE_TAP';
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'WHATSAPP_CALL' | 'COPY_CODE' | 'ONE_TAP' | 'FLOW';
   text: string;
+  /** FLOW ("Open form"): a form id from Catalogue → Forms, or "services". */
+  form_ref?: string;
   url?: string;
   phone?: string;
   country?: string;

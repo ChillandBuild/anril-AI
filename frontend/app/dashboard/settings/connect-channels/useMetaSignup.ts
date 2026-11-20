@@ -70,6 +70,7 @@ export function useMetaSignup({
   const [assets, setAssets] = useState<MetaBusinessAssets | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [selectedAdAccountId, setSelectedAdAccountId] = useState("");
+  const [selectedCatalogId, setSelectedCatalogId] = useState("");
   const [activeMode, setActiveMode] = useState<MetaSignupMode | null>(null);
   const coordinatorRef = useRef(new MetaSignupCoordinator());
   // The requested mode has to outlive `activeMode`, which clears the moment the Meta
@@ -80,12 +81,13 @@ export function useMetaSignup({
     sessionId: string,
     pageId: string | null,
     adAccountId: string | null,
+    catalogId: string | null = null,
   ) => {
     const auth = await getAuthHeaders();
     const res = await fetch(`${API_URL}/api/v1/settings/meta/unified-signup/complete`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify({ session_id: sessionId, page_id: pageId, ad_account_id: adAccountId }),
+      body: JSON.stringify({ session_id: sessionId, page_id: pageId, ad_account_id: adAccountId, catalog_id: catalogId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Connecting Meta Business failed");
@@ -127,6 +129,7 @@ export function useMetaSignup({
       setAssets(granted);
       setSelectedPageId(granted.pages.length === 1 ? granted.pages[0].id : "");
       setSelectedAdAccountId("");
+      setSelectedCatalogId(granted.catalogs?.length === 1 ? granted.catalogs[0].id : "");
       setState("selecting");
       setActiveMode(null);
     } catch (err) {
@@ -200,7 +203,7 @@ export function useMetaSignup({
     setState("finishing");
     setError(null);
     try {
-      await submitSelection(assets.session_id, selectedPageId || null, selectedAdAccountId || null);
+      await submitSelection(assets.session_id, selectedPageId || null, selectedAdAccountId || null, selectedCatalogId || null);
       setAssets(null);
       setState("success");
       await onConnected();
@@ -208,7 +211,7 @@ export function useMetaSignup({
       setState("error");
       setError(err instanceof Error ? err.message : "Connecting Meta Business failed");
     }
-  }, [canManage, assets, selectedPageId, selectedAdAccountId, submitSelection, onConnected]);
+  }, [canManage, assets, selectedPageId, selectedAdAccountId, selectedCatalogId, submitSelection, onConnected]);
 
   const dismissAssets = useCallback(() => {
     setAssets(null);
@@ -225,9 +228,11 @@ export function useMetaSignup({
     assets,
     selectedPageId,
     selectedAdAccountId,
+    selectedCatalogId,
     activeMode,
     setSelectedPageId,
     setSelectedAdAccountId,
+    setSelectedCatalogId,
     startStandard,
     startWhatsAppOnly,
     startCoexistence,

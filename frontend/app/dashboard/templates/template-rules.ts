@@ -164,6 +164,9 @@ export function buttonBlockers(buttons: Button[]): Blocker[] {
     if ((b.type === "PHONE_NUMBER" || b.type === "WHATSAPP_CALL") && !(b.phone ?? "").trim()) {
       out.push({ fieldId: `btn-phone-${i}`, inline: false, message: "Add the phone number" });
     }
+    if (b.type === "FLOW" && !(b.form_ref ?? "").trim()) {
+      out.push({ fieldId: `btn-label-${i}`, inline: false, message: "Pick the form this button opens" });
+    }
   });
   return out;
 }

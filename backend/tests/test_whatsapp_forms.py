@@ -177,14 +177,15 @@ class TestSendMenu:
             sent.update(kwargs)
             return {"messages": [{"id": "wamid.form"}]}
 
-        monkeypatch.setattr(wf, "form_for_menu", lambda tenant_id, menu: {"id": FORM_ID, "meta_flow_id": "999"})
+        monkeypatch.setattr(wf, "form_for_menu", lambda tenant_id, menu: {"id": FORM_ID, "meta_flow_id": "999", "cta": "Choose & book"})
         monkeypatch.setattr(meta_cloud, "send_flow_message", fake_flow)
         menu = _menu()
         sid, tappable = asyncio.run(deal_turn.send_menu(PHONE, "Pick a package", menu, tenant_id=TENANT))
         assert (sid, tappable) == ("wamid.form", True)
         assert sent["flow_id"] == "999" and sent["first_screen"] == "PACKAGE"
         assert wf.verify_token(sent["flow_token"], TENANT, PHONE) == FORM_ID
-        assert deal_turn.menu_record("Pick a package", menu, tappable=True) == wf.form_record("Pick a package")
+        assert sent["flow_cta"] == "Choose & book"
+        assert deal_turn.menu_record("Pick a package", menu, tappable=True) == wf.form_record("Pick a package", "Choose & book")
 
     def test_form_failure_still_sends_the_buttons(self, monkeypatch):
         async def broken(**kwargs):
@@ -193,7 +194,7 @@ class TestSendMenu:
         async def fake_buttons(**kwargs):
             return {"messages": [{"id": "wamid.buttons"}]}
 
-        monkeypatch.setattr(wf, "form_for_menu", lambda tenant_id, menu: {"id": FORM_ID, "meta_flow_id": "999"})
+        monkeypatch.setattr(wf, "form_for_menu", lambda tenant_id, menu: {"id": FORM_ID, "meta_flow_id": "999", "cta": "Choose & book"})
         monkeypatch.setattr(meta_cloud, "send_flow_message", broken)
         monkeypatch.setattr(meta_cloud, "send_interactive_buttons", fake_buttons)
         menu = _menu()
@@ -381,7 +382,7 @@ class TestSubmission:
         consents = {c["scope"]: c for c in db.rows("lead_consents")}
         assert consents["replies"]["granted"] is True
         assert consents["offers"]["granted"] is ticked
-        assert consents["offers"]["wording"] == wf.CONSENT_WORDING
+        assert consents["offers"]["wording"] == wf.form_texts.PRESETS["en"]["consent"]
 
     def test_summary_line_reads_like_the_booking(self, shop):
         db, _, _ = shop

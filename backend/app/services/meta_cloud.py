@@ -978,6 +978,19 @@ async def send_template_message(
     # loop, so a stalled query can't freeze every other request.
     pid, tok = await asyncio.to_thread(_creds, phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
+    if tenant_id:
+        # A template with an "Open form" button needs a token signed for this customer, whoever
+        # sends it (broadcast, schedule, auto-message...). Never blocks the send.
+        try:
+            from app.db.supabase import get_supabase
+            from app.services.whatsapp_form_reach import template_flow_component
+            flow_component = await asyncio.to_thread(
+                template_flow_component, get_supabase(), tenant_id, template_name, to_number, components or [],
+            )
+            if flow_component:
+                components = [*(components or []), flow_component]
+        except Exception:
+            logger.exception("Form token for template %s could not be added", template_name)
     payload = {
         "messaging_product": "whatsapp",
         "to": to_number,
@@ -1083,6 +1096,12 @@ def _build_button_components(buttons: list[dict], max_btn: int, category: Option
             else:
                 offer_code = btn.get("offer_code", "")
                 out.append({"type": "COPY_CODE", "text": "Copy offer code", "example": [offer_code]})
+        elif btn_type == "FLOW":
+            # "Open form": a WhatsApp Form (Meta Flow) version pinned at creation (routes/templates.py).
+            out.append({
+                "type": "FLOW", "text": btn_text, "flow_id": str(btn.get("flow_id") or ""),
+                "navigate_screen": btn.get("navigate_screen") or "", "flow_action": "navigate",
+            })
         elif btn_type == "ONE_TAP":
             if is_auth:
                 out.append({
@@ -1127,8 +1146,8 @@ async def submit_template(
         max_btn = 1 if category == "AUTHENTICATION" else 10
         built_buttons = _build_button_components(buttons, max_btn, category)
         # Group CTA buttons first, then Quick Reply / OTP buttons
-        ctas = [b for b in built_buttons if b.get("type") in ("URL", "PHONE_NUMBER", "COPY_CODE")]
-        qrs = [b for b in built_buttons if b.get("type") not in ("URL", "PHONE_NUMBER", "COPY_CODE")]
+        ctas = [b for b in built_buttons if b.get("type") in ("URL", "PHONE_NUMBER", "COPY_CODE", "FLOW")]
+        qrs = [b for b in built_buttons if b.get("type") not in ("URL", "PHONE_NUMBER", "COPY_CODE", "FLOW")]
         grouped_buttons = ctas + qrs
         if grouped_buttons:
             components.append({"type": "BUTTONS", "buttons": grouped_buttons})

@@ -10,7 +10,9 @@ import {
   MessageSquare,
   ChevronDown,
   PhoneCall,
+  ClipboardList,
 } from "lucide-react";
+import { useTemplateFormOptions } from "@/hooks/useApi";
 import type { Button } from "../types";
 import { Select } from "@/components/ui/Select";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -18,8 +20,9 @@ import { buttonBlockers, cleanButtonLabel, cleanPhone, fixUrl, groupQuickReplies
 import FieldMessages, { SampleInputs, useFixNotes } from "./field-messages";
 
 type ButtonConfig = {
-  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'WHATSAPP_CALL' | 'COPY_CODE' | 'ONE_TAP';
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'WHATSAPP_CALL' | 'COPY_CODE' | 'ONE_TAP' | 'FLOW';
   text: string;
+  form_ref?: string;
   url?: string;
   phone?: string;
   country?: string;
@@ -39,6 +42,14 @@ type ButtonBuilderProps = {
 };
 
 /* ── constants ───────────────────────────────────────────────── */
+
+const FORM_BUTTON = {
+  type: "FLOW" as const,
+  label: "Open WhatsApp Form",
+  desc: "Opens one of your forms inside WhatsApp",
+  icon: ClipboardList,
+  group: "CTA",
+};
 
 const BUTTON_TYPES = [
   {
@@ -99,7 +110,7 @@ const COUNTRY_CODES = [
 /* ── helpers ─────────────────────────────────────────────────── */
 
 function typeLabel(type: string) {
-  return BUTTON_TYPES.find((t) => t.type === type)?.label ?? type;
+  return [...BUTTON_TYPES, FORM_BUTTON].find((t) => t.type === type)?.label ?? type;
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -110,6 +121,7 @@ function TypeBadge({ type }: { type: string }) {
     WHATSAPP_CALL: "bg-teal-50 text-teal-700",
     COPY_CODE: "bg-primary-50 text-primary-700",
     ONE_TAP: "bg-pink-50 text-pink-700",
+    FLOW: "bg-primary-50 text-primary-700",
   };
   return (
     <span
@@ -132,9 +144,13 @@ export default function ButtonBuilder({
 }: ButtonBuilderProps) {
   const [showPicker, setShowPicker] = useState(false);
 
+  // "Open form" shows only for accounts with WhatsApp Forms and at least one published form.
+  const { data: formOptions } = useTemplateFormOptions();
+  const forms = formOptions?.available ? formOptions.data : [];
+  const allTypes = forms.length ? [...BUTTON_TYPES, FORM_BUTTON] : BUTTON_TYPES;
   const availableTypes = disableCTA
-    ? BUTTON_TYPES.filter((t) => t.type === "QUICK_REPLY" || t.type === "URL")
-    : BUTTON_TYPES;
+    ? allTypes.filter((t) => t.type === "QUICK_REPLY" || t.type === "URL")
+    : allTypes;
 
   const { notes, show, clearAll } = useFixNotes();
   const blockers = buttonBlockers(buttons as Button[]);
@@ -161,6 +177,7 @@ export default function ButtonBuilder({
       newBtn.text = "Copy offer code";
       newBtn.offer_code = "";
     }
+    if (type === "FLOW") newBtn.form_ref = forms[0]?.id ?? "";
     if (type === "ONE_TAP") {
       newBtn.text = "Autofill";
       newBtn.autofill_text = "Autofill";
@@ -192,6 +209,7 @@ export default function ButtonBuilder({
     if (type === "PHONE_NUMBER" && phoneCount >= 1) return true;
     if (type === "WHATSAPP_CALL" && waCallCount >= 1) return true;
     if (type === "COPY_CODE" && copyCodeCount >= 1) return true;
+    if (type === "FLOW" && buttons.some((b) => b.type === "FLOW")) return true;
     return false;
   };
 
@@ -335,7 +353,9 @@ export default function ButtonBuilder({
                       ? "e.g. Book Now"
                       : btn.type === "URL"
                         ? "e.g. Visit Website"
-                        : "e.g. Call Us"
+                        : btn.type === "FLOW"
+                          ? "e.g. Book a visit"
+                          : "e.g. Call Us"
                   }
                   maxLength={25}
                   className="input text-sm"
@@ -347,6 +367,23 @@ export default function ButtonBuilder({
                 blockers={blockersFor(`btn-label-${i}`)}
               />
             </div>
+
+            {/* Which WhatsApp Form the button opens */}
+            {btn.type === "FLOW" && (
+              <div>
+                <p className="font-body text-xs text-ink-muted mb-1">Form it opens</p>
+                <Select
+                  aria-label="Form the button opens"
+                  value={btn.form_ref ?? ""}
+                  onChange={(v) => update(i, "form_ref", v)}
+                  options={forms.map((f) => ({ value: f.id, label: f.name }))}
+                />
+                <p className="font-body text-[11px] text-ink-muted mt-1">
+                  Each customer gets the form signed for them, so their answers land on their chat.
+                  Later changes to the form don&apos;t need this template approved again.
+                </p>
+              </div>
+            )}
 
             {/* URL field */}
             {btn.type === "URL" && (

@@ -263,7 +263,7 @@ const CATALOGUE: NavLeaf = {
   visible: (a) =>
     a.isSubscribed && a.messagingOn &&
     (a.canAny(["catalog.view", "catalog.manage"]) || a.canServices),
-  isActive: (p) => startsWithAny(p, ["/dashboard/catalog", "/dashboard/services"]),
+  isActive: (p) => startsWithAny(p, ["/dashboard/catalog", "/dashboard/services", "/dashboard/forms"]),
 };
 
 const TELECALLING_GROUP: NavGroup = {

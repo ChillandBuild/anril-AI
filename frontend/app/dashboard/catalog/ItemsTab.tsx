@@ -2,436 +2,307 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Layers, Loader2, Package, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Loader2, Plus, Search, Sparkles } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Select } from "@/components/ui/Select";
-import { ItemForm, ITEM_TYPES } from "./ItemForm";
 import { ItemThumb } from "./ItemThumb";
-import { StockDialog } from "./StockDialog";
-import { availableQuantity, formatPaise } from "./money";
+import { MetaCatalogueBar } from "./MetaCatalogueBar";
+import { formatPaise, isLow, stockValuePaise } from "./money";
 
-const GRID_COLS = "grid-cols-[1.7fr_100px_140px_130px_110px_100px_100px_80px]";
+type Filter = "all" | "out" | "low" | "waiting" | "not_selling" | "draft";
+
+const NOT_SELLING_DAYS = 30;
+
+function notSelling(item: CatalogItem): boolean {
+  if (item.stock_quantity == null || item.stock_quantity <= 0 || (item.sold_30d ?? 0) > 0) return false;
+  return Date.now() - new Date(item.created_at).getTime() > NOT_SELLING_DAYS * 86_400_000;
+}
+
+function isOut(item: CatalogItem): boolean {
+  return item.stock_quantity === 0 || (item.out_variants?.length ?? 0) > 0;
+}
+
+function sizesText(item: CatalogItem): string {
+  const s = item.sizes?.length ?? 0;
+  const c = item.colours?.length ?? 0;
+  if (!s && !c) return "—";
+  const parts = [];
+  if (c) parts.push(`${c} colour${c === 1 ? "" : "s"}`);
+  if (s) parts.push(s <= 2 ? item.sizes!.join(", ") : `${s} sizes`);
+  return parts.join(" · ");
+}
 
 function StockCell({ item }: { item: CatalogItem }) {
-  if (item.stock_quantity == null) {
-    return <span className="text-ink-muted">Not tracked</span>;
-  }
-  const held = item.held_quantity ?? 0;
-  const available = availableQuantity(item.stock_quantity, held);
+  if (item.item_type !== "product") return <span className="text-ink-muted">—</span>;
+  if (item.stock_quantity == null) return <span className="text-ink-muted">Not counted</span>;
+  const out = item.out_variants?.length ?? 0;
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5">
-        <span className="text-ink">
-          {item.stock_quantity} in stock{held > 0 ? ` · ${held} held` : ""}
-        </span>
-        {available <= 0 && (
-          <span className="rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-danger">
-            Out
-          </span>
-        )}
-        {available > 0 && available <= 5 && (
-          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">
-            Low
-          </span>
-        )}
-      </div>
-    </div>
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="font-bold tabular-nums text-ink">{item.stock_quantity}</span>
+      {item.stock_quantity === 0 ? (
+        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">Out</span>
+      ) : out > 0 ? (
+        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">{out} out</span>
+      ) : isLow(item) ? (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">{item.stock_quantity} left</span>
+      ) : null}
+    </span>
+  );
+}
+
+function SyncDot({ item }: { item: CatalogItem }) {
+  if (item.item_type !== "product" || item.status !== "ready") return null;
+  if (item.meta_sync_state === "error" || item.meta_sync_state === "skipped") {
+    return <span title={item.meta_sync_error ?? "Needs a fix"} className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />;
+  }
+  if (item.meta_sync_state === "synced" && !item.meta_pending) {
+    return <span title="On your WhatsApp catalogue" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />;
+  }
+  return null;
+}
+
+function StatCard({ icon, label, value, sub, tone, active, onClick }: {
+  icon: string; label: string; value: string; sub: string; tone?: "red" | "amber" | "plain"; active?: boolean; onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-card border bg-white px-4 py-3 text-left shadow-sm transition-colors enabled:hover:border-primary/40",
+        active ? "border-primary ring-1 ring-primary/30" : "border-border"
+      )}
+    >
+      <p className="text-[13px] font-semibold text-ink-muted"><span aria-hidden>{icon}</span> {label}</p>
+      <p className={cn("mt-0.5 font-display text-2xl font-bold tabular-nums",
+        tone === "red" ? "text-rose-700" : tone === "amber" ? "text-amber-700" : "text-ink")}>{value}</p>
+      <p className="truncate text-xs text-ink-muted" title={sub}>{sub}</p>
+    </button>
   );
 }
 
 export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolbarSlot: HTMLElement | null }) {
+  const router = useRouter();
   const [items, setItems] = useState<CatalogItem[]>([]);
-  const [variantGroups, setVariantGroups] = useState<CatalogVariantGroup[]>([]);
-  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
-  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<CatalogVariantGroup[]>([]);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
-  const [stockItem, setStockItem] = useState<CatalogItem | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
-  const [showGroups, setShowGroups] = useState(false);
-  const itemsMissingEmbedding = useMemo(
-    () => items.filter((item) => item.status === "ready" && !item.embedding).length,
-    [items]
-  );
-
-  // Variant groups panel state
-  const [newPanelGroupName, setNewPanelGroupName] = useState("");
-  const [newPanelGroupType, setNewPanelGroupType] = useState(ITEM_TYPES[0]);
-  const [isCreatingGroupFromPanel, setIsCreatingGroupFromPanel] = useState(false);
-  const [panelGroupError, setPanelGroupError] = useState<string | null>(null);
 
   async function loadItems(q?: string) {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await api.catalog.listItems(q);
-      setItems(data);
+      setItems(await api.catalog.listItems(q));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load catalog items");
+      setError(err instanceof Error ? err.message : "Couldn't load your items");
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function loadVariantGroups() {
-    setIsLoadingGroups(true);
-    setGroupsError(null);
-    try {
-      const data = await api.catalog.listVariantGroups();
-      setVariantGroups(data);
-    } catch (err) {
-      setGroupsError(err instanceof Error ? err.message : "Failed to load variant groups");
-    } finally {
-      setIsLoadingGroups(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => loadItems(query || undefined), 300);
     return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   useEffect(() => {
-    loadVariantGroups();
+    api.catalog.listVariantGroups().then(setGroups).catch(() => setGroups([]));
   }, []);
 
-  useEffect(() => {
-    if (successMessage) {
-      const t = setTimeout(() => setSuccessMessage(null), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [successMessage]);
+  const groupName = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups]);
+  const products = useMemo(() => items.filter((i) => i.item_type === "product"), [items]);
+  const missingIndex = useMemo(() => items.filter((i) => i.status === "ready" && !i.embedding).length, [items]);
 
-  async function handleToggleStatus(item: CatalogItem) {
-    if (!canManage) return;
-    const nextStatus = item.status === "ready" ? "draft" : "ready";
-    try {
-      const updated = await api.catalog.updateItem(item.id, { status: nextStatus });
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update item status");
-    }
-  }
+  const stats = useMemo(() => {
+    const tracked = products.filter((i) => i.stock_quantity != null);
+    const pieces = tracked.reduce((a, i) => a + Math.max(i.stock_quantity ?? 0, 0), 0);
+    const value = tracked.reduce((a, i) => a + (stockValuePaise(i) ?? 0), 0);
+    const noCost = tracked.filter((i) => (i.stock_quantity ?? 0) > 0 && i.cost_price_paise == null).length;
+    const outNames = products.flatMap((i) =>
+      i.stock_quantity === 0 ? [i.name] : (i.out_variants ?? []).map((v) => `${i.name.split(" ")[0]} ${v}`));
+    return {
+      pieces, value, noCost, outNames,
+      low: products.filter((i) => !isOut(i) && isLow(i)).length,
+      waitingPeople: items.reduce((a, i) => a + (i.waiting ?? 0), 0),
+      notSelling: products.filter(notSelling).length,
+    };
+  }, [items, products]);
 
-  async function handleDelete(item: CatalogItem) {
-    if (!canManage) return;
-    try {
-      await api.catalog.deleteItem(item.id);
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete item");
+  const counts: Record<Filter, number> = useMemo(() => ({
+    all: items.length,
+    out: products.filter(isOut).length,
+    low: products.filter((i) => !isOut(i) && isLow(i)).length,
+    waiting: items.filter((i) => (i.waiting ?? 0) > 0).length,
+    not_selling: products.filter(notSelling).length,
+    draft: items.filter((i) => i.status === "draft").length,
+  }), [items, products]);
+
+  const shown = useMemo(() => items.filter((i) => {
+    switch (filter) {
+      case "out": return i.item_type === "product" && isOut(i);
+      case "low": return i.item_type === "product" && !isOut(i) && isLow(i);
+      case "waiting": return (i.waiting ?? 0) > 0;
+      case "not_selling": return i.item_type === "product" && notSelling(i);
+      case "draft": return i.status === "draft";
+      default: return true;
     }
-  }
+  }), [items, filter]);
 
   async function handleReindex() {
-    if (!canManage) return;
     setIsReindexing(true);
-    setError(null);
-    setSuccessMessage(null);
     try {
-      const res = await api.catalog.reindex();
-      if (res.success) {
-        setSuccessMessage(`Catalog reindexed successfully! Embedded ${res.items_embedded} of ${res.items_total} items.`);
-        await loadItems(query);
-      } else {
-        setError("Reindexing failed");
-      }
+      await api.catalog.reindex();
+      await loadItems(query || undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reindex catalog");
+      setError(err instanceof Error ? err.message : "Couldn't refresh the AI index");
     } finally {
       setIsReindexing(false);
     }
   }
 
-  async function handleCreateGroupFromPanel() {
-    if (!canManage || !newPanelGroupName.trim()) return;
-    setIsCreatingGroupFromPanel(true);
-    setPanelGroupError(null);
-    try {
-      const newGroup = await api.catalog.createVariantGroup({
-        name: newPanelGroupName.trim(),
-        item_type: newPanelGroupType,
-      });
-      setVariantGroups((prev) => [...prev, newGroup]);
-      setNewPanelGroupName("");
-    } catch (err) {
-      setPanelGroupError(err instanceof Error ? err.message : "Failed to create group");
-    } finally {
-      setIsCreatingGroupFromPanel(false);
-    }
-  }
-
-  function handleStockAdjusted(itemId: string, quantityAfter: number | null) {
-    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, stock_quantity: quantityAfter } : i)));
-  }
+  const toggle = (f: Filter) => setFilter((cur) => (cur === f ? "all" : f));
+  const FILTERS: { id: Filter; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "out", label: "Out of stock" },
+    { id: "low", label: "Low stock" },
+    { id: "waiting", label: "Waiting for stock" },
+    { id: "not_selling", label: "Not selling" },
+    { id: "draft", label: "Drafts" },
+  ];
 
   return (
     <div className="space-y-4">
-      {toolbarSlot &&
-        createPortal(
-          <>
-            <label className="relative block w-full sm:w-56">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search products"
-                className="h-9 w-full rounded-xl border border-border bg-surface-low pl-9 pr-3 text-sm outline-none transition-colors focus:border-primary"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowGroups((open) => !open)}
-              aria-expanded={showGroups}
-              className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition-colors hover:bg-surface-low",
-                showGroups ? "text-primary" : "text-ink-muted hover:text-ink"
-              )}
-            >
-              <Layers size={14} />
-              <span>Variant groups ({variantGroups.length})</span>
+      {toolbarSlot && createPortal(
+        <>
+          <label className="relative block w-full sm:w-56">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search items"
+              className="h-9 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none transition-colors focus:border-primary"
+            />
+          </label>
+          {canManage && missingIndex > 0 && (
+            <button type="button" onClick={handleReindex} disabled={isReindexing}
+              title={`${missingIndex} item(s) aren't indexed yet, so the AI may not find them`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60">
+              {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              Teach the AI {missingIndex} new
             </button>
-            {canManage && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleReindex}
-                  disabled={isReindexing}
-                  className="btn-ghost relative border border-border bg-white text-ink inline-flex items-center justify-center gap-2 h-9 px-3 rounded-xl text-sm transition-colors hover:bg-surface-low disabled:opacity-50"
-                  title={
-                    itemsMissingEmbedding > 0
-                      ? `${itemsMissingEmbedding} item(s) aren't indexed yet -- the AI can't reliably find them. Reindex to fix.`
-                      : "Reindex catalog items to refresh AI embeddings"
-                  }
-                >
-                  {isReindexing ? <Loader2 size={15} className="animate-spin text-ink-muted" /> : <Sparkles size={15} className="text-primary" />}
-                  <span>{isReindexing ? "Reindexing..." : "Reindex"}</span>
-                  {!isReindexing && itemsMissingEmbedding > 0 && (
-                    <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold text-white">
-                      {itemsMissingEmbedding}
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="btn-primary inline-flex h-9 items-center justify-center gap-2 !py-0"
-                >
-                  <Plus size={16} />
-                  Add product
-                </button>
-              </>
-            )}
-          </>,
-          toolbarSlot
-        )}
-
-      {error && (
-        <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+          )}
+          {canManage && (
+            <Link href="/dashboard/catalog/items/new" className="btn-primary inline-flex h-9 items-center gap-1.5 !py-0">
+              <Plus size={16} /> Add item
+            </Link>
+          )}
+        </>,
+        toolbarSlot
       )}
 
-      {successMessage && (
-        <div className="rounded-card border border-success/30 bg-success/5 px-4 py-3 text-sm text-success flex justify-between items-center">
-          <span>{successMessage}</span>
-          <button type="button" onClick={() => setSuccessMessage(null)} className="text-success hover:opacity-70">
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      <MetaCatalogueBar canManage={canManage} onChanged={() => loadItems(query || undefined)} />
 
-      {/* Variant Groups Panel -- toggled by the "Variant groups (N)" link in the toolbar */}
-      {showGroups && (
-        <div className="rounded-card border border-border bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-            <p className="text-sm text-ink-muted">
-              Group variants (e.g. properties in different locations) so Anril can disambiguate them.
-            </p>
-            {canManage && (
-              <div className="flex flex-wrap gap-2">
-                <input
-                  value={newPanelGroupName}
-                  onChange={(e) => setNewPanelGroupName(e.target.value)}
-                  className="h-9 rounded-xl border border-border bg-surface-low px-3 text-sm outline-none focus:border-primary w-48"
-                  placeholder="New group name"
-                />
-                <Select
-                  size="sm"
-                  aria-label="Group type"
-                  className="w-auto min-w-[120px]"
-                  value={newPanelGroupType}
-                  onChange={setNewPanelGroupType}
-                  options={ITEM_TYPES.map((type) => ({ value: type, label: <span className="capitalize">{type}</span>, text: type }))}
-                />
-                <button
-                  type="button"
-                  onClick={handleCreateGroupFromPanel}
-                  disabled={isCreatingGroupFromPanel || !newPanelGroupName.trim()}
-                  className="btn-primary inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs"
-                >
-                  <Plus size={12} />
-                  Add Group
-                </button>
-              </div>
-            )}
-          </div>
-          {panelGroupError && <p className="mb-3 text-sm text-danger">{panelGroupError}</p>}
-          {groupsError && (
-            <p className="mb-3 text-sm text-danger">Failed to load variant groups: {groupsError}</p>
-          )}
-          {isLoadingGroups ? (
-            <div className="flex items-center justify-center gap-2 py-4 text-sm text-ink-muted">
-              <Loader2 size={15} className="animate-spin" />
-              Loading variant groups...
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {variantGroups.map((group) => {
-                const count = items.filter((i) => i.variant_group_id === group.id).length;
-                return (
-                  <div key={group.id} className="rounded-xl border border-border bg-surface-low p-3">
-                    <p className="font-semibold text-ink truncate">{group.name}</p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
-                      <span className="capitalize">{group.item_type}</span>
-                      <span>{count} {count === 1 ? "item" : "items"}</span>
-                    </div>
-                  </div>
-                );
-              })}
-              {variantGroups.length === 0 && !groupsError && (
-                <p className="text-sm text-ink-muted col-span-full text-center py-4">No variant groups created yet.</p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-        <div className="min-w-[900px]">
-          <div className={cn("grid gap-3 border-b border-border bg-surface-low px-4 py-3 text-xs font-bold uppercase text-ink-muted", GRID_COLS)}>
-            <span>Item</span>
-            <span>Price</span>
-            <span>Stock</span>
-            <span>Variant Group</span>
-            <span>Type</span>
-            <span>Status</span>
-            <span>Updated</span>
-            <span />
-          </div>
-          {isLoading && (
-            <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-ink-muted">
-              <Loader2 size={16} className="animate-spin" />
-              Loading products...
-            </div>
-          )}
-          {!isLoading && items.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-ink-muted">
-              No products yet. Click &ldquo;Add product&rdquo; to create your first one.
-            </div>
-          )}
-          {!isLoading &&
-            items.map((item) => (
-              <div key={item.id} className={cn("grid items-center gap-3 border-b border-border-subtle px-4 py-3 text-sm last:border-b-0", GRID_COLS)}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <ItemThumb name={item.name} thumbnailUrl={item.thumbnail_url} />
-                  <span className="truncate font-semibold text-ink" title={item.name}>{item.name}</span>
-                </div>
-                <span className="text-ink-muted">{item.price_paise != null ? formatPaise(item.price_paise) : "—"}</span>
-                <StockCell item={item} />
-                <span className="text-ink-muted truncate" title={variantGroups.find((g) => g.id === item.variant_group_id)?.name || "Ungrouped"}>
-                  {variantGroups.find((g) => g.id === item.variant_group_id)?.name || "—"}
-                </span>
-                <span className="capitalize text-ink-muted">{item.item_type}</span>
-                <span>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleStatus(item)}
-                    disabled={!canManage}
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold transition-colors disabled:cursor-default",
-                      item.status === "ready" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                    )}
-                  >
-                    {item.status === "ready" ? "Ready" : "Draft"}
-                  </button>
-                </span>
-                <span className="text-ink-muted">{new Date(item.updated_at).toLocaleDateString()}</span>
-                <div className="flex justify-end items-center gap-1">
-                  {item.item_type === "product" && (
-                    <button
-                      type="button"
-                      onClick={() => setStockItem(item)}
-                      disabled={!canManage}
-                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-border px-2 text-xs font-semibold text-ink-muted transition-colors hover:bg-surface-low hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
-                      aria-label={`Update stock for ${item.name}`}
-                    >
-                      <Package size={12} />
-                      Stock
-                    </button>
-                  )}
-                  {canManage && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setEditingItem(item)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-low hover:text-ink"
-                        aria-label={`Edit ${item.name}`}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-danger/10 hover:text-danger"
-                        aria-label={`Delete ${item.name}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-        </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <StatCard icon="📦" label="Stock value" value={formatPaise(stats.value)}
+          sub={`at cost price · ${stats.pieces} pieces${stats.noCost ? ` · ${stats.noCost} without cost` : ""}`} />
+        <StatCard icon="🔴" label="Out of stock" tone={stats.outNames.length ? "red" : "plain"}
+          value={`${stats.outNames.length} ${stats.outNames.length === 1 ? "size" : "sizes"}`}
+          sub={stats.outNames.slice(0, 3).join(", ") || "Nothing sold out"} active={filter === "out"} onClick={() => toggle("out")} />
+        <StatCard icon="🟡" label="Low" tone={stats.low ? "amber" : "plain"} value={`${stats.low} ${stats.low === 1 ? "item" : "items"}`}
+          sub="at or below the alert level" active={filter === "low"} onClick={() => toggle("low")} />
+        <StatCard icon="🙋" label="Asked but out" value={`${stats.waitingPeople} ${stats.waitingPeople === 1 ? "person" : "people"}`}
+          sub="on the waiting list for a sold-out size" active={filter === "waiting"} onClick={() => toggle("waiting")} />
+        <StatCard icon="🐢" label="Not selling" value={`${stats.notSelling} ${stats.notSelling === 1 ? "item" : "items"}`}
+          sub={`nothing sold in ${NOT_SELLING_DAYS} days`} active={filter === "not_selling"} onClick={() => toggle("not_selling")} />
       </div>
 
-      {showAddModal && (
-        <ItemForm
-          onClose={() => setShowAddModal(false)}
-          onSaved={(item) => {
-            setItems((prev) => [item, ...prev]);
-            setShowAddModal(false);
-          }}
-          variantGroups={variantGroups}
-          onGroupCreated={(newGroup) => setVariantGroups((prev) => [...prev, newGroup])}
-        />
-      )}
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <button key={f.id} type="button" onClick={() => setFilter(f.id)} aria-pressed={filter === f.id}
+            className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition-colors",
+              filter === f.id ? "border-primary bg-primary-50 text-primary-800" : "border-border bg-white text-ink-muted hover:text-ink")}>
+            {f.label}{f.id === "all" || counts[f.id] ? <span className="tabular-nums opacity-70">{counts[f.id]}</span> : null}
+          </button>
+        ))}
+      </div>
 
-      {editingItem && (
-        <ItemForm
-          itemToEdit={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSaved={(updated) => {
-            setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
-            setEditingItem(null);
-          }}
-          variantGroups={variantGroups}
-          onGroupCreated={(newGroup) => setVariantGroups((prev) => [...prev, newGroup])}
-        />
-      )}
+      {error && <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>}
 
-      {stockItem && (
-        <StockDialog
-          item={stockItem}
-          onClose={() => setStockItem(null)}
-          onAdjusted={(quantityAfter) => handleStockAdjusted(stockItem.id, quantityAfter)}
-        />
-      )}
+      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+        <table className="w-full min-w-[920px] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+              <th className="px-4 py-3">Item</th>
+              <th className="px-3 py-3">Sizes / colours</th>
+              <th className="px-3 py-3">Price</th>
+              <th className="px-3 py-3">GST · HSN</th>
+              <th className="px-3 py-3">Stock</th>
+              <th className="px-3 py-3">Stock value</th>
+              <th className="px-3 py-3" title="People on the waiting list for a sold-out size">Waiting</th>
+              <th className="px-3 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-ink-muted">
+                <Loader2 size={16} className="mr-2 inline animate-spin" />Loading items…
+              </td></tr>
+            )}
+            {!isLoading && shown.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-ink-muted">
+                {items.length === 0 ? "No items yet. Tap “Add item” to add your first one." : "Nothing here."}
+              </td></tr>
+            )}
+            {!isLoading && shown.map((item) => {
+              const value = stockValuePaise(item);
+              const href = `/dashboard/catalog/items/${item.id}`;
+              return (
+                <tr key={item.id} onClick={() => router.push(href)}
+                  className="cursor-pointer border-b border-border-subtle last:border-b-0 hover:bg-surface-low/60">
+                  <td className="px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ItemThumb name={item.name} thumbnailUrl={item.thumbnail_url} />
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 font-bold text-ink">
+                          <span className="truncate">{item.name}</span>
+                          <SyncDot item={item} />
+                          {item.status === "draft" && <span className="rounded-full bg-surface-low px-1.5 text-[10px] font-bold uppercase text-ink-muted">Draft</span>}
+                        </p>
+                        <p className="truncate text-xs text-ink-muted">
+                          {(item.variant_group_id && groupName.get(item.variant_group_id)) || (item.item_type === "product" ? "" : item.item_type)}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-ink">{sizesText(item)}</td>
+                  <td className="px-3 py-3 font-bold tabular-nums text-ink">{item.price_paise != null ? formatPaise(item.price_paise) : "—"}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-ink-muted">
+                    {item.gst_rate != null ? `${item.gst_rate}%` : "—"}{item.hsn_code ? ` · ${item.hsn_code}` : ""}
+                  </td>
+                  <td className="px-3 py-3"><StockCell item={item} /></td>
+                  <td className="px-3 py-3 tabular-nums text-ink">{value != null ? formatPaise(value) : "—"}</td>
+                  <td className="px-3 py-3 tabular-nums text-ink">{item.waiting || "—"}</td>
+                  <td className="px-3 py-3 text-right">
+                    <Link href={href} onClick={(e) => e.stopPropagation()} className="inline-flex items-center font-semibold text-primary hover:underline">
+                      Open <ChevronRight size={14} />
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-ink-muted">
+        Tap an item to see and correct the stock of each size and colour. Stock goes down by itself with every bill.
+      </p>
     </div>
   );
 }

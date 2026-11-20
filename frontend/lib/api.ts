@@ -230,13 +230,67 @@ export interface CatalogItem {
   updated_at: string;
   attributes: Record<string, string>;
   variant_group_id: string | null;
-  embedding: string | null;
+  /** true when the AI has indexed the item (the list sends a flag, not the vector). */
+  embedding: boolean | string | null;
   price_paise: number | null;
   price_note: string | null;
   stock_quantity: number | null;
   gst_rate: number | null;
   held_quantity?: number;
   thumbnail_url?: string | null;
+  cost_price_paise?: number | null;
+  hsn_code?: string | null;
+  low_stock_at?: number | null;
+  meta_sync_state?: "sending" | "synced" | "error" | "skipped" | null;
+  meta_sync_error?: string | null;
+  meta_pending?: boolean;
+  // Items list only (routes/catalog._list_extras)
+  sizes?: string[];
+  colours?: string[];
+  out_variants?: string[];
+  low_variants?: string[];
+  sold_30d?: number;
+  waiting?: number;
+}
+
+export interface CatalogItemDetail extends CatalogItem {
+  group_name: string | null;
+  photos: { id: string; url: string; label: string | null }[];
+  sold_this_month: number;
+  waiting: number;
+  public_url: string;
+  sizes: string[];
+  colours: string[];
+  variants: CatalogVariantsGrid["variants"];
+}
+
+export type StockWhy = "stock_in" | "found" | "damaged" | "lost" | "supplier_return" | "count_wrong";
+
+export interface MetaCatalogueStatus {
+  connected: boolean;
+  sync_on: boolean;
+  catalog_name: string | null;
+  counts: { synced: number; sending: number; error: number; skipped: number; waiting: number };
+  last_synced_at: string | null;
+}
+
+export interface PublicItem {
+  name: string;
+  description: string | null;
+  price_paise: number | null;
+  price_note: string | null;
+  in_stock: boolean;
+  photos: string[];
+  options: { size: string | null; colour: string | null; in_stock: boolean; price_paise: number | null }[];
+  shop: { name: string; city: string };
+  whatsapp: string | null;
+}
+
+export async function fetchPublicItem(id: string): Promise<PublicItem | null> {
+  const res = await fetch(`${API_URL}/api/v1/public/items/${encodeURIComponent(id)}`);
+  if (res.status === 404 || res.status === 422) return null;
+  if (!res.ok) throw new Error("Couldn't load the item");
+  return res.json();
 }
 
 export interface CatalogMedia {
@@ -3078,6 +3132,12 @@ export const api = {
     },
   },
   catalog: {
+    item: (itemId: string) => apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}`),
+    correctStock: (itemId: string, body: { variant_id?: string | null; to: number; why: StockWhy }) =>
+      apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/correct-stock`, { method: "POST", body: JSON.stringify(body) }),
+    metaStatus: () => apiFetch<MetaCatalogueStatus>(`/api/v1/catalog/meta`),
+    metaAction: (action: "on" | "off" | "again") =>
+      apiFetch<MetaCatalogueStatus>(`/api/v1/catalog/meta`, { method: "POST", body: JSON.stringify({ action }) }),
     variants: (itemId: string) =>
       apiFetch<CatalogVariantsGrid>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/variants`),
     saveVariants: (itemId: string, body: { sizes: string[]; colours: string[]; cells: { size: string | null; colour: string | null; stock: number; price_paise?: number | null }[] }) =>
@@ -3109,6 +3169,9 @@ export const api = {
       price_note?: string | null;
       stock_quantity?: number | null;
       gst_rate?: number | null;
+      cost_price_paise?: number | null;
+      hsn_code?: string | null;
+      low_stock_at?: number | null;
     }) =>
       apiFetch<CatalogItem>(`/api/v1/catalog/items`, {
         method: "POST",
@@ -3129,6 +3192,9 @@ export const api = {
           | "price_note"
           | "stock_quantity"
           | "gst_rate"
+          | "cost_price_paise"
+          | "hsn_code"
+          | "low_stock_at"
         >
       >
     ) =>
@@ -3751,6 +3817,36 @@ export const api = {
     },
     privateSend: () => apiFetch<PrivateSendStatus>("/api/v1/auto-messages/private-send"),
   },
+  /** Catalogue → Forms: WhatsApp Forms (backend routes/whatsapp_form_designs.py). */
+  whatsappForms: {
+    /** Is WhatsApp Forms switched on, and the Services form's state (Services read permission). */
+    status: () => apiFetch<WaFormVersionStatus & { available: boolean }>("/api/v1/settings/intake-config/form-status"),
+    setup: () => apiFetch<WaFormSetup>("/api/v1/whatsapp-forms/setup"),
+    list: () => apiFetch<WaFormList>("/api/v1/whatsapp-forms/forms"),
+    create: (body: { starter: string | null; language: WaFormLanguage; name?: string }) =>
+      apiFetch<WaFormDesign>("/api/v1/whatsapp-forms/forms", { method: "POST", body: JSON.stringify(body) }),
+    get: (id: string) => apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}`),
+    save: (id: string, body: { name: string; language: WaFormLanguage; fields: WaFormField[]; texts: Record<string, string>; triggers: WaFormTriggers }) =>
+      apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+    publish: (id: string) =>
+      apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}/publish`, { method: "POST" }, 90_000),
+    archive: (id: string) =>
+      apiFetch<{ archived: boolean }>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    /** id "services" = the Services form's answers. */
+    responses: (id: string, page: number, limit = 50) =>
+      apiFetch<WaFormResponses>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}/responses?page=${page}&limit=${limit}`),
+    responsesCsvPath: (id: string) => `/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}/responses.csv`,
+    leadAnswers: (leadId: string) =>
+      apiFetch<{ available: boolean; data: WaLeadFormAnswer[] }>(`/api/v1/whatsapp-forms/leads/${encodeURIComponent(leadId)}/answers`),
+    sendable: () => apiFetch<{ available: boolean; data: { id: string; name: string }[] }>("/api/v1/whatsapp-forms/sendable"),
+    /** Forms a template's "Open form" button can open (templates.manage). */
+    templateForms: () => apiFetch<{ available: boolean; data: { id: string; name: string }[] }>("/api/v1/whatsapp-forms/template-forms"),
+    reachOptions: () => apiFetch<{ ads: { id: string; name: string; status: string | null }[]; templates: string[] }>("/api/v1/whatsapp-forms/reach-options"),
+    send: (id: string, leadId: string) =>
+      apiFetch<{ sent: boolean; message_id: string | null }>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}/send`, {
+        method: "POST", body: JSON.stringify({ lead_id: leadId }),
+      }),
+  },
   instantForms: {
     status: () => apiFetch<InstantFormsStatus>("/api/v1/instant-forms/status"),
     /** Subscribe the Page to new leads, copy its forms, import past leads in the background. */
@@ -4368,6 +4464,106 @@ export interface InstantFormLeadsResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export type WaFormLanguage = "en" | "ta" | "tanglish";
+export type WaFormFieldType = "text" | "long_text" | "email" | "phone" | "number" | "date" | "dropdown" | "single" | "multi";
+
+export interface WaFormField {
+  key: string;
+  type: WaFormFieldType;
+  label: string;
+  required: boolean;
+  options: string[];
+}
+
+export interface WaFormVersionStatus {
+  state: "none" | "publishing" | "published" | "failed" | "retired";
+  error: string | null;
+  live: boolean;
+  published_at: string | null;
+}
+
+export type WaFormTiming = "instead" | "after";
+
+/** When Anril sends the form by itself (backend whatsapp_form_reach.clean_triggers). */
+export interface WaFormTriggers {
+  ai: { enabled: boolean; when: string };
+  ads: { enabled: boolean; ad_ids: string[]; timing: WaFormTiming };
+  broadcasts: { enabled: boolean; templates: string[]; timing: WaFormTiming };
+}
+
+export interface WaFormStats {
+  sent: number;
+  submitted: number;
+  /** Services form only: bookings paid. */
+  paid: number | null;
+}
+
+export interface WaFormDesign {
+  id: string;
+  name: string;
+  language: WaFormLanguage;
+  fields: WaFormField[];
+  /** Only the texts the client edited; the rest come from the language's starting texts. */
+  texts: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+  status: WaFormVersionStatus;
+  responses: number;
+  /** What WhatsApp can't show yet, in plain words (empty = ready to publish). */
+  problems: string[];
+  /** A published version shows exactly this saved design. */
+  live: boolean;
+  triggers: WaFormTriggers;
+  stats: WaFormStats;
+}
+
+export interface WaFormSetup {
+  languages: { key: WaFormLanguage; name: string }[];
+  /** Starting texts per language, keyed by text key. */
+  texts: Record<WaFormLanguage, Record<string, string>>;
+  text_limits: Record<string, number>;
+  field_types: WaFormFieldType[];
+  label_limits: Record<WaFormFieldType, number>;
+  option_limit: number;
+  max_options: Partial<Record<WaFormFieldType, number>>;
+  max_fields: number;
+  starters: { key: string; names: Record<WaFormLanguage, string> }[];
+}
+
+export interface WaFormList {
+  services_form: { collect_with: "chat" | "form"; selling_on: boolean; status: WaFormVersionStatus; responses: number; stats: WaFormStats };
+  forms: WaFormDesign[];
+}
+
+export interface WaFormResponseRow {
+  id: string;
+  lead_id: string | null;
+  submitted_at: string;
+  outcome: "received" | "link_sent" | "continued_in_chat" | "rejected" | "saved";
+  name: string | null;
+  phone: string | null;
+  answers: Record<string, string>;
+  offers: boolean;
+}
+
+export interface WaFormResponses {
+  columns: string[];
+  data: WaFormResponseRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface WaLeadFormAnswer {
+  id: string;
+  form_name: string;
+  kind: "intake" | "custom";
+  submitted_at: string;
+  outcome: WaFormResponseRow["outcome"];
+  answers: { label: string; value: string }[];
+  offers: boolean;
 }
 
 export interface InstantFormTemplateOption {

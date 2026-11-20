@@ -8,8 +8,10 @@ export default function MetaAssetPickerModal({
   assets,
   selectedPageId,
   selectedAdAccountId,
+  selectedCatalogId,
   onSelectPage,
   onSelectAdAccount,
+  onSelectCatalog,
   onConfirm,
   onDismiss,
   isBusy,
@@ -19,8 +21,10 @@ export default function MetaAssetPickerModal({
   assets: MetaBusinessAssets;
   selectedPageId: string;
   selectedAdAccountId: string;
+  selectedCatalogId: string;
   onSelectPage: (id: string) => void;
   onSelectAdAccount: (id: string) => void;
+  onSelectCatalog: (id: string) => void;
   onConfirm: () => void;
   onDismiss: () => void;
   isBusy: boolean;
@@ -80,6 +84,22 @@ export default function MetaAssetPickerModal({
               />
               <p className="mt-1.5 font-body text-[11px] text-ink-muted">Anril reads reporting data from this account. It cannot create, edit, or publish ads.</p>
             </label>
+            {(assets.catalogs?.length ?? 0) > 0 && (
+              <label className="block">
+                <span className="font-label text-xs font-bold uppercase tracking-wider text-ink">Catalogue <span className="font-normal normal-case text-ink-muted">(optional)</span></span>
+                <Select
+                  value={selectedCatalogId}
+                  onChange={onSelectCatalog}
+                  className="mt-2"
+                  disabled={isBusy}
+                  options={[
+                    { value: "", label: "Do not connect a catalogue" },
+                    ...assets.catalogs.map(catalog => ({ value: catalog.id, label: catalog.name })),
+                  ]}
+                />
+                <p className="mt-1.5 font-body text-[11px] text-ink-muted">Your Catalogue items can be shown here for WhatsApp, Facebook and Instagram. Nothing is sent until you turn it on in Catalogue.</p>
+              </label>
+            )}
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-border-subtle bg-surface-low p-5">
             <button type="button" onClick={onDismiss} className="rounded-xl px-3 py-2 font-label text-sm font-semibold text-ink-muted hover:bg-white">Cancel</button>

@@ -1948,6 +1948,15 @@ async def generate_reply(
     except Exception:
         catalog_context = ""
         logger.warning(f"Catalog context build failed for tenant {tenant_id}")
+    # WhatsApp Forms the client lets the AI send, each with its own "send when" rule.
+    if (channel or "whatsapp") == "whatsapp":
+        try:
+            from app.services import whatsapp_form_reach
+            form_tool = whatsapp_form_reach.ai_tool(whatsapp_form_reach.ai_forms(db, tenant_id))
+            if form_tool:
+                catalog_tools = [*catalog_tools, form_tool]
+        except Exception:
+            logger.warning(f"WhatsApp Form tool skipped for tenant {tenant_id}")
 
     # Bound out here, not inside the try below: that block's except does not return,
     # it falls through to the channel dispatch, which reads both of these. A variable

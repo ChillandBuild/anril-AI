@@ -32,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.services import deal_engine, intake
+from app.services import deal_engine, form_texts, intake
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,7 @@ COLLECT_CHAT, COLLECT_FORM = "chat", "form"
 FLOW_JSON_VERSION = "7.3"
 FLOW_MESSAGE_VERSION = "3"
 GRAPH = "https://graph.facebook.com/v21.0"
-FORM_CTA = "Choose & book"  # flow_cta: Meta advises <= 30 chars, no emoji
 TOKEN_PREFIX = "wf1"
-CONSENT_WORDING = "Send me updates and offers on WhatsApp"
 PUBLISHING_GRACE = timedelta(minutes=5)
 
 # Meta Flow JSON limits (components reference, Flow JSON 7.x).
@@ -140,6 +138,7 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
     The answer map turns the submitted form names back into Services keys:
       {"addons": {"a_<leaf>": "<leaf key>"},
        "fields": {"f_<key>": {"key", "label", "type", "options": {option id: option text}}}}"""
+    texts = form_texts.resolve(config.get("form_texts"))
     roots = _active(intake.normalize_packages(config))
     if not roots:
         raise FormBuildError("Add at least one active package in Services first.")
@@ -194,7 +193,7 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
         base.update(overrides)
         return base
 
-    def footer(expr: str, targets: dict[str, list[str]], payload: dict, label: str = "Continue") -> dict:
+    def footer(expr: str, targets: dict[str, list[str]], payload: dict, label: str = texts["continue"]) -> dict:
         def button(screen: str) -> dict:
             return {"type": "Footer", "label": label, "on-click-action": {
                 "name": "navigate", "next": {"type": "screen", "name": screen}, "payload": payload}}
@@ -214,9 +213,9 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
         target = SCREEN_OPTION if _active(root.get("options")) else after_leaf(root)
         first_targets.setdefault(target, []).append(root["key"])
     screens.append({
-        "id": SCREEN_PACKAGE, "title": "Choose", "terminal": False,
+        "id": SCREEN_PACKAGE, "title": texts["title_choose"], "terminal": False,
         "layout": {"type": "SingleColumnLayout", "children": [
-            {"type": "RadioButtonsGroup", "name": "p1", "label": "Choose one", "required": True,
+            {"type": "RadioButtonsGroup", "name": "p1", "label": texts["choose_label"], "required": True,
              "data-source": [_option(r) for r in roots]},
             footer("${form.p1}", first_targets, {"p1": "${form.p1}", "p2": NONE_VALUE, **empty_addons}),
         ]},
@@ -233,7 +232,7 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
             if parent:
                 option_targets.setdefault(after_leaf(leaf), []).append(leaf["key"])
         screens.append({
-            "id": SCREEN_OPTION, "title": "Choose option", "terminal": False, "data": state,
+            "id": SCREEN_OPTION, "title": texts["title_option"], "terminal": False, "data": state,
             "layout": {"type": "SingleColumnLayout", "children": [
                 {"type": "Switch", "value": "${data.p1}", "cases": cases},
                 footer("${form.p2}", option_targets, carry(p2="${form.p2}", **empty_addons)),
@@ -244,7 +243,7 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
         root_cases, sub_cases = {}, {}
         for leaf, parent in leaves:
             if leaf["key"] in addon_names:
-                block = [{"type": "CheckboxGroup", "name": addon_names[leaf["key"]], "label": "Add-ons (optional)",
+                block = [{"type": "CheckboxGroup", "name": addon_names[leaf["key"]], "label": texts["addons_label"],
                           "required": False,
                           "data-source": [_option(a, addon=True) for a in _active(leaf.get("addons"))]}]
                 (sub_cases if parent else root_cases)[leaf["key"]] = block
@@ -255,7 +254,7 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
             children.append({"type": "Switch", "value": "${data.p2}", "cases": sub_cases})
         payload = carry(**{n: f"${{form.{n}}}" for n in addon_names.values()})
         children.append(footer("", {after_leaf_default: ["x"]}, payload))
-        screens.append({"id": SCREEN_ADDONS, "title": "Add-ons", "terminal": False, "data": state,
+        screens.append({"id": SCREEN_ADDONS, "title": texts["title_addons"], "terminal": False, "data": state,
                         "layout": {"type": "SingleColumnLayout", "children": children}})
 
     confirm_data = dict(state)
@@ -275,18 +274,18 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
                                "required": True, "input-type": "text"})
             confirm_data[name] = {"type": "string", "__example__": "x"}
         payload = carry(**{n: f"${{form.{n}}}" for n in field_map})
-        screens.append({"id": SCREEN_DETAILS, "title": "Your details", "terminal": False, "data": state,
+        screens.append({"id": SCREEN_DETAILS, "title": texts["title_details"], "terminal": False, "data": state,
                         "layout": {"type": "SingleColumnLayout",
                                    "children": inputs + [footer("", {SCREEN_CONFIRM: ["x"]}, payload)]}})
 
     complete = {k: f"${{data.{k}}}" for k in confirm_data}
     complete["consent_offers"] = "${form.consent_offers}"
     screens.append({
-        "id": SCREEN_CONFIRM, "title": "Confirm", "terminal": True, "success": True, "data": confirm_data,
+        "id": SCREEN_CONFIRM, "title": texts["title_confirm"], "terminal": True, "success": True, "data": confirm_data,
         "layout": {"type": "SingleColumnLayout", "children": [
-            {"type": "TextBody", "text": "Tap Submit. We'll reply in this chat with your total and payment link."},
-            {"type": "OptIn", "name": "consent_offers", "label": CONSENT_WORDING, "required": False},
-            {"type": "Footer", "label": "Submit", "on-click-action": {"name": "complete", "payload": complete}},
+            {"type": "TextBody", "text": texts["confirm_note"]},
+            {"type": "OptIn", "name": "consent_offers", "label": texts["consent"], "required": False},
+            {"type": "Footer", "label": texts["submit"], "on-click-action": {"name": "complete", "payload": complete}},
         ]},
     })
 
@@ -301,7 +300,15 @@ def build_intake_flow(config: dict) -> tuple[dict, dict]:
         shown[leaf["key"]] = leaf.get("amount_paise") or 0
         for addon in _active(leaf.get("addons")):
             shown[f"{leaf['key']}/{addon['key']}"] = addon.get("amount_paise") or 0
-    return flow, {"addons": {name: key for key, name in addon_names.items()}, "fields": field_map, "prices": shown}
+    names = {r["key"]: r.get("name") or r["key"] for r in roots}
+    for leaf, _ in leaves:
+        names[leaf["key"]] = leaf.get("name") or leaf["key"]
+        for addon in _active(leaf.get("addons")):
+            names[addon["key"]] = addon.get("name") or addon["key"]
+    return flow, {
+        "kind": "intake", "addons": {name: key for key, name in addon_names.items()}, "fields": field_map,
+        "prices": shown, "names": names, "consent_wording": texts["consent"],
+    }
 
 
 def source_hash(flow: dict) -> str:
@@ -369,8 +376,10 @@ def collects_with_form(config: dict) -> bool:
     return bool(config.get("enabled")) and config.get("collect_with") == COLLECT_FORM
 
 
-def _latest(db, tenant_id: str, *, status: str | None = None) -> dict | None:
-    query = db.table("whatsapp_forms").select("*").eq("tenant_id", tenant_id).eq("kind", "intake")
+def _latest(db, tenant_id: str, *, status: str | None = None, design_id: str | None = None) -> dict | None:
+    """Newest version of the Services form (design_id None) or of one custom form."""
+    query = db.table("whatsapp_forms").select("*").eq("tenant_id", tenant_id)
+    query = query.eq("kind", "custom").eq("design_id", design_id) if design_id else query.eq("kind", "intake")
     if status:
         query = query.eq("status", status)
     rows = query.order("created_at", desc=True).limit(1).execute().data or []
@@ -413,7 +422,9 @@ def form_for_menu(tenant_id: str, menu: dict, db=None) -> dict | None:
             current = source_hash(build_intake_flow(config)[0])
         except FormBuildError:
             return None
-        return published if published.get("source_hash") == current else None
+        if published.get("source_hash") != current:
+            return None
+        return {**published, "cta": form_texts.resolve(config.get("form_texts"))["cta"]}
     except Exception:
         logger.exception("WhatsApp Form lookup failed for tenant %s -- sending the menu", tenant_id)
         return None
@@ -530,8 +541,16 @@ async def sync_intake_form(tenant_id: str, db=None) -> dict | None:
             "source_hash": "invalid", "definition": {}, "answer_map": {}, "last_error": str(exc),
         }).execute().data
         return row[0] if row else None
+    return await _publish_version(db, tenant_id, flow, answer_map, name="Services form")
+
+
+async def _publish_version(
+    db, tenant_id: str, flow: dict, answer_map: dict, *, name: str, design_id: str | None = None,
+) -> dict | None:
+    """Publish this form version unless the same one is already live (or still publishing), then
+    retire the older versions of the same form. Shared by the Services form and custom forms."""
     digest = source_hash(flow)
-    latest = _latest(db, tenant_id)
+    latest = _latest(db, tenant_id, design_id=design_id)
     if latest and latest.get("source_hash") == digest:
         if latest["status"] == "published":
             return latest
@@ -539,14 +558,15 @@ async def sync_intake_form(tenant_id: str, db=None) -> dict | None:
         if latest["status"] == "publishing" and started and datetime.now(timezone.utc) - started < PUBLISHING_GRACE:
             return latest
     row = (db.table("whatsapp_forms").insert({
-        "tenant_id": tenant_id, "kind": "intake", "name": "Services form", "status": "publishing",
+        "tenant_id": tenant_id, "kind": "custom" if design_id else "intake", "design_id": design_id,
+        "name": name[:120] or "Form", "status": "publishing",
         "source_hash": digest, "definition": flow, "answer_map": answer_map,
     }).execute().data or [None])[0]
     if not row:
         return None
-    name = f"anril_services_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{row['id'][:6]}"
+    meta_name = f"anril_{'form' if design_id else 'services'}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{row['id'][:6]}"
     try:
-        flow_id, waba = await _publish(tenant_id, name, flow)
+        flow_id, waba = await _publish(tenant_id, meta_name, flow)
     except Exception as exc:
         message = str(exc) if isinstance(exc, FormPublishError) else "Publishing didn't finish. Try again."
         if not isinstance(exc, FormPublishError):
@@ -554,7 +574,7 @@ async def sync_intake_form(tenant_id: str, db=None) -> dict | None:
         db.table("whatsapp_forms").update({"status": "failed", "last_error": message, "updated_at": _now()}) \
             .eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
         return {**row, "status": "failed", "last_error": message}
-    newest = _latest(db, tenant_id)
+    newest = _latest(db, tenant_id, design_id=design_id)
     if newest and newest["id"] != row["id"]:
         # A later save started its own publish while this one ran: this version is already old.
         db.table("whatsapp_forms").update({
@@ -562,18 +582,20 @@ async def sync_intake_form(tenant_id: str, db=None) -> dict | None:
         }).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
         await _deprecate(tenant_id, flow_id)
         return newest
-    previous = (
-        db.table("whatsapp_forms").select("id, meta_flow_id").eq("tenant_id", tenant_id).eq("kind", "intake")
-        .eq("status", "published").execute()
-    ).data or []
+    previous_query = db.table("whatsapp_forms").select("id, meta_flow_id").eq("tenant_id", tenant_id)
+    previous_query = (previous_query.eq("kind", "custom").eq("design_id", design_id) if design_id
+                      else previous_query.eq("kind", "intake"))
+    previous = previous_query.eq("status", "published").execute().data or []
     db.table("whatsapp_forms").update({
         "status": "published", "meta_flow_id": flow_id, "meta_waba_id": waba, "published_at": _now(),
         "last_error": None, "updated_at": _now(),
     }).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
     for old in previous:
+        if old["id"] == row["id"]:
+            continue
         db.table("whatsapp_forms").update({"status": "retired", "updated_at": _now()}) \
             .eq("id", old["id"]).eq("tenant_id", tenant_id).execute()
-        if old.get("meta_flow_id"):
+        if old.get("meta_flow_id") and not used_by_templates(db, tenant_id, old["meta_flow_id"]):
             await _deprecate(tenant_id, old["meta_flow_id"])
     return {**row, "status": "published", "meta_flow_id": flow_id}
 
@@ -588,18 +610,22 @@ async def sync_intake_form_safely(tenant_id: str) -> None:
 
 def intake_status(db, tenant_id: str) -> dict:
     """What the Services page shows under "Send a WhatsApp Form"."""
-    enabled = is_enabled(db, tenant_id)
-    if not enabled:
+    if not is_enabled(db, tenant_id):
         return {"available": False}
-    latest = _latest(db, tenant_id)
-    live = latest if latest and latest["status"] == "published" else _latest(db, tenant_id, status="published")
+    return {"available": True, **version_status(db, tenant_id)}
+
+
+def version_status(db, tenant_id: str, design_id: str | None = None) -> dict:
+    """Live / updating / failed for the Services form or one custom form."""
+    latest = _latest(db, tenant_id, design_id=design_id)
+    live = latest if latest and latest["status"] == "published" else _latest(
+        db, tenant_id, status="published", design_id=design_id)
     state = (latest or {}).get("status") or "none"
     error = (latest or {}).get("last_error") if state == "failed" else None
     started = deal_engine.parse_time((latest or {}).get("created_at"))
     if state == "publishing" and started and datetime.now(timezone.utc) - started > PUBLISHING_GRACE:
         state, error = "failed", "Publishing didn't finish. Try again."  # e.g. a restart mid-publish
     return {
-        "available": True,
         "state": state,
         "error": error,
         "live": bool(live),
@@ -607,23 +633,370 @@ def intake_status(db, tenant_id: str) -> dict:
     }
 
 
+# ── custom forms (Catalogue → Forms) ─────────────────────────────────────────
+#
+# A design (whatsapp_form_designs) is the client's editable form: name, language, questions,
+# texts. Publishing turns it into a whatsapp_forms version (kind 'custom'), like the Services form.
+
+FIELDS_PER_SCREEN = 5
+_STRING = {"type": "string", "__example__": "x"}
+_ARRAY = {"type": "array", "items": {"type": "string"}, "__example__": []}
+
+
+def _design_settings(design: dict) -> dict:
+    return {"language": design.get("language"), "texts": design.get("texts") or {}}
+
+
+def design_problems(design: dict) -> list[str]:
+    name = str(design.get("name") or "").strip()
+    out = [] if name else ["Give the form a name."]
+    if len(name) > 120:
+        out.append("The form name can be at most 120 characters.")
+    return out + form_texts.field_problems(design.get("fields")) + form_texts.problems(_design_settings(design))
+
+
+def build_custom_flow(design: dict) -> tuple[dict, dict]:
+    """(Flow JSON, answer map) for a client's own form. Up to FIELDS_PER_SCREEN questions a
+    screen, then a last screen with the form note, the offers opt-in and Submit. Pure."""
+    problems = design_problems(design)
+    if problems:
+        raise FormBuildError(problems[0])
+    texts = form_texts.resolve(_design_settings(design))
+    used: set[str] = {"consent_offers"}
+    fields: list[dict] = []
+    field_map: dict[str, dict] = {}
+    for f in design["fields"]:
+        name = _unique("f_" + _slug(f["key"]), used)
+        options: dict[str, str] = {}
+        for text in [str(o).strip() for o in f.get("options") or [] if str(o).strip()]:
+            options[_unique(_slug(text), set(options))] = text
+        fields.append({**f, "name": name, "option_ids": options})
+        field_map[name] = {"key": f["key"], "label": str(f["label"]).strip(), "type": f["type"], "options": options}
+
+    def component(f: dict) -> dict:
+        label, required, kind = str(f["label"]).strip(), bool(f.get("required", True)), f["type"]
+        if kind == "long_text":
+            return {"type": "TextArea", "name": f["name"], "label": label, "required": required}
+        if kind in ("text", "email", "phone", "number"):
+            return {"type": "TextInput", "name": f["name"], "label": label, "required": required, "input-type": kind}
+        if kind == "date":
+            return {"type": "DatePicker", "name": f["name"], "label": label, "required": required}
+        source = [{"id": oid, "title": text} for oid, text in f["option_ids"].items()]
+        if kind == "dropdown":
+            return {"type": "Dropdown", "name": f["name"], "label": label, "required": required, "data-source": source}
+        if kind == "single":
+            return {"type": "RadioButtonsGroup", "name": f["name"], "label": label, "required": required,
+                    "data-source": source}
+        return {"type": "CheckboxGroup", "name": f["name"], "label": label, "required": required, "data-source": source}
+
+    chunks = [fields[i:i + FIELDS_PER_SCREEN] for i in range(0, len(fields), FIELDS_PER_SCREEN)]
+    # Meta: screen ids are letters and underscores only (no digits).
+    ids = [f"QUESTIONS_{chr(65 + n)}" for n in range(len(chunks))] + [SCREEN_CONFIRM]
+    screens: list[dict] = []
+    carried: list[dict] = []  # fields answered on earlier screens
+    for n, chunk in enumerate(chunks):
+        payload = {f["name"]: f"${{data.{f['name']}}}" for f in carried}
+        payload.update({f["name"]: f"${{form.{f['name']}}}" for f in chunk})
+        screen = {
+            "id": ids[n], "title": texts["title_details"], "terminal": False,
+            "layout": {"type": "SingleColumnLayout", "children": [component(f) for f in chunk] + [
+                {"type": "Footer", "label": texts["continue"], "on-click-action": {
+                    "name": "navigate", "next": {"type": "screen", "name": ids[n + 1]}, "payload": payload}},
+            ]},
+        }
+        if carried:
+            screen["data"] = {f["name"]: (_ARRAY if f["type"] == "multi" else _STRING) for f in carried}
+        screens.append(screen)
+        carried = carried + chunk
+    complete = {f["name"]: f"${{data.{f['name']}}}" for f in carried}
+    complete["consent_offers"] = "${form.consent_offers}"
+    screens.append({
+        "id": SCREEN_CONFIRM, "title": texts["title_confirm"], "terminal": True, "success": True,
+        "data": {f["name"]: (_ARRAY if f["type"] == "multi" else _STRING) for f in carried},
+        "layout": {"type": "SingleColumnLayout", "children": [
+            {"type": "TextBody", "text": texts["form_note"]},
+            {"type": "OptIn", "name": "consent_offers", "label": texts["consent"], "required": False},
+            {"type": "Footer", "label": texts["submit"], "on-click-action": {"name": "complete", "payload": complete}},
+        ]},
+    })
+    flow = {"version": FLOW_JSON_VERSION,
+            "routing_model": {s["id"]: sorted(_navigate_targets(s["layout"])) for s in screens},
+            "screens": screens}
+    return flow, {"kind": "custom", "fields": field_map, "consent_wording": texts["consent"],
+                  "form_name": str(design.get("name") or "").strip()}
+
+
+def get_design(db, tenant_id: str, design_id: str) -> dict | None:
+    rows = (
+        db.table("whatsapp_form_designs").select("*").eq("id", design_id).eq("tenant_id", tenant_id)
+        .limit(1).execute()
+    ).data or []
+    return rows[0] if rows else None
+
+
+async def publish_design(db, tenant_id: str, design_id: str) -> dict:
+    """Publish the saved design as a new form version. Returns its status (version_status shape)."""
+    design = get_design(db, tenant_id, design_id)
+    if not design or design.get("archived"):
+        raise FormBuildError("Form not found.")
+    flow, answer_map = build_custom_flow(design)
+    await _publish_version(db, tenant_id, flow, answer_map, name=design["name"], design_id=design_id)
+    return version_status(db, tenant_id, design_id)
+
+
+def live_custom_form(db, tenant_id: str, design: dict) -> dict | None:
+    """The published version to send, only when it shows exactly the saved design."""
+    published = _latest(db, tenant_id, status="published", design_id=design["id"])
+    if not published:
+        return None
+    try:
+        current = source_hash(build_custom_flow(design)[0])
+    except FormBuildError:
+        return None
+    if published.get("source_hash") != current:
+        return None
+    texts = form_texts.resolve(_design_settings(design))
+    return {**published, "cta": texts["form_cta"], "intro": texts["intro"], "first_screen": "QUESTIONS_A"}
+
+
+async def retire_design(db, tenant_id: str, design_id: str) -> None:
+    """Archive a form: it disappears from the list and its live version stops on Meta."""
+    db.table("whatsapp_form_designs").update({"archived": True, "updated_at": _now()}) \
+        .eq("id", design_id).eq("tenant_id", tenant_id).execute()
+    live = (
+        db.table("whatsapp_forms").select("id, meta_flow_id").eq("tenant_id", tenant_id).eq("kind", "custom")
+        .eq("design_id", design_id).eq("status", "published").execute()
+    ).data or []
+    for row in live:
+        db.table("whatsapp_forms").update({"status": "retired", "updated_at": _now()}) \
+            .eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
+        if row.get("meta_flow_id") and not used_by_templates(db, tenant_id, row["meta_flow_id"]):
+            await _deprecate(tenant_id, row["meta_flow_id"])
+
+
+def used_by_templates(db, tenant_id: str, flow_id: str) -> bool:
+    """An approved template's "Open form" button points at this exact form version (Meta pins
+    the flow id at approval). Such a version stays open on Meta after it is replaced, so the
+    template keeps working without re-approval; its answers still map, and prices are still
+    checked against today's Services."""
+    try:
+        rows = (
+            db.table("message_templates").select("buttons").eq("tenant_id", tenant_id).execute()
+        ).data or []
+    except Exception:
+        return True  # unsure: keep it open rather than break a template
+    return any(
+        isinstance(b, dict) and str(b.get("flow_id") or "") == str(flow_id)
+        for r in rows for b in (r.get("buttons") or [])
+    )
+
+
+CHAT_WINDOW = timedelta(hours=24)
+
+
+def last_inbound_at(db, tenant_id: str, lead_id: str) -> datetime | None:
+    rows = (
+        db.table("messages").select("created_at").eq("tenant_id", tenant_id).eq("lead_id", lead_id)
+        .eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
+    ).data or []
+    return deal_engine.parse_time(rows[0]["created_at"]) if rows else None
+
+
+async def send_design_to_lead(db, tenant_id: str, design_id: str, lead_id: str) -> str | None:
+    """Conversations → Send form. Only inside WhatsApp's 24-hour window (outside it a form needs
+    a template with a form button). Raises FormBuildError with a reason the agent can act on."""
+    design = get_design(db, tenant_id, design_id)
+    if not design or design.get("archived"):
+        raise FormBuildError("Form not found.")
+    form = live_custom_form(db, tenant_id, design)
+    if not form:
+        raise FormBuildError("Publish this form (with its latest changes) before sending it.")
+    lead = (
+        db.table("leads").select("phone, opted_out").eq("id", lead_id).eq("tenant_id", tenant_id).limit(1).execute()
+    ).data or []
+    if not lead or not lead[0].get("phone"):
+        raise FormBuildError("This customer has no WhatsApp number.")
+    if lead[0].get("opted_out"):
+        raise FormBuildError("This customer opted out of WhatsApp messages.")
+    last = last_inbound_at(db, tenant_id, lead_id)
+    if not last or datetime.now(timezone.utc) - last > CHAT_WINDOW:
+        raise FormBuildError(
+            "WhatsApp lets you send a form only within 24 hours of the customer's last message. "
+            "Ask them to reply first."
+        )
+    sid = await send_form(lead[0]["phone"], form["intro"], form, cta=form["cta"], tenant_id=tenant_id,
+                          via="chat", lead_id=lead_id, db=db)
+    db.table("messages").insert({
+        "lead_id": lead_id, "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
+        "content": form_record(form["intro"], form["cta"]), "is_ai_generated": False, "meta_message_id": sid,
+    }).execute()
+    return sid
+
+
+def _custom_answers(answer_map: dict, answers: dict) -> list[tuple[str, str, str]]:
+    """[(key, label, readable value)] in the form's order; empty answers left out."""
+    out = []
+    for name, field in (answer_map.get("fields") or {}).items():
+        value = answers.get(name)
+        if value in (None, "", []):
+            continue
+        options = field.get("options") or {}
+        if isinstance(value, list):
+            text = ", ".join(options.get(str(v), str(v)) for v in value)
+        else:
+            text = options.get(str(value), str(value))
+        out.append((field["key"], field.get("label") or field["key"], " ".join(text.split())[:500]))
+    return out
+
+
+def _custom_summary(form: dict, answers: dict) -> str:
+    answer_map = form.get("answer_map") or {}
+    lines = [f"📝 {answer_map.get('form_name') or form.get('name') or 'Form'}"]
+    lines += [f"{label}: {value}" for _, label, value in _custom_answers(answer_map, answers)]
+    lines.append("Offers on WhatsApp: " + ("yes" if _wants_offers(answers) else "no"))
+    return "\n".join(lines)[:1500]
+
+
+_NAME_KEYS = {"name", "full_name", "student_name", "customer_name"}
+
+
+async def _handle_custom(db, *, tenant_id: str, lead_id: str, phone: str, form: dict, answers: dict,
+                         response: dict, phone_number_id: str | None) -> str:
+    """Save a custom form's answers on the lead, record consent, send the thank-you message."""
+    if not is_enabled(db, tenant_id):
+        # Switched off after the form went out: like the Services form, not applied; the AI answers.
+        _set_outcome(db, tenant_id, response["id"], "continued_in_chat")
+        return "continue"
+    answer_map = form.get("answer_map") or {}
+    pairs = _custom_answers(answer_map, answers)
+    rows = db.table("leads").select("name, collected_data").eq("id", lead_id).eq("tenant_id", tenant_id) \
+        .limit(1).execute().data or [{}]
+    collected = dict(rows[0].get("collected_data") or {})
+    history = list(collected.get("whatsapp_forms") or [])
+    history.append({"form_id": form["id"], "form_name": answer_map.get("form_name") or form.get("name"),
+                    "submitted_at": _now(), "answers": {label: value for _, label, value in pairs}})
+    collected["whatsapp_forms"] = history[-20:]
+    patch: dict = {"collected_data": collected}
+    name = next((value for key, _, value in pairs if key in _NAME_KEYS), None)
+    if name and not rows[0].get("name"):
+        patch["name"] = name[:120]
+    db.table("leads").update(patch).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
+    try:
+        db.table("lead_notes").insert({
+            "lead_id": lead_id, "tenant_id": tenant_id, "content": _custom_summary(form, answers),
+            "is_pinned": False, "structured": False,
+        }).execute()
+    except Exception:
+        logger.exception("WhatsApp Form note failed for lead %s", lead_id)
+    _record_consent(db, tenant_id, lead_id, form, _wants_offers(answers))
+    intake.note_lead_message(db, tenant_id, lead_id)
+
+    _set_outcome(db, tenant_id, response["id"], "saved")
+    # The thank-you is an automatic message: Settings > Auto-Reply off means nothing automatic
+    # reaches the customer, so the answers are saved and the team sees them, but no thank-you.
+    # (A Services form's payment link is different: it is the customer's own payment step, sent
+    # like every other payment message regardless of Auto-Reply -- owner's rule for payments.)
+    from app.services.automation_guards import ai_replies_allowed_for_lead
+    if not ai_replies_allowed_for_lead(db, tenant_id, "whatsapp", lead_id):
+        return "handled"
+    design = get_design(db, tenant_id, form.get("design_id")) if form.get("design_id") else None
+    thanks = form_texts.resolve(_design_settings(design or {}))["thank_you"]
+    from app.services.ai_reply import send_whatsapp
+
+    sid = await send_whatsapp(phone, thanks, tenant_id=tenant_id, phone_number_id=phone_number_id)
+    db.table("messages").insert({
+        "lead_id": lead_id, "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
+        "content": thanks, "is_ai_generated": False, "meta_message_id": sid,
+    }).execute()
+    return "handled"
+
+
+def lead_answers(db, tenant_id: str, lead_id: str, limit: int = 20) -> list[dict]:
+    """Every form this lead submitted, newest first, with readable answers (lead profile card)."""
+    responses = (
+        db.table("whatsapp_form_responses").select("id, form_id, answers, outcome, created_at")
+        .eq("tenant_id", tenant_id).eq("lead_id", lead_id).order("created_at", desc=True).limit(limit).execute()
+    ).data or []
+    form_ids = list({r["form_id"] for r in responses if r.get("form_id")})
+    forms = {
+        f["id"]: f for f in (
+            db.table("whatsapp_forms").select("id, name, kind, answer_map").eq("tenant_id", tenant_id)
+            .in_("id", form_ids).execute().data or []
+        )
+    } if form_ids else {}
+    out = []
+    for r in responses:
+        form = forms.get(r.get("form_id")) or {}
+        answer_map = form.get("answer_map") or {}
+        if answer_map.get("kind") == "custom":
+            pairs = [{"label": label, "value": value} for _, label, value in _custom_answers(answer_map, r["answers"])]
+        else:
+            labels = {f["key"]: f.get("label") or f["key"] for f in (answer_map.get("fields") or {}).values()}
+            pairs = [{"label": labels.get(key, key), "value": value}
+                     for key, value in _details(answer_map, r["answers"]).items()]
+            _, path = _choice_path({}, r["answers"], answer_map.get("names"))
+            if path:
+                pairs.insert(0, {"label": "Choice", "value": " › ".join(path)})
+        out.append({"id": r["id"], "form_name": answer_map.get("form_name") or form.get("name") or "Form",
+                    "kind": answer_map.get("kind") or form.get("kind"), "submitted_at": r["created_at"],
+                    "outcome": r["outcome"], "answers": pairs,
+                    "offers": _wants_offers(r["answers"])})
+    return out
+
+
 # ── sending ──────────────────────────────────────────────────────────────────
 
 
-async def send_form(phone: str, body: str, form: dict, *, tenant_id: str, phone_number_id: str | None = None) -> str | None:
+async def send_form(
+    phone: str, body: str, form: dict, *, cta: str, tenant_id: str, phone_number_id: str | None = None,
+    via: str = "chat", lead_id: str | None = None, db=None,
+) -> str | None:
+    """Send one form inside the chat. `via` says why it went (chat, ai, ad, broadcast, services)
+    and is saved with the send for the form's numbers."""
+    import secrets
+
     from app.services import meta_cloud
 
+    send_id = secrets.token_hex(6)
     data = await meta_cloud.send_flow_message(
-        to_number=phone, body_text=body, flow_id=form["meta_flow_id"], flow_cta=FORM_CTA,
-        flow_token=make_token(tenant_id, phone, form["id"]), first_screen=SCREEN_PACKAGE,
+        to_number=phone, body_text=body, flow_id=form["meta_flow_id"], flow_cta=cta,
+        flow_token=make_token(tenant_id, phone, form["id"], send_id),
+        first_screen=form.get("first_screen") or SCREEN_PACKAGE,
         tenant_id=tenant_id, phone_number_id=phone_number_id,
     )
-    return (data.get("messages") or [{}])[0].get("id")
+    sid = (data.get("messages") or [{}])[0].get("id")
+    record_send(tenant_id, form, send_id=send_id, via=via, lead_id=lead_id, phone=phone, meta_message_id=sid, db=db)
+    return sid
 
 
-def form_record(body: str) -> str:
+SEND_VIAS = ("chat", "ai", "ad", "broadcast", "template", "services")
+
+
+def record_send(tenant_id: str, form: dict, *, send_id: str, via: str, lead_id: str | None = None,
+                phone: str | None = None, meta_message_id: str | None = None, db=None) -> None:
+    """Best effort: a failed write never blocks a send. Finds the lead by phone when not given."""
+    try:
+        if db is None:
+            from app.db.supabase import get_supabase
+            db = get_supabase()
+        if not lead_id and phone:
+            digits = _digits(phone)
+            rows = (
+                db.table("leads").select("id").eq("tenant_id", tenant_id).in_("phone", [f"+{digits}", digits])
+                .limit(1).execute()
+            ).data or []
+            lead_id = rows[0]["id"] if rows else None
+        db.table("whatsapp_form_sends").insert({
+            "tenant_id": tenant_id, "design_id": form.get("design_id"), "form_id": form["id"], "lead_id": lead_id,
+            "via": via if via in SEND_VIAS else "chat", "send_id": send_id, "meta_message_id": meta_message_id,
+        }).execute()
+    except Exception:
+        logger.warning("WhatsApp Form send record failed for tenant %s", tenant_id)
+
+
+def form_record(body: str, cta: str) -> str:
     """What the conversation history saves for a sent form."""
-    return f"{body}\n\n[📝 {FORM_CTA}]"
+    return f"{body}\n\n[📝 {cta}]"
 
 
 # ── receiving ────────────────────────────────────────────────────────────────
@@ -637,8 +1010,9 @@ def parse_response(raw: str) -> dict:
     return answers if isinstance(answers, dict) else {}
 
 
-def _choice_path(config: dict, answers: dict) -> tuple[str | None, list[str]]:
-    """(leaf key, path names) from p1/p2."""
+def _choice_path(config: dict, answers: dict, saved_names: dict | None = None) -> tuple[str | None, list[str]]:
+    """(leaf key, path names) from p1/p2. Names come from today's Services, else from the names
+    saved with the form version, else the key."""
     from app.services.deal_actions import _find_node
 
     packages = intake.normalize_packages(config)
@@ -648,7 +1022,7 @@ def _choice_path(config: dict, answers: dict) -> tuple[str | None, list[str]]:
     for key in (p1, p2):
         if key and key != NONE_VALUE:
             node = _find_node(packages, key)
-            names.append(node.get("name") if node else key)
+            names.append(node.get("name") if node else (saved_names or {}).get(key, key))
     return (leaf or None), names
 
 
@@ -701,15 +1075,19 @@ def summary_text(db, tenant_id: str, phone: str, raw: str) -> str:
         form = _form(db, tenant_id, form_id) if form_id else None
         if not form:
             return "📝 Form submitted"
+        answer_map = form.get("answer_map") or {}
+        if answer_map.get("kind") == "custom":
+            return _custom_summary(form, answers)
         config = intake.get_intake_config(tenant_id, db=db)
-        leaf, path = _choice_path(config, answers)
+        leaf, path = _choice_path(config, answers, answer_map.get("names"))
         lines = ["📝 Form submitted"]
         if path:
             lines.append("Choice: " + " › ".join(path))
         addons = _addon_keys(form.get("answer_map") or {}, answers, leaf)
         if addons:
             found = intake._find_leaf(intake.normalize_packages(config), leaf) if leaf else None
-            names = {a["key"]: a.get("name") for a in ((found[0].get("addons") if found else None) or [])}
+            names = {**(answer_map.get("names") or {}),
+                     **{a["key"]: a.get("name") for a in ((found[0].get("addons") if found else None) or [])}}
             lines.append("Add-ons: " + ", ".join(names.get(k, k) for k in addons))
         fields = (form.get("answer_map") or {}).get("fields") or {}
         labels = {f["key"]: f.get("label") or f["key"] for f in fields.values()}
@@ -754,7 +1132,7 @@ def _repeat_outcome(db, tenant_id: str, meta_message_id: str, token: str) -> str
         db.table("whatsapp_form_responses").select("outcome").eq("tenant_id", tenant_id)
         .eq("flow_token", token).limit(1).execute()
     ).data or []
-    return "ignored" if earlier and earlier[0].get("outcome") == "link_sent" else "continue"
+    return "ignored" if earlier and earlier[0].get("outcome") in ("link_sent", "saved") else "continue"
 
 
 def _set_outcome(db, tenant_id: str, response_id: str, outcome: str, session_id: str | None = None) -> None:
@@ -764,33 +1142,35 @@ def _set_outcome(db, tenant_id: str, response_id: str, outcome: str, session_id:
     db.table("whatsapp_form_responses").update(patch).eq("id", response_id).eq("tenant_id", tenant_id).execute()
 
 
-def _record_consent(db, tenant_id: str, lead_id: str, form_id: str, offers: bool) -> None:
-    source = f"whatsapp_form:{form_id}"
+def _record_consent(db, tenant_id: str, lead_id: str, form: dict, offers: bool) -> None:
+    source = f"whatsapp_form:{form['id']}"
+    wording = (form.get("answer_map") or {}).get("consent_wording") or "Offers opt-in on the WhatsApp Form"
     try:
         db.table("lead_consents").insert([
             {"tenant_id": tenant_id, "lead_id": lead_id, "scope": "replies", "granted": True, "source": source,
-             "wording": "Submitted a WhatsApp Form asking to book"},
+             "wording": "Submitted a WhatsApp Form"},
             {"tenant_id": tenant_id, "lead_id": lead_id, "scope": "offers", "granted": offers, "source": source,
-             "wording": CONSENT_WORDING},
+             "wording": wording},
         ]).execute()
     except Exception:
         logger.exception("Consent record failed for lead %s", lead_id)
 
 
-def _confirmation(session: dict) -> tuple[str, str]:
-    """(message, button label) for the payment link. Amounts come from the session the
-    executors just priced, never from the form."""
+def _confirmation(session: dict, texts: dict) -> tuple[str, str]:
+    """(message, button label) for the payment link, in the client's words. Amounts come from
+    the session the executors just priced, never from the form."""
     path = [step.get("name") for step in (session.get("package_path") or []) if step.get("name")]
-    lines = ["✅ " + (" › ".join(path) or session.get("package_name") or "Your booking")]
+    lines = ["✅ " + (" › ".join(path) or session.get("package_name") or "")]
     for addon in session.get("selected_addons") or []:
         lines.append(f"+ {addon.get('name')} ({deal_engine._rupees(addon.get('amount_paise') or 0)})")
     total = session.get("amount_paise") or session.get("total_amount_paise") or 0
-    line = f"Total: {deal_engine._rupees(total)}"
+    amount = deal_engine._rupees(total)
+    line = f"{texts['total']}: {amount}"
     if session.get("gst_amount_paise"):
-        line += f" (incl. GST {deal_engine._rupees(session['gst_amount_paise'])})"
-    lines += [line, "", "Tap below to pay."]
-    label = f"Pay {deal_engine._rupees(total)}"
-    return "\n".join(lines), (label if len(label) <= 20 else "Pay now")
+        line += f" ({texts['incl_gst']} {deal_engine._rupees(session['gst_amount_paise'])})"
+    lines += [line, "", texts["pay_note"]]
+    label = texts["pay_button"].replace("{amount}", amount)
+    return "\n".join(lines), (label if len(label) <= 20 else amount)
 
 
 async def handle_submission(
@@ -815,6 +1195,9 @@ async def handle_submission(
     response = _record_response(db, tenant_id, form["id"], lead_id, meta_message_id, answers, "received")
     if response is None:
         return _repeat_outcome(db, tenant_id, meta_message_id, str(answers.get("flow_token")))
+    if (form.get("answer_map") or {}).get("kind") == "custom":
+        return await _handle_custom(db, tenant_id=tenant_id, lead_id=lead_id, phone=phone, form=form,
+                                    answers=answers, response=response, phone_number_id=phone_number_id)
 
     ctx = deal_turn.build_context(db, tenant_id, lead_id, phone)
     if not ctx.offerings_enabled or not collects_with_form(ctx.config) or not is_enabled(db, tenant_id):
@@ -823,7 +1206,7 @@ async def handle_submission(
         return "continue"
     answer_map = form.get("answer_map") or {}
     leaf, _ = _choice_path(ctx.config, answers)
-    _record_consent(db, tenant_id, lead_id, form["id"], _wants_offers(answers))
+    _record_consent(db, tenant_id, lead_id, form, _wants_offers(answers))
     if not leaf:
         _set_outcome(db, tenant_id, response["id"], "continued_in_chat")
         return "continue"
@@ -850,7 +1233,7 @@ async def handle_submission(
         _set_outcome(db, tenant_id, response["id"], "continued_in_chat", (session or {}).get("id"))
         return "continue"
 
-    text, label = _confirmation(session)
+    text, label = _confirmation(session, form_texts.resolve(ctx.config.get("form_texts")))
     sid, _ = await deal_turn.send_link(
         phone, choices.Link(text, outcome.payment_link, label), tenant_id=tenant_id,
         phone_number_id=phone_number_id, original=f"{text}\n{outcome.payment_link}",

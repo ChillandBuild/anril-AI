@@ -316,6 +316,24 @@ async def send_menu(phone: str, body: str, menu: dict, *, tenant_id: str, phone_
     if len(body) > INTERACTIVE_BODY_MAX:
         await send_whatsapp(phone, body, tenant_id=tenant_id, phone_number_id=phone_number_id)
         body = CHOICE_BODY_FALLBACK
+    if menu.get("kind") == "form" and tenant_id:
+        # A WhatsApp Form the AI chose (deal_actions._send_form).
+        from app.services import whatsapp_forms
+
+        try:
+            design = whatsapp_forms.get_design(_db(), tenant_id, menu["design_id"])
+            form = whatsapp_forms.live_custom_form(_db(), tenant_id, design) if design else None
+            if form:
+                sid = await whatsapp_forms.send_form(
+                    phone, body, form, cta=form["cta"], tenant_id=tenant_id, phone_number_id=phone_number_id,
+                    via="ai", db=_db(),
+                )
+                menu["sent_as_form"] = form["cta"]
+                return sid, True
+        except Exception:
+            logger.exception("AI's WhatsApp Form send failed -- sending the words alone")
+        sid = await send_whatsapp(phone, body, tenant_id=tenant_id, phone_number_id=phone_number_id)
+        return sid, False
     if menu.get("offering_keys") and tenant_id:
         # Services set to "Send a WhatsApp Form": a package menu becomes the form, which asks
         # package, sub-package, add-ons and details in one go. Any failure sends the menu.
@@ -326,8 +344,11 @@ async def send_menu(phone: str, body: str, menu: dict, *, tenant_id: str, phone_
         form = await asyncio.to_thread(whatsapp_forms.form_for_menu, tenant_id, menu)
         if form:
             try:
-                sid = await whatsapp_forms.send_form(phone, body, form, tenant_id=tenant_id, phone_number_id=phone_number_id)
-                menu["sent_as_form"] = True
+                sid = await whatsapp_forms.send_form(
+                    phone, body, form, cta=form["cta"], tenant_id=tenant_id, phone_number_id=phone_number_id,
+                    via="services",
+                )
+                menu["sent_as_form"] = form["cta"]
                 return sid, True
             except Exception:
                 logger.exception("WhatsApp Form send failed -- sending the package menu instead")
@@ -371,7 +392,15 @@ async def send_link(
         return sid, False
 
 
+def _db():
+    from app.db.supabase import get_supabase
+
+    return get_supabase()
+
+
 def menu_as_text(body: str, menu: dict) -> str:
+    if not menu.get("options"):
+        return body  # a form that couldn't be sent: the words went alone
     return body + "\n\n" + "\n".join(f"• {title}" for title in menu["options"])
 
 
@@ -383,7 +412,7 @@ def menu_record(body: str, menu: dict, *, tappable: bool) -> str:
     """Record button tags only for choices sent as an interactive message."""
     if menu.get("sent_as_form"):
         from app.services.whatsapp_forms import form_record
-        return form_record(body)
+        return form_record(body, menu["sent_as_form"])
     return menu_log_text(body, menu) if tappable else menu_as_text(body, menu)
 
 
@@ -819,6 +848,8 @@ def _attach_choices(
     naming two or more packages, a question about a detail with fixed options, options
     written inline in the question ("Morning, Afternoon or Evening?")."""
     body, options = choices.extract(text)
+    if attached.menu and attached.menu.get("kind") == "form":
+        return body or CHOICE_BODY_FALLBACK  # a WhatsApp Form the AI chose: its button goes under the words
     if attached.menu and not attached.menu.get("field_key") and not _menu_fits(body, attached.menu, ctx):
         # show_options under a message about something else ("your name and a time?"): the
         # buttons would not answer the question, so drop them and look for the real options.

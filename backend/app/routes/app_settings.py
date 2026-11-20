@@ -94,6 +94,8 @@ class UnifiedMetaSignupCompleteRequest(BaseModel):
     # Instagram, so a Page-less signup still connects WhatsApp.
     page_id: str | None = None
     ad_account_id: str | None = None
+    # The Meta catalogue the Catalogue page sends items to (optional).
+    catalog_id: str | None = None
 
 
 class MetaBusinessLoginCompleteRequest(BaseModel):
@@ -165,6 +167,8 @@ class IntakeConfigUpdate(BaseModel):
     amount_paise: int | None = None
     gst_percent: float | int | None = None
     collect_with: Literal["chat", "form"] | None = None  # "form" = WhatsApp Form (whatsapp_forms.py)
+    # The form's language and every text it shows: {"language": "en|ta|tanglish", "texts": {key: text}}
+    form_texts: dict | None = None
 
 
 class TelecallingConfigUpdate(BaseModel):
@@ -1554,6 +1558,9 @@ async def complete_meta_business_login(
     if catalog:
         _save_tenant_setting(db, tenant_id, "meta_catalog_id", catalog["id"])
         _save_tenant_setting(db, tenant_id, "meta_catalog_name", catalog.get("name") or catalog["id"])
+        # The Business Login token the catalogue was granted to (catalog_management): the
+        # Catalogue page pushes items with it (services/meta_catalog.py).
+        _save_tenant_setting(db, tenant_id, "meta_catalog_access_token", access_token, is_secret=True)
 
     _save_tenant_setting(db, tenant_id, "facebook_status", "live" if subscribed else "configured")
     _stamp_connection_source(db, tenant_id, "facebook", "embedded")
@@ -1634,6 +1641,10 @@ async def complete_unified_meta_signup(
     ad_account = ads_by_id.get(payload.ad_account_id) if payload.ad_account_id else None
     if payload.ad_account_id and not ad_account:
         raise HTTPException(status_code=400, detail="Select an ad account that was granted during this Meta signup.")
+    catalogs_by_id = {c.get("id"): c for c in assets.get("catalogs", []) if c.get("id")}
+    catalog = catalogs_by_id.get(payload.catalog_id) if payload.catalog_id else None
+    if payload.catalog_id and not catalog:
+        raise HTTPException(status_code=400, detail="Select a catalogue that was granted during this Meta signup.")
     if not await verify_waba_phone_number(waba_id, phone_number_id, access_token):
         raise HTTPException(status_code=400, detail="The WhatsApp number was not granted for this Meta business signup.")
     existing_phone = (
@@ -1660,6 +1671,8 @@ async def complete_unified_meta_signup(
         claims.insert(1, {"asset_type": "instagram_account", "asset_id": ig_account_id})
     if ad_account:
         claims.append({"asset_type": "ad_account", "asset_id": ad_account["id"]})
+    if catalog:
+        claims.append({"asset_type": "catalog", "asset_id": catalog["id"]})
     _claim_business_assets(db, tenant_id, claims)
 
     if not is_coexistence:
@@ -1752,6 +1765,10 @@ async def complete_unified_meta_signup(
         _save_tenant_setting(db, tenant_id, "meta_ads_account_name", ad_account.get("name") or ad_account["id"])
         _save_tenant_setting(db, tenant_id, "meta_ads_status", "configured")
         _stamp_connection_source(db, tenant_id, "meta_ads", "embedded")
+    if catalog:
+        _save_tenant_setting(db, tenant_id, "meta_catalog_id", catalog["id"])
+        _save_tenant_setting(db, tenant_id, "meta_catalog_name", catalog.get("name") or catalog["id"])
+        _save_tenant_setting(db, tenant_id, "meta_catalog_access_token", access_token, is_secret=True)
     if page and page.get("name"):
         _save_tenant_setting(db, tenant_id, "facebook_page_name", page["name"])
     if ig_account.get("username"):
@@ -2203,6 +2220,15 @@ async def patch_intake_config(
         effective_packages = patch["packages"] if "packages" in patch else current.get("packages")
         if not (_has_active_package(effective_packages or []) or current.get("amount_paise")):
             raise HTTPException(status_code=400, detail="Add at least one active package before enabling")
+    if "form_texts" in patch:
+        from app.services import form_texts as form_text_rules
+        problems = form_text_rules.problems(patch["form_texts"])
+        if problems:
+            raise HTTPException(status_code=400, detail=problems[0])
+        patch["form_texts"] = {
+            "language": form_text_rules.language_of(patch["form_texts"]),
+            "texts": {k: v.strip() for k, v in (patch["form_texts"].get("texts") or {}).items() if v and v.strip()},
+        }
     if "service_noun" in patch and not patch["service_noun"].strip():
         raise HTTPException(status_code=400, detail="service_noun cannot be blank")
     merged = {**current, **patch}

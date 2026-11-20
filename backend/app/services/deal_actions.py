@@ -756,6 +756,28 @@ async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     return None
 
 
+async def _send_form(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
+    """WhatsApp Forms the client lets the AI send (whatsapp_form_reach). Code checks the form is
+    one of those, published with its latest changes; the form goes out under the reply."""
+    from app.services import whatsapp_form_reach as reach
+    from app.services import whatsapp_forms as wf
+
+    if not ctx.buttons_enabled:
+        return "send_form refused: forms only open on WhatsApp."
+    if turn.menu:
+        return "send_form refused: something to tap is already attached to this reply."
+    form_id = str(args.get("form_id") or "")
+    allowed = {f["id"] for f in reach.ai_forms(ctx.db, ctx.tenant_id)}
+    if form_id not in allowed:
+        return "send_form refused: that is not one of the forms you may send."
+    design = wf.get_design(ctx.db, ctx.tenant_id, form_id)
+    form = wf.live_custom_form(ctx.db, ctx.tenant_id, design) if design else None
+    if not form:
+        return "send_form refused: that form isn't available right now. Carry on in the chat."
+    turn.menu = {"kind": "form", "design_id": form_id, "cta": form["cta"], "options": []}
+    return None
+
+
 _EXECUTORS = {
     deal_engine.TOOL_SHOW_OPTIONS: _show_options,
     deal_engine.TOOL_SELECT_OFFERING: _select_offering,
@@ -766,6 +788,7 @@ _EXECUTORS = {
     deal_engine.TOOL_CLOSE_DEAL: _close_deal,
     "recommend_catalog_item": _recommend_item,
     "send_quote": _send_quote,
+    "send_form": _send_form,
 }
 
 

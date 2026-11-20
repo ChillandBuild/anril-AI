@@ -345,6 +345,8 @@ async def _process_inbound_message_background(
     meta_media_id: str = "",
     interactive_id: str = "",
     form_response: str = "",
+    referral_ad_id: str = "",
+    context_wamid: str = "",
 ) -> None:
     from app.db.supabase import get_supabase
     db = get_supabase()
@@ -455,6 +457,26 @@ async def _process_inbound_message_background(
                     result = "continue"
                 if result in ("handled", "ignored"):
                     return
+            # A WhatsApp Form chosen for the ad they came from or the broadcast they answered
+            # (whatsapp_form_reach). Automatic, so only with Auto-Reply on; the client picks
+            # INSTEAD of Anril's reply or AFTER it. A failure never blocks the reply.
+            form_match = None
+            if not form_response and auto_reply_on and (referral_ad_id or context_wamid):
+                try:
+                    from app.services import whatsapp_form_reach
+                    form_match = whatsapp_form_reach.inbound_match(
+                        db, tenant_id, lead_id, ad_id=referral_ad_id or None, context_wamid=context_wamid or None,
+                    )
+                    if form_match and form_match["timing"] == "instead":
+                        from app.services.intake import note_lead_message
+                        note_lead_message(db, tenant_id, lead_id)
+                        await whatsapp_form_reach.send_match(
+                            db, tenant_id, lead_id, phone, form_match, meta_phone_number_id or None,
+                        )
+                        return
+                except Exception:
+                    logger.exception("Form for ad/broadcast failed for lead %s -- replying as usual", lead_id)
+                    form_match = None
             # Accept quote (Orders & payments): it becomes an order and the advance link goes
             # out. Customer-asked, like a payment, so it runs even with auto-reply off.
             from app.services.order_quotes import accept_from_chat, deal_from_button
@@ -481,6 +503,14 @@ async def _process_inbound_message_background(
                 )
             except Exception as e:
                 logger.error(f"Reply routing failed for lead {lead_id}: {e}")
+            if form_match and form_match["timing"] == "after":
+                try:
+                    from app.services import whatsapp_form_reach
+                    await whatsapp_form_reach.send_match(
+                        db, tenant_id, lead_id, phone, form_match, meta_phone_number_id or None,
+                    )
+                except Exception:
+                    logger.exception("Form after reply failed for lead %s", lead_id)
         elif msg_type in ("image", "document", "video", "sticker"):
             # No caption to route as text and no transcript to produce (unlike
             # audio) -- we genuinely cannot read this. One canned line beats the
@@ -1244,6 +1274,8 @@ async def whatsapp_webhook(
                         meta_media_id=media_id,
                         interactive_id=interactive_id,
                         form_response=form_response,
+                        referral_ad_id=referral_ad_id or "",
+                        context_wamid=str((msg.get("context") or {}).get("id") or ""),
                     )
 
                 # Handle message status updates (delivered, read, failed)

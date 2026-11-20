@@ -46,21 +46,101 @@ async def list_items(q: str | None = None, tenant_id: str = Depends(get_tenant_i
     for m in media:
         first_photo.setdefault(m["catalog_item_id"], m["storage_path"])
     bucket = db.storage.from_("catalog-media")
+    extra = _list_extras(db, tenant_id, wanted)
     return {
         "data": [
             {
-                **i,
+                **{k: v for k, v in i.items() if k != "embedding"},
+                "embedding": bool(i.get("embedding")),
                 "held_quantity": held.get(i["id"], 0),
                 "thumbnail_url": bucket.get_public_url(first_photo[i["id"]]) if i["id"] in first_photo else None,
+                **extra.get(i["id"], _EMPTY_EXTRAS),
             }
             for i in items
         ]
     }
 
 
+_EMPTY_EXTRAS = {"sizes": [], "colours": [], "out_variants": [], "low_variants": [], "sold_30d": 0, "waiting": 0}
+_SOLD_DAYS = 30
+
+
+def _list_extras(db, tenant_id: str, wanted: set[str]) -> dict[str, dict]:
+    """Per item, for the Items list: sizes and colours, which of them are out or on their last
+    pieces, units sold in the last 30 days, and people waiting for a "back in stock" message."""
+    from datetime import timedelta
+    out: dict[str, dict] = {}
+
+    def entry(item_id: str) -> dict:
+        return out.setdefault(item_id, {k: (list(v) if isinstance(v, list) else v) for k, v in _EMPTY_EXTRAS.items()})
+
+    for v in (
+        db.table("catalog_item_variants").select("catalog_item_id, size, colour, stock_quantity, sort_order")
+        .eq("tenant_id", tenant_id).order("sort_order").limit(20000).execute()
+    ).data or []:
+        if v["catalog_item_id"] not in wanted:
+            continue
+        e = entry(v["catalog_item_id"])
+        if v.get("size") and v["size"] not in e["sizes"]:
+            e["sizes"].append(v["size"])
+        if v.get("colour") and v["colour"] not in e["colours"]:
+            e["colours"].append(v["colour"])
+        label = " ".join(x for x in (v.get("colour"), v.get("size")) if x)
+        stock = int(v.get("stock_quantity") or 0)
+        if stock <= 0:
+            e["out_variants"].append(label)
+        elif stock == 1:
+            e["low_variants"].append(label)
+    since = (datetime.now(timezone.utc) - timedelta(days=_SOLD_DAYS)).isoformat()
+    for m in (
+        db.table("stock_movements").select("catalog_item_id, delta")
+        .eq("tenant_id", tenant_id).eq("reason", "sale").gte("created_at", since).limit(50000).execute()
+    ).data or []:
+        if m["catalog_item_id"] in wanted:
+            entry(m["catalog_item_id"])["sold_30d"] += -int(m.get("delta") or 0)
+    for w in (
+        db.table("stock_waitlist").select("catalog_item_id")
+        .eq("tenant_id", tenant_id).is_("notified_at", "null").limit(20000).execute()
+    ).data or []:
+        if w["catalog_item_id"] in wanted:
+            entry(w["catalog_item_id"])["waiting"] += 1
+    return out
+
+
 def _validate_gst_rate(value) -> None:
     if value is not None and not (0 <= float(value) <= 40):
         raise HTTPException(status_code=400, detail="gst_rate must be between 0 and 40")
+
+
+def _clean_stock_fields(payload: dict) -> dict:
+    """Cost price, HSN and the low-stock alert level from the Edit item form (only keys sent)."""
+    out: dict = {}
+    if "cost_price_paise" in payload:
+        cost = payload["cost_price_paise"]
+        if cost is not None:
+            try:
+                cost = int(cost)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Cost price must be a number")
+            if cost < 0:
+                raise HTTPException(status_code=400, detail="Cost price must not be negative")
+        out["cost_price_paise"] = cost
+    if "hsn_code" in payload:
+        hsn = "".join(str(payload["hsn_code"] or "").split())
+        if hsn and not (hsn.isdigit() and 4 <= len(hsn) <= 8):
+            raise HTTPException(status_code=400, detail="HSN is 4 to 8 digits")
+        out["hsn_code"] = hsn or None
+    if "low_stock_at" in payload:
+        level = payload["low_stock_at"]
+        if level is not None:
+            try:
+                level = int(level)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="The alert level must be a whole number")
+            if level < 0 or level > 100_000:
+                raise HTTPException(status_code=400, detail="The alert level must be 0 or more")
+        out["low_stock_at"] = level
+    return out
 
 
 def _log_initial_stock(db, tenant_id: str, item_id: str, quantity: int, user_id: str | None) -> None:
@@ -99,6 +179,7 @@ async def create_item(
         "price_note": payload.get("price_note"),
         "stock_quantity": stock_quantity,
         "gst_rate": payload.get("gst_rate"),
+        **_clean_stock_fields(payload),
     }).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create catalog item")
@@ -127,6 +208,7 @@ async def update_item(
         k: v for k, v in payload.items()
         if k in {"name", "item_type", "description", "status", "attributes", "variant_group_id", "price_paise", "price_note", "stock_quantity", "gst_rate"}
     }
+    updates.update(_clean_stock_fields(payload))
     if "status" in updates and updates["status"] not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"status must be one of {_VALID_STATUSES}")
     if updates.get("price_paise") is not None and updates["price_paise"] < 0:
@@ -200,6 +282,8 @@ async def delete_item(
     )
     if not res.data:
         raise HTTPException(status_code=404, detail="Catalog item not found")
+    from app.services.meta_catalog import delete_from_meta
+    await delete_from_meta(tenant_id, res.data[0].get("meta_retailer_ids") or [])
     return {"success": True}
 
 
@@ -670,3 +754,205 @@ async def save_variants(
     if wanted:
         db.table("catalog_items").update({"stock_quantity": total}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
     return await list_variants(item_id, tenant_id=tenant_id)
+
+
+# ── The item page (Catalogue redesign, migration 300) ───────────────────────────
+
+_STOCK_WHY = {"stock_in": "New stock came", "found": "Found in shop", "damaged": "Damaged", "lost": "Lost",
+              "supplier_return": "Returned to supplier", "count_wrong": "Count was wrong"}
+
+
+@router.get("/items/{item_id}")
+async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+    """One item for its page: the item, sizes x colours, photos, sold this month, people waiting."""
+    from app.services.deals import held_quantities
+    from app.services.meta_catalog import item_link
+    db = get_supabase()
+    rows = (
+        db.table("catalog_items").select("*").eq("id", str(item_id)).eq("tenant_id", tenant_id).limit(1).execute()
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    item = {k: v for k, v in rows[0].items() if k != "embedding"}
+    item["embedding"] = bool(rows[0].get("embedding"))
+    bucket = db.storage.from_("catalog-media")
+    photos = [
+        {"id": m["id"], "url": bucket.get_public_url(m["storage_path"]), "label": m.get("label")}
+        for m in (
+            db.table("catalog_media").select("id, storage_path, label, sort_order").eq("tenant_id", tenant_id)
+            .eq("catalog_item_id", str(item_id)).order("sort_order").execute()
+        ).data or []
+    ]
+    month_start = _month_start_ist()
+    sold = sum(
+        -int(m.get("delta") or 0) for m in (
+            db.table("stock_movements").select("delta").eq("tenant_id", tenant_id).eq("catalog_item_id", str(item_id))
+            .eq("reason", "sale").gte("created_at", month_start).limit(10000).execute()
+        ).data or []
+    )
+    waiting = len((
+        db.table("stock_waitlist").select("id").eq("tenant_id", tenant_id).eq("catalog_item_id", str(item_id))
+        .is_("notified_at", "null").limit(10000).execute()
+    ).data or [])
+    group = None
+    if item.get("variant_group_id"):
+        g = (db.table("catalog_variant_groups").select("id, name").eq("id", item["variant_group_id"])
+             .eq("tenant_id", tenant_id).limit(1).execute()).data or []
+        group = g[0]["name"] if g else None
+    held = held_quantities(tenant_id, [item["id"]], db).get(item["id"], 0) if item.get("stock_quantity") is not None else 0
+    return {
+        **item,
+        "held_quantity": held,
+        "group_name": group,
+        "photos": photos,
+        "sold_this_month": sold,
+        "waiting": waiting,
+        "public_url": item_link(item["id"]),
+        **(await list_variants(item_id, tenant_id=tenant_id)),
+    }
+
+
+def _month_start_ist() -> str:
+    from datetime import timedelta
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+@router.post("/items/{item_id}/correct-stock")
+async def correct_stock(
+    item_id: UUID,
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    ctx: dict = Depends(require_catalog_manage),
+):
+    """Correct one size/colour (variant_id) or the item's single number, with the reason saved
+    in the stock history. payload: variant_id?, to (the right number), why (a _STOCK_WHY key)."""
+    from app.services.deals import adjust_stock, adjust_variant_stock
+    why = payload.get("why")
+    if why not in _STOCK_WHY:
+        raise HTTPException(status_code=400, detail="Pick why the stock changed")
+    try:
+        target = int(payload.get("to"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Type the right stock")
+    if target < 0 or target > 1_000_000:
+        raise HTTPException(status_code=400, detail="Stock must be 0 or more")
+    db = get_supabase()
+    note = _STOCK_WHY[why]
+    reason = "restock" if why == "stock_in" else "adjustment"
+    variant_id = payload.get("variant_id")
+    if variant_id:
+        rows = (
+            db.table("catalog_item_variants").select("id, stock_quantity").eq("id", str(variant_id))
+            .eq("catalog_item_id", str(item_id)).eq("tenant_id", tenant_id).limit(1).execute()
+        ).data or []
+        if not rows:
+            raise HTTPException(status_code=404, detail="That size or colour isn't on this item")
+        delta = target - int(rows[0].get("stock_quantity") or 0)
+        if delta:
+            result = adjust_variant_stock(tenant_id, str(variant_id), delta, reason, note=note,
+                                          created_by=ctx.get("user_id"), db=db)
+            if not result["ok"]:
+                raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
+        return await item_detail(item_id, tenant_id=tenant_id)
+    if _has_variants(db, tenant_id, str(item_id)):
+        raise HTTPException(status_code=400, detail="Pick the size or colour to correct")
+    rows = (
+        db.table("catalog_items").select("stock_quantity").eq("id", str(item_id)).eq("tenant_id", tenant_id)
+        .limit(1).execute()
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    current = rows[0].get("stock_quantity")
+    if current is None:
+        db.table("catalog_items").update({"stock_quantity": 0}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
+        current = 0
+    delta = target - int(current)
+    if delta:
+        result = adjust_stock(tenant_id, str(item_id), delta, reason, note=note,
+                              created_by=ctx.get("user_id"), db=db)
+        if not result["ok"]:
+            raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
+    return await item_detail(item_id, tenant_id=tenant_id)
+
+
+# ── The shop's Meta catalogue (services/meta_catalog.py) ────────────────────────
+
+@router.get("/meta")
+async def meta_catalogue_status(tenant_id: str = Depends(get_tenant_id)):
+    from app.services import meta_catalog
+    return meta_catalog.status(get_supabase(), tenant_id)
+
+
+@router.post("/meta")
+async def meta_catalogue_action(
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    """action: "on" (show the catalogue on WhatsApp: send everything), "off" (stop sending),
+    "again" (send every item again now)."""
+    from app.services import meta_catalog
+    action = payload.get("action")
+    if action not in ("on", "off", "again"):
+        raise HTTPException(status_code=400, detail="action must be on, off or again")
+    db = get_supabase()
+    if action != "off" and not meta_catalog.linked_catalog(tenant_id):
+        raise HTTPException(status_code=400, detail="Connect your Meta catalogue first")
+    if action == "again":
+        meta_catalog.resend_all(db, tenant_id)
+    else:
+        meta_catalog.set_sync(db, tenant_id, action == "on")
+    if action != "off":
+        await meta_catalog.push_tenant(db, tenant_id)
+    return meta_catalog.status(db, tenant_id)
+
+
+# ── The public item page Meta links to (no sign-in) ─────────────────────────────
+
+public_router = APIRouter()
+
+
+@public_router.get("/{item_id}")
+async def public_item(item_id: UUID):
+    """Name, price, photos and what's in stock for a Ready product, plus the shop's WhatsApp
+    to order on. Drafts and unknown ids are 404, so nothing unpublished shows."""
+    from app.routes.inbound_leads import _primary_whatsapp_number
+    from app.services.business_details import get_business_details
+    db = get_supabase()
+    rows = (
+        db.table("catalog_items").select("id, tenant_id, name, description, price_paise, price_note, stock_quantity")
+        .eq("id", str(item_id)).eq("status", "ready").limit(1).execute()
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+    item = rows[0]
+    tenant_id = item["tenant_id"]
+    bucket = db.storage.from_("catalog-media")
+    photos = [
+        bucket.get_public_url(m["storage_path"]) for m in (
+            db.table("catalog_media").select("storage_path, sort_order").eq("tenant_id", tenant_id)
+            .eq("catalog_item_id", item["id"]).order("sort_order").limit(10).execute()
+        ).data or []
+    ]
+    variants = (
+        db.table("catalog_item_variants").select("size, colour, stock_quantity, price_paise, sort_order")
+        .eq("tenant_id", tenant_id).eq("catalog_item_id", item["id"]).order("sort_order").execute()
+    ).data or []
+    business = get_business_details(tenant_id, db)
+    number = "".join(ch for ch in str(_primary_whatsapp_number(db, tenant_id) or "") if ch.isdigit())
+    return {
+        "name": item["name"],
+        "description": item.get("description"),
+        "price_paise": item.get("price_paise"),
+        "price_note": item.get("price_note"),
+        "in_stock": item.get("stock_quantity") is None or int(item["stock_quantity"]) > 0,
+        "photos": photos,
+        "options": [
+            {"size": v.get("size"), "colour": v.get("colour"), "in_stock": int(v.get("stock_quantity") or 0) > 0,
+             "price_paise": v.get("price_paise") if v.get("price_paise") is not None else item.get("price_paise")}
+            for v in variants
+        ],
+        "shop": {"name": business.get("legal_name") or "", "city": business.get("city") or ""},
+        "whatsapp": number or None,
+    }

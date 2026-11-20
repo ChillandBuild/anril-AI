@@ -73,6 +73,7 @@ CALLEES = {
     "inbound-stopped-replying": ("app.services.inbound_auto_results.mark_stopped_replying", False, False),
     "unmarked-bookings": ("app.services.inbound_auto_results.remind_unmarked_bookings", False, False),
     "order-payment-reminders": ("app.services.orders.send_due_reminders", True, False),
+    "meta-catalogue-sync": ("app.services.meta_catalog.sync_all_tenants", True, False),
 }
 
 
@@ -85,6 +86,7 @@ EVERY = {
     "scheduled-broadcasts": 60, "reengagement-rules": 60, "silence-nudge": 60,
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
     "scheduled-templates": 60, "sms-send": 60, "companion-kb-ingest": 60, "otp-sweep": 60,
+    "meta-catalogue-sync": 60,
     "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
     "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "instant-forms-catch-up": 1800, "ad-insights-sync": 3600,
@@ -125,7 +127,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 35
+    assert len(_periodic()) == 36
 
 
 def test_task_name_matches_periodic_id():
@@ -178,7 +180,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (22, 5, 8)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (23, 5, 8)
 
 
 def test_sync_and_async_split():
