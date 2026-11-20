@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSettingsPath } from "@/components/settingsNavigation";
+import { buildNavAccess } from "./useNavAccess";
 import {
   ANALYTICS_LINK,
   CHIP_SETS,
@@ -123,10 +124,11 @@ describe("navSections tab coverage", () => {
     },
   );
 
-  it("holds all leaf tabs plus the Telecalling and Settings groups", () => {
+  it("holds all leaf tabs plus the Telecalling group", () => {
     // Phase 2: Scheduled templates and API & docs lost their rows, Replies & handover gained one.
-    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1);
-    expect(allEntries().filter((e) => e.kind === "group")).toHaveLength(2);
+    // Settings home: Users & Roles and Subscription fold into the one Settings row.
+    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1);
+    expect(allEntries().filter((e) => e.kind === "group").map((e) => e.key)).toEqual(["telecalling"]);
   });
 
   it("the Telecalling group covers the four telecalling pages", () => {
@@ -395,10 +397,9 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
     expect(set!.chips.map((chip) => [chip.label, chip.href])).toEqual(EXPECTED_CHIPS[chipSet]);
   });
 
-  it.each(CASES)("$path is no longer a Settings page, and the Settings group is not active on it", ({ path }) => {
+  it.each(CASES)("$path is no longer a Settings page, and the Settings row is not active on it", ({ path }) => {
     expect(isSettingsPath(path)).toBe(false);
-    const settingsGroup = allEntries().find((e) => e.kind === "group" && e.key === "settings")!;
-    expect(settingsGroup.isActive(path)).toBe(false);
+    expect(leafByKey("settings").isActive(path)).toBe(false);
   });
 
   it("chipSetFor is null on pages with no siblings", () => {
@@ -427,7 +428,7 @@ describe("v9.2 main menu (Phase 1)", () => {
   it("follows the redesign order and names", () => {
     expect(NAV_MENU.map(row)).toEqual([
       "Chats", "Customers", "WhatsApp", "Anril Setup", "Engage", "Reach",
-      "Anril OTP", "Anril SMS", "Commerce", "Call IQ", "Reports", "Account",
+      "Anril OTP", "Anril SMS", "Commerce", "Call IQ", "Reports", "Settings",
     ]);
   });
 
@@ -437,6 +438,7 @@ describe("v9.2 main menu (Phase 1)", () => {
       ["Customers", "/dashboard/leads"],
       ["Reach", "/dashboard/outbound-leads"],
       ["Reports", "/dashboard/analytics"],
+      ["Settings", "/dashboard/settings"],
     ]);
     expect(ANALYTICS_LINK.label).toBe("Reports");
   });
@@ -468,4 +470,79 @@ describe("sidebarFoldsOn", () => {
       expect(sidebarFoldsOn(path)).toBe(false);
     },
   );
+});
+
+describe("Settings home: one Settings row, last in the menu", () => {
+  const settings = leafByKey("settings");
+  const access = (role: "owner" | "caller", permissions: string[], subStatus = "active") =>
+    buildNavAccess({ role, permissions, enabledFeatures: [], subStatus }).access;
+
+  it("is the last menu row, a plain link right after Reports, and the Account section is gone", () => {
+    const last = NAV_MENU[NAV_MENU.length - 1];
+    expect(last.kind === "link" && last.leaf.key).toBe("settings");
+    expect(NAV_MENU[NAV_MENU.length - 2]).toEqual({ kind: "link", leaf: ANALYTICS_LINK });
+    expect(NAV_SECTIONS.map((s) => s.key)).not.toContain("account");
+    expect(settings.label).toBe("Settings");
+    expect(settings.href).toBe("/dashboard/settings");
+  });
+
+  it("shows for a user who has only the settings gate, and opens the Settings home", () => {
+    const a = access("caller", ["settings.view"]);
+    expect(settings.visible(a)).toBe(true);
+    expect(leafHref(settings, a)).toBe("/dashboard/settings");
+  });
+
+  it("shows for a subscribed user who has only the roles gate, and opens the Settings home", () => {
+    const a = access("caller", ["roles.manage"]);
+    expect(settings.visible(a)).toBe(true);
+    expect(leafHref(settings, a)).toBe("/dashboard/settings");
+  });
+
+  it("shows for an unsubscribed user with only subscription.view, and opens Plans & subscription directly", () => {
+    // The dashboard layout bounces an unsubscribed user from every address except Home and /dashboard/subscription.
+    const a = access("caller", ["subscription.view"], "none");
+    expect(settings.visible(a)).toBe(true);
+    expect(leafHref(settings, a)).toBe("/dashboard/subscription");
+  });
+
+  it("shows for an unsubscribed owner and opens Plans & subscription", () => {
+    const a = access("owner", [], "pending_approval");
+    expect(settings.visible(a)).toBe(true);
+    expect(leafHref(settings, a)).toBe("/dashboard/subscription");
+  });
+
+  it("is hidden for a user with none of the gates, and for an unsubscribed user who has only settings or roles", () => {
+    expect(settings.visible(access("caller", []))).toBe(false);
+    expect(settings.visible(access("caller", ["leads.view"]))).toBe(false);
+    expect(settings.visible(access("caller", ["settings.view", "roles.view"], "none"))).toBe(false);
+    expect(settings.visible(noAccess)).toBe(false);
+  });
+
+  it.each([
+    "/dashboard/settings",
+    "/dashboard/settings/account",
+    "/dashboard/settings/connect-channels",
+    "/dashboard/settings/telecalling-behavior",
+    "/dashboard/settings/notifications",
+    "/dashboard/settings/claude",
+    "/dashboard/roles",
+    "/dashboard/roles/anything",
+    "/dashboard/subscription",
+  ])("is active on %s", (path) => {
+    expect(settings.isActive(path)).toBe(true);
+    expect(isSettingsPath(path)).toBe(true);
+    expect(allLeaves().filter((leaf) => leaf.isActive(path)).map((leaf) => leaf.key)).toEqual(["settings"]);
+  });
+
+  it.each(["/dashboard", "/dashboard/analytics", "/dashboard/settings/follow-ups", "/dashboard/otp/settings", "/dashboard/subscriptions"])(
+    "is not active on %s",
+    (path) => {
+      expect(settings.isActive(path)).toBe(false);
+    },
+  );
+
+  it("is not inside any folding section, so no section opens on a Settings page", () => {
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/roles")).toBeNull();
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/subscription")).toBeNull();
+  });
 });

@@ -33,14 +33,21 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
 };
 
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
-  account: "Profile & Business",
-  "connect-channels": "Connect Channels",
+  account: "Business details",
+  "connect-channels": "Channels",
   "auto-reply": "Auto-Reply",
   "follow-ups": "Follow-Ups",
   inbox: "Inbox & Handover",
-  "telecalling-behavior": "Telecalling Behavior",
-  notifications: "Notifications",
+  "telecalling-behavior": "Calling",
+  notifications: "Alerts",
   claude: "Anril AI for Claude",
+};
+
+/** Settings pages that live elsewhere in the menu since v9.2 Phase 2. */
+const MOVED_SETTINGS_TITLES: Record<string, string> = {
+  "follow-ups": "Auto-Messages / Follow-ups",
+  "auto-reply": "Replies & handover / Auto-reply",
+  inbox: "Replies & handover / Handover",
 };
 
 // Define a map of exact path matches and dynamic route prefixes
@@ -140,7 +147,7 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
     tabs: [
       { value: "roles", label: "Roles", icon: ShieldCheck },
       { value: "users", label: "Users", icon: Users },
-      { value: "audit", label: "Audit Log", icon: ScrollText },
+      { value: "audit", label: "Activity log", icon: ScrollText },
     ],
   },
   // Customers. Old links say tab=leads (All people) or tab=reengagement (Follow-ups).
@@ -226,7 +233,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
 
   if (pathname === "/dashboard") {
     return {
-      title: "Product Overview",
+      title: "Home",
       description: "Here's what's happening with your leads.",
     };
   }
@@ -236,7 +243,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     if (tab === "tags") desc = "Create and manage tags to segment and label leads for outbound campaigns.";
     if (tab === "opted-out") desc = "Leads who opted out of broadcasts, globally or for one tag.";
     return {
-      title: "Outbound Leads",
+      title: "Reach",
       description: desc,
     };
   }
@@ -269,7 +276,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname === "/dashboard/analytics") {
     return {
-      title: "Analytics",
+      title: "Reports",
       description: "Service metrics across all channels and the lead funnel.",
     };
   }
@@ -351,33 +358,41 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname === "/dashboard/numbers") {
     return {
-      title: "WhatsApp Numbers",
+      title: "Numbers",
       description: "Manage sender numbers and outbound routing.",
+    };
+  }
+  if (pathname === "/dashboard/settings") {
+    return {
+      title: "Settings",
+      description: "Your business, connections, team and alerts, in one place.",
     };
   }
   if (pathname?.startsWith("/dashboard/settings/")) {
     const segment = pathname.split("/")[3] ?? "general";
     const label = SETTINGS_ROUTE_LABELS[segment] ?? "Settings";
+    // Pages that moved out of Settings in the v9.2 menu are titled by their new home.
+    const moved = MOVED_SETTINGS_TITLES[segment];
     return {
-      title: `Account Settings / ${label}`,
+      title: moved ?? `Settings / ${label}`,
       description: SETTINGS_ROUTE_DESCRIPTIONS[segment] ?? "Account and AI settings.",
     };
   }
   if (pathname === "/dashboard/auto-messages") {
     return {
-      title: "Auto-Messages",
+      title: "Auto-Messages / When something happens",
       description: "Send your approved WhatsApp template when something happens: a form fill, a sign-up or a purchase.",
     };
   }
   if (pathname === "/dashboard/scheduled-templates") {
     return {
-      title: "Scheduled templates",
+      title: "Auto-Messages / One-time sends",
       description: "Every template and broadcast waiting to go out, in one place.",
     };
   }
   if (pathname === "/dashboard/templates") {
     return {
-      title: "WhatsApp Message Templates",
+      title: "Templates",
       description: "Create, sync and manage your WhatsApp message templates.",
     };
   }
@@ -406,7 +421,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/otp" || pathname.startsWith("/dashboard/otp/")) {
-    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Setup", api: "API & docs" };
+    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Setup", api: "Connect your website" };
     const tab = otpTab[pathname.split("/")[3] ?? ""] ?? otpTab[""];
     return {
       title: `Anril OTP / ${tab}`,
@@ -440,9 +455,15 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Browse and manage notes across your leads.",
     };
   }
+  if (pathname === "/dashboard/subscription") {
+    return {
+      title: "Settings / Plans & subscription",
+      description: "Your plan, what it includes and requests for more.",
+    };
+  }
   if (pathname === "/dashboard/roles") {
     return {
-      title: "Users & Roles",
+      title: "Team & roles",
       description: "Define read and write access for every dashboard area, then assign one role to each team member.",
     };
   }

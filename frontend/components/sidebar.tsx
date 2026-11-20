@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
-import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
+import { activeSettingsItem, groupSettingsItems, isSettingsPath, settingsItemsFor, type SettingsNavItem } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
 import { NavCount, navCountLabel } from "@/components/nav/NavCount";
@@ -145,16 +145,6 @@ function TelecallingGroup({
   );
 }
 
-function SettingsGroupButton({ group, onOpen }: { group: NavGroup; onOpen: () => void }) {
-  return (
-    <button type="button" onClick={onOpen} className={cn(ROW, ROW_NESTED, "pl-4")}>
-      <group.icon size={15} strokeWidth={1.6} className={CARVED} aria-hidden="true" />
-      <span className="nav-lbl min-w-0 flex-1 truncate">{group.label}</span>
-      <ChevronRight size={13} strokeWidth={1.6} className="nav-chevron shrink-0" aria-hidden="true" />
-    </button>
-  );
-}
-
 interface SidebarProps {
   /** Accepted so existing callers compile. The sidebar always renders the full desktop layout. */
   collapsed?: boolean;
@@ -174,10 +164,9 @@ export function Sidebar(_props: SidebarProps) {
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
   const fold = useSidebarRail(pathname);
 
-  // Nested group open state (Telecalling, Settings), unchanged from before.
+  // Telecalling group open state, unchanged from before.
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     Telecalling: false,
-    Settings: false,
   });
   // The section the user clicked open (null = all shut), for this page only:
   // a new page reopens the section that holds it. One open at a time.
@@ -243,9 +232,15 @@ export function Sidebar(_props: SidebarProps) {
 
   const { isSubscribed, canSettings } = access;
   const showTc = Boolean(expandedGroups.Telecalling);
-  const visibleSettingsItems = getVisibleSettingsItems(purchasedFeatures, claudeOn);
-  const isSettingsActive = isSettingsPath(pathname);
-  const showSettings = expandedGroups.Settings || isSettingsActive;
+  // The Settings row opens /dashboard/settings, so the sidebar swaps to the Settings list
+  // exactly when the page is a Settings page (home, its pages, Team & roles, Plans & subscription).
+  const showSettings = isSettingsPath(pathname);
+  const visibleSettingsItems = settingsItemsFor(access, purchasedFeatures, claudeOn);
+  const settingsList = groupSettingsItems(visibleSettingsItems);
+  const activeSettings = activeSettingsItem(visibleSettingsItems, pathname);
+  const renderSettingsItem = (item: SettingsNavItem) => (
+    <MainNavItem key={item.href} href={item.href} active={activeSettings?.href === item.href} label={item.label} />
+  );
 
   const dashboard = dashboardEntry(access);
 
@@ -267,28 +262,17 @@ export function Sidebar(_props: SidebarProps) {
     />
   );
 
-  const renderGroup = (group: NavGroup) => {
-    if (group.key === "telecalling") {
-      return (
-        <TelecallingGroup
-          key={group.key}
-          group={group}
-          items={tcGroupItems}
-          alertCount={alertCount}
-          open={showTc}
-          onToggle={() => toggleGroup("Telecalling")}
-          pathname={pathname}
-        />
-      );
-    }
-    return (
-      <SettingsGroupButton
-        key={group.key}
-        group={group}
-        onOpen={() => toggleGroup("Settings")}
-      />
-    );
-  };
+  const renderGroup = (group: NavGroup) => (
+    <TelecallingGroup
+      key={group.key}
+      group={group}
+      items={tcGroupItems}
+      alertCount={alertCount}
+      open={showTc}
+      onToggle={() => toggleGroup("Telecalling")}
+      pathname={pathname}
+    />
+  );
 
   const renderEntry = (entry: NavEntry) => (entry.kind === "link" ? renderLeaf(entry, true) : renderGroup(entry));
 
@@ -350,43 +334,24 @@ export function Sidebar(_props: SidebarProps) {
         <GlowScroll className="px-3.5">
           <button
             type="button"
-            onClick={() => {
-              setExpandedGroups((prev) => ({ ...prev, Settings: false }));
-              router.push("/dashboard");
-            }}
+            onClick={() => router.push("/dashboard")}
             className={cn(ROW, ROW_TOP, "mb-2 font-semibold")}
           >
             <ChevronLeft size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />
             <span className="nav-lbl truncate">Settings</span>
           </button>
 
-          {SETTINGS_GROUP_ORDER.map((group) => {
-            const groupItems = visibleSettingsItems.filter((i) => i.group === group);
-            if (groupItems.length === 0) return null;
-            return (
-              <div key={group} className="pt-3 first:pt-0">
-                <div className="nav-ws mb-2 truncate px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
-                  {group}
-                </div>
-                {groupItems.map((item) => {
-                  const matches = visibleSettingsItems.filter(
-                    (i) => pathname === i.href || pathname.startsWith(i.href + "/")
-                  );
-                  const bestMatch = matches.reduce<NavItem | null>(
-                    (best, i) => (!best || i.href.length > best.href.length ? i : best), null
-                  );
-                  return (
-                    <MainNavItem
-                      key={item.href}
-                      href={item.href}
-                      active={bestMatch?.href === item.href}
-                      label={item.label}
-                    />
-                  );
-                })}
+          {settingsList.groups.map(({ group, items }) => (
+            <div key={group} className="pt-3 first:pt-0">
+              <div className="nav-ws mb-2 truncate px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
+                {group}
               </div>
-            );
-          })}
+              {items.map(renderSettingsItem)}
+            </div>
+          ))}
+          {settingsList.loose.length > 0 && (
+            <div className="pt-3 first:pt-0">{settingsList.loose.map(renderSettingsItem)}</div>
+          )}
           <ActiveIndicator pathname={pathname} />
         </GlowScroll>
       ) : (

@@ -1,43 +1,82 @@
 import {
+  CreditCard,
   Headset,
   Megaphone,
   RadioTower,
+  ShieldCheck,
   Sparkles,
   UserCircle,
+  type LucideIcon,
 } from "lucide-react";
+import type { NavAccess } from "@/components/nav/navSections";
 
-export type SettingsGroup = "Account" | "Channels" | "Calling" | "Alerts";
+/** The four groups of the Settings list and the Settings home cards, in display order. */
+export type SettingsGroup = "My business" | "Connections" | "Team & roles" | "Alerts & automations";
 
 export type SettingsNavItem = {
   href: string;
-  icon: typeof UserCircle;
+  icon: LucideIcon;
   label: string;
-  group: SettingsGroup;
+  /** null = the one link under the groups (Plans & subscription): no heading, no card. */
+  group: SettingsGroup | null;
   entitlement?: "notifications" | "claude";
+  /** Any of these permissions opens the page (owners always pass). */
+  permissionAny: readonly string[];
+  /** The page needs an active subscription. False only for Plans & subscription, so unsubscribed users can still pay. */
+  needsSubscription: boolean;
 };
 
 /** The tenant feature key the operator adds to switch on Anril AI (the Claude connector). */
 export const CLAUDE_FEATURE = "claude";
 export const CLAUDE_SETTINGS_HREF = "/dashboard/settings/claude";
 
-// Order here is the order groups and items render in the sidebar and the
-// mobile "More" menu — see sidebar.tsx / MoreMenu.tsx.
+export const SETTINGS_HOME_HREF = "/dashboard/settings";
+export const ROLES_HREF = "/dashboard/roles";
+export const SUBSCRIPTION_HREF = "/dashboard/subscription";
+
+/** The gate every page that used to be a Settings page keeps. */
+const SETTINGS_PERMS = ["settings.view", "settings.manage"] as const;
+const ROLES_PERMS = ["roles.view", "roles.manage"] as const;
+const SUBSCRIPTION_PERMS = ["subscription.view", "subscription.manage"] as const;
+
+const settingsPage = (
+  href: string, icon: LucideIcon, label: string, group: SettingsGroup, entitlement?: SettingsNavItem["entitlement"],
+): SettingsNavItem => ({ href, icon, label, group, entitlement, permissionAny: SETTINGS_PERMS, needsSubscription: true });
+
+// Order here is the order groups and items render in the sidebar, the Settings
+// home page and the mobile "More" menu: see sidebar.tsx / MoreMenu.tsx.
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
-  { href: "/dashboard/settings/account", icon: UserCircle, label: "Profile & Business", group: "Account" },
-  { href: CLAUDE_SETTINGS_HREF, icon: Sparkles, label: "Anril AI for Claude", group: "Account", entitlement: "claude" },
-  { href: "/dashboard/settings/connect-channels", icon: RadioTower, label: "Connect Channels", group: "Channels" },
-  { href: "/dashboard/settings/telecalling-behavior", icon: Headset, label: "Telecalling Behavior", group: "Calling" },
-  { href: "/dashboard/settings/notifications", icon: Megaphone, label: "Notifications", group: "Alerts", entitlement: "notifications" },
+  settingsPage("/dashboard/settings/account", UserCircle, "Business details", "My business"),
+  settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "My business", "claude"),
+  settingsPage("/dashboard/settings/connect-channels", RadioTower, "Channels", "Connections"),
+  settingsPage("/dashboard/settings/telecalling-behavior", Headset, "Calling", "Connections"),
+  { href: ROLES_HREF, icon: ShieldCheck, label: "Team & roles", group: "Team & roles", permissionAny: ROLES_PERMS, needsSubscription: true },
+  settingsPage("/dashboard/settings/notifications", Megaphone, "Alerts", "Alerts & automations", "notifications"),
+  { href: SUBSCRIPTION_HREF, icon: CreditCard, label: "Plans & subscription", group: null, permissionAny: SUBSCRIPTION_PERMS, needsSubscription: false },
 ];
 
+/** Groups, in display order, for rendering group headings above their items. */
+export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["My business", "Connections", "Team & roles", "Alerts & automations"];
+
+/** One plain line per group, shown on its Settings home card. */
+export const SETTINGS_GROUP_INFO: Record<SettingsGroup, { description: string }> = {
+  "My business": { description: "Your business name, address and tax details." },
+  Connections: { description: "Connect your messaging channels and set how calling works." },
+  "Team & roles": { description: "Add your team and choose what each person can see." },
+  "Alerts & automations": { description: "Choose which alerts reach you, and where." },
+};
+
+const matchesPath = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
 /**
- * Auto-reply, Follow-ups and Inbox & handover are no longer Settings pages (they
- * live under Anril Setup and Engage in the menu). Their addresses stay under
- * /dashboard/settings/, so the Settings list is matched from its own items, not
- * from that prefix.
+ * Settings mode of the sidebar, and the Settings row's highlight: the Settings
+ * home, every settings page, Team & roles and Plans & subscription. Auto-reply,
+ * Follow-ups and Inbox & handover stay under /dashboard/settings/ in the address
+ * bar but live elsewhere in the menu, so this matches the list's own addresses,
+ * not that prefix.
  */
 export function isSettingsPath(pathname: string): boolean {
-  return SETTINGS_ITEMS.some((item) => pathname.startsWith(item.href));
+  return pathname === SETTINGS_HOME_HREF || SETTINGS_ITEMS.some((item) => matchesPath(pathname, item.href));
 }
 
 export function hasNotificationSettings(purchasedFeatures: string[]): boolean {
@@ -51,6 +90,7 @@ export function claudeSettingsOn(role: string | null, enabledFeatures: string[])
   return role === "owner" && enabledFeatures.includes(CLAUDE_FEATURE);
 }
 
+/** Entitlement filter only (what the tenant bought / was switched on). Per-user gates are settingsItemsFor / settingsItemsForMember. */
 export function getVisibleSettingsItems(purchasedFeatures: string[], claudeOn = false): SettingsNavItem[] {
   const showNotifications = hasNotificationSettings(purchasedFeatures);
 
@@ -61,5 +101,47 @@ export function getVisibleSettingsItems(purchasedFeatures: string[], claudeOn = 
   });
 }
 
-/** Groups, in display order, for rendering group headings above their items. */
-export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["Account", "Channels", "Calling", "Alerts"];
+/** May this user open the page? Gate only (no entitlements): the desktop rule, subscription included. */
+export function settingsItemVisible(item: SettingsNavItem, access: NavAccess): boolean {
+  return (!item.needsSubscription || access.isSubscribed) && access.canAny([...item.permissionAny]);
+}
+
+/** Desktop: the items this user sees, in list order. */
+export function settingsItemsFor(access: NavAccess, purchasedFeatures: string[], claudeOn: boolean): SettingsNavItem[] {
+  return getVisibleSettingsItems(purchasedFeatures, claudeOn).filter((item) => settingsItemVisible(item, access));
+}
+
+/**
+ * Phone drawer: the same gates minus the subscription check, which the drawer has
+ * never made (every drawer row is permission-only). A page the user cannot use
+ * while unsubscribed is bounced to Home by the dashboard layout, as before.
+ */
+export function settingsItemsForMember(
+  role: string | null, permissions: string[], purchasedFeatures: string[], claudeOn: boolean,
+): SettingsNavItem[] {
+  return getVisibleSettingsItems(purchasedFeatures, claudeOn).filter(
+    (item) => role === "owner" || item.permissionAny.some((permission) => permissions.includes(permission)),
+  );
+}
+
+/** The grouped shape the sidebar list, the drawer and the home cards all render. */
+export function groupSettingsItems(items: readonly SettingsNavItem[]): {
+  groups: { group: SettingsGroup; items: SettingsNavItem[] }[];
+  /** Items with no group, shown after the groups (Plans & subscription). */
+  loose: SettingsNavItem[];
+} {
+  return {
+    groups: SETTINGS_GROUP_ORDER.flatMap((group) => {
+      const inGroup = items.filter((item) => item.group === group);
+      return inGroup.length > 0 ? [{ group, items: inGroup }] : [];
+    }),
+    loose: items.filter((item) => item.group === null),
+  };
+}
+
+/** The row to light up in a list: the item with the longest address that matches the page. */
+export function activeSettingsItem(items: readonly SettingsNavItem[], pathname: string): SettingsNavItem | null {
+  return items
+    .filter((item) => matchesPath(pathname, item.href))
+    .reduce<SettingsNavItem | null>((best, item) => (!best || item.href.length > best.href.length ? item : best), null);
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MORE_ITEMS, MORE_SECTIONS, getVisibleMoreItems, isItemActive } from "./MoreMenu";
+import { groupSettingsItems, isSettingsPath, settingsItemsForMember } from "./settingsNavigation";
 
 const ALL_FEATURES = ["outbound_messaging", "inbound_messaging", "sms", "telecalling.scheduled", "telecalling.notes"];
 
@@ -17,7 +18,7 @@ function rowsFor(href: string) {
 describe("More drawer layout", () => {
   it("lists sections in the Phase 2 order, with the new names", () => {
     expect(MORE_SECTIONS.map((s) => s.title)).toEqual([
-      null, "WhatsApp", "Anril Setup", "Engage", null, "Anril OTP", "Anril SMS", "Commerce", "Call IQ", null, "Account",
+      null, "WhatsApp", "Anril Setup", "Engage", null, "Anril OTP", "Anril SMS", "Commerce", "Call IQ", null, null,
     ]);
   });
 
@@ -35,8 +36,13 @@ describe("More drawer layout", () => {
       ["Commerce", ["Orders & payments", "Catalogue"]],
       ["Call IQ", ["Scheduled Calls", "Call Review", "Team Performance"]],
       [null, ["Reports"]],
-      ["Account", ["Users & Roles"]],
+      [null, []],
     ]);
+  });
+
+  it("the Users & Roles row moved into the Settings box as Team & roles", () => {
+    expect(MORE_ITEMS.map((r) => r.label)).not.toContain("Users & Roles");
+    expect(MORE_SECTIONS[MORE_SECTIONS.length - 1].key).toBe("settings");
   });
 });
 
@@ -108,5 +114,41 @@ describe("combined rows keep every page's gate", () => {
 
   it("Catalogue still shows for a services-only user", () => {
     expect(member(["services.view"]).some((r) => r.label === "Catalogue")).toBe(true);
+  });
+});
+
+describe("Settings box in the drawer", () => {
+  const box = (role: string | null, permissions: string[]) => {
+    const items = settingsItemsForMember(role, permissions, [], false);
+    return {
+      groups: groupSettingsItems(items).groups.map((g) => [g.group, g.items.map((i) => i.label)]),
+      loose: groupSettingsItems(items).loose.map((i) => i.label),
+    };
+  };
+
+  it("has the 4 groups then Plans & subscription for an owner", () => {
+    expect(box("owner", [])).toEqual({
+      groups: [
+        ["My business", ["Business details"]],
+        ["Connections", ["Channels", "Calling"]],
+        ["Team & roles", ["Team & roles"]],
+        ["Alerts & automations", ["Alerts"]],
+      ],
+      loose: ["Plans & subscription"],
+    });
+  });
+
+  it("hides a group with no visible row, and keeps each row's gate", () => {
+    expect(box("agent", ["roles.view"])).toEqual({ groups: [["Team & roles", ["Team & roles"]]], loose: [] });
+    expect(box("agent", ["subscription.view"])).toEqual({ groups: [], loose: ["Plans & subscription"] });
+    expect(box("agent", ["settings.view"]).groups.map(([g]) => g)).toEqual(["My business", "Connections", "Alerts & automations"]);
+    expect(box("agent", [])).toEqual({ groups: [], loose: [] });
+  });
+
+  it("the box highlight and the sidebar use the same Settings-page rule", () => {
+    for (const path of ["/dashboard/settings", "/dashboard/roles", "/dashboard/subscription", "/dashboard/settings/account"]) {
+      expect(isSettingsPath(path), path).toBe(true);
+    }
+    expect(isSettingsPath("/dashboard/settings/inbox")).toBe(false);
   });
 });

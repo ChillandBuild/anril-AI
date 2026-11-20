@@ -25,7 +25,6 @@ import {
   ShoppingBag,
   Settings,
   SlidersHorizontal,
-  ShieldCheck,
   SquarePen,
   Sparkles,
   Zap,
@@ -36,7 +35,7 @@ import {
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
-import { claudeSettingsOn, getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
+import { activeSettingsItem, claudeSettingsOn, groupSettingsItems, isSettingsPath, settingsItemsForMember, type SettingsNavItem } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { ProductSwitch } from "@/components/nav/ProductSwitch";
@@ -60,7 +59,7 @@ export type MoreMenuSection =
   | "commerce"
   | "callIq"
   | "reports"
-  | "account";
+  | "settings";
 
 /** One page a row can open. */
 export type MoreMenuPage = MoreMenuGate & {
@@ -99,7 +98,8 @@ export const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | nul
   { key: "commerce", title: "Commerce" },
   { key: "callIq", title: "Call IQ" },
   { key: "reports", title: null },
-  { key: "account", title: "Account" },
+  // The Settings box below carries its own "Settings" heading, so the section has none.
+  { key: "settings", title: null },
 ];
 
 const MESSAGING_FEATURES = ["outbound_messaging", "inbound_messaging"];
@@ -181,7 +181,6 @@ export const MORE_ITEMS: MoreMenuItem[] = [
   { key: "call-review", icon: StickyNote, label: "Call Review", section: "callIq", pages: [{ href: "/dashboard/notes", permissionAny: ["telecalling.notes.view", "telecalling.notes"], feature: "telecalling.notes" }] },
   { key: "team", icon: Grid3X3, label: "Team Performance", section: "callIq", pages: [{ href: "/dashboard/team", permissionAny: ["team.view", "team.manage"] }] },
   { key: "analytics", icon: BarChart2, label: "Reports", section: "reports", pages: [{ href: "/dashboard/analytics", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES }] },
-  { key: "roles", icon: ShieldCheck, label: "Users & Roles", section: "account", pages: [{ href: "/dashboard/roles", permissionAny: ["roles.view", "roles.manage"] }] },
 ];
 
 function passesGate(gate: MoreMenuGate, role: string | null, enabledFeatures: string[], permissions: string[]) {
@@ -228,10 +227,32 @@ export function MoreMenu() {
   const items = getVisibleMoreItems(role, enabledFeatures, permissions);
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
   const brainCount = useBrainCount(items.some((item) => item.key === "brain"));
-  const canSettings = role === "owner" || permissions.includes("settings.view") || permissions.includes("settings.manage");
-  const settingsItems = getVisibleSettingsItems(purchasedFeatures, claudeSettingsOn(role, enabledFeatures));
+  // Each Settings row keeps the gate it had: settings pages need settings.view/manage, Team & roles
+  // roles.view/manage, Plans & subscription subscription.view/manage (owners pass all).
+  const settingsItems = settingsItemsForMember(role, permissions, purchasedFeatures, claudeSettingsOn(role, enabledFeatures));
+  const settingsList = groupSettingsItems(settingsItems);
+  const activeSettings = activeSettingsItem(settingsItems, pathname);
   // Auto-reply, Follow-ups and Inbox live under /dashboard/settings/ but are no longer Settings pages.
   const settingsActive = isSettingsPath(pathname);
+  const renderSettingsItem = (item: SettingsNavItem) => {
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setIsOpen(false)}
+        className={cn(
+          "flex min-h-10 items-center gap-2.5 rounded-lg px-2 py-2 text-[13px] font-semibold",
+          activeSettings?.href === item.href
+            ? "bg-primary-light text-primary"
+            : "text-ink-secondary hover:bg-white hover:text-ink",
+        )}
+      >
+        <Icon size={15} />
+        <span className="min-w-0 truncate">{item.label}</span>
+      </Link>
+    );
+  };
 
   return (
     <div className="relative lg:hidden">
@@ -266,7 +287,7 @@ export function MoreMenu() {
               </button>
             </div>
             <ProductSwitch onSwitch={() => setIsOpen(false)} />
-            {items.length === 0 && !canSettings ? (
+            {items.length === 0 && settingsItems.length === 0 ? (
               <div className="rounded-xl border border-border-subtle bg-surface-low px-3 py-4 text-center font-body text-sm text-ink-muted">
                 No more sections are available for this account.
               </div>
@@ -274,7 +295,7 @@ export function MoreMenu() {
               <div className="flex flex-col gap-2">
                 {MORE_SECTIONS.map((section) => {
                   const sectionItems = items.filter((item) => item.section === section.key);
-                  const showSettings = section.key === "account" && canSettings;
+                  const showSettings = section.key === "settings" && settingsItems.length > 0;
                   if (sectionItems.length === 0 && !showSettings) return null;
                   return (
                     <div key={section.key} className="flex flex-col gap-2">
@@ -314,37 +335,17 @@ export function MoreMenu() {
                             <span>Settings</span>
                           </div>
                           <div className="mt-1 flex flex-col gap-1 border-l border-border pl-2">
-                            {SETTINGS_GROUP_ORDER.map((group) => {
-                              const groupItems = settingsItems.filter((i) => i.group === group);
-                              if (groupItems.length === 0) return null;
-                              return (
-                                <div key={group} className="pt-1.5 first:pt-0">
-                                  <div className="px-2 pb-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-                                    {group}
-                                  </div>
-                                  {groupItems.map((item) => {
-                                    const Icon = item.icon;
-                                    const active = isActive(pathname, item.href);
-                                    return (
-                                      <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        onClick={() => setIsOpen(false)}
-                                        className={cn(
-                                          "flex min-h-10 items-center gap-2.5 rounded-lg px-2 py-2 text-[13px] font-semibold",
-                                          active
-                                            ? "bg-primary-light text-primary"
-                                            : "text-ink-secondary hover:bg-white hover:text-ink",
-                                        )}
-                                      >
-                                        <Icon size={15} />
-                                        <span className="min-w-0 truncate">{item.label}</span>
-                                      </Link>
-                                    );
-                                  })}
+                            {settingsList.groups.map(({ group, items: groupItems }) => (
+                              <div key={group} className="pt-1.5 first:pt-0">
+                                <div className="px-2 pb-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                                  {group}
                                 </div>
-                              );
-                            })}
+                                {groupItems.map(renderSettingsItem)}
+                              </div>
+                            ))}
+                            {settingsList.loose.length > 0 && (
+                              <div className="pt-1.5 first:pt-0">{settingsList.loose.map(renderSettingsItem)}</div>
+                            )}
                           </div>
                         </div>
                       )}

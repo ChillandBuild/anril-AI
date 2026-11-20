@@ -1,10 +1,12 @@
 import {
-  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, Coins, CreditCard, FileCheck, HandCoins,
+  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, Coins, FileCheck, HandCoins,
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
-  ShieldCheck, ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
+  ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
 } from "lucide-react";
-import { isSettingsPath } from "@/components/settingsNavigation";
+import {
+  SETTINGS_HOME_HREF, SETTINGS_ITEMS, isSettingsPath, settingsItemVisible,
+} from "@/components/settingsNavigation";
 
 /**
  * Everything the sidebar needs to decide what is visible. Built once per render
@@ -32,8 +34,7 @@ export type SectionKey =
   | "commerce"
   | "callIq"
   | "aiSetup"
-  | "whatsappSetup"
-  | "account";
+  | "whatsappSetup";
 
 /** Badge slots. The sidebar owns the live counts and renders them by key. */
 export type NavBadgeKey = "conversations" | "brain";
@@ -66,10 +67,10 @@ export interface NavLeaf {
   isActive: (pathname: string) => boolean;
 }
 
-/** A nested group rendered by sidebar.tsx with its own fold state (Telecalling, Settings). */
+/** A nested group rendered by sidebar.tsx with its own fold state (Telecalling). */
 export interface NavGroup {
   kind: "group";
-  key: "telecalling" | "settings";
+  key: "telecalling";
   label: string;
   icon: LucideIcon;
   visible: (access: NavAccess) => boolean;
@@ -383,34 +384,31 @@ const NUMBERS_POOL: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/numbers"),
 };
 
-const USERS_AND_ROLES: NavLeaf = {
-  kind: "link",
-  key: "users-and-roles",
-  href: "/dashboard/roles",
-  label: "Users & Roles",
-  icon: ShieldCheck,
-  visible: (a) => a.isSubscribed && a.canAny(["roles.view", "roles.manage"]),
-  isActive: (p) => p.startsWith("/dashboard/roles"),
-};
+/**
+ * The last row of the menu. It stands for every page in the Settings list (see
+ * SETTINGS_ITEMS) and keeps each page's own gate: it shows if the user may open
+ * ANY of them, and opens the Settings home, or, when the user may open only Plans
+ * & subscription (no active subscription: the dashboard layout sends them away
+ * from everything else), that page. It is active on all of them.
+ */
+const SETTINGS_PAGES: readonly NavPage[] = [
+  {
+    key: "settings-home",
+    label: "Settings",
+    href: SETTINGS_HOME_HREF,
+    visible: (a) => a.isSubscribed && SETTINGS_ITEMS.some((item) => settingsItemVisible(item, a)),
+    isActive: isSettingsPath,
+  },
+  ...SETTINGS_ITEMS.map((item): NavPage => ({
+    key: item.href,
+    label: item.label,
+    href: item.href,
+    visible: (a) => settingsItemVisible(item, a),
+    isActive: isSettingsPath,
+  })),
+];
 
-const SUBSCRIPTION: NavLeaf = {
-  kind: "link",
-  key: "subscription",
-  href: "/dashboard/subscription",
-  label: "Subscription",
-  icon: CreditCard,
-  visible: (a) => a.canAny(["subscription.view", "subscription.manage"]),
-  isActive: (p) => p === "/dashboard/subscription",
-};
-
-const SETTINGS_GROUP: NavGroup = {
-  kind: "group",
-  key: "settings",
-  label: "Settings",
-  icon: Settings,
-  visible: (a) => a.isSubscribed && a.canSettings,
-  isActive: isSettingsPath,
-};
+const SETTINGS = pagesLeaf({ key: "settings", label: "Settings", icon: Settings, pages: SETTINGS_PAGES });
 
 const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
@@ -419,7 +417,6 @@ const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, 
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] };
 const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
-const ACCOUNT: NavSection = { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] };
 
 /** The main menu below Home, top to bottom. */
 export const NAV_MENU: readonly NavMenuItem[] = [
@@ -434,13 +431,13 @@ export const NAV_MENU: readonly NavMenuItem[] = [
   { kind: "section", section: COMMERCE },
   { kind: "section", section: CALL_IQ },
   { kind: "link", leaf: ANALYTICS_LINK },
-  { kind: "section", section: ACCOUNT },
+  { kind: "link", leaf: SETTINGS },
 ];
 
 /** The folding sections of the menu, in render order. */
 export const NAV_SECTIONS: readonly NavSection[] = NAV_MENU.flatMap((item) => (item.kind === "section" ? [item.section] : []));
 
-/** The plain one-page rows of the menu (Chats, Customers, Reach, Reports). */
+/** The plain rows of the menu (Chats, Customers, Reach, Reports, Settings). */
 export const NAV_LINKS: readonly NavLeaf[] = NAV_MENU.flatMap((item) => (item.kind === "link" ? [item.leaf] : []));
 
 /** Visible entries only, in render order. Empty means the section heading is hidden. */
