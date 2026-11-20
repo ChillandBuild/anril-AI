@@ -14,7 +14,7 @@ from app.services.entitlements import meter
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
 from app.services.segmentation import new_lead_score_and_segment
-from app.services.template_params import body_parameters
+from app.services.template_params import HEADER_COLS, body_parameters, header_components
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ async def execute_broadcast(row: dict) -> dict:
         tpl_variations: list[str] = []
         tpl_row = (
             db.table("message_templates")
-            .select("language,body_text,variations,status")
+            .select(f"language,body_text,variations,status,{HEADER_COLS}")
             .eq("name", template_name)
             .eq("tenant_id", tenant_id)
             .limit(1)
@@ -115,11 +115,14 @@ async def execute_broadcast(row: dict) -> dict:
                 tpl_variations = [v for v in raw_variations if isinstance(v, str) and v.strip()]
 
         # Build pool: primary template + approved sibling variants
-        template_pool: list[tuple[str, str, str]] = [(template_name, tpl_lang, tpl_body)]
+        # (name, language, body, row) -- row carries the header Meta needs on each send.
+        template_pool: list[tuple[str, str, str, dict]] = [
+            (template_name, tpl_lang, tpl_body, (tpl_row.data or [{}])[0])
+        ]
         for sibling_name in tpl_variations:
             sib_row = (
                 db.table("message_templates")
-                .select("language,body_text,status")
+                .select(f"language,body_text,status,{HEADER_COLS}")
                 .eq("name", sibling_name)
                 .eq("tenant_id", tenant_id)
                 .limit(1)
@@ -128,7 +131,7 @@ async def execute_broadcast(row: dict) -> dict:
             if sib_row.data and (sib_row.data[0].get("status") or "").upper() == "APPROVED":
                 sib_lang = sib_row.data[0].get("language") or "en"
                 sib_body = sib_row.data[0].get("body_text") or ""
-                template_pool.append((sibling_name, sib_lang, sib_body))
+                template_pool.append((sibling_name, sib_lang, sib_body, sib_row.data[0]))
 
         # Opted-out phones
         all_phones = [_normalize_phone(l.get("phone", "")) for l in leads_raw if _normalize_phone(l.get("phone", ""))]
@@ -237,13 +240,13 @@ async def execute_broadcast(row: dict) -> dict:
                 break
 
             # Pick a random template from pool for this lead
-            chosen_name, chosen_lang, chosen_body = _random.choice(template_pool)
+            chosen_name, chosen_lang, chosen_body, chosen_tpl = _random.choice(template_pool)
 
             try:
-                components: list[dict] = []
+                components = header_components(chosen_tpl, lead_name)
                 params = body_parameters(chosen_body, variable_mapping, extra_cols, lead_name)
                 if params:
-                    components = [{"type": "body", "parameters": params}]
+                    components.append({"type": "body", "parameters": params})
 
                 _send_resp = await send_template_message(
                     to_number=phone,

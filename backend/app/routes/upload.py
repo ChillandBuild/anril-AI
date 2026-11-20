@@ -19,7 +19,7 @@ from app.services.growth import get_or_create_campaign, record_stage_event, sync
 from app.services.meta_cloud import send_template_message
 from app.services.broadcast_executor import next_send_time
 from app.services.outbound_router import SenderPicker, get_best_number
-from app.services.template_params import body_parameters, template_status
+from app.services.template_params import HEADER_COLS, body_parameters, header_components, template_status
 from app.services.segmentation import new_lead_score_and_segment
 
 logger = logging.getLogger(__name__)
@@ -687,6 +687,7 @@ async def _execute_immediate_send(
     negative_reply_phones: set,
     tpl_body: str,
     tpl_lang: str,
+    tpl_header: dict,
     _has_fail_reason: bool,
 ) -> None:
     """Background worker for an immediate 'Send Now' broadcast. bulk_send() has already
@@ -782,10 +783,10 @@ async def _execute_immediate_send(
                 break
 
             try:
-                components: list[dict] = []
+                components = header_components(tpl_header, _clean_text(lead.name))
                 params = body_parameters(tpl_body, body.variable_mapping, lead.extra_cols, _clean_text(lead.name))
                 if params:
-                    components = [{"type": "body", "parameters": params}]
+                    components.append({"type": "body", "parameters": params})
 
                 send_result = await send_template_message(
                     to_number=phone,
@@ -1350,9 +1351,10 @@ async def bulk_send(
     # Fetch template metadata
     tpl_lang = "en"
     tpl_body = ""
+    tpl_header: dict = {}
     tpl_row = (
         db.table("message_templates")
-        .select("language,body_text")
+        .select(f"language,body_text,{HEADER_COLS}")
         .eq("name", body.template_name)
         .eq("tenant_id", tenant_id)
         .limit(1)
@@ -1361,6 +1363,7 @@ async def bulk_send(
     if tpl_row.data:
         tpl_lang = tpl_row.data[0].get("language") or "en"
         tpl_body = tpl_row.data[0].get("body_text") or ""
+        tpl_header = tpl_row.data[0]
 
     # Check if fail_reason column exists (migration 058 may not be applied yet)
     _has_fail_reason = False
@@ -1410,6 +1413,7 @@ async def bulk_send(
         negative_reply_phones=negative_reply_phones,
         tpl_body=tpl_body,
         tpl_lang=tpl_lang,
+        tpl_header=tpl_header,
         _has_fail_reason=_has_fail_reason,
     ))
 
@@ -1694,7 +1698,7 @@ async def test_send(
     db = get_supabase()
     tpl_row = (
         db.table("message_templates")
-        .select("language,body_text")
+        .select(f"language,body_text,{HEADER_COLS}")
         .eq("name", body.template_name)
         .eq("tenant_id", tenant_id)
         .limit(1)
@@ -1705,7 +1709,7 @@ async def test_send(
     tpl_lang = tpl_row.data[0].get("language") or "en"
     tpl_body = tpl_row.data[0].get("body_text") or ""
 
-    components: list[dict] = []
+    components = header_components(tpl_row.data[0], "Test")
     if re.search(r"\{\{\d+\}\}", tpl_body):
         var_count = len(set(re.findall(r"\{\{(\d+)\}\}", tpl_body)))
         sample = body.variable_sample or {}
@@ -1713,7 +1717,7 @@ async def test_send(
             {"type": "text", "text": sample.get(str(i), "Test")}
             for i in range(1, var_count + 1)
         ]
-        components = [{"type": "body", "parameters": params}]
+        components.append({"type": "body", "parameters": params})
 
     try:
         await send_template_message(

@@ -26,6 +26,27 @@ def body_parameters(body: str | None, mapping: list[str] | None, values: dict | 
     return params
 
 
+# message_templates columns header_components() reads.
+HEADER_COLS = "header_media_type,header_media_url,header_text"
+
+
+def header_components(template: dict | None, lead_name: str | None) -> list[dict]:
+    """The template's own header, which Meta requires on every send of a template
+    approved with one -- without it Meta refuses with #132012. An image/video/document
+    goes by its stored link; a {{1}} header text gets the lead's name."""
+    t = template or {}
+    media = (t.get("header_media_type") or "").upper()
+    if media in ("IMAGE", "VIDEO", "DOCUMENT"):
+        link = t.get("header_media_url")
+        if not link:
+            return []
+        kind = media.lower()
+        return [{"type": "header", "parameters": [{"type": kind, kind: {"link": link}}]}]
+    if _VAR.search(t.get("header_text") or ""):
+        return [{"type": "header", "parameters": [{"type": "text", "text": lead_name or "Customer"}]}]
+    return []
+
+
 def approved_template(db, tenant_id: str, name: str) -> dict | None:
     """The tenant's template by name, only if Meta has it APPROVED right now.
     A template under review (e.g. after an edit), rejected or paused is not
