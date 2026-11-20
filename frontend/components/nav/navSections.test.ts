@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ANALYTICS_LINK,
+  NAV_LINKS,
+  NAV_MENU,
   NAV_SECTIONS,
   TELECALLING_ITEMS,
   dashboardEntry,
@@ -83,7 +85,7 @@ const TELECALLING_HREFS = [
 ];
 
 function allEntries(): NavEntry[] {
-  return [ANALYTICS_LINK, ...NAV_SECTIONS.flatMap((section) => section.entries)];
+  return [...NAV_LINKS, ...NAV_SECTIONS.flatMap((section) => section.entries)];
 }
 
 function allLeaves(): NavLeaf[] {
@@ -113,7 +115,7 @@ describe("navSections tab coverage", () => {
   });
 
   it("the Dashboard slot falls back to Overview without dashboard.view", () => {
-    expect(dashboardEntry(allAccess)).toEqual({ href: "/dashboard", label: "Dashboard" });
+    expect(dashboardEntry(allAccess)).toEqual({ href: "/dashboard", label: "Home" });
     expect(dashboardEntry(noAccess)).toEqual({ href: "/dashboard/profile", label: "Overview" });
   });
 
@@ -124,9 +126,16 @@ describe("navSections tab coverage", () => {
 
 describe("navSections defaults and gating", () => {
   it("a section with no visible items is empty, so the sidebar hides its heading", () => {
-    const inbox = NAV_SECTIONS.find((s) => s.key === "inbox");
-    expect(inbox).toBeDefined();
-    expect(visibleEntries(inbox!, noAccess)).toHaveLength(0);
+    const engage = NAV_SECTIONS.find((s) => s.key === "engage");
+    expect(engage).toBeDefined();
+    expect(visibleEntries(engage!, noAccess)).toHaveLength(0);
+  });
+
+  it("plain menu links keep their permission gates", () => {
+    for (const leaf of NAV_LINKS) {
+      expect(leaf.visible(noAccess), leaf.key).toBe(false);
+      expect(leaf.visible(allAccess), leaf.key).toBe(true);
+    }
   });
 
   it("every section that is shown has at least one visible item with all access", () => {
@@ -148,7 +157,7 @@ describe("section open state", () => {
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/brain/rules")).toBe("aiSetup");
   });
 
-  it("shuts every section on pages outside them (Dashboard, Analytics)", () => {
+  it("shuts every section on pages outside them (Home and the plain links)", () => {
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBeNull();
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/analytics")).toBeNull();
   });
@@ -170,8 +179,7 @@ describe("Anril SMS section", () => {
     expect(smsLinks(allAccess).map((leaf) => leaf.label)).toEqual([
       "Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API",
     ]);
-    const reach = NAV_SECTIONS.find((section) => section.key === "reach")!;
-    expect(reach.entries.some((entry) => entry.key.startsWith("sms"))).toBe(false);
+    expect(NAV_LINKS.some((leaf) => leaf.key.startsWith("sms"))).toBe(false);
   });
 
   it.each(["sms.view", "sms.manage"])("shows the pages with %s when SMS is enabled, independently of WhatsApp features", (permission) => {
@@ -214,7 +222,7 @@ describe("Anril OTP section", () => {
   const otpSection = NAV_SECTIONS.find((section) => section.key === "otp")!;
   const otpLinks = (access: NavAccess) => visibleEntries(otpSection, access) as NavLeaf[];
 
-  it("is its own main-menu section with the 4 pages, after Anril SMS", () => {
+  it("is its own main-menu section with the 4 pages, just before Anril SMS", () => {
     expect(otpSection.title).toBe("Anril OTP");
     expect(otpLinks(allAccess).map((leaf) => leaf.label)).toEqual(["Send & check", "History", "Settings", "API & docs"]);
     expect(otpLinks(allAccess).map((leaf) => leaf.href)).toEqual([
@@ -224,7 +232,7 @@ describe("Anril OTP section", () => {
       "/dashboard/otp/api",
     ]);
     const keys = NAV_SECTIONS.map((section) => section.key);
-    expect(keys.indexOf("otp")).toBe(keys.indexOf("sms") + 1);
+    expect(keys.indexOf("sms")).toBe(keys.indexOf("otp") + 1);
   });
 
   it.each(["sms.view", "sms.manage", "settings.view", "settings.manage"])("shows with %s when SMS is off", (permission) => {
@@ -253,6 +261,33 @@ describe("Anril OTP section", () => {
     expect(history.isActive("/dashboard/otp/history")).toBe(true);
     expect(history.isActive("/dashboard/otp/history-other")).toBe(false);
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/otp/api")).toBe("otp");
+  });
+});
+
+describe("v9.2 main menu (Phase 1)", () => {
+  const row = (item: (typeof NAV_MENU)[number]) => (item.kind === "link" ? item.leaf.label : item.section.title);
+
+  it("follows the redesign order and names", () => {
+    expect(NAV_MENU.map(row)).toEqual([
+      "Chats", "Customers", "WhatsApp", "Anril Setup", "Engage", "Reach",
+      "Anril OTP", "Anril SMS", "Commerce", "Call IQ", "Reports", "Account",
+    ]);
+  });
+
+  it("one-page modules are plain links that keep their addresses", () => {
+    expect(NAV_LINKS.map((leaf) => [leaf.label, leaf.href])).toEqual([
+      ["Chats", "/dashboard/conversations"],
+      ["Customers", "/dashboard/leads"],
+      ["Reach", "/dashboard/outbound-leads"],
+      ["Reports", "/dashboard/analytics"],
+    ]);
+    expect(ANALYTICS_LINK.label).toBe("Reports");
+  });
+
+  it("Reach opens the outbound page on its sub-routes too", () => {
+    const reach = NAV_LINKS.find((leaf) => leaf.label === "Reach")!;
+    expect(reach.isActive("/dashboard/outbound-leads")).toBe(true);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/outbound-leads")).toBeNull();
   });
 });
 

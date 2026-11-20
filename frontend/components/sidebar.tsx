@@ -18,7 +18,7 @@ import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import { useSidebarRail } from "@/components/nav/useSidebarRail";
 import { SidebarProductSwitch } from "@/components/nav/ProductSwitch";
 import {
-  ANALYTICS_LINK, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
+  NAV_MENU, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
   dashboardEntry, resolveOpenSection, sectionContainsPage, visibleEntries,
   type NavAccess, type NavBadgeKey, type NavEntry, type NavGroup, type NavLeaf,
 } from "@/components/nav/navSections";
@@ -448,9 +448,11 @@ export function Sidebar(_props: SidebarProps) {
               icon={LayoutDashboard}
               label={dashboard.label}
             />
-            {renderLeaf(ANALYTICS_LINK)}
-            <div className="mx-2 my-3.5 h-px bg-[var(--navy-800)]" />
-            {NAV_SECTIONS.map((section) => renderSection(section))}
+            {NAV_MENU.map((item) =>
+              item.kind === "link"
+                ? item.leaf.visible(access) ? renderLeaf(item.leaf) : null
+                : renderSection(item.section),
+            )}
             <ActiveIndicator pathname={pathname} />
           </GlowScroll>
         </>

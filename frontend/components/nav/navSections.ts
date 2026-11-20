@@ -1,6 +1,6 @@
 import {
   ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
-  Inbox, Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
+  Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
 } from "lucide-react";
@@ -26,9 +26,7 @@ export interface NavAccess {
 }
 
 export type SectionKey =
-  | "inbox"
   | "engage"
-  | "reach"
   | "sms"
   | "otp"
   | "commerce"
@@ -71,6 +69,16 @@ export interface NavSection {
   entries: NavEntry[];
 }
 
+/**
+ * One row of the main menu, top to bottom (Home sits above it). A link is a
+ * one-page module shown as a plain row; a section folds open to its pages.
+ * Order and names follow the v9.2 redesign menu (Phase 1: menu only, every
+ * page keeps its address).
+ */
+export type NavMenuItem =
+  | { kind: "link"; leaf: NavLeaf }
+  | { kind: "section"; section: NavSection };
+
 export interface TelecallingPage {
   href: string;
   label: string;
@@ -105,7 +113,7 @@ const startsWithAny = (pathname: string, prefixes: readonly string[]): boolean =
 /** Top-level slot: Dashboard for dashboard.view holders, otherwise Overview. */
 export function dashboardEntry(access: NavAccess): { href: string; label: string } {
   return access.can("dashboard.view")
-    ? { href: "/dashboard", label: "Dashboard" }
+    ? { href: "/dashboard", label: "Home" }
     : { href: "/dashboard/profile", label: "Overview" };
 }
 
@@ -113,7 +121,7 @@ export const ANALYTICS_LINK: NavLeaf = {
   kind: "link",
   key: "analytics",
   href: "/dashboard/analytics",
-  label: "Analytics",
+  label: "Reports",
   icon: BarChart2,
   visible: (a) => a.isSubscribed && a.can("analytics.view") && a.messagingOn,
   isActive: (p) => p.startsWith("/dashboard/analytics"),
@@ -123,7 +131,7 @@ const CONVERSATIONS: NavLeaf = {
   kind: "link",
   key: "conversations",
   href: "/dashboard/conversations",
-  label: "Conversations",
+  label: "Chats",
   icon: MessageSquare,
   badge: "conversations",
   visible: (a) => a.isSubscribed && a.messagingOn && a.canAny(["conversations.view", "conversations.reply"]),
@@ -187,7 +195,7 @@ const OUTBOUND_LEADS: NavLeaf = {
   kind: "link",
   key: "outbound-leads",
   href: "/dashboard/outbound-leads",
-  label: "Outbound Leads",
+  label: "Reach",
   icon: Send,
   visible: (a) => a.isSubscribed && a.canAny(["outbound_leads.view", "outbound_leads.manage"]) && a.outboundOn,
   isActive: (p) => p.startsWith("/dashboard/outbound-leads"),
@@ -355,19 +363,36 @@ const SETTINGS_GROUP: NavGroup = {
   isActive: (p) => SETTINGS_ITEMS.some((item) => p.startsWith(item.href)),
 };
 
-/** Sections render top to bottom in this order. Dashboard and Analytics sit above them. */
-export const NAV_SECTIONS: readonly NavSection[] = [
-  { key: "inbox", title: "Inbox & Leads", icon: Inbox, entries: [CONVERSATIONS, SEGMENTS] },
-  { key: "engage", title: "Anril Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] },
-  { key: "reach", title: "Anril Reach", icon: Upload, entries: [OUTBOUND_LEADS] },
-  { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES },
-  { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES },
-  { key: "commerce", title: "Anril Commerce", icon: Coins, entries: [DEALS, CATALOGUE] },
-  { key: "callIq", title: "Anril Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] },
-  { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] },
-  { key: "whatsappSetup", title: "WhatsApp Setup", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] },
-  { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] },
+const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] };
+const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
+const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
+const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE] };
+const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] };
+const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
+const ACCOUNT: NavSection = { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] };
+
+/** The main menu below Home, top to bottom. */
+export const NAV_MENU: readonly NavMenuItem[] = [
+  { kind: "link", leaf: CONVERSATIONS },
+  { kind: "link", leaf: SEGMENTS },
+  { kind: "section", section: WHATSAPP },
+  { kind: "section", section: AI_SETUP },
+  { kind: "section", section: ENGAGE },
+  { kind: "link", leaf: OUTBOUND_LEADS },
+  { kind: "section", section: OTP },
+  { kind: "section", section: SMS },
+  { kind: "section", section: COMMERCE },
+  { kind: "section", section: CALL_IQ },
+  { kind: "link", leaf: ANALYTICS_LINK },
+  { kind: "section", section: ACCOUNT },
 ];
+
+/** The folding sections of the menu, in render order. */
+export const NAV_SECTIONS: readonly NavSection[] = NAV_MENU.flatMap((item) => (item.kind === "section" ? [item.section] : []));
+
+/** The plain one-page rows of the menu (Chats, Customers, Reach, Reports). */
+export const NAV_LINKS: readonly NavLeaf[] = NAV_MENU.flatMap((item) => (item.kind === "link" ? [item.leaf] : []));
 
 /** Visible entries only, in render order. Empty means the section heading is hidden. */
 export function visibleEntries(section: NavSection, access: NavAccess): NavEntry[] {
@@ -377,7 +402,7 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
 /**
  * The one open section (an accordion, so the menu never grows past the
  * screen). A click wins (null = all shut); otherwise the section holding the
- * current page. Pages outside every section (Dashboard, Analytics) shut all.
+ * current page. Pages outside every section (Home and the plain links) shut all.
  */
 export function resolveOpenSection(
   choice: string | null | undefined,
