@@ -379,3 +379,86 @@ def test_lead_history_names_each_forms_past_ads_newest_first():
     last, ads = _lead_history_by_form(db, TENANT)
     assert last == {"1": "2026-11-09T10:00:00+00:00", "2": "2026-11-06T10:00:00+00:00"}
     assert ads == {"1": ["New Leads ad", "Old ad"]}
+
+
+# ── WhatsApp consent and who gets the template (migration 298) ──────────────
+
+
+@pytest.mark.parametrize("boxes, answers, expected", [
+    ([{"checkbox_key": "optional_1", "is_checked": "1"}], {}, True),
+    ([{"checkbox_key": "optional_1", "is_checked": ""}], {}, False),
+    ([{"checkbox_key": "a", "is_checked": ""}, {"checkbox_key": "b", "is_checked": "1"}], {}, True),
+    (None, {"can_we_whatsapp_you?": "Yes"}, True),
+    (None, {"WhatsApp_updates": "No thanks"}, False),
+    (None, {"which_city?": "Chennai"}, None),
+    ([], {}, None),
+])
+def test_whatsapp_consent_reads_the_checkbox_or_a_whatsapp_question(boxes, answers, expected):
+    lead = {"custom_disclaimer_responses": boxes} if boxes is not None else {}
+    assert svc.whatsapp_consent(lead, answers) is expected
+
+
+def test_meta_is_asked_for_the_checkbox_answers():
+    """Optional checkbox answers come ONLY in custom_disclaimer_responses, never in field_data."""
+    assert "custom_disclaimer_responses" in svc.LEAD_FIELDS.split(",")
+
+
+@pytest.mark.parametrize("boxes, offers", [("1", True), ("", False)])
+def test_stored_lead_keeps_consent_and_writes_the_consent_record(boxes, offers):
+    db = _db()
+    lead = {**_lead("910"), "custom_disclaimer_responses": [{"checkbox_key": "optional_1", "is_checked": boxes}]}
+    with patch("app.services.meta_lead_forms._attach_to_lead", return_value="lead-1"):
+        row = svc.store_lead(db, TENANT, PAGE, lead, received_via="webhook")
+    assert row["whatsapp_consent"] is offers
+    consents = {c["scope"]: c for c in db.rows("lead_consents")}
+    assert consents["replies"]["granted"] is True
+    assert consents["offers"]["granted"] is offers and consents["offers"]["source"] == "meta_form:555"
+
+
+def test_a_form_that_asks_nothing_records_no_offers_consent():
+    db = _db()
+    with patch("app.services.meta_lead_forms._attach_to_lead", return_value="lead-1"):
+        row = svc.store_lead(db, TENANT, PAGE, _lead("911"), received_via="webhook")
+    assert row["whatsapp_consent"] is None
+    assert [c["scope"] for c in db.rows("lead_consents")] == ["replies"]
+
+
+async def _send(db, consent, audience, manual=False):
+    db.rows("meta_lead_forms")[0].update(template_id="tpl-1", template_audience=audience)
+    row = db.add("meta_form_leads", tenant_id=TENANT, form_id="555", phone="+919876543210", name="Priya",
+                  answers=[], lead_id=None, template_status="pending", whatsapp_consent=consent)
+    send = AsyncMock(return_value={"messages": [{"id": "wamid.9"}]})
+    template = {"id": "tpl-1", "name": "welcome", "language": "en", "body_text": "Hi {{1}}"}
+    with patch("app.services.meta_lead_forms.sendable_templates", return_value=[template]), \
+         patch("app.services.meta_cloud.send_template_message", send):
+        status = await svc.send_form_template(db, TENANT, row["id"], manual=manual)
+    return status, send, db.rows("meta_form_leads")[-1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consent", [True, False, None])
+async def test_everyone_audience_sends_like_before(consent):
+    status, send, _ = await _send(_db(), consent, "everyone")
+    assert status == "sent"
+    send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_consented_audience_sends_to_people_who_ticked_the_box():
+    status, send, _ = await _send(_db(), True, "consented")
+    assert status == "sent"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consent", [False, None])
+async def test_consented_audience_skips_everyone_else_and_says_why(consent):
+    status, send, row = await _send(_db(), consent, "consented")
+    assert status == "no_consent"
+    send.assert_not_awaited()
+    assert row["template_error"] == svc.NO_CONSENT_NOTE
+
+
+@pytest.mark.asyncio
+async def test_owners_resend_still_goes_out():
+    status, send, _ = await _send(_db(), False, "consented", manual=True)
+    assert status == "sent"

@@ -10,6 +10,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useInstantForm, useInstantFormLeads, useInstantFormTemplates } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import type {
+  InstantFormAudience,
   InstantFormDetail as InstantFormDetailData,
   InstantFormLead,
   InstantFormQuestion,
@@ -38,7 +39,18 @@ const MAX_FIXED_TEXT = 200;
 /** Answers to these get their own columns; every other question gets one of its own. */
 const STANDARD_KEYS = new Set(["full_name", "first_name", "last_name", "phone_number", "email"]);
 /** Leads where a send can be tried again from the table. */
-const CAN_SEND_AGAIN = new Set(["failed", "no_template", "skipped_old"]);
+const CAN_SEND_AGAIN = new Set(["failed", "no_template", "skipped_old", "no_consent"]);
+
+const AUDIENCE_OPTIONS: { value: InstantFormAudience; title: string; hint: string }[] = [
+  { value: "everyone", title: "Everyone who fills the form", hint: "How it works today." },
+  { value: "consented", title: "Only people who agree to WhatsApp", hint: "They tick your form's consent box." },
+];
+
+function consentText(consent: boolean | null): string {
+  if (consent === true) return "Agreed to WhatsApp";
+  if (consent === false) return "Didn't tick consent";
+  return "";
+}
 
 const FIRST_NAME = "field:first_name";
 const FIXED_TEXT = "text";
@@ -144,6 +156,7 @@ function buildCsv(detail: InstantFormDetailData, leads: InstantFormLead[]): stri
     "Ad set",
     "Campaign",
     "Organic",
+    "WhatsApp consent",
     "WhatsApp status",
   ];
   const lines = leads.map((lead) => [
@@ -156,6 +169,7 @@ function buildCsv(detail: InstantFormDetailData, leads: InstantFormLead[]): stri
     lead.adset_name ?? "",
     lead.campaign_name ?? "",
     lead.is_organic ? "Yes" : "No",
+    lead.whatsapp_consent === true ? "Yes" : lead.whatsapp_consent === false ? "No" : "Not asked",
     TEMPLATE_STATUS[lead.template_status]?.label ?? lead.template_status,
   ]);
   return [header, ...lines].map((line) => line.map(csvCell).join(",")).join("\r\n");
@@ -181,11 +195,13 @@ export function InstantFormDetail({ formId }: { formId: string }) {
   const [draft, setDraft] = useState<DraftVariable[]>([]);
   const [syncedKey, setSyncedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const serverKey = detail ? JSON.stringify([detail.template_id, detail.template_variables]) : null;
+  const [audience, setAudience] = useState<InstantFormAudience>("everyone");
+  const serverKey = detail ? JSON.stringify([detail.template_id, detail.template_variables, detail.template_audience]) : null;
   if (detail && serverKey !== syncedKey) {
     setSyncedKey(serverKey);
     setTemplateId(detail.template_id ?? "");
     setDraft(detail.template_variables.map((variable, index) => draftFor(variable, index)));
+    setAudience(detail.template_audience ?? "everyone");
   }
   const selected = templates.find((template) => template.id === templateId);
   const blanks = selected?.blanks ?? 0;
@@ -194,7 +210,11 @@ export function InstantFormDetail({ formId }: { formId: string }) {
   const variables: InstantFormVariable[] = templateId && selected ? rows.map(toVariable) : [];
   const savedTemplate = detail?.template_id ?? null;
   const savedVariables = savedTemplate ? detail?.template_variables ?? [] : [];
-  const dirty = (templateId || null) !== savedTemplate || variableSignature(variables) !== variableSignature(savedVariables);
+  const savedAudience = detail?.template_audience ?? "everyone";
+  const dirty =
+    (templateId || null) !== savedTemplate
+    || variableSignature(variables) !== variableSignature(savedVariables)
+    || audience !== savedAudience;
   const canSave = canManage && dirty && !saving && !invalidText && (!templateId || Boolean(selected));
 
   // Leads table: search is debounced, and any change of search or dates goes back to page 1.
@@ -241,8 +261,12 @@ export function InstantFormDetail({ formId }: { formId: string }) {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.instantForms.setTemplate(formId, templateId || null, variables);
-      toast.success("Saved. New leads from this form get this message.");
+      await api.instantForms.setTemplate(formId, templateId || null, variables, audience);
+      toast.success(
+        audience === "consented"
+          ? "Saved. New leads who agree to WhatsApp get this message."
+          : "Saved. New leads from this form get this message.",
+      );
       await mutateDetail();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -385,6 +409,54 @@ export function InstantFormDetail({ formId }: { formId: string }) {
               </>
             )}
 
+            {templateId && (
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-1.5 font-label text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
+                  Who gets it
+                </legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {AUDIENCE_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors",
+                        audience === option.value
+                          ? "border-primary-300 bg-primary-light/50"
+                          : "border-[#e2e8f0] bg-white hover:bg-[#f8fafc]",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name={`audience-${formId}`}
+                        value={option.value}
+                        checked={audience === option.value}
+                        onChange={() => setAudience(option.value)}
+                        className="mt-0.5 accent-[var(--primary)]"
+                      />
+                      <span className="flex flex-col">
+                        <span className="font-label text-xs font-bold text-[#0A1528]">{option.title}</span>
+                        <span className="font-body text-[11px] text-[#64748b]">{option.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {audience === "everyone" ? (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 font-body text-[11px] leading-relaxed text-amber-900">
+                    WhatsApp&apos;s rules say you need a person&apos;s permission before you message them. If your form
+                    doesn&apos;t ask for it, sending to everyone can bring down your number&apos;s quality rating or get it
+                    limited by Meta. Sending to everyone is your choice and your responsibility.
+                  </p>
+                ) : (
+                  <p className="rounded-xl bg-[#f8fafc] px-3 py-2 font-body text-[11px] leading-relaxed text-[#475569]">
+                    Anril sends it when the person ticks the optional checkbox in your form&apos;s custom disclaimer, or
+                    answers &ldquo;Yes&rdquo; to a question with &ldquo;WhatsApp&rdquo; in it. Add that checkbox in Meta Ads
+                    Manager → your form → Privacy policy → Custom disclaimer, worded like &ldquo;Yes, send me updates on
+                    WhatsApp&rdquo;. Everyone else shows as &ldquo;No consent&rdquo; and you can still Resend by hand.
+                  </p>
+                )}
+              </fieldset>
+            )}
+
             <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[#eef2f6] pt-4">
               <p className="font-body text-[11px] text-[#94a3b8]">
                 {invalidText ? "Fixed text can't be empty." : dirty ? "You have unsaved changes." : "Saved."}
@@ -464,6 +536,16 @@ export function InstantFormDetail({ formId }: { formId: string }) {
               </td>
               <td className="whitespace-nowrap px-4 py-3">
                 <TemplateStatusBadge status={lead.template_status} error={lead.template_error} />
+                {consentText(lead.whatsapp_consent) && (
+                  <span
+                    className={cn(
+                      "mt-1 block font-body text-[11px]",
+                      lead.whatsapp_consent ? "text-emerald-700" : "text-[#94a3b8]",
+                    )}
+                  >
+                    {consentText(lead.whatsapp_consent)}
+                  </span>
+                )}
               </td>
               <td className="whitespace-nowrap px-4 py-3 text-xs">
                 {lead.replied ? (

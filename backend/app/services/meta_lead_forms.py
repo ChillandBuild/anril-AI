@@ -27,6 +27,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 GRAPH = "https://graph.facebook.com/v25.0"
 LEAD_FIELDS = (
     "id,created_time,field_data,form_id,ad_id,ad_name,adset_id,adset_name,"
-    "campaign_id,campaign_name,is_organic,platform"
+    "campaign_id,campaign_name,is_organic,platform,custom_disclaimer_responses"
 )
 FORM_FIELDS = "id,name,status,locale,questions,created_time"
 # A lead older than this when we first see it gets no template: the person has
@@ -51,6 +52,12 @@ FORM_FIELDS = "id,name,status,locale,questions,created_time"
 TEMPLATE_MAX_AGE = timedelta(hours=24)
 # Meta keeps lead answers retrievable for 90 days.
 HISTORY_DAYS = 90
+# Who gets the form's template (meta_lead_forms.template_audience, migration 298).
+AUDIENCE_EVERYONE, AUDIENCE_CONSENTED = "everyone", "consented"
+NO_CONSENT_NOTE = (
+    "Not sent: this form sends only to people who ticked the WhatsApp consent box. "
+    "Use Resend to send it anyway."
+)
 
 
 class InstantFormsError(ValueError):
@@ -241,6 +248,50 @@ def answers_map(field_data: list | None) -> dict[str, str]:
     return out
 
 
+_YES = {"yes", "y", "ok", "okay", "sure", "agree", "i agree", "yes please", "ஆம்", "சரி"}
+_NO = {"no", "n", "nope", "no thanks", "don't", "dont", "இல்லை", "வேண்டாம்"}
+
+
+def whatsapp_consent(lead: dict, answers: dict[str, str]) -> bool | None:
+    """Did this person agree to WhatsApp messages? True / False, or None when the form asks
+    nothing we can read as consent.
+
+    Read from (1) the form's optional disclaimer checkboxes: Meta sends them only in
+    custom_disclaimer_responses ([{checkbox_key, is_checked: "1" | ""}]), never in field_data;
+    any ticked box counts, so the client keeps that checkbox about WhatsApp (the Instant forms
+    screen says so); (2) a question whose key mentions WhatsApp, answered yes / no."""
+    boxes = lead.get("custom_disclaimer_responses")
+    if isinstance(boxes, list) and boxes:
+        return any(
+            isinstance(b, dict) and str(b.get("is_checked") or "").strip().lower() in ("1", "true", "yes")
+            for b in boxes
+        )
+    for key, value in answers.items():
+        if "whatsapp" not in re.sub(r"[^a-z]", "", key.lower()):
+            continue
+        text = " ".join(str(value or "").lower().split()).strip(" .!")
+        if text in _YES or text.startswith("yes"):
+            return True
+        if text in _NO or text.startswith("no"):
+            return False
+    return None
+
+
+def _record_consent(db, tenant_id: str, lead_id: str, form_id: str, consent: bool | None) -> None:
+    """The shared consent record (lead_consents, migration 297). 'replies' = they filled a form
+    asking to be contacted; 'offers' only when the form told us yes or no."""
+    source = f"meta_form:{form_id}"
+    rows = [{"tenant_id": tenant_id, "lead_id": lead_id, "scope": "replies", "granted": True, "source": source,
+             "wording": "Filled a Meta Instant Form"}]
+    if consent is not None:
+        rows.append({"tenant_id": tenant_id, "lead_id": lead_id, "scope": "offers", "granted": consent,
+                     "source": source, "wording": "WhatsApp consent checkbox / question on the form"})
+    try:
+        db.table("lead_consents").insert(rows).execute()
+    except Exception as exc:
+        logger.warning("instant forms: consent record failed for lead %s: %s", lead_id, exc)
+
+
 def contact_from_answers(answers: dict[str, str]) -> dict[str, str]:
     name = answers.get("full_name") or " ".join(
         p for p in (answers.get("first_name"), answers.get("last_name")) if p
@@ -342,6 +393,7 @@ def store_lead(db, tenant_id: str, page_id: str, lead: dict, *, received_via: st
         "email": contact["email"] or None,
         "received_via": received_via,
         "template_status": status,
+        "whatsapp_consent": whatsapp_consent(lead, answers),
     }
     inserted = (
         db.table("meta_form_leads").upsert(row, on_conflict="tenant_id,leadgen_id", ignore_duplicates=True).execute()
@@ -366,6 +418,7 @@ def store_lead(db, tenant_id: str, page_id: str, lead: dict, *, received_via: st
     if lead_id:
         db.table("meta_form_leads").update({"lead_id": lead_id}).eq("id", stored["id"]).execute()
         stored["lead_id"] = lead_id
+        _record_consent(db, tenant_id, lead_id, form_id, row["whatsapp_consent"])
     return stored
 
 
@@ -499,7 +552,7 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: b
         return finish("failed", template_error="Not sent: Instant templates were off in Settings > Auto-Reply. Use Resend to send it now.")
 
     form = (
-        db.table("meta_lead_forms").select("template_id,template_variables")
+        db.table("meta_lead_forms").select("template_id,template_variables,template_audience")
         .eq("tenant_id", tenant_id).eq("form_id", row["form_id"]).limit(1).execute()
     ).data or [{}]
     template_id = form[0].get("template_id")
@@ -507,6 +560,8 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: b
         return finish("no_template")
     if not row.get("phone"):
         return finish("no_phone")
+    if not manual and form[0].get("template_audience") == AUDIENCE_CONSENTED and row.get("whatsapp_consent") is not True:
+        return finish("no_consent", template_error=NO_CONSENT_NOTE)
     if row.get("lead_id"):
         lead = (
             db.table("leads").select("opted_out").eq("id", row["lead_id"]).eq("tenant_id", tenant_id).limit(1).execute()

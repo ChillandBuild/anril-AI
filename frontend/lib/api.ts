@@ -3766,10 +3766,12 @@ export const api = {
         `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/leads${instantFormsQuery(params)}`,
       ),
     templates: () => apiFetch<{ data: InstantFormTemplateOption[] }>("/api/v1/instant-forms/templates"),
-    setTemplate: (formId: string, templateId: string | null, variables: InstantFormVariable[]) =>
-      apiFetch<{ template_id: string | null; template_variables: InstantFormVariable[] }>(
+    setTemplate: (
+      formId: string, templateId: string | null, variables: InstantFormVariable[], audience: InstantFormAudience,
+    ) =>
+      apiFetch<{ template_id: string | null; template_variables: InstantFormVariable[]; template_audience: InstantFormAudience }>(
         `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/template`,
-        { method: "PUT", body: JSON.stringify({ template_id: templateId, variables }) },
+        { method: "PUT", body: JSON.stringify({ template_id: templateId, variables, audience }) },
       ),
     /** Send, or retry, the form's template to one lead. */
     sendTemplate: (rowId: string) =>
@@ -4322,6 +4324,8 @@ export interface InstantFormDetail {
   questions: InstantFormQuestion[];
   template_id: string | null;
   template_variables: InstantFormVariable[];
+  /** Who gets the template: everyone who fills the form, or only those who agreed to WhatsApp. */
+  template_audience: InstantFormAudience;
   date_from: string;
   date_to: string;
   spend_available: boolean;
@@ -4329,7 +4333,9 @@ export interface InstantFormDetail {
 }
 
 export type InstantFormTemplateStatus =
-  | "pending" | "sending" | "sent" | "failed" | "no_template" | "no_phone" | "skipped_old";
+  | "pending" | "sending" | "sent" | "failed" | "no_template" | "no_phone" | "skipped_old" | "no_consent";
+
+export type InstantFormAudience = "everyone" | "consented";
 
 export interface InstantFormLead {
   id: string;
@@ -4352,6 +4358,8 @@ export interface InstantFormLead {
   template_status: InstantFormTemplateStatus;
   template_error: string | null;
   template_sent_at: string | null;
+  /** Ticked the form's consent checkbox (or said yes to a WhatsApp question); null = the form doesn't ask. */
+  whatsapp_consent: boolean | null;
   replied: boolean;
 }
 

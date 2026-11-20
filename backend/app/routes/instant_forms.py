@@ -7,6 +7,8 @@ meta_ads.manage.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 import asyncio
 import logging
 import uuid
@@ -275,6 +277,7 @@ async def get_form(
         "questions": form.get("questions") or [],
         "template_id": form.get("template_id"),
         "template_variables": form.get("template_variables") or [],
+        "template_audience": form.get("template_audience") or "everyone",
         "date_from": start,
         "date_to": end,
         "spend_available": spend is not None,
@@ -300,7 +303,8 @@ async def form_leads(
         db.table("meta_form_leads")
         .select(
             "id,leadgen_id,meta_created_at,name,phone,email,answers,ad_id,ad_name,adset_name,campaign_name,"
-            "platform,is_organic,lead_id,received_via,template_status,template_error,template_sent_at",
+            "platform,is_organic,lead_id,received_via,template_status,template_error,template_sent_at,"
+            "whatsapp_consent",
             count="exact",
         )
         .eq("tenant_id", tenant_id).eq("form_id", form_id)
@@ -379,6 +383,8 @@ class TemplateVariable(BaseModel):
 class TemplateSettings(BaseModel):
     template_id: str | None = None
     variables: list[TemplateVariable] = Field(default_factory=list, max_length=20)
+    # Who gets it: everyone who fills the form, or only those who ticked the WhatsApp consent box.
+    audience: Literal["everyone", "consented"] | None = None  # None = keep the form's current choice
 
 
 @router.get("/templates", dependencies=[Depends(require_view)])
@@ -410,11 +416,13 @@ async def set_template(form_id: str, payload: TemplateSettings, tenant_id: str =
         raise HTTPException(status_code=404, detail="Form not found.")
     db = get_supabase()
     form = _form_or_404(db, tenant_id, form_id)
+    audience = payload.audience or form.get("template_audience") or "everyone"
     if not payload.template_id:
         db.table("meta_lead_forms").update({
-            "template_id": None, "template_variables": [], "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", form["id"]).execute()
-        return {"template_id": None, "template_variables": []}
+            "template_id": None, "template_variables": [], "template_audience": audience,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", form["id"]).eq("tenant_id", tenant_id).execute()
+        return {"template_id": None, "template_variables": [], "template_audience": audience}
 
     template = next((t for t in forms_service.sendable_templates(db, tenant_id) if t["id"] == payload.template_id), None)
     if not template:
@@ -438,10 +446,10 @@ async def set_template(form_id: str, payload: TemplateSettings, tenant_id: str =
                 raise HTTPException(status_code=400, detail="Fill in the fixed text, or pick a form answer.")
             cleaned.append({"source": "text", "text": text})
     db.table("meta_lead_forms").update({
-        "template_id": payload.template_id, "template_variables": cleaned,
+        "template_id": payload.template_id, "template_variables": cleaned, "template_audience": audience,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", form["id"]).execute()
-    return {"template_id": payload.template_id, "template_variables": cleaned}
+    }).eq("id", form["id"]).eq("tenant_id", tenant_id).execute()
+    return {"template_id": payload.template_id, "template_variables": cleaned, "template_audience": audience}
 
 
 @router.post("/leads/{row_id}/send-template", dependencies=[Depends(require_manage)])
@@ -467,7 +475,7 @@ async def send_template_now(row_id: str, tenant_id: str = Depends(get_tenant_id)
         raise HTTPException(status_code=400, detail="This lead didn't leave a phone number.")
     db.table("meta_form_leads").update({"template_status": "pending", "template_error": None}).eq(
         "id", row_id
-    ).eq("tenant_id", tenant_id).in_("template_status", ["failed", "no_template", "skipped_old"]).execute()
+    ).eq("tenant_id", tenant_id).in_("template_status", ["failed", "no_template", "skipped_old", "no_consent"]).execute()
     await asyncio.to_thread(forms_service.ensure_lead, db, tenant_id, row_id)
     status = await forms_service.send_form_template(db, tenant_id, row_id, manual=True)
     refreshed = (

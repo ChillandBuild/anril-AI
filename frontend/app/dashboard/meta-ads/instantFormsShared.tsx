@@ -49,6 +49,7 @@ export const TEMPLATE_STATUS: Record<InstantFormTemplateStatus, { label: string;
   no_template: { label: "No template", className: "bg-[#f1f5f9] text-[#475569]" },
   no_phone: { label: "No phone", className: "bg-[#f1f5f9] text-[#475569]" },
   skipped_old: { label: "Older lead", className: "bg-[#f1f5f9] text-[#475569]" },
+  no_consent: { label: "No consent", className: "bg-[#f1f5f9] text-[#475569]" },
   pending: { label: "Sending…", className: "bg-blue-50 text-blue-700" },
   sending: { label: "Sending…", className: "bg-blue-50 text-blue-700" },
 };
@@ -57,7 +58,7 @@ export function TemplateStatusBadge({ status, error }: { status: InstantFormTemp
   const look = TEMPLATE_STATUS[status] ?? TEMPLATE_STATUS.pending;
   return (
     <span
-      title={status === "failed" && error ? error : undefined}
+      title={(status === "failed" || status === "no_consent") && error ? error : undefined}
       className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-label text-[11px] font-bold", look.className)}
     >
       {look.label}
