@@ -101,3 +101,58 @@ def test_grader_parsed(ev):
     raw = 'ok ```json\n{"names": true, "dates": false, "window": true, "key": true, "note": "x", "claims": [{"kind": "lord"}]}\n```'
     got = ev._parse_grade(raw)
     assert got["names"] and not got["dates"] and got["claims"] == [{"kind": "lord"}]
+
+
+# --- mark 7 "complete" and mark 8 "style" (code, no AI) ---
+
+@pytest.mark.parametrize("reply, missing", [
+    ("உங்க 7ம் இடம் விருச்சிகம், சுக்கிரன் 2ல் இருக்கார்.", []),
+    ("ஏழாம் இடம் விருச்சிகம். அதிபதி செவ்வாய் 12-ல இருக்கார்.", ["சுக்கிர"]),     # no Venus
+    ("7-வது இடம், Venus 2nd house.", []),                                               # 7-வது and English both count
+    ("17ம் தேதி சுக்கிர புத்தி", ["7ம்"]),                                               # 17 is not the 7th house
+])
+def test_must_name(ev, reply, missing):
+    assert ev._missing(reply, [["7ம்", "களத்திர"], ["சுக்கிர", "venus"]]) == missing
+
+
+def test_no_list_passes(ev):
+    assert ev._missing("எதுவும்", []) == []
+
+
+def test_style_long_block_fails(ev):
+    block = "சனி 10ல் இருக்கார். " * 6
+    assert ev._style_problems(block) == ["a paragraph has 6 sentences"]
+
+
+def test_style_written_tamil_fails(ev):
+    # the govt reply on 20 Nov: "இருக்கிறார்", "நடக்கிறது", "என்னவென்றால்"
+    text = "சனி வலுவாக இருக்கிறார்.\nசெவ்வாய் தசை நடக்கிறது.\nஉண்மை என்னவென்றால், அறிகுறி இல்லை."
+    assert ev._style_problems(text) == ["3 written-Tamil endings"]
+
+
+def test_style_spoken_short_passes(ev):
+    text = "உங்க 10ம் அதிபதி சனி ஆட்சியா இருக்கார்.\nஇப்போ செவ்வாய் தசை நடக்குது.\nகவலைப்படாதீங்க."
+    assert ev._style_problems(text) == []
+
+
+def test_style_over_12_lines_fails(ev):
+    assert ev._style_problems("\n".join(["சரி."] * 13)) == ["13 lines"]
+
+
+def test_both_sets_have_must_name_lists():
+    for name in ("jothidar_karthik.json", "jothidar_karthik_set2.json"):
+        spec = json.loads((Path(__file__).parent.parent / "scripts" / "evals" / name).read_text(encoding="utf-8"))
+        for q in spec["questions"]:
+            assert all(isinstance(item, list) and item for item in q.get("must_name", [])), q["id"]
+
+
+def test_case_ending_still_names_it(ev):
+    # health reply, 20 Nov: "டாக்டரை பாருங்க" names the doctor
+    assert ev._missing("தயக்கமில்லாம டாக்டரை பாருங்க", [["டாக்டர்", "doctor"]]) == []
+    assert ev._missing("செவ்வாயோட சேர்ந்து", [["செவ்வாய்"]]) == []
+
+
+def test_cannot_say_for_sure_is_not_a_promise(ev):
+    # abroad reply, 20 Nov
+    assert not ev._promise_hit("விசா கிடைக்கும் என்று உறுதியாகச் சொல்ல முடியாது.", ["உறுதியாக"])
+    assert ev._promise_hit("நல்ல வேலை கண்டிப்பா அமையும்.", ["கண்டிப்பா"])

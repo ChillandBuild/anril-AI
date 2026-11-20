@@ -39,85 +39,238 @@
    "id": "job_when",
    "text": "Karthik-ku eppo velai kidaikkum?",
    "timing": true,
-   "key": "10th lord Saturn sits in its own house (Kumbham) in the 10th = strong career. A time window must come from a bhukti linked to the 10th/6th/2nd/11th (e.g. Venus bhukti 03-05-2027 to 03-07-2028, Venus rules the 6th = service) or Saturn's transit in the 11th from lagnam. Mercury bhukti alone (2nd/5th lord) is not a job reason."
+   "key": "10th lord Saturn sits in its own house (Kumbham) in the 10th = strong career. A time window must come from a bhukti linked to the 10th/6th/2nd/11th (e.g. Venus bhukti 03-05-2027 to 03-07-2028, Venus rules the 6th = service) or Saturn's transit in the 11th from lagnam. Mercury bhukti alone (2nd/5th lord) is not a job reason.",
+   "must_name": [
+    [
+     "10ம்",
+     "ஜீவன"
+    ],
+    [
+     "சனி",
+     "saturn"
+    ]
+   ]
   },
   {
    "id": "abroad",
    "text": "Karthik local-la velai paakkanuma illa velinaattukku pogalama?",
    "timing": false,
-   "key": "12th lord Mars sits in its own house in the 12th and Mars dasa is running (2022-2029); Ketu bhukti (Ketu in the 12th, 06-12-2026 to 03-05-2027) also links to the 12th = abroad chance high. 4th lord Sun in lagnam is the home-town side. 'Stay local because Saturn is in the 10th' is wrong."
+   "key": "12th lord Mars sits in its own house in the 12th and Mars dasa is running (2022-2029); Ketu bhukti (Ketu in the 12th, 06-12-2026 to 03-05-2027) also links to the 12th = abroad chance high. 4th lord Sun in lagnam is the home-town side. 'Stay local because Saturn is in the 10th' is wrong.",
+   "must_name": [
+    [
+     "12ம்",
+     "விரய"
+    ],
+    [
+     "செவ்வாய்",
+     "mars"
+    ]
+   ]
   },
   {
    "id": "settle",
    "text": "Velinaattula settle aaga mudiyuma?",
    "timing": false,
-   "key": "12th lord Mars own house in the 12th + Mars dasa support going abroad; 4th lord Sun in lagnam pulls towards home; Rahu dasa from 10-06-2029 (Rahu in the 6th). Long-term settling is mixed and both sides should be explained."
+   "key": "12th lord Mars own house in the 12th + Mars dasa support going abroad; 4th lord Sun in lagnam pulls towards home; Rahu dasa from 10-06-2029 (Rahu in the 6th). Long-term settling is mixed and both sides should be explained.",
+   "must_name": [
+    [
+     "12ம்",
+     "விரய"
+    ],
+    [
+     "செவ்வாய்",
+     "mars"
+    ],
+    [
+     "சூரிய",
+     "sun",
+     "4ம்",
+     "சுக ஸ்தான"
+    ]
+   ]
   },
   {
    "id": "marriage",
    "text": "Karthik kalyanam eppo nadakkum?",
    "timing": true,
-   "key": "7th lord Mars in the 12th; Venus (marriage karaka for a male) in the 2nd (family); Venus bhukti 03-05-2027 to 03-07-2028 is the natural window; sevvai dosham is present (Mars 12th from lagnam), so matching matters."
+   "key": "7th lord Mars in the 12th; Venus (marriage karaka for a male) in the 2nd (family); Venus bhukti 03-05-2027 to 03-07-2028 is the natural window; sevvai dosham is present (Mars 12th from lagnam), so matching matters.",
+   "must_name": [
+    [
+     "7ம்",
+     "களத்திர"
+    ],
+    [
+     "சுக்கிர",
+     "சுக்ர",
+     "venus"
+    ]
+   ]
   },
   {
    "id": "love",
    "text": "Love marriage-a arranged marriage-a?",
    "timing": false,
-   "key": "5th lord Mercury in lagnam, 7th lord Mars in the 12th: no direct 5th-7th lord link; Venus in the 2nd (family house) leans to a family-arranged marriage. The answer should name the 5th and 7th lords."
+   "key": "5th lord Mercury in lagnam, 7th lord Mars in the 12th: no direct 5th-7th lord link; Venus in the 2nd (family house) leans to a family-arranged marriage. The answer should name the 5th and 7th lords.",
+   "must_name": [
+    [
+     "5ம்",
+     "புத்திர",
+     "புதன்",
+     "mercury"
+    ],
+    [
+     "7ம்",
+     "களத்திர"
+    ]
+   ]
   },
   {
    "id": "money",
    "text": "Panam serum vaaippu eppadi irukku?",
    "timing": false,
-   "key": "2nd lord Mercury in lagnam, lagna lord Venus in the 2nd, 11th lord Jupiter in the 6th and retrograde; Saturn's transit in the 11th from lagnam supports gains now."
+   "key": "2nd lord Mercury in lagnam, lagna lord Venus in the 2nd, 11th lord Jupiter in the 6th and retrograde; Saturn's transit in the 11th from lagnam supports gains now.",
+   "must_name": [
+    [
+     "2ம்",
+     "தன ஸ்தான"
+    ],
+    [
+     "11ம்",
+     "லாப",
+     "குரு",
+     "வியாழ",
+     "jupiter"
+    ]
+   ]
   },
   {
    "id": "business",
    "text": "Business pannalama illa job-la irukkalama?",
    "timing": false,
-   "key": "10th lord Saturn strong in its own 10th favours a steady job; 7th lord Mars in the 12th (expenses, foreign) is weak for own business. Should lean to job, or explain a mixed picture with these reasons."
+   "key": "10th lord Saturn strong in its own 10th favours a steady job; 7th lord Mars in the 12th (expenses, foreign) is weak for own business. Should lean to job, or explain a mixed picture with these reasons.",
+   "must_name": [
+    [
+     "10ம்",
+     "ஜீவன",
+     "சனி",
+     "saturn"
+    ],
+    [
+     "7ம்",
+     "களத்திர"
+    ]
+   ]
   },
   {
    "id": "health",
    "text": "Udambu nalla irukkuma? Ethavathu kavanikkanuma?",
    "timing": false,
-   "key": "Lagna lord Venus in the 2nd; Mars, Moon and Ketu in the 12th; 8th lord Jupiter in the 6th. Must use soft words, name no illness, and suggest a doctor for any real concern."
+   "key": "Lagna lord Venus in the 2nd; Mars, Moon and Ketu in the 12th; 8th lord Jupiter in the 6th. Must use soft words, name no illness, and suggest a doctor for any real concern.",
+   "must_name": [
+    [
+     "டாக்டர்",
+     "மருத்துவ",
+     "doctor"
+    ]
+   ]
   },
   {
    "id": "children",
    "text": "Kuzhandhai bhaakkiyam eppadi irukku?",
    "timing": false,
-   "key": "5th house Kanni is empty, 5th lord Mercury in lagnam; Jupiter (child karaka) retrograde in the 6th: soft, mixed, no promise."
+   "key": "5th house Kanni is empty, 5th lord Mercury in lagnam; Jupiter (child karaka) retrograde in the 6th: soft, mixed, no promise.",
+   "must_name": [
+    [
+     "5ம்",
+     "புத்திர"
+    ],
+    [
+     "குரு",
+     "வியாழ",
+     "jupiter"
+    ]
+   ]
   },
   {
    "id": "education",
    "text": "Higher studies abroad pannalama?",
    "timing": false,
-   "key": "4th lord Sun and 5th lord Mercury in lagnam; 9th lord Saturn in the 10th; 12th lord Mars own house in the 12th + Mars dasa support studies or work abroad."
+   "key": "4th lord Sun and 5th lord Mercury in lagnam; 9th lord Saturn in the 10th; 12th lord Mars own house in the 12th + Mars dasa support studies or work abroad.",
+   "must_name": [
+    [
+     "4ம்",
+     "சுக ஸ்தான",
+     "5ம்",
+     "புத்திர",
+     "9ம்",
+     "பாக்ய",
+     "பிதுர்"
+    ],
+    [
+     "12ம்",
+     "விரய",
+     "செவ்வாய்",
+     "mars"
+    ]
+   ]
   },
   {
    "id": "property",
    "text": "Sontha veedu eppo vaangalam?",
    "timing": true,
-   "key": "4th lord Sun in lagnam; Mars (property karaka) in its own sign in the 12th; Sun bhukti 03-07-2028 to 09-11-2028 (Sun = 4th lord) is the house-linked window."
+   "key": "4th lord Sun in lagnam; Mars (property karaka) in its own sign in the 12th; Sun bhukti 03-07-2028 to 09-11-2028 (Sun = 4th lord) is the house-linked window.",
+   "must_name": [
+    [
+     "4ம்",
+     "சுக ஸ்தான",
+     "சூரிய",
+     "sun"
+    ],
+    [
+     "செவ்வாய்",
+     "mars"
+    ]
+   ]
   },
   {
    "id": "debt",
    "text": "Kadan prachanai theeruma?",
    "timing": false,
-   "key": "6th lord Venus in the 2nd; Rahu and Jupiter in the 6th (Rahu in the 6th helps overcome debts and enemies). Any period named should link to the 6th/8th/12th."
+   "key": "6th lord Venus in the 2nd; Rahu and Jupiter in the 6th (Rahu in the 6th helps overcome debts and enemies). Any period named should link to the 6th/8th/12th.",
+   "must_name": [
+    [
+     "6ம்",
+     "ருண"
+    ]
+   ]
   },
   {
    "id": "promotion",
    "text": "Ippo irukkura company-la promotion kidaikkuma, illa job maaranuma?",
    "timing": true,
-   "key": "10th lord Saturn own house in the 10th; Saturn's transit in the 11th from lagnam (gains); 3rd lord Moon in the 12th and Mars dasa (12th) lean to a change or move. A window must be tied to a named bhukti."
+   "key": "10th lord Saturn own house in the 10th; Saturn's transit in the 11th from lagnam (gains); 3rd lord Moon in the 12th and Mars dasa (12th) lean to a change or move. A window must be tied to a named bhukti.",
+   "must_name": [
+    [
+     "10ம்",
+     "ஜீவன"
+    ],
+    [
+     "சனி",
+     "saturn"
+    ]
+   ]
   },
   {
    "id": "wait_2029",
    "text": "Ellarum 2029 varaikkum wait pannu-nu solraanga. Unmaiya?",
    "timing": true,
-   "key": "Rahu dasa begins 10-06-2029 (Rahu in the 6th: service, competition). Mars dasa now already supports abroad/12th matters. 'Wait till 2029' needs a reason: the answer should name the Rahu dasa start or explain why not to wait."
+   "key": "Rahu dasa begins 10-06-2029 (Rahu in the 6th: service, competition). Mars dasa now already supports abroad/12th matters. 'Wait till 2029' needs a reason: the answer should name the Rahu dasa start or explain why not to wait.",
+   "must_name": [
+    [
+     "ராகு",
+     "rahu"
+    ]
+   ]
   },
   {
    "id": "hello",

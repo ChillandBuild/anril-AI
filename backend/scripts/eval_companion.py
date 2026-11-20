@@ -8,7 +8,7 @@ config's settings laid on top in memory, so settings whose columns are not live 
 Calls bill the character's business's own Gemini key, like the Playground. Token counts are read from the
 same meter the app uses (token_meter.record_tokens still writes them).
 
-Every prediction gets 6 marks:
+Every prediction gets 8 marks:
   1 names    names the planet, the house and the dasa/bhukti it rests on       (grader)
   2 dates    no past date offered as a coming one, nothing beyond 3 years       (grader + year check)
   3 promise  no promise words ("kandippa"); "கண்டிப்பா தேவை" is advice, passes  (word list)
@@ -16,6 +16,10 @@ Every prediction gets 6 marks:
   5 key      gets the question's key point (the answer key in the file)        (grader)
   6 facts    every chart fact it states is true: the grader lists the claims,
              scripts/eval_chart.py checks each against the chart (code, no AI)
+  7 complete names every must-have point in the question's "must_name" list, e.g. the wife question
+             must name Venus and the 7th house (code; a question with no list passes)
+  8 style    spoken Tamil in short paragraphs: no paragraph over 4 sentences, at most 12 lines,
+             fewer than 3 written-Tamil endings like "இருக்கிறார்" (code)
 The small-talk question is marked on "no prediction" and on which model answered it.
 Output: one table per config (marks, average cost per answer, model used) and a JSON file of every reply.
 """
@@ -39,9 +43,11 @@ GRADER_MODEL = "google/gemini-3.8-flash"
 PRICES = {"gemini-3.1-flash-lite": (0.25, 1.50), "gemini-3.5-flash-lite": (0.30, 2.50),
           "gemini-3.8-flash": (0.75, 3.75)}
 PRICES_JAN_2027 = {**PRICES, "gemini-3.8-flash": (1.50, 7.50)}
-MARKS = ("names", "dates", "promise", "window", "key", "facts")
+MARKS = ("names", "dates", "promise", "window", "key", "facts", "complete", "style")
 # A promise word followed within a few words by one of these is advice ("கடின உழைப்பு கண்டிப்பா தேவை"), not a promise.
 ADVICE_WORDS = ("தேவை", "பண்ணுங்க", "செய்யுங்க", "பண்ணனும்", "செய்யணும்")
+# ...or one of these, which makes it the opposite of a promise ("உறுதியாகச் சொல்ல முடியாது").
+NOT_WORDS = ("முடியாது", "இயலாது")
 
 GRADER_PROMPT = """You mark one astrology chat reply against a chart and an answer key. Today is {today}.
 Be strict and literal. Reply with JSON only:
@@ -118,13 +124,55 @@ def _parse_grade(raw: str) -> dict:
             | {"note": str(marks.get("note", "")), "claims": claims if isinstance(claims, list) else []})
 
 
+# "ஏழாம் இடம்" / "7-ம்" / "7வது" / "12ல்" all become "7ம்" / "12ம்" before the must_name check.
+_ORDINALS = {"இரண்டாம்": 2, "மூன்றாம்": 3, "நான்காம்": 4, "ஐந்தாம்": 5, "ஆறாம்": 6, "ஏழாம்": 7, "எட்டாம்": 8,
+             "ஒன்பதாம்": 9, "பத்தாம்": 10, "பதினொன்றாம்": 11, "பதினோராம்": 11, "பன்னிரண்டாம்": 12}
+
+
+def _normal(text: str) -> str:
+    low = text.lower()
+    for word, n in _ORDINALS.items():
+        low = low.replace(word, f"{n}ம்")
+    return re.sub(r"(?<!\d)(\d{1,2})\s*-?\s*(?:ம்|வது|ல்|ல|ஆம்)", r"\1ம்", low)
+
+
+def _missing(text: str, must_name: list[list[str]]) -> list[str]:
+    """Each must_name item is a list of alternatives; an item is missing when none appears in the reply.
+    [["சுக்கிர", "venus"], ["7ம்", "களத்திர"]] on "7ம் இடம் விருச்சிகம்..." -> ["சுக்கிர"]."""
+    low = _normal(text)
+    def found(alt: str) -> bool:
+        # a case ending drops the last pulli: டாக்டர் -> டாக்டரை, செவ்வாய் -> செவ்வாயோட
+        alt = _normal(alt).removesuffix("\u0bcd") if not alt[:1].isdigit() else _normal(alt)
+        return bool(re.search(("(?<!\\d)" if alt[:1].isdigit() else "") + re.escape(alt), low))
+    return [item[0] for item in must_name if not any(found(a) for a in item)]
+
+
+# Written-Tamil endings; the spoken forms are இருக்கார், இருக்கு, நடக்குது.
+FORMAL = ("கிறார்", "கிறது", "கின்றன", "கின்றது", "கிறேன்", "ள்ளது", "என்னவென்றால்")
+
+
+def _style_problems(text: str) -> list[str]:
+    """Rule 3 and the speaking style, by code. A 10-sentence single block -> ["a paragraph has 10 sentences"]."""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    out = []
+    worst = max((len([x for x in re.split(r"[.?!]+", ln) if x.strip()]) for ln in lines), default=0)
+    if worst > 4:
+        out.append(f"a paragraph has {worst} sentences")
+    if len(lines) > 12:
+        out.append(f"{len(lines)} lines")
+    formal = sum(text.count(w) for w in FORMAL)
+    if formal >= 3:
+        out.append(f"{formal} written-Tamil endings")
+    return out
+
+
 def _promise_hit(text: str, words) -> bool:
     """A promise word in the reply, unless the next few words make it advice (ADVICE_WORDS)."""
     low = text.lower()
     for w in words:
         for m in re.finditer(re.escape(w.lower()), low):
             after = low[m.end():m.end() + 30]
-            if not any(a in after for a in ADVICE_WORDS):
+            if not any(a in after for a in ADVICE_WORDS + NOT_WORDS):
                 return True
     return False
 
@@ -169,6 +217,7 @@ async def _one(spec, companion, config_name, config, q, run_no, sem, today) -> d
                 row["grader_error"] = type(exc).__name__
                 if isinstance(exc, GraderError):
                     row["grader_raw"] = exc.raw
+        row["grader_cost"] = _cost(calls, PRICES) - row["cost"]   # the grader's calls land in the same list
         if graded is None:
             row["marks"] = {}
             return row
@@ -177,6 +226,9 @@ async def _one(spec, companion, config_name, config, q, run_no, sem, today) -> d
         wrong = [why for verdict, why in checks if verdict == "wrong"]
         row["marks"] = {"names": graded["names"], "dates": graded["dates"] and not _past_year(reply.text, today),
                         "promise": not promise, "window": graded["window"], "key": graded["key"], "facts": not wrong}
+        row["missing"] = _missing(reply.text, q.get("must_name", []))
+        row["style_problems"] = _style_problems(reply.text)
+        row["marks"] |= {"complete": not row["missing"], "style": not row["style_problems"]}
         row["grader_note"] = graded["note"]
         row["claims"] = [{**cl, "verdict": v, "why": why} for cl, (v, why) in zip(graded["claims"], checks)]
         row["fact_errors"] = wrong
@@ -208,6 +260,11 @@ def _table(rows, configs):
         for r in preds:
             for why in r.get("fact_errors", []):
                 print(f"   WRONG FACT  {r['question']} (run {r['run']}): {why}")
+            if r.get("missing"):
+                print(f"   MISSING     {r['question']} (run {r['run']}): {', '.join(r['missing'])}")
+            if r.get("style_problems"):
+                print(f"   STYLE       {r['question']} (run {r['run']}): {'; '.join(r['style_problems'])}")
+        print(f"   grader cost (all answers): ${sum(r.get('grader_cost', 0) for r in mine):.4f}")
         bad = [r for r in mine if r.get("problem")]
         if bad:
             print(f"   FAILED CALLS: {len(bad)} ({bad[0]['problem']})")

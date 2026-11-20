@@ -28,61 +28,180 @@
    "id": "sani",
    "text": "Enakku ezharai sani nadakkudhaam, romba kashtam varuma?",
    "timing": false,
-   "key": "Transit Saturn in Meenam is 12th from rasi Mesham, so ஏழரைச் சனி (first phase, விரய) is running. But Saturn is the yogakaraka for Rishaba lagnam (9th and 10th lord) and sits in its own house in the 10th, so it is softened: more expenses, travel or workload, not disaster. Must not frighten. Saying there is no ஏழரைச் சனி is wrong."
+   "key": "Transit Saturn in Meenam is 12th from rasi Mesham, so ஏழரைச் சனி (first phase, விரய) is running. But Saturn is the yogakaraka for Rishaba lagnam (9th and 10th lord) and sits in its own house in the 10th, so it is softened: more expenses, travel or workload, not disaster. Must not frighten. Saying there is no ஏழரைச் சனி is wrong.",
+   "must_name": [
+    [
+     "12ம்",
+     "விரய"
+    ],
+    [
+     "யோகக்காரக",
+     "யோககாரக",
+     "யோகாதிபதி",
+     "9ம்",
+     "10ம்",
+     "ஆட்சி"
+    ]
+   ]
   },
   {
    "id": "govt",
    "text": "Government job kidaikkuma?",
    "timing": false,
-   "key": "Sun (government karaka) is the 4th lord in lagnam but in an enemy sign (ரிஷபம்): mixed. 10th lord Saturn in its own house in the 10th: strong service career. Sun bhukti 03-07-2028 to 09-11-2028 is the Sun-linked period. Mixed answer, no promise."
+   "key": "Sun (government karaka) is the 4th lord in lagnam but in an enemy sign (ரிஷபம்): mixed. 10th lord Saturn in its own house in the 10th: strong service career. Sun bhukti 03-07-2028 to 09-11-2028 is the Sun-linked period. Mixed answer, no promise.",
+   "must_name": [
+    [
+     "சூரிய",
+     "sun"
+    ],
+    [
+     "10ம்",
+     "ஜீவன"
+    ],
+    [
+     "சூரிய புத்தி",
+     "சூரியன் புத்தி",
+     "சூரிய புக்தி",
+     "சூரியன் புக்தி"
+    ]
+   ]
   },
   {
    "id": "after_budhan",
    "text": "Ippo Budhan bhukti nadakkudhu, adhu mudinja apram eppadi irukkum?",
    "timing": true,
-   "key": "Mercury bhukti (2nd and 5th lord in lagnam: money, family, studies) ends 06-12-2026. Next is Ketu bhukti 06-12-2026 to 03-05-2027; Ketu sits in the 12th with Moon and Mars: travel, abroad, expenses, spiritual pull. Then Venus bhukti from 03-05-2027."
+   "key": "Mercury bhukti (2nd and 5th lord in lagnam: money, family, studies) ends 06-12-2026. Next is Ketu bhukti 06-12-2026 to 03-05-2027; Ketu sits in the 12th with Moon and Mars: travel, abroad, expenses, spiritual pull. Then Venus bhukti from 03-05-2027.",
+   "must_name": [
+    [
+     "கேது",
+     "ketu"
+    ],
+    [
+     "12ம்",
+     "விரய"
+    ],
+    [
+     "சுக்கிர",
+     "சுக்ர",
+     "venus"
+    ]
+   ]
   },
   {
    "id": "dosham",
    "text": "Sevvai dosham irukkaa? Kalyanathukku prachanai varuma?",
    "timing": false,
-   "key": "The chart shows sevvai dosham (Mars 12th from lagnam). Mars is in its own sign மேஷம், which many classical texts treat as reducing the dosham; matching with a similar chart is the usual advice. Must not frighten or require a paid pooja."
+   "key": "The chart shows sevvai dosham (Mars 12th from lagnam). Mars is in its own sign மேஷம், which many classical texts treat as reducing the dosham; matching with a similar chart is the usual advice. Must not frighten or require a paid pooja.",
+   "must_name": [
+    [
+     "ஆட்சி",
+     "சொந்த வீ"
+    ],
+    [
+     "பொருத்த"
+    ]
+   ]
   },
   {
    "id": "spouse",
    "text": "Varappoora wife eppadi irupaanga?",
    "timing": false,
-   "key": "7th house விருச்சிகம்; 7th lord Mars in its own sign in the 12th: spouse may be from a distant place or different background, strong-willed. Venus (marriage karaka) in the 2nd (family) and in மீனம் in the navamsam (exalted there): caring, good partner. Names the 7th house or lord and Venus."
+   "key": "7th house விருச்சிகம்; 7th lord Mars in its own sign in the 12th: spouse may be from a distant place or different background, strong-willed. Venus (marriage karaka) in the 2nd (family) and in மீனம் in the navamsam (exalted there): caring, good partner. Names the 7th house or lord and Venus.",
+   "must_name": [
+    [
+     "7ம்",
+     "களத்திர"
+    ],
+    [
+     "சுக்கிர",
+     "சுக்ர",
+     "venus"
+    ]
+   ]
   },
   {
    "id": "vehicle",
    "text": "Indha varusham car vaangalama?",
    "timing": true,
-   "key": "Vehicle: 4th lord Sun in lagnam, Venus (vehicle karaka) in the 2nd. The running Mercury bhukti (to 06-12-2026) and the next Ketu bhukti do not rule the 4th and are not Venus, so no clear sign now. Venus bhukti from 03-05-2027 or Sun bhukti in 2028 link. A firm 'yes this year' with no linked period fails."
+   "key": "Vehicle: 4th lord Sun in lagnam, Venus (vehicle karaka) in the 2nd. The running Mercury bhukti (to 06-12-2026) and the next Ketu bhukti do not rule the 4th and are not Venus, so no clear sign now. Venus bhukti from 03-05-2027 or Sun bhukti in 2028 link. A firm 'yes this year' with no linked period fails.",
+   "must_name": [
+    [
+     "4ம்",
+     "சுக ஸ்தான",
+     "சூரிய",
+     "sun"
+    ],
+    [
+     "சுக்கிர",
+     "சுக்ர",
+     "venus"
+    ]
+   ]
   },
   {
    "id": "siblings",
    "text": "Brother sister kooda uravu eppadi irukkum?",
    "timing": false,
-   "key": "3rd house கடகம் is empty; 3rd lord Moon in the 12th with Mars and Ketu: some distance or less closeness, a sibling may live far. Mars (sibling karaka) strong in its own sign: support when needed. Soft, mixed."
+   "key": "3rd house கடகம் is empty; 3rd lord Moon in the 12th with Mars and Ketu: some distance or less closeness, a sibling may live far. Mars (sibling karaka) strong in its own sign: support when needed. Soft, mixed.",
+   "must_name": [
+    [
+     "3ம்",
+     "சகோதர ஸ்தான"
+    ],
+    [
+     "சந்திர",
+     "moon"
+    ]
+   ]
   },
   {
    "id": "father",
    "text": "Appa kooda adikkadi sandai varudhu, enna pannalam?",
    "timing": false,
-   "key": "9th lord Saturn (father's house) is strong in its own house in the 10th; Sun (father karaka) in lagnam in an enemy sign: ego clashes. Advice to be patient. At most one free remedy, only for a planet it names as the block."
+   "key": "9th lord Saturn (father's house) is strong in its own house in the 10th; Sun (father karaka) in lagnam in an enemy sign: ego clashes. Advice to be patient. At most one free remedy, only for a planet it names as the block.",
+   "must_name": [
+    [
+     "9ம்",
+     "பாக்ய",
+     "பிதுர்"
+    ],
+    [
+     "சூரிய",
+     "sun"
+    ]
+   ]
   },
   {
    "id": "shares",
    "text": "Share market-la invest pannalama?",
    "timing": false,
-   "key": "5th house (speculation) கன்னி is empty, 5th lord Mercury in lagnam; 11th lord Jupiter retrograde in the 6th: gains come through effort, not luck; Rahu in the 6th. Lean careful, small, long-term. A reply that promises profit fails."
+   "key": "5th house (speculation) கன்னி is empty, 5th lord Mercury in lagnam; 11th lord Jupiter retrograde in the 6th: gains come through effort, not luck; Rahu in the 6th. Lean careful, small, long-term. A reply that promises profit fails.",
+   "must_name": [
+    [
+     "2ம்",
+     "தன ஸ்தான",
+     "5ம்",
+     "புத்திர",
+     "11ம்",
+     "லாப"
+    ]
+   ]
   },
   {
    "id": "field",
    "text": "Enakku endha maadhiri velai set aagum?",
    "timing": false,
-   "key": "10th lord Saturn in its own house கும்பம் in the 10th: technical work, IT or engineering, large organisations, steady service. Mercury (2nd and 5th lord) in lagnam: analysis, communication, accounts. Strong for employment."
+   "key": "10th lord Saturn in its own house கும்பம் in the 10th: technical work, IT or engineering, large organisations, steady service. Mercury (2nd and 5th lord) in lagnam: analysis, communication, accounts. Strong for employment.",
+   "must_name": [
+    [
+     "10ம்",
+     "ஜீவன"
+    ],
+    [
+     "சனி",
+     "saturn"
+    ]
+   ]
   },
   {
    "id": "stone",
@@ -94,7 +213,17 @@
    "id": "this_month",
    "text": "Indha maasam enakku eppadi irukkum?",
    "timing": false,
-   "key": "Uses the running period: the last weeks of Mercury bhukti (ends 06-12-2026), Ketu bhukti from 06-12-2026; transit Saturn 12th from rasi (ஏழரைச் சனி: spend carefully). Short, no promises."
+   "key": "Uses the running period: the last weeks of Mercury bhukti (ends 06-12-2026), Ketu bhukti from 06-12-2026; transit Saturn 12th from rasi (ஏழரைச் சனி: spend carefully). Short, no promises.",
+   "must_name": [
+    [
+     "புதன் புத்தி",
+     "புதன் புக்தி"
+    ],
+    [
+     "கேது",
+     "ketu"
+    ]
+   ]
   },
   {
    "id": "lifespan",
