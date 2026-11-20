@@ -1,3 +1,4 @@
+import { CONTACT_EMAIL } from "./content";
 import type { FaqEntry } from "./schema";
 
 // Plain-text answers: the page shows them and the FAQPage schema quotes them, so the two always match.
@@ -71,7 +72,7 @@ export const WEBSITE_FAQ: readonly FaqEntry[] = [
 export const PRICING_FAQ: readonly FaqEntry[] = [
   {
     q: "How much does Anril AI cost?",
-    a: "Plans start from ₹999 a month (plus GST). The exact price depends on the modules, AI replies and users you need. WhatsApp message charges from Meta are separate. Email anrilaitech@gmail.com or book a demo for your plan.",
+    a: `Plans start from ₹999 a month (plus GST). The exact price depends on the modules, AI replies and users you need. WhatsApp message charges from Meta are separate. Email ${CONTACT_EMAIL} or book a demo for your plan.`,
   },
   {
     q: "What will my quote include?",

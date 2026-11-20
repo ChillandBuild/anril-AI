@@ -2,9 +2,8 @@
 // the Anril AI pamphlet, plain facts about the product, and examples marked as such.
 
 export const SITE_URL = "https://www.anrilaitech.com";
-// Switch to "hello@anrilaitech.com" once that mailbox is live (18 Nov 2026 brief). As of 19 Nov 2026
-// anrilaitech.com has no MX record, so mail to it would bounce.
-export const CONTACT_EMAIL = "anrilaitech@gmail.com";
+/** The company mailbox (Zoho Mail on anrilaitech.com, live 20 Nov 2026). */
+export const CONTACT_EMAIL = "hello@anrilaitech.com";
 export const PHONE = { display: "+91 90473 70380", tel: "+919047370380", whatsapp: "https://wa.me/919047370380" } as const;
 export const OFFICE = {
   street: "2, Sree Narayana Guru Road, Mission Road, Saibaba Koil",
