@@ -1,10 +1,10 @@
 import {
-  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, CalendarClock, Coins, CreditCard, FileCheck, HandCoins,
+  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, Coins, CreditCard, FileCheck, HandCoins,
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
-  ShieldCheck, ShoppingBag, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
+  ShieldCheck, ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
 } from "lucide-react";
-import { SETTINGS_ITEMS } from "@/components/settingsNavigation";
+import { isSettingsPath } from "@/components/settingsNavigation";
 
 /**
  * Everything the sidebar needs to decide what is visible. Built once per render
@@ -38,6 +38,21 @@ export type SectionKey =
 /** Badge slots. The sidebar owns the live counts and renders them by key. */
 export type NavBadgeKey = "conversations" | "brain";
 
+/**
+ * One address a menu row stands for. A row with `pages` is visible when ANY of
+ * its pages is, opens the first visible one (see leafHref), and is active on all
+ * of them. The same list feeds the chips in the page header (CHIP_SETS), so a
+ * chip is hidden for exactly the users who could not open that page.
+ */
+export interface NavPage {
+  key: string;
+  /** The chip label. */
+  label: string;
+  href: string;
+  visible: (access: NavAccess) => boolean;
+  isActive: (pathname: string) => boolean;
+}
+
 export interface NavLeaf {
   kind: "link";
   key: string;
@@ -45,6 +60,8 @@ export interface NavLeaf {
   label: string;
   icon: LucideIcon;
   badge?: NavBadgeKey;
+  /** Set on rows that stand for several pages. `visible` and `isActive` are derived from it. */
+  pages?: readonly NavPage[];
   visible: (access: NavAccess) => boolean;
   isActive: (pathname: string) => boolean;
 }
@@ -107,6 +124,22 @@ export const TC_PERMISSION_MAP: Record<string, string[]> = {
   "/dashboard/notes": ["telecalling.notes.view", "telecalling.notes"],
 };
 
+/** A row that stands for several pages: visible if any page is, active on any page. `href` is the first page's. */
+function pagesLeaf(leaf: Pick<NavLeaf, "key" | "label" | "icon"> & { pages: readonly NavPage[] }): NavLeaf {
+  return {
+    kind: "link",
+    ...leaf,
+    href: leaf.pages[0].href,
+    visible: (a) => leaf.pages.some((page) => page.visible(a)),
+    isActive: (p) => leaf.pages.some((page) => page.isActive(p)),
+  };
+}
+
+/** Where a row opens for this user: the first of its pages they can see, else the row's own address. */
+export function leafHref(leaf: NavLeaf, access: NavAccess): string {
+  return leaf.pages?.find((page) => page.visible(access))?.href ?? leaf.href;
+}
+
 const startsWithAny = (pathname: string, prefixes: readonly string[]): boolean =>
   prefixes.some((prefix) => pathname.startsWith(prefix));
 
@@ -168,28 +201,36 @@ const META_ADS: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/meta-ads"),
 };
 
-const AUTO_MESSAGES: NavLeaf = {
-  kind: "link",
-  key: "auto-messages",
-  href: "/dashboard/auto-messages",
-  label: "Auto-Messages",
-  icon: Zap,
-  visible: (a) => a.isSubscribed && a.canAny(["auto_messages.view", "auto_messages.manage"]) && a.outboundOn,
-  isActive: (p) => p.startsWith("/dashboard/auto-messages"),
-};
+const prefixPage = (key: string, label: string, href: string, visible: NavPage["visible"]): NavPage => ({
+  key, label, href, visible, isActive: (p) => p.startsWith(href),
+});
 
-const SCHEDULED_TEMPLATES: NavLeaf = {
-  kind: "link",
-  key: "scheduled-templates",
-  href: "/dashboard/scheduled-templates",
-  label: "Scheduled templates",
-  icon: CalendarClock,
-  visible: (a) =>
-    a.isSubscribed &&
-    a.canAny(["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"]) &&
-    (a.outboundOn || a.messagingOn),
-  isActive: (p) => p.startsWith("/dashboard/scheduled-templates"),
-};
+/** Follow-ups was a Settings page, so it keeps the Settings gate. */
+const settingsVisible = (a: NavAccess) => a.isSubscribed && a.canSettings;
+
+const AUTO_MESSAGE_PAGES: readonly NavPage[] = [
+  prefixPage(
+    "auto-messages", "When something happens", "/dashboard/auto-messages",
+    (a) => a.isSubscribed && a.canAny(["auto_messages.view", "auto_messages.manage"]) && a.outboundOn,
+  ),
+  prefixPage("follow-ups", "Follow-ups", "/dashboard/settings/follow-ups", settingsVisible),
+  prefixPage(
+    "scheduled-templates", "One-time sends", "/dashboard/scheduled-templates",
+    (a) =>
+      a.isSubscribed &&
+      a.canAny(["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"]) &&
+      (a.outboundOn || a.messagingOn),
+  ),
+];
+
+const AUTO_MESSAGES = pagesLeaf({ key: "auto-messages", label: "Auto-Messages", icon: Zap, pages: AUTO_MESSAGE_PAGES });
+
+const REPLY_PAGES: readonly NavPage[] = [
+  prefixPage("auto-reply", "Auto-reply", "/dashboard/settings/auto-reply", settingsVisible),
+  prefixPage("inbox", "Handover", "/dashboard/settings/inbox", settingsVisible),
+];
+
+const REPLIES_AND_HANDOVER = pagesLeaf({ key: "replies-handover", label: "Replies & handover", icon: Sparkles, pages: REPLY_PAGES });
 
 const OUTBOUND_LEADS: NavLeaf = {
   kind: "link",
@@ -229,23 +270,31 @@ const SMS_PAGES: NavLeaf[] = ([
  *  Same permission list as MoreMenu OTP_PERMS and the backend's routes/otp.py `view`. */
 const otpVisible = (a: NavAccess) => a.isSubscribed && a.canAny(["sms.view", "sms.manage", "settings.view", "settings.manage"]);
 
-const OTP_PAGES: NavLeaf[] = ([
-  ["", "Send & check", KeyRound],
-  ["history", "History", History],
-  ["settings", "Settings", SlidersHorizontal],
-  ["api", "API & docs", Code2],
-] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
-  const href = slug ? `/dashboard/otp/${slug}` : "/dashboard/otp";
-  return {
-    kind: "link",
-    key: slug ? `otp-${slug}` : "otp",
-    href,
-    label,
-    icon,
-    visible: otpVisible,
-    isActive: (p) => (slug ? p === href || p.startsWith(`${href}/`) : p === href),
-  };
-});
+const exactOrChild = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
+
+const OTP_SETUP_PAGES: readonly NavPage[] = [
+  { key: "otp-settings", label: "Rules", href: "/dashboard/otp/settings", visible: otpVisible, isActive: exactOrChild("/dashboard/otp/settings") },
+  { key: "otp-api", label: "Connect your website", href: "/dashboard/otp/api", visible: otpVisible, isActive: exactOrChild("/dashboard/otp/api") },
+];
+
+const OTP_PAGES: NavLeaf[] = [
+  ...([
+    ["", "Send & check", KeyRound],
+    ["history", "History", History],
+  ] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
+    const href = slug ? `/dashboard/otp/${slug}` : "/dashboard/otp";
+    return {
+      kind: "link",
+      key: slug ? `otp-${slug}` : "otp",
+      href,
+      label,
+      icon,
+      visible: otpVisible,
+      isActive: (p) => (slug ? p === href || p.startsWith(`${href}/`) : p === href),
+    };
+  }),
+  pagesLeaf({ key: "otp-settings", label: "Setup", icon: SlidersHorizontal, pages: OTP_SETUP_PAGES }),
+];
 
 const DEALS: NavLeaf = {
   kind: "link",
@@ -328,7 +377,7 @@ const NUMBERS_POOL: NavLeaf = {
   kind: "link",
   key: "numbers-pool",
   href: "/dashboard/numbers",
-  label: "Numbers Pool",
+  label: "Numbers",
   icon: Layers,
   visible: (a) => a.isSubscribed && a.canAny(["numbers.view", "numbers.manage"]) && a.messagingOn,
   isActive: (p) => p.startsWith("/dashboard/numbers"),
@@ -360,15 +409,15 @@ const SETTINGS_GROUP: NavGroup = {
   label: "Settings",
   icon: Settings,
   visible: (a) => a.isSubscribed && a.canSettings,
-  isActive: (p) => SETTINGS_ITEMS.some((item) => p.startsWith(item.href)),
+  isActive: isSettingsPath,
 };
 
-const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES, SCHEDULED_TEMPLATES] };
+const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE] };
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [TELECALLING_GROUP, TEAM_PERFORMANCE] };
-const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
 const ACCOUNT: NavSection = { key: "account", title: "Account", icon: ShieldCheck, entries: [USERS_AND_ROLES, SUBSCRIPTION, SETTINGS_GROUP] };
 
@@ -422,4 +471,23 @@ const FOLDS_SIDEBAR: readonly NavEntry[] = [CONVERSATIONS, SEGMENTS, INBOUND_LEA
 
 export function sidebarFoldsOn(pathname: string): boolean {
   return FOLDS_SIDEBAR.some((entry) => entry.isActive(pathname));
+}
+
+export interface ChipSet {
+  key: "autoMessages" | "replies" | "otpSetup";
+  /** The menu row these pages share. */
+  leafKey: string;
+  chips: readonly NavPage[];
+}
+
+/** The pages that share one menu row, in chip order. The page header renders these as a row of chips. */
+export const CHIP_SETS: readonly ChipSet[] = [
+  { key: "autoMessages", leafKey: AUTO_MESSAGES.key, chips: AUTO_MESSAGE_PAGES },
+  { key: "replies", leafKey: REPLIES_AND_HANDOVER.key, chips: REPLY_PAGES },
+  { key: "otpSetup", leafKey: "otp-settings", chips: OTP_SETUP_PAGES },
+];
+
+/** The chip set for the page you are on, or null when the page has no siblings. */
+export function chipSetFor(pathname: string): ChipSet | null {
+  return CHIP_SETS.find((set) => set.chips.some((chip) => chip.isActive(pathname))) ?? null;
 }

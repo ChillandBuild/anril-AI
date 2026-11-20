@@ -2,25 +2,24 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { ChevronRight, ChevronLeft, ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
-import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "@/components/settingsNavigation";
+import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { SidebarSection, inertWhen } from "@/components/nav/SidebarSection";
 import { NavCount, navCountLabel } from "@/components/nav/NavCount";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import { useSidebarRail } from "@/components/nav/useSidebarRail";
+import { useNavAccess } from "@/components/nav/useNavAccess";
 import { SidebarProductSwitch } from "@/components/nav/ProductSwitch";
 import {
-  NAV_MENU, NAV_SECTIONS, TC_FEATURE_MAP, TC_PERMISSION_MAP, TELECALLING_ITEMS,
-  dashboardEntry, resolveOpenSection, sectionContainsPage, visibleEntries,
-  type NavAccess, type NavBadgeKey, type NavEntry, type NavGroup, type NavLeaf,
+  NAV_MENU, NAV_SECTIONS,
+  dashboardEntry, leafHref, resolveOpenSection, sectionContainsPage, visibleEntries,
+  type NavBadgeKey, type NavEntry, type NavGroup, type NavLeaf,
 } from "@/components/nav/navSections";
 
 type NavItem = { href: string; label: string; icon?: LucideIcon };
@@ -168,10 +167,9 @@ interface SidebarProps {
 export function Sidebar(_props: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
+  const { access, tcGroupItems, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures } = useNavAccess();
   const [inboxCount, setInboxCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
-  const { status: subStatus, purchasedFeatures } = useSubscription();
   // The logo's squares drop in on first show, then wave on each page change.
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
   const fold = useSidebarRail(pathname);
@@ -202,23 +200,8 @@ export function Sidebar(_props: SidebarProps) {
     } catch {}
   }, []);
 
-  const waEnabled = enabledFeatures.includes("whatsapp");
-  const outboundOn = enabledFeatures.includes("outbound_messaging");
-  const inboundOn = enabledFeatures.includes("inbound_messaging");
-  const messagingOn = outboundOn || inboundOn;
-  // Telecalling is purchased as a SIM or Tele-CMI bundle (each pulls in its own
-  // telecalling.* sub-features); there is no bare "telecalling" key anymore.
-  const telecallingOn = enabledFeatures.some(
-    (f) => f === "telecalling_sim" || f === "telecalling_telecmi" || f.startsWith("telecalling.")
-  );
-  const canManageTeam = role === "owner" || permissions.includes("team.manage");
-  // Brain has its own Roles toggle (brain.view). Computed up here so the count
-  // hook stays above the early return and hook order never changes.
-  const brainGate =
-    subStatus === "active" &&
-    messagingOn &&
-    (role === "owner" || permissions.includes("brain.view"));
-  const brainCount = useBrainCount(brainGate);
+  // Above the early return so hook order never changes.
+  const brainCount = useBrainCount(access.brainGate);
 
   useEffect(() => {
     if (!telecallingOn || !canManageTeam) return;
@@ -258,44 +241,12 @@ export function Sidebar(_props: SidebarProps) {
     );
   }
 
-  const isSubscribed = subStatus === "active";
-  const can = (permission: string) => role === "owner" || permissions.includes(permission);
-  const canAny = (items: string[]) => role === "owner" || items.some((permission) => permissions.includes(permission));
-
-  // Gate telecalling sub-items by sub-feature flags with backwards compatibility
-  const hasTcSubFeatures = enabledFeatures.some(f => f.startsWith("telecalling."));
-  const visibleTcItems = hasTcSubFeatures
-    ? TELECALLING_ITEMS.filter(item => {
-        const featureKey = TC_FEATURE_MAP[item.href];
-        return !featureKey || enabledFeatures.includes(featureKey);
-      })
-    : TELECALLING_ITEMS;
-
-  const tcGroupItems = visibleTcItems.filter((item) => {
-    const permissionKeys = TC_PERMISSION_MAP[item.href];
-    return !permissionKeys || canAny(permissionKeys);
-  });
-
+  const { isSubscribed, canSettings } = access;
   const showTc = Boolean(expandedGroups.Telecalling);
-  const canSettings = canAny(["settings.view", "settings.manage"]);
   const visibleSettingsItems = getVisibleSettingsItems(purchasedFeatures);
-  const canServices = canAny(["services.view", "services.manage"]);
-  const isSettingsActive = SETTINGS_ITEMS.some(item => pathname.startsWith(item.href));
+  const isSettingsActive = isSettingsPath(pathname);
   const showSettings = expandedGroups.Settings || isSettingsActive;
 
-  const access: NavAccess = {
-    isSubscribed,
-    messagingOn,
-    inboundOn,
-    outboundOn,
-    smsOn: enabledFeatures.includes("sms"),
-    canServices,
-    canSettings,
-    brainGate,
-    telecallingVisible: isSubscribed && telecallingOn && tcGroupItems.length > 0,
-    can,
-    canAny,
-  };
   const dashboard = dashboardEntry(access);
 
   const badgeCount = (key: NavBadgeKey | undefined) =>
@@ -308,7 +259,7 @@ export function Sidebar(_props: SidebarProps) {
     <MainNavItem
       key={leaf.key}
       nested={nested}
-      href={leaf.href}
+      href={leafHref(leaf, access)}
       active={leaf.isActive(pathname)}
       icon={leaf.icon}
       label={leaf.label}

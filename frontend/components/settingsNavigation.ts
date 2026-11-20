@@ -1,14 +1,11 @@
 import {
-  Calendar,
   Headset,
   Megaphone,
-  MessageSquare,
   RadioTower,
-  Sparkles,
   UserCircle,
 } from "lucide-react";
 
-export type SettingsGroup = "Account" | "Channels" | "Anril" | "Calling" | "Alerts";
+export type SettingsGroup = "Account" | "Channels" | "Calling" | "Alerts";
 
 export type SettingsNavItem = {
   href: string;
@@ -23,12 +20,19 @@ export type SettingsNavItem = {
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
   { href: "/dashboard/settings/account", icon: UserCircle, label: "Profile & Business", group: "Account" },
   { href: "/dashboard/settings/connect-channels", icon: RadioTower, label: "Connect Channels", group: "Channels" },
-  { href: "/dashboard/settings/auto-reply", icon: Sparkles, label: "Auto-Reply", group: "Anril" },
-  { href: "/dashboard/settings/follow-ups", icon: Calendar, label: "Follow-Ups", group: "Anril" },
-  { href: "/dashboard/settings/inbox", icon: MessageSquare, label: "Inbox & Handover", group: "Anril" },
   { href: "/dashboard/settings/telecalling-behavior", icon: Headset, label: "Telecalling Behavior", group: "Calling" },
   { href: "/dashboard/settings/notifications", icon: Megaphone, label: "Notifications", group: "Alerts", entitlement: "notifications" },
 ];
+
+/**
+ * Auto-reply, Follow-ups and Inbox & handover are no longer Settings pages (they
+ * live under Anril Setup and Engage in the menu). Their addresses stay under
+ * /dashboard/settings/, so the Settings list is matched from its own items, not
+ * from that prefix.
+ */
+export function isSettingsPath(pathname: string): boolean {
+  return SETTINGS_ITEMS.some((item) => pathname.startsWith(item.href));
+}
 
 export function hasNotificationSettings(purchasedFeatures: string[]): boolean {
   return purchasedFeatures.length === 0
@@ -46,4 +50,4 @@ export function getVisibleSettingsItems(purchasedFeatures: string[]): SettingsNa
 }
 
 /** Groups, in display order, for rendering group headings above their items. */
-export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["Account", "Channels", "Anril", "Calling", "Alerts"];
+export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["Account", "Channels", "Calling", "Alerts"];

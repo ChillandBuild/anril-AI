@@ -8,7 +8,6 @@ import {
   BookOpen,
   Brain,
   Calendar,
-  CalendarClock,
   Grid3X3,
   HandCoins,
   History,
@@ -28,67 +27,79 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   SquarePen,
+  Sparkles,
   Zap,
   StickyNote,
-  Upload,
   Users,
   X,
 } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
-import { getVisibleSettingsItems, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
+import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { BrainNavBadge } from "@/components/brain/BrainNavBadge";
 import { ProductSwitch } from "@/components/nav/ProductSwitch";
 
 const BRAIN_HREF = "/dashboard/brain";
 
-type MoreMenuGate = {
+export type MoreMenuGate = {
   permissionAny?: string[];
   feature?: string;
   anyFeature?: string[];
 };
 
-type MoreMenuSection =
-  | "top"
-  | "inbox"
+export type MoreMenuSection =
+  | "customers"
+  | "whatsapp"
+  | "setup"
   | "engage"
   | "reach"
-  | "sms"
   | "otp"
+  | "sms"
   | "commerce"
   | "callIq"
-  | "aiSetup"
-  | "whatsappSetup"
+  | "reports"
   | "account";
 
-type MoreMenuItem = MoreMenuGate & {
+/** One page a row can open. */
+export type MoreMenuPage = MoreMenuGate & {
   href: string;
-  icon: typeof Users;
-  label: string;
-  section: MoreMenuSection;
-  /** Extra gate: the item also shows when this gate passes (used by Catalogue). */
+  /** Extra gate: the page is also allowed when this gate passes (used by Catalogue). */
   alsoVisibleIf?: MoreMenuGate;
-  /** Extra paths that also highlight this item as active. */
+  /** Extra paths that also highlight the row as active. */
   activePrefixes?: string[];
   /** Active on its own path only, not its sub-pages (the SMS dashboard). */
   exact?: boolean;
 };
 
-/** Render order. `title: null` renders the items with no heading. */
-const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] = [
-  { key: "top", title: null },
-  { key: "inbox", title: "INBOX & LEADS" },
-  { key: "engage", title: "ANRIL ENGAGE" },
-  { key: "reach", title: "ANRIL REACH" },
-  { key: "sms", title: "ANRIL SMS" },
-  { key: "otp", title: "ANRIL OTP" },
-  { key: "commerce", title: "SALES · ANRIL COMMERCE" },
-  { key: "callIq", title: "ANRIL CALL IQ" },
-  { key: "aiSetup", title: "AI SETUP" },
-  { key: "whatsappSetup", title: "WHATSAPP SETUP" },
-  { key: "account", title: "ACCOUNT" },
+/**
+ * One drawer row. Most rows stand for one page. A row that stands for several
+ * (Auto-Messages, Setup, Replies & handover) shows when the user may open ANY of
+ * its pages, opens the first one they may open (the order of `pages`), and is
+ * active on all of them.
+ */
+export type MoreMenuItem = {
+  key: string;
+  icon: typeof Users;
+  label: string;
+  section: MoreMenuSection;
+  pages: MoreMenuPage[];
+};
+
+/** Render order. `title: null` renders the rows with no heading. */
+export const MORE_SECTIONS: readonly { key: MoreMenuSection; title: string | null }[] = [
+  { key: "customers", title: null },
+  { key: "whatsapp", title: "WhatsApp" },
+  { key: "setup", title: "Anril Setup" },
+  { key: "engage", title: "Engage" },
+  { key: "reach", title: null },
+  { key: "otp", title: "Anril OTP" },
+  { key: "sms", title: "Anril SMS" },
+  { key: "commerce", title: "Commerce" },
+  { key: "callIq", title: "Call IQ" },
+  { key: "reports", title: null },
+  { key: "account", title: "Account" },
 ];
 
 const MESSAGING_FEATURES = ["outbound_messaging", "inbound_messaging"];
@@ -96,45 +107,81 @@ const SMS_PERMS = ["sms.view", "sms.manage"];
 /** Anril OTP is not behind the SMS feature flag, so it is gated by permissions only. */
 // Same rule as the desktop sidebar (navSections.otpVisible) and the backend (routes/otp.py `view`).
 const OTP_PERMS = ["sms.view", "sms.manage", "settings.view", "settings.manage"];
+/** The gate the Settings box uses; the pages that used to live under Settings keep it. */
+const SETTINGS_PERMS = ["settings.view", "settings.manage"];
 
-const MORE_ITEMS: MoreMenuItem[] = [
-  { href: "/dashboard/analytics", icon: BarChart2, label: "Analytics", section: "top", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/leads", icon: Users, label: "Leads", section: "inbox", permissionAny: ["leads.view", "leads.manage"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/inbound-leads", icon: Inbox, label: "Inbound Leads", section: "engage", permissionAny: ["inbound_leads.view", "inbound_leads.manage"], feature: "inbound_messaging" },
-  { href: "/dashboard/meta-ads", icon: Megaphone, label: "Meta Ads", section: "engage", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" },
-  { href: "/dashboard/auto-messages", icon: Zap, label: "Auto-Messages", section: "engage", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
-  { href: "/dashboard/scheduled-templates", icon: CalendarClock, label: "Scheduled templates", section: "engage", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/outbound-leads", icon: Upload, label: "Send", section: "reach", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" },
-  { href: "/dashboard/sms", icon: LayoutDashboard, label: "Dashboard", section: "sms", permissionAny: SMS_PERMS, feature: "sms", exact: true },
-  { href: "/dashboard/sms/setup", icon: ListChecks, label: "DLT Setup", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/send", icon: Send, label: "Send SMS", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/contacts", icon: BookUser, label: "Address Book", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/reports", icon: BarChart2, label: "Delivery Reports", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/transactions", icon: ReceiptText, label: "Transactions", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/sms/developer", icon: Code2, label: "Dev API", section: "sms", permissionAny: SMS_PERMS, feature: "sms" },
-  { href: "/dashboard/otp", icon: KeyRound, label: "Send & check", section: "otp", permissionAny: OTP_PERMS, exact: true },
-  { href: "/dashboard/otp/history", icon: History, label: "History", section: "otp", permissionAny: OTP_PERMS },
-  { href: "/dashboard/otp/settings", icon: SlidersHorizontal, label: "Settings", section: "otp", permissionAny: OTP_PERMS },
-  { href: "/dashboard/otp/api", icon: Code2, label: "API & docs", section: "otp", permissionAny: OTP_PERMS },
-  { href: "/dashboard/deals", icon: HandCoins, label: "Deals", section: "commerce", permissionAny: ["deals.view", "deals.manage"] },
+const sms = (href: string, icon: typeof Users, label: string, exact?: boolean): MoreMenuItem => ({
+  key: href, icon, label, section: "sms", pages: [{ href, permissionAny: SMS_PERMS, feature: "sms", exact }],
+});
+
+export const MORE_ITEMS: MoreMenuItem[] = [
+  { key: "leads", icon: Users, label: "Customers", section: "customers", pages: [{ href: "/dashboard/leads", permissionAny: ["leads.view", "leads.manage"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "templates", icon: SquarePen, label: "Templates", section: "whatsapp", pages: [{ href: "/dashboard/templates", permissionAny: ["templates.view", "templates.manage"], feature: "outbound_messaging" }] },
+  { key: "numbers", icon: Layers, label: "Numbers", section: "whatsapp", pages: [{ href: "/dashboard/numbers", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "brain", icon: Brain, label: "Anril Brain", section: "setup", pages: [{ href: BRAIN_HREF, permissionAny: ["brain.view"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "knowledge", icon: BookOpen, label: "Knowledge Base", section: "setup", pages: [{ href: "/dashboard/knowledge", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
   {
-    href: "/dashboard/catalog",
+    key: "replies",
+    icon: Sparkles,
+    label: "Replies & handover",
+    section: "setup",
+    pages: [
+      { href: "/dashboard/settings/auto-reply", permissionAny: SETTINGS_PERMS },
+      { href: "/dashboard/settings/inbox", permissionAny: SETTINGS_PERMS },
+    ],
+  },
+  { key: "inbound-leads", icon: Inbox, label: "Inbound Leads", section: "engage", pages: [{ href: "/dashboard/inbound-leads", permissionAny: ["inbound_leads.view", "inbound_leads.manage"], feature: "inbound_messaging" }] },
+  { key: "meta-ads", icon: Megaphone, label: "Meta Ads", section: "engage", pages: [{ href: "/dashboard/meta-ads", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" }] },
+  {
+    key: "auto-messages",
+    icon: Zap,
+    label: "Auto-Messages",
+    section: "engage",
+    pages: [
+      { href: "/dashboard/auto-messages", permissionAny: ["auto_messages.view", "auto_messages.manage"], feature: "outbound_messaging" },
+      { href: "/dashboard/settings/follow-ups", permissionAny: SETTINGS_PERMS },
+      { href: "/dashboard/scheduled-templates", permissionAny: ["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"], anyFeature: MESSAGING_FEATURES },
+    ],
+  },
+  { key: "reach", icon: Send, label: "Reach", section: "reach", pages: [{ href: "/dashboard/outbound-leads", permissionAny: ["outbound_leads.view", "outbound_leads.manage"], feature: "outbound_messaging" }] },
+  { key: "otp-send", icon: KeyRound, label: "Send & check", section: "otp", pages: [{ href: "/dashboard/otp", permissionAny: OTP_PERMS, exact: true }] },
+  { key: "otp-history", icon: History, label: "History", section: "otp", pages: [{ href: "/dashboard/otp/history", permissionAny: OTP_PERMS }] },
+  {
+    key: "otp-setup",
+    icon: SlidersHorizontal,
+    label: "Setup",
+    section: "otp",
+    pages: [
+      { href: "/dashboard/otp/settings", permissionAny: OTP_PERMS },
+      { href: "/dashboard/otp/api", permissionAny: OTP_PERMS },
+    ],
+  },
+  sms("/dashboard/sms", LayoutDashboard, "Dashboard", true),
+  sms("/dashboard/sms/setup", ListChecks, "DLT Setup"),
+  sms("/dashboard/sms/send", Send, "Send SMS"),
+  sms("/dashboard/sms/contacts", BookUser, "Address Book"),
+  sms("/dashboard/sms/reports", BarChart2, "Delivery Reports"),
+  sms("/dashboard/sms/transactions", ReceiptText, "Transactions"),
+  sms("/dashboard/sms/developer", Code2, "Dev API"),
+  { key: "deals", icon: HandCoins, label: "Orders & payments", section: "commerce", pages: [{ href: "/dashboard/deals", permissionAny: ["deals.view", "deals.manage"] }] },
+  {
+    key: "catalog",
     icon: ShoppingBag,
     label: "Catalogue",
     section: "commerce",
-    permissionAny: ["catalog.view", "catalog.manage"],
-    anyFeature: MESSAGING_FEATURES,
-    alsoVisibleIf: { permissionAny: ["services.view", "services.manage"], anyFeature: MESSAGING_FEATURES },
-    activePrefixes: ["/dashboard/catalog", "/dashboard/services"],
+    pages: [{
+      href: "/dashboard/catalog",
+      permissionAny: ["catalog.view", "catalog.manage"],
+      anyFeature: MESSAGING_FEATURES,
+      alsoVisibleIf: { permissionAny: ["services.view", "services.manage"], anyFeature: MESSAGING_FEATURES },
+      activePrefixes: ["/dashboard/catalog", "/dashboard/services"],
+    }],
   },
-  { href: "/dashboard/telecalling/scheduled", icon: Calendar, label: "Scheduled Calls", section: "callIq", permissionAny: ["telecalling.scheduled.view", "telecalling.scheduled"], feature: "telecalling.scheduled" },
-  { href: "/dashboard/notes", icon: StickyNote, label: "Call Review", section: "callIq", permissionAny: ["telecalling.notes.view", "telecalling.notes"], feature: "telecalling.notes" },
-  { href: "/dashboard/team", icon: Grid3X3, label: "Team Performance", section: "callIq", permissionAny: ["team.view", "team.manage"] },
-  { href: BRAIN_HREF, icon: Brain, label: "Anril Brain", section: "aiSetup", permissionAny: ["brain.view"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/knowledge", icon: BookOpen, label: "Knowledge Base", section: "aiSetup", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/templates", icon: SquarePen, label: "Templates", section: "whatsappSetup", permissionAny: ["templates.view", "templates.manage"], feature: "outbound_messaging" },
-  { href: "/dashboard/numbers", icon: Layers, label: "Numbers Pool", section: "whatsappSetup", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES },
-  { href: "/dashboard/roles", icon: ShieldCheck, label: "Users & Roles", section: "account", permissionAny: ["roles.view", "roles.manage"] },
+  { key: "scheduled-calls", icon: Calendar, label: "Scheduled Calls", section: "callIq", pages: [{ href: "/dashboard/telecalling/scheduled", permissionAny: ["telecalling.scheduled.view", "telecalling.scheduled"], feature: "telecalling.scheduled" }] },
+  { key: "call-review", icon: StickyNote, label: "Call Review", section: "callIq", pages: [{ href: "/dashboard/notes", permissionAny: ["telecalling.notes.view", "telecalling.notes"], feature: "telecalling.notes" }] },
+  { key: "team", icon: Grid3X3, label: "Team Performance", section: "callIq", pages: [{ href: "/dashboard/team", permissionAny: ["team.view", "team.manage"] }] },
+  { key: "analytics", icon: BarChart2, label: "Reports", section: "reports", pages: [{ href: "/dashboard/analytics", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "roles", icon: ShieldCheck, label: "Users & Roles", section: "account", pages: [{ href: "/dashboard/roles", permissionAny: ["roles.view", "roles.manage"] }] },
 ];
 
 function passesGate(gate: MoreMenuGate, role: string | null, enabledFeatures: string[], permissions: string[]) {
@@ -144,15 +191,32 @@ function passesGate(gate: MoreMenuGate, role: string | null, enabledFeatures: st
   return true;
 }
 
-function isVisible(item: MoreMenuItem, role: string | null, enabledFeatures: string[], permissions: string[]) {
-  if (passesGate(item, role, enabledFeatures, permissions)) return true;
-  return item.alsoVisibleIf !== undefined && passesGate(item.alsoVisibleIf, role, enabledFeatures, permissions);
+function canOpen(page: MoreMenuPage, role: string | null, enabledFeatures: string[], permissions: string[]) {
+  if (passesGate(page, role, enabledFeatures, permissions)) return true;
+  return page.alsoVisibleIf !== undefined && passesGate(page.alsoVisibleIf, role, enabledFeatures, permissions);
 }
 
-function isItemActive(item: MoreMenuItem, pathname: string) {
-  if (item.exact) return pathname === item.href;
-  if (isActive(pathname, item.href)) return true;
-  return (item.activePrefixes ?? []).some((prefix) => pathname.startsWith(prefix));
+/** The page a row opens: the first of its pages this user may open, or null (row hidden). */
+export function resolveHref(item: MoreMenuItem, role: string | null, enabledFeatures: string[], permissions: string[]): string | null {
+  return item.pages.find((page) => canOpen(page, role, enabledFeatures, permissions))?.href ?? null;
+}
+
+/** Rows this user sees, in render order, each with the page it opens. */
+export function getVisibleMoreItems(role: string | null, enabledFeatures: string[], permissions: string[]) {
+  return MORE_ITEMS.flatMap((item) => {
+    const href = resolveHref(item, role, enabledFeatures, permissions);
+    return href === null ? [] : [{ ...item, href }];
+  });
+}
+
+function isPageActive(page: MoreMenuPage, pathname: string) {
+  if (page.exact) return pathname === page.href;
+  if (isActive(pathname, page.href)) return true;
+  return (page.activePrefixes ?? []).some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isItemActive(item: MoreMenuItem, pathname: string) {
+  return item.pages.some((page) => isPageActive(page, pathname));
 }
 
 export function MoreMenu() {
@@ -161,12 +225,13 @@ export function MoreMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const { purchasedFeatures } = useSubscription();
 
-  const items = MORE_ITEMS.filter((item) => isVisible(item, role, enabledFeatures, permissions));
+  const items = getVisibleMoreItems(role, enabledFeatures, permissions);
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
-  const brainCount = useBrainCount(items.some((item) => item.href === BRAIN_HREF));
+  const brainCount = useBrainCount(items.some((item) => item.key === "brain"));
   const canSettings = role === "owner" || permissions.includes("settings.view") || permissions.includes("settings.manage");
   const settingsItems = getVisibleSettingsItems(purchasedFeatures);
-  const settingsActive = pathname.startsWith("/dashboard/settings");
+  // Auto-reply, Follow-ups and Inbox live under /dashboard/settings/ but are no longer Settings pages.
+  const settingsActive = isSettingsPath(pathname);
 
   return (
     <div className="relative lg:hidden">
@@ -223,7 +288,7 @@ export function MoreMenu() {
                         const active = isItemActive(item, pathname);
                         return (
                           <Link
-                            key={item.href}
+                            key={item.key}
                             href={item.href}
                             onClick={() => setIsOpen(false)}
                             className={cn(
@@ -235,7 +300,7 @@ export function MoreMenu() {
                           >
                             <Icon size={17} />
                             <span className="min-w-0 truncate">{item.label}</span>
-                            {item.href === BRAIN_HREF && <BrainNavBadge count={brainCount} variant="menu" />}
+                            {item.key === "brain" && <BrainNavBadge count={brainCount} variant="menu" />}
                           </Link>
                         );
                       })}

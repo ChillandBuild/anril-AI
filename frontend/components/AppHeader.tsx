@@ -10,6 +10,7 @@ import { MoreMenu } from "@/components/MoreMenu";
 import { AgentsMenu } from "@/components/agents/AgentsMenu";
 import { agentsRouteMeta } from "@/components/agents/agentsNav";
 import { productOf } from "@/components/nav/products";
+import { PageChips } from "@/components/nav/PageChips";
 import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -403,7 +404,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/otp" || pathname.startsWith("/dashboard/otp/")) {
-    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Settings", api: "API & docs" };
+    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Setup", api: "API & docs" };
     const tab = otpTab[pathname.split("/")[3] ?? ""] ?? otpTab[""];
     return {
       title: `Anril OTP / ${tab}`,
@@ -560,6 +561,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
 
   return (
+    <>
     <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-[#e2e8f0] bg-background px-4 lg:left-[var(--shell-left)] md:h-16 md:gap-4 md:px-6">
       {/* Left side: menu trigger + title and description */}
       <div className="flex min-w-0 items-center gap-3">
@@ -606,6 +608,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
         {/* Deals renders its own switch below, next to the New deal button. */}
         {headerTabs && pathname !== "/dashboard/deals" && <HeaderTabSwitch pathname={pathname} set={headerTabs} />}
+
+        <PageChips placement="header" />
 
         {pathname?.startsWith("/dashboard/meta-ads") && (
           <nav aria-label="Meta ads views" className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
@@ -746,5 +750,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
         <ProfileMenu />
       </div>
     </header>
+    {/* Phones: the header is one fixed line, so the chips sit in the page flow right under it. */}
+    <PageChips placement="strip" />
+    </>
   );
 }

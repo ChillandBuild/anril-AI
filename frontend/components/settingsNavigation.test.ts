@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getVisibleSettingsItems } from "./settingsNavigation";
+import { getVisibleSettingsItems, isSettingsPath, SETTINGS_GROUP_ORDER, SETTINGS_ITEMS } from "./settingsNavigation";
 
 describe("getVisibleSettingsItems", () => {
   it("fails open for legacy tenants with no subscription item rows", () => {
@@ -28,5 +28,33 @@ describe("getVisibleSettingsItems", () => {
 
     expect(noEntitlements).toContain("Profile & Business");
     expect(simOnly).toContain("Profile & Business");
+  });
+});
+
+describe("isSettingsPath", () => {
+  it.each([
+    "/dashboard/settings/account",
+    "/dashboard/settings/connect-channels",
+    "/dashboard/settings/telecalling-behavior",
+    "/dashboard/settings/notifications",
+  ])("%s is a Settings page", (path) => {
+    expect(isSettingsPath(path)).toBe(true);
+  });
+
+  it.each([
+    "/dashboard/settings/auto-reply",
+    "/dashboard/settings/follow-ups",
+    "/dashboard/settings/inbox",
+    "/dashboard/otp/settings",
+    "/dashboard",
+  ])("%s no longer puts the sidebar in Settings mode", (path) => {
+    expect(isSettingsPath(path)).toBe(false);
+  });
+
+  it("the Anril settings group is gone from the list and the group order", () => {
+    expect(SETTINGS_ITEMS.map((item) => item.label)).toEqual([
+      "Profile & Business", "Connect Channels", "Telecalling Behavior", "Notifications",
+    ]);
+    expect(SETTINGS_GROUP_ORDER).not.toContain("Anril");
   });
 });
