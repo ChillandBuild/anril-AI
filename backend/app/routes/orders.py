@@ -189,6 +189,99 @@ async def create_quote(payload: NewQuoteIn, ctx: dict = Depends(require_deals_ma
         raise _bad(e)
 
 
+# ── Order settings (middle step name, Google review link) ──────────────────────
+
+@router.get("/settings")
+def get_order_settings(ctx: dict = Depends(require_deals_view)):
+    return orders_service.order_settings(ctx["tenant_id"])
+
+
+class OrderSettingsIn(BaseModel):
+    working_label: str = Field("Working on it", max_length=30)
+    google_review_link: str = Field("", max_length=300)
+
+
+@router.put("/settings")
+def put_order_settings(payload: OrderSettingsIn, ctx: dict = Depends(require_owner)):
+    try:
+        return orders_service.save_order_settings(get_supabase(), ctx["tenant_id"], payload.model_dump())
+    except OrderError as e:
+        raise _bad(e)
+
+
+# ── Day closing ───────────────────────────────────────────────────────────────
+
+@router.get("/day-closing")
+def day_closing(day: str | None = Query(None, max_length=10), ctx: dict = Depends(require_deals_view)):
+    from app.services import day_closing as dc
+    try:
+        return dc.summary(get_supabase(), ctx["tenant_id"], dc.parse_day(day))
+    except OrderError as e:
+        raise _bad(e)
+
+
+class CashExpenseIn(BaseModel):
+    day: str | None = Field(None, max_length=10)
+    label: str = Field(..., min_length=1, max_length=80)
+    amount_paise: int = Field(..., ge=100, le=10_000_000_00)
+    spent_by: str | None = Field(None, max_length=60)
+
+
+@router.post("/day-closing/expenses")
+def add_cash_expense(payload: CashExpenseIn, ctx: dict = Depends(require_deals_manage)):
+    from app.services import day_closing as dc
+    db = get_supabase()
+    try:
+        day = dc.parse_day(payload.day)
+        dc.add_expense(db, ctx["tenant_id"], day, payload.label, payload.amount_paise, payload.spent_by, ctx.get("user_id"))
+        return dc.summary(db, ctx["tenant_id"], day)
+    except OrderError as e:
+        raise _bad(e)
+
+
+@router.delete("/day-closing/expenses/{expense_id}")
+def delete_cash_expense(expense_id: str, day: str | None = Query(None, max_length=10), ctx: dict = Depends(require_deals_manage)):
+    from app.services import day_closing as dc
+    db = get_supabase()
+    try:
+        d = dc.parse_day(day)
+        dc.delete_expense(db, ctx["tenant_id"], expense_id)
+        return dc.summary(db, ctx["tenant_id"], d)
+    except OrderError as e:
+        raise _bad(e)
+
+
+class CloseDayIn(BaseModel):
+    day: str | None = Field(None, max_length=10)
+    opening_paise: int = Field(..., ge=0, le=10_000_000_00)
+    counted_paise: int = Field(..., ge=0, le=10_000_000_00)
+    note: str | None = Field(None, max_length=300)
+
+
+@router.post("/day-closing/close")
+def close_day(payload: CloseDayIn, ctx: dict = Depends(require_deals_manage)):
+    from app.services import day_closing as dc
+    try:
+        return dc.close_day(get_supabase(), ctx["tenant_id"], dc.parse_day(payload.day), opening_paise=payload.opening_paise,
+                            counted_paise=payload.counted_paise, note=payload.note, user_id=ctx.get("user_id"),
+                            user_role=ctx.get("role"))
+    except OrderError as e:
+        raise _bad(e)
+
+
+@router.get("/day-closing/export")
+def export_day_closing(day: str | None = Query(None, max_length=10), ctx: dict = Depends(require_deals_view)):
+    from fastapi.responses import Response
+    from app.services import day_closing as dc
+    try:
+        d = dc.parse_day(day)
+    except OrderError as e:
+        raise _bad(e)
+    content = dc.export_csv(get_supabase(), ctx["tenant_id"], d)
+    return Response(content="\ufeff" + content, media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="day-closing-{d.isoformat()}.csv"'})
+
+
 # ── WhatsApp templates for orders ─────────────────────────────────────────────
 
 def _template_status(db, tenant_id: str) -> list[dict]:
@@ -322,7 +415,13 @@ async def send_quote(deal_id: str, ctx: dict = Depends(require_deals_manage)):
     return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}
 
 
+class RefundItem(BaseModel):
+    deal_item_id: str = Field(..., max_length=64)
+    qty: int = Field(..., ge=1, le=100000)
+
+
 class RefundIn(BaseModel):
+    items: list[RefundItem] = Field(default_factory=list, max_length=60)
     mode: Literal["cancel", "full", "part"]
     amount_paise: int | None = Field(None, ge=100, le=10_000_000_00)
     method: Literal["razorpay", "cash", "upi", "bank_transfer"] | None = None
@@ -338,7 +437,8 @@ async def refund(deal_id: str, payload: RefundIn, ctx: dict = Depends(require_de
     db = get_supabase()
     try:
         out = await give_back(db, ctx["tenant_id"], deal_id, mode=payload.mode, amount_paise=payload.amount_paise,
-                              method=payload.method, reason=payload.reason, user_id=ctx.get("user_id"), sender=_sender(ctx))
+                              method=payload.method, reason=payload.reason, user_id=ctx.get("user_id"), sender=_sender(ctx),
+                              items=[i.model_dump() for i in payload.items])
     except OrderError as e:
         raise _bad(e)
     return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}

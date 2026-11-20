@@ -35,7 +35,7 @@ function stepsFor(o: OrderDetail): Step[] {
   }
   return [
     { key: "ordered", label: paidOrAdvance && o.payment === "advance" ? "Advance paid" : "Ordered", at: o.created_at, done: true },
-    { key: "working", label: "Working on it", at: null, done: ["working", "ready", "delivered"].includes(o.delivery) },
+    { key: "working", label: o.settings?.working_label || "Working on it", at: null, done: ["working", "ready", "delivered"].includes(o.delivery) },
     { key: "ready", label: "Ready", at: o.ready_at, done: ["ready", "delivered"].includes(o.delivery) },
     { key: "delivered", label: "Picked up", at: o.delivered_at, done: o.delivery === "delivered" },
   ];
@@ -44,6 +44,11 @@ function stepsFor(o: OrderDetail): Step[] {
 const KIND_TITLE: Record<string, string> = {
   bill: "Bill", confirmed: "Order confirmed", ready: "Ready", shipped: "On the way", delivered: "Delivered",
   reminder: "Payment reminder", pay_link: "Payment link", quote: "Quote", quote_reminder: "Quote reminder", refund: "Refund",
+};
+
+const UPCOMING_TITLE: Record<string, string> = {
+  reminder: "Balance reminder", quote_reminder: "Quote reminder", quote_expiry: "Quote expires",
+  ready: "Ready for pickup", shipped: "On the way + tracking ID", delivered: "Thank you + Google review",
 };
 
 function dayOnly(iso: string | null | undefined): string {
@@ -410,6 +415,7 @@ export default function OrderPage() {
               </div>
             )}
             {o.payment === "paid" && <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Check size={13} /> Paid in full</p>}
+            {o.advance_note && <p className="mt-2 text-[11px] text-on-surface-muted">{o.advance_note}</p>}
           </Panel>
 
           {(o.stage !== "lost" || o.refundable_paise > 0) && (
@@ -477,9 +483,9 @@ export default function OrderPage() {
               <div className="mt-4 border-t border-dashed border-[#e2e8f0] pt-3">
                 <p className="mb-2 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Goes out next, by itself</p>
                 {o.upcoming.map((u) => (
-                  <div key={u.kind + u.at} className="flex justify-between text-xs">
-                    <span className="font-label font-bold text-[#0A1528]">{u.kind === "quote_reminder" ? "Quote reminder" : u.kind === "quote_expiry" ? "Quote expires" : "Payment reminder"}</span>
-                    <span className="text-on-surface-muted">{dateTime(u.at)}, {u.note}</span>
+                  <div key={u.kind + (u.at ?? "")} className="flex justify-between gap-3 py-0.5 text-xs">
+                    <span className="font-label font-bold text-[#0A1528]">{UPCOMING_TITLE[u.kind] ?? u.kind}</span>
+                    <span className="text-right text-on-surface-muted">{u.at ? `${dateTime(u.at)}, ${u.note}` : u.note}</span>
                   </div>
                 ))}
               </div>

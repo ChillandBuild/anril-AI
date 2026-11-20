@@ -66,6 +66,44 @@ class OrderError(ValueError):
     """Something staff can fix; routes turn it into a 400."""
 
 
+SETTINGS_KEY = "orders_settings"
+WORKING_LABELS = ("Working on it", "Stitching", "Packing", "Preparing", "Repairing", "Printing")
+DEFAULT_SETTINGS = {"working_label": "Working on it", "google_review_link": ""}
+
+
+def order_settings(tenant_id: str) -> dict:
+    """The shop's order settings: the middle step's name and the Google review link."""
+    import json
+    from app.config_dynamic import get_setting
+    raw = get_setting(SETTINGS_KEY, fallback=None, tenant_id=tenant_id)
+    try:
+        saved = json.loads(raw) if raw else {}
+    except ValueError:
+        saved = {}
+    out = dict(DEFAULT_SETTINGS)
+    for key in out:
+        value = (saved or {}).get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+    return out
+
+
+def save_order_settings(db, tenant_id: str, data: dict) -> dict:
+    import json
+    from app.config_dynamic import invalidate_cache
+    label = " ".join(str(data.get("working_label") or "").split())[:30] or DEFAULT_SETTINGS["working_label"]
+    link = str(data.get("google_review_link") or "").strip()[:300]
+    if link and not re.match(r"^https://[^\s]+$", link):
+        raise OrderError("The review link must start with https://")
+    clean = {"working_label": label, "google_review_link": link}
+    db.table("app_settings").upsert({
+        "tenant_id": tenant_id, "key": SETTINGS_KEY, "value": json.dumps(clean), "is_secret": False,
+        "updated_at": "now()",
+    }, on_conflict="tenant_id,key").execute()
+    invalidate_cache(SETTINGS_KEY)
+    return clean
+
+
 # ─────────────────────────────────────────────────────────────── small helpers
 
 def _now() -> datetime:
@@ -513,6 +551,9 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
             "ready_in_days": deal.get("ready_in_days"),
         },
         "ready_preview": ready_preview,
+        "advance_note": deal.get("advance_note"),
+        "returnable": _returnable(db, tenant_id, deal_id),
+        "settings": {"working_label": order_settings(tenant_id)["working_label"]},
         "stage": deal.get("stage"),
         "source": deal.get("source"),
         "items_full": items,
@@ -551,6 +592,15 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
     }
 
 
+def _returnable(db, tenant_id: str, deal_id: str) -> dict[str, int]:
+    try:
+        from app.services.order_refunds import returnable_items
+        return returnable_items(db, tenant_id, deal_id)
+    except Exception as e:
+        logger.warning(f"Returnable items for {deal_id} failed: {e}")
+        return {}
+
+
 def _razorpay_refundable(db, tenant_id: str, deal_id: str) -> int:
     """How much of this order was paid by Razorpay and not yet refunded through it."""
     paid = (
@@ -565,9 +615,19 @@ def _razorpay_refundable(db, tenant_id: str, deal_id: str) -> int:
 
 
 def _upcoming(deal: dict) -> list[dict]:
-    """What goes out next by itself, for the order page."""
+    """What goes out next, for the order page: messages tied to a step (no time, "when you
+    tap Ready") and the reminders that go by themselves (with a time)."""
     out = []
-    if deal.get("stage") in ("won", "lost"):
+    if deal.get("stage") == "lost":
+        return out
+    if deal.get("stage") != "quoted" and deal.get("handover") != "taken" and deal.get("delivery_status") != "delivered":
+        courier = deal.get("handover") == "courier"
+        if deal.get("delivery_status") not in ("ready", "shipped"):
+            out.append({"kind": "ready", "at": None, "note": "when you tap Packed" if courier else "when you tap Ready"})
+        if courier and deal.get("delivery_status") != "shipped":
+            out.append({"kind": "shipped", "at": None, "note": "when you add the tracking ID"})
+        out.append({"kind": "delivered", "at": None, "note": "after it's delivered" if courier else "after they pick it up"})
+    if deal.get("stage") == "won":
         return out
     if deal.get("stage") == "quoted" and deal.get("quote_sent_at"):
         sent = _parse(deal["quote_sent_at"])
@@ -671,8 +731,13 @@ def compose(db, tenant_id: str, deal: dict, kind: str, *, pay_link: str | None =
             text += f"\nTracking ID: {track}"
         return text, [first, number, shop, update, bill_url(deal.get("bill_token")) or number]
     if kind == "delivered":
-        text = f"Vanakkam {first} 🙏 Your order {number} is delivered. Thank you for choosing {shop}!"
-        return text, [first, number, shop, "it is delivered, thank you", bill_url(deal.get("bill_token")) or number]
+        done = "delivered" if deal.get("handover") == "courier" else "picked up"
+        review = order_settings(tenant_id).get("google_review_link") or ""
+        text = f"Vanakkam {first} 🙏 Thank you for choosing {shop}! Your order {number} is {done}."
+        if review:
+            text += f"\nIf you liked it, a quick Google review helps us a lot: {review}"
+        update = f"it is {done}, thank you" + (" - a Google review helps us a lot" if review else "")
+        return text, [first, number, shop, update, review or bill_url(deal.get("bill_token")) or number]
     # reminder / pay_link
     text = (f"Vanakkam {first}, a gentle reminder from {shop}: {_rupees(due)} is still to pay for order {number}."
             if kind == "reminder" else f"Vanakkam {first}, here is the payment link for order {number} from {shop}: {_rupees(due)}.")
@@ -957,6 +1022,14 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
     advance = int(data.get("advance_paise") or 0) if mode == "later" else total
     if advance < 0 or advance > total:
         raise OrderError("The advance can't be more than the total")
+    advance_note = None
+    if mode == "later":
+        from app.services.order_quotes import advance_for, advance_rule, rule_text
+        rule = advance_rule(tenant_id)
+        asked = advance_for(total, rule)
+        if rule["kind"] != "none" and advance != asked:
+            advance_note = (f"Advance rule {rule_text(rule)} ({_rupees(asked)}). "
+                            f"Staff changed it to {_rupees(advance)} for this order.")
     ready_by = None
     if data.get("ready_by"):
         try:
@@ -975,9 +1048,11 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         "customer_name": (data.get("name") or "").strip()[:120] or None,
         "sold_by": data.get("sold_by") or None, "sold_by_ai": bool(data.get("sold_by_ai")) and not data.get("sold_by"),
         "created_by": user_id, "ready_by": ready_by, "notes": (data.get("notes") or "").strip()[:2000] or None,
-        "bill_token": secrets.token_urlsafe(16),
+        "bill_token": secrets.token_urlsafe(16), "advance_note": advance_note,
     }
     deal = db.table("deals").insert(row).execute().data[0]
+    if advance_note:
+        _audit(db, tenant_id, user_id, "order.advance_changed", deal["id"], {"note": advance_note})
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     stock_short = _check_stock(db, tenant_id, lines) if mode == "now" else []
 
@@ -1004,6 +1079,16 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         message = await notify(db, tenant_id, deal["id"], kind, user_id=user_id, pay_link=link, sender=sender)
     return {"order": order_detail(db, tenant_id, deal["id"]), "message": message, "payment_link": link,
             "stock_short": stock_short, "stock_warnings": warnings}
+
+
+def _audit(db, tenant_id: str, user_id: str | None, action: str, target_id: str, metadata: dict) -> None:
+    """Activity log row; never stops the order change it follows."""
+    try:
+        from app.services.audit_log import record_audit_event
+        record_audit_event(db, tenant_id=tenant_id, actor_user_id=user_id, actor_role=None, action=action,
+                           target_type="order", target_id=target_id, metadata=metadata)
+    except Exception as e:
+        logger.warning(f"Audit {action} for {target_id} failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────── payment reminders (scheduler)

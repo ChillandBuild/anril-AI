@@ -60,6 +60,17 @@ def save_advance_rule(db, tenant_id: str, rule: dict) -> dict:
     return clean
 
 
+def rule_text(rule: dict) -> str:
+    """"30%" / "₹1,000" / "30% above ₹5,000"."""
+    if rule.get("kind") == "percent":
+        base = f"{float(rule['value']):g}%"
+    elif rule.get("kind") == "fixed":
+        base = _rupees(round(float(rule["value"]) * 100))
+    else:
+        return "none"
+    return base + (f" above {_rupees(int(rule['min_total_paise']))}" if int(rule.get("min_total_paise") or 0) else "")
+
+
 def advance_for(total_paise: int, rule: dict) -> int:
     """The advance a rule asks for on this total (never more than the total)."""
     if rule.get("kind") == "none" or total_paise <= 0:
@@ -135,10 +146,16 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     if valid < today:
         raise OrderError("The valid-till date is already over")
     asked = data.get("advance") or {"kind": "rule"}
-    rule = advance_rule(tenant_id) if asked.get("kind") == "rule" else asked
+    shop_rule = advance_rule(tenant_id)
+    rule = shop_rule if asked.get("kind") == "rule" else asked
     if rule.get("kind") not in ("none", "percent", "fixed"):
         raise OrderError("Pick how much advance to ask for")
     advance = advance_for(total, rule)
+    shop_advance = advance_for(total, shop_rule)
+    advance_note = None
+    if asked.get("kind") != "rule" and shop_rule["kind"] != "none" and advance != shop_advance:
+        advance_note = (f"Advance rule {rule_text(shop_rule)} ({_rupees(shop_advance)}). "
+                        f"Staff changed it to {_rupees(advance)} for this order.")
     ready = data.get("ready_in_days")
     if ready is not None and not (0 <= int(ready) <= 365):
         raise OrderError("Ready in must be 0 to 365 days")
@@ -154,7 +171,10 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
         "ready_in_days": int(ready) if ready is not None else None,
         "notes": (data.get("notes") or "").strip()[:2000] or None, "created_by": user_id,
         "sold_by": data.get("sold_by") or None, "bill_token": secrets.token_urlsafe(16),
+        "advance_note": advance_note,
     }).execute().data[0]
+    if advance_note:
+        orders._audit(db, tenant_id, user_id, "order.advance_changed", deal["id"], {"note": advance_note})
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     message = await send_quote(db, tenant_id, deal["id"], user_id=user_id, sender=sender) if send else None
     return {"order": orders.order_detail(db, tenant_id, deal["id"]), "message": message}

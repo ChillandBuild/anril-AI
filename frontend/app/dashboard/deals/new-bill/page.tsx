@@ -51,6 +51,7 @@ export default function NewBillPage() {
   const { role, permissions } = useAuthRole();
   const canManage = role === "owner" || permissions.includes("deals.manage");
   const { data: options, error } = useSWR("new-bill-options", () => api.orders.billOptions(), { revalidateOnFocus: false });
+  const { data: shopRule } = useSWR("orders-advance-rule", () => api.orders.advanceRule(), { revalidateOnFocus: false });
 
   const [mode, setMode] = useState<"now" | "later">("now");
   const [group, setGroup] = useState("all");
@@ -113,7 +114,14 @@ export default function NewBillPage() {
     lines.map((l) => ({ unit_price_paise: priceOf(l.item, l.variant), qty: l.qty, gst_rate: l.item.gst_rate })),
     { discount_paise: rupeesToPaise(discountText), include_gst: includeGst, bill_type: billType },
   );
-  const advance = mode === "later" ? Math.min(rupeesToPaise(advanceText), totals.total_paise) : totals.total_paise;
+  // The shop rule's advance (same as backend order_quotes.advance_for); typing another amount is noted on the order.
+  const ruleAdvance = (() => {
+    if (!shopRule || shopRule.kind === "none" || !totals.total_paise) return 0;
+    if (shopRule.min_total_paise && totals.total_paise < shopRule.min_total_paise) return 0;
+    const a = shopRule.kind === "percent" ? Math.round((totals.total_paise * shopRule.value) / 100) : Math.round(shopRule.value * 100);
+    return Math.min(a, totals.total_paise);
+  })();
+  const advance = mode === "later" ? Math.min(advanceText.trim() ? rupeesToPaise(advanceText) : ruleAdvance, totals.total_paise) : totals.total_paise;
   const hasPhone = phone.replace(/\D/g, "").length >= 10;
   const gstRate = (() => {
     const rates = new Set(lines.map((l) => l.item.gst_rate || 0).filter(Boolean));
@@ -486,7 +494,8 @@ export default function NewBillPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[11px] font-bold text-[#334155]">Advance now
-                  <input value={advanceText} onChange={(e) => setAdvanceText(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="₹0"
+                  <input value={advanceText} onChange={(e) => setAdvanceText(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal"
+                    placeholder={ruleAdvance ? `₹${ruleAdvance / 100} (shop rule)` : "₹0"}
                     className="mt-1 h-9 w-full rounded-lg border border-[#e2e8f0] bg-white px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200" />
                 </label>
                 <label className="text-[11px] font-bold text-[#334155]">Ready by
@@ -494,7 +503,7 @@ export default function NewBillPage() {
                     className="mt-1 h-9 w-full rounded-lg border border-[#e2e8f0] bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-200" />
                 </label>
               </div>
-              {totals.total_paise > 0 && <p className="text-[11px] text-on-surface-muted">Balance {rupees(totals.total_paise - advance)} when ready. Mark ready sends them a Pay link.</p>}
+              {totals.total_paise > 0 && <p className="text-[11px] text-on-surface-muted">Advance {rupees(advance)}{!advanceText.trim() && ruleAdvance ? " (shop rule)" : advanceText.trim() && ruleAdvance && advance !== ruleAdvance ? ` · shop rule says ${rupees(ruleAdvance)}, the change is noted` : ""} · balance {rupees(totals.total_paise - advance)} when ready.</p>}
             </div>
           )}
 

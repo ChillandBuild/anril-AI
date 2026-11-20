@@ -3905,7 +3905,18 @@ export const api = {
       apiFetch<{ order: OrderDetail; message: OrderMessageResult | null }>("/api/v1/orders/quotes", { method: "POST", body: JSON.stringify(body) }),
     sendQuote: (id: string) =>
       apiFetch<OrderSendResult>(`/api/v1/orders/${encodeURIComponent(id)}/send-quote`, { method: "POST" }),
-    refund: (id: string, body: { mode: "cancel" | "full" | "part"; amount_paise?: number; method?: RefundMethod; reason: string }) =>
+    settings: () => apiFetch<OrderSettings>("/api/v1/orders/settings"),
+    saveSettings: (body: OrderSettings) =>
+      apiFetch<OrderSettings>("/api/v1/orders/settings", { method: "PUT", body: JSON.stringify(body) }),
+    dayClosing: (day?: string) => apiFetch<DayClosing>(`/api/v1/orders/day-closing${day ? `?day=${day}` : ""}`),
+    addCashExpense: (body: { day?: string; label: string; amount_paise: number; spent_by?: string }) =>
+      apiFetch<DayClosing>("/api/v1/orders/day-closing/expenses", { method: "POST", body: JSON.stringify(body) }),
+    deleteCashExpense: (id: string, day?: string) =>
+      apiFetch<DayClosing>(`/api/v1/orders/day-closing/expenses/${encodeURIComponent(id)}${day ? `?day=${day}` : ""}`, { method: "DELETE" }),
+    closeDay: (body: { day?: string; opening_paise: number; counted_paise: number; note?: string }) =>
+      apiFetch<DayClosing & { difference_paise: number }>("/api/v1/orders/day-closing/close", { method: "POST", body: JSON.stringify(body) }),
+    dayClosingExportPath: (day: string) => `/api/v1/orders/day-closing/export?day=${day}`,
+    refund: (id: string, body: { mode: "cancel" | "full" | "part"; amount_paise?: number; method?: RefundMethod; reason: string; items?: { deal_item_id: string; qty: number }[] }) =>
       apiFetch<{ order: OrderDetail; message: OrderMessageResult | null; cancelled: boolean; credit_note: string | null; short_paise: number }>(
         `/api/v1/orders/${encodeURIComponent(id)}/refund`, { method: "POST", body: JSON.stringify(body) },
       ),
@@ -5157,7 +5168,7 @@ export interface OrderDetail extends OrderRow {
   sold_by: { name: string | null; ai: boolean };
   payments: { id: string; amount_paise: number; method: string; method_label: string; kind: string; paid_at: string; received_by_name: string | null; note: string | null }[];
   messages: { id: string; kind: OrderMessageKind; sent_via: "text" | "template" | "share"; body: string | null; created_at: string; ticks: string }[];
-  upcoming: { kind: string; at: string; note: string }[];
+  upcoming: { kind: string; at: string | null; note: string }[];
   customer_full: { lead_id: string | null; name: string | null; phone: string | null; segment: string | null; came_from: string; order_count: number };
   reminders: { sent: number; from: string | null; last_at: string | null };
   refunds: { id: string; amount_paise: number; method: RefundMethod; method_label: string; reason: string | null; status: "done" | "pending" | "failed"; credit_note_number: string | null; created_at: string }[];
@@ -5166,6 +5177,30 @@ export interface OrderDetail extends OrderRow {
   quote: { valid_until: string | null; sent_at: string | null; accepted_at: string | null; advance_paise: number; ready_in_days: number | null };
   /** What "Mark ready" will send, for the preview box; null once it can't be marked ready. */
   ready_preview: string | null;
+  /** "Advance rule 30% (₹3,150). Staff changed it to ₹3,000 for this order." */
+  advance_note: string | null;
+  /** deal_item_id -> pieces that can still go back on the shelf (part refund by items). */
+  returnable: Record<string, number>;
+  settings: { working_label: string };
+}
+
+export interface OrderSettings {
+  working_label: string;
+  google_review_link: string;
+}
+
+export interface DayClosing {
+  day: string;
+  money_in: { paise: number; bills: number; average_paise: number };
+  methods: { method: string; label: string; paise: number; orders: number }[];
+  refunds: { paise: number; items: { name: string; method: string; paise: number }[] };
+  expenses: { paise: number; items: { id: string; label: string; amount_paise: number; spent_by: string | null; created_at: string }[] };
+  drawer: {
+    opening_paise: number; opening_from: "closing" | "yesterday" | "none";
+    cash_sales_paise: number; cash_refunds_paise: number; cash_expenses_paise: number; expected_paise: number;
+  };
+  closed: { opening_paise: number; expected_paise: number; counted_paise: number; difference_paise: number; note: string | null; closed_at: string } | null;
+  running_low: { name: string; left: number }[];
 }
 
 export interface AdvanceRule {

@@ -399,6 +399,9 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   if (pathname === "/dashboard/sms" || pathname.startsWith("/dashboard/sms/")) {
     return SMS_TITLES[pathname.split("/")[3] ?? ""] ?? SMS_TITLES[""];
   }
+  if (pathname === "/dashboard/deals/day-closing") {
+    return { title: "Orders & payments / Day closing", description: "Check today's money against your cash drawer, in one minute." };
+  }
   if (pathname === "/dashboard/deals/new-quote") {
     return { title: "Orders & payments / New quote", description: "Send a price offer. When they tap Accept, it becomes an order." };
   }

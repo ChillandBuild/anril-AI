@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ChevronRight, Download, Hourglass, IndianRupee, Loader2, MessageCircle, Package, ReceiptText, Search } from "lucide-react";
+import { CalendarCheck, ChevronRight, Download, Hourglass, IndianRupee, Loader2, MessageCircle, Package, ReceiptText, Search, Settings2 } from "lucide-react";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { OrderSettingsDialog } from "./orders/OrderSettingsDialog";
 import { api, type OrderChip, type OrderRow, type OrdersPage } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
@@ -80,6 +82,8 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
   const [days, setDays] = useState("30");
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { role } = useAuthRole();
 
   const query = { chip, channel, days: Number(days), q: search.trim() || undefined };
   const { data, error, isLoading, mutate } = useSWR<OrdersPage>(
@@ -218,6 +222,14 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           <Select size="sm" value={channel} onChange={(v) => setChannel(v as typeof channel)} options={CHANNELS} aria-label="Online or store"
             className="w-auto text-xs font-bold" />
           <Select size="sm" value={days} onChange={setDays} options={DAYS} aria-label="Period" className="w-auto text-xs font-bold" />
+          <Link href="/dashboard/deals/day-closing" title="Check today's money against the cash drawer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
+            <CalendarCheck size={13} /> Day closing
+          </Link>
+          <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Order settings" title="Order settings"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300">
+            <Settings2 size={14} />
+          </button>
         </div>
 
         {isLoading && !data ? (
@@ -297,6 +309,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           </div>
         )}
       </section>
+      {settingsOpen && <OrderSettingsDialog onClose={() => setSettingsOpen(false)} canEdit={role === "owner"} />}
     </div>
   );
 }

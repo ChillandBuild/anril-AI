@@ -59,8 +59,51 @@ def _razorpay_payments(db, tenant_id: str, deal_id: str) -> list[dict]:
     return out
 
 
+def returnable_items(db, tenant_id: str, deal_id: str) -> dict[str, int]:
+    """deal_item_id -> how many of it can still go back on the shelf (qty less earlier part refunds)."""
+    lines = (
+        db.table("deal_items").select("id, qty").eq("deal_id", deal_id).eq("tenant_id", tenant_id).execute()
+    ).data or []
+    back = (
+        db.table("deal_refunds").select("items").eq("deal_id", deal_id).eq("tenant_id", tenant_id)
+        .neq("status", "failed").execute()
+    ).data or []
+    used: dict[str, int] = {}
+    for r in back:
+        for it in r.get("items") or []:
+            used[it.get("deal_item_id")] = used.get(it.get("deal_item_id"), 0) + int(it.get("qty") or 0)
+    return {line["id"]: max(int(line["qty"]) - used.get(line["id"], 0), 0) for line in lines}
+
+
+def _restock(db, tenant_id: str, deal_id: str, picked: list[dict], user_id: str | None) -> list[dict]:
+    """Put the picked pieces back on the shelf (each line's own size/colour)."""
+    if not picked:
+        return []
+    ids = [p["deal_item_id"] for p in picked]
+    lines = {
+        r["id"]: r for r in (
+            db.table("deal_items").select("id, catalog_item_id, variant_id, name").eq("deal_id", deal_id)
+            .eq("tenant_id", tenant_id).in_("id", ids).execute()
+        ).data or []
+    }
+    warnings = []
+    for p in picked:
+        line = lines.get(p["deal_item_id"]) or {}
+        if not line.get("catalog_item_id"):
+            continue
+        move = deals_service.adjust_variant_stock if line.get("variant_id") else deals_service.adjust_stock
+        try:
+            move(tenant_id, line.get("variant_id") or line["catalog_item_id"], int(p["qty"]), "return",
+                 deal_id=deal_id, created_by=user_id, note="Part refund", db=db)
+        except Exception as e:
+            logger.warning(f"Refund restock of {line.get('name')} on {deal_id} failed: {e}")
+            warnings.append(line.get("name"))
+    return warnings
+
+
 async def refund(db, tenant_id: str, deal_id: str, *, mode: str, amount_paise: int | None, method: str | None,
-                 reason: str, user_id: str | None = None, sender: dict | None = None) -> dict:
+                 reason: str, user_id: str | None = None, sender: dict | None = None,
+                 items: list[dict] | None = None) -> dict:
     if mode not in ("cancel", "full", "part"):
         raise OrderError("Pick cancel, full refund or part refund")
     reason = (reason or "").strip()[:200]
@@ -87,6 +130,18 @@ async def refund(db, tenant_id: str, deal_id: str, *, mode: str, amount_paise: i
         raise OrderError(f"Only {orders._rupees(held)} is left to refund on this order")
     if method not in METHODS:
         raise OrderError("Pick how the money goes back")
+    picked: list[dict] = []
+    if mode == "part" and items:
+        left_by_line = returnable_items(db, tenant_id, deal_id)
+        for it in items:
+            line_id, qty = str(it.get("deal_item_id") or ""), int(it.get("qty") or 0)
+            if qty <= 0:
+                continue
+            if line_id not in left_by_line:
+                raise OrderError("That item isn't on this order")
+            if qty > left_by_line[line_id]:
+                raise OrderError("More pieces picked than are left to return on that item")
+            picked.append({"deal_item_id": line_id, "qty": qty})
 
     credit_note = _credit_note(db, tenant_id) if deal.get("invoice_number") and deal.get("bill_type", "gst") == "gst" else None
     rows: list[dict] = []
@@ -129,7 +184,14 @@ async def refund(db, tenant_id: str, deal_id: str, *, mode: str, amount_paise: i
     closes = mode == "full" and given >= held
     if closes and deal["stage"] == "won":
         rows[0]["restocked"] = True
+    # Picked pieces go back on the shelf only if they left it (stock moves when an order is won).
+    restock_now = picked and deal["stage"] == "won"
+    if picked:
+        rows[0]["items"] = picked
+        rows[0]["restocked"] = bool(restock_now)
     db.table("deal_refunds").insert(rows).execute()
+    if restock_now:
+        _restock(db, tenant_id, deal_id, picked, user_id)
     if closes and deal["stage"] != "lost":
         deals_service.mark_lost(tenant_id, deal_id, f"Refunded · {reason}", created_by=user_id, db=db)
     message = await orders.notify(db, tenant_id, deal_id, "refund", user_id=user_id, sender=sender,
