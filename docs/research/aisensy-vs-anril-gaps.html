@@ -1,0 +1,149 @@
+<title>AiSensy vs Anril Gaps</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: one reading column; gaps grouped by area, each row with a status pill, effort and value so it can be scanned */
+:root{
+  --bg:#f6f7f5; --surface:#ffffff; --fg:#1b2420; --muted:#5b6862; --line:#dde2de;
+  --accent:#0f7a5c; --accent-soft:#e3f2ec; --warn:#9a5b00; --warn-soft:#fbf1df; --gap:#a3322b; --gap-soft:#f9e6e4;
+  --f-display:"Fraunces", Georgia, serif; --f-body:"IBM Plex Sans", system-ui, sans-serif; --f-mono:"IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121715; --surface:#1a211e; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2c3531;
+  --accent:#4cc39a; --accent-soft:#183128; --warn:#e0a548; --warn-soft:#33281a; --gap:#ef8a80; --gap-soft:#3a201e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121715; --surface:#1a211e; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2c3531;
+  --accent:#4cc39a; --accent-soft:#183128; --warn:#e0a548; --warn-soft:#33281a; --gap:#ef8a80; --gap-soft:#3a201e; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body)}
+.wrap{max-width:1000px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+header{display:grid;gap:10px}
+.eyebrow{font:500 12px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font:600 clamp(30px,5vw,44px)/1.1 var(--f-display);margin:0;text-wrap:balance}
+h2{font:600 24px/1.2 var(--f-display);margin:0 0 10px;text-wrap:balance}
+p,li{max-width:70ch}
+p{margin:0 0 10px}
+ul{margin:0 0 10px;padding-left:20px}
+li{margin-bottom:4px}
+.lede{font-size:17px;color:var(--muted)}
+.note{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:14px 16px;font-size:14px}
+.note strong{color:var(--warn)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);align-items:center}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:720px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+td:first-child{font-weight:600;width:22%}
+td.st{width:110px}
+td.n{width:90px;font:13px var(--f-mono);color:var(--muted)}
+code{font:13px var(--f-mono);background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+.pill{display:inline-block;font:500 11.5px var(--f-mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.none{background:var(--gap-soft);color:var(--gap)}
+.part{background:var(--warn-soft);color:var(--warn)}
+.has{background:var(--accent-soft);color:var(--accent)}
+.top{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:6px;align-content:start}
+.card .rank{font:500 12px var(--f-mono);color:var(--accent)}
+.card b{font-size:15px}
+.card p{font-size:13.5px;color:var(--muted);margin:0}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Gap report · 20 Nov 2026</div>
+  <h1>What AiSensy has that Anril doesn't</h1>
+  <p class="lede">Every AiSensy feature I saw in their logged-in app, checked against Anril's code. Only real gaps are listed in full, plus a short note on where Anril is already ahead.</p>
+</header>
+
+<div class="note"><strong>How this was checked.</strong> AiSensy features come from clicking through every sidebar section of a logged-in account (Free plan, number not yet approved). Anril was checked by searching our code (<code>backend/app/routes</code>, <code>frontend/app/dashboard</code>). "Missing" means I found no code for it. "Partly" means something close exists but not the same thing. A feature hidden behind a paid plan on either side may be missed.</div>
+
+<section>
+  <h2>Top 5 to build first</h2>
+  <div class="top">
+    <div class="card"><span class="rank">1 · small effort</span><b>AI template writer</b><p>Prompt → 3 drafts → "Use this", inside our existing template builder. Plus a ready-made seasonal template library.</p></div>
+    <div class="card"><span class="rank">2 · medium effort</span><b>WhatsApp Forms (real Meta Flows)</b><p>Form screens inside WhatsApp, started from a template button or an ad click. AiSensy only half-does this, so we could get ahead.</p></div>
+    <div class="card"><span class="rank">3 · medium effort</span><b>Website chat widget + link/QR maker</b><p>Simple lead sources that every competitor gives away free.</p></div>
+    <div class="card"><span class="rank">4 · medium effort</span><b>Shopify / WooCommerce / Sheets</b><p>Direct connections for cart recovery and contact sync, not only our generic webhook.</p></div>
+    <div class="card"><span class="rank">5 · large effort</span><b>Create Meta ads with AI</b><p>The most impressive AiSensy feature, but it needs Meta ads permissions, app review and handling real ad money.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>All gaps, by area</h2>
+  <div class="legend"><span><span class="pill none">Missing</span> no code found</span><span><span class="pill part">Partly</span> something close exists</span></div>
+
+  <h3>Templates &amp; campaigns</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>AI template writer (prompt, style, goal → 3 drafts)</td><td class="st"><span class="pill none">Missing</span></td><td>Manual builder only (<code>templates/new</code>), with pre-submit checks</td><td class="n">Small</td></tr>
+    <tr><td>Ready-made template library (40, seasonal, one-click submit)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing found</td><td class="n">Small</td></tr>
+    <tr><td>Template types: Location, Limited-Time Offer</td><td class="st"><span class="pill none">Missing</span></td><td>Text, Image, Video, Document, Carousel</td><td class="n">Small</td></tr>
+    <tr><td>Message Time-To-Live (stop delivery after X hours)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing found</td><td class="n">Small</td></tr>
+    <tr><td>Campaign Agent ("describe the goal, AI writes every message and sends follow-ups")</td><td class="st"><span class="pill part">Partly</span></td><td>Auto-messages, re-engagement and follow-ups exist, but you set them up yourself</td><td class="n">Medium</td></tr>
+  </table></div>
+
+  <h3>Ads</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>Create and publish Meta ads in-app (CTWA, website, lead form)</td><td class="st"><span class="pill none">Missing</span></td><td>We read ads and report on them in depth (<code>meta-ads</code>), but can't create them</td><td class="n">Large</td></tr>
+    <tr><td>AI Ads Agent (website + one sentence → copy, images or video, audience, budget)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing</td><td class="n">Large</td></tr>
+    <tr><td>WhatsApp Status ads</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing</td><td class="n">Large</td></tr>
+    <tr><td>Ad credit wallet (buy ad spend inside the app)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing</td><td class="n">Large</td></tr>
+    <tr><td>Audiences (custom, lookalike, exclusions)</td><td class="st"><span class="pill none">Missing</span></td><td>Lead segments exist but aren't sent to Meta</td><td class="n">Medium</td></tr>
+    <tr><td>Meta Conversions API (send "qualified" or "paid" events back to Meta)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing found. This makes Meta's ad targeting smarter.</td><td class="n">Medium</td></tr>
+    <tr><td>Google Ads tab in Ads Manager</td><td class="st"><span class="pill part">Partly</span></td><td>Tracked wa.me links for Google Ads campaigns</td><td class="n">—</td></tr>
+  </table></div>
+
+  <h3>Automation &amp; forms</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>Drag-and-drop chatbot Flow Builder, 72 templates, "Generate flow with AI"</td><td class="st"><span class="pill none">Missing</span></td><td>Removed on purpose (2026-06-01) because it was costly to maintain. Our AI replies do this job instead.</td><td class="n">Large</td></tr>
+    <tr><td>WhatsApp Forms (questions inside chat, answers saved to the contact)</td><td class="st"><span class="pill part">Partly</span></td><td>The AI collects details in chat. There is a web intake form with payment. No in-WhatsApp form screens.</td><td class="n">Medium</td></tr>
+    <tr><td>Start a flow from a Meta ad click (up to 20 ads per flow)</td><td class="st"><span class="pill part">Partly</span></td><td>Ad-click leads get our AI reply and are linked to their ad, but no per-ad script</td><td class="n">Small</td></tr>
+    <tr><td>Catalogue messages (single and multi-product) from a Meta catalogue</td><td class="st"><span class="pill part">Partly</span></td><td>We have our own catalog, but I didn't find Meta's native product messages</td><td class="n">Medium</td></tr>
+  </table></div>
+
+  <h3>Payments</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>Native WhatsApp Pay (pay inside the chat through Meta's payment setup, ₹0 fee)</td><td class="st"><span class="pill part">Partly</span></td><td>Razorpay payment links sent in chat, plus orders and GST invoices</td><td class="n">Medium</td></tr>
+    <tr><td>PayU</td><td class="st"><span class="pill none">Missing</span></td><td>Razorpay only</td><td class="n">Small</td></tr>
+  </table></div>
+
+  <h3>Integrations &amp; growth tools</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>Shopify, WooCommerce, OpenCart (cart recovery, order updates)</td><td class="st"><span class="pill none">Missing</span></td><td>Generic inbound webhook only</td><td class="n">Medium</td></tr>
+    <tr><td>Google Sheets contact sync</td><td class="st"><span class="pill none">Missing</span></td><td>CSV upload; Sheets only appears in an ad report export</td><td class="n">Small</td></tr>
+    <tr><td>CRM apps: Zoho, LeadSquared, CleverTap, WebEngage, MoEngage</td><td class="st"><span class="pill none">Missing</span></td><td>Inbound webhook (Zapier, Pabbly) receives leads; nothing pushes them out to these CRMs</td><td class="n">Medium each</td></tr>
+    <tr><td>Integration app store (20+ apps, "List your app")</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing</td><td class="n">Medium</td></tr>
+    <tr><td>Website WhatsApp chat widget</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing found</td><td class="n">Small</td></tr>
+    <tr><td>WhatsApp link + QR code generator</td><td class="st"><span class="pill part">Partly</span></td><td>wa.me links for Google Ads only</td><td class="n">Small</td></tr>
+    <tr><td>AI agent set up by crawling the client's website</td><td class="st"><span class="pill part">Partly</span></td><td>Knowledge base takes uploaded documents; no website crawl</td><td class="n">Medium</td></tr>
+    <tr><td>Free public tools on the marketing site (AI template and ad generators, pricing calculator)</td><td class="st"><span class="pill none">Missing</span></td><td>Nothing. For AiSensy these are lead magnets.</td><td class="n">Small</td></tr>
+  </table></div>
+
+  <h3>Platform</h3>
+  <div class="tbl"><table>
+    <tr><th>AiSensy feature</th><th>Status</th><th>What Anril has today</th><th>Effort</th></tr>
+    <tr><td>Opt-in management (record and import who agreed to messages)</td><td class="st"><span class="pill part">Partly</span></td><td>Opt-out ("said stop") handling is strong; I didn't find a separate opt-in screen</td><td class="n">Small</td></tr>
+    <tr><td>In-app AI Assistant for setup ("What brings you here today?")</td><td class="st"><span class="pill none">Missing</span></td><td>Onboarding pages, no assistant</td><td class="n">Medium</td></tr>
+    <tr><td>Multiple projects per login ("All Projects")</td><td class="st"><span class="pill part">Partly</span></td><td>Multi-tenant with roles; I didn't check whether one login can switch between businesses</td><td class="n">—</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Where Anril is already ahead</h2>
+  <p>I found none of these in AiSensy's app. They're worth leading with in sales:</p>
+  <ul>
+    <li><b>Telecalling:</b> calling cockpit, call recordings with AI review, a telecaller call-first list.</li>
+    <li><b>Lead scoring</b> (hot, warm, cold) and lead assignment.</li>
+    <li><b>Deeper Meta ad reports:</b> ad-to-lead journey and ad advice, beyond CTR and CPC.</li>
+    <li><b>SMS with DLT, OTP, Instagram and Telegram</b> channels.</li>
+    <li><b>Orders with GST invoices</b> sent on WhatsApp.</li>
+    <li><b>An operator console</b> for running many clients.</li>
+  </ul>
+  <p>AiSensy also showed none of the Tamil-first AI replies we sell on, although their ad AI does write Tamil.</p>
+</section>
+</div>

@@ -1,0 +1,232 @@
+<title>AiSensy AI Teardown</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: one reading column, a sticky contents rail on wide screens, flows drawn as numbered step strips */
+:root{
+  --bg:#f6f7f5; --surface:#ffffff; --fg:#1b2420; --muted:#5b6862; --line:#dde2de;
+  --accent:#0f7a5c; --accent-soft:#e3f2ec; --warn:#9a5b00; --warn-soft:#fbf1df; --gap:#a3322b; --gap-soft:#f9e6e4;
+  --f-display:"Fraunces", Georgia, serif; --f-body:"IBM Plex Sans", system-ui, sans-serif; --f-mono:"IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121715; --surface:#1a211e; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2c3531;
+  --accent:#4cc39a; --accent-soft:#183128; --warn:#e0a548; --warn-soft:#33281a; --gap:#ef8a80; --gap-soft:#3a201e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121715; --surface:#1a211e; --fg:#e4ebe7; --muted:#9aa8a1; --line:#2c3531;
+  --accent:#4cc39a; --accent-soft:#183128; --warn:#e0a548; --warn-soft:#33281a; --gap:#ef8a80; --gap-soft:#3a201e; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body)}
+.wrap{max-width:1080px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px}
+@media (max-width:820px){.wrap{grid-template-columns:minmax(0,1fr);gap:24px}nav.toc{display:none}}
+nav.toc{position:sticky;top:calc(24px + env(safe-area-inset-top,0px));align-self:start;font-size:13px;display:grid;gap:6px}
+nav.toc a{color:var(--muted);text-decoration:none}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--accent)}
+main{min-width:0;display:grid;gap:44px}
+header{display:grid;gap:10px}
+.eyebrow{font:500 12px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font:600 clamp(30px,5vw,44px)/1.1 var(--f-display);margin:0;text-wrap:balance}
+h2{font:600 26px/1.2 var(--f-display);margin:0 0 12px;text-wrap:balance}
+h3{font:600 16px/1.3 var(--f-body);margin:22px 0 8px}
+p,li{max-width:68ch}
+p{margin:0 0 10px}
+ul{margin:0 0 10px;padding-left:20px}
+li{margin-bottom:4px}
+.lede{font-size:17px;color:var(--muted)}
+.note{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:14px 16px;font-size:14px}
+.note strong{color:var(--warn)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0 16px;counter-reset:s}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:13.5px;line-height:1.45;counter-increment:s}
+.step::before{content:counter(s);display:block;font:500 12px var(--f-mono);color:var(--accent);margin-bottom:4px}
+.step b{display:block;font-weight:600;margin-bottom:2px}
+.tbl{overflow-x:auto;margin:10px 0 14px}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+td:first-child{font-weight:500}
+code,.mono{font:13px var(--f-mono);background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+.pill{display:inline-block;font:500 11.5px var(--f-mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.has{background:var(--accent-soft);color:var(--accent)}
+.part{background:var(--warn-soft);color:var(--warn)}
+.none{background:var(--gap-soft);color:var(--gap)}
+.take{border-left:3px solid var(--accent);padding:4px 0 4px 14px;margin:14px 0}
+.take p{margin:0}
+.sample{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:10px;font-size:14px}
+.sample .bubble{background:var(--accent-soft);border-radius:8px 8px 8px 2px;padding:10px 12px;white-space:pre-line}
+.sample .btns{display:flex;flex-wrap:wrap;gap:6px}
+.sample .btns span{border:1px solid var(--line);border-radius:6px;padding:3px 10px;font-size:13px;color:var(--accent)}
+.samples{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:10px 0 14px}
+.tag{font:500 11.5px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+section{scroll-margin-top:24px}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.src li{font-size:13.5px}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <a href="#scope">How this was checked</a>
+  <a href="#templates">AI template writer</a>
+  <a href="#ads">AI Meta ads</a>
+  <a href="#forms">WhatsApp Forms</a>
+  <a href="#lessons">What to copy</a>
+  <a href="#sources">Sources</a>
+</nav>
+
+<main>
+<header>
+  <div class="eyebrow">Competitor teardown · 20 Nov 2026 · checked inside the app</div>
+  <h1>How AiSensy uses AI for templates, Meta ads and WhatsApp Forms</h1>
+  <p class="lede">I clicked through each feature in a logged-in AiSensy account and ran the AI tools once. This covers what the user fills in, what comes back, and where each feature lives in the app.</p>
+</header>
+
+<section id="scope">
+  <div class="note"><strong>How this was checked.</strong> Account "Zhafoundary" is on the Free Forever plan, its WhatsApp number is still <em>pending</em> approval, and Facebook isn't connected. So I could use the AI tools, but I couldn't publish an ad or submit a template, and nothing was sent or spent. What I left behind: 1 of 3 free template generations used, 1 of 5 free ad generations used, 3 unpublished ad drafts in Ads Agent, and an empty "Untitled" chatbot flow (inactive). Anything I didn't see myself is marked as coming from AiSensy's website or blog.</div>
+</section>
+
+<section id="templates">
+  <h2>1. AI template message writer</h2>
+  <p><b>Where it lives:</b> <span class="mono">Manage → Template Message</span> → the <b>"Create AI Templates"</b> card. The same card also appears on the Campaigns page. It opens the normal "New Template Message" page with a <b>Generate with AI</b> box at the top. The AI only fills in the template; you still submit it to Meta yourself.</p>
+
+  <h3>What the user fills in (in the app)</h3>
+  <div class="tbl"><table>
+    <tr><th>Field</th><th>What I saw</th></tr>
+    <tr><td>Template category</td><td>UTILITY, MARKETING, AUTHENTICATION. You pick it by hand. The "auto-detect" option only exists on their public website tool.</td></tr>
+    <tr><td>Template language</td><td><b>Required before AI will run.</b> My first click on Generate did nothing and showed no error until I picked English.</td></tr>
+    <tr><td>Write your prompt</td><td>Free text, up to 1,024 characters, with a "Previous prompts" history</td></tr>
+    <tr><td>Message style</td><td>Normal, Poetic, Exciting, Funny (the public tool has different ones: Festive, Formal, Friendly, Urgent)</td></tr>
+    <tr><td>Optimize for</td><td>Click rate or Reply rate (the public tool adds Read rate and Conversions)</td></tr>
+    <tr><td>Counter</td><td>"Generate (3 free generations left)". Their site says it's ₹10 per run after that.</td></tr>
+  </table></div>
+
+  <h3>What came back from my test</h3>
+  <p>Prompt: <i>"Remind customers who left items in their cart to complete their order, with 10% off code SAVE10 valid till Sunday"</i>, with Marketing, English, Normal and Click rate selected. In about 5 seconds it showed <b>3 drafts side by side</b> as WhatsApp bubbles, each with a <b>Use this</b> button that copies it into the form below:</p>
+  <div class="samples">
+    <div class="sample"><span class="tag">Draft 1</span><div class="bubble">Hi {{1}},
+Looks like you left something special in your cart! 🛒
+Complete your order now and enjoy an exclusive 10% OFF with code SAVE10 — but hurry, this offer is valid only till Sunday! ⏰
+…Click below to finish your purchase before it's too late!</div><div class="btns"><span>Shop More</span><span>Complete My Order</span></div></div>
+    <div class="sample"><span class="tag">Draft 3</span><div class="bubble">Hi {{1}},
+We noticed you left some great items in your cart! 🛒
+Complete your order now and enjoy an exclusive 10% off with the code SAVE10. But hurry, this offer is only valid until Sunday! ⏳
+…Ready to check out?</div><div class="btns"><span>Complete My Order</span></div></div>
+  </div>
+  <ul>
+    <li>Every draft starts with a <code>{{1}}</code> name variable, uses emoji and *bold* where it helps, and <b>suggests buttons</b> (quick replies) along with the text.</li>
+    <li>The drafts read alike. The 3 options change the wording but not the approach.</li>
+    <li>I didn't see a policy check or warnings inside the app. The "instant policy check" is only advertised on their public website tool.</li>
+  </ul>
+
+  <h3>The manual form below the AI box</h3>
+  <ul>
+    <li><b>Template name:</b> lowercase letters and underscores only.</li>
+    <li><b>Type:</b> TEXT, IMAGE, VIDEO, DOCUMENT, LOCATION, CAROUSEL, LIMITED TIME OFFER.</li>
+    <li><b>Body:</b> up to 1,024 characters with <code>{{1}}</code>-style variables. <b>Footer:</b> up to 60 characters.</li>
+    <li><b>Buttons:</b> up to 10 quick replies, 2 URL buttons, 1 phone button and 1 copy-code button, each label 25 characters max. There is <b>no Flow/Form button</b>.</li>
+    <li><b>Time-To-Live</b> (paid plans only): how long WhatsApp keeps trying to deliver before giving up.</li>
+    <li>A live phone preview on the right.</li>
+  </ul>
+
+  <h3>Around it</h3>
+  <ul>
+    <li><b>Template library:</b> 40 ready-made templates (Trending, General, Top Rated, and by industry: Ecommerce, Education, Banking, Webinar). Many are seasonal (Diwali, Dhanteras, Dussehra), and each has a one-click <b>Submit</b>.</li>
+    <li><b>Campaign Agent (new):</b> a banner on Templates, Contacts and Campaigns says "Describe your goal once, AI writes every message, sends follow-ups automatically".</li>
+    <li><b>AI Assistant panel</b> open on every page ("What brings you here today?"), offering guided setup tasks.</li>
+  </ul>
+  <div class="take"><p><b>Takeaway:</b> the AI part is small (one prompt, three drafts). What makes it work is where it sits: inside the template form, on the Campaigns page, and next to a library of ready-made seasonal templates.</p></div>
+</section>
+
+<section id="ads">
+  <h2>2. Meta ads with AI</h2>
+  <p><b>Where it lives:</b> <span class="mono">Ads Manager</span> in the left sidebar. Its sub-menu has: Ads Manager, <b>Ads Agent (AI)</b>, Leads, Forms (Meta lead forms), Audiences, Events, Setup. Ad money is "Ad Credit" bought inside AiSensy (₹0 on this account).</p>
+
+  <h3>Setup (required before an ad can run)</h3>
+  <div class="steps">
+    <div class="step"><b>Connect Facebook</b>"Continue With Facebook", and opt into all businesses and pages</div>
+    <div class="step"><b>Pick the Page</b>Choose the Facebook page the ads run from</div>
+    <div class="step"><b>Lead form terms</b>Accept Meta's Lead Ads terms</div>
+    <div class="step"><b>Link WhatsApp</b>Verify the WhatsApp number on that page</div>
+  </div>
+  <p>The setup screen has two tabs: <b>Meta Ads</b> and <b>Google Ads (New)</b>. It also offers "Win ₹1000 Ad Credits".</p>
+
+  <h3>Ads Agent: what the user fills in</h3>
+  <p>A fill-in-the-blanks sentence: <i>"Create a high-converting ad for <u>business name</u>. This is my website URL <u>website URL</u>. My target audience are <u>target audience</u>."</i> Below it are these controls:</p>
+  <ul>
+    <li><b>Shopify</b> (pull in product photos) and <b>Media</b> (upload your own).</li>
+    <li><b>Ad type:</b> Let AI decide, Click to WhatsApp, Website to WhatsApp, Website, or Status.</li>
+    <li><b>Type:</b> Image or Video. <b>Size:</b> 3:4 by default. <b>Ads:</b> how many to make (default 3).</li>
+    <li>"5 free generations left".</li>
+    <li><b>The website URL is required.</b> Without it, Generate did nothing and showed no error message.</li>
+  </ul>
+
+  <h3>What came back from my test</h3>
+  <p>Brief: business "Anril, a WhatsApp AI assistant that replies to coaching-centre leads 24/7", website <code>anrilaitech.com</code>, audience "coaching centre owners in Tamil Nadu". It took about 90 seconds, with a progress bar on each card: <i>Personalizing your ads → Planning your ad formats → Designing your creatives → Putting the finishing touches</i>.</p>
+  <ul>
+    <li><b>It read our website.</b> The copy used real Anril features I never typed in: scoring leads hot, warm or cold, a telecaller call-first list, chats in Tamil, English or Tanglish, and payments inside the chat.</li>
+    <li><b>It wrote in the local language on its own.</b> Headlines included <i>"Hot lead எது? உடனே telecaller-க்கு."</i> and <i>"Oru message. Ellaa customer-kkum."</i>, and the body text was in Tanglish.</li>
+    <li><b>Images:</b> photo-realistic scenes (an office desk, a phone showing WhatsApp) with Tamil headline text printed on them.</li>
+    <li><b>Mixed ad types:</b> with "Let AI decide" it picked Website-to-WhatsApp for one ad and Click-to-WhatsApp for the others.</li>
+    <li><b>Suggested budgets</b> differed per ad: ₹500, ₹700 and ₹1,200 a day.</li>
+    <li><b>Targeting filled in:</b> Quick Edits showed locations (Chennai, Coimbatore…), age 27–55 and destination anrilaitech.com, plus the primary text, headline and description, each editable.</li>
+    <li>Each ad card has a budget stepper, <b>Quick Edits</b>, a pencil icon for the full editor, and <b>Run Ad</b>. I didn't click Run Ad.</li>
+  </ul>
+  <p>From their own blog (not tested here): the full editor covers objective, saved, custom and lookalike audiences, exclusions, placements, and daily or lifetime budget with dates. Ads go to Meta review, which they say takes about 15–20 minutes. Video ads are 30, 45 or 60 seconds, and the cost in credits is shown before generating.</p>
+  <div class="take"><p><b>Takeaway:</b> a website link plus one sentence gives three finished ads, each with copy, picture, ad type, audience and budget filled in. The language matching (Tamil and Tanglish for Tamil Nadu) is the most impressive part, and it's exactly the market Anril serves.</p></div>
+</section>
+
+<section id="forms">
+  <h2>3. WhatsApp Forms</h2>
+  <p>The marketing page shows Meta-style form screens (dropdowns, date pickers, multi-screen). <b>Inside the app there is no separate "WhatsApp Forms" screen.</b> What I found instead is listed below. The native Meta Flow forms may only appear after the WhatsApp number is approved, or on a paid plan; this account could not show them.</p>
+
+  <h3>A. Flows → Flow Builder (the chatbot builder)</h3>
+  <p>This is the "no-code Flow Builder" their Forms FAQ refers to. It's a drag-and-drop canvas where you build a form as a chain of chat questions:</p>
+  <div class="tbl"><table>
+    <tr><th>Block group</th><th>Blocks</th></tr>
+    <tr><td>Message types</td><td>Text Buttons, Media Buttons, List, Catalogue Message, Single Product, Multi Product, Template</td></tr>
+    <tr><td>Actions</td><td><b>Ask Question, Ask Address, Ask Location, Ask Media</b>, Set Attribute, Add Tag, Condition, Connect Flow, API Request, Request Intervention (hand to a human), <b>Meta Conversions API</b></td></tr>
+    <tr><td>Integrations</td><td>EasyInsights</td></tr>
+    <tr><td>Start triggers</td><td>Keywords, regex, one template, or <b>up to 20 Meta ads</b> (an ad click starts the flow)</td></tr>
+  </table></div>
+  <ul>
+    <li><b>"Generate flow with AI"</b> prompt bar at the top of the canvas, plus "Fallback &amp; Intents".</li>
+    <li><b>72 ready flow templates</b> (Doctor's appointment, Real estate virtual tour, Recruitment, Order tracking, Grocery subscription…), each with a "Flow Preview" and a "Live Demo".</li>
+    <li><b>Paid by quota:</b> this free account has 0 flows ("Purchase More Flows"). AI replies inside flows cost ₹3,500 per 3,500 messages.</li>
+  </ul>
+
+  <h3>B. Ads Manager → Forms</h3>
+  <p>These are Meta <b>Lead Form</b> ads (Instant Forms inside Facebook and Instagram), not WhatsApp forms. The page says to connect a Facebook account to view lead forms.</p>
+
+  <h3>How the forms reach customers</h3>
+  <p>Templates can't carry a Form button (only quick reply, URL, phone and copy-code). So a "form" starts when a keyword, a template reply or an ad click triggers a chatbot flow. The flow asks questions one by one, saves the answers as contact fields, and can push them to a CRM with an API Request block.</p>
+  <div class="take"><p><b>Takeaway:</b> AiSensy's "WhatsApp Forms" is mostly a chatbot question chain under a new name. Starting the form from an ad click is the part worth copying. The real native Meta form screens are marketed, but this account couldn't reach them.</p></div>
+</section>
+
+<section id="lessons">
+  <h2>4. What Anril should copy</h2>
+  <ul>
+    <li><b>Put the AI inside the existing form.</b> Their template AI sits above the normal builder, offers 3 drafts and a "Use this" button, and leaves the rest editable. That fits our <code>templates/new</code> page with little change.</li>
+    <li><b>Start from the website.</b> The Ads Agent got everything it needed from one URL. We already know each client's business from onboarding, so we could skip even that step.</li>
+    <li><b>Write in the customer's language by default.</b> Tamil and Tanglish copy for Tamil Nadu was the standout result.</li>
+    <li><b>Show errors.</b> Both AI tools failed silently when a field was missing (language, website). We should say what's missing.</li>
+    <li><b>Our version of forms should be real Meta Flows,</b> not a chain of chat questions. That would put us ahead of them, not just level.</li>
+  </ul>
+  <p>The full list of AiSensy features Anril doesn't have is in the companion report, <b>AiSensy vs Anril Gaps</b>.</p>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ul class="src">
+    <li>AiSensy app (logged in), 20 Nov 2026: Manage → Template Message, Ads Manager → Setup / Ads Agent / Forms, Flows → Flow Builder, Campaigns, Integrations</li>
+    <li><a href="https://aisensy.com/features/ai-whatsapp-template-generator">AiSensy: AI WhatsApp Template Generator</a></li>
+    <li><a href="https://aisensy.com/features/ai-ads-agent">AiSensy: AI Ads Agent</a></li>
+    <li><a href="https://m.aisensy.com/blog/aisensy-ai-ads-agent/">AiSensy blog: Ads Agent walkthrough (Oct 2026)</a></li>
+    <li><a href="https://aisensy.com/features/aisensy-meta-ads-manager">AiSensy: Meta Ads Manager</a></li>
+    <li><a href="https://aisensy.com/features/ai-ad-creative-generator">AiSensy: AI Ad Creative Generator</a></li>
+    <li><a href="https://aisensy.com/features/whatsapp-forms">AiSensy: WhatsApp Forms</a></li>
+    <li><a href="https://aisensy.com/features/whatsapp-flows">AiSensy: WhatsApp Flows</a></li>
+    <li><a href="https://m.aisensy.com/blog/whatsapp-flows-guide/">AiSensy blog: WhatsApp Flows guide</a></li>
+    <li><a href="https://aisensy.com/features/whatsapp-chatbot-flow-builder">AiSensy: chatbot flow builder</a></li>
+    <li><a href="https://docs.moveo.ai/docs/integrations/whatsapp-flows">Moveo docs: Meta Flow limits</a></li>
+  </ul>
+</section>
+</main>
+</div>

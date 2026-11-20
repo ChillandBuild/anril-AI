@@ -25,6 +25,11 @@ _DEFAULTS = {
     "knowledge_versions": {"document_id": None, "created_by": None, "content": ""},
 }
 
+# table -> columns of a UNIQUE constraint the code relies on (insert raises 23505 like Postgres)
+_UNIQUE = {
+    "whatsapp_form_responses": [("tenant_id", "meta_message_id"), ("tenant_id", "flow_token")],
+}
+
 # child table -> (column, on-delete behaviour) when a knowledge_documents row is deleted
 _CASCADES = {
     "knowledge_chunks": ("document_id", "delete"),
@@ -435,6 +440,11 @@ class _Query:
             payloads = self.payload if isinstance(self.payload, list) else [self.payload]
             created = []
             for p in payloads:
+                for unique in _UNIQUE.get(self.name, []):
+                    # Postgres UNIQUE ignores NULLs.
+                    if all(p.get(c) is not None for c in unique) and any(
+                            all(r.get(c) == p.get(c) for c in unique) for r in self.db.rows(self.name)):
+                        raise Exception(f'23505: duplicate key value violates unique constraint on {self.name}')
                 row = {**_DEFAULTS.get(self.name, {}), **p}
                 row.setdefault("id", str(uuid.uuid4()))
                 row.setdefault("created_at", self.db._stamp())

@@ -164,6 +164,7 @@ class IntakeConfigUpdate(BaseModel):
     service_noun: str | None = None
     amount_paise: int | None = None
     gst_percent: float | int | None = None
+    collect_with: Literal["chat", "form"] | None = None  # "form" = WhatsApp Form (whatsapp_forms.py)
 
 
 class TelecallingConfigUpdate(BaseModel):
@@ -2154,6 +2155,25 @@ async def get_intake_config_route(ctx: dict = Depends(require_services_read)):
     return get_intake_config(ctx["tenant_id"])
 
 
+@router.get("/intake-config/form-status")
+async def get_intake_form_status(ctx: dict = Depends(require_services_read)):
+    """Services → "Send a WhatsApp Form": is the switch on, and is a form live on Meta."""
+    from app.services import whatsapp_forms
+    return whatsapp_forms.intake_status(get_supabase(), ctx["tenant_id"])
+
+
+@router.post("/intake-config/form-publish")
+async def publish_intake_form(ctx: dict = Depends(require_services_manage)):
+    """Publish again now (after fixing what Meta refused, e.g. business verification)."""
+    from app.services import whatsapp_forms
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    if not whatsapp_forms.is_enabled(db, tenant_id):
+        raise HTTPException(status_code=400, detail="WhatsApp Forms is not switched on for this account")
+    await whatsapp_forms.sync_intake_form(tenant_id, db=db)
+    return whatsapp_forms.intake_status(db, tenant_id)
+
+
 @router.patch("/intake-config")
 async def patch_intake_config(
     payload: IntakeConfigUpdate,
@@ -2188,7 +2208,17 @@ async def patch_intake_config(
     merged = {**current, **patch}
     if ("fields" in patch or patch.get("enabled")) and merged.get("enabled"):
         _check_form_fits_astrotamil(tenant_id, merged.get("fields") or [])
+    from app.services import whatsapp_forms
+    switching_to_form = (
+        patch.get("collect_with") == whatsapp_forms.COLLECT_FORM and current.get("collect_with") != whatsapp_forms.COLLECT_FORM
+    )
+    if switching_to_form and not whatsapp_forms.is_enabled(get_supabase(), tenant_id):
+        raise HTTPException(status_code=400, detail="WhatsApp Forms is not switched on for this account")
     save_intake_config(tenant_id, merged)
     from app.services.consistency import run_check_safely
     background_tasks.add_task(run_check_safely, tenant_id)
+    if whatsapp_forms.collects_with_form(merged):
+        # Published Meta forms can't be edited: a changed package, price or detail publishes a
+        # new form version in the background (no-op when nothing the form shows changed).
+        background_tasks.add_task(whatsapp_forms.sync_intake_form_safely, tenant_id)
     return merged

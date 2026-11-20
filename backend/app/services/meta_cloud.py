@@ -682,6 +682,60 @@ async def send_cta_url_message(
     return data
 
 
+FLOW_CTA_MAX = 30
+
+
+async def send_flow_message(
+    to_number: str,
+    body_text: str,
+    flow_id: str,
+    flow_cta: str,
+    flow_token: str,
+    first_screen: str,
+    phone_number_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+) -> dict:
+    """A published WhatsApp Form (Meta Flow) under a message, opened by one button. Only inside
+    the 24-hour window (outside it a form needs a template with a FLOW button)."""
+    if not body_text or not body_text.strip() or len(body_text) > INTERACTIVE_BODY_MAX:
+        raise ValueError(f"Form message body must be 1-{INTERACTIVE_BODY_MAX} characters")
+    if not flow_cta or not flow_cta.strip() or len(flow_cta) > FLOW_CTA_MAX:
+        raise ValueError(f"Form button text must be 1-{FLOW_CTA_MAX} characters")
+    if not flow_id or not flow_token:
+        raise ValueError("A form message needs a flow id and a flow token")
+
+    pid, tok = _creds(phone_number_id, access_token, tenant_id)
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_number,
+        "type": "interactive",
+        "interactive": {
+            "type": "flow",
+            "body": {"text": body_text},
+            "action": {
+                "name": "flow",
+                "parameters": {
+                    "flow_message_version": "3",
+                    "flow_token": flow_token,
+                    "flow_id": flow_id,
+                    "flow_cta": flow_cta,
+                    "flow_action": "navigate",
+                    "flow_action_payload": {"screen": first_screen},
+                },
+            },
+        },
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(f"{_GRAPH_BASE}/{pid}/messages", json=payload, headers={"Authorization": f"Bearer {tok}"})
+    if not resp.is_success:
+        logger.error("send_flow_message failed: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    logger.info("Meta WhatsApp Form sent to %s", to_number)
+    return resp.json()
+
+
 async def send_interactive_buttons(
     to_number: str,
     body_text: str,

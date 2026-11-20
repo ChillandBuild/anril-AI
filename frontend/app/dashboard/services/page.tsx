@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { SwitchPill } from "@/components/ui/controls";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -34,6 +34,18 @@ interface SellConfig {
   fields: IntakeField[];
   service_noun: string;
   gst_percent: number;
+  collect_with: CollectWith;
+}
+
+type CollectWith = "chat" | "form";
+
+// GET /settings/intake-config/form-status (backend services/whatsapp_forms.py intake_status).
+interface FormStatus {
+  available: boolean;
+  state?: "none" | "publishing" | "published" | "failed" | "retired";
+  error?: string | null;
+  live?: boolean;
+  published_at?: string | null;
 }
 
 const DEFAULT: SellConfig = {
@@ -42,6 +54,7 @@ const DEFAULT: SellConfig = {
   fields: [],
   service_noun: "consultation",
   gst_percent: 0,
+  collect_with: "chat",
 };
 
 function toSellConfig(data: Record<string, unknown>): SellConfig {
@@ -51,6 +64,7 @@ function toSellConfig(data: Record<string, unknown>): SellConfig {
     fields: (data.fields as IntakeField[] | undefined) ?? [],
     service_noun: (data.service_noun as string | undefined) ?? "consultation",
     gst_percent: Number(data.gst_percent) || 0,
+    collect_with: data.collect_with === "form" ? "form" : "chat",
   };
 }
 
@@ -68,6 +82,38 @@ export default function ServicesPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   // The GST box keeps its own text so half-typed values ("1.") and out-of-range entries can show an error.
   const [gstText, setGstText] = useState("0");
+  const [formStatus, setFormStatus] = useState<FormStatus>({ available: false });
+  const [republishing, setRepublishing] = useState(false);
+
+  const loadFormStatus = useCallback(async () => {
+    try {
+      const auth = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/settings/intake-config/form-status`, { headers: auth });
+      if (res.ok) setFormStatus(await res.json());
+    } catch {
+      // The setting just stays hidden; selling in chat is unaffected.
+    }
+  }, []);
+
+  useEffect(() => { loadFormStatus(); }, [loadFormStatus]);
+
+  // A save that changes what the form shows publishes a new version in the background.
+  useEffect(() => {
+    if (formStatus.state !== "publishing") return;
+    const id = setTimeout(loadFormStatus, 4000);
+    return () => clearTimeout(id);
+  }, [formStatus, loadFormStatus]);
+
+  async function republishForm() {
+    setRepublishing(true);
+    try {
+      const auth = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/settings/intake-config/form-publish`, { method: "POST", headers: auth });
+      if (res.ok) setFormStatus(await res.json());
+    } finally {
+      setRepublishing(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoadFailed(false);
@@ -122,6 +168,9 @@ export default function ServicesPage() {
       setSaved(next);
       setDraft(next);
       setSaveState("saved");
+      if (next.collect_with === "form") {
+        setFormStatus((s) => ({ ...s, state: "publishing" }));
+      }
       setTimeout(() => setSaveState("idle"), 2000);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : "Couldn't save. Please try again.");
@@ -196,6 +245,35 @@ export default function ServicesPage() {
           />
         </div>
       </section>
+
+      {formStatus.available && (
+        <Row
+          title="How Anril collects"
+          help="Ask in chat: Anril offers buttons and asks each detail. WhatsApp Form: one form inside WhatsApp asks the package, option, add-ons and details together, then the payment link goes out."
+        >
+          <div className="space-y-3">
+            <SegmentedControl
+              aria-label="How Anril collects the booking"
+              value={draft.collect_with}
+              onChange={(v) => setDraft({ ...draft, collect_with: v as CollectWith })}
+              disabled={!canManageSettings}
+              options={[
+                { value: "chat", label: "Ask in chat" },
+                { value: "form", label: "WhatsApp Form" },
+              ]}
+            />
+            {draft.collect_with === "form" && (
+              <p className="font-body text-xs leading-relaxed text-ink-secondary">
+                Prices still come only from this page. Every save updates the form by itself, and a
+                customer who types instead of opening the form still gets the chat flow.
+              </p>
+            )}
+            {saved.collect_with === "form" && (
+              <FormState status={formStatus} canManage={canManageSettings} busy={republishing} onRetry={republishForm} />
+            )}
+          </div>
+        </Row>
+      )}
 
       <Row
         title="Packages"
@@ -357,6 +435,48 @@ function Row({
       <div className="min-w-0">{children}</div>
     </section>
   );
+}
+
+function FormState({
+  status, canManage, busy, onRetry,
+}: {
+  status: FormStatus; canManage: boolean; busy: boolean; onRetry: () => void;
+}) {
+  if (status.state === "publishing" || busy) {
+    return (
+      <p className="inline-flex items-center gap-1.5 font-body text-xs text-ink-secondary">
+        <Loader2 size={13} className="animate-spin" aria-hidden /> Updating the form on WhatsApp…
+      </p>
+    );
+  }
+  if (status.state === "failed") {
+    return (
+      <div className="space-y-2 rounded-xl bg-amber-50 px-3 py-2.5 ring-1 ring-amber-200/70">
+        <p className="font-body text-xs leading-relaxed text-amber-900">
+          {status.error || "WhatsApp didn't accept the form."}{" "}
+          {status.live ? "Customers get the last working form until this is fixed." : "Until then Anril asks in chat."}
+        </p>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg bg-white px-2.5 py-1 font-label text-xs font-semibold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+          >
+            Try again
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (status.live) {
+    const when = status.published_at ? new Date(status.published_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : null;
+    return (
+      <p className="inline-flex items-center gap-1.5 font-body text-xs text-emerald-700">
+        <CheckCircle2 size={13} aria-hidden /> Live on WhatsApp{when ? ` · updated ${when}` : ""}
+      </p>
+    );
+  }
+  return <p className="font-body text-xs text-ink-muted">Save to publish the form on WhatsApp.</p>;
 }
 
 function gstToText(pct: number): string {

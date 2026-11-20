@@ -316,6 +316,21 @@ async def send_menu(phone: str, body: str, menu: dict, *, tenant_id: str, phone_
     if len(body) > INTERACTIVE_BODY_MAX:
         await send_whatsapp(phone, body, tenant_id=tenant_id, phone_number_id=phone_number_id)
         body = CHOICE_BODY_FALLBACK
+    if menu.get("offering_keys") and tenant_id:
+        # Services set to "Send a WhatsApp Form": a package menu becomes the form, which asks
+        # package, sub-package, add-ons and details in one go. Any failure sends the menu.
+        import asyncio
+
+        from app.services import whatsapp_forms
+
+        form = await asyncio.to_thread(whatsapp_forms.form_for_menu, tenant_id, menu)
+        if form:
+            try:
+                sid = await whatsapp_forms.send_form(phone, body, form, tenant_id=tenant_id, phone_number_id=phone_number_id)
+                menu["sent_as_form"] = True
+                return sid, True
+            except Exception:
+                logger.exception("WhatsApp Form send failed -- sending the package menu instead")
     try:
         if menu["kind"] == "buttons":
             data = await meta_cloud.send_interactive_buttons(
@@ -366,6 +381,9 @@ def menu_log_text(body: str, menu: dict) -> str:
 
 def menu_record(body: str, menu: dict, *, tappable: bool) -> str:
     """Record button tags only for choices sent as an interactive message."""
+    if menu.get("sent_as_form"):
+        from app.services.whatsapp_forms import form_record
+        return form_record(body)
     return menu_log_text(body, menu) if tappable else menu_as_text(body, menu)
 
 

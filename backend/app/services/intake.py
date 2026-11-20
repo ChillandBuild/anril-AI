@@ -37,6 +37,7 @@ _DEFAULT_CONFIG = {
     "service_noun": "consultation",
     "amount_paise": 0,  # legacy single fee; superseded by packages, kept for auto-migration
     "gst_percent": 0,  # GST added on top of package + add-ons at payment; 0 = off
+    "collect_with": "chat",  # "form" = package, add-ons and details in one WhatsApp Form (whatsapp_forms.py)
 }
 
 

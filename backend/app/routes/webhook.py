@@ -344,6 +344,7 @@ async def _process_inbound_message_background(
     meta_message_id: str = "",
     meta_media_id: str = "",
     interactive_id: str = "",
+    form_response: str = "",
 ) -> None:
     from app.db.supabase import get_supabase
     db = get_supabase()
@@ -439,6 +440,21 @@ async def _process_inbound_message_background(
             # required details and sending the payment link are tools the reply brain
             # calls itself (services/deal_turn.py). route_intake stays in intake.py,
             # unused, until the legacy state machine is removed.
+            # A submitted WhatsApp Form: package, add-ons and details are saved through the same
+            # guarded executors the AI uses and the payment link goes out. Customer-asked, so it
+            # runs even with auto-reply off. "continue" = not applied: the AI answers the summary.
+            if form_response:
+                from app.services import whatsapp_forms
+                try:
+                    result = await whatsapp_forms.handle_submission(
+                        db, tenant_id=tenant_id, lead_id=lead_id, phone=phone, raw=form_response,
+                        meta_message_id=meta_message_id, phone_number_id=meta_phone_number_id or None,
+                    )
+                except Exception:
+                    logger.exception("WhatsApp Form submission failed for lead %s -- continuing in chat", lead_id)
+                    result = "continue"
+                if result in ("handled", "ignored"):
+                    return
             # Accept quote (Orders & payments): it becomes an order and the advance link goes
             # out. Customer-asked, like a payment, so it runs even with auto-reply off.
             from app.services.order_quotes import accept_from_chat, deal_from_button
@@ -883,6 +899,7 @@ async def whatsapp_webhook(
                     media_id = ""
                     media_mime_type = ""
                     interactive_id = ""
+                    form_response = ""
                     is_media_type = msg_type in ("audio", "image", "document", "video", "sticker")
                     if msg_type == "text":
                         body = msg.get("text", {}).get("body", "").strip()
@@ -892,6 +909,12 @@ async def whatsapp_webhook(
                         button_payload = (msg.get("button", {}).get("payload") or "").strip()
                         if button_payload.startswith("quote_"):
                             interactive_id = button_payload
+                    elif msg_type == "interactive" and (msg.get("interactive") or {}).get("type") == "nfm_reply":
+                        # A submitted WhatsApp Form (services/whatsapp_forms.py). The answers are
+                        # applied in the background task; the chat saves a readable summary.
+                        from app.services import whatsapp_forms
+                        form_response = str(((msg.get("interactive") or {}).get("nfm_reply") or {}).get("response_json") or "")
+                        body = whatsapp_forms.summary_text(db, tenant_id, phone, form_response) if form_response else ""
                     elif msg_type == "interactive":
                         inter = msg.get("interactive", {})
                         reply = inter.get("button_reply") or inter.get("list_reply") or {}
@@ -1220,6 +1243,7 @@ async def whatsapp_webhook(
                         meta_message_id=msg_id,
                         meta_media_id=media_id,
                         interactive_id=interactive_id,
+                        form_response=form_response,
                     )
 
                 # Handle message status updates (delivered, read, failed)
