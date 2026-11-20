@@ -29,6 +29,7 @@ from app.routes import brain
 from app.routes import brain_sandbox
 from app.routes import operator_brain
 from app.routes import operator_mcp, operator_leads, operator_broadcasts
+from app.routes import brand_icon
 from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
 from app.routes import customer_profile
@@ -471,6 +472,8 @@ app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"]
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])
 app.include_router(operator_mcp.router, prefix="/api/v1/operator", tags=["operator"])
+# The Anril icon and favicon at the backend's own address (public): the Claude app shows it next to the connector.
+app.include_router(brand_icon.public_router)
 app.include_router(operator_leads.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_broadcasts.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"], dependencies=_auth)

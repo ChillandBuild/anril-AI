@@ -387,6 +387,33 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(codes, [204, 204, 204, 429])  # the 4th call in a minute is over the limit of 3
         self.assertEqual(seen, ["/mcp", "/mcp", "/.well-known/oauth-protected-resource/mcp"])
 
+    def test_the_server_announces_the_anril_icon_and_the_backend_serves_it(self):
+        from app.admin_mcp import server as mcp_server
+
+        # What Claude actually receives when it connects (the "initialize" answer).
+        body = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}
+        headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json",
+                   "Authorization": "Bearer t"}
+        good = AccessToken(token="t", client_id="c", scopes=[], subject="user-1", claims={"connection_id": "conn-1"})
+        fresh_app = build_app(build_server())  # its own app: a session manager runs only once
+        with StarletteClient(fresh_app, base_url="http://localhost:8000") as mcp_client, \
+             patch.object(auth, "verify", return_value=good):
+            info = mcp_client.post("/mcp", json=body, headers=headers).json()["result"]["serverInfo"]
+        self.assertEqual(info["websiteUrl"], mcp_server.WEBSITE_URL)
+        self.assertEqual(info["icons"][0]["src"], mcp_server.base_url() + "/brand/anril-icon.png")
+
+        icon = self.server.icons[0]
+        self.assertEqual(self.server.website_url, mcp_server.WEBSITE_URL)
+        self.assertEqual(icon.src, mcp_server.base_url() + "/brand/anril-icon.png")
+        self.assertEqual((icon.mime_type, icon.sizes), ("image/png", ["192x192"]))
+        client = TestClient(app)
+        png = client.get("/brand/anril-icon.png")
+        self.assertEqual((png.status_code, png.headers["content-type"]), (200, "image/png"))
+        self.assertTrue(png.content.startswith(b"\x89PNG"))
+        ico = client.get("/favicon.ico")
+        self.assertEqual((ico.status_code, ico.headers["content-type"]), (200, "image/x-icon"))
+
     def test_mcp_is_not_mounted_when_the_switch_is_off(self):
         self.assertFalse(settings.mcp_enabled)
         r = TestClient(app).post("/mcp", json={})
