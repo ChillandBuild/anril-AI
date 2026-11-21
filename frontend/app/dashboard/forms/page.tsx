@@ -215,12 +215,12 @@ function NewFormDialog({ setup, onClose }: { setup: NonNullable<ReturnType<typeo
             </button>
           ))}
         </div>
-        {setup.live_kinds.length > 0 && (
+        {(setup.live_kinds?.length ?? 0) > 0 && (
           <>
             <p className="mt-5 font-label text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Live forms</p>
             <p className="font-body text-[11px] text-ink-secondary">They read your business while the customer fills them in.</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {setup.live_kinds.map((live) => (
+              {(setup.live_kinds ?? []).map((live) => (
                 <button
                   key={live.key}
                   type="button"
