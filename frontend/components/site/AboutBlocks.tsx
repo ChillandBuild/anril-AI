@@ -63,10 +63,11 @@ export function MakerPanel() {
   );
 }
 
-// Facts about the team. A box goes in only once its fact is confirmed; "Started" (year) and
-// "Team" (size) are not published yet, and neither is a legal-name suffix, so they are left out.
+// Facts about the team. A box goes in only once its fact is confirmed (team size and the
+// partnership firm: confirmed 21 Nov 2026). "Started" (year) is not confirmed yet, so it is left out.
 const BEHIND: readonly { label: string; lines: readonly string[] }[] = [
-  { label: "Company", lines: [`Built by ${MAKER.name}`, `GSTIN ${MAKER.gstin}`, `2, Sree Narayana Guru Road, ${OFFICE.city} ${OFFICE.postalCode}`] },
+  { label: "Company", lines: [`Built by ${MAKER.name}, a partnership firm`, `GSTIN ${MAKER.gstin}`, `2, Sree Narayana Guru Road, ${OFFICE.city} ${OFFICE.postalCode}`] },
+  { label: "Team", lines: ["13 people", `Based in ${OFFICE.city}`] },
 ];
 
 /** Who builds Anril: an office photo (no faces) beside plain fact boxes. */
