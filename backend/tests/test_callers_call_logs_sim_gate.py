@@ -56,7 +56,7 @@ class CallerLogsGateTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-1"}
-        app.dependency_overrides[get_owner_tenant_id] = lambda: "t1"
+        app.dependency_overrides[get_tenant_and_role] = lambda: {"tenant_id": "t1", "role": "owner", "user_id": "user-1", "permissions": []}
 
     def tearDown(self):
         app.dependency_overrides.clear()

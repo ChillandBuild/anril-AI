@@ -9,6 +9,7 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, require_owner
 from app.dependencies.auth import get_current_user
 from app.services.ai_reply import generate_reengagement_message, send_whatsapp
+from app.services.call_teams import caller_scope
 from app.services.growth import build_follow_up_summary, utcnow
 
 
@@ -245,36 +246,88 @@ async def all_callbacks(tenant_id: str = Depends(get_tenant_id), current_user: d
     return {"data": result}
 
 
+def _team_callbacks(db, tenant_id: str, scope: set[str]) -> tuple[list[dict], dict]:
+    """The first 100 pending callbacks (soonest first) whose lead is assigned to a caller in `scope`."""
+    if not scope:
+        return [], {}
+    kept: list[dict] = []
+    leads_by_id: dict = {}
+    page_size = 200
+    for page in range(25):  # at most 5000 pending callbacks scanned
+        start = page * page_size
+        jobs = (
+            db.table("follow_up_jobs")
+            .select("id,lead_id,scheduled_for,message_preview,status,scheduled_by_caller_id")
+            .eq("tenant_id", tenant_id).eq("cadence", "callback").eq("status", "pending")
+            .order("scheduled_for").range(start, start + page_size - 1).execute().data or []
+        )
+        if not jobs:
+            break
+        lead_ids = list({j["lead_id"] for j in jobs})
+        leads = (
+            db.table("leads").select("id,name,phone,segment,assigned_to,score")
+            .in_("id", lead_ids).eq("tenant_id", tenant_id).execute().data or []
+        )
+        mine = {l["id"]: l for l in leads if str(l.get("assigned_to")) in scope}
+        for j in jobs:
+            if j["lead_id"] in mine and len(kept) < 100:
+                kept.append(j)
+                leads_by_id[j["lead_id"]] = mine[j["lead_id"]]
+        if len(kept) >= 100 or len(jobs) < page_size:
+            break
+    return kept, leads_by_id
+
+
+def _assert_callback_in_scope(db, ctx: dict, job_id: str) -> None:
+    """403 when a Team leader touches a callback whose lead is not held by their team."""
+    scope = caller_scope(db, ctx)
+    if scope is None:
+        return
+    tenant_id = ctx["tenant_id"]
+    job = db.table("follow_up_jobs").select("lead_id").eq("id", job_id).eq("tenant_id", tenant_id).limit(1).execute().data or []
+    lead = []
+    if job:
+        lead = db.table("leads").select("assigned_to").eq("id", job[0]["lead_id"]).eq("tenant_id", tenant_id).limit(1).execute().data or []
+    if not lead or str(lead[0].get("assigned_to")) not in scope:
+        raise HTTPException(status_code=403, detail="That call-back is not in your team.")
+
+
 @router.get("/callbacks/board")
 async def callbacks_board(ctx: dict = Depends(get_tenant_and_role)):
     """Return all pending callback jobs for the tenant, visible to both callers and owners."""
     tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    scope = caller_scope(db, ctx)  # None unless a Team leader: then only their team's callbacks
 
-    jobs = (
-        db.table("follow_up_jobs")
-        .select("id,lead_id,scheduled_for,message_preview,status,scheduled_by_caller_id")
-        .eq("tenant_id", tenant_id)
-        .eq("cadence", "callback")
-        .eq("status", "pending")
-        .order("scheduled_for")
-        .limit(100)
-        .execute()
-    )
-
-    job_rows = jobs.data or []
-    lead_ids = list({job["lead_id"] for job in job_rows})
-
-    leads_by_id: dict = {}
-    if lead_ids:
-        leads_res = (
-            db.table("leads")
-            .select("id,name,phone,segment,assigned_to,score")
-            .in_("id", lead_ids)
+    if scope is not None:
+        # Team leader: page through the pending callbacks and keep only those whose lead is held by
+        # their team, so other teams' callbacks never crowd out (or leak into) this list.
+        job_rows, leads_by_id = _team_callbacks(db, tenant_id, scope)
+    else:
+        jobs = (
+            db.table("follow_up_jobs")
+            .select("id,lead_id,scheduled_for,message_preview,status,scheduled_by_caller_id")
             .eq("tenant_id", tenant_id)
+            .eq("cadence", "callback")
+            .eq("status", "pending")
+            .order("scheduled_for")
+            .limit(100)
             .execute()
         )
-        leads_by_id = {row["id"]: row for row in (leads_res.data or [])}
+
+        job_rows = jobs.data or []
+        lead_ids = list({job["lead_id"] for job in job_rows})
+
+        leads_by_id = {}
+        if lead_ids:
+            leads_res = (
+                db.table("leads")
+                .select("id,name,phone,segment,assigned_to,score")
+                .in_("id", lead_ids)
+                .eq("tenant_id", tenant_id)
+                .execute()
+            )
+            leads_by_id = {row["id"]: row for row in (leads_res.data or [])}
 
     # Resolve both the assigned caller (for status) and the scheduling caller
     # (for "Scheduled by <name>") — they can be different people.
@@ -341,8 +394,10 @@ async def callbacks_board(ctx: dict = Depends(get_tenant_and_role)):
 
 
 @router.patch("/callback/{job_id}/done")
-async def mark_callback_done(job_id: str, tenant_id: str = Depends(get_tenant_id)):
+async def mark_callback_done(job_id: str, ctx: dict = Depends(get_tenant_and_role)):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    _assert_callback_in_scope(db, ctx, job_id)
     db.table("follow_up_jobs").update({"status": "sent"}).eq("id", job_id).eq("tenant_id", tenant_id).execute()
     return {"success": True}
 
@@ -388,6 +443,8 @@ async def reschedule_callback(
         )
         if not lead_res or not lead_res.data or lead_res.data.get("assigned_to") != caller_id:
             raise HTTPException(status_code=403, detail="Lead is not assigned to you")
+
+    _assert_callback_in_scope(db, ctx, job_id)
 
     # 3. Update scheduled_for and reset status to 'pending'
     update_res = (

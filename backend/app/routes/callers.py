@@ -14,6 +14,7 @@ from app.services.assignment import (
     save_telecalling_config,
 )
 from app.services.call_evaluation import strip_evaluation
+from app.services.call_teams import assert_caller_in_scope, attach_team, caller_scope, owner_or_team_leader, team_by_caller
 from app.services.call_transcript import mask_transcripts
 from app.services.telecaller_performance import (
     MIN_SCORED_DAILY,
@@ -287,9 +288,11 @@ async def get_my_stats(ctx: dict = Depends(get_tenant_and_role)):
 
 
 @router.get("/{caller_id}/status-summary")
-async def get_status_summary(caller_id: UUID, tenant_id: str = Depends(get_owner_tenant_id)):
-    """Admin views a caller's status breakdown for today."""
+async def get_status_summary(caller_id: UUID, ctx: dict = Depends(owner_or_team_leader)):
+    """Admin (or the Team leader, for their own team) views a caller's status breakdown for today."""
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, str(caller_id))
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
@@ -381,10 +384,12 @@ async def get_status_summary(caller_id: UUID, tenant_id: str = Depends(get_owner
 async def get_caller_timeline(
     caller_id: UUID,
     date: str = Query(None),
-    tenant_id: str = Depends(get_owner_tenant_id)
+    ctx: dict = Depends(owner_or_team_leader),
 ):
-    """Admin views a caller's exact timeline for a specific day."""
+    """Admin (or the Team leader, for their own team) views a caller's exact timeline for a specific day."""
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, str(caller_id))
     
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -470,8 +475,10 @@ async def create_caller(payload: CreateCaller, tenant_id: str = Depends(get_owne
 
 
 @router.get("/")
-async def list_callers(tenant_id: str = Depends(get_tenant_id)):
+async def list_callers(ctx: dict = Depends(get_tenant_and_role)):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    scope = caller_scope(db, ctx)  # None for everyone except a Team leader
     owner = db.table("tenant_users").select("user_id").eq("tenant_id", tenant_id).eq("role", "owner").maybe_single().execute()
     owner_user_id = (owner.data or {}).get("user_id")
     all_callers = db.table("callers").select("*").eq("tenant_id", tenant_id).eq("active", True).order("name").execute()
@@ -481,10 +488,16 @@ async def list_callers(tenant_id: str = Depends(get_tenant_id)):
     for c in rows:
         # surface whether a password is set, but never expose the value itself
         c["has_telecmi_agent_password"] = bool(c.pop("telecmi_agent_password", None))
-        if owner_user_id and c.get("user_id") == owner_user_id:
+        if scope is not None:
+            # A Team leader sees only their own team (and themself): never the owner or other teams.
+            if str(c.get("id")) in scope and not (owner_user_id and c.get("user_id") == owner_user_id):
+                team.append(c)
+        elif owner_user_id and c.get("user_id") == owner_user_id:
             admin_caller = c
         else:
             team.append(c)
+    # team_id comes with the row once migration 307 is applied; the name is added here.
+    attach_team(team + ([admin_caller] if admin_caller else []), team_by_caller(db, tenant_id))
     return {"data": team, "admin_caller": admin_caller}
 
 
@@ -587,8 +600,10 @@ async def generate_sync_token(caller_id: UUID, tenant_id: str = Depends(get_owne
 
 
 @router.get("/{caller_id}/logs")
-async def list_caller_logs(caller_id: UUID, tenant_id: str = Depends(get_owner_tenant_id)):
+async def list_caller_logs(caller_id: UUID, ctx: dict = Depends(owner_or_team_leader)):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, str(caller_id))
     result = (
         db.table("call_logs")
         .select("id,lead_id,call_sid,provider,duration_seconds,outcome,manual_status,recording_url,score,score_status,ai_status,status,ai_summary,transcript,created_at,leads(phone,name)")

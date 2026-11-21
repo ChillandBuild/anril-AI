@@ -19,12 +19,14 @@ import {
   ToggleRight,
   Check,
   CloudUpload,
+  Undo2,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { createPortal } from "react-dom";
 
 function Portal({ children }: { children: React.ReactNode }) {
@@ -70,6 +72,17 @@ interface HistoryItem {
   assigned: number;
   segment_override: string | null;
   created_at: string;
+  /** Owner only, and only until the upload is undone. */
+  can_undo?: boolean;
+  undone_at?: string | null;
+  undone_by_name?: string | null;
+  undone_count?: number | null;
+}
+
+interface UndoPreview {
+  file_name: string;
+  will_remove: number;
+  will_keep: number;
 }
 
 interface Branch {
@@ -789,6 +802,10 @@ function UploadTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function HistoryTab() {
+  const { role, permissions } = useAuthRole();
+  const canDownload = role === "owner" || permissions.includes("leads.download");
+  const [undoTarget, setUndoTarget] = useState<{ item: HistoryItem; preview: UndoPreview | null; error: string | null } | null>(null);
+  const [undoing, setUndoing] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -826,6 +843,10 @@ function HistoryTab() {
         `${API_URL}/api/v1/telecalling-upload/history/${batchId}/csv`,
         { headers }
       );
+      if (res.status === 403) {
+        alert("You don't have permission to download lists.");
+        return;
+      }
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -841,13 +862,51 @@ function HistoryTab() {
     }
   }
 
+  async function openUndo(item: HistoryItem) {
+    setUndoTarget({ item, preview: null, error: null });
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/telecalling-upload/history/${item.id}/undo-preview`, { headers });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(typeof body?.detail === "string" ? body.detail : "Couldn't check this upload.");
+      }
+      const preview: UndoPreview = await res.json();
+      setUndoTarget({ item, preview, error: null });
+    } catch (err) {
+      setUndoTarget({ item, preview: null, error: err instanceof Error ? err.message : "Couldn't check this upload." });
+    }
+  }
+
+  async function confirmUndo() {
+    if (!undoTarget) return;
+    setUndoing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/telecalling-upload/history/${undoTarget.item.id}/undo`, {
+        method: "POST",
+        headers,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(typeof body?.detail === "string" ? body.detail : "Undo failed.");
+      }
+      setUndoTarget(null);
+      await fetchHistory(page);
+    } catch (err) {
+      setUndoTarget((t) => (t ? { ...t, error: err instanceof Error ? err.message : "Undo failed." } : t));
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   return (
     <div className="animate-slide-up">
       <div className="bg-surface rounded-[2rem] p-8 shadow-lg ring-1 ring-[#c4c7c7]/20">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="font-display text-xl font-bold text-on-surface">Upload History</h2>
-            <p className="font-body text-sm text-on-surface-muted mt-1">View all previous uploads and download assignment CSVs.</p>
+            <p className="font-body text-sm text-on-surface-muted mt-1">{canDownload ? "View all previous uploads and download assignment CSVs." : "View all previous uploads."}</p>
           </div>
         </div>
 
@@ -886,6 +945,11 @@ function HistoryTab() {
                           <FileText size={14} className="shrink-0 text-on-surface-muted" />
                           <span className="truncate max-w-[200px] font-label text-sm font-medium text-on-surface">{item.file_name}</span>
                         </div>
+                        {item.undone_at && (
+                          <p className="mt-1 font-body text-xs text-amber-700">
+                            Undone by {item.undone_by_name || "the owner"} on {formatDate(item.undone_at)} · {item.undone_count ?? 0} removed
+                          </p>
+                        )}
                       </td>
                       <td className="py-4 pr-4 font-body text-sm text-on-surface-muted whitespace-nowrap">{formatDate(item.created_at)}</td>
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-on-surface">{item.total_contacts}</td>
@@ -893,12 +957,24 @@ function HistoryTab() {
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-amber-600">{item.duplicates}</td>
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-blue-600">{item.assigned}</td>
                       <td className="py-4">
-                        <button
-                          onClick={() => handleDownloadCsv(item.id, item.file_name)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-semibold text-primary hover:bg-primary/10 transition-colors"
-                        >
-                          <Download size={13} /> CSV
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {canDownload && (
+                            <button
+                              onClick={() => handleDownloadCsv(item.id, item.file_name)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-semibold text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <Download size={13} /> CSV
+                            </button>
+                          )}
+                          {item.can_undo && (
+                            <button
+                              onClick={() => openUndo(item)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Undo2 size={13} /> Undo upload
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -929,6 +1005,48 @@ function HistoryTab() {
           </>
         )}
       </div>
+
+      {undoTarget && (
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Undo upload">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <h3 className="font-display text-lg font-bold text-on-surface">Undo this upload?</h3>
+              {undoTarget.error ? (
+                <p className="mt-3 font-body text-sm text-red-600">{undoTarget.error}</p>
+              ) : !undoTarget.preview ? (
+                <div className="mt-4 flex items-center gap-2 font-body text-sm text-on-surface-muted">
+                  <Loader2 size={16} className="animate-spin text-primary" /> Checking who has been called...
+                </div>
+              ) : (
+                <p className="mt-3 font-body text-sm text-on-surface">
+                  {undoTarget.preview.will_remove === 0
+                    ? `Nobody can be removed from '${undoTarget.item.file_name}'. ${undoTarget.preview.will_keep} already called or already in your list stay.`
+                    : `Remove ${undoTarget.preview.will_remove} ${undoTarget.preview.will_remove === 1 ? "person" : "people"} from '${undoTarget.item.file_name}'? ${undoTarget.preview.will_keep} already called stay.`}
+                </p>
+              )}
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  onClick={() => setUndoTarget(null)}
+                  disabled={undoing}
+                  className="px-4 py-2 rounded-xl font-label text-sm font-semibold text-on-surface-muted hover:bg-surface-low disabled:opacity-40"
+                >
+                  {undoTarget.error ? "Close" : "Cancel"}
+                </button>
+                {undoTarget.preview && !undoTarget.error && undoTarget.preview.will_remove > 0 && (
+                  <button
+                    onClick={confirmUndo}
+                    disabled={undoing}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 font-label text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {undoing && <Loader2 size={14} className="animate-spin" />}
+                    Remove {undoTarget.preview.will_remove}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
     </div>
   );
 }

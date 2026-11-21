@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_owner_tenant_id
+from app.dependencies.tenant import get_owner_tenant_id, require_owner
+from app.services.download_gate import log_download, require_download
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,10 +85,12 @@ async def list_assignment_log(
     from_date: str | None = Query(None, description="ISO timestamp lower bound"),
     to_date: str | None = Query(None, description="ISO timestamp upper bound"),
     format: str | None = Query(None),
-    tenant_id: str = Depends(get_owner_tenant_id),
+    ctx: dict = Depends(require_owner),
 ):
     """Proof feed of every auto/manual assignment + reassignment for the tenant."""
+    tenant_id = ctx["tenant_id"]
     if format == "csv":
+        require_download(ctx)  # owner always passes; the rule is kept in one place
         res = _rows(tenant_id, caller_id=caller_id, segment=segment,
                     from_date=from_date, to_date=to_date, limit=10000, offset=0)
         items = _hydrate(tenant_id, res.data or [])
@@ -100,6 +103,9 @@ async def list_assignment_log(
         for it in items:
             writer.writerow({k: it.get(k) for k in writer.fieldnames})
         output.seek(0)
+        log_download(get_supabase(), ctx, list_name="Assignment log", row_count=len(items), filters={
+            "caller_id": caller_id, "segment": segment, "from_date": from_date, "to_date": to_date,
+        })
         return StreamingResponse(
             iter([output.getvalue()]),
             media_type="text/csv",

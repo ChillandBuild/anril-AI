@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
@@ -960,7 +961,12 @@ export default function RolesPage() {
 
           <div className="card rounded-3xl overflow-hidden">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-display text-base font-bold text-ink">Users</h2>
+              <div className="min-w-0">
+                <h2 className="font-display text-base font-bold text-ink">Users</h2>
+                <Link href="/dashboard/team" className="font-body text-xs font-semibold text-primary hover:underline">
+                  Edit teams in Call IQ › Team
+                </Link>
+              </div>
               <span className="rounded-full bg-surface-subtle px-2.5 py-1 font-label text-[10px] font-bold text-ink-muted">{users.length} total</span>
             </div>
             {users.length === 0 ? (
@@ -990,6 +996,17 @@ export default function RolesPage() {
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-label text-[10px] font-bold text-amber-700">Calling setup incomplete</span>
                           )}
                           {user.role !== "owner" && user.caller_profile && <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-label text-[10px] font-bold text-emerald-700">Team visible</span>}
+                          {user.role !== "owner" && (user.team_name || (user.leads_teams?.length ?? 0) > 0) && (
+                            <span
+                              className="rounded-full bg-surface-subtle px-2 py-0.5 font-label text-xs font-bold text-ink-muted"
+                              title="Teams are edited in Call IQ › Team"
+                            >
+                              {[
+                                user.team_name ? `${user.team_name}${user.leads_teams?.includes(user.team_name) ? " · leader" : ""}` : null,
+                                ...(user.leads_teams ?? []).filter((n) => n !== user.team_name).map((n) => `${n} · leader`),
+                              ].filter(Boolean).join(", ")}
+                            </span>
+                          )}
                         </div>
                         {(user.caller_profile?.phone || (callingProvider === "telecmi" && user.caller_profile?.telecmi_agent_id)) && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-muted">

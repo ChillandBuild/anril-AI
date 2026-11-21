@@ -410,7 +410,7 @@ export function AiSummaryCard({
               </div>
             </div>
           )}
-          <MaskedTranscript preview={log.transcript_preview} />
+          <MaskedTranscript preview={log.transcript_preview} callLogId={log.id} />
         </div>
       )}
     </div>

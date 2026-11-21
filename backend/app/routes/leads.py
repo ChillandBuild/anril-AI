@@ -21,6 +21,7 @@ from app.services.ai_reply import (
 )
 from app.services.growth import record_stage_event, sync_follow_up_jobs
 from app.services.assignment import get_telecalling_config, record_assignment_event
+from app.services.call_teams import assert_can_move_lead, assign_scope
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.share_product import ShareProductError, share_product
 from app.services import group_rules, scheduled_templates
@@ -706,14 +707,14 @@ async def assign_lead(
     payload: AssignPayload,
     ctx: dict = Depends(get_tenant_and_role),
 ):
-    if ctx["role"] != "owner":
-        raise HTTPException(status_code=403, detail="Owner only")
     db = get_supabase()
+    scope = assign_scope(db, ctx)  # owner: None (no limit); Team leader: their team; others: 403 "Owner only"
     
     # Fetch current lead info to check previous caller and other meta
     lead = db.table("leads").select("name, segment, score, assigned_to").eq("id", lead_id).eq("tenant_id", ctx["tenant_id"]).maybe_single().execute()
     if not lead.data:
         raise HTTPException(status_code=404, detail="Lead not found")
+    assert_can_move_lead(scope, lead.data.get("assigned_to"), payload.caller_id)
         
     prev_caller_id = lead.data.get("assigned_to")
     segment = lead.data.get("segment")
@@ -804,17 +805,18 @@ async def bulk_assign(
     payload: BulkAssignPayload,
     ctx: dict = Depends(get_tenant_and_role),
 ):
-    if ctx["role"] != "owner":
-        raise HTTPException(status_code=403, detail="Owner only")
+    db = get_supabase()
+    scope = assign_scope(db, ctx)  # owner: None (no limit); Team leader: their team; others: 403 "Owner only"
     if not payload.lead_ids:
         return {"success": True, "count": 0}
         
-    db = get_supabase()
     tenant_id = ctx["tenant_id"]
     
     # Fetch all leads details to be assigned
     lead_ids_str = [str(lid) for lid in payload.lead_ids]
     leads = db.table("leads").select("id, segment, score, assigned_to").in_("id", lead_ids_str).eq("tenant_id", tenant_id).execute().data or []
+    for l in leads:
+        assert_can_move_lead(scope, l.get("assigned_to"), payload.caller_id)
     
     caller_name = None
     if payload.caller_id:

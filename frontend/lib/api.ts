@@ -348,6 +348,9 @@ export interface Caller {
   has_telecmi_agent_password?: boolean;
   shift_start_hour?: number | null;
   shift_end_hour?: number | null;
+  /** Call IQ team (null = in no team). Present once teams are switched on. */
+  team_id?: string | null;
+  team_name?: string | null;
 }
 
 /** Daily/monthly winner: 70% average score + 30% volume (calls vs the busiest telecaller). */
@@ -1241,7 +1244,26 @@ export interface TeamMember {
     overall_score: number | null;
     active: boolean;
     telecmi_agent_id: string | null;
+    team_id?: string | null;
+    team_name?: string | null;
   } | null;
+}
+
+/** One Call IQ team with its telecallers and leaders (GET /api/v1/call-teams). */
+export interface CallTeam {
+  id: string;
+  name: string;
+  members: { caller_id: string; name: string | null; user_id: string | null }[];
+  leaders: { user_id: string; name: string }[];
+}
+
+export interface CallTeamsResponse {
+  data: CallTeam[];
+  /** Telecallers in no team. Only sent to people who can change teams. */
+  unteamed: { caller_id: string; name: string | null; user_id: string | null }[];
+  can_manage: boolean;
+  /** False until the teams update has been switched on for this client. */
+  teams_ready: boolean;
 }
 
 export interface AttendanceDay {
@@ -1313,6 +1335,10 @@ export interface RbacUser {
   force_password_reset: boolean;
   created_at: string;
   caller_profile: TeamMember["caller_profile"];
+  /** Read-only: teams are edited in Call IQ > Team. */
+  team_id?: string | null;
+  team_name?: string | null;
+  leads_teams?: string[];
 }
 
 export interface AuditLogEntry {
@@ -2958,6 +2984,11 @@ export const api = {
       apiFetch<CallLog>(`/api/v1/calls/${callLogId}`),
     retryAi: (callLogId: string) =>
       apiFetch<{ ok: boolean }>(`/api/v1/calls/${callLogId}/retry-ai`, { method: "POST" }),
+    /** English version of the transcript (first and last line only, same as the original). Made once, then kept. */
+    translateTranscript: (callLogId: string) =>
+      apiFetch<{ transcript_en: string; transcript_preview_en: TranscriptPreview | null; cached: boolean; already_english: boolean }>(
+        `/api/v1/call-translate/${callLogId}`, { method: "POST" }, 130_000,
+      ),
     alerts: (params: { type?: CallAlertType; caller_id?: string; seen?: boolean; page?: number; limit?: number } = {}) => {
       const q = new URLSearchParams();
       if (params.type) q.set("type", params.type);
@@ -3558,6 +3589,27 @@ export const api = {
           body: JSON.stringify({ calling_provider: callingProvider }),
         }
       ),
+  },
+  callTeams: {
+    list: () => apiFetch<CallTeamsResponse>("/api/v1/call-teams"),
+    create: (name: string) =>
+      apiFetch<{ data: CallTeam }>("/api/v1/call-teams", { method: "POST", body: JSON.stringify({ name }) }),
+    rename: (id: string, name: string) =>
+      apiFetch<{ data: { id: string; name: string } }>(`/api/v1/call-teams/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    remove: (id: string) => apiFetch<{ ok: boolean }>(`/api/v1/call-teams/${id}`, { method: "DELETE" }),
+    setMembers: (id: string, callerIds: string[]) =>
+      apiFetch<{ ok: boolean; caller_ids: string[] }>(`/api/v1/call-teams/${id}/members`, {
+        method: "PUT",
+        body: JSON.stringify({ caller_ids: callerIds }),
+      }),
+    setLeaders: (id: string, userIds: string[]) =>
+      apiFetch<{ ok: boolean; user_ids: string[]; promoted: string[]; note: string | null }>(`/api/v1/call-teams/${id}/leaders`, {
+        method: "PUT",
+        body: JSON.stringify({ user_ids: userIds }),
+      }),
   },
   team: {
     me: () => apiFetch<MyProfile>("/api/v1/team/me"),
