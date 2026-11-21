@@ -66,6 +66,8 @@ const ACCESS_MODULES: AccessModule[] = [
   { id: "deals", title: "Orders & payments", description: "Orders, bills, quotes and payments. Write access makes bills and takes payments.", group: "Leads", readKeys: ["deals.view"], writeKeys: ["deals.manage"] },
   // Its own row so only a manager gets it: money going back out.
   { id: "refunds", title: "Refunds", description: "Cancel paid orders and give money back (Razorpay, cash or UPI).", group: "Leads", readKeys: [], writeKeys: ["deals.refund"] },
+  // Cost prices, supplier dues and payments: money, so not part of Catalogue access.
+  { id: "purchases", title: "Purchases", description: "Purchase orders, stock in, suppliers, cost prices and what you owe. Write access receives stock and records supplier payments.", group: "Leads", readKeys: ["purchases.view"], writeKeys: ["purchases.manage"] },
   { id: "meta_ads", title: "Meta Ads", description: "See ad performance and create ad tracking links.", group: "Leads", readKeys: ["meta_ads.view"], writeKeys: ["meta_ads.manage"] },
   { id: "outbound", title: "Outbound Leads", description: "Review outbound batches and campaign history.", group: "Messaging", readKeys: ["outbound_leads.view"], writeKeys: ["outbound_leads.manage"] },
   { id: "templates", title: "Templates", description: "Review and manage WhatsApp templates.", group: "Messaging", readKeys: ["templates.view"], writeKeys: ["templates.manage"] },

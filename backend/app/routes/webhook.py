@@ -477,6 +477,25 @@ async def _process_inbound_message_background(
                 except Exception:
                     logger.exception("Form for ad/broadcast failed for lead %s -- replying as usual", lead_id)
                     form_match = None
+            # A supplier tapped Confirm / Change date on a purchase order (Purchases): record it,
+            # tell the owner, and never let the AI answer a supplier's button.
+            from app.services import purchases as purchases_service
+            po_button = purchases_service.button_po(interactive_id)
+            if po_button:
+                try:
+                    if await purchases_service.answer_from_supplier(db, tenant_id, phone, *po_button):
+                        return
+                except Exception as e:
+                    logger.error(f"Purchase order button failed for lead {lead_id}: {e}")
+                    return
+            # Any other message from one of the business's own suppliers: never an AI reply.
+            try:
+                supplier = purchases_service.supplier_by_phone(db, tenant_id, phone)
+            except Exception:
+                supplier = None
+            if supplier:
+                purchases_service.note_supplier_message(db, tenant_id, lead_id, supplier)
+                return
             # Accept quote (Orders & payments): it becomes an order and the advance link goes
             # out. Customer-asked, like a payment, so it runs even with auto-reply off.
             from app.services.order_quotes import accept_from_chat, deal_from_button

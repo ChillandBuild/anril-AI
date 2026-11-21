@@ -533,3 +533,41 @@ async def gemini_text_to_speech(
         raise RuntimeError("Gemini TTS returned no audio")
     pcm_bytes = base64.b64decode(content[0]["data"])
     return _pcm_to_mp3(pcm_bytes)
+
+
+async def gemini_read_file(
+    content: bytes,
+    mime_type: str,
+    instruction: str,
+    model: str = DEFAULT_GEMINI_TEXT_MODEL,
+    tenant_id: str | None = None,
+    purpose: str = "read_file",
+    max_tokens: int = 6000,
+) -> str:
+    """Read a photo or PDF (a supplier bill, a printed price list) and answer the instruction.
+    Same flat content-part shape as gemini_speech_to_text: {"type": "image"|"document", "data",
+    "mime_type"}. The caller asks for JSON and checks every value it uses."""
+    api_key = require_tenant_setting("gemini_api_key", tenant_id)
+    part_type = "document" if mime_type == "application/pdf" else "image"
+    request_json = {
+        "model": model,
+        "store": False,
+        "input": [{
+            "type": "user_input",
+            "content": [
+                {"type": "text", "text": instruction},
+                {"type": part_type, "data": base64.b64encode(content).decode(), "mime_type": mime_type},
+            ],
+        }],
+        "generation_config": {"temperature": 0.1, "max_output_tokens": max_tokens, "thinking_level": thinking_level(model)},
+    }
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.post(
+            GEMINI_INTERACTIONS_URL,
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json=request_json,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    _record(tenant_id, purpose, model, data)
+    return _gemini_output_text(data.get("steps") or [])

@@ -282,11 +282,18 @@ async def mark_back(db, tenant_id: str, *, item_id: str, variant_id: str | None 
         .in_("id", lead_ids or ["00000000-0000-0000-0000-000000000000"]).execute()
     ).data or []}
     closed = now.isoformat()
+    # Claim the rows first, so two presses at once can't message anyone twice.
+    claimed = []
+    for row in rows:
+        got = (db.table("stock_waitlist").update({"closed_at": closed}).eq("id", row["id"]).eq("tenant_id", tenant_id)
+               .is_("closed_at", "null").execute().data or [])
+        if got:
+            claimed.append(row)
+    rows = claimed
     for row in rows:
         lead = leads.get(row.get("lead_id")) or {}
         if not row.get("wants_message") or lead.get("opted_out") or not lead.get("phone"):
-            db.table("stock_waitlist").update({"closed_at": closed}).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
-            result["skipped"] += 1
+            result["skipped"] += 1  # claimed above = closed
             continue
         first = _first_name(lead.get("name") or row.get("name"))
         if first == "there":
@@ -307,13 +314,14 @@ async def mark_back(db, tenant_id: str, *, item_id: str, variant_id: str | None 
                 logger.warning("Back-in-stock message to lead %s failed: %s", lead.get("id"), exc)
                 sid = None
         if not sid:
-            result["not_reachable"] += 1
+            result["not_reachable"] += 1  # stays waiting: open it again for the next press
+            db.table("stock_waitlist").update({"closed_at": None}).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
             continue
         db.table("messages").insert({
             "lead_id": lead["id"], "tenant_id": tenant_id, "direction": "outbound", "channel": "whatsapp",
             "content": text, "is_ai_generated": False, "meta_message_id": sid,
         }).execute()
-        db.table("stock_waitlist").update({"closed_at": closed, "notified_at": closed, "notify_via": via}) \
+        db.table("stock_waitlist").update({"notified_at": closed, "notify_via": via}) \
             .eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
         result["sent"] += 1
     if user_id:

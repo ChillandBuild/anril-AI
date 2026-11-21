@@ -1064,3 +1064,141 @@ async def stock_asks_submit_template(ctx: dict = Depends(require_permission("tem
         tenant_id=tenant_id, _ctx=ctx,
     )
     return {"template_status": stock_asks.template_status(db, tenant_id)}
+
+
+# ── Shop files: price lists, size charts, videos (migration 306, services/catalog_files.py) ──
+
+
+@router.get("/files")
+async def files_list(tenant_id: str = Depends(get_tenant_id)):
+    import asyncio
+
+    from app.services import catalog_files
+
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return await asyncio.to_thread(catalog_files.summary, get_supabase(), tenant_id, month_start_iso=month_start)
+
+
+@router.post("/files")
+async def files_upload(
+    file: UploadFile = File(...),
+    title: str | None = Form(None),
+    send_when: str | None = Form(None),
+    catalog_item_id: str | None = Form(None),
+    tenant_id: str = Depends(get_tenant_id),
+    ctx: dict = Depends(require_catalog_manage),
+):
+    import asyncio
+
+    from app.services import catalog_files
+
+    content = await file.read(catalog_files.KINDS["document"]["max_bytes"] + 1)
+    if catalog_item_id:
+        try:
+            UUID(catalog_item_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Product not found")
+    try:
+        return await asyncio.to_thread(
+            catalog_files.upload, get_supabase(), tenant_id, content, filename=file.filename, title=title,
+            send_when=send_when, item_id=catalog_item_id or None, user_id=ctx.get("user_id"))
+    except catalog_files.FileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.patch("/files/{file_id}")
+async def files_update(
+    file_id: UUID,
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    from app.services import catalog_files
+
+    try:
+        return catalog_files.update(get_supabase(), tenant_id, str(file_id), payload)
+    except catalog_files.FileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/files/{file_id}")
+async def files_delete(
+    file_id: UUID,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    from app.services import catalog_files
+
+    try:
+        catalog_files.delete(get_supabase(), tenant_id, str(file_id))
+    except catalog_files.FileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"deleted": True}
+
+
+# ── Upload price list (services/price_list.py) ─────────────────────────────────
+
+
+@router.get("/price-list/sample.csv")
+async def price_list_sample():
+    from fastapi.responses import Response
+
+    from app.services import price_list
+
+    return Response(content=price_list.sample_csv(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="price-list-sample.csv"'})
+
+
+@router.post("/price-list/read")
+async def price_list_read(
+    file: UploadFile = File(...),
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    """Excel / CSV read directly; a PDF or photo read by the AI. Returns the preview; nothing is saved."""
+    import asyncio
+
+    from app.services import price_list
+    from app.services.catalog_files import sniff
+
+    content = await file.read(15 * 1024 * 1024 + 1)
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="The file is too big. Up to 15 MB.")
+    db = get_supabase()
+    try:
+        found = sniff(content)
+        if found and found[0] != "video":
+            rows = await price_list.read_with_ai(db, tenant_id, content, found[1])
+        elif (file.filename or "").lower().endswith((".xlsx", ".xlsm", ".csv", ".txt")) or content[:2] == b"PK":
+            rows = await asyncio.to_thread(price_list.read_sheet, content, file.filename or "")
+        else:
+            raise price_list.PriceListError("Add an Excel (.xlsx) or CSV file, a PDF, or a photo of the price list.")
+        return await asyncio.to_thread(price_list.preview, db, tenant_id, rows)
+    except price_list.PriceListError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/price-list/check")
+async def price_list_check(payload: dict, tenant_id: str = Depends(get_tenant_id),
+                           _ctx: dict = Depends(require_catalog_manage)):
+    """The preview again after the user fixed cells."""
+    import asyncio
+
+    from app.services import price_list
+
+    rows = [r for r in payload.get("rows") or [] if isinstance(r, dict)][:price_list.MAX_ROWS]
+    return await asyncio.to_thread(price_list.preview, get_supabase(), tenant_id, rows)
+
+
+@router.post("/price-list/apply")
+async def price_list_apply(payload: dict, tenant_id: str = Depends(get_tenant_id),
+                           ctx: dict = Depends(require_catalog_manage)):
+    from app.services import price_list
+
+    rows = [r for r in payload.get("rows") or [] if isinstance(r, dict)]
+    if not rows:
+        raise HTTPException(status_code=400, detail="Nothing to save")
+    try:
+        return await price_list.apply(get_supabase(), tenant_id, rows, ctx.get("user_id"))
+    except price_list.PriceListError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

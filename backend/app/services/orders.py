@@ -1223,6 +1223,11 @@ async def send_due_reminders(db=None, now: datetime | None = None, limit: int = 
         await sweep_quotes(db, now)
     except Exception as e:
         logger.warning(f"Quote reminders/expiry failed: {e}")
+    try:
+        from app.services.purchases import sweep_unanswered
+        sweep_unanswered(db, now)  # purchase orders a supplier hasn't answered in 2 days
+    except Exception as e:
+        logger.warning(f"Purchase order reminders failed: {e}")
     rows = (
         db.table("deals").select("*").eq("stage", "awaiting_payment").not_.is_("reminders_from", "null")
         .lt("reminders_sent", len(REMINDER_DAYS)).not_.is_("lead_id", "null").limit(limit).execute()

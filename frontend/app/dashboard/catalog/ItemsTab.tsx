@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Loader2, Plus, Search, Sparkles } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Search, Sparkles, Upload } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ItemThumb } from "./ItemThumb";
@@ -197,6 +197,12 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
               {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
               Teach the AI {missingIndex} new
             </button>
+          )}
+          {canManage && (
+            <Link href="/dashboard/catalog/price-list"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-low">
+              <Upload size={15} /> Upload price list
+            </Link>
           )}
           {canManage && (
             <Link href="/dashboard/catalog/items/new" className="btn-primary inline-flex h-9 items-center gap-1.5 !py-0">

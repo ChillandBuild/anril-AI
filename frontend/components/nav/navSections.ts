@@ -3,6 +3,7 @@ import {
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
+  Truck,
 } from "lucide-react";
 import {
   SETTINGS_HOME_HREF, SETTINGS_ITEMS, isSettingsPath, settingsItemVisible,
@@ -318,6 +319,17 @@ const CATALOGUE: NavLeaf = {
   isActive: (p) => startsWithAny(p, ["/dashboard/catalog", "/dashboard/services", "/dashboard/forms"]),
 };
 
+/** Purchases & suppliers: purchase orders, stock in, suppliers (its own money permissions). */
+const PURCHASES: NavLeaf = {
+  kind: "link",
+  key: "purchases",
+  href: "/dashboard/purchases",
+  label: "Purchases",
+  icon: Truck,
+  visible: (a) => a.isSubscribed && a.canAny(["purchases.view", "purchases.manage"]),
+  isActive: (p) => p.startsWith("/dashboard/purchases"),
+};
+
 const TC_QUEUE = "/dashboard/telecalling";
 const TC_DIAL = "/dashboard/telecalling/dial";
 const TC_UPLOAD = "/dashboard/telecalling/upload";
@@ -461,7 +473,7 @@ const SETTINGS = pagesLeaf({ key: "settings", label: "Settings", icon: Settings,
 const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
-const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE] };
+const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES] };
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
 const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };

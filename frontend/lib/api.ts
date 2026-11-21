@@ -3135,6 +3135,31 @@ export const api = {
     item: (itemId: string) => apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}`),
     correctStock: (itemId: string, body: { variant_id?: string | null; to: number; why: StockWhy }) =>
       apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/correct-stock`, { method: "POST", body: JSON.stringify(body) }),
+    /** Upload price list (backend services/price_list.py): read -> preview -> check -> apply. */
+    priceListRead: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return smsMultipart<PriceListPreview>("/api/v1/catalog/price-list/read", fd);
+    },
+    priceListCheck: (rows: PriceListRowInput[]) =>
+      apiFetch<PriceListPreview>("/api/v1/catalog/price-list/check", { method: "POST", body: JSON.stringify({ rows }) }, 60_000),
+    priceListApply: (rows: PriceListRowInput[]) =>
+      apiFetch<PriceListResult>("/api/v1/catalog/price-list/apply", { method: "POST", body: JSON.stringify({ rows }) }, 120_000),
+    priceListSamplePath: "/api/v1/catalog/price-list/sample.csv",
+    /** Shop files the AI sends: price lists, size charts, videos (backend services/catalog_files.py). */
+    files: () => apiFetch<ShopFilesView>(`/api/v1/catalog/files`),
+    uploadFile: (file: File, fields: { title?: string; send_when?: string; catalog_item_id?: string | null }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (fields.title) fd.append("title", fields.title);
+      if (fields.send_when) fd.append("send_when", fields.send_when);
+      if (fields.catalog_item_id) fd.append("catalog_item_id", fields.catalog_item_id);
+      return smsMultipart<ShopFile>(`/api/v1/catalog/files`, fd);
+    },
+    updateFile: (id: string, body: Partial<Pick<ShopFile, "title" | "send_when" | "ai_enabled" | "catalog_item_id">>) =>
+      apiFetch<ShopFile>(`/api/v1/catalog/files/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deleteFile: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/v1/catalog/files/${encodeURIComponent(id)}`, { method: "DELETE" }),
     /** Asked but out of stock (backend services/stock_asks.py). */
     stockAsks: (days = 30) => apiFetch<StockAsks>(`/api/v1/catalog/stock-asks?days=${days}`),
     stockAsksCsvPath: (days = 30) => `/api/v1/catalog/stock-asks.csv?days=${days}`,
@@ -3825,6 +3850,41 @@ export const api = {
       return apiFetch<AutoMessageSendsPage>(`/api/v1/auto-messages/sends?${q.toString()}`);
     },
     privateSend: () => apiFetch<PrivateSendStatus>("/api/v1/auto-messages/private-send"),
+  },
+  /** Purchases & suppliers (backend routes/purchases.py). */
+  purchases: {
+    options: () => apiFetch<PurchaseOptions>("/api/v1/purchases/options"),
+    orders: () => apiFetch<PurchaseOrdersView>("/api/v1/purchases/orders"),
+    suggestions: () => apiFetch<{ data: ReorderSuggestion[] }>("/api/v1/purchases/suggestions"),
+    order: (id: string) => apiFetch<PurchaseOrder>(`/api/v1/purchases/orders/${encodeURIComponent(id)}`),
+    saveOrder: (body: PurchaseOrderInput, id?: string) =>
+      apiFetch<PurchaseOrder>(id ? `/api/v1/purchases/orders/${encodeURIComponent(id)}` : "/api/v1/purchases/orders",
+        { method: id ? "PUT" : "POST", body: JSON.stringify(body) }),
+    sendOrder: (id: string) =>
+      apiFetch<PurchaseSendResult>(`/api/v1/purchases/orders/${encodeURIComponent(id)}/send`, { method: "POST" }, 60_000),
+    cancelOrder: (id: string) =>
+      apiFetch<{ cancelled: boolean }>(`/api/v1/purchases/orders/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+    remindOrder: (id: string) =>
+      apiFetch<{ text: string; share_url: string | null }>(`/api/v1/purchases/orders/${encodeURIComponent(id)}/remind`),
+    submitTemplate: () =>
+      apiFetch<{ template_status: string }>("/api/v1/purchases/whatsapp-setup", { method: "POST" }, 60_000),
+    stockIn: (body: StockInInput) =>
+      apiFetch<StockInResult>("/api/v1/purchases/stock-in", { method: "POST", body: JSON.stringify(body) }, 60_000),
+    stockIns: () => apiFetch<{ data: StockInRow[] }>("/api/v1/purchases/stock-in"),
+    readBill: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return smsMultipart<BillRead>("/api/v1/purchases/stock-in/read-bill", fd);
+    },
+    suppliers: () => apiFetch<SuppliersView>("/api/v1/purchases/suppliers"),
+    saveSupplier: (body: SupplierInput, id?: string) =>
+      apiFetch<Supplier>(id ? `/api/v1/purchases/suppliers/${encodeURIComponent(id)}` : "/api/v1/purchases/suppliers",
+        { method: id ? "PUT" : "POST", body: JSON.stringify(body) }),
+    recordPayment: (id: string, body: { amount_paise: number; method: SupplierPayMethod; paid_on?: string; note?: string }) =>
+      apiFetch<unknown>(`/api/v1/purchases/suppliers/${encodeURIComponent(id)}/payments`, { method: "POST", body: JSON.stringify(body) }),
+    reorder: (id: string) =>
+      apiFetch<{ text: string; share_url: string | null; items: number }>(`/api/v1/purchases/suppliers/${encodeURIComponent(id)}/reorder`),
+    registerCsvPath: (month: string) => `/api/v1/purchases/register.csv?month=${encodeURIComponent(month)}`,
   },
   /** Catalogue → Forms: WhatsApp Forms (backend routes/whatsapp_form_designs.py). */
   whatsappForms: {
@@ -5621,5 +5681,282 @@ export interface BackInStockResult {
   /** Outside 24 hours with no approved template yet: still waiting. */
   not_reachable: number;
   /** Didn't want a message, opted out, or no phone. */
+  skipped: number;
+}
+
+/* ── Shop files ─────────────────────────────────────────────────────────────── */
+
+export type ShopFileKind = "image" | "video" | "document";
+
+export interface ShopFile {
+  id: string;
+  title: string;
+  kind: ShopFileKind;
+  mime_type: string;
+  size_bytes: number;
+  pages: number | null;
+  catalog_item_id: string | null;
+  item_name?: string | null;
+  /** The business's own words for when the AI sends it; empty = the AI never sends it. */
+  send_when: string | null;
+  ai_enabled: boolean;
+  sent_count: number;
+  sent_this_month?: number;
+  url: string | null;
+  created_at: string;
+}
+
+export interface ShopFilesView {
+  files: ShopFile[];
+  no_photo: { count: number; items: { id: string; name: string }[] };
+  most_sent: { id: string; title: string; count: number }[];
+  limits: Record<ShopFileKind, number>;
+}
+
+/* ── Purchases & suppliers ──────────────────────────────────────────────────── */
+
+export type SupplierPayMethod = "cash" | "upi" | "bank" | "cheque";
+export type PurchaseOrderStatus = "draft" | "sent" | "confirmed" | "part_received" | "received" | "cancelled";
+export type DamagedAction = "replace" | "less_on_bill" | "discount";
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string | null;
+  city: string | null;
+  gstin: string | null;
+  supplies: string | null;
+}
+
+export interface SupplierRow extends Supplier {
+  bought_this_month_paise: number;
+  owe_paise: number;
+  due_date: string | null;
+  overdue_days: number;
+}
+
+export interface SuppliersView {
+  suppliers: SupplierRow[];
+  bought_this_month_paise: number;
+  bought_from: number;
+  owe_paise: number;
+  owe_to: number;
+  low_stock: number;
+}
+
+export interface SupplierInput {
+  name: string;
+  phone?: string;
+  city?: string;
+  gstin?: string;
+  supplies?: string;
+}
+
+export interface PurchaseOptionItem {
+  id: string;
+  name: string;
+  gst_rate: number;
+  cost_price_paise: number | null;
+  stock: number | null;
+  variants: { id: string; label: string; stock: number; cost_price_paise: number | null }[];
+}
+
+export interface PurchaseOptions {
+  items: PurchaseOptionItem[];
+  places: { id: string; name: string; kind: string; bills_from: boolean }[];
+  suppliers: Supplier[];
+}
+
+export interface ReorderSuggestion {
+  catalog_item_id: string;
+  variant_id: string | null;
+  name: string;
+  variant_label: string | null;
+  stock: number;
+  sold_30d: number;
+  on_order: number;
+  suggested: number;
+  last_cost_paise: number | null;
+  gst_rate: number;
+}
+
+export interface PurchaseOrderLine {
+  id: string;
+  catalog_item_id: string;
+  variant_id: string | null;
+  label: string;
+  qty_ordered: number;
+  qty_received: number;
+  unit_cost_paise: number;
+  gst_rate: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  status: PurchaseOrderStatus;
+  supplier: Supplier;
+  supplier_id: string;
+  need_by: string | null;
+  place_id: string | null;
+  note: string | null;
+  items_paise: number;
+  gst_paise: number;
+  total_paise: number;
+  sent_at: string | null;
+  sent_via: "text" | "template" | "share" | null;
+  confirmed_at: string | null;
+  date_change_asked_at: string | null;
+  lines: PurchaseOrderLine[];
+  message: { text: string; values: string[] };
+}
+
+export interface PurchaseOrderInput {
+  supplier_id: string;
+  need_by: string | null;
+  place_id: string | null;
+  note?: string;
+  lines: { catalog_item_id: string; variant_id: string | null; qty: number; unit_cost_paise: number; gst_rate: number }[];
+}
+
+export interface PurchaseSendResult {
+  sent: boolean;
+  via: "text" | "template" | null;
+  share_url: string | null;
+  reason: string | null;
+}
+
+export interface PurchaseOrderRow {
+  id: string;
+  po_number: string;
+  status: PurchaseOrderStatus;
+  supplier_name: string | null;
+  items_text: string;
+  ordered: number;
+  received: number;
+  total_paise: number;
+  sent_at: string | null;
+  sent_via: string | null;
+  need_by: string | null;
+  late_days: number;
+  confirmed_at: string | null;
+  date_change_asked_at: string | null;
+}
+
+export interface PurchaseOrdersView {
+  orders: PurchaseOrderRow[];
+  open: { count: number; paise: number };
+  coming_this_week: { count: number; suppliers: string[] };
+  late: { count: number; first: [string, number] | null };
+  to_reorder: { count: number; names: string[] };
+  short_or_damaged: { pieces: number; claim_paise: number };
+  template_status: string;
+}
+
+export interface StockInLineInput {
+  catalog_item_id: string;
+  variant_id: string | null;
+  purchase_order_line_id?: string | null;
+  qty_good: number;
+  qty_damaged: number;
+  damaged_action: DamagedAction | null;
+  unit_cost_paise: number;
+  gst_rate: number;
+}
+
+export interface StockInInput {
+  /** One per Save on the screen: a double click or retry never adds the stock twice. */
+  request_id: string;
+  supplier_id: string | null;
+  supplier_name?: string;
+  purchase_order_id?: string | null;
+  bill_no: string;
+  bill_date: string;
+  supplier_gstin: string;
+  place_id: string | null;
+  received_by: string;
+  pay_status: "paid" | "part" | "later";
+  paid_paise?: number;
+  pay_method?: SupplierPayMethod;
+  due_date?: string | null;
+  lines: StockInLineInput[];
+}
+
+export interface StockInResult {
+  id: string;
+  total_paise: number;
+  pieces_in: number;
+  damaged_aside: number;
+  waiting: { catalog_item_id: string; variant_id: string | null; people: number }[];
+}
+
+export interface StockInRow {
+  id: string;
+  supplier_name: string | null;
+  bill_no: string | null;
+  bill_date: string;
+  total_paise: number;
+  gst_paise: number;
+  pay_status: "paid" | "part" | "later";
+  purchase_order_id: string | null;
+  created_at: string;
+}
+
+export interface BillRead {
+  supplier_id: string | null;
+  supplier_name: string | null;
+  bill_no: string | null;
+  bill_date: string | null;
+  supplier_gstin: string | null;
+  lines: {
+    read_name: string;
+    catalog_item_id: string | null;
+    variant_id: string | null;
+    label: string | null;
+    qty_good: number;
+    unit_cost_paise: number;
+    gst_rate: number;
+  }[];
+}
+
+/* ── Upload price list ──────────────────────────────────────────────────────── */
+
+export interface PriceListRowInput {
+  name: string;
+  size: string | null;
+  colour: string | null;
+  /** Rupees as typed ("10500"). */
+  price: string | null;
+  gst_rate: string | null;
+  hsn: string | null;
+  stock: string | null;
+  group: string | null;
+}
+
+export interface PriceListRow {
+  row: number;
+  name: string;
+  size: string | null;
+  colour: string | null;
+  price_paise: number | null;
+  gst_rate: number | null;
+  hsn: string | null;
+  stock: number | null;
+  group: string | null;
+  status: "new" | "new_size" | "update" | "same" | "problem";
+  changes: ("price" | "gst" | "hsn" | "stock")[];
+  problems: string[];
+  current: { price_paise: number | null; stock: number | null; gst_rate: number | null; hsn: string | null } | null;
+}
+
+export interface PriceListPreview {
+  rows: PriceListRow[];
+  counts: Record<"new" | "new_size" | "update" | "same" | "problem", number>;
+}
+
+export interface PriceListResult {
+  new_items: number;
+  new_sizes: number;
+  updated: number;
   skipped: number;
 }

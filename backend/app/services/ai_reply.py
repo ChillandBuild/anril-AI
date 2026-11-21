@@ -2024,6 +2024,14 @@ async def generate_reply(
                 catalog_tools = [*catalog_tools, form_tool]
         except Exception:
             logger.warning(f"WhatsApp Form tool skipped for tenant {tenant_id}")
+        # Shop files (price list, size chart...) with the business's "send it when" words.
+        try:
+            from app.services import catalog_files
+            file_tool = catalog_files.ai_tool(catalog_files.ai_files(db, tenant_id))
+            if file_tool:
+                catalog_tools = [*catalog_tools, file_tool]
+        except Exception:
+            logger.warning(f"Shop file tool skipped for tenant {tenant_id}")
 
     # Bound out here, not inside the try below: that block's except does not return,
     # it falls through to the channel dispatch, which reads both of these. A variable
@@ -2303,6 +2311,14 @@ async def generate_reply(
                     meter(db, tenant_id, "ai_media_recommendation")
                 except Exception as img_err:
                     logger.warning("Catalog image send failed for lead %s: %s", lead_id, img_err)
+
+        # Shop files the model picked (send_file), after the words and photos.
+        if _wa_phone and sid and deal_outcome and deal_outcome.file_ids:
+            from app.services import catalog_files
+            await catalog_files.send_after_reply(
+                db, tenant_id, str(lead_id), _wa_phone, deal_outcome.file_ids,
+                channel=channel, phone_number_id=phone_number_id,
+            )
 
     # Track-only usage metering: count once per AI-generated reply that was
     # actually sent (non-None message id). Never blocks/caps — best-effort only.

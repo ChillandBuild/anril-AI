@@ -122,6 +122,13 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "templates", label: "Templates" },
     ],
   },
+  "/dashboard/purchases": {
+    tabs: [
+      { value: "orders", label: "Purchase orders" },
+      { value: "stock-in", label: "Stock in" },
+      { value: "suppliers", label: "Suppliers" },
+    ],
+  },
   // "Form answers" is hidden unless form intake is on (see AppHeader).
   "/dashboard/deals": {
     tabs: [
@@ -289,11 +296,26 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   // Products | Services is a route-based header switch (CatalogueHeaderSwitch),
   // so each route names its own tab.
+  if (pathname === "/dashboard/purchases") {
+    return { title: "Purchases", description: "What you ask suppliers for, what came, and what you owe them." };
+  }
+  if (pathname === "/dashboard/purchases/orders/new") {
+    return { title: "Purchases / New purchase order", description: "Pick what to order. Suggested amounts come from what sold." };
+  }
+  if (pathname.startsWith("/dashboard/purchases/orders/")) {
+    return { title: "Purchases / Purchase order", description: "Send it to the supplier, then tick what came." };
+  }
+  if (pathname === "/dashboard/purchases/stock-in") {
+    return { title: "Purchases / Stock in", description: "Add what you bought. Stock and cost price update by themselves." };
+  }
   if (pathname === "/dashboard/catalog") {
     return {
       title: "Catalogue / Products",
       description: "Your products, prices and stock — what Anril can recommend and sell.",
     };
+  }
+  if (pathname === "/dashboard/catalog/price-list") {
+    return { title: "Catalogue / Upload price list", description: "Add or update many items at once. Nothing changes until you save." };
   }
   if (pathname === "/dashboard/catalog/items/new") {
     return { title: "Catalogue / New item", description: "Name, price, sizes and colours, and the stock you have now." };

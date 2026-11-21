@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { api, CatalogItem, CatalogMedia } from "@/lib/api";
+import { ShopFiles } from "./ShopFiles";
 
 function SortablePhoto({
   media,
@@ -273,6 +274,8 @@ export function MediaTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
+      <ShopFiles canManage={canManage} />
+      <h2 className="pt-2 font-display text-lg font-bold text-ink">Item photos</h2>
       {error && (
         <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
       )}

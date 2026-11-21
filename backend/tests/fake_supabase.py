@@ -23,6 +23,11 @@ _DEFAULTS = {
         "suggested_handover": "",
     },
     "knowledge_versions": {"document_id": None, "created_by": None, "content": ""},
+    "catalog_files": {"ai_enabled": True, "sent_count": 0, "catalog_item_id": None, "send_when": None},
+    "stock_waitlist": {"closed_at": None, "notified_at": None},
+    "suppliers": {"archived": False, "phone": None, "gstin": None},
+    "purchase_orders": {"status": "draft", "sent_at": None, "reminded_at": None, "confirmed_at": None, "need_by": None},
+    "purchase_order_lines": {"qty_received": 0},
 }
 
 # table -> columns of a UNIQUE constraint the code relies on (insert raises 23505 like Postgres)

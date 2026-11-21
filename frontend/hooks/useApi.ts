@@ -436,3 +436,27 @@ export function useSendableForms(enabled = true) {
 export function useStockAsks(days = 30, enabled = true) {
   return useSWR(enabled ? `catalog/stock-asks:${days}` : null, () => api.catalog.stockAsks(days), defaultConfig);
 }
+
+export function useShopFiles(enabled = true) {
+  return useSWR(enabled ? "catalog/files" : null, () => api.catalog.files(), defaultConfig);
+}
+
+export function usePurchaseOptions() {
+  return useSWR("purchases/options", () => api.purchases.options(), defaultConfig);
+}
+
+export function usePurchaseOrders() {
+  return useSWR("purchases/orders", () => api.purchases.orders(), defaultConfig);
+}
+
+export function usePurchaseOrder(id: string | null) {
+  return useSWR(id ? `purchases/order:${id}` : null, () => api.purchases.order(id!), defaultConfig);
+}
+
+export function useSuppliers() {
+  return useSWR("purchases/suppliers", () => api.purchases.suppliers(), defaultConfig);
+}
+
+export function useStockIns() {
+  return useSWR("purchases/stock-ins", () => api.purchases.stockIns(), defaultConfig);
+}

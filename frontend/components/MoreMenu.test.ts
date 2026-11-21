@@ -33,7 +33,7 @@ describe("More drawer layout", () => {
       [null, ["Reach"]],
       ["Anril OTP", ["Send & check", "History", "Setup"]],
       ["Anril SMS", ["Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API"]],
-      ["Commerce", ["Orders & payments", "Catalogue"]],
+      ["Commerce", ["Orders & payments", "Catalogue", "Purchases"]],
       ["Call IQ", ["Leads to call", "Call reviews", "Team"]],
       [null, ["Reports"]],
       [null, []],

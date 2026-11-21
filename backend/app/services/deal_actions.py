@@ -61,6 +61,7 @@ class Outcome:
     handover: bool = False
     quote_text: str | None = None  # product quote summary + its payment link, rendered by code
     image_item_ids: tuple[str, ...] = ()
+    file_ids: tuple[str, ...] = ()  # shop files (catalog_files) sent after the reply
 
 
 class _Turn:
@@ -75,12 +76,13 @@ class _Turn:
         self.handover = False
         self.quote_text: str | None = None
         self.image_item_ids: list[str] = []
+        self.file_ids: list[str] = []
         self.link_failed = False
 
     def outcome(self) -> Outcome:
         return Outcome(
             self.menu, self.payment_link, tuple(self.refusals), self.handover,
-            self.quote_text, tuple(self.image_item_ids),
+            self.quote_text, tuple(self.image_item_ids), tuple(self.file_ids),
         )
 
 
@@ -778,6 +780,19 @@ async def _send_form(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     return None
 
 
+async def _send_file(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
+    """A shop file (price list, size chart...) goes out after the reply (services/catalog_files.py)."""
+    from app.services import catalog_files
+
+    file_id = str(args.get("file_id") or "")
+    if file_id in turn.file_ids:
+        return None
+    if len(turn.file_ids) >= catalog_files.MAX_PER_REPLY:
+        return f"send_file: at most {catalog_files.MAX_PER_REPLY} files per reply."
+    turn.file_ids.append(file_id)
+    return None
+
+
 async def _note_stock_request(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     """The customer asked for something out of stock: they go on "Asked but out of stock"
     (services/stock_asks.py), and on the back-in-stock list once wants_message is true."""
@@ -819,6 +834,7 @@ _EXECUTORS = {
     "send_quote": _send_quote,
     "send_form": _send_form,
     "note_out_of_stock_request": _note_stock_request,
+    "send_file": _send_file,
 }
 
 

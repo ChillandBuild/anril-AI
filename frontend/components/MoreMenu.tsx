@@ -29,8 +29,7 @@ import {
   Zap,
   StickyNote,
   Users,
-  X,
-} from "lucide-react";
+  X, Truck } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
@@ -182,6 +181,7 @@ export const MORE_ITEMS: MoreMenuItem[] = [
       activePrefixes: ["/dashboard/catalog", "/dashboard/services"],
     }],
   },
+  { key: "purchases", icon: Truck, label: "Purchases", section: "commerce", pages: [{ href: "/dashboard/purchases", permissionAny: ["purchases.view", "purchases.manage"] }] },
   {
     key: "leads-to-call",
     icon: ListChecks,

@@ -140,7 +140,8 @@ describe("navSections tab coverage", () => {
     // Settings home: Users & Roles and Subscription fold into the one Settings row.
     // Call IQ: the Telecalling group's 4 pages and Team become 4 rows (Calling, Leads to call, Call reviews, Team), and
     // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
-    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */);
+    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
+      + 1 /* Purchases (2026-11-21) */);
     expect(allEntries().every((e) => e.kind === "link")).toBe(true);
   });
 

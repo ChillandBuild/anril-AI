@@ -322,6 +322,8 @@ EXEMPT = {
     "services/orders.py": "manual: bill / ready / pay link from Orders; reminders are payment messages (owner: keep going)",
     "services/order_quotes.py": "manual: staff send the quote; Accept is the customer's own payment step (owner: keep going)",
     "services/stock_asks.py": "manual: the team presses Mark back in stock",
+    "services/catalog_files.py": "only runs inside generate_reply, after its switch check",
+    "services/purchases.py": "manual: the team sends a purchase order to its own supplier",
     "services/deal_actions.py": "only runs inside generate_reply, after its switch check",
     "services/deal_turn.py": "only runs inside generate_reply, after its switch check",
     "services/partner_events.py": "only called by intake.partner_send_template, after its switch check",

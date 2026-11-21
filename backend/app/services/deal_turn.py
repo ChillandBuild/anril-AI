@@ -583,6 +583,7 @@ class _Attached:
         self.link: str | None = None
         self.quote: str | None = None
         self.images: list[str] = []
+        self.files: list[str] = []
         self.handover = False
 
     def add(self, outcome: deal_actions.Outcome) -> None:
@@ -590,10 +591,11 @@ class _Attached:
         self.link = outcome.payment_link or self.link
         self.quote = outcome.quote_text or self.quote
         self.images += [i for i in outcome.image_item_ids if i not in self.images]
+        self.files += [f for f in outcome.file_ids if f not in self.files]
         self.handover = self.handover or outcome.handover
 
     def any(self) -> bool:
-        return bool(self.menu or self.link or self.quote or self.images)
+        return bool(self.menu or self.link or self.quote or self.images or self.files)
 
     def notes(self, ctx: deal_actions.DealContext) -> list[str]:
         lines = []
@@ -606,6 +608,8 @@ class _Attached:
         if self.images:
             names = ", ".join((ctx.catalog.get(i) or {}).get("name", i) for i in self.images)
             lines.append(f"Photos of {names} will be sent after your message.")
+        if self.files:
+            lines.append("The file you picked will be sent right after your message; do not call send_file for it again.")
         if self.handover:
             lines.append(
                 "A person on the team has been alerted and will reply in this chat. Tell the "
@@ -615,7 +619,7 @@ class _Attached:
 
     def outcome(self, refusals: tuple[str, ...]) -> deal_actions.Outcome:
         return deal_actions.Outcome(
-            self.menu, self.link, refusals, self.handover, self.quote, tuple(self.images),
+            self.menu, self.link, refusals, self.handover, self.quote, tuple(self.images), tuple(self.files),
         )
 
 
