@@ -63,7 +63,7 @@ function SyncDot({ item }: { item: CatalogItem }) {
   return null;
 }
 
-function StatCard({ icon, label, value, sub, tone, active, onClick }: {
+export function StatCard({ icon, label, value, sub, tone, active, onClick }: {
   icon: string; label: string; value: string; sub: string; tone?: "red" | "amber" | "plain"; active?: boolean; onClick?: () => void;
 }) {
   return (

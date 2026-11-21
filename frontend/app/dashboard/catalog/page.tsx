@@ -9,19 +9,22 @@ import { CatalogueTabs } from "./CatalogueTabs";
 import { ItemsTab } from "./ItemsTab";
 import { MediaTab } from "./MediaTab";
 import { AiRulesTab } from "./AiRulesTab";
+import { StockAsksTab } from "./StockAsksTab";
 
-type CatalogTab = "items" | "media" | "ai-rules";
+type CatalogTab = "items" | "media" | "ai-rules" | "asked";
 
 const TABS: { id: CatalogTab; label: string; icon: string }[] = [
   { id: "items", label: "Items", icon: "🏷️" },
   { id: "media", label: "Media", icon: "🖼️" },
   { id: "ai-rules", label: "AI rules", icon: "🤖" },
+  { id: "asked", label: "Asked but out of stock", icon: "📉" },
 ];
 
 export default function CatalogPage() {
   const { role, permissions, loading } = useAuthRole();
   const canViewCatalog = role === "owner" || permissions.includes("catalog.view") || permissions.includes("catalog.manage");
   const canManageCatalog = role === "owner" || permissions.includes("catalog.manage");
+  const canManageTemplates = role === "owner" || permissions.includes("templates.manage");
   const router = useRouter();
   const searchParams = useSearchParams();
   // The Items tab portals its search / reindex / add controls into this slot, so tabs and controls share one row.
@@ -85,6 +88,7 @@ export default function CatalogPage() {
       {tab === "items" && <ItemsTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "media" && <MediaTab canManage={canManageCatalog} />}
       {tab === "ai-rules" && <AiRulesTab canManage={canManageCatalog} />}
+      {tab === "asked" && <StockAsksTab canManage={canManageCatalog} canSubmitTemplate={canManageTemplates} toolbarSlot={toolbarSlot} />}
     </div>
   );
 }

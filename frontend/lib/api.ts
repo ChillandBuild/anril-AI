@@ -3135,6 +3135,15 @@ export const api = {
     item: (itemId: string) => apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}`),
     correctStock: (itemId: string, body: { variant_id?: string | null; to: number; why: StockWhy }) =>
       apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/correct-stock`, { method: "POST", body: JSON.stringify(body) }),
+    /** Asked but out of stock (backend services/stock_asks.py). */
+    stockAsks: (days = 30) => apiFetch<StockAsks>(`/api/v1/catalog/stock-asks?days=${days}`),
+    stockAsksCsvPath: (days = 30) => `/api/v1/catalog/stock-asks.csv?days=${days}`,
+    backInStock: (body: { catalog_item_id: string; variant_id: string | null }) =>
+      apiFetch<BackInStockResult>(`/api/v1/catalog/stock-asks/back-in-stock`, { method: "POST", body: JSON.stringify(body) }, 90_000),
+    saveBackInStockMessage: (body: { language: BackInStockLanguage; body: string | null }) =>
+      apiFetch<BackInStockMessage>(`/api/v1/catalog/stock-asks/message`, { method: "PUT", body: JSON.stringify(body) }),
+    submitBackInStockTemplate: () =>
+      apiFetch<{ template_status: BackInStockTemplateStatus }>(`/api/v1/catalog/stock-asks/message/submit`, { method: "POST" }, 60_000),
     metaStatus: () => apiFetch<MetaCatalogueStatus>(`/api/v1/catalog/meta`),
     metaAction: (action: "on" | "off" | "again") =>
       apiFetch<MetaCatalogueStatus>(`/api/v1/catalog/meta`, { method: "POST", body: JSON.stringify({ action }) }),
@@ -5565,4 +5574,52 @@ export async function fetchPublicBill(token: string): Promise<PublicBill | null>
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Couldn't load the bill");
   return res.json();
+}
+
+/* ── Asked but out of stock ─────────────────────────────────────────────────── */
+
+export type BackInStockLanguage = "en" | "ta" | "tanglish";
+export type BackInStockTemplateStatus = "MISSING" | "PENDING" | "APPROVED" | "REJECTED" | string;
+
+export interface BackInStockMessage {
+  language: BackInStockLanguage;
+  /** {{1}} name, {{2}} shop, {{3}} item, {{4}} price. */
+  body: string;
+  /** false = still the language's starting words. */
+  edited: boolean;
+}
+
+export interface StockAskRow {
+  catalog_item_id: string;
+  variant_id: string | null;
+  name: string;
+  variant_label: string | null;
+  /** People who asked in the period. */
+  asked: number;
+  /** Their price when they asked, added up. */
+  missed_paise: number;
+  /** Waiting for a "back in stock" message (any age). */
+  waiting: number;
+  last_asked_at: string | null;
+  in_stock: boolean;
+  stock: number | null;
+}
+
+export interface StockAsks {
+  days: number;
+  people_asked: number;
+  missed_paise: number;
+  waiting: number;
+  rows: StockAskRow[];
+  message: BackInStockMessage;
+  starting_bodies: Record<BackInStockLanguage, string>;
+  template_status: BackInStockTemplateStatus;
+}
+
+export interface BackInStockResult {
+  sent: number;
+  /** Outside 24 hours with no approved template yet: still waiting. */
+  not_reachable: number;
+  /** Didn't want a message, opted out, or no phone. */
+  skipped: number;
 }

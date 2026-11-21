@@ -432,3 +432,7 @@ export function useSendableForms(enabled = true) {
     ...defaultConfig, shouldRetryOnError: false,
   });
 }
+
+export function useStockAsks(days = 30, enabled = true) {
+  return useSWR(enabled ? `catalog/stock-asks:${days}` : null, () => api.catalog.stockAsks(days), defaultConfig);
+}

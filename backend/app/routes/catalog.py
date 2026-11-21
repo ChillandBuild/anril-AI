@@ -100,7 +100,7 @@ def _list_extras(db, tenant_id: str, wanted: set[str]) -> dict[str, dict]:
             entry(m["catalog_item_id"])["sold_30d"] += -int(m.get("delta") or 0)
     for w in (
         db.table("stock_waitlist").select("catalog_item_id")
-        .eq("tenant_id", tenant_id).is_("notified_at", "null").limit(20000).execute()
+        .eq("tenant_id", tenant_id).is_("closed_at", "null").eq("wants_message", True).limit(20000).execute()
     ).data or []:
         if w["catalog_item_id"] in wanted:
             entry(w["catalog_item_id"])["waiting"] += 1
@@ -144,13 +144,12 @@ def _clean_stock_fields(payload: dict) -> dict:
 
 
 def _log_initial_stock(db, tenant_id: str, item_id: str, quantity: int, user_id: str | None) -> None:
-    """Stock set directly (new item, or an item that starts being tracked) gets
-    a matching 'restock' row, so the history always explains the number."""
-    if quantity > 0:
-        db.table("stock_movements").insert({
-            "tenant_id": tenant_id, "catalog_item_id": item_id, "delta": quantity,
-            "quantity_after": quantity, "reason": "restock", "note": "Opening stock", "created_by": user_id,
-        }).execute()
+    """Opening stock (new item, or an item that starts being tracked; it is saved at 0 first) goes in
+    through apply_stock_movement like every change, so it lands in the bill place (migration 304),
+    the total stays the sum of the places, and the history explains the number."""
+    if quantity and quantity > 0:
+        from app.services.deals import adjust_stock
+        adjust_stock(tenant_id, item_id, quantity, "restock", note="Opening stock", created_by=user_id, db=db)
 
 
 @router.post("/items")
@@ -177,7 +176,7 @@ async def create_item(
         "variant_group_id": payload.get("variant_group_id"),
         "price_paise": price_paise,
         "price_note": payload.get("price_note"),
-        "stock_quantity": stock_quantity,
+        "stock_quantity": 0 if stock_quantity is not None else None,  # opening stock goes in below
         "gst_rate": payload.get("gst_rate"),
         **_clean_stock_fields(payload),
     }).execute()
@@ -186,6 +185,7 @@ async def create_item(
     item = res.data[0]
     if stock_quantity:
         _log_initial_stock(db, tenant_id, item["id"], stock_quantity, _ctx.get("user_id"))
+        item["stock_quantity"] = stock_quantity
     try:
         await embed_and_store_catalog_item(
             db, tenant_id, item["id"], item["name"], item["item_type"],
@@ -234,6 +234,7 @@ async def update_item(
             stock_delta = after - before
         elif before is None and after:
             stock_delta = "opening"
+            updates["stock_quantity"] = 0  # tracked from now; the opening stock goes in below
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     res = (
@@ -247,7 +248,8 @@ async def update_item(
         raise HTTPException(status_code=404, detail="Catalog item not found")
     item = res.data[0]
     if stock_delta == "opening":
-        _log_initial_stock(db, tenant_id, item["id"], item["stock_quantity"], _ctx.get("user_id"))
+        _log_initial_stock(db, tenant_id, item["id"], after, _ctx.get("user_id"))
+        item["stock_quantity"] = after
     elif stock_delta:
         from app.services.deals import adjust_stock
         moved = adjust_stock(tenant_id, item["id"], stock_delta, "adjustment",
@@ -719,12 +721,10 @@ async def save_variants(
     by_key = {_variant_key(r.get("size"), r.get("colour")): r for r in existing}
     user_id = ctx.get("user_id")
     if not existing and wanted and item.data.get("stock_quantity"):
-        # The single number is replaced by the grid: log it going out, the grid comes in below.
-        db.table("stock_movements").insert({
-            "tenant_id": tenant_id, "catalog_item_id": str(item_id), "delta": -int(item.data["stock_quantity"]),
-            "quantity_after": 0, "reason": "adjustment", "note": "Moved into sizes and colours", "created_by": user_id,
-        }).execute()
-        db.table("catalog_items").update({"stock_quantity": 0}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
+        # The single number is replaced by the grid: it goes out (logged), the grid comes in below.
+        from app.services.deals import adjust_stock
+        adjust_stock(tenant_id, str(item_id), -int(item.data["stock_quantity"]), "adjustment",
+                     note="Moved into sizes and colours", created_by=user_id, db=db)
     for key, row in by_key.items():
         if key in wanted:
             continue
@@ -750,9 +750,11 @@ async def save_variants(
                                           note="Sizes and colours grid", created_by=user_id, db=db)
             if not result["ok"]:
                 raise HTTPException(status_code=409, detail="Stock changed while you were editing. Reload and try again.")
-    total = sum(c["stock"] for c in wanted.values())
-    if wanted:
-        db.table("catalog_items").update({"stock_quantity": total}).eq("id", str(item_id)).eq("tenant_id", tenant_id).execute()
+    if wanted and item.data.get("stock_quantity") is None:
+        # An untracked item starts being tracked with its grid (whose stock went in above).
+        total = sum(c["stock"] for c in wanted.values())
+        db.table("catalog_items").update({"stock_quantity": total}).eq("id", str(item_id)) \
+            .eq("tenant_id", tenant_id).is_("stock_quantity", "null").execute()
     return await list_variants(item_id, tenant_id=tenant_id)
 
 
@@ -792,7 +794,7 @@ async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
     )
     waiting = len((
         db.table("stock_waitlist").select("id").eq("tenant_id", tenant_id).eq("catalog_item_id", str(item_id))
-        .is_("notified_at", "null").limit(10000).execute()
+        .is_("closed_at", "null").eq("wants_message", True).limit(10000).execute()
     ).data or [])
     group = None
     if item.get("variant_group_id"):
@@ -956,3 +958,109 @@ async def public_item(item_id: UUID):
         "shop": {"name": business.get("legal_name") or "", "city": business.get("city") or ""},
         "whatsapp": number or None,
     }
+
+
+# ── Asked but out of stock (migration 305, services/stock_asks.py) ─────────────
+
+
+def _stock_asks_view(db, tenant_id: str, days: int) -> dict:
+    from app.services import stock_asks
+
+    data = stock_asks.summary(db, tenant_id, days=days)
+    return {**data, "message": stock_asks.message_settings(db, tenant_id),
+            "starting_bodies": stock_asks.STARTING_BODY,
+            "template_status": stock_asks.template_status(db, tenant_id)}
+
+
+@router.get("/stock-asks")
+async def stock_asks_list(days: int = 30, tenant_id: str = Depends(get_tenant_id)):
+    import asyncio
+
+    days = min(max(int(days), 1), 365)
+    return await asyncio.to_thread(_stock_asks_view, get_supabase(), tenant_id, days)
+
+
+@router.get("/stock-asks.csv")
+async def stock_asks_csv(days: int = 30, tenant_id: str = Depends(get_tenant_id)):
+    import asyncio
+    import csv
+    import io
+
+    from fastapi.responses import Response
+
+    from app.services import stock_asks
+
+    data = await asyncio.to_thread(stock_asks.summary, get_supabase(), tenant_id, days=min(max(int(days), 1), 365))
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    for row in stock_asks.csv_rows(data):
+        writer.writerow(["'" + c if c[:1] in ("=", "+", "-", "@", "\t", "\r") else c for c in row])
+    return Response(content="﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="asked-but-out-of-stock.csv"'})
+
+
+@router.post("/stock-asks/back-in-stock")
+async def stock_asks_back_in_stock(
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    ctx: dict = Depends(require_catalog_manage),
+):
+    """Message everyone waiting for this item / size that it is back (team-triggered)."""
+    from app.services import stock_asks
+
+    item_id = str(payload.get("catalog_item_id") or "")
+    variant_id = payload.get("variant_id") or None
+    try:
+        UUID(item_id)
+        if variant_id:
+            UUID(str(variant_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Pick an item")
+    try:
+        result = await stock_asks.mark_back(get_supabase(), tenant_id, item_id=item_id,
+                                            variant_id=str(variant_id) if variant_id else None,
+                                            user_id=ctx.get("user_id"))
+    except stock_asks.StockAskError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
+
+
+@router.put("/stock-asks/message")
+async def stock_asks_message(
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    from app.services import stock_asks
+
+    try:
+        return stock_asks.save_message_settings(get_supabase(), tenant_id, str(payload.get("language") or ""),
+                                                payload.get("body"))
+    except stock_asks.StockAskError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/stock-asks/message/submit")
+async def stock_asks_submit_template(ctx: dict = Depends(require_permission("templates.manage"))):
+    """Send the saved back-in-stock message to Meta for approval as anril_back_in_stock, through
+    the Templates page's own path (it shows and updates there like any template)."""
+    from app.routes.templates import CreateTemplate, create_template
+    from app.services import stock_asks
+
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    status = stock_asks.template_status(db, tenant_id)
+    if status in ("PENDING", "APPROVED"):
+        raise HTTPException(status_code=400, detail="It's already with WhatsApp." if status == "PENDING"
+                            else "It's already approved.")
+    settings = stock_asks.message_settings(db, tenant_id)
+    problems = stock_asks.body_problems(settings["body"])
+    if problems:
+        raise HTTPException(status_code=400, detail=problems[0])
+    await create_template(
+        CreateTemplate(name=stock_asks.TEMPLATE_NAME, category="MARKETING",
+                       language=stock_asks.META_LANGUAGE[settings["language"]], body_text=settings["body"],
+                       body_examples=stock_asks.EXAMPLES),
+        tenant_id=tenant_id, _ctx=ctx,
+    )
+    return {"template_status": stock_asks.template_status(db, tenant_id)}

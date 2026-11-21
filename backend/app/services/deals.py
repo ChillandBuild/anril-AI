@@ -84,23 +84,24 @@ def adjust_stock(
     note: str | None = None,
     created_by: str | None = None,
     deal_id: str | None = None,
+    place_id: str | None = None,
     db=None,
 ) -> dict:
-    """Thin wrapper over apply_stock_movement (204_deals.sql), which changes the
-    count and logs the movement in one statement."""
+    """Thin wrapper over apply_stock_movement (204_deals.sql, per place since 304), which changes
+    the count and logs the movement in one statement. No place = the business's bill place."""
     db = db or get_supabase()
-    res = db.rpc(
-        "apply_stock_movement",
-        {
-            "p_tenant_id": tenant_id,
-            "p_item_id": item_id,
-            "p_delta": delta,
-            "p_reason": reason,
-            "p_deal_id": deal_id,
-            "p_note": note,
-            "p_created_by": created_by,
-        },
-    ).execute()
+    params = {
+        "p_tenant_id": tenant_id,
+        "p_item_id": item_id,
+        "p_delta": delta,
+        "p_reason": reason,
+        "p_deal_id": deal_id,
+        "p_note": note,
+        "p_created_by": created_by,
+    }
+    if place_id:
+        params["p_place_id"] = place_id
+    res = db.rpc("apply_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {
         "ok": bool(row.get("ok")),
@@ -118,22 +119,24 @@ def adjust_variant_stock(
     note: str | None = None,
     created_by: str | None = None,
     deal_id: str | None = None,
+    place_id: str | None = None,
     db=None,
 ) -> dict:
-    """apply_variant_stock_movement (294): one size/colour's stock and the item total, logged."""
+    """apply_variant_stock_movement (294, per place since 304): one size/colour's stock and the item
+    total, logged. No place = the business's bill place."""
     db = db or get_supabase()
-    res = db.rpc(
-        "apply_variant_stock_movement",
-        {
-            "p_tenant_id": tenant_id,
-            "p_variant_id": variant_id,
-            "p_delta": delta,
-            "p_reason": reason,
-            "p_deal_id": deal_id,
-            "p_note": note,
-            "p_created_by": created_by,
-        },
-    ).execute()
+    params = {
+        "p_tenant_id": tenant_id,
+        "p_variant_id": variant_id,
+        "p_delta": delta,
+        "p_reason": reason,
+        "p_deal_id": deal_id,
+        "p_note": note,
+        "p_created_by": created_by,
+    }
+    if place_id:
+        params["p_place_id"] = place_id
+    res = db.rpc("apply_variant_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {"ok": bool(row.get("ok")), "tracked": True, "quantity_after": row.get("quantity_after")}
 

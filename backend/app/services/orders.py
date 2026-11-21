@@ -1291,6 +1291,8 @@ def bill_options(db, tenant_id: str) -> dict:
 
 def add_waitlist(db, tenant_id: str, *, item_id: str, variant_id: str | None, phone: str | None,
                  name: str | None, user_id: str | None) -> dict:
+    from app.services import stock_asks
+
     item = db.table("catalog_items").select("id").eq("id", item_id).eq("tenant_id", tenant_id).limit(1).execute().data
     if not item:
         raise OrderError("Product not found")
@@ -1301,11 +1303,12 @@ def add_waitlist(db, tenant_id: str, *, item_id: str, variant_id: str | None, ph
     lead_id = _find_or_make_customer(db, tenant_id, phone, name)
     if not lead_id:
         raise OrderError("Add their phone number so they can be told")
-    row = db.table("stock_waitlist").insert({
-        "tenant_id": tenant_id, "catalog_item_id": item_id, "variant_id": variant_id, "lead_id": lead_id,
-        "name": (name or "").strip()[:120] or None, "created_by": user_id,
-    }).execute().data
-    return (row or [{}])[0]
+    # One open request per customer per item / size (migration 305): asking again updates it.
+    try:
+        return stock_asks.record_ask(db, tenant_id, lead_id=lead_id, item_id=item_id, variant_id=variant_id,
+                                     wants_message=True, source="staff", name=name, user_id=user_id)
+    except stock_asks.StockAskError as exc:
+        raise OrderError(str(exc))
 
 
 # ─────────────────────────────────────────────────────────────── customer's bill page

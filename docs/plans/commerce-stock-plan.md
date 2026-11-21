@@ -1,0 +1,88 @@
+# Commerce: Catalogue & stock, the rest of Prem's mockup (plan, 2026-11-21)
+
+Prem: "i want all of them to be there". Source: the Commerce mockups (Catalogue & stock tab, "Sample data · design
+idea"). The 2026-11-19 build (decisions log) did Orders & payments + sizes × colours and left out "batches, stock
+count, godown, barcode". This plan is everything still missing from those screens.
+
+## Decisions taken (Prem, 2026-11-21)
+1. **Stock places: any number** (Shop, Gandhipuram godown, Branch 2…). Shop + godown is the common case.
+2. **Price list upload: Excel/CSV and PDF/photo.** Excel/CSV read directly; a PDF or photo read by AI. Always a
+   preview to fix; nothing changes until Save.
+3. **Back in stock: Anril's own template** (`anril_back_in_stock`, en / ta / tanglish, editable), submitted per
+   business like the order templates. Inside 24 h a normal message; until approved the button says how many
+   can't be reached yet.
+
+## How others do it (checked 2026-11-21)
+- Vyapar: godown transfers + godown-wise stock reports; batch tracking must be switched on per item before expiry
+  dates; FEFO; barcode labels with name/batch/expiry, printer sizes configurable. **They ask the cashier to pick the
+  batch** — we pick the first-expiring batch by itself (mockup) and let staff change it.
+- Zoho Inventory: stock count = created → assigned → counted → **approved**, an unmatched count needs a reason;
+  adjustment reasons are editable. Same as our mockup (staff count, owner finishes, reason per line).
+- WATI / Interakt: no own back-in-stock or price-list import; shops add Shopify apps (Wapsi etc.) for "Notify me on
+  WhatsApp". Our AI asking in chat + one button is ahead of them.
+
+## Today (checked in code)
+- Stock = `catalog_items.stock_quantity` and `catalog_item_variants.stock_quantity` (sizes × colours). Every change is
+  a `stock_movements` row, written by `apply_stock_movement` / `apply_variant_stock_movement` (services/deals.py) and
+  by Correct stock in routes/catalog.py. Held stock for unpaid links already exists.
+- Exists: Correct stock with reason, Stock history, low-stock level (`low_stock_at`), `stock_waitlist` (staff add a
+  person; item page shows "N on the waiting list"; nobody is ever messaged), photos per item (images only), shop
+  advance rule (`orders_advance_rule`), evening summary (`day_closing.py`), Activity log (`record_audit_event`).
+- Missing: everything below.
+
+## The base (built first, invisible to clients until they use it)
+- `stock_places` (name, kind shop/godown/other, which place bills take from, which place online orders pack from).
+  Every business gets one place "Shop" holding all of today's stock — nothing looks different until they add one.
+- `stock_levels`: quantity per item / size-colour / place / batch. The item and size totals stay in today's columns,
+  kept equal to the sum by one database function, so the AI, WhatsApp Forms, Meta catalogue sync, bills and reports
+  keep reading what they read now.
+- One function `apply_stock_change(...)` (place, batch, reason) does every change and writes `stock_movements`; the
+  two old functions become thin wrappers using the default place, so old paths keep working.
+- Migration 304 (+ undo), applied by me before any code that reads it.
+
+## The features (each is its own phase, tested and handed to Prem to push)
+1. **Asked but out of stock** (tab): people asked, sales missed (asked × price), waiting for a message, per item
+   (size/colour) with last asked. The AI, when an item or size is out, says so, offers a close match, and asks
+   "Stock vandha message pannava?" — a yes adds them to the list. **Mark back in stock** sends the message
+   (24 h → normal, else the template) once, only for what is really in stock again, and marks them notified.
+   Excel download.
+2. **Media: photos, PDFs and videos** linked to items: price list PDF, size chart, shop map, reels. "When the AI
+   sends them" rules (e.g. "price list?" → the PDF; out-of-stock colours never sent); counts of how often each was
+   sent; "3 items have no photo". Meta's size limits checked on upload.
+3. **Upload price list**: Excel/CSV (sample sheet to download) or PDF/photo (AI reads it). Preview grid: each row
+   marked New / Update price / Same, sizes and colours, GST, HSN, stock; fix any cell; Save applies; a summary of
+   what changed goes in the Activity log.
+4. **Shop & godown**: places in Settings; stock per place on the grid and item page; **Move stock** (from → to,
+   items, quantity) → "On the way" → counts only when the other place taps **Received**; suggested moves (shop low,
+   godown has, sold in 7 days); bills take from the counter's place, online orders from the chosen place; the AI
+   says "available, ready in 1 day" when it is only in a godown. Moves today list.
+5. **Batches & expiry**: switch per item (medicines, food, cosmetics); **Stock in with batch** (batch no., expiry,
+   quantity, place, supplier, cost). On a bill the first-expiring batch is picked by itself (shown on the line,
+   changeable); an expired batch can never be billed; batch + expiry print on the GST bill. Expired / 30 days /
+   31–90 days / fine cards; per row Return to supplier, Small discount, Remove (write off), Sell first. Alerts in
+   the bell and the evening summary. Supplier is a name for now (Purchases & suppliers is a later tab).
+6. **Stock count**: start a count for a place (sections like "Saree rack 1"); staff count on the phone by scanning
+   or typing; the screen shows system vs counted vs difference per line, who counted, and a reason per difference;
+   selling continues (bills made during the count are allowed for by themselves); **Finish and fix stock** = owner
+   only, every change in the Activity log with its reason; the loss shows as "Stock loss" in reports.
+7. **Barcode labels**: a code for every item and size/colour (auto, short, e.g. DS-KP-RM; an existing company EAN is
+   kept and never reprinted); print labels (from today's stock in / pick items / items with no barcode yet), sizes
+   38×25 roll, 50×25 roll, A4 65 per page, choose what shows (shop name, item, size/colour, MRP, barcode); prints
+   from the browser to any label or normal printer. **Scan to bill** and **Scan to stock in / count** with the phone
+   camera or a USB scanner.
+8. **Item page bits**: advance payment per item (shop rule / own rule / no advance), "What the AI agent can tell
+   customers" preview with Share price & photos and Can give discount switches, and a stock-in button.
+
+Order: base → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. 1–3 need only the base's being there; 4–6 use places; 7 feeds 6.
+
+## Rules for every phase
+- Customer-facing words in English / Tamil / Tanglish and editable; dashboard copy plain English; "Anril" only.
+- Settings apply on Save; header shows "Catalogue / <tab>"; RLS member-select on every new table; tenant_id on
+  every query; migrations applied by me, never by a worker.
+- Tests per phase (regression tests for stock math: totals always equal the sum, no negative stock, a move or count
+  can't be applied twice); backend suite + tsc + lint; UI checked in the browser before showing.
+- No commit or push without Prem's OK.
+
+## Not in this plan
+Purchases & suppliers tab, Expenses tab, purchase orders, supplier returns as documents (Return to supplier here
+only takes stock out with that reason).

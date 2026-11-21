@@ -778,6 +778,35 @@ async def _send_form(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     return None
 
 
+async def _note_stock_request(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
+    """The customer asked for something out of stock: they go on "Asked but out of stock"
+    (services/stock_asks.py), and on the back-in-stock list once wants_message is true."""
+    from app.services import stock_asks
+    from app.services.deals import variant_label
+
+    item = ctx.catalog.get(args.get("item_id"))
+    if not item:
+        return f"note_out_of_stock_request refused: '{args.get('item_id')}' is not in the catalog shown to you."
+    wanted = " ".join(str(args.get("variant") or "").split()).lower()
+    variant = None
+    if wanted:
+        variant = next((v for v in item.get("variants") or [] if variant_label(v).lower() == wanted
+                        or wanted in {(v.get("size") or "").lower(), (v.get("colour") or "").lower()}), None)
+        if not variant:
+            return f"note_out_of_stock_request refused: {item['name']} has no size/colour '{args.get('variant')}'."
+        if (variant.get("stock_quantity") or 0) > 0:
+            return f"note_out_of_stock_request refused: {item['name']} {variant_label(variant)} IS in stock; offer it."
+    elif item.get("stock_quantity") != 0:
+        return f"note_out_of_stock_request refused: {item['name']} is in stock; offer it (or name the size/colour that is out)."
+    try:
+        stock_asks.record_ask(ctx.db, ctx.tenant_id, lead_id=ctx.lead_id, item_id=item["id"],
+                              variant_id=variant["id"] if variant else None,
+                              wants_message=bool(args.get("wants_message")), source="ai")
+    except Exception:
+        logger.warning("Couldn't save an out-of-stock request for lead %s", ctx.lead_id, exc_info=True)
+    return None
+
+
 _EXECUTORS = {
     deal_engine.TOOL_SHOW_OPTIONS: _show_options,
     deal_engine.TOOL_SELECT_OFFERING: _select_offering,
@@ -789,6 +818,7 @@ _EXECUTORS = {
     "recommend_catalog_item": _recommend_item,
     "send_quote": _send_quote,
     "send_form": _send_form,
+    "note_out_of_stock_request": _note_stock_request,
 }
 
 

@@ -1339,6 +1339,37 @@ _CATALOG_RECOMMEND_TOOL = {
     },
 }
 
+# "Asked but out of stock" (services/stock_asks.py): offered only when something shown is out.
+_STOCK_REQUEST_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "note_out_of_stock_request",
+        "description": (
+            "Call when the customer asks for an item, size or colour marked OUT OF STOCK in the catalog. "
+            "In the same reply say honestly that it is out of stock, offer the closest item that IS in "
+            "stock, and ask in the customer's own language whether they want a WhatsApp message when it "
+            "is back (Tanglish: 'Stock vandha message pannava?'). Call it with wants_message=false when "
+            "they ask, and again with wants_message=true once they say yes. Never call it for something "
+            "that is in stock."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "string", "description": "The [id] of the out-of-stock catalog item"},
+                "variant": {
+                    "type": "string",
+                    "description": "The size / colour they want, exactly as listed under OUT now (e.g. 'Red · XL'). Leave empty when the whole item is out.",
+                },
+                "wants_message": {
+                    "type": "boolean",
+                    "description": "true only after the customer said yes to a message when it is back",
+                },
+            },
+            "required": ["item_id", "wants_message"],
+        },
+    },
+}
+
 _SEND_QUOTE_TOOL = {
     "type": "function",
     "function": {
@@ -1462,6 +1493,15 @@ def catalog_prompt(items: list[dict], directive: str, rules: dict) -> tuple[str,
             line += " — OUT OF STOCK: if asked, say so honestly, but do NOT call recommend_catalog_item for this item"
         elif row.get("stock_quantity") is not None:
             line += f" — only {row['stock_quantity']} available right now; never promise more than that"
+        variants = row.get("variants") or []
+        if variants and not out_of_stock:
+            from app.services.deals import variant_label
+
+            have = [f"{variant_label(v)} ({v['stock_quantity']})" for v in variants if (v.get("stock_quantity") or 0) > 0]
+            gone = [variant_label(v) for v in variants if (v.get("stock_quantity") or 0) <= 0]
+            line += f" — sizes/colours in stock: {', '.join(have)}"
+            if gone:
+                line += f"; OUT now: {', '.join(gone)}"
         item_lines.append(line)
 
     text_block = ""
@@ -1487,8 +1527,35 @@ def catalog_prompt(items: list[dict], directive: str, rules: dict) -> tuple[str,
         text_block += f"\n\nYou may recommend up to {max_images} item(s) with photos per reply."
     if any(row.get("price_paise") is not None for row in items):
         tools.append(dict(_SEND_QUOTE_TOOL))
+    if any(row.get("stock_quantity") == 0 or any((v.get("stock_quantity") or 0) <= 0 for v in row.get("variants") or [])
+           for row in items):
+        tools.append(dict(_STOCK_REQUEST_TOOL))
+        text_block += (
+            "\n\nWhen the customer asks for something marked OUT OF STOCK (or a size/colour under OUT now): say so, "
+            "offer the closest in-stock option, ask if they want a WhatsApp message when it is back, and call "
+            "note_out_of_stock_request (wants_message=false now; true once they say yes)."
+        )
 
     return text_block, tools, items_by_id, max_images
+
+
+def _attach_variants(db, tenant_id: str, items: list[dict]) -> list[dict]:
+    """Sizes x colours (migration 294) for the items shown, so the AI knows which are out."""
+    ids = [row["id"] for row in items if row.get("id")]
+    if not ids:
+        return items
+    try:
+        rows = (
+            db.table("catalog_item_variants").select("id, catalog_item_id, size, colour, stock_quantity, sort_order")
+            .eq("tenant_id", tenant_id).in_("catalog_item_id", ids).order("sort_order").execute()
+        ).data or []
+    except Exception:
+        logger.warning("Couldn't read sizes and colours for the catalog prompt (tenant %s)", tenant_id)
+        return items
+    by_item: dict[str, list[dict]] = {}
+    for v in rows:
+        by_item.setdefault(v["catalog_item_id"], []).append(v)
+    return [{**row, "variants": by_item.get(row["id"], [])} for row in items]
 
 
 async def _build_catalog_context(db, tenant_id: str, message: str) -> tuple[str, list[dict], dict[str, dict], int]:
@@ -1559,7 +1626,7 @@ async def _build_catalog_context(db, tenant_id: str, message: str) -> tuple[str,
             logger.warning(f"Failed to load catalog items for tenant {tenant_id}: {e}")
             return "", [], {}, 0
 
-    return catalog_prompt(items, directive, rules)
+    return catalog_prompt(_attach_variants(db, tenant_id, items), directive, rules)
 
 
 def _load_catalog_images(
