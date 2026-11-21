@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
-import { ChevronsDownUp, ChevronsUpDown, ClipboardList, Clock, LayoutGrid, List, Plus, ScrollText, ShieldCheck, TrendingUp, Users } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Clock, LayoutGrid, List, Plus, ScrollText, ShieldCheck, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
@@ -11,6 +11,7 @@ import { AgentsMenu } from "@/components/agents/AgentsMenu";
 import { agentsRouteMeta } from "@/components/agents/agentsNav";
 import { productOf } from "@/components/nav/products";
 import { PageChips } from "@/components/nav/PageChips";
+import { callIqRouteMeta } from "@/components/nav/navSections";
 import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -97,14 +98,6 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "opted-out", label: "Opted-Out" },
     ],
   },
-  "/dashboard/telecalling/upload": {
-    explicitDefault: true,
-    tabs: [
-      { value: "upload", label: "Upload Contacts" },
-      { value: "history", label: "Upload History" },
-      { value: "scripts", label: "Scripts" },
-    ],
-  },
   "/dashboard/numbers": {
     tabs: [
       { value: "pool", label: "Active Pool" },
@@ -135,12 +128,6 @@ const HEADER_TABS: Record<string, HeaderTabSet> = {
       { value: "deals", label: "Orders" },
       { value: "insights", label: "Insights" },
       { value: "forms", label: "Form answers" },
-    ],
-  },
-  "/dashboard/team": {
-    tabs: [
-      { value: "performance", label: "Team & Performance", icon: TrendingUp },
-      { value: "log", label: "Assignment Log", icon: ClipboardList },
     ],
   },
   "/dashboard/roles": {
@@ -231,6 +218,11 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   const agentsMeta = agentsRouteMeta(pathname);
   if (agentsMeta) return agentsMeta;
 
+  // Calling, Leads to call, Call reviews, Team: titled by their menu row. Their views (Scripts, Uploads,
+  // Who got which lead) are chips in the header, not pills, so each carries its full title.
+  const callIqMeta = callIqRouteMeta(pathname, tab);
+  if (callIqMeta) return callIqMeta;
+
   if (pathname === "/dashboard") {
     return {
       title: "Home",
@@ -245,33 +237,6 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     return {
       title: "Reach",
       description: desc,
-    };
-  }
-  if (pathname === "/dashboard/telecalling/upload") {
-    let desc = "Upload contacts, assign them to queues, and start call campaigns.";
-    if (tab === "history") desc = "Review past CSV uploads, processing status, and import summaries.";
-    if (tab === "scripts") desc = "Manage call scripts and guidelines for telecallers to follow.";
-    return {
-      title: "Telecalling Upload",
-      description: desc,
-    };
-  }
-  if (pathname === "/dashboard/telecalling") {
-    return {
-      title: "Telecalling Dashboard",
-      description: "Manage calls, callers, and lead queues in real time.",
-    };
-  }
-  if (pathname === "/dashboard/telecalling/scheduled") {
-    return {
-      title: "Scheduled Calls",
-      description: "View and manage upcoming scheduled calls for leads.",
-    };
-  }
-  if (pathname === "/dashboard/team") {
-    return {
-      title: "Team",
-      description: "Add and manage telecallers under your account.",
     };
   }
   if (pathname === "/dashboard/analytics") {
@@ -449,12 +414,6 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Every order and payment, online and in the shop, from quote to paid.",
     };
   }
-  if (pathname === "/dashboard/notes") {
-    return {
-      title: "Call Review",
-      description: "Browse and manage notes across your leads.",
-    };
-  }
   if (pathname === "/dashboard/subscription") {
     return {
       title: "Settings / Plans & subscription",
@@ -492,7 +451,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
   const meta = getRouteMetadata(pathname || "", searchParams);
   const { role, permissions } = useAuthRole();
-  // Owners and managers get Call Review on this route; telecallers keep the notes page and its switchers.
+  // Owners and managers get Call reviews on this route; telecallers keep the notes page and its switchers.
   const isCallReview = pathname === "/dashboard/notes" && (role === "owner" || permissions.includes("team.manage"));
   const tab = searchParams.get("tab") || "";
   const headerTabs = HEADER_TABS[pathname || ""];
@@ -509,7 +468,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
   // Notes' By Lead / All Notes switch is event-driven (NotesClient owns the
   // state), so it can't sit in HEADER_TABS; name the mode in the title here.
   const { title, description } = isCallReview
-    ? { title: "Call Review", description: "Every telecaller's calls, scores and notes, lead by lead." }
+    ? { title: "Call reviews", description: "Every telecaller's calls, scores and notes, lead by lead." }
     : pathname === "/dashboard/notes"
     ? { ...meta, title: `${meta.title} / ${notesPageMode === "by_lead" ? "By Lead" : "All Notes"}` }
     : meta;

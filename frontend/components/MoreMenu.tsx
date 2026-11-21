@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import {
   BarChart2,
   BookOpen,
   Brain,
-  Calendar,
   Grid3X3,
   HandCoins,
   History,
@@ -70,11 +69,13 @@ export type MoreMenuPage = MoreMenuGate & {
   activePrefixes?: string[];
   /** Active on its own path only, not its sub-pages (the SMS dashboard). */
   exact?: boolean;
+  /** For pages that are one view of a path (Upload, Team): active only when this holds for the current ?tab= value. `href` may carry the ?tab= it opens. */
+  activeWhen?: (tab: string) => boolean;
 };
 
 /**
  * One drawer row. Most rows stand for one page. A row that stands for several
- * (Auto-Messages, Setup, Replies & handover) shows when the user may open ANY of
+ * (Auto-Messages, Setup, Replies & handover, Leads to call) shows when the user may open ANY of
  * its pages, opens the first one they may open (the order of `pages`), and is
  * active on all of them.
  */
@@ -109,6 +110,10 @@ const SMS_PERMS = ["sms.view", "sms.manage"];
 const OTP_PERMS = ["sms.view", "sms.manage", "settings.view", "settings.manage"];
 /** The gate the Settings box uses; the pages that used to live under Settings keep it. */
 const SETTINGS_PERMS = ["settings.view", "settings.manage"];
+/** The gates the Call IQ pages had in the drawer (scheduled, notes, team) and, for the Upload page, in the sidebar. */
+const SCHEDULED_GATE: MoreMenuGate = { permissionAny: ["telecalling.scheduled.view", "telecalling.scheduled"], feature: "telecalling.scheduled" };
+const UPLOAD_GATE: MoreMenuGate = { permissionAny: ["telecalling.upload.view", "telecalling.upload"], feature: "telecalling.upload" };
+const TEAM_GATE: MoreMenuGate = { permissionAny: ["team.view", "team.manage"] };
 
 const sms = (href: string, icon: typeof Users, label: string, exact?: boolean): MoreMenuItem => ({
   key: href, icon, label, section: "sms", pages: [{ href, permissionAny: SMS_PERMS, feature: "sms", exact }],
@@ -177,9 +182,21 @@ export const MORE_ITEMS: MoreMenuItem[] = [
       activePrefixes: ["/dashboard/catalog", "/dashboard/services"],
     }],
   },
-  { key: "scheduled-calls", icon: Calendar, label: "Scheduled Calls", section: "callIq", pages: [{ href: "/dashboard/telecalling/scheduled", permissionAny: ["telecalling.scheduled.view", "telecalling.scheduled"], feature: "telecalling.scheduled" }] },
-  { key: "call-review", icon: StickyNote, label: "Call Review", section: "callIq", pages: [{ href: "/dashboard/notes", permissionAny: ["telecalling.notes.view", "telecalling.notes"], feature: "telecalling.notes" }] },
-  { key: "team", icon: Grid3X3, label: "Team Performance", section: "callIq", pages: [{ href: "/dashboard/team", permissionAny: ["team.view", "team.manage"] }] },
+  {
+    key: "leads-to-call",
+    icon: ListChecks,
+    label: "Leads to call",
+    section: "callIq",
+    pages: [
+      // Call lists and Uploads are two views of the Upload page; the Upload page opens Call lists for any other ?tab=.
+      { href: "/dashboard/telecalling/upload", ...UPLOAD_GATE, activeWhen: (tab) => tab !== "scripts" },
+      { href: "/dashboard/telecalling/scheduled", ...SCHEDULED_GATE },
+      { href: "/dashboard/telecalling/upload?tab=history", ...UPLOAD_GATE, activeWhen: (tab) => tab === "history" },
+      { href: "/dashboard/team?tab=log", ...TEAM_GATE, activeWhen: (tab) => tab === "log" },
+    ],
+  },
+  { key: "call-reviews", icon: StickyNote, label: "Call reviews", section: "callIq", pages: [{ href: "/dashboard/notes", permissionAny: ["telecalling.notes.view", "telecalling.notes"], feature: "telecalling.notes" }] },
+  { key: "team", icon: Grid3X3, label: "Team", section: "callIq", pages: [{ href: "/dashboard/team", ...TEAM_GATE, activeWhen: (tab) => tab !== "log" }] },
   { key: "analytics", icon: BarChart2, label: "Reports", section: "reports", pages: [{ href: "/dashboard/analytics", permissionAny: ["analytics.view"], anyFeature: MESSAGING_FEATURES }] },
 ];
 
@@ -208,18 +225,31 @@ export function getVisibleMoreItems(role: string | null, enabledFeatures: string
   });
 }
 
-function isPageActive(page: MoreMenuPage, pathname: string) {
-  if (page.exact) return pathname === page.href;
-  if (isActive(pathname, page.href)) return true;
+function isPageActive(page: MoreMenuPage, pathname: string, tab: string) {
+  if (page.activeWhen && !page.activeWhen(tab)) return false;
+  const path = page.href.split("?")[0];
+  if (page.exact) return pathname === path;
+  if (isActive(pathname, path)) return true;
   return (page.activePrefixes ?? []).some((prefix) => pathname.startsWith(prefix));
 }
 
-export function isItemActive(item: MoreMenuItem, pathname: string) {
-  return item.pages.some((page) => isPageActive(page, pathname));
+/** `tab` is the current ?tab= value ("" when none): Leads to call and Team split /dashboard/team and the Upload page by it. */
+export function isItemActive(item: MoreMenuItem, pathname: string, tab = "") {
+  return item.pages.some((page) => isPageActive(page, pathname, tab));
 }
 
+// The drawer reads ?tab=, and its callers do not all sit inside a Suspense boundary, so it brings its own.
 export function MoreMenu() {
+  return (
+    <Suspense fallback={null}>
+      <MoreMenuDrawer />
+    </Suspense>
+  );
+}
+
+function MoreMenuDrawer() {
   const pathname = usePathname() || "/dashboard";
+  const tab = useSearchParams()?.get("tab") ?? "";
   const { role, enabledFeatures, permissions } = useAuthRole();
   const [isOpen, setIsOpen] = useState(false);
   const { purchasedFeatures } = useSubscription();
@@ -306,7 +336,7 @@ export function MoreMenu() {
                       )}
                       {sectionItems.map((item) => {
                         const Icon = item.icon;
-                        const active = isItemActive(item, pathname);
+                        const active = isItemActive(item, pathname, tab);
                         return (
                           <Link
                             key={item.key}

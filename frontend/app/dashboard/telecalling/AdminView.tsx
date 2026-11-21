@@ -10,7 +10,7 @@ import { formatPhone } from "@/lib/utils";
 import NotesHistoryModal from "./components/notes-history-modal";
 import LeadDetailPanel from "./components/LeadDetailPanel";
 import CockpitModals from "./components/CockpitModals";
-import NumpadDialer from "./components/NumpadDialer";
+import ManualDialPanel from "./components/ManualDialPanel";
 import RecentCallsTab from "./components/RecentCallsTab";
 import { useCallingCockpit } from "./lib/useCallingCockpit";
 import { useSearchParams } from "next/navigation";
@@ -127,9 +127,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
             {leftTab === "recent" ? (
               <RecentCallsTab callerId={selectedCallerId} onSelectLead={cockpit.setSelectedLeadId} />
             ) : leftTab === "dialer" ? (
-              <div className="flex-1 overflow-y-auto flex flex-col items-center pt-4 pb-2">
-                <NumpadDialer value={cockpit.manualPhone} onChange={cockpit.setManualPhone} onDial={cockpit.manualDialWithGuard} dialing={cockpit.manualDialing} disabled={readOnly} />
-              </div>
+              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} />
             ) : (
               <>
                 {/* Search */}

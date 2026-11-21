@@ -12,7 +12,7 @@ export interface NavAccessInput {
 
 export interface NavAccessState {
   access: NavAccess;
-  /** The Telecalling pages this user can open (feature flags and permissions applied). */
+  /** The gated Telecalling pages this user can open (feature flags and permissions applied). The Call IQ rows are built on these. */
   tcGroupItems: readonly TelecallingPage[];
   waEnabled: boolean;
   telecallingOn: boolean;
@@ -65,6 +65,7 @@ export function buildNavAccess({ role, permissions, enabledFeatures, subStatus }
     canSettings: canAny(["settings.view", "settings.manage"]),
     brainGate,
     telecallingVisible: isSubscribed && telecallingOn && tcGroupItems.length > 0,
+    telecallingPages: tcGroupItems.map((item) => item.href),
     can,
     canAny,
   };

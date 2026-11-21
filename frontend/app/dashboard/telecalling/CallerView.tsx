@@ -5,7 +5,7 @@ import { api, Caller, Lead } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
 import { toast } from "sonner";
 import NotesHistoryModal from "./components/notes-history-modal";
-import NumpadDialer from "./components/NumpadDialer";
+import ManualDialPanel from "./components/ManualDialPanel";
 import RecentCallsTab from "./components/RecentCallsTab";
 import LeadDetailPanel from "./components/LeadDetailPanel";
 import CockpitModals from "./components/CockpitModals";
@@ -205,9 +205,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
             {queueSubTab === "recent" ? (
               <RecentCallsTab callerId={callerId} onSelectLead={cockpit.setSelectedLeadId} />
             ) : queueSubTab === "dialer" ? (
-              <div className="flex-1 overflow-y-auto flex flex-col items-center pt-4 pb-2">
-                <NumpadDialer value={cockpit.manualPhone} onChange={cockpit.setManualPhone} onDial={cockpit.manualDialWithGuard} dialing={cockpit.manualDialing} disabled={readOnly} />
-              </div>
+              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} />
             ) : queueLoading ? (
               <AiraLoader inline className="min-h-[200px] flex-1" />
             ) : myLeads.length === 0 ? (

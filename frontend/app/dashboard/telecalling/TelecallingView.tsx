@@ -4,6 +4,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AdminDashboardData } from "@/hooks/useApi";
 import CallerView from "./CallerView";
 import AdminView from "./AdminView";
+import { resolveTelecallingAccess } from "./lib/telecalling-access";
 
 interface TelecallingViewProps {
   initialRole: "owner" | "caller" | null;
@@ -20,13 +21,7 @@ export function TelecallingView({ initialRole, initialCallerId, initialPermissio
   const role = ctx.loading ? initialRole : ctx.role;
   const callerId = ctx.loading ? initialCallerId : ctx.callerId;
   const permissions = ctx.loading ? initialPermissions : ctx.permissions;
-  const canDial = role === "owner" || permissions.includes("telecalling.dialer");
-  const canViewTelecalling =
-    role === "owner" ||
-    permissions.includes("telecalling.dialer.view") ||
-    permissions.includes("telecalling.dialer") ||
-    permissions.includes("leads.view") ||
-    permissions.includes("team.view");
+  const { canDial, canViewTelecalling } = resolveTelecallingAccess(role, permissions);
 
   if (role === null) {
     // No server seed and context still resolving (e.g. cold backend) — brief spinner.

@@ -8,6 +8,7 @@ import {
   NAV_MENU,
   NAV_SECTIONS,
   TELECALLING_ITEMS,
+  callIqRouteMeta,
   chipSetFor,
   dashboardEntry,
   leafHref,
@@ -30,6 +31,7 @@ const allAccess: NavAccess = {
   canSettings: true,
   brainGate: true,
   telecallingVisible: true,
+  telecallingPages: TELECALLING_ITEMS.map((item) => item.href),
   can: () => true,
   canAny: () => true,
 };
@@ -45,6 +47,7 @@ const noAccess: NavAccess = {
   canSettings: false,
   brainGate: false,
   telecallingVisible: false,
+  telecallingPages: [],
   can: () => false,
   canAny: () => false,
 };
@@ -74,6 +77,14 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Orders & payments", href: "/dashboard/deals" },
   { label: "Catalogue", href: "/dashboard/catalog" },
   { label: "Team Performance", href: "/dashboard/team" },
+  // Call IQ: the old Telecalling group and the tabs of its Upload and Team pages.
+  { label: "Telecalling Upload", href: "/dashboard/telecalling/upload" },
+  { label: "Upload History", href: "/dashboard/telecalling/upload?tab=history" },
+  { label: "Scripts", href: "/dashboard/telecalling/upload?tab=scripts" },
+  { label: "Dialer", href: "/dashboard/telecalling" },
+  { label: "Scheduled Calls", href: "/dashboard/telecalling/scheduled" },
+  { label: "Call Review", href: "/dashboard/notes" },
+  { label: "Assignment Log", href: "/dashboard/team?tab=log" },
   { label: "Anril Brain", href: "/dashboard/brain" },
   { label: "Knowledge Base", href: "/dashboard/knowledge" },
   { label: "Templates", href: "/dashboard/templates" },
@@ -124,17 +135,17 @@ describe("navSections tab coverage", () => {
     },
   );
 
-  it("holds all leaf tabs plus the Telecalling group", () => {
+  it("holds all leaf tabs, and no nested group is left", () => {
     // Phase 2: Scheduled templates and API & docs lost their rows, Replies & handover gained one.
     // Settings home: Users & Roles and Subscription fold into the one Settings row.
-    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1);
-    expect(allEntries().filter((e) => e.kind === "group").map((e) => e.key)).toEqual(["telecalling"]);
+    // Call IQ: the Telecalling group's 4 pages and Team become 4 rows (Calling, Leads to call, Call reviews, Team), and
+    // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
+    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */);
+    expect(allEntries().every((e) => e.kind === "link")).toBe(true);
   });
 
-  it("the Telecalling group covers the four telecalling pages", () => {
+  it("the old Telecalling pages keep their gate keys", () => {
     expect(TELECALLING_ITEMS.map((item) => item.href)).toEqual(TELECALLING_HREFS);
-    const tcGroup = allEntries().find((e) => e.kind === "group" && e.key === "telecalling");
-    expect(tcGroup).toBeDefined();
   });
 
   it("does not expose the old Products or Services tabs as separate entries", () => {
@@ -459,12 +470,15 @@ describe("sidebarFoldsOn", () => {
     "/dashboard/outbound-leads",
     "/dashboard/deals",
     "/dashboard/telecalling",
+    "/dashboard/telecalling/dial",
+    "/dashboard/telecalling/upload",
     "/dashboard/telecalling/scheduled",
+    "/dashboard/notes",
   ])("folds the sidebar on the wide page %s", (path) => {
     expect(sidebarFoldsOn(path)).toBe(true);
   });
 
-  it.each(["/dashboard", "/dashboard/analytics", "/dashboard/brain", "/dashboard/settings/account", "/dashboard/developer"])(
+  it.each(["/dashboard", "/dashboard/analytics", "/dashboard/brain", "/dashboard/settings/account", "/dashboard/developer", "/dashboard/team"])(
     "keeps the sidebar open on %s",
     (path) => {
       expect(sidebarFoldsOn(path)).toBe(false);
@@ -544,5 +558,170 @@ describe("Settings home: one Settings row, last in the menu", () => {
   it("is not inside any folding section, so no section opens on a Settings page", () => {
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/roles")).toBeNull();
     expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/subscription")).toBeNull();
+  });
+});
+
+describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () => {
+  const callIq = NAV_SECTIONS.find((section) => section.key === "callIq")!;
+
+  /** A caller with these permissions, on a tenant that bought telecalling with these sub-features. */
+  const caller = (permissions: string[], features = ["telecalling_sim", "telecalling.upload", "telecalling.dialer", "telecalling.scheduled", "telecalling.notes"]) =>
+    buildNavAccess({ role: "caller", permissions, enabledFeatures: features, subStatus: "active" }).access;
+  const rowsShown = (access: NavAccess) => visibleEntries(callIq, access).map((entry) => entry.key);
+
+  it("the section holds four plain rows in this order, and the nested Telecalling group is gone", () => {
+    expect(callIq.entries.map((entry) => [entry.key, entry.label])).toEqual([
+      ["calling", "Calling"], ["leads-to-call", "Leads to call"], ["call-reviews", "Call reviews"], ["team", "Team"],
+    ]);
+    expect(callIq.entries.every((entry) => entry.kind === "link")).toBe(true);
+  });
+
+  const ACTIVE: Array<[string, string, string | null]> = [
+    ["/dashboard/telecalling", "", "calling"],
+    ["/dashboard/telecalling/dial", "", "calling"],
+    ["/dashboard/telecalling/upload", "scripts", "calling"],
+    ["/dashboard/telecalling/upload", "", "leads-to-call"],
+    ["/dashboard/telecalling/upload", "upload", "leads-to-call"],
+    ["/dashboard/telecalling/upload", "history", "leads-to-call"],
+    ["/dashboard/telecalling/upload", "nonsense", "leads-to-call"],
+    ["/dashboard/telecalling/scheduled", "", "leads-to-call"],
+    ["/dashboard/team", "log", "leads-to-call"],
+    ["/dashboard/team", "", "team"],
+    ["/dashboard/team", "performance", "team"],
+    ["/dashboard/notes", "", "call-reviews"],
+  ];
+
+  it.each(ACTIVE)("%s ?tab=%s lights only the %s row and opens Call IQ", (path, tab, row) => {
+    expect(allLeaves().filter((leaf) => leaf.isActive(path, tab)).map((leaf) => leaf.key)).toEqual([row]);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, path, tab)).toBe("callIq");
+    expect(sectionContainsPage(callIq, path, tab)).toBe(true);
+  });
+
+  it("callers that do not pass a tab keep working (tab defaults to none)", () => {
+    expect(leafByKey("team").isActive("/dashboard/team")).toBe(true);
+    expect(leafByKey("leads-to-call").isActive("/dashboard/team")).toBe(false);
+    expect(leafByKey("auto-messages").isActive("/dashboard/auto-messages")).toBe(true);
+  });
+
+  it("every old Call IQ address is one page of exactly one row and exactly one chip", () => {
+    for (const href of [
+      "/dashboard/telecalling", "/dashboard/telecalling/dial",
+      "/dashboard/telecalling/upload", "/dashboard/telecalling/upload?tab=history", "/dashboard/telecalling/upload?tab=scripts",
+      "/dashboard/telecalling/scheduled", "/dashboard/team?tab=log",
+    ]) {
+      expect(rowsReaching(href).map((leaf) => leaf.key), href).toHaveLength(1);
+      expect(chipsReaching(href), href).toHaveLength(1);
+    }
+  });
+
+  const CHIPS = {
+    calling: [
+      ["Call from the queue", "/dashboard/telecalling"],
+      ["Dial a number", "/dashboard/telecalling/dial"],
+      ["Scripts", "/dashboard/telecalling/upload?tab=scripts"],
+    ],
+    leadsToCall: [
+      ["Call lists", "/dashboard/telecalling/upload"],
+      ["Scheduled calls", "/dashboard/telecalling/scheduled"],
+      ["Uploads", "/dashboard/telecalling/upload?tab=history"],
+      ["Who got which lead", "/dashboard/team?tab=log"],
+    ],
+  } as const;
+
+  it.each([
+    ["/dashboard/telecalling", "", "calling"],
+    ["/dashboard/telecalling/dial", "", "calling"],
+    ["/dashboard/telecalling/upload", "scripts", "calling"],
+    ["/dashboard/telecalling/upload", "", "leadsToCall"],
+    ["/dashboard/telecalling/upload", "history", "leadsToCall"],
+    ["/dashboard/telecalling/scheduled", "", "leadsToCall"],
+    ["/dashboard/team", "log", "leadsToCall"],
+  ] as const)("%s ?tab=%s gets the %s chips, in order", (path, tab, set) => {
+    const found = chipSetFor(path, tab);
+    expect(found?.key).toBe(set);
+    expect(found!.chips.map((chip) => [chip.label, chip.href])).toEqual(CHIPS[set]);
+  });
+
+  it("Call reviews and Team have no chips", () => {
+    expect(chipSetFor("/dashboard/notes", "")).toBeNull();
+    expect(chipSetFor("/dashboard/team", "")).toBeNull();
+    expect(chipSetFor("/dashboard/team", "performance")).toBeNull();
+  });
+
+  it("a telecaller with only the dialer sees Calling (opening the queue) but not Team, Leads to call or Call reviews", () => {
+    const access = caller(["telecalling.dialer"]);
+    expect(rowsShown(access)).toEqual(["calling"]);
+    expect(leafHref(leafByKey("calling"), access)).toBe("/dashboard/telecalling");
+    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue", "Dial a number"]);
+  });
+
+  it("a user with only team.view sees Team and the Who got which lead path", () => {
+    const access = buildNavAccess({ role: "caller", permissions: ["team.view"], enabledFeatures: [], subStatus: "active" }).access;
+    expect(rowsShown(access)).toEqual(["leads-to-call", "team"]);
+    expect(leafHref(leafByKey("leads-to-call"), access)).toBe("/dashboard/team?tab=log");
+    expect(leafHref(leafByKey("team"), access)).toBe("/dashboard/team");
+    expect(LEADS_CHIPS(access)).toEqual(["Who got which lead"]);
+  });
+
+  it("the Upload gate shows Scripts, Call lists and Uploads; Calling then opens Scripts", () => {
+    const access = caller(["telecalling.upload"]);
+    expect(rowsShown(access)).toEqual(["calling", "leads-to-call"]);
+    expect(CALLING_CHIPS(access)).toEqual(["Scripts"]);
+    expect(LEADS_CHIPS(access)).toEqual(["Call lists", "Uploads"]);
+    expect(leafHref(leafByKey("calling"), access)).toBe("/dashboard/telecalling/upload?tab=scripts");
+    expect(leafHref(leafByKey("leads-to-call"), access)).toBe("/dashboard/telecalling/upload");
+  });
+
+  it("Scheduled calls and Call reviews each keep their own gate", () => {
+    const scheduled = caller(["telecalling.scheduled"]);
+    expect(rowsShown(scheduled)).toEqual(["leads-to-call"]);
+    expect(leafHref(leafByKey("leads-to-call"), scheduled)).toBe("/dashboard/telecalling/scheduled");
+    expect(LEADS_CHIPS(scheduled)).toEqual(["Scheduled calls"]);
+    expect(rowsShown(caller(["telecalling.notes"]))).toEqual(["call-reviews"]);
+  });
+
+  it("a sub-feature the tenant did not buy hides its pages even when the permission is there", () => {
+    const access = caller(["telecalling.dialer", "telecalling.upload"], ["telecalling_sim", "telecalling.dialer"]);
+    expect(rowsShown(access)).toEqual(["calling"]);
+    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue", "Dial a number"]);
+  });
+
+  it("without telecalling bought only the Team pages show; without an active subscription nothing does", () => {
+    expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: [], subStatus: "active" }).access)).toEqual(["leads-to-call", "team"]);
+    expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: ["telecalling_sim"], subStatus: "expired" }).access)).toEqual([]);
+  });
+
+  it("the call-alert badge rides on the Team row only", () => {
+    expect(allLeaves().filter((leaf) => leaf.badge === "alerts").map((leaf) => leaf.key)).toEqual(["team"]);
+  });
+
+  function CALLING_CHIPS(access: NavAccess) {
+    return chipSetFor("/dashboard/telecalling", "")!.chips.filter((chip) => chip.visible(access)).map((chip) => chip.label);
+  }
+  function LEADS_CHIPS(access: NavAccess) {
+    return chipSetFor("/dashboard/telecalling/scheduled", "")!.chips.filter((chip) => chip.visible(access)).map((chip) => chip.label);
+  }
+});
+
+describe("Call IQ titles", () => {
+  it.each([
+    ["/dashboard/telecalling", "", "Calling / Call from the queue"],
+    ["/dashboard/telecalling/dial", "", "Calling / Dial a number"],
+    ["/dashboard/telecalling/upload", "scripts", "Calling / Scripts"],
+    ["/dashboard/telecalling/upload", "", "Leads to call / Call lists"],
+    ["/dashboard/telecalling/upload", "upload", "Leads to call / Call lists"],
+    ["/dashboard/telecalling/upload", "history", "Leads to call / Uploads"],
+    ["/dashboard/telecalling/scheduled", "", "Leads to call / Scheduled calls"],
+    ["/dashboard/team", "log", "Leads to call / Who got which lead"],
+    ["/dashboard/team", "", "Team"],
+    ["/dashboard/notes", "", "Call reviews"],
+  ])("%s ?tab=%s is titled %s", (path, tab, title) => {
+    expect(callIqRouteMeta(path, tab)?.title).toBe(title);
+    expect(callIqRouteMeta(path, tab)?.description).toBeTruthy();
+  });
+
+  it("is null for every other address", () => {
+    expect(callIqRouteMeta("/dashboard/leads", "")).toBeNull();
+    expect(callIqRouteMeta("/dashboard", "")).toBeNull();
   });
 });
