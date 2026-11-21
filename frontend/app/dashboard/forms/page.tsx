@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FilePlus2, FileText, ListChecks, Loader2, Plus, Settings2, X } from "lucide-react";
+import { CalendarClock, FilePlus2, FileText, ListChecks, Loader2, Plus, Settings2, ShoppingBag, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { WaFormLanguage } from "@/lib/api";
@@ -13,7 +13,7 @@ import { useWhatsappForms, useWhatsappFormsSetup } from "@/hooks/useApi";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { CatalogueTabs } from "../catalog/CatalogueTabs";
 import { SectionLoadGate } from "../settings/SettingsSection";
-import { LANGUAGE_CHIP, StatusChip } from "./shared";
+import { KIND_NAMES, LANGUAGE_CHIP, StatusChip } from "./shared";
 import { StatsLine } from "./[id]/WhenToSend";
 
 export default function FormsPage() {
@@ -121,7 +121,10 @@ export default function FormsPage() {
                   <div className="min-w-0">
                     <p className="truncate font-label text-sm font-bold text-ink">{form.name}</p>
                     <p className="font-body text-xs text-ink-muted">
-                      {LANGUAGE_CHIP[form.language]} · {form.fields.length} question{form.fields.length === 1 ? "" : "s"}
+                      {LANGUAGE_CHIP[form.language]} ·{" "}
+                      {form.kind === "order"
+                        ? KIND_NAMES.order
+                        : `${form.kind === "booking" ? `${KIND_NAMES.booking} · ` : ""}${form.fields.length} question${form.fields.length === 1 ? "" : "s"}`}
                     </p>
                   </div>
                   <StatusChip status={form.status} live={form.live} />
@@ -212,6 +215,33 @@ function NewFormDialog({ setup, onClose }: { setup: NonNullable<ReturnType<typeo
             </button>
           ))}
         </div>
+        {setup.live_kinds.length > 0 && (
+          <>
+            <p className="mt-5 font-label text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Live forms</p>
+            <p className="font-body text-[11px] text-ink-secondary">They read your business while the customer fills them in.</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {setup.live_kinds.map((live) => (
+                <button
+                  key={live.key}
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => create(live.key)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-left ring-1 ring-surface-mid transition-colors hover:bg-primary-light/40 hover:ring-primary/30 disabled:opacity-60"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary-700">
+                    {busy === live.key ? <Loader2 size={15} className="animate-spin" /> : live.key === "order" ? <ShoppingBag size={15} /> : <CalendarClock size={15} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-label text-sm font-semibold text-ink">{live.names[language]}</span>
+                    <span className="block font-body text-[11px] text-ink-muted">
+                      {live.key === "order" ? "Catalogue items with live price and stock" : "Only the times still free"}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

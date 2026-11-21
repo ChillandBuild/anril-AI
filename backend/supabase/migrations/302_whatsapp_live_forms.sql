@@ -8,7 +8,7 @@
 -- * whatsapp_flow_keys: the RSA key pair Meta encrypts live-form requests with, per WhatsApp
 --   number. The private key is stored encrypted with a server-derived key. RLS on and NO
 --   member policy: only the backend (service role) ever reads it.
--- * whatsapp_form_bookings: one row per booked seat; UNIQUE(design, slot, seat) makes a slot
+-- * whatsapp_form_bookings: one row per booked seat; a unique (design, slot, seat) rule on live bookings makes a slot
 --   impossible to over-book even when two customers submit at the same moment.
 
 ALTER TABLE whatsapp_form_designs ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'standard'
@@ -36,10 +36,11 @@ CREATE TABLE IF NOT EXISTS whatsapp_form_bookings (
   lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,
   response_id uuid REFERENCES whatsapp_form_responses(id) ON DELETE SET NULL,
   cancelled boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, design_id, slot_start, seat)
+  created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS whatsapp_form_bookings_slot_idx ON whatsapp_form_bookings (tenant_id, design_id, slot_start);
+-- A cancelled booking frees its seat: the rule only covers live bookings.
+CREATE UNIQUE INDEX IF NOT EXISTS whatsapp_form_bookings_seat_uq
+  ON whatsapp_form_bookings (tenant_id, design_id, slot_start, seat) WHERE NOT cancelled;
 ALTER TABLE whatsapp_form_bookings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY whatsapp_form_bookings_tenant_member_select ON whatsapp_form_bookings
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));

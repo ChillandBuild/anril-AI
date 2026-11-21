@@ -462,9 +462,30 @@ async def _business_verified(client: httpx.AsyncClient, token: str, waba: str) -
     return None if status is None else status == "verified"
 
 
+def endpoint_uri(tenant_id: str) -> str:
+    """Where Meta sends a live form's encrypted requests (routes/whatsapp_form_designs.public_router)."""
+    from app.config import settings as app_config
+
+    base = (app_config.public_base_url or "").rstrip("/")
+    if not base:
+        raise FormPublishError("Live forms need the server's public address (PUBLIC_BASE_URL).")
+    return f"{base}/api/v1/whatsapp-forms/data/{tenant_id}"
+
+
 async def _publish(tenant_id: str, name: str, flow: dict) -> tuple[str, str]:
     """Create + publish on Meta in one call. Returns (flow id, waba id)."""
     token, waba = _meta_creds(tenant_id)
+    live = "data_api_version" in flow
+    if live:
+        from app.config_dynamic import get_setting
+        from app.db.supabase import get_supabase
+        from app.services import whatsapp_live_forms
+
+        await whatsapp_live_forms.ensure_keys(get_supabase(), tenant_id)
+        from app.config import settings as env_settings
+
+        # The Meta app that signs the live form's requests (same lookup as templates._meta_app_id).
+        app_id = get_setting("meta_app_id", tenant_id=tenant_id) or env_settings.meta_app_id
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=30.0) as client:
         verified = await _business_verified(client, token, waba)
@@ -474,10 +495,16 @@ async def _publish(tenant_id: str, name: str, flow: dict) -> tuple[str, str]:
                 "Verify it in Meta Business Settings → Security Center, then save Services again."
             )
         try:
-            response = await client.post(f"{GRAPH}/{waba}/flows", headers=headers, data={
+            body = {
                 "name": name, "categories": json.dumps(["OTHER"]),
                 "flow_json": json.dumps(flow, ensure_ascii=False), "publish": "true",
-            })
+            }
+            if live:
+                # Meta pings this address before publishing: the server must already be live.
+                body["endpoint_uri"] = endpoint_uri(tenant_id)
+                if app_id:
+                    body["application_id"] = str(app_id)
+            response = await client.post(f"{GRAPH}/{waba}/flows", headers=headers, data=body)
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise FormPublishError("Could not reach Meta. Try saving again in a minute.") from exc
@@ -647,12 +674,36 @@ def _design_settings(design: dict) -> dict:
     return {"language": design.get("language"), "texts": design.get("texts") or {}}
 
 
+KINDS = ("standard", "order", "booking")
+
+
 def design_problems(design: dict) -> list[str]:
     name = str(design.get("name") or "").strip()
     out = [] if name else ["Give the form a name."]
     if len(name) > 120:
         out.append("The form name can be at most 120 characters.")
-    return out + form_texts.field_problems(design.get("fields")) + form_texts.problems(_design_settings(design))
+    kind = design.get("kind") or "standard"
+    if kind not in KINDS:
+        return out + ["Unknown form type."]
+    fields = design.get("fields") or []
+    # An order form asks nothing extra; a booking's own questions are optional.
+    field_problems = [] if kind == "order" or (kind == "booking" and not fields) else form_texts.field_problems(fields)
+    from app.services import whatsapp_live_forms
+    return (out + field_problems + form_texts.problems(_design_settings(design))
+            + whatsapp_live_forms.settings_problems(kind, design.get("settings")))
+
+
+def build_design_flow(design: dict) -> tuple[dict, dict]:
+    """The Flow for any client form: standard questions, a live order form or a live booking."""
+    kind = design.get("kind") or "standard"
+    if kind == "standard":
+        return build_custom_flow(design)
+    problems = design_problems(design)
+    if problems:
+        raise FormBuildError(problems[0])
+    from app.services import whatsapp_live_forms
+    return (whatsapp_live_forms.build_order_flow(design) if kind == "order"
+            else whatsapp_live_forms.build_booking_flow(design))
 
 
 def build_custom_flow(design: dict) -> tuple[dict, dict]:
@@ -739,7 +790,7 @@ async def publish_design(db, tenant_id: str, design_id: str) -> dict:
     design = get_design(db, tenant_id, design_id)
     if not design or design.get("archived"):
         raise FormBuildError("Form not found.")
-    flow, answer_map = build_custom_flow(design)
+    flow, answer_map = build_design_flow(design)
     await _publish_version(db, tenant_id, flow, answer_map, name=design["name"], design_id=design_id)
     return version_status(db, tenant_id, design_id)
 
@@ -750,13 +801,15 @@ def live_custom_form(db, tenant_id: str, design: dict) -> dict | None:
     if not published:
         return None
     try:
-        current = source_hash(build_custom_flow(design)[0])
+        current = source_hash(build_design_flow(design)[0])
     except FormBuildError:
         return None
     if published.get("source_hash") != current:
         return None
     texts = form_texts.resolve(_design_settings(design))
-    return {**published, "cta": texts["form_cta"], "intro": texts["intro"], "first_screen": "QUESTIONS_A"}
+    # A live form opens by asking Anril for its first screen (data_exchange), not a fixed one.
+    first = "QUESTIONS_A" if (design.get("kind") or "standard") == "standard" else None
+    return {**published, "cta": texts["form_cta"], "intro": texts["intro"], "first_screen": first}
 
 
 async def retire_design(db, tenant_id: str, design_id: str) -> None:
@@ -861,14 +914,15 @@ _NAME_KEYS = {"name", "full_name", "student_name", "customer_name"}
 
 
 async def _handle_custom(db, *, tenant_id: str, lead_id: str, phone: str, form: dict, answers: dict,
-                         response: dict, phone_number_id: str | None) -> str:
+                         response: dict, phone_number_id: str | None, send_thanks: bool = True,
+                         extra: dict | None = None) -> str:
     """Save a custom form's answers on the lead, record consent, send the thank-you message."""
     if not is_enabled(db, tenant_id):
         # Switched off after the form went out: like the Services form, not applied; the AI answers.
         _set_outcome(db, tenant_id, response["id"], "continued_in_chat")
         return "continue"
     answer_map = form.get("answer_map") or {}
-    pairs = _custom_answers(answer_map, answers)
+    pairs = [("", label, value) for label, value in (extra or {}).items()] + _custom_answers(answer_map, answers)
     rows = db.table("leads").select("name, collected_data").eq("id", lead_id).eq("tenant_id", tenant_id) \
         .limit(1).execute().data or [{}]
     collected = dict(rows[0].get("collected_data") or {})
@@ -892,6 +946,8 @@ async def _handle_custom(db, *, tenant_id: str, lead_id: str, phone: str, form: 
     intake.note_lead_message(db, tenant_id, lead_id)
 
     _set_outcome(db, tenant_id, response["id"], "saved")
+    if not send_thanks:
+        return "handled"
     # The thank-you is an automatic message: Settings > Auto-Reply off means nothing automatic
     # reaches the customer, so the answers are saved and the team sees them, but no thank-you.
     # (A Services form's payment link is different: it is the customer's own payment step, sent
@@ -928,7 +984,11 @@ def lead_answers(db, tenant_id: str, lead_id: str, limit: int = 20) -> list[dict
     for r in responses:
         form = forms.get(r.get("form_id")) or {}
         answer_map = form.get("answer_map") or {}
-        if answer_map.get("kind") == "custom":
+        if answer_map.get("kind") in ("order", "booking"):
+            from app.services import whatsapp_live_forms
+            pairs = [{"label": label, "value": value}
+                     for label, value in whatsapp_live_forms.live_pairs(db, tenant_id, answer_map, r["answers"])]
+        elif answer_map.get("kind") == "custom":
             pairs = [{"label": label, "value": value} for _, label, value in _custom_answers(answer_map, r["answers"])]
         else:
             labels = {f["key"]: f.get("label") or f["key"] for f in (answer_map.get("fields") or {}).values()}
@@ -961,7 +1021,7 @@ async def send_form(
     data = await meta_cloud.send_flow_message(
         to_number=phone, body_text=body, flow_id=form["meta_flow_id"], flow_cta=cta,
         flow_token=make_token(tenant_id, phone, form["id"], send_id),
-        first_screen=form.get("first_screen") or SCREEN_PACKAGE,
+        first_screen=form.get("first_screen", SCREEN_PACKAGE),
         tenant_id=tenant_id, phone_number_id=phone_number_id,
     )
     sid = (data.get("messages") or [{}])[0].get("id")
@@ -1078,6 +1138,12 @@ def summary_text(db, tenant_id: str, phone: str, raw: str) -> str:
         answer_map = form.get("answer_map") or {}
         if answer_map.get("kind") == "custom":
             return _custom_summary(form, answers)
+        if answer_map.get("kind") in ("order", "booking"):
+            from app.services import whatsapp_live_forms
+            lines = [f"📝 {answer_map.get('form_name') or form.get('name') or 'Form'}"]
+            lines += [f"{label}: {value}" for label, value in whatsapp_live_forms.live_pairs(db, tenant_id, answer_map, answers)]
+            lines.append("Offers on WhatsApp: " + ("yes" if _wants_offers(answers) else "no"))
+            return "\n".join(lines)[:1500]
         config = intake.get_intake_config(tenant_id, db=db)
         leaf, path = _choice_path(config, answers, answer_map.get("names"))
         lines = ["📝 Form submitted"]
@@ -1195,7 +1261,16 @@ async def handle_submission(
     response = _record_response(db, tenant_id, form["id"], lead_id, meta_message_id, answers, "received")
     if response is None:
         return _repeat_outcome(db, tenant_id, meta_message_id, str(answers.get("flow_token")))
-    if (form.get("answer_map") or {}).get("kind") == "custom":
+    kind = (form.get("answer_map") or {}).get("kind")
+    if kind in ("order", "booking"):
+        if not is_enabled(db, tenant_id):
+            _set_outcome(db, tenant_id, response["id"], "continued_in_chat")
+            return "continue"
+        from app.services import whatsapp_live_forms
+        handler = whatsapp_live_forms.handle_order if kind == "order" else whatsapp_live_forms.handle_booking
+        return await handler(db, tenant_id=tenant_id, lead_id=lead_id, phone=phone, form=form, answers=answers,
+                             response=response, phone_number_id=phone_number_id)
+    if kind == "custom":
         return await _handle_custom(db, tenant_id=tenant_id, lead_id=lead_id, phone=phone, form=form,
                                     answers=answers, response=response, phone_number_id=phone_number_id)
 

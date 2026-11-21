@@ -196,7 +196,7 @@ def resolve_form_button(db, tenant_id: str, form_ref: str) -> dict:
     form = wf.live_custom_form(db, tenant_id, design)
     if not form:
         raise wf.FormBuildError(f"Publish “{design['name']}” with its latest changes first.")
-    return {"flow_id": form["meta_flow_id"], "navigate_screen": form["first_screen"], "form_ref": design["id"]}
+    return {"flow_id": form["meta_flow_id"], "navigate_screen": form["first_screen"] or "", "form_ref": design["id"]}
 
 
 def template_flow_component(db, tenant_id: str, template_name: str, phone: str, components: list) -> dict | None:

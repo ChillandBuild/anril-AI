@@ -3826,7 +3826,7 @@ export const api = {
     create: (body: { starter: string | null; language: WaFormLanguage; name?: string }) =>
       apiFetch<WaFormDesign>("/api/v1/whatsapp-forms/forms", { method: "POST", body: JSON.stringify(body) }),
     get: (id: string) => apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}`),
-    save: (id: string, body: { name: string; language: WaFormLanguage; fields: WaFormField[]; texts: Record<string, string>; triggers: WaFormTriggers }) =>
+    save: (id: string, body: { name: string; language: WaFormLanguage; fields: WaFormField[]; texts: Record<string, string>; triggers: WaFormTriggers; settings: WaFormSettings }) =>
       apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
     publish: (id: string) =>
       apiFetch<WaFormDesign>(`/api/v1/whatsapp-forms/forms/${encodeURIComponent(id)}/publish`, { method: "POST" }, 90_000),
@@ -4500,9 +4500,33 @@ export interface WaFormStats {
   paid: number | null;
 }
 
+/** "order" and "booking" are live forms: they read the Catalogue / free times while the customer fills them. */
+export type WaFormKind = "standard" | "order" | "booking";
+
+export interface WaOrderSettings {
+  /** How many different products one order can have (1-5). */
+  max_items: number;
+  ask_address: boolean;
+}
+
+export interface WaBookingSettings {
+  days_ahead: number;
+  slot_minutes: number;
+  /** Customers per slot. */
+  capacity: number;
+  min_notice_minutes: number;
+  /** mon..sun -> open ranges as ["HH:MM", "HH:MM"]; an empty list = closed. */
+  hours: Record<string, [string, string][]>;
+}
+
+/** A live form's options (backend whatsapp_live_forms.clean_settings); {} for a standard form. */
+export type WaFormSettings = Partial<WaOrderSettings> & Partial<WaBookingSettings>;
+
 export interface WaFormDesign {
   id: string;
   name: string;
+  kind: WaFormKind;
+  settings: WaFormSettings;
   language: WaFormLanguage;
   fields: WaFormField[];
   /** Only the texts the client edited; the rest come from the language's starting texts. */
@@ -4530,6 +4554,7 @@ export interface WaFormSetup {
   max_options: Partial<Record<WaFormFieldType, number>>;
   max_fields: number;
   starters: { key: string; names: Record<WaFormLanguage, string> }[];
+  live_kinds: { key: "order" | "booking"; names: Record<WaFormLanguage, string>; settings: WaFormSettings }[];
 }
 
 export interface WaFormList {

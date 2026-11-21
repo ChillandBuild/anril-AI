@@ -691,7 +691,7 @@ async def send_flow_message(
     flow_id: str,
     flow_cta: str,
     flow_token: str,
-    first_screen: str,
+    first_screen: Optional[str],
     phone_number_id: Optional[str] = None,
     access_token: Optional[str] = None,
     tenant_id: Optional[str] = None,
@@ -721,8 +721,9 @@ async def send_flow_message(
                     "flow_token": flow_token,
                     "flow_id": flow_id,
                     "flow_cta": flow_cta,
-                    "flow_action": "navigate",
-                    "flow_action_payload": {"screen": first_screen},
+                    # A live form (first_screen None) asks the business's endpoint for its first screen.
+                    **({"flow_action": "navigate", "flow_action_payload": {"screen": first_screen}} if first_screen
+                       else {"flow_action": "data_exchange"}),
                 },
             },
         },
@@ -1098,10 +1099,12 @@ def _build_button_components(buttons: list[dict], max_btn: int, category: Option
                 out.append({"type": "COPY_CODE", "text": "Copy offer code", "example": [offer_code]})
         elif btn_type == "FLOW":
             # "Open form": a WhatsApp Form (Meta Flow) version pinned at creation (routes/templates.py).
-            out.append({
-                "type": "FLOW", "text": btn_text, "flow_id": str(btn.get("flow_id") or ""),
-                "navigate_screen": btn.get("navigate_screen") or "", "flow_action": "navigate",
-            })
+            flow_button = {"type": "FLOW", "text": btn_text, "flow_id": str(btn.get("flow_id") or "")}
+            if btn.get("navigate_screen"):
+                flow_button |= {"navigate_screen": btn["navigate_screen"], "flow_action": "navigate"}
+            else:
+                flow_button["flow_action"] = "data_exchange"  # a live form asks the endpoint
+            out.append(flow_button)
         elif btn_type == "ONE_TAP":
             if is_auth:
                 out.append({

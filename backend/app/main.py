@@ -492,6 +492,7 @@ app.include_router(tags.router, prefix="/api/v1/broadcast-tags", tags=["broadcas
 app.include_router(inbound_leads.router, prefix="/api/v1/inbound-leads", tags=["inbound-leads"], dependencies=_auth)
 app.include_router(instant_forms.router, prefix="/api/v1/instant-forms", tags=["instant-forms"], dependencies=_auth)
 app.include_router(whatsapp_form_designs.router, prefix="/api/v1/whatsapp-forms", tags=["whatsapp-forms"], dependencies=_auth)
+app.include_router(whatsapp_form_designs.public_router, prefix="/api/v1/whatsapp-forms/data", tags=["whatsapp-forms-live"])
 app.include_router(reengagement.router, prefix="/api/v1/reengagement", tags=["reengagement"], dependencies=_auth)
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"], dependencies=_auth)
 app.include_router(assignment_log.router, prefix="/api/v1/assignment-log", tags=["assignment-log"], dependencies=_auth)

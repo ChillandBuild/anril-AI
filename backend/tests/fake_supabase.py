@@ -28,6 +28,7 @@ _DEFAULTS = {
 # table -> columns of a UNIQUE constraint the code relies on (insert raises 23505 like Postgres)
 _UNIQUE = {
     "whatsapp_form_responses": [("tenant_id", "meta_message_id"), ("tenant_id", "flow_token")],
+    "whatsapp_form_bookings": [("tenant_id", "design_id", "slot_start", "seat")],
 }
 
 # child table -> (column, on-delete behaviour) when a knowledge_documents row is deleted

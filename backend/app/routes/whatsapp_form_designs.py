@@ -13,7 +13,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -21,9 +21,14 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_any_permission, require_permission
 from app.services import form_texts
 from app.services import whatsapp_form_reach as reach
+from app.services import whatsapp_live_forms as live
 from app.services import whatsapp_forms as wf
 
 router = APIRouter()
+# Meta's encrypted requests for live forms: no Anril login (Meta can't have one); the
+# request is authenticated by decrypting it with this business's private key, plus Meta's
+# X-Hub-Signature-256 when an app secret is configured.
+public_router = APIRouter()
 require_read = require_any_permission("services.view", "settings.view")
 require_manage = require_any_permission("services.manage", "settings.manage")
 require_reply = require_permission("conversations.reply")
@@ -70,6 +75,8 @@ def _version_ids(db, tenant_id: str, design_id: str | None) -> list[str]:
 def _view(db, tenant_id: str, design: dict) -> dict:
     return {
         **{k: design.get(k) for k in ("id", "name", "language", "fields", "texts", "created_at", "updated_at")},
+        "kind": design.get("kind") or "standard",
+        "settings": live.clean_settings(design.get("kind") or "standard", design.get("settings")),
         "triggers": reach.clean_triggers(design.get("triggers")),
         "stats": reach.stats(db, tenant_id, design["id"]),
         "status": wf.version_status(db, tenant_id, design["id"]),
@@ -100,7 +107,20 @@ def setup(ctx: dict = Depends(require_read)):
             {"key": key, "names": dict(zip(form_texts.LANGUAGES, spec["names"]))}
             for key, spec in form_texts.STARTERS.items()
         ],
+        # Live forms (Phase 4): their own starting names and settings.
+        "live_kinds": [
+            {"key": "order", "names": dict(zip(form_texts.LANGUAGES, LIVE_NAMES["order"])),
+             "settings": live.ORDER_DEFAULTS},
+            {"key": "booking", "names": dict(zip(form_texts.LANGUAGES, LIVE_NAMES["booking"])),
+             "settings": live.BOOKING_DEFAULTS},
+        ],
     }
+
+
+LIVE_NAMES = {
+    "order": ("Product order", "பொருள் ஆர்டர்", "Product order"),
+    "booking": ("Appointment booking", "சந்திப்பு முன்பதிவு", "Appointment booking"),
+}
 
 
 # ── forms ────────────────────────────────────────────────────────────────────
@@ -130,7 +150,7 @@ def list_forms(ctx: dict = Depends(require_read)):
 
 
 class NewForm(BaseModel):
-    starter: str | None = None  # a key from /setup starters; None = blank
+    starter: str | None = None  # a key from /setup starters, "order" / "booking" (live forms); None = blank
     language: str = "en"
     name: str | None = Field(None, max_length=120)
 
@@ -139,7 +159,12 @@ class NewForm(BaseModel):
 def create_form(payload: NewForm, ctx: dict = Depends(require_manage)):
     db = _db_on(ctx)
     language = payload.language if payload.language in form_texts.LANGUAGES else "en"
-    if payload.starter:
+    kind, settings = "standard", {}
+    if payload.starter in LIVE_NAMES:
+        kind = payload.starter
+        settings = live.clean_settings(kind, None)
+        content = {"name": LIVE_NAMES[kind][form_texts.LANGUAGES.index(language)], "fields": []}
+    elif payload.starter:
         if payload.starter not in form_texts.STARTERS:
             raise HTTPException(status_code=400, detail="Unknown starter form.")
         content = form_texts.starter(payload.starter, language)
@@ -148,7 +173,7 @@ def create_form(payload: NewForm, ctx: dict = Depends(require_manage)):
     name = ((payload.name or "").strip() or content["name"] or "New form").strip()[:120]
     row = db.table("whatsapp_form_designs").insert({
         "tenant_id": ctx["tenant_id"], "name": name, "language": language, "fields": content["fields"],
-        "texts": {}, "created_by": ctx.get("user_id"),
+        "texts": {}, "created_by": ctx.get("user_id"), "kind": kind, "settings": settings,
     }).execute().data[0]
     return _view(db, ctx["tenant_id"], row)
 
@@ -174,6 +199,8 @@ class FormIn(BaseModel):
     texts: dict[str, str] = Field(default_factory=dict)
     # When Anril sends it by itself (whatsapp_form_reach.clean_triggers); None = keep as saved.
     triggers: dict | None = None
+    # A live form's options (whatsapp_live_forms.clean_settings); None = keep as saved.
+    settings: dict | None = None
 
 
 @router.put("/forms/{design_id}")
@@ -184,10 +211,12 @@ def save_form(design_id: str, payload: FormIn, ctx: dict = Depends(require_manag
     current = _design_or_404(db, tenant_id, design_id)
     texts = {k: v for k, v in payload.texts.items() if isinstance(v, str) and v.strip()}
     triggers = payload.triggers if payload.triggers is not None else current.get("triggers")
+    kind = current.get("kind") or "standard"  # a form's type is set when it's created
     design = {
         "name": payload.name.strip(), "language": payload.language,
-        "fields": [f.model_dump() for f in payload.fields], "texts": texts,
-        "triggers": reach.clean_triggers(triggers),
+        "fields": [f.model_dump() for f in payload.fields] if kind != "order" else [], "texts": texts,
+        "triggers": reach.clean_triggers(triggers), "kind": kind,
+        "settings": live.clean_settings(kind, payload.settings if payload.settings is not None else current.get("settings")),
     }
     problems = wf.design_problems(design) + reach.trigger_problems(triggers)
     if problems:
@@ -248,7 +277,9 @@ def _rows(db, tenant_id: str, design: dict | None, raw: list[dict]) -> tuple[lis
     rows = []
     for r in raw:
         answer_map = (versions.get(r.get("form_id")) or {}).get("answer_map") or {}
-        if answer_map.get("kind") == "custom":
+        if answer_map.get("kind") in ("order", "booking"):
+            pairs = live.live_pairs(db, tenant_id, answer_map, r["answers"])
+        elif answer_map.get("kind") == "custom":
             pairs = [(label, value) for _, label, value in wf._custom_answers(answer_map, r["answers"])]
         else:
             field_labels = {f["key"]: f.get("label") or f["key"] for f in (answer_map.get("fields") or {}).values()}
@@ -411,3 +442,64 @@ def template_forms(ctx: dict = Depends(require_permission("templates.manage"))):
     ).data or []
     out += [{"id": d["id"], "name": d["name"]} for d in designs if wf.live_custom_form(db, tenant_id, d)]
     return {"available": True, "data": out}
+
+
+
+# ── live forms: Meta's encrypted endpoint ────────────────────────────────────
+
+
+_LIVE_MAX_BODY = 64 * 1024  # Meta's requests are a few KB
+from app.routes.auto_messages import _SlidingWindow  # noqa: E402
+
+_live_limiter = _SlidingWindow(600, 60)  # per tenant; the app-wide per-IP limit applies too
+
+
+@public_router.post("/{tenant_id}")
+async def live_form_endpoint(tenant_id: str, request: Request):
+    """Meta asks for a live form's next screen (products, free slots, a summary). Returns the
+    reply encrypted with the request's own key, as plain text. Reads only, never saves."""
+    import asyncio
+    import logging
+
+    from app.services.meta_webhook_verify import verify_meta_signature
+
+    log = logging.getLogger(__name__)
+    _uuid_or_404(tenant_id)
+    try:
+        length = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        return Response(status_code=400)
+    if length > _LIVE_MAX_BODY:
+        return Response(status_code=413)
+    db = get_supabase()
+    # A business without a live-form key has nothing here. Checked first, so made-up tenant ids
+    # never reach the limiter or the settings cache (keys are cached only when found).
+    keys = await asyncio.to_thread(live.private_keys, db, tenant_id)
+    if not keys:
+        return Response(status_code=404)
+    if not _live_limiter.allow(tenant_id):
+        return Response(status_code=429)
+    raw = await request.body()
+    if len(raw) > _LIVE_MAX_BODY:
+        return Response(status_code=413)
+    # Only Meta may call this: its X-Hub-Signature-256 is required (fail closed, like the
+    # WhatsApp webhook). Decryption alone proves nothing about the sender.
+    signed = await asyncio.to_thread(verify_meta_signature, raw, request.headers.get("x-hub-signature-256"), tenant_id)
+    if not signed:
+        return Response(status_code=432)
+    try:
+        body = __import__("json").loads(raw or b"{}")
+    except ValueError:
+        return Response(status_code=400)
+    try:
+        payload, aes_key, iv = live.decrypt_request(body, keys)
+    except live.EndpointError as exc:
+        return Response(status_code=exc.status)
+    try:
+        reply = await asyncio.to_thread(live.handle_request, db, tenant_id, payload)
+    except live.EndpointError as exc:
+        return Response(status_code=exc.status)
+    except Exception:
+        log.exception("Live form request failed for tenant %s", tenant_id)
+        return Response(status_code=500)
+    return Response(content=live.encrypt_response(reply, aes_key, iv), media_type="text/plain")

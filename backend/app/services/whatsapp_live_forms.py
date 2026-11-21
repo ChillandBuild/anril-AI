@@ -34,6 +34,7 @@ from app.services import whatsapp_forms as wf
 logger = logging.getLogger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 DATA_API_VERSION = "3.0"
 MAX_LINES = 5
 LIST_MAX = 20  # radio/checkbox options per screen (Meta)
@@ -115,18 +116,23 @@ def _vault_key() -> bytes:
     return hashlib.sha256(base + b"|anril-flow-private-key-v1").digest()
 
 
-def _seal(plain: bytes) -> str:
+def _seal(plain: bytes, bound_to: str = "") -> str:
+    """Encrypt a private key. `bound_to` ("tenant|phone number id") ties it to its own row."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     nonce = os.urandom(12)
-    return base64.b64encode(nonce + AESGCM(_vault_key()).encrypt(nonce, plain, None)).decode()
+    return base64.b64encode(nonce + AESGCM(_vault_key()).encrypt(nonce, plain, bound_to.encode())).decode()
 
 
-def _open(sealed: str) -> bytes:
+def _open(sealed: str, bound_to: str = "") -> bytes:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     raw = base64.b64decode(sealed)
-    return AESGCM(_vault_key()).decrypt(raw[:12], raw[12:], None)
+    return AESGCM(_vault_key()).decrypt(raw[:12], raw[12:], bound_to.encode())
+
+
+def _bound(tenant_id: str, phone_number_id: str) -> str:
+    return f"{tenant_id}|{phone_number_id}"
 
 
 def _new_key_pair() -> tuple[str, bytes]:
@@ -159,6 +165,11 @@ async def ensure_keys(db, tenant_id: str) -> None:
         db.table("whatsapp_flow_keys").select("*").eq("tenant_id", tenant_id).eq("phone_number_id", pid)
         .limit(1).execute()
     ).data or []
+    if rows and not _readable(rows[0], tenant_id, pid):
+        # The server secret changed (or the row was tampered with): start over with a new pair.
+        logger.warning("WhatsApp Form key for tenant %s can't be read; making a new one", tenant_id)
+        db.table("whatsapp_flow_keys").delete().eq("tenant_id", tenant_id).eq("phone_number_id", pid).execute()
+        rows = []
     if rows and rows[0].get("uploaded_at"):
         return
     if rows:
@@ -166,7 +177,8 @@ async def ensure_keys(db, tenant_id: str) -> None:
     else:
         public, private = _new_key_pair()
         db.table("whatsapp_flow_keys").insert({
-            "tenant_id": tenant_id, "phone_number_id": pid, "public_key": public, "private_key_enc": _seal(private),
+            "tenant_id": tenant_id, "phone_number_id": pid, "public_key": public,
+            "private_key_enc": _seal(private, _bound(tenant_id, pid)),
         }).execute()
     token, _ = wf._meta_creds(tenant_id)
     try:
@@ -181,16 +193,44 @@ async def ensure_keys(db, tenant_id: str) -> None:
         raise wf.FormPublishError(message or "Meta didn't accept the live-form key. Try again.")
     db.table("whatsapp_flow_keys").update({"uploaded_at": wf._now()}) \
         .eq("tenant_id", tenant_id).eq("phone_number_id", pid).execute()
+    _KEY_CACHE.pop(tenant_id, None)
 
 
-def _private_key(db, tenant_id: str):
+def _readable(row: dict, tenant_id: str, phone_number_id: str) -> bool:
+    try:
+        _open(row["private_key_enc"], _bound(tenant_id, phone_number_id))
+        return True
+    except Exception:
+        return False
+
+
+_KEY_CACHE: dict[str, tuple[float, list]] = {}
+_KEY_TTL = 300.0
+
+
+def private_keys(db, tenant_id: str) -> list:
+    """This business's private keys (newest first), cached a few minutes: loading an RSA key is slow."""
+    import time as _time
+
     from cryptography.hazmat.primitives import serialization
 
+    cached = _KEY_CACHE.get(tenant_id)
+    if cached and _time.monotonic() - cached[0] < _KEY_TTL:
+        return cached[1]
     rows = (
-        db.table("whatsapp_flow_keys").select("private_key_enc").eq("tenant_id", tenant_id)
+        db.table("whatsapp_flow_keys").select("phone_number_id, private_key_enc").eq("tenant_id", tenant_id)
         .order("created_at", desc=True).limit(3).execute()
     ).data or []
-    return [serialization.load_pem_private_key(_open(r["private_key_enc"]), password=None) for r in rows]
+    keys = []
+    for r in rows:
+        try:
+            keys.append(serialization.load_pem_private_key(
+                _open(r["private_key_enc"], _bound(tenant_id, r["phone_number_id"])), password=None))
+        except Exception:
+            logger.warning("Unreadable WhatsApp Form key for tenant %s (republish a live form to renew it)", tenant_id)
+    if keys:
+        _KEY_CACHE[tenant_id] = (_time.monotonic(), keys)
+    return keys
 
 
 # ── Meta's encryption ────────────────────────────────────────────────────────
@@ -311,8 +351,8 @@ def build_order_flow(design: dict) -> tuple[dict, dict]:
 def build_booking_flow(design: dict) -> tuple[dict, dict]:
     """DATE -> SLOT (both from the endpoint) -> the form's own questions -> CONFIRM."""
     texts = form_texts.resolve(wf._design_settings(design))
-    custom_flow, answer_map = wf.build_custom_flow({**design, "fields": design.get("fields") or [], "_allow_empty": True}) \
-        if design.get("fields") else ({"screens": [{"id": wf.SCREEN_CONFIRM, "layout": {"children": []}}]}, {"fields": {}})
+    custom_flow, answer_map = wf.build_custom_flow(design) if design.get("fields") else (
+        {"screens": [{"id": wf.SCREEN_CONFIRM, "data": {}, "layout": {"children": []}}]}, {"fields": {}})
     question_screens = [s for s in custom_flow["screens"] if s["id"] != wf.SCREEN_CONFIRM]
     slot_data = {"slot": _STR, "slot_label": _STR}
     # The booked slot travels through every question screen to the end.
@@ -372,6 +412,7 @@ def _items(db, tenant_id: str, query: str | None = None, ids: list[str] | None =
     q = (db.table("catalog_items").select("id, name, price_paise, stock_quantity, gst_rate")
          .eq("tenant_id", tenant_id).eq("status", "ready"))
     if ids is not None:
+        ids = [i for i in ids if isinstance(i, str) and _UUID.fullmatch(i)]
         q = q.in_("id", ids or ["00000000-0000-0000-0000-000000000000"])
     if query:
         safe = "".join(ch for ch in query if ch.isalnum() or ch in " -").strip()[:60]
@@ -408,11 +449,12 @@ def _parse_lines(raw) -> list[dict]:
         lines = json.loads(raw) if isinstance(raw, str) else raw
     except ValueError:
         return []
-    out = []
+    merged: dict[str, int] = {}  # the same product twice is one line (stock is checked per line)
     for li in lines if isinstance(lines, list) else []:
         if isinstance(li, dict) and isinstance(li.get("id"), str) and str(li.get("qty", "")).isdigit():
-            out.append({"id": li["id"], "qty": max(1, min(int(li["qty"]), 999))})
-    return out[:MAX_LINES]
+            if li["id"] in merged or len(merged) < MAX_LINES:
+                merged[li["id"]] = merged.get(li["id"], 0) + max(1, int(li["qty"]))
+    return [{"id": item_id, "qty": min(qty, 999)} for item_id, qty in merged.items()]
 
 
 # ── live data: free booking slots ────────────────────────────────────────────
@@ -464,7 +506,8 @@ def _taken(db, tenant_id: str, design_id: str, start: datetime, end: datetime) -
     return counts
 
 
-def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None = None) -> list[datetime]:
+def offered_starts(design: dict, day: date, now: datetime | None = None) -> list[datetime]:
+    """Every slot the business's hours offer on that day, from the minimum notice on."""
     settings = clean_settings("booking", design.get("settings"))
     now = (now or datetime.now(timezone.utc)).astimezone(IST)
     earliest = now + timedelta(minutes=settings["min_notice_minutes"])
@@ -477,8 +520,15 @@ def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None
             if moment >= earliest:
                 starts.append(moment)
             moment += step
+    return starts
+
+
+def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None = None) -> list[datetime]:
+    settings = clean_settings("booking", design.get("settings"))
+    starts = offered_starts(design, day, now)
     if not starts:
         return []
+    step = timedelta(minutes=settings["slot_minutes"])
     taken = _taken(db, tenant_id, design["id"], starts[0], starts[-1] + step)
     return [s for s in starts if taken.get(_slot_id(s), 0) < settings["capacity"]]
 
@@ -501,7 +551,8 @@ def free_dates(db, tenant_id: str, design: dict, now: datetime | None = None) ->
 
 def _design_for_token(db, tenant_id: str, token: str) -> tuple[dict, dict] | None:
     parts = str(token or "").split(".")
-    if len(parts) != 4 or parts[0] != wf.TOKEN_PREFIX:
+    if (len(parts) != 4 or parts[0] != wf.TOKEN_PREFIX or not re.fullmatch(r"[0-9a-f-]{36}", parts[1])
+            or not re.fullmatch(r"[0-9a-f]{12}", parts[2]) or not re.fullmatch(r"[0-9a-f]{32}", parts[3])):
         return None
     form = wf._form(db, tenant_id, parts[1])
     if not form or not form.get("design_id"):
@@ -577,7 +628,7 @@ def handle_request(db, tenant_id: str, payload: dict, now: datetime | None = Non
                 {"id": _slot_id(s), "title": _time_title(s, language)} for s in slots[:LIST_MAX]]}}
         if screen == S_SLOT:
             moment = parse_slot_id(str(data.get("slot") or ""))
-            if not moment:
+            if not moment or not bookable(design, moment, now):
                 return {"screen": S_FULL, "data": {}}
             first = wf.build_custom_flow({**design, "fields": design["fields"]})[0]["screens"][0]["id"] \
                 if design.get("fields") else wf.SCREEN_CONFIRM
@@ -653,6 +704,25 @@ async def handle_order(db, *, tenant_id: str, lead_id: str, phone: str, form: di
     return "handled"
 
 
+def bookable(design: dict, moment: datetime, now: datetime | None = None) -> bool:
+    """Still a time the business offers: open hours, enough notice, inside the days ahead."""
+    now = (now or datetime.now(IST)).astimezone(IST)
+    day = moment.astimezone(IST).date()
+    days_ahead = clean_settings("booking", design.get("settings"))["days_ahead"]
+    if not (now.date() <= day < now.date() + timedelta(days=days_ahead)):
+        return False
+    return moment in offered_starts(design, day, now)
+
+
+def _already_booked(db, tenant_id: str, design_id: str, moment: datetime, lead_id: str) -> bool:
+    """One seat per customer per time: a second form from the same customer can't fill a slot."""
+    rows = (
+        db.table("whatsapp_form_bookings").select("id").eq("tenant_id", tenant_id).eq("design_id", design_id)
+        .eq("slot_start", moment.isoformat()).eq("lead_id", lead_id).eq("cancelled", False).limit(1).execute()
+    ).data or []
+    return bool(rows)
+
+
 def reserve(db, tenant_id: str, design: dict, slot_start: datetime, lead_id: str, response_id: str) -> bool:
     """Take a free seat in this slot. UNIQUE(design, slot, seat) makes two customers racing for
     the last seat impossible to both win."""
@@ -661,7 +731,7 @@ def reserve(db, tenant_id: str, design: dict, slot_start: datetime, lead_id: str
         try:
             db.table("whatsapp_form_bookings").insert({
                 "tenant_id": tenant_id, "design_id": design["id"], "slot_start": slot_start.isoformat(),
-                "seat": seat, "lead_id": lead_id, "response_id": response_id,
+                "seat": seat, "lead_id": lead_id, "response_id": response_id, "cancelled": False,
             }).execute()
             return True
         except Exception as exc:
@@ -681,25 +751,53 @@ async def handle_booking(db, *, tenant_id: str, lead_id: str, phone: str, form: 
     texts = form_texts.resolve(wf._design_settings(design))
     language = form_texts.language_of(wf._design_settings(design))
     moment = parse_slot_id(str(answers.get("slot") or ""))
-    wf._record_consent(db, tenant_id, lead_id, form, wf._wants_offers(answers))
     if not moment:  # the fully-booked screen
+        wf._record_consent(db, tenant_id, lead_id, form, wf._wants_offers(answers))
         wf._set_outcome(db, tenant_id, response["id"], "continued_in_chat")
         return "continue"
-    settings = clean_settings("booking", design.get("settings"))
-    still_offered = moment in free_slots(db, tenant_id, design, moment.astimezone(IST).date()) or \
-        moment.astimezone(IST).time() in {datetime.combine(moment.date(), _hhmm(a), IST).time()
-                                          for ranges in settings["hours"].values() for a, _ in ranges}
-    if not still_offered or not reserve(db, tenant_id, design, moment, lead_id, response["id"]):
+    # The slot must still be one the business offers (hours may have changed since the form
+    # opened); capacity is enforced by reserve().
+    if not bookable(design, moment) or _already_booked(db, tenant_id, design["id"], moment, lead_id) \
+            or not reserve(db, tenant_id, design, moment, lead_id, response["id"]):
+        wf._record_consent(db, tenant_id, lead_id, form, wf._wants_offers(answers))
         text = texts["slot_taken"]
         outcome = "continued_in_chat"
     else:
         await wf._handle_custom(db, tenant_id=tenant_id, lead_id=lead_id, phone=phone, form=form,
-                                answers=answers, response=response, phone_number_id=None, send_thanks=False)
+                                answers=answers, response=response, phone_number_id=None, send_thanks=False,
+                                extra={"Booked for": slot_label(moment, language)})
         text = texts["booked_message"].replace("{slot}", slot_label(moment, language))
         outcome = "saved"
+    # The confirmation is an automatic message: Settings → Auto-Reply off keeps the booking
+    # (the team sees it on the lead) but sends nothing. (An order's payment link is the
+    # customer's own payment step and goes out regardless, like the Services form's.)
+    from app.services.automation_guards import ai_replies_allowed_for_lead
+    if not ai_replies_allowed_for_lead(db, tenant_id, "whatsapp", lead_id):
+        wf._set_outcome(db, tenant_id, response["id"], outcome)
+        return "handled"
     sid = await send_whatsapp(phone, text, tenant_id=tenant_id, phone_number_id=phone_number_id)
     db.table("messages").insert({"lead_id": lead_id, "tenant_id": tenant_id, "direction": "outbound",
                                  "channel": "whatsapp", "content": text, "is_ai_generated": False,
                                  "meta_message_id": sid}).execute()
     wf._set_outcome(db, tenant_id, response["id"], outcome)
     return "handled"
+
+
+def live_pairs(db, tenant_id: str, answer_map: dict, answers: dict) -> list[tuple[str, str]]:
+    """Readable answers of an order / booking form (summary line, lead card, answers table)."""
+    pairs: list[tuple[str, str]] = []
+    if answer_map.get("kind") == "order":
+        lines = _parse_lines(answers.get("lines"))
+        items = {i["id"]: i for i in _items(db, tenant_id, ids=[li["id"] for li in lines])} if lines else {}
+        if lines:
+            pairs.append(("Items", ", ".join(f"{li['qty']} × {(items.get(li['id']) or {}).get('name', 'item')}"
+                                            for li in lines)))
+        for key, label in (("name", "Name"), ("address", "Address")):
+            value = str(answers.get(key) or "").strip()
+            if value and value != "-":
+                pairs.append((label, value[:500]))
+    else:
+        moment = parse_slot_id(str(answers.get("slot") or ""))
+        pairs.append(("Booked for", slot_label(moment, "en") if moment else "Fully booked"))
+        pairs += [(label, value) for _, label, value in wf._custom_answers(answer_map, answers)]
+    return pairs

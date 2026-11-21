@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowDown, ArrowLeft, ArrowUp, ListChecks, Loader2, Plus, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { WaFormDesign, WaFormField, WaFormFieldType, WaFormLanguage, WaFormSetup, WaFormTriggers } from "@/lib/api";
+import type {
+  WaFormDesign, WaFormField, WaFormFieldType, WaFormKind, WaFormLanguage, WaFormSettings, WaFormSetup, WaFormTriggers,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
@@ -16,9 +18,10 @@ import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { CatalogueTabs } from "../../catalog/CatalogueTabs";
 import { SectionLoadGate } from "../../settings/SettingsSection";
 import {
-  CHOICE_TYPES, CUSTOM_TEXT_KEYS, FIELD_TYPE_LABELS, FormPhonePreview, FormTextsEditor, StatusChip,
-  effectiveText, shownLength,
+  CHOICE_TYPES, FIELD_TYPE_LABELS, FormPhonePreview, FormTextsEditor, KIND_NAMES, LiveFormPhonePreview, StatusChip,
+  effectiveText, shownLength, textKeysFor,
 } from "../shared";
+import { BookingSettingsEditor, OrderSettingsEditor, bookingProblems } from "./LiveSettings";
 import { StatsLine, WhenToSend } from "./WhenToSend";
 
 interface Draft {
@@ -27,6 +30,7 @@ interface Draft {
   fields: WaFormField[];
   texts: Record<string, string>;
   triggers: WaFormTriggers;
+  settings: WaFormSettings;
 }
 
 function toDraft(design: WaFormDesign): Draft {
@@ -36,6 +40,7 @@ function toDraft(design: WaFormDesign): Draft {
     fields: design.fields.map((f) => ({ ...f, options: f.options ?? [] })),
     texts: { ...design.texts },
     triggers: JSON.parse(JSON.stringify(design.triggers)) as WaFormTriggers,
+    settings: JSON.parse(JSON.stringify(design.settings ?? {})) as WaFormSettings,
   };
 }
 
@@ -46,17 +51,19 @@ function newKey(fields: WaFormField[]): string {
 }
 
 /** What WhatsApp can't show, checked as you type (the server checks again on Save). */
-function localProblems(draft: Draft, setup: WaFormSetup): string[] {
+function localProblems(draft: Draft, setup: WaFormSetup, kind: WaFormKind): string[] {
   const out: string[] = [];
   if (!draft.name.trim()) out.push("Give the form a name.");
-  if (draft.fields.length === 0) out.push("Add at least one question.");
+  if (kind === "standard" && draft.fields.length === 0) out.push("Add at least one question.");
+  if (kind === "booking") out.push(...bookingProblems(draft.settings));
+  const fields = kind === "order" ? [] : draft.fields; // an order form asks nothing extra
   const seen = new Set<string>();
-  for (const f of draft.fields) {
+  for (const f of fields) {
     const label = f.label.trim().toLowerCase();
     if (label && seen.has(label)) out.push(`Two questions both say "${f.label.trim()}". Make them different.`);
     seen.add(label);
   }
-  draft.fields.forEach((f, i) => {
+  fields.forEach((f, i) => {
     const label = f.label.trim();
     if (!label) out.push(`Question ${i + 1} needs a question.`);
     else if (label.length > setup.label_limits[f.type]) out.push(`Question ${i + 1} is too long.`);
@@ -71,7 +78,7 @@ function localProblems(draft: Draft, setup: WaFormSetup): string[] {
   if (draft.triggers.ai.enabled && !draft.triggers.ai.when.trim()) out.push("Tell Anril when to send this form.");
   if (draft.triggers.ai.when.length > 300) out.push("The “send it when” line is too long.");
   if (draft.triggers.broadcasts.enabled && draft.triggers.broadcasts.templates.length === 0) out.push("Pick at least one broadcast template.");
-  for (const key of CUSTOM_TEXT_KEYS) {
+  for (const key of textKeysFor(kind)) {
     const value = effectiveText(setup, draft.language, draft.texts, key);
     if (shownLength(key, value) > (setup.text_limits[key] ?? 1000)) out.push("One of the texts on the form is too long.");
   }
@@ -95,7 +102,8 @@ export default function FormBuilderPage() {
 
   const saved = useMemo(() => (design ? toDraft(design) : null), [design]);
   const dirty = Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved));
-  const problems = draft && setup ? localProblems(draft, setup) : [];
+  const kind: WaFormKind = design?.kind ?? "standard";
+  const problems = draft && setup ? localProblems(draft, setup, kind) : [];
 
   // Leaving with unsaved changes asks first.
   useEffect(() => {
@@ -122,7 +130,8 @@ export default function FormBuilderPage() {
     );
   }
 
-  const words = Object.fromEntries(CUSTOM_TEXT_KEYS.map((k) => [k, effectiveText(setup, draft.language, draft.texts, k)]));
+  const textKeys = textKeysFor(kind);
+  const words = Object.fromEntries(textKeys.map((k) => [k, effectiveText(setup, draft.language, draft.texts, k)]));
 
   function update(patch: Partial<Draft>) {
     setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -144,9 +153,10 @@ export default function FormBuilderPage() {
     try {
       const next = await api.whatsappForms.save(id, {
         name: draft!.name.trim(), language: draft!.language,
-        fields: draft!.fields.map((f) => ({ ...f, label: f.label.trim(), options: CHOICE_TYPES.includes(f.type) ? f.options.map((o) => o.trim()).filter(Boolean) : [] })),
+        fields: kind === "order" ? [] : draft!.fields.map((f) => ({ ...f, label: f.label.trim(), options: CHOICE_TYPES.includes(f.type) ? f.options.map((o) => o.trim()).filter(Boolean) : [] })),
         texts: draft!.texts,
         triggers: draft!.triggers,
+        settings: draft!.settings,
       });
       await mutate(next, { revalidate: false });
       setDraft(toDraft(next));
@@ -248,12 +258,33 @@ export default function FormBuilderPage() {
             </div>
           </section>
 
+          {kind !== "standard" && (
+            <section aria-labelledby="live-settings" className="space-y-3">
+              <div>
+                <h2 id="live-settings" className="font-display text-base font-bold text-ink">{KIND_NAMES[kind]}</h2>
+                <p className="font-body text-xs text-ink-secondary">
+                  {kind === "order"
+                    ? "Customers search your Catalogue, tick products and pick how many. Prices and stock are read the moment they open it; after they submit, Anril sends the payment link."
+                    : "Customers see only the days and times still free, from the hours below. Two people can never book the same last place."}
+                </p>
+              </div>
+              {kind === "order" ? (
+                <OrderSettingsEditor settings={draft.settings} disabled={!canManage} onChange={(settings) => update({ settings })} />
+              ) : (
+                <BookingSettingsEditor settings={draft.settings} disabled={!canManage} onChange={(settings) => update({ settings })} />
+              )}
+            </section>
+          )}
+
+          {kind !== "order" && (
           <section aria-labelledby="questions" className="space-y-3">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <h2 id="questions" className="font-display text-base font-bold text-ink">Questions</h2>
+                <h2 id="questions" className="font-display text-base font-bold text-ink">
+                  {kind === "booking" ? "Questions after they pick a time" : "Questions"}
+                </h2>
                 <p className="font-body text-xs text-ink-secondary">
-                  Write them in any language or script. {draft.fields.length}/{setup.max_fields}
+                  {kind === "booking" ? "Optional. " : ""}Write them in any language or script. {draft.fields.length}/{setup.max_fields}
                 </p>
               </div>
             </div>
@@ -374,12 +405,13 @@ export default function FormBuilderPage() {
               </button>
             )}
           </section>
+          )}
 
           <section aria-labelledby="when-to-send" className="space-y-3">
             <div>
               <h2 id="when-to-send" className="font-display text-base font-bold text-ink">When Anril sends it</h2>
               <p className="font-body text-xs text-ink-secondary">
-                All off by default. Turn on the ones you want; Settings → Auto-Reply off stops these too.
+                All off by default. Turn on the ones you want; turning off Auto-reply in Anril Setup → Replies &amp; handover stops these too.
               </p>
             </div>
             <WhenToSend triggers={draft.triggers} onChange={(triggers) => update({ triggers })} disabled={!canManage} />
@@ -396,7 +428,7 @@ export default function FormBuilderPage() {
               setup={setup}
               language={draft.language}
               texts={draft.texts}
-              keys={CUSTOM_TEXT_KEYS}
+              keys={textKeys}
               disabled={!canManage}
               onChange={(texts) => update({ texts })}
             />
@@ -421,7 +453,11 @@ export default function FormBuilderPage() {
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <p className="mb-3 text-center font-label text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Preview</p>
-          <FormPhonePreview fields={draft.fields} words={words} />
+          {kind === "standard" ? (
+            <FormPhonePreview fields={draft.fields} words={words} />
+          ) : (
+            <LiveFormPhonePreview kind={kind} settings={draft.settings} fields={draft.fields} words={words} />
+          )}
         </aside>
       </div>
 
