@@ -458,10 +458,11 @@ async def _process_inbound_message_background(
                 if result in ("handled", "ignored"):
                     return
             # A WhatsApp Form chosen for the ad they came from or the broadcast they answered
-            # (whatsapp_form_reach). Automatic, so only with Auto-Reply on; the client picks
+            # (whatsapp_form_reach; a typed message can answer a broadcast too, so every
+            # message is checked). Automatic, so only with Auto-Reply on; the client picks
             # INSTEAD of Anril's reply or AFTER it. A failure never blocks the reply.
             form_match = None
-            if not form_response and auto_reply_on and (referral_ad_id or context_wamid):
+            if not form_response and auto_reply_on:
                 try:
                     from app.services import whatsapp_form_reach
                     form_match = whatsapp_form_reach.inbound_match(

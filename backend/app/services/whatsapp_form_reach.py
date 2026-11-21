@@ -26,6 +26,7 @@ WHEN_MAX = 300
 MAX_ADS = 200
 MAX_TEMPLATES = 50
 RESEND_AFTER = timedelta(days=7)  # the same rule won't send the same form to one person again sooner
+TYPED_REPLY_WINDOW = timedelta(days=3)  # a plain typed message this soon after a broadcast still answers it
 _TEMPLATE_RE = re.compile(r"^\[Template: (.+?)\]")
 
 
@@ -81,15 +82,30 @@ def _designs_with(db, tenant_id: str, key: str) -> list[dict]:
 
 
 def _replied_template(db, tenant_id: str, lead_id: str, context_wamid: str | None) -> str | None:
-    """The template of the broadcast this message answers (WhatsApp quotes it in context)."""
-    if not context_wamid:
-        return None
-    rows = (
-        db.table("messages").select("content").eq("tenant_id", tenant_id).eq("lead_id", lead_id)
-        .eq("meta_message_id", context_wamid).eq("direction", "outbound").limit(1).execute()
-    ).data or []
+    """The template of the broadcast this message answers.
+
+    A swipe-reply or a button tap names the message (WhatsApp's context id). Most people just
+    type, which names nothing: then it answers the broadcast if that broadcast is the last thing
+    the business sent this person, within TYPED_REPLY_WINDOW."""
+    q = (db.table("messages").select("content, created_at").eq("tenant_id", tenant_id).eq("lead_id", lead_id)
+         .eq("direction", "outbound"))
+    if context_wamid:
+        rows = q.eq("meta_message_id", context_wamid).limit(1).execute().data or []
+    else:
+        rows = q.order("created_at", desc=True).limit(1).execute().data or []
+        since = datetime.now(timezone.utc) - TYPED_REPLY_WINDOW
+        if rows and not _after(rows[0].get("created_at"), since):
+            rows = []
     match = _TEMPLATE_RE.match((rows[0].get("content") or "") if rows else "")
     return match.group(1).strip() if match else None
+
+
+def _after(stamp, since: datetime) -> bool:
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)) >= since
 
 
 def _recently_sent(db, tenant_id: str, lead_id: str, design_id: str) -> bool:
@@ -112,9 +128,10 @@ def inbound_match(db, tenant_id: str, lead_id: str, *, ad_id: str | None, contex
             rule = clean_triggers(d["triggers"])["ads"]
             if not rule["ad_ids"] or ad_id in rule["ad_ids"]:
                 candidates.append((0 if rule["ad_ids"] else 1, d, rule["timing"], "ad"))
-    template = _replied_template(db, tenant_id, lead_id, context_wamid) if not candidates else None
+    cast_designs = _designs_with(db, tenant_id, "broadcasts") if not candidates else []
+    template = _replied_template(db, tenant_id, lead_id, context_wamid) if cast_designs else None
     if template:
-        for d in _designs_with(db, tenant_id, "broadcasts"):
+        for d in cast_designs:
             rule = clean_triggers(d["triggers"])["broadcasts"]
             if template in rule["templates"]:
                 candidates.append((2, d, rule["timing"], "broadcast"))

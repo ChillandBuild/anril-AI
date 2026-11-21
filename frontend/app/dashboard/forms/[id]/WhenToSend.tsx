@@ -153,7 +153,7 @@ export function WhenToSend({
       <Rule
         icon={<Radio size={16} />}
         title="Replies to a broadcast"
-        hint="When someone answers a broadcast sent with one of these templates. (To put the form inside the broadcast itself, add an Open form button to the template.)"
+        hint="When someone replies to a broadcast sent with one of these templates: a button tap, a swipe-reply, or any message typed within 3 days while the broadcast is still the last thing you sent them. (To put the form inside the broadcast itself, add an Open form button to the template.)"
         on={triggers.broadcasts.enabled}
         onToggle={(v) => set("broadcasts", { enabled: v })}
         disabled={disabled}

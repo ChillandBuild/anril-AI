@@ -87,6 +87,28 @@ class TestInboundMatch:
                                      "content": "[Template: welcome]", "meta_message_id": "wamid.other"}).execute()
         assert reach.inbound_match(db, TENANT, LEAD, ad_id=None, context_wamid="wamid.other") is None
 
+    def _sent(self, db, content, ago, wamid=None):
+        db.table("messages").insert({"tenant_id": TENANT, "lead_id": LEAD, "direction": "outbound", "content": content,
+                                     "meta_message_id": wamid,
+                                     "created_at": (datetime.now(timezone.utc) - ago).isoformat()}).execute()
+
+    def test_a_typed_reply_soon_after_the_broadcast_gets_its_form(self, db):
+        self._sent(db, "[Template: diwali_offer]", timedelta(days=2))
+        match = reach.inbound_match(db, TENANT, LEAD, ad_id=None, context_wamid=None)
+        assert match["design"]["id"] == D_CAST and match["via"] == "broadcast"
+
+    def test_a_typed_reply_after_three_days_gets_nothing(self, db):
+        self._sent(db, "[Template: diwali_offer]", timedelta(days=3, minutes=1))
+        assert reach.inbound_match(db, TENANT, LEAD, ad_id=None, context_wamid=None) is None
+
+    def test_a_typed_message_after_the_chat_moved_on_gets_nothing(self, db):
+        self._sent(db, "[Template: diwali_offer]", timedelta(hours=5))
+        self._sent(db, "Our price is 500 rupees", timedelta(hours=4))
+        assert reach.inbound_match(db, TENANT, LEAD, ad_id=None, context_wamid=None) is None
+
+    def test_a_typed_message_with_no_broadcast_gets_nothing(self, db):
+        assert reach.inbound_match(db, TENANT, LEAD, ad_id=None, context_wamid=None) is None
+
     def test_not_sent_twice_within_a_week(self, db):
         db.table("whatsapp_form_sends").insert({"tenant_id": TENANT, "design_id": D_ONE, "lead_id": LEAD, "via": "ad",
                                                 "send_id": "a" * 12,
