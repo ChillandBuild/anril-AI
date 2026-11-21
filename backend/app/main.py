@@ -39,6 +39,7 @@ from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
 from app.routes import sms, sms_contacts, sms_webhooks, operator_sms
+from app.routes import home
 from app.routes import auto_messages
 from app.routes import private_send, private_send_keys
 
@@ -444,6 +445,7 @@ app.include_router(said_stop_routes.router, prefix="/api/v1/said-stop", tags=["s
 app.include_router(customer_profile.router, prefix="/api/v1/customer-profile", tags=["customer-profile"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
+app.include_router(home.router, prefix="/api/v1/home", tags=["home"], dependencies=_auth)
 app.include_router(ask.router, prefix="/api/v1", tags=["ask"], dependencies=_auth)
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"], dependencies=_auth)
 app.include_router(segments.router, prefix="/api/v1/segments", tags=["segments"], dependencies=_auth)

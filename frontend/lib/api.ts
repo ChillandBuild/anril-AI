@@ -2283,6 +2283,58 @@ export type OtpStats = {
   daily: { day: string; sent: number; verified: number }[];
 };
 
+// ── Home (Today) ─────────────────────────────────────────────────────────────
+export type HomeBoxKey =
+  | "money_in_today"
+  | "new_enquiries_today"
+  | "hot_waiting"
+  | "to_collect"
+  | "callbacks_today"
+  | "orders_pending"
+  | "ads_today"
+  | "quotes_open"
+  | "won_month"
+  | "low_stock";
+export type HomeBox = {
+  /** Paise when unit is "paise"; a plain number when "count". */
+  value: number;
+  unit: "paise" | "count" | string;
+  sub?: string | null;
+  href: string;
+};
+export type HomeHotBar = {
+  lead_id: string;
+  name: string | null;
+  waiting_since: string;
+  last_message: string | null;
+  phone: string | null;
+};
+export type HomeWaitingItem = {
+  lead_id: string;
+  name: string | null;
+  segment: "A" | "B" | "C" | "D" | null;
+  last_message: string | null;
+  waiting_since: string;
+};
+export type HomeLowStockItem = { item_id: string; name: string; stock: number; low_stock_at: number | null };
+export type HomeToday = {
+  /** Boxes this person may see and this client uses, in priority order. */
+  available: HomeBoxKey[];
+  /** First 6 of available. */
+  defaults: HomeBoxKey[];
+  boxes: Partial<Record<HomeBoxKey, HomeBox>>;
+  hot_bar: HomeHotBar | null;
+  waiting: { total: number; items: HomeWaitingItem[] } | null;
+  low_stock: { total: number; items: HomeLowStockItem[] } | null;
+};
+export type HomeListKey = "waiting" | "low_stock";
+export type HomeLayout = {
+  boxes: HomeBoxKey[] | null;
+  lists: Record<HomeListKey, boolean> | null;
+  is_custom: boolean;
+};
+export type HomeLayoutSave = { boxes: HomeBoxKey[]; lists: Record<HomeListKey, boolean> };
+
 export const api = {
   otp: {
     overview: () => apiFetch<OtpOverview>("/api/v1/otp-console/overview"),
@@ -3386,6 +3438,15 @@ export const api = {
     },
     sync: () => apiFetch(`/api/v1/insights/sync`, { method: "POST" }),
     trends: (range = "30d") => apiFetch(`/api/v1/insights/trends?range=${range}`),
+  },
+  home: {
+    today: () => apiFetch<HomeToday>(`/api/v1/home/today`),
+    layout: () => apiFetch<HomeLayout>(`/api/v1/home/layout`),
+    /** 503 = the layouts table is not ready yet; 422 = unknown key, duplicate or more than 12. */
+    saveLayout: (body: HomeLayoutSave) =>
+      apiFetch<HomeLayout>(`/api/v1/home/layout`, { method: "PUT", body: JSON.stringify(body) }),
+    /** "Back to the suggested set". */
+    resetLayout: () => apiFetch<HomeLayout>(`/api/v1/home/layout`, { method: "DELETE" }),
   },
   followUps: {
     summary: () => apiFetch<FollowUpSummary>(`/api/v1/follow-ups/summary`),
