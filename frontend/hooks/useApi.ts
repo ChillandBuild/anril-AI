@@ -437,6 +437,10 @@ export function useStockAsks(days = 30, enabled = true) {
   return useSWR(enabled ? `catalog/stock-asks:${days}` : null, () => api.catalog.stockAsks(days), defaultConfig);
 }
 
+export function useStockOverview(enabled = true) {
+  return useSWR(enabled ? "stock/overview" : null, () => api.catalog.stockOverview(), defaultConfig);
+}
+
 export function useShopFiles(enabled = true) {
   return useSWR(enabled ? "catalog/files" : null, () => api.catalog.files(), defaultConfig);
 }

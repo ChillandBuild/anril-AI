@@ -1521,11 +1521,21 @@ def catalog_prompt(items: list[dict], directive: str, rules: dict) -> tuple[str,
             line += " — OUT OF STOCK: if asked, say so honestly, but do NOT call recommend_catalog_item for this item"
         elif row.get("stock_quantity") is not None:
             line += f" — only {row['stock_quantity']} available right now; never promise more than that"
+        elsewhere = row.get("elsewhere") or {}
+        if not out_of_stock and elsewhere.get(row["id"]):
+            where = elsewhere[row["id"]]
+            line += (f" — not at the shop right now, it is in our {where['place']}: say it IS available, "
+                     f"{where['ready']}")
         variants = row.get("variants") or []
         if variants and not out_of_stock:
             from app.services.deals import variant_label
 
-            have = [f"{variant_label(v)} ({v['stock_quantity']})" for v in variants if (v.get("stock_quantity") or 0) > 0]
+            def _have(v: dict) -> str:
+                away = elsewhere.get(v["id"])
+                where = f", in our {away['place']}, {away['ready']}" if away else ""
+                return f"{variant_label(v)} ({v['stock_quantity']}{where})"
+
+            have = [_have(v) for v in variants if (v.get("stock_quantity") or 0) > 0]
             gone = [variant_label(v) for v in variants if (v.get("stock_quantity") or 0) <= 0]
             line += f" — sizes/colours in stock: {', '.join(have)}"
             if gone:
@@ -1583,7 +1593,13 @@ def _attach_variants(db, tenant_id: str, items: list[dict]) -> list[dict]:
     by_item: dict[str, list[dict]] = {}
     for v in rows:
         by_item.setdefault(v["catalog_item_id"], []).append(v)
-    return [{**row, "variants": by_item.get(row["id"], [])} for row in items]
+    try:  # Shop & godown: stock that is only at another place ("ready in 1 day")
+        from app.services.stock_places import elsewhere_notes
+        elsewhere = elsewhere_notes(db, tenant_id, ids)
+    except Exception:
+        logger.warning("Couldn't read stock per place for the catalog prompt (tenant %s)", tenant_id)
+        elsewhere = {}
+    return [{**row, "variants": by_item.get(row["id"], []), "elsewhere": elsewhere} for row in items]
 
 
 async def _build_catalog_context(db, tenant_id: str, message: str) -> tuple[str, list[dict], dict[str, dict], int]:

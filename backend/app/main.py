@@ -461,6 +461,8 @@ app.include_router(brain_sandbox.client_router, prefix="/api/v1/brain", tags=["b
 app.include_router(catalog.router, prefix="/api/v1/catalog", tags=["catalog"], dependencies=_auth)
 from app.routes import purchases as purchases_routes  # noqa: E402
 app.include_router(purchases_routes.router, prefix="/api/v1/purchases", tags=["purchases"], dependencies=_auth)
+from app.routes import stock_places as stock_places_routes  # noqa: E402
+app.include_router(stock_places_routes.router, prefix="/api/v1/stock", tags=["stock"], dependencies=_auth)
 app.include_router(catalog.public_router, prefix="/api/v1/public/items", tags=["items-public"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"], dependencies=_auth)
 app.include_router(follow_ups.router, prefix="/api/v1/follow-ups", tags=["follow-ups"], dependencies=_auth)

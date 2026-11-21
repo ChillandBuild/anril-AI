@@ -10,12 +10,14 @@ import { ItemsTab } from "./ItemsTab";
 import { MediaTab } from "./MediaTab";
 import { AiRulesTab } from "./AiRulesTab";
 import { StockAsksTab } from "./StockAsksTab";
+import { ShopGodownTab } from "./ShopGodownTab";
 
-type CatalogTab = "items" | "media" | "ai-rules" | "asked";
+type CatalogTab = "items" | "media" | "places" | "ai-rules" | "asked";
 
 const TABS: { id: CatalogTab; label: string; icon: string }[] = [
   { id: "items", label: "Items", icon: "🏷️" },
   { id: "media", label: "Media", icon: "🖼️" },
+  { id: "places", label: "Shop & godown", icon: "🏬" },
   { id: "ai-rules", label: "AI rules", icon: "🤖" },
   { id: "asked", label: "Asked but out of stock", icon: "📉" },
 ];
@@ -87,6 +89,7 @@ export default function CatalogPage() {
       {tab === "items" && <ConflictsLink />}
       {tab === "items" && <ItemsTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "media" && <MediaTab canManage={canManageCatalog} />}
+      {tab === "places" && <ShopGodownTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "ai-rules" && <AiRulesTab canManage={canManageCatalog} />}
       {tab === "asked" && <StockAsksTab canManage={canManageCatalog} canSubmitTemplate={canManageTemplates} toolbarSlot={toolbarSlot} />}
     </div>

@@ -19,6 +19,9 @@ export const STOCK_REASON_LABEL: Record<StockMovement["reason"], string> = {
   restock: "Restocked",
   adjustment: "Corrected",
   return: "Returned",
+  transfer: "Moved",
+  count: "Counted",
+  write_off: "Written off",
 };
 
 export const GST_RATE_OPTIONS = [0, 5, 12, 18, 28] as const;

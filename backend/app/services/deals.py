@@ -85,6 +85,7 @@ def adjust_stock(
     created_by: str | None = None,
     deal_id: str | None = None,
     place_id: str | None = None,
+    first_place_id: str | None = None,
     db=None,
 ) -> dict:
     """Thin wrapper over apply_stock_movement (204_deals.sql, per place since 304), which changes
@@ -101,6 +102,8 @@ def adjust_stock(
     }
     if place_id:
         params["p_place_id"] = place_id
+    elif first_place_id:  # start here, then the other places (309)
+        params["p_first_place"] = first_place_id
     res = db.rpc("apply_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {
@@ -120,6 +123,7 @@ def adjust_variant_stock(
     created_by: str | None = None,
     deal_id: str | None = None,
     place_id: str | None = None,
+    first_place_id: str | None = None,
     db=None,
 ) -> dict:
     """apply_variant_stock_movement (294, per place since 304): one size/colour's stock and the item
@@ -136,6 +140,8 @@ def adjust_variant_stock(
     }
     if place_id:
         params["p_place_id"] = place_id
+    elif first_place_id:  # start here, then the other places (309)
+        params["p_first_place"] = first_place_id
     res = db.rpc("apply_variant_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {"ok": bool(row.get("ok")), "tracked": True, "quantity_after": row.get("quantity_after")}
@@ -179,6 +185,16 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
     ).data or []
     warnings: list[dict] = []
     reason = "sale" if direction < 0 else "return"
+    first_place = None  # counter bills: the bill place; online orders: where they are packed
+    if items:
+        try:
+            deal = (db.table("deals").select("channel").eq("id", deal_id).eq("tenant_id", tenant_id)
+                    .limit(1).execute()).data or []
+            if not deal or deal[0].get("channel") != "store":
+                from app.services.stock_places import online_first_place
+                first_place = online_first_place(db, tenant_id)
+        except Exception:
+            logger.warning("Couldn't pick the stock place for deal %s; using the bill place", deal_id)
     for item in items:
         if not item.get("catalog_item_id"):
             continue
@@ -186,7 +202,7 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
             move = adjust_variant_stock if item.get("variant_id") else adjust_stock
             result = move(
                 tenant_id, item.get("variant_id") or item["catalog_item_id"], direction * item["qty"], reason,
-                deal_id=deal_id, created_by=created_by, db=db,
+                deal_id=deal_id, created_by=created_by, first_place_id=first_place, db=db,
             )
             if not result["ok"]:
                 warnings.append({

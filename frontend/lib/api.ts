@@ -1948,12 +1948,71 @@ export interface BusinessProfile {
   prices_include_gst: boolean;
 }
 
+/** Shop & godown (backend services/stock_places.py). */
+export type StockPlaceKind = "shop" | "godown" | "other";
+export interface StockPlace {
+  id?: string;
+  name: string;
+  kind: StockPlaceKind;
+  bills_from: boolean;
+  online_from: boolean;
+  ready_note: string | null;
+  archived?: boolean;
+}
+export interface StockPlaceCard extends StockPlace {
+  id: string;
+  pieces: number;
+  value_paise: number;
+}
+export interface StockMoveSuggestion {
+  from_place_id: string;
+  to_place_id: string;
+  quantity: number;
+}
+export interface StockPlaceLine {
+  key: string;
+  item_id: string;
+  variant_id: string | null;
+  name: string;
+  label: string;
+  price_paise: number | null;
+  by_place: Record<string, number>;
+  sold: number;
+  suggestion: StockMoveSuggestion | null;
+}
+export interface StockMove {
+  id: string;
+  from_place_id: string;
+  to_place_id: string;
+  status: "on_the_way" | "received" | "cancelled";
+  note: string | null;
+  sent_by_name: string | null;
+  done_by_name: string | null;
+  created_at: string;
+  done_at: string | null;
+  pieces: number;
+  lines: { name: string; quantity: number }[];
+}
+export interface StockOverview {
+  places: StockPlaceCard[];
+  lines: StockPlaceLine[];
+  moves: StockMove[];
+  on_the_way: { pieces: number; moves: number };
+  suggested: number;
+  sold_days: number;
+}
+export interface StockMoveLineInput {
+  item_id: string;
+  variant_id: string | null;
+  quantity: number;
+}
+
 export interface StockMovement {
   id: string;
   catalog_item_id: string;
   delta: number;
   quantity_after: number;
-  reason: "sale" | "restock" | "adjustment" | "return";
+  reason: "sale" | "restock" | "adjustment" | "return" | "transfer" | "count" | "write_off";
   deal_id: string | null;
   note: string | null;
   created_at: string;
@@ -3246,6 +3305,13 @@ export const api = {
     /** Asked but out of stock (backend services/stock_asks.py). */
     stockAsks: (days = 30) => apiFetch<StockAsks>(`/api/v1/catalog/stock-asks?days=${days}`),
     stockAsksCsvPath: (days = 30) => `/api/v1/catalog/stock-asks.csv?days=${days}`,
+    stockOverview: () => apiFetch<StockOverview>(`/api/v1/stock/overview`),
+    saveStockPlaces: (places: StockPlace[]) =>
+      apiFetch<{ data: StockPlace[] }>(`/api/v1/stock/places`, { method: "PUT", body: JSON.stringify({ places }) }),
+    sendStockMove: (body: { from_place_id: string; to_place_id: string; note?: string; lines: StockMoveLineInput[] }) =>
+      apiFetch<{ id: string }>(`/api/v1/stock/moves`, { method: "POST", body: JSON.stringify(body) }),
+    finishStockMove: (id: string, received: boolean) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/moves/${encodeURIComponent(id)}/${received ? "received" : "cancel"}`, { method: "POST" }),
     backInStock: (body: { catalog_item_id: string; variant_id: string | null }) =>
       apiFetch<BackInStockResult>(`/api/v1/catalog/stock-asks/back-in-stock`, { method: "POST", body: JSON.stringify(body) }, 90_000),
     saveBackInStockMessage: (body: { language: BackInStockLanguage; body: string | null }) =>
