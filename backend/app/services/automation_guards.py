@@ -168,12 +168,15 @@ def ai_replies_allowed(tenant_id: str, channel: str | None, lead_source: str | N
 
 
 def ai_replies_allowed_for_lead(db, tenant_id: str, channel: str, lead_id: str) -> bool:
-    """Same, reading the lead's source. A failed read falls back to the channel check."""
+    """Same, reading the lead's source. A failed read falls back to the channel check.
+    A blocked lead never gets an automatic reply (full block, services/blocked_guard.py)."""
     lead_source = None
     try:
-        rows = (db.table("leads").select("source").eq("id", lead_id).eq("tenant_id", tenant_id)
+        rows = (db.table("leads").select("source,blocked_at").eq("id", lead_id).eq("tenant_id", tenant_id)
                 .limit(1).execute()).data or []
         lead_source = rows[0].get("source") if rows else None
+        if rows and rows[0].get("blocked_at"):
+            return False
     except Exception as e:
         logger.warning(f"Lead source read failed for {lead_id}: {e}")
     return ai_replies_allowed(tenant_id, channel, lead_source)
@@ -192,4 +195,6 @@ def lead_blocks_automated_outbound(lead: dict) -> str | None:
         return "whatsapp undeliverable"
     if lead.get("opted_out"):
         return "opted out"
+    if lead.get("blocked_at"):
+        return "blocked"  # full block: staff blocked this person, nothing automated goes out
     return None

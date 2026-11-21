@@ -10,11 +10,13 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, require_permission, invalidate_tenant_cache
 from app.services.assignment import get_telecalling_config
 from app.services.audit_log import record_audit_event
+from app.services.call_teams import forget_leader, team_by_caller, teams_led_by_user
 from app.services.entitlements import get_purchased_quantity, resolve_entitlements
 from app.services.rbac import (
     DEFAULT_TELECALLER_PERMISSIONS,
     PERMISSION_CATALOG,
     ensure_default_roles,
+    ensure_team_leader_role,
     get_user_role,
     is_rbac_schema_unavailable,
     is_telecaller_role,
@@ -211,7 +213,7 @@ def _ensure_caller_profile(db, tenant_id: str, user_id: str, payload: UserPayloa
         db.table("callers").update({"active": False}).eq("id", existing["id"]).eq("tenant_id", tenant_id).execute()
 
 
-def _serialize_user(db, tenant_id: str, member: dict, roles: dict[str, dict]) -> dict:
+def _serialize_user(db, tenant_id: str, member: dict, roles: dict[str, dict], team_by_caller_id: dict | None = None, led_by_user: dict | None = None) -> dict:
     auth = _auth_user(db, member["user_id"])
     role = roles.get(member.get("role_id") or "")
     caller = _caller_for_user(db, tenant_id, member["user_id"])
@@ -228,6 +230,10 @@ def _serialize_user(db, tenant_id: str, member: dict, roles: dict[str, dict]) ->
         "force_password_reset": bool(member.get("force_password_reset")),
         "created_at": member.get("created_at"),
         "caller_profile": caller,
+        # Read-only: teams are edited in Call IQ > Team. Empty when teams are not switched on yet.
+        "team_id": ((team_by_caller_id or {}).get((caller or {}).get("id")) or {}).get("team_id"),
+        "team_name": ((team_by_caller_id or {}).get((caller or {}).get("id")) or {}).get("team_name"),
+        "leads_teams": [t["name"] for t in (led_by_user or {}).get(str(member["user_id"]), [])],
     }
 
 
@@ -241,6 +247,7 @@ def list_roles(ctx: dict = Depends(require_roles_read)):
     db = get_supabase()
     try:
         ensure_default_roles(db, ctx["tenant_id"])
+        ensure_team_leader_role(db, ctx["tenant_id"])
         roles = db.table("tenant_roles").select("*").eq("tenant_id", ctx["tenant_id"]).order("name").execute()
     except Exception as exc:
         if is_rbac_schema_unavailable(exc):
@@ -309,6 +316,8 @@ def delete_role(role_id: str, ctx: dict = Depends(require_roles_manage)):
         raise HTTPException(status_code=404, detail="Role not found")
     if role.get("slug") == "telecaller":
         raise HTTPException(status_code=400, detail="The default Telecaller role can be edited but not deleted")
+    if role.get("slug") == "team_leader":
+        raise HTTPException(status_code=400, detail="The built-in Team leader role can be edited but not deleted")
     assigned = db.table("tenant_users").select("id").eq("tenant_id", ctx["tenant_id"]).eq("role_id", role_id).limit(1).execute()
     if assigned.data:
         raise HTTPException(status_code=400, detail="Role is assigned to users")
@@ -361,6 +370,7 @@ def list_users(ctx: dict = Depends(require_roles_read)):
     db = get_supabase()
     try:
         ensure_default_roles(db, ctx["tenant_id"])
+        ensure_team_leader_role(db, ctx["tenant_id"])
         roles = _role_map(db, ctx["tenant_id"])
         members = (
             db.table("tenant_users")
@@ -383,8 +393,10 @@ def list_users(ctx: dict = Depends(require_roles_read)):
         )
     seat_limit = _telecaller_seat_limit(db, ctx["tenant_id"])
     seat_used = _active_telecaller_count(db, ctx["tenant_id"])
+    teams = team_by_caller(db, ctx["tenant_id"])
+    led = teams_led_by_user(db, ctx["tenant_id"])
     return {
-        "data": [_serialize_user(db, ctx["tenant_id"], m, roles) for m in (members.data or [])],
+        "data": [_serialize_user(db, ctx["tenant_id"], m, roles, teams, led) for m in (members.data or [])],
         "telecaller_seats": {"limit": seat_limit, "used": seat_used},
     }
 
@@ -503,6 +515,7 @@ def delete_user(user_id: str, ctx: dict = Depends(require_roles_manage)):
         db.table("chat_handovers").update({"assigned_to": None}).eq("assigned_to", caller["id"]).execute()
         db.table("callers").delete().eq("id", caller["id"]).eq("tenant_id", ctx["tenant_id"]).execute()
 
+    forget_leader(db, ctx["tenant_id"], user_id)
     db.table("tenant_users").delete().eq("tenant_id", ctx["tenant_id"]).eq("user_id", user_id).execute()
     invalidate_tenant_cache(user_id)
     try:

@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.db.supabase import get_supabase
+from app.dependencies.tenant import _has_permission
+from app.routes.conversations import _filter_params, _view
 from app.routes.leads import (
     LeadFilters, _fetch_all, _filtered_leads_query, _in_scopes, require_leads_manage, require_leads_view,
 )
@@ -24,6 +26,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DUPLICATE_NAME = "A group with this name already exists"
+
+# "Save as a group" on Chats: most people one group can take from the Chats list.
+FROM_CHATS_MAX = 5000
+_FROM_CHATS_PAGE = 200
+_MEMBER_CHUNK = 500
 
 
 class GroupIn(BaseModel):
@@ -46,6 +53,21 @@ class RuleIn(BaseModel):
 
 class LeadIdsIn(BaseModel):
     lead_ids: list[str] = Field(min_length=1, max_length=1000)
+
+
+class FromChatsIn(GroupIn):
+    """The Chats page's tab, search and filters, in the same words as GET /api/v1/conversations
+    (comma lists for the multi-pick ones)."""
+    view: str = "inbox"
+    q: str | None = Field(default=None, max_length=100)
+    channels: str | None = Field(default=None, max_length=100)
+    segments: str | None = Field(default=None, max_length=20)
+    results: str | None = Field(default=None, max_length=60)
+    came_from: str | None = Field(default=None, max_length=120)
+    handled_by: str | None = Field(default=None, max_length=2000)
+    waiting: str | None = Field(default=None, max_length=60)
+    since: datetime | None = None
+    tag_id: UUID | None = None
 
 
 def _valid_ids(raw: list[str]) -> list[str]:
@@ -209,6 +231,85 @@ def create_group(body: NewGroupIn, ctx: dict = Depends(require_leads_manage)):
             raise HTTPException(status_code=409, detail=DUPLICATE_NAME)
         raise
     return _full_shape(db, ctx, res.data[0])
+
+
+def _collect_chat_lead_ids(db, ctx: dict, body: FromChatsIn) -> list[str]:
+    """Every lead the Chats list would show for this tab + search + filters, page by page through
+    the same SQL function the list uses (so the callers' own-leads rule and every filter apply).
+    Refuses (400) when more than FROM_CHATS_MAX match, rather than quietly saving part of them."""
+    params = _filter_params(
+        ctx, q=body.q, channels=body.channels, segments=body.segments, results=body.results,
+        came_from=body.came_from, handled_by=body.handled_by, waiting=body.waiting,
+        since=body.since, tag_id=body.tag_id,
+    )
+    params["p_view"] = _view(body.view, None)
+    ids: dict[str, None] = {}
+    offset = 0
+    while True:
+        rows = db.rpc("get_inbox_chats", {**params, "p_limit": _FROM_CHATS_PAGE, "p_offset": offset}).execute().data or []
+        if not rows:
+            break
+        total = int(rows[0].get("total", 0))
+        if total > FROM_CHATS_MAX:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{total:,} chats match, and a group can hold up to {FROM_CHATS_MAX:,}. "
+                       "Narrow the filters and try again.",
+            )
+        for r in rows:
+            if r.get("lead_id"):
+                ids[str(r["lead_id"])] = None
+        offset += len(rows)
+        if offset >= total:
+            break
+    return list(ids)
+
+
+@router.post("/from-chats")
+def create_group_from_chats(body: FromChatsIn, ctx: dict = Depends(require_leads_manage)):
+    """Chats > Filter > Save as a group: a fixed (picked) group holding every chat that matches
+    the current tab, search and filters, not just the page on screen."""
+    if not _has_permission(ctx, "conversations.view"):
+        # The list behind this is the Chats list: only people who may see Chats may save from it.
+        raise HTTPException(status_code=403, detail="Permission required: conversations.view")
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    if _name_taken(db, tenant_id, body.name):
+        raise HTTPException(status_code=409, detail=DUPLICATE_NAME)
+    candidates = _collect_chat_lead_ids(db, ctx, body)
+    lead_ids = sorted(_live_lead_ids(db, tenant_id, _valid_ids(candidates)))
+    if not lead_ids:
+        raise HTTPException(status_code=400, detail="No chats match these filters, so there is nothing to save")
+    try:
+        res = db.table("customer_groups").insert({
+            "tenant_id": tenant_id,
+            "name": body.name,
+            "kind": "picked",
+            "rule": None,
+            "created_by": ctx.get("user_id"),
+        }).execute()
+    except Exception as e:
+        if "23505" in str(e):
+            raise HTTPException(status_code=409, detail=DUPLICATE_NAME)
+        raise
+    group = res.data[0]
+    gid = str(group["id"])
+    try:
+        for i in range(0, len(lead_ids), _MEMBER_CHUNK):
+            db.table("customer_group_members").upsert(
+                [{"group_id": gid, "lead_id": lid, "tenant_id": tenant_id, "added_by": ctx.get("user_id")}
+                 for lid in lead_ids[i:i + _MEMBER_CHUNK]],
+                on_conflict="group_id,lead_id",
+                ignore_duplicates=True,
+            ).execute()
+    except Exception:
+        # No half-filled group: take the empty shell away and let the caller try again.
+        try:
+            db.table("customer_groups").delete().eq("id", gid).eq("tenant_id", tenant_id).execute()
+        except Exception as cleanup:
+            logger.warning(f"Groups: could not remove group {gid} after a failed save from Chats: {cleanup}")
+        raise
+    return {**_full_shape(db, ctx, group), "added": len(lead_ids)}
 
 
 @router.patch("/{group_id}")

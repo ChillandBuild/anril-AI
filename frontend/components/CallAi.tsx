@@ -17,25 +17,72 @@ export function anyProcessing(logs: CallLog[]): boolean {
 
 const PILL = "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-label text-[9px] font-bold";
 
-/** First and last line only; the middle is never sent to the browser. */
-export function MaskedTranscript({ preview }: { preview?: TranscriptPreview | null }) {
+/** First and last line only; the middle is never sent to the browser.
+ *  With callLogId, a "Show in English" toggle sits above the lines: one request, then kept on the call. */
+export function MaskedTranscript({ preview, callLogId }: { preview?: TranscriptPreview | null; callLogId?: string }) {
+  const [english, setEnglish] = useState<TranscriptPreview | null>(null);
+  const [showEnglish, setShowEnglish] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { role, permissions } = useAuthRole();
   if (!preview) return null;
+  const canTranslate = !!callLogId && (role === "owner" || permissions.includes("team.manage"));
+
+  async function toggleEnglish() {
+    if (showEnglish) {
+      setShowEnglish(false);
+      return;
+    }
+    if (english) {
+      setShowEnglish(true);
+      return;
+    }
+    if (!callLogId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.calls.translateTranscript(callLogId);
+      setEnglish(res.transcript_preview_en ?? null);
+      setShowEnglish(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't translate this call.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const shown = showEnglish && english ? english : preview;
   return (
     <div className="rounded-xl border border-[#f1f5f9] bg-[#f8fafc] px-3 py-2.5">
-      <p className="font-label text-[9px] uppercase tracking-widest font-extrabold text-[#94a3b8] mb-1.5">Transcript</p>
-      <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{preview.first}</p>
-      {preview.last && (
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="font-label text-[9px] uppercase tracking-widest font-extrabold text-[#94a3b8]">Transcript</p>
+        {canTranslate && (
+          <button
+            type="button"
+            onClick={() => void toggleEnglish()}
+            disabled={loading}
+            aria-pressed={showEnglish}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-label text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-60"
+          >
+            {loading && <Loader2 size={12} className="animate-spin" />}
+            {loading ? "Translating..." : showEnglish ? "Show original" : "Show in English"}
+          </button>
+        )}
+      </div>
+      {error && <p className="mb-1.5 font-body text-xs text-red-600">{error}</p>}
+      <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{shown.first}</p>
+      {shown.last && (
         <>
-          <div className="my-1.5 flex items-center gap-2" aria-label={`${preview.hidden_lines} lines hidden`}>
+          <div className="my-1.5 flex items-center gap-2" aria-label={`${shown.hidden_lines} lines hidden`}>
             <span className="h-2 flex-1 rounded-full bg-[repeating-linear-gradient(90deg,#e2e8f0_0_6px,transparent_6px_10px)]" />
-            {preview.hidden_lines > 0 && (
+            {shown.hidden_lines > 0 && (
               <span className="font-label text-[9px] font-bold text-[#94a3b8] whitespace-nowrap">
-                {preview.hidden_lines} {preview.hidden_lines === 1 ? "line" : "lines"} hidden
+                {shown.hidden_lines} {shown.hidden_lines === 1 ? "line" : "lines"} hidden
               </span>
             )}
             <span className="h-2 flex-1 rounded-full bg-[repeating-linear-gradient(90deg,#e2e8f0_0_6px,transparent_6px_10px)]" />
           </div>
-          <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{preview.last}</p>
+          <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{shown.last}</p>
         </>
       )}
     </div>
@@ -370,7 +417,7 @@ export function CallAiDetail({ log, onChanged }: { log: CallLog; onChanged?: () 
           <p className="font-body text-[11px] leading-relaxed text-[#1e293b]">{brief}</p>
         </div>
       )}
-      <MaskedTranscript preview={log.transcript_preview} />
+      <MaskedTranscript preview={log.transcript_preview} callLogId={log.id} />
     </div>
   );
 }

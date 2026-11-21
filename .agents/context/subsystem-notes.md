@@ -1187,3 +1187,11 @@ Catalogue was removed from the Nira config on 2026-09-06 for this reason.
 - **Phase 4 trap: endpoint errors are HTTP codes Meta acts on.** 421 = couldn't decrypt (Meta refetches the public key), 427 = unknown flow token, 432 = bad signature (only checked when `meta_app_secret` is set). Never return 200 with an error body.
 - **Phase 4 trap: the endpoint can't know the customer's phone** (Meta's data_exchange has only the token), so it trusts the form id in the token and serves only what that form shows any customer (items, prices, stock, free slots). Prices and seats are re-checked on submit; never save anything in `handle_request`.
 - **Phase 4 trap: bookings use seats.** `reserve()` tries seat 1..capacity; the unique index covers only non-cancelled rows, so cancelling frees the seat. Times are India time (`IST`), slot ids `YYYYMMDDHHMM`.
+
+## Jothidar eval (`scripts/eval_companion.py`) — what each mark can and can't see (2026-11-20)
+- Run: `cd backend && python -m scripts.eval_companion scripts/evals/jothidar_karthik_set2.json --configs today --runs 1 --out <file>`. ~₹9 per set per run (answers ≈₹5.5, grader 3.8 Flash ≈₹3–4). Bills the shared Gemini key.
+- 8 marks: names/dates/window/key by the grader; promise, facts, complete, style by code. `facts` = the grader lists chart claims, `eval_chart.py` checks them against the chart text — it cannot see method errors (e.g. reading the coming Rahu dasa from Rahu's *transit* house: the fact is true, the method is wrong).
+- The grader's `key` mark is lenient (one main reason is enough), which is why `complete` exists: per-question `must_name` lists of alternatives. It checks a name appears, not why (Venus named only as "சுக்கிர புத்தி" still passes the wife question).
+- Tamil matching traps: a case ending drops the last pulli (டாக்டர் → டாக்டரை, செவ்வாய் → செவ்வாயோட), so alternatives are matched without their final ்; "7-ம்/7வது/ஏழாம்/12ல" are normalised to "7ம்"; a bare "7ம்" must not match "17ம்". A promise word followed by முடியாது/இயலாது ("உறுதியாகச் சொல்ல முடியாது") or by an advice word is not a promise.
+- A row's `cost` is taken before grading; `grader_cost` is added after (until 20 Nov the table left the grader out).
+- Run-to-run variance is large: one run catches breakage, it does not prove a 1–2 mark gain.

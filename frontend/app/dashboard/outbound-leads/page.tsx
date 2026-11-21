@@ -4,8 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles } from "lucide-react";
-import { API_URL, getAuthHeaders } from "@/lib/api";
+import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles, Users } from "lucide-react";
+import { API_URL, api, getAuthHeaders, type CustomerGroup } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 import { TickMark } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,26 @@ type SendResult = {
   failed: number;
   opted_out_skipped: number;
   number_used: string;
+  // People left out at send time: they already got the monthly limit of offers, or are blocked.
+  skipped_monthly_limit?: number;
+  skipped_blocked?: number;
+};
+
+// Who a campaign would reach, from POST /upload/reach-preview.
+type ReachPreview = {
+  audience: "group" | "list";
+  group: { id: string; name: string; kind: string; members: number } | null;
+  in_audience: number;
+  said_stop: number;
+  no_opt_in: number;
+  no_number: number;
+  blocked: number;
+  negative_reply: number;
+  over_cap: number;
+  will_get: number;
+  monthly_limit: number;
+  rate_inr: number;
+  cost_inr: number;
 };
 
 type ScheduleResult = {
@@ -78,6 +99,16 @@ type BroadcastHistoryItem = {
   replied_positive?: number;
   replied_negative?: number;
   replied_neutral?: number;
+  // "group" when the campaign went to a Customers group; group_name is that group's name.
+  audience_type?: "list" | "group";
+  group_name?: string;
+  // People left out when it went out: already got the monthly limit of offers, or blocked.
+  skipped_monthly_limit?: number;
+  skipped_blocked?: number;
+  // Paid within 7 days of the send. paid_amount_inr is missing without the deals.view permission.
+  paid_count?: number | null;
+  paid_amount_inr?: number | null;
+  paid_window_open?: boolean;
 };
 
 type BroadcastTag = {
@@ -675,6 +706,37 @@ export default function OutboundLeadsPage() {
   const [activeBroadcastId, setActiveBroadcastId] = useState<string | null>(null);
   const [aborting, setAborting] = useState(false);
 
+  // Who the campaign goes to: an uploaded list, or a Customers group (Customers → Groups).
+  const [audience, setAudience] = useState<"list" | "group">("list");
+  const isGroup = audience === "group";
+  const [groups, setGroups] = useState<CustomerGroup[] | null>(null);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groupId, setGroupId] = useState("");
+  const selectedGroup = groups?.find((g) => g.id === groupId) ?? null;
+  // The confirm step's numbers: who is left out and why, who will get it, and Meta's charge.
+  const [reachPreview, setReachPreview] = useState<ReachPreview | null>(null);
+  const [reachLoading, setReachLoading] = useState(false);
+  const [reachError, setReachError] = useState<string | null>(null);
+  const reachRequestRef = useRef(0);
+  // How many people the confirm step is about (a group: those who will get it; a list: its rows),
+  // and how many different numbers that is.
+  const audienceTotal = isGroup ? (reachPreview?.will_get ?? selectedGroup?.member_count ?? 0) : (parsedData?.total_rows ?? 0);
+  const uniqueAudience = isGroup ? audienceTotal : (parsedData?.unique_phone_count ?? parsedData?.total_rows ?? 0);
+
+  // Load the groups once, the first time "Customers group" is picked.
+  useEffect(() => {
+    if (!isGroup || groups !== null) return;
+    let cancelled = false;
+    api.customerGroups.list()
+      .then((rows) => { if (!cancelled) { setGroups(rows); setGroupsError(null); } })
+      .catch((err) => {
+        if (cancelled) return;
+        setGroups([]);
+        setGroupsError(err instanceof Error ? err.message : "Could not load your groups.");
+      });
+    return () => { cancelled = true; };
+  }, [isGroup, groups]);
+
   // Drive the sending ticker off the real backend counts while an immediate
   // broadcast runs as a background job — never claims progress the server hasn't
   // confirmed. Stops polling and reveals the final tally once the job finishes.
@@ -687,7 +749,7 @@ export default function OutboundLeadsPage() {
         const auth = await getAuthHeaders();
         const res = await fetch(`${API_URL}/api/v1/upload/broadcast/${activeBroadcastId}/progress`, { headers: auth });
         if (!res.ok || cancelled) return;
-        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number } = await res.json();
+        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number; skipped_monthly_limit?: number; skipped_blocked?: number } = await res.json();
         const sentSoFar = data.sent ?? 0;
         const failedSoFar = data.failed ?? 0;
         setSendingIndex((i) => Math.max(i, Math.min(sentSoFar + failedSoFar, sendingNames.length - 1)));
@@ -698,6 +760,8 @@ export default function OutboundLeadsPage() {
             failed: failedSoFar,
             opted_out_skipped: data.opted_out_skipped ?? 0,
             number_used: data.number_used ?? "",
+            skipped_monthly_limit: data.skipped_monthly_limit ?? 0,
+            skipped_blocked: data.skipped_blocked ?? 0,
           });
           setSendLoading(false);
           setAborting(false);
@@ -790,6 +854,14 @@ export default function OutboundLeadsPage() {
   const [riskLoading, setRiskLoading] = useState(false);
   const [excludeNegativeReplies, setExcludeNegativeReplies] = useState(false);
   const [includeOptedOut, setIncludeOptedOut] = useState(false);
+
+  // The confirm step asks the server who this would reach. It asks again when a switch on that
+  // step changes who is included.
+  useEffect(() => {
+    if (currentStep !== 5) return;
+    fetchReachPreview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, excludeNegativeReplies, includeOptedOut, selectedTag, isGroup, groupId]);
 
   // Tags management state
   const [tagsList, setTagsList] = useState<BroadcastTag[]>([]);
@@ -1163,6 +1235,10 @@ export default function OutboundLeadsPage() {
     setRiskLoading(false);
     setExcludeNegativeReplies(false);
     setIncludeOptedOut(false);
+    setAudience("list");
+    setGroupId("");
+    setReachPreview(null);
+    setReachError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -1321,29 +1397,34 @@ export default function OutboundLeadsPage() {
     }
   }
 
+  // The uploaded file's rows as the server wants them (phone, name, consent, every column).
+  async function buildCsvLeads() {
+    if (!parsedData || !csvFile) return [];
+    const text = await csvFile.text();
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+    const mapping = parsedData.suggested_mapping;
+    const phoneIdx = mapping.phone ? headers.indexOf(mapping.phone) : -1;
+    const nameIdx = mapping.name ? headers.indexOf(mapping.name) : -1;
+    return lines.slice(1).map((line) => {
+      const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+      const extra_cols: Record<string, string> = {};
+      headers.forEach((h, i) => { extra_cols[h] = cols[i] ?? ""; });
+      return {
+        phone: phoneIdx >= 0 ? cols[phoneIdx] ?? "" : "",
+        name: nameIdx >= 0 ? cols[nameIdx] ?? undefined : undefined,
+        opt_in_source: optInSource,
+        extra_cols,
+      };
+    }).filter((l) => l.phone);
+  }
+
   async function fetchRiskAudit() {
     if (!parsedData || !csvFile) return;
     setRiskLoading(true);
     setRiskSummary(null);
     try {
-      const text = await csvFile.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-      const mapping = parsedData.suggested_mapping;
-      const phoneIdx = mapping.phone ? headers.indexOf(mapping.phone) : -1;
-      const nameIdx = mapping.name ? headers.indexOf(mapping.name) : -1;
-      const leads = lines.slice(1).map((line) => {
-        const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-        const extra_cols: Record<string, string> = {};
-        headers.forEach((h, i) => { extra_cols[h] = cols[i] ?? ""; });
-        return {
-          phone: phoneIdx >= 0 ? cols[phoneIdx] ?? "" : "",
-          name: nameIdx >= 0 ? cols[nameIdx] ?? undefined : undefined,
-          opt_in_source: optInSource,
-          extra_cols,
-        };
-      }).filter((l) => l.phone);
-
+      const leads = await buildCsvLeads();
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/upload/risk-audit`, {
         method: "POST",
@@ -1355,6 +1436,39 @@ export default function OutboundLeadsPage() {
       // risk audit is best-effort; don't block the flow
     } finally {
       setRiskLoading(false);
+    }
+  }
+
+  // Who this campaign would reach and what Meta charges for it. Only the latest answer is kept.
+  async function fetchReachPreview() {
+    const mine = ++reachRequestRef.current;
+    if (isGroup ? !groupId : !parsedData || !csvFile) return;
+    setReachLoading(true);
+    setReachError(null);
+    try {
+      const leads = isGroup ? [] : await buildCsvLeads();
+      const auth = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/upload/reach-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({
+          group_id: isGroup ? groupId : undefined,
+          leads,
+          tag_id: selectedTag || undefined,
+          exclude_negative_replies: isGroup ? false : excludeNegativeReplies,
+          include_opted_out: isGroup ? false : includeOptedOut,
+        }),
+      });
+      if (!res.ok) throw new Error(res.status === 404 ? "This group no longer exists." : "Could not work out who this will reach.");
+      const data: ReachPreview = await res.json();
+      if (mine === reachRequestRef.current) setReachPreview(data);
+    } catch (err) {
+      if (mine === reachRequestRef.current) {
+        setReachPreview(null);
+        setReachError(err instanceof Error ? err.message : "Could not work out who this will reach.");
+      }
+    } finally {
+      if (mine === reachRequestRef.current) setReachLoading(false);
     }
   }
 
@@ -1378,7 +1492,7 @@ export default function OutboundLeadsPage() {
   }
 
   async function handleSend() {
-    if (!parsedData || !csvFile) return;
+    if (isGroup ? !groupId : !parsedData || !csvFile) return;
     if (!canManageOutbound) {
       setSendError("Read-only role: campaign dispatch is disabled.");
       return;
@@ -1386,41 +1500,34 @@ export default function OutboundLeadsPage() {
     setSendError(null);
 
     try {
-      const text = await csvFile.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-      const mapping = parsedData.suggested_mapping;
-
-      const phoneIdx = mapping.phone ? headers.indexOf(mapping.phone) : -1;
-      const nameIdx = mapping.name ? headers.indexOf(mapping.name) : -1;
-
-      const leads = lines.slice(1).map((line) => {
-        const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-        const extra_cols: Record<string, string> = {};
-        headers.forEach((h, i) => { extra_cols[h] = cols[i] ?? ""; });
-        return {
-          phone: phoneIdx >= 0 ? cols[phoneIdx] ?? "" : "",
-          name: nameIdx >= 0 ? cols[nameIdx] ?? undefined : undefined,
-          opt_in_source: optInSource,
-          extra_cols,
-        };
-      }).filter((l) => l.phone);
-
-      if (phoneIdx < 0) {
-        setSendError("We couldn't find a phone number column in this CSV. Rename that column to \"Phone\" or \"Mobile\" and upload it again.");
-        return;
+      let leads: Awaited<ReturnType<typeof buildCsvLeads>> = [];
+      if (isGroup) {
+        // The server reads the group's people itself; the browser sends only the group's id.
+        const count = reachPreview?.will_get ?? selectedGroup?.member_count ?? 0;
+        if (count === 0) {
+          setSendError("Nobody in this group can get this message right now.");
+          return;
+        }
+        setSendingNames(Array.from({ length: count }, () => "Customer"));
+      } else {
+        const mapping = parsedData!.suggested_mapping;
+        leads = await buildCsvLeads();
+        if (!mapping.phone) {
+          setSendError("We couldn't find a phone number column in this CSV. Rename that column to \"Phone\" or \"Mobile\" and upload it again.");
+          return;
+        }
+        if (leads.length === 0) {
+          setSendError(`The "${mapping.phone}" column has no phone numbers in it.`);
+          return;
+        }
+        setSendingNames(leads.map((l) => l.name || l.phone));
       }
-      if (leads.length === 0) {
-        setSendError(`The "${mapping.phone}" column has no phone numbers in it.`);
-        return;
-      }
-
-      setSendingNames(leads.map((l) => l.name || l.phone));
       setSendingIndex(0);
       setSendLoading(true);
 
       const payload = {
         leads,
+        group_id: isGroup ? groupId : undefined,
         template_name: templateName,
         schedule_type: scheduleType,
         // scheduleAt is a naive local wall-clock string from <input type="datetime-local">
@@ -1429,13 +1536,13 @@ export default function OutboundLeadsPage() {
         schedule_at: scheduleType === "scheduled" && scheduleAt ? new Date(scheduleAt).toISOString() : undefined,
         drip_days: scheduleType === "drip" && dripDays ? parseInt(dripDays, 10) : undefined,
         drip_send_time: scheduleType === "drip" && dripSendTime ? dripSendTime : undefined,
-        csv_file_url: csvFileUrl,
-        csv_file_path: csvFilePath,
-        csv_file_name: csvFileName,
-        variable_mapping: variableMapping,
+        csv_file_url: isGroup ? null : csvFileUrl,
+        csv_file_path: isGroup ? null : csvFilePath,
+        csv_file_name: isGroup ? null : csvFileName,
+        variable_mapping: isGroup ? [] : variableMapping,
         tag_id: selectedTag || undefined,
-        exclude_negative_replies: excludeNegativeReplies,
-        include_opted_out: includeOptedOut,
+        exclude_negative_replies: isGroup ? false : excludeNegativeReplies,
+        include_opted_out: isGroup ? false : includeOptedOut,
       };
 
       const auth = await getAuthHeaders();
@@ -1511,10 +1618,74 @@ export default function OutboundLeadsPage() {
               {/* Left Column: Upload Controls (7 cols) */}
                 <div className="lg:col-span-7 space-y-6">
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Upload your CSV, Excel, or scanned notebook</h2>
-                    <p className="font-body text-sm text-on-surface-muted">We&apos;ll detect column mappings automatically.</p>
+                    <h2 className="font-display text-2xl font-bold text-on-surface mb-1">
+                      {isGroup ? "Pick a Customers group" : "Upload your CSV, Excel, or scanned notebook"}
+                    </h2>
+                    <p className="font-body text-sm text-on-surface-muted">
+                      {isGroup ? "Send to a group you made under Customers. It is read fresh when you send." : "We\u2019ll detect column mappings automatically."}
+                    </p>
                   </div>
 
+                  <div className="space-y-2">
+                    <p id="audience-label" className="font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">Who gets it</p>
+                    <SegmentedControl
+                      aria-labelledby="audience-label"
+                      value={audience}
+                      onChange={(v) => { setAudience(v); setReachPreview(null); setReachError(null); }}
+                      options={[
+                        { value: "list", label: "Uploaded list" },
+                        { value: "group", label: "Customers group" },
+                      ]}
+                    />
+                  </div>
+
+                  {isGroup && (
+                    <div className="space-y-3">
+                      <label htmlFor="group-select" className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
+                        Group
+                      </label>
+                      <Select
+                        id="group-select"
+                        value={groupId}
+                        onChange={(v) => { setGroupId(v); setReachPreview(null); }}
+                        placeholder={groups === null ? "Loading groups…" : "Pick a group…"}
+                        disabled={groups === null || groups.length === 0}
+                        options={(groups ?? []).map((g) => ({
+                          value: g.id,
+                          label: `${g.name} (${g.member_count.toLocaleString()} ${g.member_count === 1 ? "person" : "people"}${g.kind === "rule" ? ", fills itself" : ""})`,
+                          text: g.name,
+                        }))}
+                      />
+                      {groupsError && (
+                        <p className="font-body text-xs text-red-700">{groupsError}</p>
+                      )}
+                      {groups !== null && groups.length === 0 && !groupsError && (
+                        <p className="font-body text-xs text-on-surface-muted">
+                          You have no groups yet. <Link href="/dashboard/leads" className="underline text-primary">Make one under Customers →</Link>
+                        </p>
+                      )}
+                      {selectedGroup && (
+                        <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-1.5">
+                          <p className="font-body text-sm font-semibold text-on-surface">
+                            {selectedGroup.name}: {selectedGroup.member_count.toLocaleString()} {selectedGroup.member_count === 1 ? "person" : "people"}
+                          </p>
+                          {selectedGroup.rule_text && (
+                            <p className="font-body text-xs text-on-surface-muted">{selectedGroup.rule_text}</p>
+                          )}
+                          {selectedGroup.stop_count > 0 && (
+                            <p className="font-body text-xs text-on-surface-muted">
+                              {selectedGroup.stop_count.toLocaleString()} said stop and will be left out.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <p className="font-body text-xs text-on-surface-muted">
+                        People who said stop, are blocked, or never agreed to messages are left out. You will see the exact numbers before you send.
+                      </p>
+                    </div>
+                  )}
+
+                  {!isGroup && (<>
                   <label
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
@@ -1585,10 +1756,11 @@ export default function OutboundLeadsPage() {
                       </div>
                     </div>
                   )}
+                  </>)}
                   <div className="flex justify-end pt-2">
                     <button
-                      onClick={() => setCurrentStep(2)}
-                      disabled={!parsedData}
+                      onClick={() => setCurrentStep(isGroup ? 4 : 2)}
+                      disabled={isGroup ? !groupId : !parsedData}
                       className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                     >
                       Next <ChevronRight size={16} />
@@ -1598,6 +1770,21 @@ export default function OutboundLeadsPage() {
 
                 {/* Right Column: Templates Guide & Policy (5 cols) */}
                 <div className="lg:col-span-5 lg:border-l lg:border-surface-mid lg:pl-8 space-y-6">
+                  {isGroup ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                          <Users size={16} />
+                        </div>
+                        <h3 className="font-display font-bold text-on-surface text-base">How a group send works</h3>
+                      </div>
+                      <ul className="space-y-2 font-body text-xs text-on-surface-muted">
+                        <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>The people are read from the group when you send, so a group that fills itself is always up to date.</span></li>
+                        <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>Anyone who said stop, is blocked, or never agreed to messages is left out.</span></li>
+                        <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>Each person gets at most 2 offers a month.</span></li>
+                      </ul>
+                    </div>
+                  ) : (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
@@ -1654,6 +1841,7 @@ export default function OutboundLeadsPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   <div className="border-t border-surface-mid/40 pt-6">
                     <div className="flex items-center gap-2 mb-3">
@@ -1947,6 +2135,12 @@ export default function OutboundLeadsPage() {
                   </div>
                 </div>
 
+                {isGroup && templateName && varCount > 0 && (
+                  <p className="rounded-xl border border-surface-mid bg-surface-low p-4 font-body text-xs text-on-surface-muted">
+                    This template has {varCount} variable{varCount === 1 ? "" : "s"}. A group has no spreadsheet columns, so {"{{1}}"} is filled with the person&apos;s name and the others say &quot;Customer&quot;.
+                  </p>
+                )}
+
                 {scheduleType === "scheduled" && (
                   <div>
                     <label className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider mb-2">
@@ -1992,13 +2186,13 @@ export default function OutboundLeadsPage() {
 
                 <div className="flex items-center justify-between pt-4 border-t border-surface-mid/30">
                   <button
-                    onClick={() => setCurrentStep(3)}
+                    onClick={() => setCurrentStep(isGroup ? 1 : 3)}
                     className="px-4 py-2.5 rounded-xl font-label text-sm text-on-surface-muted hover:bg-surface-low transition-colors"
                   >
                     Back
                   </button>
                   <button
-                    onClick={async () => { setCurrentStep(5); await fetchRiskAudit(); }}
+                    onClick={async () => { setReachPreview(null); setCurrentStep(5); if (!isGroup) await fetchRiskAudit(); }}
                     disabled={!templateName.trim() || !sender}
                     title={!sender ? "No number can send broadcasts right now" : undefined}
                     className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
@@ -2197,12 +2391,12 @@ export default function OutboundLeadsPage() {
           )}
 
           {/* ── Step 5: Confirm & Send ────────────────────────────────────── */}
-          {currentStep === 5 && parsedData && sendLoading && scheduleType === "now" && (
+          {currentStep === 5 && (parsedData || isGroup) && sendLoading && scheduleType === "now" && (
             <div className="space-y-4">
               <SendingProgress
                 names={sendingNames}
                 index={sendingIndex}
-                total={sendingNames.length || parsedData.total_rows}
+                total={sendingNames.length || audienceTotal}
               />
               {activeBroadcastId && (
                 <button
@@ -2216,7 +2410,7 @@ export default function OutboundLeadsPage() {
               )}
             </div>
           )}
-          {currentStep === 5 && parsedData && !(sendLoading && scheduleType === "now") && (
+          {currentStep === 5 && (parsedData || isGroup) && !(sendLoading && scheduleType === "now") && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start flex-1">
               {/* Left Column: Confirm details (7 cols) */}
               <div className="lg:col-span-7 space-y-6">
@@ -2227,8 +2421,12 @@ export default function OutboundLeadsPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: "Leads Count", value: parsedData.total_rows.toLocaleString() },
-                    { label: "Consent Source", value: optInSource.replace(/_/g, " ") },
+                    isGroup
+                      ? { label: "Will Get It", value: reachLoading && !reachPreview ? "Checking…" : audienceTotal.toLocaleString() }
+                      : { label: "Leads Count", value: audienceTotal.toLocaleString() },
+                    isGroup
+                      ? { label: "Customers Group", value: selectedGroup?.name ?? "—" }
+                      : { label: "Consent Source", value: optInSource.replace(/_/g, " ") },
                     { label: "Active Template", value: templateName },
                     { label: "Dispatch Plan", value: scheduleType === "now" ? "Send Immediately" : scheduleType === "scheduled" ? `At ${scheduleAt ? new Date(scheduleAt).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—"}` : `Drip over ${dripDays} days${dripSendTime ? ` · ${dripSendTime} IST daily` : ""}` },
                   ].map(({ label, value }) => (
@@ -2240,7 +2438,7 @@ export default function OutboundLeadsPage() {
                 </div>
 
                 {/* bulk-send sends once per number, so repeated rows don't get a second message */}
-                {parsedData.unique_phone_count !== undefined && parsedData.unique_phone_count < parsedData.total_rows && (
+                {parsedData && parsedData.unique_phone_count !== undefined && parsedData.unique_phone_count < parsedData.total_rows && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 flex items-start gap-2.5 font-body text-xs text-amber-900">
                     <Info size={14} className="text-amber-700 shrink-0 mt-0.5" />
                     <span>
@@ -2251,9 +2449,9 @@ export default function OutboundLeadsPage() {
                 )}
 
                 {/* The rest carries over to when Meta's moving 24h limit frees up, in the daytime (broadcast_executor.carry_over_time) */}
-                {scheduleType === "now" && sender && senderInfo && (parsedData.unique_phone_count ?? parsedData.total_rows) > senderInfo.leftToday && (() => {
+                {scheduleType === "now" && sender && senderInfo && uniqueAudience > senderInfo.leftToday && (() => {
                   const today = Math.max(senderInfo.leftToday, 0);
-                  const rest = (parsedData.unique_phone_count ?? parsedData.total_rows) - today;
+                  const rest = uniqueAudience - today;
                   const cap = sender.health?.broadcast_cap ?? 0;
                   return (
                     <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 flex items-start gap-2.5 font-body text-xs text-sky-900">
@@ -2269,6 +2467,45 @@ export default function OutboundLeadsPage() {
                   );
                 })()}
 
+                {/* Who this reaches, who is left out and why, and what Meta charges */}
+                {reachLoading && !reachPreview && (
+                  <div className="flex items-center gap-2 p-3.5 bg-surface-low rounded-xl border border-surface-mid font-body text-sm text-on-surface-muted">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    Working out who this will reach…
+                  </div>
+                )}
+                {reachError && !reachLoading && (
+                  <div className="flex items-start gap-2 p-3.5 bg-amber-50 text-amber-900 rounded-xl font-body text-sm border border-amber-200">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    {reachError}
+                  </div>
+                )}
+                {reachPreview && (() => {
+                  const r = reachPreview;
+                  const parts: string[] = [`${r.in_audience.toLocaleString()} in ${r.audience === "group" ? "group" : "list"}`];
+                  if (r.said_stop > 0) parts.push(`${r.said_stop.toLocaleString()} said stop`);
+                  if (r.no_opt_in > 0) parts.push(`${r.no_opt_in.toLocaleString()} never agreed to messages`);
+                  if (r.no_number > 0) parts.push(`${r.no_number.toLocaleString()} with no usable number`);
+                  if (r.blocked > 0) parts.push(`${r.blocked.toLocaleString()} blocked`);
+                  if (r.negative_reply > 0) parts.push(`${r.negative_reply.toLocaleString()} said no to an earlier offer`);
+                  if (r.over_cap > 0) parts.push(`${r.over_cap.toLocaleString()} already got ${r.monthly_limit} offers this month`);
+                  const cost = r.cost_inr;
+                  return (
+                    <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3">
+                      <p className="font-body text-sm text-on-surface">
+                        {parts.join(" · ")} · <strong>{r.will_get.toLocaleString()} will get it</strong>
+                      </p>
+                      <p className="font-body text-sm text-on-surface">
+                        Meta charges about <strong>₹{cost.toLocaleString("en-IN", { maximumFractionDigits: cost < 100 ? 2 : 0 })}</strong> for this
+                        {" "}({r.will_get.toLocaleString()} × ₹{r.rate_inr.toFixed(2)}, before GST).
+                      </p>
+                      <p className="font-body text-xs text-on-surface-muted">
+                        Each person gets at most {r.monthly_limit} offers a month. This is checked again when the message goes out, so anyone who reaches the limit by then is skipped.
+                      </p>
+                    </div>
+                  );
+                })()}
+
                 {/* Risk Audit Card */}
                 {riskLoading && (
                   <div className="flex items-center gap-2 p-3.5 bg-surface-low rounded-xl border border-surface-mid font-body text-sm text-on-surface-muted">
@@ -2276,7 +2513,7 @@ export default function OutboundLeadsPage() {
                     Checking audience health…
                   </div>
                 )}
-                {!riskLoading && riskSummary && (riskSummary.negative_reply_count > 0 || riskSummary.high_no_reply_count > 0 || riskSummary.opted_out_count > 0 || riskSummary.tag_opted_out_count > 0) && (
+                {!isGroup && !riskLoading && riskSummary && (riskSummary.negative_reply_count > 0 || riskSummary.high_no_reply_count > 0 || riskSummary.opted_out_count > 0 || riskSummary.tag_opted_out_count > 0) && (
                   <div className="rounded-2xl border border-amber-300/80 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2.5">
@@ -2381,7 +2618,7 @@ export default function OutboundLeadsPage() {
                   </button>
                   <button
                     onClick={handleSend}
-                    disabled={sendLoading || !canManageOutbound}
+                    disabled={sendLoading || !canManageOutbound || (isGroup && (reachLoading || !reachPreview || reachPreview.will_get === 0))}
                     title={canManageOutbound ? "Dispatch campaign" : "Read-only role: dispatch is disabled"}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:blur-[0.5px] disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
@@ -2589,6 +2826,17 @@ export default function OutboundLeadsPage() {
                   <p className="font-label text-[10px] text-on-surface-muted mt-1 uppercase tracking-wide font-bold">Sender Line</p>
                 </div>
               </div>
+
+              {((sendResult.skipped_monthly_limit ?? 0) > 0 || (sendResult.skipped_blocked ?? 0) > 0) && (
+                <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-1 font-body text-sm text-on-surface">
+                  {(sendResult.skipped_monthly_limit ?? 0) > 0 && (
+                    <p><strong>{sendResult.skipped_monthly_limit!.toLocaleString()}</strong> skipped: monthly limit (they already got 2 offers this month)</p>
+                  )}
+                  {(sendResult.skipped_blocked ?? 0) > 0 && (
+                    <p><strong>{sendResult.skipped_blocked!.toLocaleString()}</strong> skipped: blocked</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-3 pt-4 border-t border-surface-mid/30">
                 <Link
@@ -3168,6 +3416,14 @@ export default function OutboundLeadsPage() {
                     <span className="font-body text-xs text-gray-600 font-medium whitespace-nowrap">{item.number_used || "—"}</span>
                   </div>
                   
+                  {/* Customers group this went to */}
+                  {item.audience_type === "group" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 text-gray-700 rounded-md font-label text-xs font-semibold border border-gray-200 shrink-0 whitespace-nowrap" title={item.group_name ? `Group: ${item.group_name}` : "Customers group"}>
+                      <Users size={12} />
+                      {item.group_name ? (item.group_name.length > 24 ? item.group_name.slice(0, 23) + "…" : item.group_name) : "Customers group"}
+                    </span>
+                  )}
+
                   {/* CSV Download */}
                   {(item.csv_file_path || item.csv_file_url) && (
                     <button
@@ -3221,6 +3477,29 @@ export default function OutboundLeadsPage() {
                   )}
                 </div>
                 
+                {/* People left out when it went out, and what the campaign earned */}
+                {((item.skipped_monthly_limit ?? 0) > 0 || (item.skipped_blocked ?? 0) > 0 || (item.paid_count !== undefined && item.paid_count !== null)) && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {item.paid_count !== undefined && item.paid_count !== null && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-800" title="People who bought within 7 days of getting this message. Each person counts once, for their first order.">
+                        Paid within 7 days: {item.paid_count.toLocaleString()}
+                        {item.paid_amount_inr !== undefined && item.paid_amount_inr !== null && ` · ₹${item.paid_amount_inr.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                        {item.paid_window_open && <span className="font-normal text-green-700">(still counting)</span>}
+                      </span>
+                    )}
+                    {(item.skipped_monthly_limit ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
+                        {item.skipped_monthly_limit!.toLocaleString()} skipped: monthly limit
+                      </span>
+                    )}
+                    {(item.skipped_blocked ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
+                        {item.skipped_blocked!.toLocaleString()} skipped: blocked
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Reply Sentiment + Interest row */}
                 {((item.replied_positive ?? 0) + (item.replied_negative ?? 0) + (item.replied_neutral ?? 0) > 0 || (item.hot ?? 0) + (item.warm ?? 0) > 0) && (
                   <div className="flex flex-wrap gap-2 mb-4">

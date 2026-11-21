@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # PE-TM binding (DLT Setup): the telemarketer clients bind their entity to. Same for every client.
     sms_tm_name: str = "SID GROUPS PRIVATE LIMITED"
     sms_tm_id: str = "1702178720558766591"
+    # What Meta charges per marketing template message sent in India, in rupees, before GST.
+    # One number, used by the Reach confirm step's cost line (services/reach_audience.py). Env: META_MARKETING_RATE_INR.
+    meta_marketing_rate_inr: float = 0.8631
     meta_page_token: str | None = None
     meta_verify_token: str | None = None
     meta_ig_user_id: str | None = None

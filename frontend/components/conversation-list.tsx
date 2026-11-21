@@ -8,6 +8,7 @@ import { CheckTick } from "@/components/ui/controls";
 import { AiraLoader } from "@/components/AiraLoader";
 import { formatRupees } from "./deals/money";
 import { ChatFilterPopover } from "./chats/ChatFilterPopover";
+import { SaveGroupDialog } from "./chats/SaveGroupDialog";
 import {
   activeFilterCount,
   filterPills,
@@ -50,8 +51,12 @@ interface Props {
   onLoadMore?: () => void;
   /** Open handovers, for the Needs you tab's badge. */
   escalationCount?: number;
-  /** A full-width page shown under the tabs (Needs you, Archived & blocked). */
+  /** A full-width page shown under the tabs (Needs you, Archived, Blocked). */
   fullPageContent?: React.ReactNode;
+  /** Saves everyone the current tab, search and filters match as a group. Absent = no button (no leads.manage). */
+  onSaveAsGroup?: (name: string) => Promise<void>;
+  /** How many chats the current tab, search and filters match (the list's total). */
+  matchTotal?: number;
 }
 
 const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
@@ -88,12 +93,13 @@ export function ConversationList(props: Props) {
     leads, selectedId, onSelect, onDeleted, view, onViewChange, channel, onChannelChange, counts, filters,
     onFiltersChange, countFor, team, tags, searchQuery, onSearchChange, onPin, onRefresh, onArchive,
     canArchive = false, onBlock, hasMore = false, loadingMore = false, loading = false, onLoadMore,
-    escalationCount = 0, fullPageContent,
+    escalationCount = 0, fullPageContent, onSaveAsGroup, matchTotal,
   } = props;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [saveGroupOpen, setSaveGroupOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [cardMenuId, setCardMenuId] = useState<string | null>(null);
 
@@ -153,14 +159,15 @@ export function ConversationList(props: Props) {
     { id: "inbox", label: "Inbox" },
     { id: "ai_handling", label: "AI handling", count: counts.ai_handling },
     { id: "needs_you", label: "Needs you", count: escalationCount, urgent: true },
-    { id: "archived", label: "Archived & blocked" },
+    { id: "archived", label: "Archived" },
+    { id: "blocked", label: "Blocked" },
   ];
   const showSections = view === "inbox";
   const anyNarrowing = Boolean(searchQuery) || filterCount > 0 || channel !== "all";
 
   // The full-width Needs you page keeps its original header and left-aligned tabs; the narrow
   // chat list uses the 68px band (level with the chat header) and tabs locked to its width.
-  const fullScreen = (view === "needs_you" || view === "archived") && Boolean(fullPageContent);
+  const fullScreen = (view === "needs_you" || view === "archived" || view === "blocked") && Boolean(fullPageContent);
 
   const headerAndTabs = (
     <>
@@ -195,7 +202,7 @@ export function ConversationList(props: Props) {
       <div
         className={cn(
           "flex shrink-0 items-center border-b border-[#e2e8f0] px-4",
-          fullScreen ? "gap-4" : "justify-between gap-2"
+          fullScreen ? "gap-4" : "justify-between gap-2 overflow-x-auto"
         )}
         role="tablist"
       >
@@ -230,7 +237,7 @@ export function ConversationList(props: Props) {
     </>
   );
 
-  // Needs you / Archived & blocked: a full-width page under the same header and tabs.
+  // Needs you / Archived / Blocked: a full-width page under the same header and tabs.
   if (fullScreen) {
     return (
       <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
@@ -321,7 +328,16 @@ export function ConversationList(props: Props) {
           countFor={countFor}
           team={team}
           tags={tags}
+          onSaveAsGroup={onSaveAsGroup ? () => { setFilterOpen(false); setSaveGroupOpen(true); } : undefined}
         />
+        {onSaveAsGroup && (
+          <SaveGroupDialog
+            open={saveGroupOpen}
+            matchCount={loading ? null : matchTotal ?? null}
+            onClose={() => setSaveGroupOpen(false)}
+            onSave={async (name) => { await onSaveAsGroup(name); setSaveGroupOpen(false); }}
+          />
+        )}
       </div>
 
       {/* ── Active filters: one click on × removes one, no need to open the panel ── */}

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, require_permission, invalidate_tenant_cache
 from app.services.assignment import get_telecalling_config, save_telecalling_config
+from app.services.call_teams import assert_caller_in_scope, attach_team, caller_scope, team_by_caller
 from app.services.attendance import build_attendance_map, compute_team_summary, date_range
 from app.services.rbac import ensure_default_roles
 
@@ -149,18 +150,29 @@ def list_team(ctx: dict = Depends(require_team_view)):
             .execute()
         )
         roles = {r["id"]: r for r in (role_rows.data or [])}
+    scope = caller_scope(db, ctx)
+    teams = team_by_caller(db, ctx["tenant_id"])
     for m in (members.data or []):
+        if scope is not None and str((callers.get(m["user_id"]) or {}).get("id")) not in scope:
+            # A Team leader sees only their own team: no owner, admins or other teams' people.
+            continue
+        profile = callers.get(m["user_id"])
+        if profile:
+            attach_team([profile], teams)
         result.append({
             **m,
             "role_name": (roles.get(m.get("role_id")) or {}).get("name") or ("Owner" if m.get("role") == "owner" else "Telecaller"),
             "permissions": (roles.get(m.get("role_id")) or {}).get("permissions") or [],
-            "caller_profile": callers.get(m["user_id"]),
+            "caller_profile": profile,
         })
     return {"data": result, "calling_provider": calling_provider}
 
 
 @router.patch("/shift-config")
 def update_shift_config(payload: ShiftConfigPayload, ctx: dict = Depends(require_team_manage)):
+    if caller_scope(get_supabase(), ctx) is not None:
+        # The common shift hours are the whole client's setting, not one team's.
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can change the shift hours for everyone.")
     if payload.shift_mode not in ("common", "individual"):
         raise HTTPException(status_code=400, detail="shift_mode must be 'common' or 'individual'")
     if not (0 <= payload.shift_start_hour <= 23 and 0 <= payload.shift_end_hour <= 23):
@@ -187,6 +199,7 @@ def update_caller_shift(
         raise HTTPException(status_code=400, detail="Shift hours must be between 0 and 23")
 
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, caller_id)
     result = (
         db.table("callers")
         .update({
@@ -207,6 +220,8 @@ def remove_member(user_id: str, ctx: dict = Depends(get_tenant_and_role)):
     if ctx["role"] != "owner" and "team.manage" not in (ctx.get("permissions") or []):
         raise HTTPException(status_code=403, detail="Permission required: team.manage")
     db = get_supabase()
+    if caller_scope(db, ctx) is not None:
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can remove people.")
     db.table("tenant_users").delete().eq("user_id", user_id).eq("tenant_id", ctx["tenant_id"]).execute()
     db.table("callers").delete().eq("user_id", user_id).eq("tenant_id", ctx["tenant_id"]).execute()
     invalidate_tenant_cache(user_id)
@@ -249,6 +264,9 @@ def get_team_attendance(
         month_end = next_month - timedelta(days=1)
 
     callers = _active_team_callers(db, ctx["tenant_id"])
+    scope = caller_scope(db, ctx)
+    if scope is not None:
+        callers = [c for c in callers if str(c["id"]) in scope]
     caller_ids = [c["id"] for c in callers]
 
     days = date_range(month_start, month_end)
@@ -303,6 +321,7 @@ def get_caller_attendance(caller_id: str, months: int = 4, ctx: dict = Depends(g
     ):
         raise HTTPException(status_code=403, detail="Permission required: team.view")
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, caller_id)
 
     caller = (
         db.table("callers")
@@ -364,7 +383,8 @@ def mark_holiday(payload: MarkHolidayPayload, ctx: dict = Depends(get_tenant_and
 
     db = get_supabase()
 
-    caller_ids = [c["id"] for c in _active_team_callers(db, ctx["tenant_id"])]
+    scope = caller_scope(db, ctx)
+    caller_ids = [c["id"] for c in _active_team_callers(db, ctx["tenant_id"]) if scope is None or str(c["id"]) in scope]
 
     if not caller_ids:
         return {"data": {"date": payload.date, "status": "holiday", "caller_count": 0}}
@@ -409,6 +429,7 @@ def mark_attendance(caller_id: str, payload: AttendancePayload, ctx: dict = Depe
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
 
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, caller_id)
     caller = (
         db.table("callers")
         .select("id")

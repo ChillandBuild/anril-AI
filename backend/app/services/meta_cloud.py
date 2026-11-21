@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.services import template_rules
+from app.services.blocked_guard import guard_whatsapp_recipient
 
 logger = logging.getLogger(__name__)
 
@@ -471,6 +472,7 @@ async def send_text_message(
     tenant_id: Optional[str] = None,
     reply_to_message_id: Optional[str] = None,
 ) -> dict:
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     payload = {
@@ -573,6 +575,7 @@ async def send_media_message(
     wa_type: 'image' | 'document' | 'audio' | 'video'
     Pass media_link for a public URL, or media_id for an uploaded Meta media handle.
     """
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
 
@@ -608,6 +611,7 @@ async def send_location_message(
     access_token: Optional[str] = None,
     tenant_id: Optional[str] = None,
 ) -> dict:
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     location: dict = {"latitude": latitude, "longitude": longitude}
@@ -654,6 +658,7 @@ async def send_cta_url_message(
     if footer_text and len(footer_text) > INTERACTIVE_FOOTER_MAX:
         raise ValueError(f"URL button footer exceeds {INTERACTIVE_FOOTER_MAX} characters")
 
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     interactive: dict = {
@@ -705,6 +710,7 @@ async def send_flow_message(
     if not flow_id or not flow_token:
         raise ValueError("A form message needs a flow id and a flow token")
 
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     payload = {
         "messaging_product": "whatsapp",
@@ -768,6 +774,7 @@ async def send_interactive_buttons(
             raise ValueError(f"Button titles must be unique, {b['title']!r} repeats")
         seen_titles.add(b["title"].casefold())
 
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     payload = {
@@ -872,6 +879,7 @@ async def send_list_message(
     if footer_text and len(footer_text) > 60:
         raise ValueError(f"List footer {footer_text!r} exceeds 60 characters")
 
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     interactive: dict = {
@@ -911,6 +919,7 @@ async def send_catalog_message(
     tenant_id: Optional[str] = None,
 ) -> dict:
     """Send a WhatsApp product catalog message (product_list interactive type)."""
+    await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)  # full block
     pid, tok = _creds(phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     payload = {
@@ -974,9 +983,14 @@ async def send_template_message(
     phone_number_id: Optional[str] = None,
     access_token: Optional[str] = None,
     tenant_id: Optional[str] = None,
+    skip_blocked_check: bool = False,
 ) -> dict:
+    # skip_blocked_check: ONLY the client's website OTP and alerts to the business's own staff
+    # (services/blocked_guard.py). Every other template send to a blocked person is refused.
     # Settings reads and the send count are sync Supabase calls: off the event
     # loop, so a stalled query can't freeze every other request.
+    if not skip_blocked_check:  # OTP and staff alerts pass True; everything else is checked
+        await guard_whatsapp_recipient(to_number, tenant_id, phone_number_id)
     pid, tok = await asyncio.to_thread(_creds, phone_number_id, access_token, tenant_id)
     url = f"{_GRAPH_BASE}/{pid}/messages"
     if tenant_id:

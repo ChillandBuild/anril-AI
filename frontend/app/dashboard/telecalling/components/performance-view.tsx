@@ -33,11 +33,16 @@ interface PerformanceViewProps {
   /** From team/list, prefetched server-side -- the trustworthy tri-state
    * source for evaluation gating. undefined = not loaded yet. */
   callingProvider?: "telecmi" | "sim_basic";
+  /** Show only this team's telecallers (callers.team_id). null/undefined = everyone. */
+  teamFilter?: string | null;
 }
 
-export default function PerformanceView({ callers, adminCaller, callingProvider }: PerformanceViewProps) {
-  const { role, permissions } = useAuthRole();
+export default function PerformanceView({ callers, adminCaller, callingProvider, teamFilter }: PerformanceViewProps) {
+  const { role, roleSlug, permissions } = useAuthRole();
   const canManageTeam = role === "owner" || permissions.includes("team.manage");
+  // A Team leader has team.manage (to work their team) but cannot change client-wide shift settings.
+  const canChangeShifts = canManageTeam && roleSlug !== "team_leader";
+  const canDownload = role === "owner" || permissions.includes("leads.download");
   const [stats, setStats] = useState<TelecallingAnalyticsExtended | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [callersList, setCallersList] = useState<Caller[]>(callers);
@@ -117,7 +122,7 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
   }, []);
 
   async function handleShiftConfigSave(config: typeof shiftConfig) {
-    if (!canManageTeam) return;
+    if (!canChangeShifts) return;
     const updated = await api.team.updateShiftConfig(config);
     setShiftConfig(updated);
     toast.success("Shift config saved");
@@ -166,7 +171,7 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
 
   const getSortedPerformers = () => {
     if (!stats || !stats.per_caller) return [];
-    const callerIds = new Set(callersList.map((c) => c.id));
+    const callerIds = new Set(callersList.filter((c) => !teamFilter || c.team_id === teamFilter).map((c) => c.id));
     return [...stats.per_caller].filter((p) => callerIds.has(p.caller_id)).sort((a, b) => {
       let valA: string | number = 0;
       let valB: string | number = 0;
@@ -233,7 +238,7 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
         shiftConfig={shiftConfig}
         onShiftConfigSave={handleShiftConfigSave}
         callingProvider={callingProvider ?? "telecmi"}
-        canManageShifts={canManageTeam}
+        canManageShifts={canChangeShifts}
       />
 
       {callingProvider === "sim_basic" && role === "owner" && <FeedbackOversight />}
@@ -291,6 +296,7 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
                 : "Sort by connect rate or idle time to manage team output."}
             </p>
           </div>
+          {canDownload && (
           <div className="flex items-center gap-1.5 bg-[#f8fafc] p-1.5 rounded-xl border border-[#e2e8f0]">
             <span className="font-label text-[10px] text-[#475569] font-bold uppercase pl-1">Export Performance:</span>
             <input
@@ -315,6 +321,7 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
               CSV
             </button>
           </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -356,7 +363,12 @@ export default function PerformanceView({ callers, adminCaller, callingProvider 
                       key={row.caller_id}
                       className={`border-b border-[#f1f5f9] hover:bg-[#f8fafc]/50 transition-colors ${selectedCallerId === row.caller_id ? "bg-primary/5" : ""}`}
                     >
-                      <td className="py-3.5 px-4 font-bold text-[#13284A]">{row.name}</td>
+                      <td className="py-3.5 px-4 font-bold text-[#13284A]">
+                        {row.name}
+                        {dbCaller?.team_name && (
+                          <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{dbCaller.team_name}</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 text-[#334155] font-semibold">{row.calls_today}</td>
                       <td className="py-3.5 px-4 text-[#334155] font-semibold">
                         {row.connect_rate ? `${Math.round(row.connect_rate * 100)}%` : "0%"}

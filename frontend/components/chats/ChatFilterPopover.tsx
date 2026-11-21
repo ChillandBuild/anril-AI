@@ -70,6 +70,7 @@ export function ChatFilterPopover({
   countFor,
   team,
   tags,
+  onSaveAsGroup,
 }: {
   open: boolean;
   value: InboxFilters;
@@ -78,6 +79,8 @@ export function ChatFilterPopover({
   countFor: (filters: InboxFilters) => Promise<number>;
   team: Option[];
   tags: Option[];
+  /** Set when the caller may save the matching chats as a group (leads.manage). */
+  onSaveAsGroup?: () => void;
 }) {
   const [count, setCount] = useState<number | null>(null);
   const [current, setCurrent] = useState<GroupKey>("segments");
@@ -291,13 +294,26 @@ export function ChatFilterPopover({
             <><span className="font-bold text-[#0A1528]">{count.toLocaleString("en-IN")}</span> chat{count === 1 ? "" : "s"} match</>
           )}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-9 rounded-xl bg-primary px-5 text-[13px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
-        >
-          Done
-        </button>
+        <div className="flex items-center gap-2">
+          {onSaveAsGroup && (
+            <button
+              type="button"
+              onClick={onSaveAsGroup}
+              disabled={count === 0}
+              title="Save everyone these chats show as a group in Customers"
+              className="h-9 whitespace-nowrap rounded-xl border border-[#e2e8f0] bg-white px-3 text-[13px] font-bold text-[#0A1528] hover:border-primary/40 hover:bg-primary-light disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Save as a group
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-xl bg-primary px-5 text-[13px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 
 from app.db.supabase import get_supabase
+from app.services.blocked_guard import RecipientBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +424,11 @@ async def send_one(db, send: dict) -> bool:
             send["phone"], template["name"], template.get("language") or "en",
             components=build_components(template, rule, ctx), tenant_id=tenant_id,
         )
+    except RecipientBlocked:
+        # Full block: not a failure, so it is logged as skipped and never counted as an error.
+        logger.info(f"auto_messages: send {send['id']} skipped, the person is blocked (tenant {tenant_id})")
+        _finish(db, send["id"], "skipped", "blocked")
+        return False
     except Exception as e:
         detail = getattr(e, "detail", None) or str(e)
         logger.warning(f"auto_messages: send {send['id']} failed for tenant {tenant_id}: {detail}")
@@ -499,6 +505,8 @@ async def send_preview(db, tenant_id: str, rule: dict, phone: str) -> dict:
             phone, template["name"], template.get("language") or "en",
             components=build_components(template, rule, sample_context(rule, phone)), tenant_id=tenant_id,
         )
+    except RecipientBlocked as e:
+        return {"status": "failed", "reason": str(e.detail)}
     except Exception as e:
         detail = getattr(e, "detail", None)  # an HTTPException from Meta; anything else is a crash
         if detail is None:

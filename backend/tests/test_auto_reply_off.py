@@ -136,6 +136,9 @@ def _no_recent_ack_db() -> MagicMock:
     db = MagicMock()
     db.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value \
         .gte.return_value.limit.return_value.execute.return_value.data = []
+    # The lead read (source + blocked_at): a normal WhatsApp lead who is not blocked.
+    db.table.return_value.select.return_value.eq.return_value.eq.return_value \
+        .limit.return_value.execute.return_value.data = [{"source": "whatsapp", "blocked_at": None}]
     return db
 
 

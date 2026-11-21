@@ -19,6 +19,7 @@ import { TeamCallsSection } from "@/components/dashboard/TeamCallsSection";
 import { AdSpendSection } from "@/components/dashboard/AdSpendSection";
 import { isSmsOnly } from "@/lib/utils";
 import { KpiCard } from "@/components/kpi-card";
+import { TodayBlock } from "./home/TodayBlock";
 
 const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; bar: string }> = {
   A: { label: "Hot", bar: "bg-emerald-500" },
@@ -200,17 +201,23 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
 
   return (
     <div className="dashboard-swiss space-y-8">
-      <PipelinePulse overview={overview} />
+      <TodayBlock />
 
-      <AiWorkloadSection overview={overview} />
+      <div className="space-y-8">
+        <h2 className="font-display text-[18px] font-bold text-ink">More details</h2>
 
-      <PipelineBar by_segment={overview.by_segment_today ?? { A: 0, B: 0, C: 0, D: 0 }} />
+        <PipelinePulse overview={overview} />
 
-      <LeadSourceSection overview={overview} />
+        <AiWorkloadSection overview={overview} />
 
-      {enabledFeatures.includes("telecalling") && <TeamCallsSection />}
+        <PipelineBar by_segment={overview.by_segment_today ?? { A: 0, B: 0, C: 0, D: 0 }} />
 
-      <AdSpendSection />
+        <LeadSourceSection overview={overview} />
+
+        {enabledFeatures.includes("telecalling") && <TeamCallsSection />}
+
+        <AdSpendSection />
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ from app.routes.calls import CALL_CARD_FIELDS
 from app.services.assignment import get_telecalling_config
 from app.services.call_evaluation import strip_evaluation
 from app.services.call_review import summarize_leads
+from app.services.call_teams import assert_caller_in_scope, caller_scope
 from app.services.call_transcript import mask_transcripts
 
 router = APIRouter()
@@ -54,6 +55,15 @@ async def review_leads(
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     cid = str(caller_id) if caller_id else None
+    scope = caller_scope(db, ctx)  # None unless a Team leader: then only their team's callers
+    scope_ids: list[str] | None = None
+    if scope is not None:
+        if cid:
+            assert_caller_in_scope(db, ctx, cid, scope)
+        elif not scope:
+            return {"data": [], "truncated": False}
+        else:
+            scope_ids = sorted(scope)
 
     def calls_query():
         q = (
@@ -64,6 +74,8 @@ async def review_leads(
             .lt("created_at", end_iso)
             .not_.is_("lead_id", "null")
         )
+        if scope_ids:
+            q = q.in_("caller_id", scope_ids)
         return (q.eq("caller_id", cid) if cid else q).order("created_at")
 
     def notes_query():
@@ -76,6 +88,8 @@ async def review_leads(
             # Anril writes an "AI Summary:" note after each scored call; only people's notes count here.
             .not_.like("content", "AI Summary:%")
         )
+        if scope_ids:
+            q = q.in_("caller_id", scope_ids)
         return (q.eq("caller_id", cid) if cid else q).order("created_at")
 
     calls = _paged(calls_query)
@@ -122,6 +136,12 @@ async def review_lead_calls(
     start_iso, end_iso = _parse_range(start, end)
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
+    scope = caller_scope(db, ctx)
+    if scope is not None:
+        if caller_id:
+            assert_caller_in_scope(db, ctx, str(caller_id), scope)
+        elif not scope:
+            return {"data": []}
     q = (
         db.table("call_logs")
         .select(f"{CALL_CARD_FIELDS},callers(name)")
@@ -130,6 +150,8 @@ async def review_lead_calls(
         .gte("created_at", start_iso)
         .lt("created_at", end_iso)
     )
+    if scope is not None and not caller_id:
+        q = q.in_("caller_id", sorted(scope))
     if caller_id:
         q = q.eq("caller_id", str(caller_id))
     rows = q.order("created_at", desc=True).limit(50).execute().data or []

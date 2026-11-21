@@ -289,8 +289,10 @@ def _assign_to(
     try:
         if notify and caller.get("user_id"):
             from app.services.notify import notify_user
-            lead_row = db.table("leads").select("name").eq("id", lead_id).maybe_single().execute()
+            lead_row = db.table("leads").select("name,blocked_at").eq("id", lead_id).maybe_single().execute()
             lead_name = (lead_row.data or {}).get("name") if lead_row else None
+            if lead_row and (lead_row.data or {}).get("blocked_at"):
+                return chosen_id  # a blocked person never alerts the team (full block)
             notify_user(
                 tenant_id,
                 caller["user_id"],

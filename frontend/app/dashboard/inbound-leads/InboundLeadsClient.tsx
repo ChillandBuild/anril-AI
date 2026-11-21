@@ -572,7 +572,8 @@ export function InboundLeadsClient({ fallbackInboundLeads }: InboundLeadsClientP
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendOpen, setSendOpen] = useState(false);
   const [labels, setLabels] = useState<InboundResultLabels>(DEFAULT_LABELS);
-  const { role } = useAuthRole();
+  const { role, permissions } = useAuthRole();
+  const canDownload = role === "owner" || permissions.includes("leads.download");
 
   useEffect(() => {
     api.inboundLeads.resultLabels().then(setLabels).catch(() => {});
@@ -712,10 +713,12 @@ export function InboundLeadsClient({ fallbackInboundLeads }: InboundLeadsClientP
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc]">
               <Link2 size={14} />
             </button>
-            <button type="button" onClick={handleExport} disabled={exporting || total === 0} title="Download the list on screen" aria-label="Download"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] disabled:opacity-40">
-              <Download size={14} />
-            </button>
+            {canDownload && (
+              <button type="button" onClick={handleExport} disabled={exporting || total === 0} title="Download the list on screen" aria-label="Download"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] disabled:opacity-40">
+                <Download size={14} />
+              </button>
+            )}
           </div>
         </div>
 

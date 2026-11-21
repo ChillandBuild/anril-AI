@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getAuthHeaders, API_URL, Lead, api } from "@/lib/api";
 import { ConversationList } from "@/components/conversation-list";
 import { ChatThread } from "@/components/chat-thread";
 import { LeadDetailsPanel } from "@/components/lead-details-panel";
 import { EscalationPanel } from "@/components/escalation-panel";
-import { ArchivedBlockedPanel } from "@/components/chats/ArchivedBlockedPanel";
+import { ChatsFolderPanel } from "@/components/chats/ChatsFolderPanel";
+import { GROUPS_PAGE, fromChatsBody, saveChatsAsGroup, savedGroupMessage } from "@/components/chats/saveAsGroup";
 import { createClient } from "@/lib/supabase/client";
 import { usePolling } from "@/hooks/usePolling";
 import { toast } from "sonner";
@@ -92,11 +93,14 @@ function SharedInboxEmpty() {
 export default function ConversationsPage() {
   const { callerId, role, permissions } = useAuthRole();
   const canReplyToConversations = role === "owner" || permissions.includes("conversations.reply");
+  // Save as a group puts people into Customers > Groups, so it needs the same permission as making a group there.
+  const canSaveAsGroup = role === "owner" || permissions.includes("leads.manage");
+  const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selected, setSelected] = useState<Lead | null>(null);
   const [error, setError] = useState(false);
   const [view, setView] = useState<InboxView>("inbox");
-  // The full-width pages (Needs you, Archived & blocked) have no list of their own: the list behind them stays Inbox.
+  // The full-width pages (Needs you, Archived, Blocked) have no list of their own: the list behind them stays Inbox.
   const listView: ListView = view === "ai_handling" ? "ai_handling" : "inbox";
   const [escalationCount, setEscalationCount] = useState(0);
   const [channel, setChannel] = useState<InboxChannel>("all");
@@ -302,6 +306,14 @@ export default function ConversationsPage() {
     setLeads((prev) => prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
   }
 
+  // Filter panel > Save as a group: the server collects everyone this tab, search and filters match.
+  async function handleSaveAsGroup(name: string) {
+    const saved = await saveChatsAsGroup(fromChatsBody(name, filters, { view: listView, channel, search: debouncedSearch || undefined }));
+    toast.success(savedGroupMessage(saved.added, saved.name), {
+      action: { label: "Open Groups", onClick: () => router.push(GROUPS_PAGE) },
+    });
+  }
+
   const listProps = {
     view,
     onViewChange: handleViewChange,
@@ -321,12 +333,14 @@ export default function ConversationsPage() {
     canArchive: canReplyToConversations,
     onBlock: handleBlock,
     escalationCount,
+    onSaveAsGroup: canSaveAsGroup ? handleSaveAsGroup : undefined,
+    matchTotal: total,
   };
 
-  if (view === "needs_you" || view === "archived") {
+  if (view === "needs_you" || view === "archived" || view === "blocked") {
     return (
       <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--shell-left)]">
-        {/* Needs you and Archived & blocked take the whole page width, with the Conversations tabs above. */}
+        {/* Needs you, Archived and Blocked take the whole page width, with the Conversations tabs above. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ConversationList
             {...listProps}
@@ -342,7 +356,9 @@ export default function ConversationsPage() {
                   canReplyToConversations={canReplyToConversations}
                 />
               ) : (
-                <ArchivedBlockedPanel
+                <ChatsFolderPanel
+                  key={view}
+                  mode={view}
                   onOpenChat={handleEscalationReply}
                   canReply={canReplyToConversations}
                   canExport={role === "owner"}

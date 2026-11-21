@@ -18,6 +18,7 @@ from app.services.call_scorer import finalize_call_score
 from app.services.call_ai_pipeline import queue_call_ai, retry_call_ai, run_call_ai
 from app.services.call_marking import mark_crm_update
 from app.services.call_alerts import EVALUATION_ALERT_TYPES
+from app.services.call_teams import assert_caller_in_scope, caller_scope
 from app.services.call_evaluation import strip_evaluation
 from app.services.call_transcript import mask_transcript, mask_transcripts
 from app.services.entitlements import meter, check_quota
@@ -1176,6 +1177,14 @@ async def list_call_alerts(
         query = query.not_.in_("type", list(EVALUATION_ALERT_TYPES))
     if type:
         query = query.eq("type", type)
+    scope = caller_scope(db, ctx)  # None unless a Team leader: then only their team's alerts
+    if scope is not None:
+        if caller_id:
+            assert_caller_in_scope(db, ctx, str(caller_id), scope)
+        elif not scope:
+            return {"data": [], "total": 0, "page": page, "limit": limit}
+        else:
+            query = query.in_("caller_id", sorted(scope))
     if caller_id:
         query = query.eq("caller_id", str(caller_id))
     offset = (page - 1) * limit
@@ -1190,6 +1199,11 @@ async def count_call_alerts(ctx: dict = Depends(require_permission("team.manage"
     query = db.table("call_alerts").select("id", count="exact").eq("tenant_id", ctx["tenant_id"]).is_("seen_at", "null")
     if is_sim:
         query = query.not_.in_("type", list(EVALUATION_ALERT_TYPES))
+    scope = caller_scope(db, ctx)
+    if scope is not None:
+        if not scope:
+            return {"count": 0}
+        query = query.in_("caller_id", sorted(scope))
     res = query.limit(1).execute()
     return {"count": res.count or 0}
 
@@ -1197,6 +1211,11 @@ async def count_call_alerts(ctx: dict = Depends(require_permission("team.manage"
 @router.post("/alerts/{alert_id}/seen")
 async def mark_call_alert_seen(alert_id: UUID, ctx: dict = Depends(require_permission("team.manage"))):
     db = get_supabase()
+    scope = caller_scope(db, ctx)
+    if scope is not None:
+        found = db.table("call_alerts").select("caller_id").eq("id", str(alert_id)).eq("tenant_id", ctx["tenant_id"]).limit(1).execute().data or []
+        if not found or str(found[0].get("caller_id")) not in scope:
+            raise HTTPException(status_code=404, detail="Alert not found")
     res = (
         db.table("call_alerts")
         .update({"seen_at": datetime.now(timezone.utc).isoformat(), "seen_by": ctx.get("user_id")})

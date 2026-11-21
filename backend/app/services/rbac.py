@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from app.services.call_team_scope import TEAM_LEADER_SLUG
+
 logger = logging.getLogger(__name__)
 
 PERMISSION_CATALOG: list[dict] = [
@@ -11,6 +13,7 @@ PERMISSION_CATALOG: list[dict] = [
     {"key": "conversations.reply", "label": "Reply to conversations", "group": "Messaging"},
     {"key": "leads.view", "label": "View segments", "group": "Leads"},
     {"key": "leads.manage", "label": "Manage leads", "group": "Leads"},
+    {"key": "leads.download", "label": "Download lists", "group": "Leads"},
     {"key": "inbound_leads.view", "label": "View inbound leads", "group": "Leads"},
     {"key": "inbound_leads.manage", "label": "Manage inbound leads", "group": "Leads"},
     {"key": "deals.view", "label": "View deals", "group": "Leads"},
@@ -67,6 +70,18 @@ DEFAULT_TELECALLER_PERMISSIONS = [
     "telecalling.dialer",
     "telecalling.scheduled",
     "telecalling.notes",
+]
+
+# The built-in "Team leader" role (v9.2 Batch C). A Telecaller who also runs a team: sees and works ONLY
+# the telecallers of the team(s) they lead (services/call_team_scope.py). Same as the Telecaller role
+# plus the Team page (team.view, team.manage) and the upload page (telecalling.upload). Deliberately NOT:
+# leads.download (no list downloads), deals.manage / deals.refund, settings, roles or subscription.
+TEAM_LEADER_NAME = "Team leader"
+DEFAULT_TEAM_LEADER_PERMISSIONS = [
+    *DEFAULT_TELECALLER_PERMISSIONS,
+    "team.view",
+    "team.manage",
+    "telecalling.upload",
 ]
 
 RBAC_SCHEMA_ERROR_MARKERS = (
@@ -173,6 +188,55 @@ def ensure_default_roles(db, tenant_id: str) -> dict:
     if insert_error:
         raise insert_error
     raise RuntimeError("Failed to create default Telecaller role")
+
+
+def _select_team_leader_role(db, tenant_id: str) -> dict | None:
+    existing = (
+        db.table("tenant_roles")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("slug", TEAM_LEADER_SLUG)
+        .limit(1)
+        .execute()
+    )
+    return _with_normalized_permissions(existing.data[0]) if existing.data else None
+
+
+def ensure_team_leader_role(db, tenant_id: str) -> dict:
+    """The tenant's built-in Team leader role, created on first use (same pattern as the Telecaller role).
+
+    tenant_roles has UNIQUE (tenant_id, name): if the client already made a custom role called
+    "Team leader" the insert is retried under a different name, so the built-in one always exists."""
+    existing = _select_team_leader_role(db, tenant_id)
+    if existing:
+        return existing
+
+    base = {
+        "tenant_id": tenant_id,
+        "slug": TEAM_LEADER_SLUG,
+        "description": "Runs a team of telecallers: sees only that team's people, leads and calls.",
+        "permissions": DEFAULT_TEAM_LEADER_PERMISSIONS,
+        "is_system_template": True,
+    }
+    last_error = None
+    for name in (TEAM_LEADER_NAME, f"{TEAM_LEADER_NAME} (built-in)"):
+        try:
+            created = db.table("tenant_roles").insert({**base, "name": name}).execute()
+            if created.data:
+                return _with_normalized_permissions(created.data[0])
+        except Exception as e:
+            last_error = e
+            logger.info("Team leader role insert (%s) fell back for tenant %s: %s", name, tenant_id, e)
+            existing = _select_team_leader_role(db, tenant_id)
+            if existing:
+                return existing
+
+    existing = _select_team_leader_role(db, tenant_id)
+    if existing:
+        return existing
+    if last_error:
+        raise last_error
+    raise RuntimeError("Failed to create the Team leader role")
 
 
 def is_telecaller_role(role: dict | None) -> bool:

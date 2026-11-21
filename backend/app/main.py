@@ -20,6 +20,8 @@ from app.routes.calls import public_router as calls_public_router
 from app.routes.intake import public_router as intake_public_router
 from app.routes import intake
 from app.routes import call_review
+from app.routes import call_translate
+from app.routes import call_teams
 from app.routes.marketplace_intake import public_router as marketplace_public_router
 from app.routes import marketplace_intake
 from app.routes import instant_forms
@@ -39,6 +41,7 @@ from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
 from app.routes import sms, sms_contacts, sms_webhooks, operator_sms
+from app.routes import home
 from app.routes import auto_messages
 from app.routes import private_send, private_send_keys
 
@@ -444,6 +447,7 @@ app.include_router(said_stop_routes.router, prefix="/api/v1/said-stop", tags=["s
 app.include_router(customer_profile.router, prefix="/api/v1/customer-profile", tags=["customer-profile"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
+app.include_router(home.router, prefix="/api/v1/home", tags=["home"], dependencies=_auth)
 app.include_router(ask.router, prefix="/api/v1", tags=["ask"], dependencies=_auth)
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"], dependencies=_auth)
 app.include_router(segments.router, prefix="/api/v1/segments", tags=["segments"], dependencies=_auth)
@@ -464,12 +468,14 @@ app.include_router(numbers.router, prefix="/api/v1/numbers", tags=["numbers"], d
 app.include_router(incidents.router, prefix="/api/v1/incidents", tags=["incidents"], dependencies=_auth)
 app.include_router(lead_notes.router, prefix="/api/v1/lead-notes", tags=["lead-notes"], dependencies=_auth)
 app.include_router(call_review.router, prefix="/api/v1/call-review", tags=["call-review"], dependencies=_auth)
+app.include_router(call_translate.router, prefix="/api/v1/call-translate", tags=["call-translate"], dependencies=_auth)
 app.include_router(voice_numbers.router, prefix="/api/v1/voice-numbers", tags=["voice-numbers"], dependencies=_auth)
 app.include_router(app_settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth)
 app.include_router(templates.public_router, prefix="/api/v1/templates", tags=["templates-webhook"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["templates"], dependencies=_auth)
 app.include_router(onboarding.router, prefix="/api/v1/onboarding", tags=["onboarding"], dependencies=_auth)
 app.include_router(team.router, prefix="/api/v1/team", tags=["team"], dependencies=_auth)
+app.include_router(call_teams.router, prefix="/api/v1/call-teams", tags=["call-teams"], dependencies=_auth)
 app.include_router(rbac.router, prefix="/api/v1/rbac", tags=["rbac"], dependencies=_auth)
 app.include_router(media.router, prefix="/api/v1/leads", tags=["media"], dependencies=_auth)
 app.include_router(todos.router, prefix="/api/v1/todos", tags=["todos"], dependencies=_auth)

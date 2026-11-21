@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from app.db.supabase import get_supabase
+from app.services import reach_audience
 from app.services.entitlements import meter
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
@@ -188,6 +189,12 @@ async def execute_broadcast(row: dict) -> dict:
         )
         already_recorded_phones = {r["phone"] for r in already_recorded if r.get("phone")}
 
+        # Blocked people and the 2-offers-a-month limit, read once for this run (services/reach_audience.py).
+        blocked_keys, monthly_limit_keys = reach_audience.send_time_skips(
+            db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id)
+        skipped_monthly = 0
+        skipped_blocked = 0
+
         def _record_recipient(row: dict) -> None:
             recipient_rows.append(row)
             try:
@@ -233,6 +240,28 @@ async def execute_broadcast(row: dict) -> dict:
             lead_id = phone_to_lead_id.get(phone)
             lead_name = _clean_text(lead.get("name"))
             extra_cols: dict = lead.get("extra_cols") or {}
+
+            skip_key = reach_audience.phone_key(phone)
+            skip_reason = (reach_audience.SKIP_BLOCKED if skip_key in blocked_keys
+                           else reach_audience.SKIP_MONTHLY if skip_key in monthly_limit_keys else None)
+            if skip_reason:
+                # Not failed: skipped on purpose. Stored as opted_out_skip + fail_reason (the send_status
+                # CHECK has no "skipped"); the History tab reads the reason (routes/upload.py classifier).
+                if skip_reason == reach_audience.SKIP_BLOCKED:
+                    skipped_blocked += 1
+                else:
+                    skipped_monthly += 1
+                _record_recipient({
+                    "tenant_id": tenant_id,
+                    "broadcast_id": broadcast_id,
+                    "lead_id": lead_id,
+                    "phone": phone,
+                    "name": lead_name,
+                    "send_status": "opted_out_skip",
+                    "fail_reason": skip_reason,
+                    "tag_id": tag_id,
+                })
+                continue
 
             sender = picker.next()
             if sender is None:
@@ -408,7 +437,8 @@ async def execute_broadcast(row: dict) -> dict:
             except Exception as lti_err:
                 logger.warning(f"lead_tag_interest broadcast_count update failed: {lti_err}")
 
-        result = {"sent": sent, "failed": failed, "broadcast_id": broadcast_id}
+        result = {"sent": sent, "failed": failed, "broadcast_id": broadcast_id,
+                  "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked}
         if deferred:
             # Unsent leads have no recipient row yet, so tomorrow's run sends
             # exactly those (already-recorded phones are skipped on resume).
@@ -421,6 +451,7 @@ async def execute_broadcast(row: dict) -> dict:
             db, tenant_id, broadcast_id, template_name, opt_in_source,
             sent, failed, len(leads_raw), picker.numbers_used_label(),
             row.get("csv_file_url"), row.get("csv_file_path"), row.get("csv_file_name"), tag_id,
+            skipped_monthly_limit=skipped_monthly, skipped_blocked=skipped_blocked,
         )
         logger.info(f"Scheduled broadcast {row_id}: sent={sent} failed={failed} aborted={aborted}")
         return result
@@ -440,7 +471,7 @@ def _write_broadcast_history(
     db, tenant_id: str, broadcast_id: str, template_name: str, opt_in_source: str,
     sent: int, failed: int, total_leads: int, number_used: str | None,
     csv_file_url: str | None, csv_file_path: str | None, csv_file_name: str | None,
-    tag_id: str | None,
+    tag_id: str | None, skipped_monthly_limit: int = 0, skipped_blocked: int = 0,
 ) -> None:
     """Append a broadcast_history entry so fired scheduled/drip/retry broadcasts show
     up in the History tab, the same as immediate 'Send Now' broadcasts already do."""
@@ -509,6 +540,8 @@ def _write_broadcast_history(
             "csv_file_path": csv_file_path,
             "csv_file_name": csv_file_name,
             "tag_id": tag_id,
+            "skipped_monthly_limit": skipped_monthly_limit,
+            "skipped_blocked": skipped_blocked,
         })
         history = history[:50]
 

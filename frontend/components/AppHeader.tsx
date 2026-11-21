@@ -678,6 +678,19 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
           </div>
         )}
 
+        {pathname === "/dashboard" && canManageDeals && (
+          <div className="mr-2 hidden items-center md:flex">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/deals/new-bill")}
+              className="rounded-xl bg-primary px-3.5 py-2 font-label text-xs font-bold text-white shadow-sm hover:bg-[var(--primary-900)]"
+            >
+              <Plus size={14} className="mr-1.5 inline" />
+              New bill
+            </button>
+          </div>
+        )}
+
         {pathname === "/dashboard/roles" && (
           <div className="hidden rounded-xl border border-border-subtle bg-white px-3 py-1.5 font-body text-xs font-semibold text-ink-muted shadow-sm md:block">
             Calling provider: <span className="text-ink">{callingProvider === "sim_basic" ? "SIM Basic" : "Cloud Telephony"}</span>

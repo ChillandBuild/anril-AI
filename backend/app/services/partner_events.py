@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from app.services import auto_messages as am
+from app.services.blocked_guard import RecipientBlocked
 from app.services import private_send as private_send_svc
 from app.services.intake import _astro_phone_number_id, _log_partner_message, _partner_error, _partner_reference
 
@@ -127,6 +128,11 @@ async def partner_send_event(payload: dict, tenant_id: str, db) -> tuple[int, di
             to_number=phone, template_name=template["name"], lang_code=template.get("language") or "en",
             components=components or None, tenant_id=tenant_id, phone_number_id=_astro_phone_number_id(tenant_id, db, phone),
         )
+    except RecipientBlocked:
+        # Full block: this customer is blocked in the business's inbox, so no event message goes out.
+        logger.info(f"Partner event {event} ({reference}) for tenant {tenant_id} not sent: the person is blocked")
+        log_partner_send(db, tenant_id, phone=phone, status="skipped", reason="blocked", **log)
+        return _partner_error(409, "recipient_blocked", "This person is blocked")
     except HTTPException as e:
         logger.error(f"Partner event {event} ({reference}) for tenant {tenant_id} rejected by Meta: {e.detail}")
         log_partner_send(db, tenant_id, phone=phone, status="failed", reason=str(e.detail), **log)

@@ -215,6 +215,8 @@ def get_tag_stats(tenant_id: str = Depends(get_tenant_id)):
         tid = r.get("tag_id")
         if not tid:
             continue
+        if (r.get("send_status") or "") == "opted_out_skip" and (r.get("fail_reason") or "") in ("monthly_limit", "blocked"):
+            continue  # skipped on purpose at send time (Reach monthly limit / blocked): not an attempt, not an opt-out
         sent_c[tid] += 1  # every attempt is one "sent" (the denominator)
 
         lid = r.get("lead_id")

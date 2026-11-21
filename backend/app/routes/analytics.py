@@ -20,6 +20,7 @@ from app.services.pagination import fetch_all_rows
 from app.services.inbound_leads_logic import INBOUND_SOURCES, aggregate_inbound
 from app.services.assignment import get_telecalling_config
 from app.services.call_evaluation import strip_evaluation
+from app.services.call_teams import assert_caller_in_scope, caller_scope
 from app.services.call_wrapup import CONNECTS, OUTCOMES, connect_rate as wrapup_connect_rate
 from app.services.analytics_compare import (
     CSV_FIELDNAMES,
@@ -59,6 +60,17 @@ def get_analytics_tenant_id(ctx: dict = Depends(get_tenant_and_role)) -> str:
 def require_analytics_view(ctx: dict = Depends(get_tenant_and_role)) -> dict:
     _tenant_id_for_permission(ctx, {"analytics.view"})
     return ctx
+
+
+def require_analytics_or_team_leader(ctx: dict = Depends(get_tenant_and_role)) -> dict:
+    """analytics.view as before, OR a Team leader (who sees only their own team's numbers: the handler
+    narrows everything with caller_scope)."""
+    perms = set(ctx.get("permissions") or [])
+    if ctx.get("role") == "owner" or "analytics.view" in perms:
+        return ctx
+    if ("team.view" in perms or "team.manage" in perms) and caller_scope(get_supabase(), ctx) is not None:
+        return ctx
+    raise HTTPException(status_code=403, detail="Permission required: analytics.view")
 
 
 def _week_start() -> str:
@@ -321,9 +333,11 @@ async def template_performance(
 async def telecalling_analytics(
     from_date: str | None = Query(None, alias="from"),
     to_date: str | None = Query(None, alias="to"),
-    tenant_id: str = Depends(get_analytics_tenant_id),
+    ctx: dict = Depends(require_analytics_or_team_leader),
 ):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    scope = caller_scope(db, ctx)  # None = everyone (owner and every other role); a set = a Team leader's team
     is_sim = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi") == "sim_basic"
 
     # Tenant is IST -- "today" is the IST calendar day, not UTC's.
@@ -417,6 +431,16 @@ async def telecalling_analytics(
     owner_caller_ids = {c["id"] for c in all_callers if c.get("user_id") == owner_user_id}
     logs_today_res = [l for l in logs_today_res if l.get("caller_id") is not None and l.get("caller_id") not in owner_caller_ids]
     logs_week_res = [l for l in logs_week_res if l.get("caller_id") is not None and l.get("caller_id") not in owner_caller_ids]
+    if scope is not None:
+        # Team leader: only their team's callers and calls. The all-time numbers below come from a
+        # whole-client RPC, so only the per-caller part of it is kept (the client-wide totals are dropped).
+        callers_res = [c for c in callers_res if str(c["id"]) in scope]
+        logs_today_res = [l for l in logs_today_res if str(l.get("caller_id")) in scope]
+        logs_week_res = [l for l in logs_week_res if str(l.get("caller_id")) in scope]
+        status_logs_today = [l for l in status_logs_today if str(l.get("caller_id")) in scope]
+        all_time_data = {
+            "caller_stats": {k: v for k, v in (all_time_data.get("caller_stats") or {}).items() if str(k) in scope},
+        }
 
     calls_today = len(logs_today_res)
     calls_this_week = len(logs_week_res)
@@ -671,6 +695,10 @@ async def telecalling_analytics(
         )
     ).data or []
 
+    if scope is not None:
+        comp_logs = [l for l in comp_logs if str(l.get("caller_id")) in scope]
+        comp_status = [l for l in comp_status if str(l.get("caller_id")) in scope]
+
     comparison = {
         "yesterday": _window_aggregate(
             comp_logs, comp_status, caller_id_strs, yesterday_start, today_start, 1
@@ -724,7 +752,7 @@ async def qa_queue(
     caller_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=50),
-    ctx: dict = Depends(require_analytics_view),
+    ctx: dict = Depends(require_analytics_or_team_leader),
 ):
     """QA review feed: the window's scored calls, lowest score first, so the
     weakest calls get reviewed. Same IST-day window as the Performance filter;
@@ -766,6 +794,15 @@ async def qa_queue(
         .gte("created_at", start.isoformat())
         .lt("created_at", end.isoformat())
     )
+    scope = caller_scope(db, ctx)
+    if scope is not None:
+        # Team leader: only their team's calls (an empty team -> an empty feed).
+        if caller_id:
+            assert_caller_in_scope(db, ctx, str(caller_id), scope)
+        elif not scope:
+            return {"data": [], "total": 0, "page": page, "limit": limit}
+        else:
+            query = query.in_("caller_id", sorted(scope))
     if caller_id:
         query = query.eq("caller_id", str(caller_id))
     if owner_caller_ids:
@@ -781,10 +818,11 @@ async def qa_queue(
 async def caller_timeline(
     caller_id: UUID = Query(...),
     date: str | None = Query(None),
-    ctx: dict = Depends(require_analytics_view),
+    ctx: dict = Depends(require_analytics_or_team_leader),
 ):
     tenant_id = ctx["tenant_id"]
     db = get_supabase()
+    assert_caller_in_scope(db, ctx, str(caller_id))
     
     if not date:
         # Tenant is IST. UTC's "today" is still yesterday until 05:30 IST, so
@@ -865,6 +903,8 @@ async def caller_timeline(
 async def export_telecalling(
     ctx: dict = Depends(require_analytics_view)
 ):
+    from app.services.download_gate import require_download
+    require_download(ctx)  # "Download lists": owner or leads.download (this file carries customer phone numbers)
     tenant_id = ctx["tenant_id"]
     db = get_supabase()
     is_sim = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi") == "sim_basic"
@@ -921,6 +961,8 @@ async def export_telecalling(
             record["score_status"] = row.get("score_status") or ""
         writer.writerow(record)
         
+    from app.services.download_gate import log_download
+    log_download(db, ctx, list_name="Call log (last 90 days)", row_count=len(rows), filters={"days": 90})
     filename = f"telecalling_calls_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode()),

@@ -3,21 +3,26 @@ import io
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_and_role, require_owner
-from app.services.assignment import add_upload_pending, assign_upload_batch, get_telecalling_config
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, require_owner
+from app.services.assignment import add_upload_pending, assign_upload_batch, get_telecalling_config, remove_upload_pending
 from app.services.assignment_rules import get_channel_rules
+from app.services.audit_log import record_audit_event
+from app.services.call_team_scope import is_team_leader, scoped_caller_ids
 from app.services.call_wrapup import CLOSED_LEAD_STATUSES
+from app.services.download_gate import log_download, require_download
 from app.services.segmentation import new_lead_score_and_segment
 
 logger = logging.getLogger(__name__)
-router = APIRouter(dependencies=[Depends(require_owner)])
+# No router-wide gate: uploading and undoing are owner-only (require_owner on each), the history list
+# is for the owner or a Team leader (who sees only their own team's rows), downloads also need leads.download.
+router = APIRouter()
 
 PHONE_RE = re.compile(r"[^\d+]")
 
@@ -170,6 +175,7 @@ async def upload_telecalling_contacts(
 
     assignment_map = {a["lead_id"]: a for a in assignments}
 
+    inserted_id_set = {str(i) for i in inserted_ids}
     snapshot: list[dict] = []
     for phone in all_upload_phones:
         ld = lead_by_phone.get(phone)
@@ -189,6 +195,9 @@ async def upload_telecalling_contacts(
             "name": ld.get("name"),
             "caller_id": caller_id,
             "caller_name": caller_name,
+            # True only for a lead THIS upload created: "Undo upload" removes exactly these (and only
+            # while nobody has called or messaged them). Older batches have no such flag.
+            "new": str(ld["id"]) in inserted_id_set,
         })
 
     csv_path: str | None = None
@@ -222,31 +231,80 @@ async def upload_telecalling_contacts(
     }
 
 
+
+
+# ── Who may open the upload history ─────────────────────────────────────────────
+
+def history_viewer(ctx: dict = Depends(get_tenant_and_role)) -> dict:
+    """Owner (as always), or a Team leader with the upload-view permission (sees only their team)."""
+    if ctx.get("role") == "owner":
+        return ctx
+    if (_has_permission(ctx, "telecalling.upload.view") or "telecalling.upload" in (ctx.get("permissions") or [])) \
+            and is_team_leader(get_supabase(), ctx):
+        return ctx
+    raise HTTPException(status_code=403, detail="Organization owner privileges required.")
+
+
+def _scope_snapshot(snapshot: list[dict], scoped: set[str] | None) -> list[dict]:
+    """A Team leader sees only the rows given to their own callers."""
+    if scoped is None:
+        return snapshot
+    return [r for r in snapshot if r.get("caller_id") and str(r["caller_id"]) in scoped]
+
+
+def _user_names(db, tenant_id: str, user_ids: list[str]) -> dict[str, str]:
+    if not user_ids:
+        return {}
+    try:
+        rows = (
+            db.table("tenant_users").select("user_id,full_name").eq("tenant_id", tenant_id)
+            .in_("user_id", user_ids).execute().data or []
+        )
+        return {str(r["user_id"]): (r.get("full_name") or "").strip() for r in rows}
+    except Exception as e:
+        logger.warning("upload history: could not read names for undone_by (%s)", e)
+        return {}
+
+
 @router.get("/history")
 async def get_upload_history(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    ctx: dict = Depends(require_owner),
+    ctx: dict = Depends(history_viewer),
 ):
     tenant_id = ctx["tenant_id"]
     db = get_supabase()
     offset = (page - 1) * limit
-    result = (
-        db.table("telecalling_upload_batches")
-        .select("*")
-        .eq("tenant_id", tenant_id)
-        .order("created_at", desc=True)
-        .range(offset, offset + limit - 1)
-        .execute()
-    )
-    return result.data or []
+    scoped = scoped_caller_ids(db, ctx)  # None = owner / everyone; a set = a Team leader's own team
+    is_owner = ctx.get("role") == "owner"
+
+    base = db.table("telecalling_upload_batches").select("*").eq("tenant_id", tenant_id).order("created_at", desc=True)
+    if scoped is None:
+        rows = base.range(offset, offset + limit - 1).execute().data or []
+    else:
+        # Rows are filtered after reading, so scan the newest batches (not just one page) and slice.
+        recent = base.range(0, 299).execute().data or []
+        visible: list[dict] = []
+        for row in recent:
+            mine = _scope_snapshot(row.get("assignment_snapshot") or [], scoped)
+            if not mine:
+                continue
+            visible.append({**row, "assignment_snapshot": mine, "assigned": len(mine)})
+        rows = visible[offset: offset + limit]
+
+    names = _user_names(db, tenant_id, sorted({str(r["undone_by"]) for r in rows if r.get("undone_by")}))
+    for r in rows:
+        r["undone_by_name"] = names.get(str(r["undone_by"])) or "the owner" if r.get("undone_by") else None
+        r["can_undo"] = bool(is_owner and not r.get("undone_at"))
+    return rows
 
 
 @router.get("/history/{batch_id}/csv")
 async def download_assignment_csv(
     batch_id: UUID,
-    ctx: dict = Depends(require_owner),
+    ctx: dict = Depends(history_viewer),
 ):
+    require_download(ctx)  # "Download lists": owner, or a role with leads.download
     tenant_id = ctx["tenant_id"]
     db = get_supabase()
     result = (
@@ -262,10 +320,16 @@ async def download_assignment_csv(
 
     file_name = result.data.get("file_name") or "contacts.csv"
     csv_storage_path = result.data.get("csv_storage_path")
-    snapshot = result.data.get("assignment_snapshot") or []
+    scoped = scoped_caller_ids(db, ctx)
+    snapshot = _scope_snapshot(result.data.get("assignment_snapshot") or [], scoped)
+    if scoped is not None and not snapshot:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    list_name = f"Upload assignments: {file_name}"
+    filters = {"batch_id": str(batch_id), "own_team_only": scoped is not None}
 
     # If the original raw CSV is stored, download and return it merged with caller names
-    if csv_storage_path:
+    # (owner view only: the raw file holds every row, so a Team leader gets the filtered snapshot below).
+    if csv_storage_path and scoped is None:
         try:
             file_bytes = db.storage.from_("broadcast-csvs").download(csv_storage_path)
             raw_text = file_bytes.decode("utf-8-sig", errors="replace")
@@ -306,6 +370,7 @@ async def download_assignment_csv(
                 if not csv_filename.endswith(".csv"):
                     csv_filename += ".csv"
 
+                log_download(db, ctx, list_name=list_name, row_count=len(rows) - 1, filters=filters)
                 return Response(
                     content=output.getvalue(),
                     media_type="text/csv",
@@ -329,8 +394,234 @@ async def download_assignment_csv(
     if not csv_filename.endswith(".csv"):
         csv_filename += ".csv"
 
+    log_download(db, ctx, list_name=list_name, row_count=len(snapshot), filters=filters)
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={csv_filename}"},
     )
+
+
+# ── Undo an upload (owner only) ─────────────────────────────────────────────────
+#
+# "Undo upload" takes back the people THIS upload added, but only the ones nobody has touched.
+# It never deletes a customer who was in the system before, or anyone called, messaged, noted,
+# quoted, or scheduled. When a lead is in any doubt it stays. The delete is the usual soft delete
+# (leads.deleted_at), the same one the Leads page uses.
+#
+# "Created by this upload":
+#   * new batches: the snapshot row says "new": true (written at upload time from the ids the insert
+#     returned), AND the lead was created inside the upload's own time window;
+#   * older batches (no "new" flag in the snapshot): created inside a tighter window just before the
+#     batch row was saved, source "upload", and no more such leads than the batch's own "inserted"
+#     count. If more match than were inserted, the batch is ambiguous and nothing is removed.
+
+_EXACT_WINDOW = (timedelta(minutes=30), timedelta(minutes=2))   # (before, after) the batch row's created_at
+_LEGACY_WINDOW = (timedelta(minutes=10), timedelta(minutes=1))
+_ACTIVITY_TABLES = ("call_logs", "messages", "deals", "follow_up_jobs", "lead_notes", "broadcast_recipients")
+_ID_CHUNK = 100
+_PAGE = 1000
+
+
+class _UndoUnavailable(Exception):
+    """A read the undo depends on failed: remove nothing."""
+
+
+def _chunks(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _parse_ts(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _leads_with_activity(db, lead_ids: list[str]) -> set[str]:
+    """Lead ids that have any call, message, deal, follow-up, note or broadcast row. Reads every page,
+    because a cut-off page would let a touched lead look untouched."""
+    touched: set[str] = set()
+    for table in _ACTIVITY_TABLES:
+        for chunk in _chunks(lead_ids, _ID_CHUNK):
+            offset = 0
+            while True:
+                rows = (
+                    db.table(table).select("lead_id").in_("lead_id", chunk)
+                    .range(offset, offset + _PAGE - 1).execute().data or []
+                )
+                touched.update(str(r["lead_id"]) for r in rows if r.get("lead_id"))
+                if len(rows) < _PAGE:
+                    break
+                offset += _PAGE
+    return touched
+
+
+def _plan_undo(db, tenant_id: str, batch: dict) -> dict:
+    """Decide, lead by lead, what the undo would remove. Pure reads. Raises _UndoUnavailable on a failed read."""
+    snapshot = batch.get("assignment_snapshot") or []
+    entries = {str(r["lead_id"]): r for r in snapshot if r.get("lead_id")}
+    exact = bool(snapshot) and all("new" in r for r in snapshot)
+    batch_at = _parse_ts(batch.get("created_at"))
+    keep = {"existing": 0, "touched": 0, "unsure": 0}
+    if not entries or batch_at is None:
+        return {"remove_ids": [], "keep": keep, "kept": 0, "already_gone": 0}
+
+    before, after = _EXACT_WINDOW if exact else _LEGACY_WINDOW
+    lead_rows: list[dict] = []
+    try:
+        for chunk in _chunks(list(entries), _ID_CHUNK):
+            lead_rows.extend(
+                db.table("leads")
+                .select("id,created_at,source,deleted_at,call_status,converted_at,booked_at,lost_at,"
+                        "last_inbound_at,do_not_call,opted_out")
+                .eq("tenant_id", tenant_id).in_("id", chunk).execute().data or []
+            )
+    except Exception as e:
+        logger.error("undo upload: could not read leads (%s)", e)
+        raise _UndoUnavailable() from e
+
+    active = [r for r in lead_rows if not r.get("deleted_at")]
+    already_gone = len(entries) - len(active)
+
+    candidates: list[dict] = []
+    for ld in active:
+        entry = entries.get(str(ld["id"])) or {}
+        made = _parse_ts(ld.get("created_at"))
+        in_window = made is not None and batch_at - before <= made <= batch_at + after
+        if exact:
+            ours = entry.get("new") is True and in_window
+        else:
+            ours = in_window and ld.get("source") == "upload"
+        if ours:
+            candidates.append(ld)
+        else:
+            keep["existing"] += 1
+
+    if not exact and len(candidates) > int(batch.get("inserted") or 0):
+        # More leads look new than this upload inserted: can't tell which are ours. Keep all.
+        keep["unsure"] += len(candidates)
+        candidates = []
+
+    untouched: list[dict] = []
+    for ld in candidates:
+        if (
+            (ld.get("call_status") or "new") != "new"
+            or ld.get("converted_at") or ld.get("booked_at") or ld.get("lost_at")
+            or ld.get("last_inbound_at") or ld.get("do_not_call") or ld.get("opted_out")
+        ):
+            keep["touched"] += 1
+        else:
+            untouched.append(ld)
+
+    try:
+        touched_ids = _leads_with_activity(db, [str(ld["id"]) for ld in untouched])
+    except Exception as e:
+        logger.error("undo upload: could not check calls/messages (%s)", e)
+        raise _UndoUnavailable() from e
+
+    remove_ids = []
+    for ld in untouched:
+        if str(ld["id"]) in touched_ids:
+            keep["touched"] += 1
+        else:
+            remove_ids.append(str(ld["id"]))
+    return {"remove_ids": remove_ids, "keep": keep, "kept": sum(keep.values()), "already_gone": already_gone}
+
+
+def _load_batch(db, tenant_id: str, batch_id: UUID) -> dict:
+    res = (
+        db.table("telecalling_upload_batches").select("*")
+        .eq("id", str(batch_id)).eq("tenant_id", tenant_id).maybe_single().execute()
+    )
+    if not res or not res.data:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return res.data
+
+
+def _undone_conflict(batch: dict) -> HTTPException:
+    return HTTPException(status_code=409, detail="This upload was already undone.")
+
+
+@router.get("/history/{batch_id}/undo-preview")
+async def undo_upload_preview(batch_id: UUID, ctx: dict = Depends(require_owner)):
+    """What "Undo upload" would do, for the confirm box: how many people it removes and how many stay."""
+    db = get_supabase()
+    batch = _load_batch(db, ctx["tenant_id"], batch_id)
+    if batch.get("undone_at"):
+        raise _undone_conflict(batch)
+    try:
+        plan = _plan_undo(db, ctx["tenant_id"], batch)
+    except _UndoUnavailable:
+        raise HTTPException(status_code=503, detail="Couldn't check this upload right now. Nothing was removed.")
+    return {
+        "file_name": batch.get("file_name"),
+        "will_remove": len(plan["remove_ids"]),
+        "will_keep": plan["kept"],
+        "keep_reasons": plan["keep"],
+    }
+
+
+@router.post("/history/{batch_id}/undo")
+async def undo_upload(batch_id: UUID, ctx: dict = Depends(require_owner)):
+    """Owner only. Removes the people this upload added who nobody has touched; the rest stay."""
+    tenant_id = ctx["tenant_id"]
+    db = get_supabase()
+    batch = _load_batch(db, tenant_id, batch_id)
+    if batch.get("undone_at"):
+        raise _undone_conflict(batch)
+    try:
+        plan = _plan_undo(db, tenant_id, batch)
+    except _UndoUnavailable:
+        raise HTTPException(status_code=503, detail="Couldn't check this upload right now. Nothing was removed.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Claim the undo first (only one request can win it), so a second click or a double request gets a 409.
+    try:
+        claimed = (
+            db.table("telecalling_upload_batches")
+            .update({"undone_at": now, "undone_by": ctx.get("user_id"), "undone_count": 0})
+            .eq("id", str(batch_id)).eq("tenant_id", tenant_id).is_("undone_at", "null").execute().data
+        )
+    except Exception as e:
+        logger.warning("undo upload: could not record the undo (%s); is migration 307 applied?", e)
+        raise HTTPException(status_code=503, detail="Undo isn't available yet. Nothing was removed.")
+    if not claimed:
+        raise _undone_conflict(batch)
+
+    removed = 0
+    try:
+        for chunk in _chunks(plan["remove_ids"], _ID_CHUNK):
+            done = (
+                db.table("leads").update({"deleted_at": now, "ai_enabled": False})
+                .eq("tenant_id", tenant_id).in_("id", chunk).is_("deleted_at", "null").execute().data or []
+            )
+            removed += len(done)
+            try:
+                remove_upload_pending(db, tenant_id, chunk)
+            except Exception:
+                logger.exception("undo upload: could not clear the pending queue")
+    except Exception:
+        logger.exception("undo upload: stopped after %s removed", removed)
+        try:  # let the owner retry: leads already removed are skipped the next time
+            db.table("telecalling_upload_batches").update(
+                {"undone_at": None, "undone_by": None, "undone_count": None}
+            ).eq("id", str(batch_id)).eq("tenant_id", tenant_id).execute()
+        except Exception:
+            logger.exception("undo upload: could not release the claim")
+        raise HTTPException(status_code=500, detail=f"Undo stopped part way ({removed} removed). Try again.")
+
+    try:
+        db.table("telecalling_upload_batches").update({"undone_count": removed}).eq("id", str(batch_id)).eq("tenant_id", tenant_id).execute()
+    except Exception:
+        logger.exception("undo upload: could not save the removed count")
+    record_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
+        action="telecalling_upload.undone", target_type="telecalling_upload_batch", target_id=str(batch_id),
+        metadata={"file_name": batch.get("file_name"), "removed": removed, "kept": plan["kept"], "kept_reasons": plan["keep"]},
+    )
+    return {"removed": removed, "kept": plan["kept"], "file_name": batch.get("file_name")}
