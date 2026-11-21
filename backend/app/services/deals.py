@@ -86,6 +86,9 @@ def adjust_stock(
     deal_id: str | None = None,
     place_id: str | None = None,
     first_place_id: str | None = None,
+    batch_id: str | None = None,
+    deal_item_id: str | None = None,
+    new_batch: dict | None = None,
     db=None,
 ) -> dict:
     """Thin wrapper over apply_stock_movement (204_deals.sql, per place since 304), which changes
@@ -104,6 +107,12 @@ def adjust_stock(
         params["p_place_id"] = place_id
     elif first_place_id:  # start here, then the other places (309)
         params["p_first_place"] = first_place_id
+    if batch_id:  # this batch exactly (310)
+        params["p_batch_id"] = batch_id
+    if deal_item_id:  # remember which batches this bill line took
+        params["p_deal_item_id"] = deal_item_id
+    if new_batch:  # stock in: batch no., expiry, cost, supplier
+        params["p_new_batch"] = new_batch
     res = db.rpc("apply_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {
@@ -124,6 +133,9 @@ def adjust_variant_stock(
     deal_id: str | None = None,
     place_id: str | None = None,
     first_place_id: str | None = None,
+    batch_id: str | None = None,
+    deal_item_id: str | None = None,
+    new_batch: dict | None = None,
     db=None,
 ) -> dict:
     """apply_variant_stock_movement (294, per place since 304): one size/colour's stock and the item
@@ -142,6 +154,12 @@ def adjust_variant_stock(
         params["p_place_id"] = place_id
     elif first_place_id:  # start here, then the other places (309)
         params["p_first_place"] = first_place_id
+    if batch_id:  # this batch exactly (310)
+        params["p_batch_id"] = batch_id
+    if deal_item_id:  # remember which batches this bill line took
+        params["p_deal_item_id"] = deal_item_id
+    if new_batch:  # stock in: batch no., expiry, cost, supplier
+        params["p_new_batch"] = new_batch
     res = db.rpc("apply_variant_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
     return {"ok": bool(row.get("ok")), "tracked": True, "quantity_after": row.get("quantity_after")}
@@ -178,12 +196,21 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
     Returns warnings for lines whose stock couldn't be moved."""
     items = (
         db.table("deal_items")
-        .select("catalog_item_id, variant_id, name, qty")
+        .select("id, catalog_item_id, variant_id, name, qty, batch_id")
         .eq("deal_id", deal_id)
         .eq("tenant_id", tenant_id)
         .execute()
     ).data or []
     warnings: list[dict] = []
+    taken: dict[str, dict[str, int]] = {}  # returns go back into the batches each line took (310)
+    if direction > 0 and items:
+        try:
+            for p in (db.table("deal_item_batches").select("deal_item_id, batch_id, quantity").eq("tenant_id", tenant_id)
+                      .in_("deal_item_id", [i["id"] for i in items if i.get("id")]).execute().data or []):
+                line = taken.setdefault(p["deal_item_id"], {})
+                line[p["batch_id"]] = line.get(p["batch_id"], 0) + int(p["quantity"])
+        except Exception:
+            logger.warning("Couldn't read the batches deal %s took; returning stock without them", deal_id)
     reason = "sale" if direction < 0 else "return"
     first_place = None  # counter bills: the bill place; online orders: where they are packed
     if items:
@@ -200,10 +227,21 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
             continue
         try:
             move = adjust_variant_stock if item.get("variant_id") else adjust_stock
-            result = move(
-                tenant_id, item.get("variant_id") or item["catalog_item_id"], direction * item["qty"], reason,
-                deal_id=deal_id, created_by=created_by, first_place_id=first_place, db=db,
-            )
+            target = item.get("variant_id") or item["catalog_item_id"]
+            common = {"deal_id": deal_id, "created_by": created_by, "first_place_id": first_place,
+                      "deal_item_id": item.get("id"), "db": db}
+            left = int(item["qty"])
+            result = {"ok": True, "quantity_after": None}
+            if direction > 0:  # back into the same batches first
+                for batch_id, qty in (taken.get(item.get("id") or "") or {}).items():
+                    back = min(qty, left)
+                    if back > 0 and move(tenant_id, target, back, reason, batch_id=batch_id, **common)["ok"]:
+                        left -= back
+            elif item.get("batch_id"):  # the batch staff chose on the bill
+                result = move(tenant_id, target, -left, reason, batch_id=item["batch_id"], **common)
+                left = 0 if result["ok"] else left
+            if left > 0:
+                result = move(tenant_id, target, direction * left, reason, **common)
             if not result["ok"]:
                 warnings.append({
                     "catalog_item_id": item["catalog_item_id"],
@@ -241,7 +279,7 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
     if item_ids:
         rows = (
             db.table("catalog_items")
-            .select("id, name, price_paise, gst_rate")
+            .select("id, name, price_paise, gst_rate, tracks_batches")
             .eq("tenant_id", tenant_id)
             .in_("id", item_ids)
             .execute()
@@ -266,12 +304,26 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
         if not name:
             raise DealError("Each line needs a product name")
         price = li.get("unit_price_paise")
+        from_catalog = price is None
         if price is None and variant and variant.get("price_paise") is not None:
             price = variant["price_paise"]
         if price is None and item:
             price = item.get("price_paise")
         if price is None:
             raise DealError(f"No price for {name}")
+        batch_extra: dict = {}
+        if item and item.get("tracks_batches") is True:  # Batches & expiry (310)
+            from app.services import stock_batches as sb
+            wanted = li.get("batch_id") or None
+            sale, batch = sb.sale_price(db, tenant_id, item_id, (variant or {}).get("id"), int(price), wanted)
+            if wanted and not batch:
+                raise DealError(f"That batch of {name} can't be sold (expired or none left). Pick another.")
+            if wanted and int(batch.get("quantity") or 0) < qty:
+                raise DealError(f"That batch of {name} has only {batch['quantity']}. Lower the quantity or pick another batch.")
+            if from_catalog:
+                price = sale
+            if wanted:
+                batch_extra = {"batch_id": wanted}
         if price < 0:
             raise DealError("Price must not be negative")
         gst = li.get("gst_rate")
@@ -280,6 +332,7 @@ def _resolve_lines(tenant_id: str, lines: list[dict], db) -> list[dict]:
         extra = {"variant_id": variant["id"], "variant_label": variant_label(variant)} if variant else {}
         resolved.append({
             **extra,
+            **batch_extra,
             "catalog_item_id": item_id,
             "name": name,
             "qty": qty,

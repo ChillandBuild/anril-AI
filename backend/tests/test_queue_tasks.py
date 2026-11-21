@@ -22,18 +22,18 @@ MESSAGES = {
     "scheduled-broadcasts", "reengagement-rules", "silence-nudge", "callback-notifications",
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
-    "unmarked-bookings", "order-payment-reminders",
+    "unmarked-bookings", "order-payment-reminders", "batch-expiry",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
 COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "companion-kb-learning"}
 CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile", "auto-archive-idle"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
-    "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders",
+    "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders", "batch-expiry",
 }
 SYNC_JOBS = {
     "assignment-sweep", "recycle-contacts", "callback-notifications", "call-alert-summary",
-    "ad-insights-sync", "brain-weekly-digest", "inbound-stopped-replying", "unmarked-bookings",
+    "ad-insights-sync", "brain-weekly-digest", "inbound-stopped-replying", "unmarked-bookings", "batch-expiry",
 }
 
 # id -> (patch target, is the callee async, receives the Supabase client)
@@ -73,6 +73,7 @@ CALLEES = {
     "inbound-stopped-replying": ("app.services.inbound_auto_results.mark_stopped_replying", False, False),
     "unmarked-bookings": ("app.services.inbound_auto_results.remind_unmarked_bookings", False, False),
     "order-payment-reminders": ("app.services.orders.send_due_reminders", True, False),
+    "batch-expiry": ("app.services.stock_batches.ring_expiry_bells", False, False),
     "meta-catalogue-sync": ("app.services.meta_catalog.sync_all_tenants", True, False),
 }
 
@@ -97,6 +98,7 @@ AT_IST = {
     "companion-kb-learning": (["02:30"], None),
     "inbound-stopped-replying": ([f"{h:02d}:47" for h in range(24)], None),  # hourly at :17 UTC
     "unmarked-bookings": (["20:00"], None),
+    "batch-expiry": (["09:30"], None),
     "order-payment-reminders": ([f"{h:02d}:53" for h in range(24)], None),  # hourly at :23 UTC
     "companion-diary": ([f"{h:02d}:35" for h in range(24)], None),  # hourly at :05 UTC
     "numbers-pool-sync": (["06:00", "18:00"], None),
@@ -127,7 +129,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 36
+    assert len(_periodic()) == 37
 
 
 def test_task_name_matches_periodic_id():
@@ -180,7 +182,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (23, 5, 8)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (23, 5, 9)
 
 
 def test_sync_and_async_split():

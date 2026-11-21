@@ -81,6 +81,7 @@ export default function CatalogueItemPage() {
   const [lowAt, setLowAt] = useState("");
   const [description, setDescription] = useState("");
   const [ready, setReady] = useState(true);
+  const [batches, setBatches] = useState(false);
   const [openingStock, setOpeningStock] = useState("");
   // sizes x colours
   const [sizes, setSizes] = useState<string[]>([]);
@@ -110,8 +111,8 @@ export default function CatalogueItemPage() {
   const isProduct = itemType === "product";
 
   const formState = useCallback(() => JSON.stringify({
-    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, openingStock, sizes, colours, rowPrice, newStock,
-  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, openingStock, sizes, colours, rowPrice, newStock]);
+    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, openingStock, sizes, colours, rowPrice, newStock,
+  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, openingStock, sizes, colours, rowPrice, newStock]);
 
   const fill = useCallback((d: CatalogItemDetail) => {
     setDetail(d);
@@ -126,6 +127,7 @@ export default function CatalogueItemPage() {
     setLowAt(d.low_stock_at != null ? String(d.low_stock_at) : "");
     setDescription(d.description ?? "");
     setReady(d.status === "ready");
+    setBatches(d.tracks_batches === true);
     setOpeningStock("");
     setSizes(d.sizes);
     setColours(d.colours);
@@ -221,6 +223,7 @@ export default function CatalogueItemPage() {
           : [];
         await api.catalog.saveVariants(item.id, { sizes: useGrid ? sizes : [], colours: useGrid ? colours : [], cells });
       }
+      if (isProduct && batches !== (detail?.tracks_batches === true)) await api.catalog.setBatchTracking(item.id, batches);
       toast.success(isNew ? "Item added" : "Saved");
       snapshot.current = "";
       if (isNew) {
@@ -400,6 +403,21 @@ export default function CatalogueItemPage() {
                 <span className="block text-xs text-ink-muted">The AI can offer it and it shows on your WhatsApp catalogue. Untick to keep it as a draft.</span>
               </span>
             </label>
+            {isProduct && (
+              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl bg-surface-low px-3 py-2.5">
+                <input type="checkbox" checked={batches} disabled={ro} onChange={(e) => setBatches(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+                <span className="text-sm">
+                  <span className="font-semibold text-ink">Track batches &amp; expiry</span>
+                  <span className="block text-xs text-ink-muted">
+                    {batches && !detail?.tracks_batches && !isNew
+                      ? "On Save, the stock you have now becomes one “Opening stock” batch. New stock gets its batch no. and expiry in Purchases → Stock in."
+                      : !batches && detail?.tracks_batches
+                        ? "On Save, batch numbers and expiry dates for this item are forgotten. The stock count stays."
+                        : "For medicines, food, cosmetics: each batch has its own stock and expiry; bills sell the first-expiring one and never an expired one."}
+                  </span>
+                </span>
+              </label>
+            )}
           </Card>
 
           {isProduct && (

@@ -75,6 +75,27 @@ count, godown, barcode". This plan is everything still missing from those screen
 
 Order: base → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. 1–3 need only the base's being there; 4–6 use places; 7 feeds 6.
 
+## Part 5 in detail: Batches & expiry (decided with Prem, 2026-11-22)
+Answers: batches on items AND sizes/colours; Small discount = a % off price for that batch (bills and the AI use
+it); Return to supplier = stock out AND what you owe that supplier goes down; on a bill the first-expiring batch
+(or the one marked Sell first) is picked by itself, shown on the line, staff can change it; expired never billed.
+
+- **Data (migration 310):** `catalog_items.tracks_batches`; `stock_batches` (item, size/colour, place, batch no.,
+  expiry, quantity, cost, supplier, discount %, sell first, status); `deal_item_batches` (which batch each bill line
+  took, so a return goes back to the same batch and the bill can print it); `supplier_returns` (credit that lowers
+  dues). For a batch item the place's stock always = the sum of its batches (kept by the same SQL functions).
+- **Turning it on** for an item puts today's stock into one batch "Opening stock" with no expiry, so nothing is lost.
+- **Stock in:** Purchases → Stock in asks batch no. + expiry on lines of batch items; "+ Stock in with batch" on the
+  tab opens that page.
+- **Selling:** stock out with no batch given takes Sell-first batches, then earliest expiry, never expired;
+  across places as today (bill place first). A counter bill line can name a batch.
+- **Price:** when the batch that would be picked has a discount, the bill line and the AI price use it.
+- **Bill:** batch no. + expiry under the line on the bill page, PDF and image.
+- **Batches & expiry tab:** cards Expired / 30 days / 31–90 days / Fine / Can return to supplier; chips; By supplier;
+  rows with Return to supplier, Small discount, Remove · write off (Activity log), Sell first.
+- **Alerts:** one bell a day to owners when something expired or expires in 30 days; Day closing gets an
+  "Expiring" block.
+
 ## Rules for every phase
 - Customer-facing words in English / Tamil / Tanglish and editable; dashboard copy plain English; "Anril" only.
 - Settings apply on Save; header shows "Catalogue / <tab>"; RLS member-select on every new table; tenant_id on

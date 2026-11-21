@@ -29,6 +29,9 @@ interface Line {
   action: DamagedAction | null;
   cost: string;
   gst_rate: number;
+  /** Batches & expiry: only for items that track batches. */
+  batch_no?: string;
+  expiry?: string;
 }
 
 const DAMAGED: { value: DamagedAction; label: string }[] = [
@@ -144,6 +147,7 @@ export default function StockInPage() {
           catalog_item_id: li.catalog_item_id, variant_id: li.variant_id, purchase_order_line_id: li.po_line_id,
           qty_good: Number(li.good) || 0, qty_damaged: Number(li.damaged) || 0,
           damaged_action: Number(li.damaged) > 0 ? li.action : null, unit_cost_paise: toPaise(li.cost) || 0, gst_rate: li.gst_rate,
+          batch_no: li.batch_no?.trim() || undefined, expiry_date: li.expiry || undefined,
         })),
       });
       setDone(out);
@@ -237,7 +241,20 @@ export default function StockInPage() {
                   const still = li.still != null ? Math.max(0, li.still - (Number(li.good) || 0)) : null;
                   return (
                     <tr key={li.key} className="border-b border-border-subtle align-top last:border-b-0">
-                      <td className="px-4 py-2.5 font-semibold text-ink">{li.label}</td>
+                      <td className="px-4 py-2.5 font-semibold text-ink">
+                        {li.label}
+                        {opts.items.find((it) => it.id === li.catalog_item_id)?.tracks_batches && (
+                          <div className="mt-1.5 flex flex-wrap gap-1.5 font-normal">
+                            <input value={li.batch_no ?? ""} maxLength={40} placeholder="Batch no." aria-label={`Batch no. of ${li.label}`}
+                              onChange={(e) => update(li.key, { batch_no: e.target.value })}
+                              className="h-8 w-28 rounded-lg border border-border px-2 font-mono text-xs uppercase" />
+                            <input type="date" value={li.expiry ?? ""} aria-label={`Expiry of ${li.label}`}
+                              onChange={(e) => update(li.key, { expiry: e.target.value })}
+                              className={cn("h-8 rounded-lg border px-2 text-xs", li.expiry ? "border-border" : "border-amber-300")} />
+                            {!li.expiry && <span className="w-full text-[11px] text-amber-700">Add the expiry so Anril can warn you before it.</span>}
+                          </div>
+                        )}
+                      </td>
                       {poId && <td className="px-3 py-2.5 tabular-nums text-ink">{li.ordered}</td>}
                       <td className="px-3 py-2.5">
                         <input value={li.good} inputMode="numeric" aria-label={`Good pieces of ${li.label}`}

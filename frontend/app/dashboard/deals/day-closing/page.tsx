@@ -291,6 +291,19 @@ export default function DayClosingPage() {
               )}
               <Link href="/dashboard/catalog" className="mt-2 inline-block font-label text-xs font-bold text-primary-700 hover:text-primary-900">Stock in ›</Link>
             </section>
+
+            {data.expiring && (data.expiring.expired > 0 || data.expiring.soon > 0) && (
+              <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+                <h2 className="font-label text-sm font-bold text-[#0A1528]">⏳ Expiring <span className="font-normal text-on-surface-muted">· batches</span></h2>
+                <p className="mt-2 text-sm text-[#334155]">
+                  {data.expiring.expired > 0 && <b className="text-rose-600">{data.expiring.expired} expired</b>}
+                  {data.expiring.expired > 0 && data.expiring.soon > 0 && " · "}
+                  {data.expiring.soon > 0 && <b className="text-amber-700">{data.expiring.soon} within 30 days</b>}
+                </p>
+                {data.expiring.names.length > 0 && <p className="mt-1 truncate text-xs text-on-surface-muted">{data.expiring.names.join(", ")}</p>}
+                <Link href="/dashboard/catalog?tab=batches" className="mt-2 inline-block font-label text-xs font-bold text-primary-700 hover:text-primary-900">Batches &amp; expiry ›</Link>
+              </section>
+            )}
           </div>
         </div>
       )}

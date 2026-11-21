@@ -82,6 +82,7 @@ class BillLine(BaseModel):
     variant_id: str | None = Field(None, max_length=64)
     qty: int = Field(1, ge=1, le=100000)
     unit_price_paise: int | None = Field(None, ge=0, le=10_000_000_00)
+    batch_id: str | None = Field(None, max_length=64)  # Batches & expiry: the batch staff picked
 
 
 class NewBillIn(BaseModel):

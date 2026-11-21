@@ -131,6 +131,10 @@ def suppliers_view(db, tenant_id: str, now: datetime | None = None) -> dict:
     paid: dict[str, int] = {}
     for p in pays:
         paid[p["supplier_id"]] = paid.get(p["supplier_id"], 0) + int(p["amount_paise"])
+    # Return to supplier (Batches & expiry) is a credit: it lowers what is owed like a payment.
+    for r in (db.table("supplier_returns").select("supplier_id, amount_paise").eq("tenant_id", tenant_id)
+              .limit(20000).execute().data or []):
+        paid[r["supplier_id"]] = paid.get(r["supplier_id"], 0) + int(r["amount_paise"])
     rows = []
     for s in sups:
         mine = [b for b in bills if b["supplier_id"] == s["id"]]
@@ -194,7 +198,7 @@ def _resolve_line(db, tenant_id: str, line: dict) -> tuple[dict, dict | None, st
     from app.services.deals import variant_label
 
     item_id = str(line.get("catalog_item_id") or "")
-    items = (db.table("catalog_items").select("id, name, stock_quantity, gst_rate, cost_price_paise")
+    items = (db.table("catalog_items").select("id, name, stock_quantity, gst_rate, cost_price_paise, tracks_batches")
              .eq("id", item_id).eq("tenant_id", tenant_id).limit(1).execute().data) if item_id else None
     if not items:
         raise PurchaseError("Pick the item for every line")
@@ -292,9 +296,13 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
                 or (po_line.get("variant_id") or None) != (variant["id"] if variant else None)):
             raise PurchaseError(f"{label} isn't on this purchase order")
         cost = _int(raw.get("unit_cost_paise"), "Cost each", 0, 10**10)
+        batch = None
+        if item.get("tracks_batches") is True:  # Batches & expiry: batch no. + expiry go with the stock
+            batch = {"batch_no": _one_line(raw.get("batch_no"))[:40],
+                     "expiry": _date(raw.get("expiry_date"), f"{label}: expiry") or ""}
         lines.append({"item": item, "variant": variant, "label": label, "good": good, "damaged": damaged,
                       "action": action if damaged else None, "cost": cost, "rate": _rate(raw.get("gst_rate")),
-                      "po_line": po_line})
+                      "po_line": po_line, "batch": batch})
     if not lines:
         raise PurchaseError("Add at least one item that came")
     # What is paid for: good pieces, plus damaged ones kept to sell at a discount.
@@ -323,7 +331,7 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
     note = f"Stock in {row.get('bill_no') or ''}".strip() + (f" · {po_number(po['number'])}" if po else "")
     pieces = 0
     for li, _ in billed:
-        db.table("stock_in_lines").insert({
+        saved_line = db.table("stock_in_lines").insert({
             "tenant_id": tenant_id, "stock_in_id": row["id"],
             "purchase_order_line_id": li["po_line"]["id"] if li["po_line"] else None,
             "catalog_item_id": li["item"]["id"], "variant_id": li["variant"]["id"] if li["variant"] else None,
@@ -331,10 +339,16 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
             "damaged_action": li["action"], "unit_cost_paise": li["cost"], "gst_rate": li["rate"],
         }).execute()
         into_stock = li["good"] + (li["damaged"] if li["action"] == "discount" else 0)
+        new_batch = None
+        if li["batch"] is not None:
+            saved = getattr(saved_line, "data", None)
+            saved_id = (saved[0] or {}).get("id") if isinstance(saved, list) and saved else None
+            new_batch = {**li["batch"], "cost_paise": li["cost"], "supplier_id": supplier_id or "",
+                         "stock_in_line_id": saved_id or ""}
         if into_stock:
             if li["variant"]:
                 adjust_variant_stock(tenant_id, li["variant"]["id"], into_stock, "restock", note=note,
-                                     created_by=user_id, place_id=place_id, db=db)
+                                     created_by=user_id, place_id=place_id, new_batch=new_batch, db=db)
                 db.table("catalog_item_variants").update({"cost_price_paise": li["cost"]}) \
                     .eq("id", li["variant"]["id"]).eq("tenant_id", tenant_id).execute()
             else:
@@ -342,7 +356,7 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
                     db.table("catalog_items").update({"stock_quantity": 0}).eq("id", li["item"]["id"]) \
                         .eq("tenant_id", tenant_id).is_("stock_quantity", "null").execute()
                 adjust_stock(tenant_id, li["item"]["id"], into_stock, "restock", note=note, created_by=user_id,
-                             place_id=place_id, db=db)
+                             place_id=place_id, new_batch=new_batch, db=db)
             db.table("catalog_items").update({"cost_price_paise": li["cost"]}).eq("id", li["item"]["id"]) \
                 .eq("tenant_id", tenant_id).execute()
             pieces += into_stock
@@ -780,7 +794,7 @@ def options(db, tenant_id: str) -> dict:
     """What the Purchases forms pick from: items with sizes/colours and cost, places, suppliers."""
     from app.services.deals import variant_label
 
-    items = (db.table("catalog_items").select("id, name, gst_rate, cost_price_paise, stock_quantity, item_type")
+    items = (db.table("catalog_items").select("id, name, gst_rate, cost_price_paise, stock_quantity, item_type, tracks_batches")
              .eq("tenant_id", tenant_id).order("name").limit(5000).execute().data or [])
     variants = (db.table("catalog_item_variants").select("id, catalog_item_id, size, colour, stock_quantity, cost_price_paise, sort_order")
                 .eq("tenant_id", tenant_id).order("sort_order").limit(20000).execute().data or [])
@@ -799,6 +813,7 @@ def options(db, tenant_id: str) -> dict:
     return {
         "items": [{"id": i["id"], "name": i["name"], "gst_rate": float(i.get("gst_rate") or 0),
                    "cost_price_paise": i.get("cost_price_paise"), "stock": i.get("stock_quantity"),
+                   "tracks_batches": i.get("tracks_batches") is True,
                    "variants": by_item.get(i["id"], [])} for i in items if (i.get("item_type") or "product") == "product"],
         "places": places,
         "suppliers": sups,

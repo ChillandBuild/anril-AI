@@ -7,13 +7,17 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Bot, Check, Loader2, Minus, PackageOpen, Pencil, Plus, Search, ShoppingBag, Store, Truck, X,
 } from "lucide-react";
-import { api, type NewBillItem, type NewBillResult, type NewBillVariant } from "@/lib/api";
+import { api, type NewBillItem, type NewBillResult, type NewBillVariant, type SellableBatch } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { computeBill } from "../orders/billMath";
 import { reportSend, rupees } from "../orders/orderUi";
 
-type Line = { key: string; item: NewBillItem; variant: NewBillVariant | null; qty: number };
+type Line = {
+  key: string; item: NewBillItem; variant: NewBillVariant | null; qty: number;
+  /** Batches & expiry: sellable batches in the order bills take them; batchId = staff's pick (null = first). */
+  batches?: SellableBatch[]; batchId?: string | null;
+};
 type Method = "cash" | "upi" | "card" | "link";
 
 const METHODS: { value: Method; label: string }[] = [
@@ -25,6 +29,19 @@ const METHODS: { value: Method; label: string }[] = [
 
 function priceOf(item: NewBillItem, variant: NewBillVariant | null): number {
   return variant?.price_paise ?? item.price_paise ?? 0;
+}
+
+/** The line's batch: the one staff picked, else the first the bill would take (same as the backend). */
+function batchOf(l: Line): SellableBatch | null {
+  if (!l.batches?.length) return null;
+  return l.batches.find((b) => b.id === l.batchId) ?? l.batches[0];
+}
+
+/** Price with the batch's small discount (backend stock_batches.sale_price). */
+function linePrice(l: Line): number {
+  const base = priceOf(l.item, l.variant);
+  const pct = batchOf(l)?.discount_pct ?? 0;
+  return pct ? Math.round((base * (100 - pct)) / 100) : base;
 }
 
 function stockOf(item: NewBillItem): number | null {
@@ -111,7 +128,7 @@ export default function NewBillPage() {
 
   const includeGst = options?.prices_include_gst ?? true;
   const totals = computeBill(
-    lines.map((l) => ({ unit_price_paise: priceOf(l.item, l.variant), qty: l.qty, gst_rate: l.item.gst_rate })),
+    lines.map((l) => ({ unit_price_paise: linePrice(l), qty: l.qty, gst_rate: l.item.gst_rate })),
     { discount_paise: rupeesToPaise(discountText), include_gst: includeGst, bill_type: billType },
   );
   // The shop rule's advance (same as backend order_quotes.advance_for); typing another amount is noted on the order.
@@ -135,6 +152,11 @@ export default function NewBillPage() {
       if (found) return cur.map((l) => (l.key === key ? { ...l, qty: l.qty + 1 } : l));
       return [...cur, { key, item, variant, qty: 1 }];
     });
+    if (item.tracks_batches) {
+      api.catalog.itemBatches(item.id, variant?.id ?? null)
+        .then((res) => setLines((cur) => cur.map((l) => (l.key === key ? { ...l, batches: res.data } : l))))
+        .catch(() => { /* the bill still picks the first-expiring batch by itself */ });
+    }
   }
 
   function tapItem(item: NewBillItem) {
@@ -180,7 +202,7 @@ export default function NewBillPage() {
         mode,
         phone: hasPhone ? phone : undefined,
         name: name.trim() || undefined,
-        items: lines.map((l) => ({ catalog_item_id: l.item.id, variant_id: l.variant?.id ?? null, qty: l.qty })),
+        items: lines.map((l) => ({ catalog_item_id: l.item.id, variant_id: l.variant?.id ?? null, qty: l.qty, batch_id: l.batchId ?? null })),
         discount_paise: totals.discount_paise,
         bill_type: billType,
         gstin: b2b ? gstin.trim().toUpperCase() : undefined,
@@ -419,15 +441,30 @@ export default function NewBillPage() {
               <ul className="space-y-2">
                 {lines.map((l) => (
                   <li key={l.key} className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate font-label text-[13px] font-bold text-[#0A1528]">
-                      {l.item.name}{l.variant ? ` · ${l.variant.label}` : ""}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-label text-[13px] font-bold text-[#0A1528]">
+                        {l.item.name}{l.variant ? ` · ${l.variant.label}` : ""}
+                      </span>
+                      {l.item.tracks_batches && (l.batches?.length ? (
+                        <select value={batchOf(l)?.id ?? ""} aria-label={`Batch of ${l.item.name}`}
+                          onChange={(e) => setLines((cur) => cur.map((x) => (x.key === l.key ? { ...x, batchId: e.target.value } : x)))}
+                          className="mt-0.5 max-w-full truncate rounded border border-[#e2e8f0] bg-white px-1 py-0.5 text-[11px] text-[#475569]">
+                          {l.batches.map((b, i) => (
+                            <option key={b.id} value={b.id}>
+                              {b.label} · {b.quantity} left{b.discount_pct ? ` · ${b.discount_pct}% off` : ""}{i === 0 && !l.batchId ? " (first)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : l.batches ? (
+                        <span className="block text-[11px] text-rose-600">No batch that can be sold (expired or none left)</span>
+                      ) : null)}
                     </span>
                     <span className="flex items-center rounded-lg border border-[#e2e8f0]">
                       <button type="button" onClick={() => changeQty(l.key, -1)} aria-label="One less" className="px-1.5 py-1 text-[#475569]"><Minus size={12} /></button>
                       <span className="w-6 text-center text-xs font-bold tabular-nums">{l.qty}</span>
                       <button type="button" onClick={() => changeQty(l.key, 1)} aria-label="One more" className="px-1.5 py-1 text-[#475569]"><Plus size={12} /></button>
                     </span>
-                    <span className="w-20 text-right text-sm font-bold tabular-nums">{rupees(priceOf(l.item, l.variant) * l.qty)}</span>
+                    <span className="w-20 text-right text-sm font-bold tabular-nums">{rupees(linePrice(l) * l.qty)}</span>
                   </li>
                 ))}
               </ul>

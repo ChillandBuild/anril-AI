@@ -437,6 +437,10 @@ export function useStockAsks(days = 30, enabled = true) {
   return useSWR(enabled ? `catalog/stock-asks:${days}` : null, () => api.catalog.stockAsks(days), defaultConfig);
 }
 
+export function useBatches(enabled = true) {
+  return useSWR(enabled ? "stock/batches" : null, () => api.catalog.batches(), defaultConfig);
+}
+
 export function useStockOverview(enabled = true) {
   return useSWR(enabled ? "stock/overview" : null, () => api.catalog.stockOverview(), defaultConfig);
 }

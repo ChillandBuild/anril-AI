@@ -1515,6 +1515,10 @@ def catalog_prompt(items: list[dict], directive: str, rules: dict) -> tuple[str,
             if row.get("price_note"):
                 price_str += f" ({row['price_note']})"
             line += f" — {price_str}"
+        offer = (row.get("offers") or {}).get(row["id"])
+        if offer and row.get("price_paise") is not None:
+            now_rupees = round(row["price_paise"] * (100 - offer) / 100) / 100
+            line += f" — ON OFFER NOW: {offer}% off, ₹{now_rupees:.0f} (the payment link uses this price)"
         if row.get("description"):
             line += f" — {row['description']}"
         if out_of_stock:
@@ -1599,7 +1603,13 @@ def _attach_variants(db, tenant_id: str, items: list[dict]) -> list[dict]:
     except Exception:
         logger.warning("Couldn't read stock per place for the catalog prompt (tenant %s)", tenant_id)
         elsewhere = {}
-    return [{**row, "variants": by_item.get(row["id"], []), "elsewhere": elsewhere} for row in items]
+    try:  # Batches & expiry: a batch on a small discount is the one being sold
+        from app.services.stock_batches import ai_offers
+        offers = ai_offers(db, tenant_id, ids)
+    except Exception:
+        logger.warning("Couldn't read batch offers for the catalog prompt (tenant %s)", tenant_id)
+        offers = {}
+    return [{**row, "variants": by_item.get(row["id"], []), "elsewhere": elsewhere, "offers": offers} for row in items]
 
 
 async def _build_catalog_context(db, tenant_id: str, message: str) -> tuple[str, list[dict], dict[str, dict], int]:

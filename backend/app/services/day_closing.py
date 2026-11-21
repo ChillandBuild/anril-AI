@@ -107,7 +107,18 @@ def summary(db, tenant_id: str, day: date) -> dict:
         },
         "closed": row,
         "running_low": running_low(db, tenant_id),
+        "expiring": _expiring(db, tenant_id),
     }
+
+
+def _expiring(db, tenant_id: str) -> dict:
+    """Batches & expiry: expired and ≤30-day batches (never breaks the day's summary)."""
+    try:
+        from app.services.stock_batches import expiring_summary
+        return expiring_summary(db, tenant_id)
+    except Exception:
+        logger.warning("Couldn't read expiring batches for tenant %s", tenant_id)
+        return {"expired": 0, "soon": 0, "names": []}
 
 
 def running_low(db, tenant_id: str, limit: int = 8) -> list[dict]:

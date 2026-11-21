@@ -1263,7 +1263,7 @@ def bill_options(db, tenant_id: str) -> dict:
     the team for Handled by, and the GST setup."""
     from app.services.business_details import get_business_details
     items = (
-        db.table("catalog_items").select("id, name, item_type, price_paise, gst_rate, stock_quantity, attributes, status")
+        db.table("catalog_items").select("id, name, item_type, price_paise, gst_rate, stock_quantity, attributes, status, tracks_batches")
         .eq("tenant_id", tenant_id).eq("status", "ready").order("name").limit(1000).execute()
     ).data or []
     variants = (
@@ -1285,6 +1285,7 @@ def bill_options(db, tenant_id: str) -> dict:
             "group": (attrs.get("category") or attrs.get("group") or "").strip() or None,
             "price_paise": it.get("price_paise"), "gst_rate": it.get("gst_rate"),
             "stock": it.get("stock_quantity"),
+            "tracks_batches": it.get("tracks_batches") is True,
             "variants": [
                 {"id": v["id"], "size": v.get("size"), "colour": v.get("colour"), "stock": v["stock_quantity"],
                  "price_paise": v.get("price_paise"), "label": deals_service.variant_label(v)}
@@ -1335,9 +1336,18 @@ def public_bill(db, token: str) -> dict | None:
     from app.services.business_details import get_business_details
     business = get_business_details(tenant_id, db) or {}
     items = (
-        db.table("deal_items").select("name, variant_label, qty, unit_price_paise, gst_rate")
+        db.table("deal_items").select("id, name, variant_label, qty, unit_price_paise, gst_rate")
         .eq("deal_id", deal["id"]).eq("tenant_id", tenant_id).order("created_at").execute()
     ).data or []
+    try:  # batch no. + expiry under the line (Batches & expiry), on the page, PDF and image alike
+        from app.services.stock_batches import bill_line_batches
+        batches = bill_line_batches(db, tenant_id, [i["id"] for i in items if i.get("id")])
+    except Exception:
+        logger.warning("Couldn't read batches for bill %s", deal["id"])
+        batches = {}
+    for i in items:
+        if batches.get(i.get("id")):
+            i["variant_label"] = " · ".join(x for x in (i.get("variant_label"), batches[i["id"]]) if x)
     lead = {}
     if deal.get("lead_id"):
         res = db.table("leads").select("name, phone").eq("id", deal["lead_id"]).eq("tenant_id", tenant_id).maybe_single().execute()

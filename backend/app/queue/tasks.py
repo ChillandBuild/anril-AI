@@ -40,6 +40,7 @@ RETRY_CLASS: dict[str, str] = {
     "companion-kb-learning": "A",
     "inbound-stopped-replying": "A",
     "unmarked-bookings": "C",
+    "batch-expiry": "C",
     "order-payment-reminders": "C",
     "meta-catalogue-sync": "A",
 }
@@ -284,6 +285,15 @@ async def order_payment_reminders(timestamp: int) -> None:
 def unmarked_bookings(timestamp: int) -> None:
     from app.services.inbound_auto_results import remind_unmarked_bookings
     remind_unmarked_bookings()
+
+
+# Class C: one bell per owner per day (it checks for today's bell first), never two at once.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(9, 30), periodic_id="batch-expiry")
+@queue_app.task(name="batch-expiry", **_one_at_a_time("batch-expiry"), queue="messages")
+def batch_expiry(timestamp: int) -> None:
+    """Batches & expiry: owners hear about expired and soon-expiring batches at 9:30 AM IST."""
+    from app.services.stock_batches import ring_expiry_bells
+    ring_expiry_bells()
 
 
 @queue_app.periodic(cron="30 3 * * 1", periodic_id="brain-weekly-digest")  # Monday 09:00 IST

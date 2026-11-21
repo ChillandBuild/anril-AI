@@ -241,6 +241,8 @@ export interface CatalogItem {
   cost_price_paise?: number | null;
   hsn_code?: string | null;
   low_stock_at?: number | null;
+  /** Batches & expiry switched on for this item. */
+  tracks_batches?: boolean;
   meta_sync_state?: "sending" | "synced" | "error" | "skipped" | null;
   meta_sync_error?: string | null;
   meta_pending?: boolean;
@@ -3306,6 +3308,17 @@ export const api = {
     stockAsks: (days = 30) => apiFetch<StockAsks>(`/api/v1/catalog/stock-asks?days=${days}`),
     stockAsksCsvPath: (days = 30) => `/api/v1/catalog/stock-asks.csv?days=${days}`,
     stockOverview: () => apiFetch<StockOverview>(`/api/v1/stock/overview`),
+    batches: () => apiFetch<BatchesOverview>(`/api/v1/stock/batches`),
+    itemBatches: (itemId: string, variantId?: string | null) =>
+      apiFetch<{ data: SellableBatch[] }>(`/api/v1/stock/items/${encodeURIComponent(itemId)}/batches${variantId ? `?variant_id=${encodeURIComponent(variantId)}` : ""}`),
+    setBatchTracking: (itemId: string, on: boolean) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/items/${encodeURIComponent(itemId)}/batch-tracking`, { method: "PUT", body: JSON.stringify({ on }) }),
+    updateBatch: (id: string, body: { discount_pct?: number; sell_first?: boolean }) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/batches/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    writeOffBatch: (id: string, quantity?: number) =>
+      apiFetch<{ ok: boolean; quantity: number }>(`/api/v1/stock/batches/${encodeURIComponent(id)}/write-off`, { method: "POST", body: JSON.stringify({ quantity }) }),
+    returnBatch: (id: string, quantity?: number) =>
+      apiFetch<{ ok: boolean; quantity: number; credit_paise: number }>(`/api/v1/stock/batches/${encodeURIComponent(id)}/return`, { method: "POST", body: JSON.stringify({ quantity }) }),
     saveStockPlaces: (places: StockPlace[]) =>
       apiFetch<{ data: StockPlace[] }>(`/api/v1/stock/places`, { method: "PUT", body: JSON.stringify({ places }) }),
     sendStockMove: (body: { from_place_id: string; to_place_id: string; note?: string; lines: StockMoveLineInput[] }) =>
@@ -5680,6 +5693,50 @@ export interface DayClosing {
   };
   closed: { opening_paise: number; expected_paise: number; counted_paise: number; difference_paise: number; note: string | null; closed_at: string } | null;
   running_low: { name: string; left: number }[];
+  /** Batches & expiry: expired and ≤30-day batches. */
+  expiring?: { expired: number; soon: number; names: string[] };
+}
+
+/** Batches & expiry (backend services/stock_batches.py). */
+export type BatchBucket = "expired" | "soon" | "later" | "fine";
+export interface StockBatch {
+  id: string;
+  catalog_item_id: string;
+  variant_id: string | null;
+  place_id: string;
+  batch_no: string;
+  expiry_date: string | null;
+  quantity: number;
+  cost_paise: number | null;
+  supplier_id: string | null;
+  discount_pct: number;
+  sell_first: boolean;
+  name: string;
+  variant_label: string;
+  bucket: BatchBucket;
+  value_paise: number;
+  value_at: "cost" | "price";
+  supplier: string | null;
+  place: string | null;
+  returnable: boolean;
+}
+export interface BatchesOverview {
+  batches: StockBatch[];
+  cards: Record<BatchBucket | "returnable", { batches: number; value_paise: number }>;
+  tracked_items: number;
+  today: string;
+  suppliers: string[];
+}
+export interface SellableBatch {
+  id: string;
+  variant_id: string | null;
+  batch_no: string;
+  expiry_date: string | null;
+  quantity: number;
+  discount_pct: number;
+  sell_first: boolean;
+  label: string;
+  bucket: BatchBucket;
 }
 
 export interface AdvanceRule {
@@ -5728,6 +5785,8 @@ export interface NewBillItem {
   price_paise: number | null;
   gst_rate: number | null;
   stock: number | null;
+  /** Batches & expiry on: the bill line shows (and can change) the batch. */
+  tracks_batches?: boolean;
   variants: NewBillVariant[];
 }
 
@@ -5742,7 +5801,7 @@ export interface NewBillInput {
   mode: "now" | "later";
   phone?: string;
   name?: string;
-  items: { catalog_item_id: string; variant_id?: string | null; qty: number }[];
+  items: { catalog_item_id: string; variant_id?: string | null; qty: number; batch_id?: string | null }[];
   discount_paise: number;
   bill_type: "gst" | "simple";
   gstin?: string;
@@ -5937,6 +5996,8 @@ export interface PurchaseOptionItem {
   gst_rate: number;
   cost_price_paise: number | null;
   stock: number | null;
+  /** Batches & expiry on: stock in asks batch no. + expiry. */
+  tracks_batches?: boolean;
   variants: { id: string; label: string; stock: number; cost_price_paise: number | null }[];
 }
 
