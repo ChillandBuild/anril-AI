@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-local",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd frontend && set NEXT_PUBLIC_API_URL=http://localhost:8000&& set NEXT_PUBLIC_SUPABASE_URL=https://ayftynkgmfkaqmmnlmoc.supabase.co&& set NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5ZnR5bmtnbWZrYXFtbW5sbW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODMyOTMsImV4cCI6MjA5NTA1OTI5M30.sLaU52GspuFSNIYB02a39WdMan71yVH_FsxVZT97U8g&& npx next dev -p 3000"],
+      "port": 3000
+    }
+  ]
+}

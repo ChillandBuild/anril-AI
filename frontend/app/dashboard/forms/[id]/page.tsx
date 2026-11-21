@@ -463,7 +463,7 @@ export default function FormBuilderPage() {
 
       {canManage && (
         <div
-          className="sticky bottom-0 z-10 -mx-4 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5"
+          className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-10 lg:bottom-0 -mx-4 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3" aria-live="polite">

@@ -100,7 +100,7 @@ export function textKeysFor(kind: WaFormKind): string[] {
 export const KIND_NAMES: Record<WaFormKind, string> = {
   standard: "Questions",
   order: "Product order",
-  booking: "Appointment booking",
+  booking: "Time slot booking",
 };
 
 export function effectiveText(setup: WaFormSetup, language: WaFormLanguage, texts: Record<string, string>, key: string) {
@@ -403,6 +403,33 @@ export function FormPhonePreview({
  * Preview of a live form. The products and times are examples: on WhatsApp they come from the
  * Catalogue and the booking hours at the moment the customer opens the form.
  */
+const WEEK_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Example days and times for the booking preview, from the form's own hours and slot length. */
+function bookingSample(settings: WaFormSettings): { days: string[]; times: string[] } {
+  const hours = settings.hours ?? {};
+  const slot = Math.max(10, Number(settings.slot_minutes) || 30);
+  const days: string[] = [];
+  let firstOpen: [string, string] | null = null;
+  const day = new Date();
+  for (let i = 1; i <= 14 && days.length < 3; i += 1) {
+    day.setDate(day.getDate() + 1);
+    const ranges = hours[WEEK_KEYS[day.getDay()]] ?? [];
+    if (!ranges.length) continue;
+    firstOpen = firstOpen ?? ranges[0];
+    days.push(day.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }));
+  }
+  const times: string[] = [];
+  if (firstOpen && /^\d\d:\d\d$/.test(firstOpen[0]) && /^\d\d:\d\d$/.test(firstOpen[1])) {
+    const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    for (let m = toMin(firstOpen[0]); m + slot <= toMin(firstOpen[1]) && times.length < 3; m += slot) {
+      const h = Math.floor(m / 60);
+      times.push(`${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`);
+    }
+  }
+  return { days, times };
+}
+
 export function LiveFormPhonePreview({
   kind, settings, fields, words,
 }: {
@@ -417,6 +444,7 @@ export function LiveFormPhonePreview({
     </p>
   );
   const pages: PhonePage[] = [];
+  const sample = bookingSample(settings);
   if (kind === "order") {
     pages.push(
       { caption: "Search", title: words.title_search, button: words.continue, body: <MockBox label={words.search_label} /> },
@@ -452,11 +480,11 @@ export function LiveFormPhonePreview({
     pages.push(
       {
         caption: "Day", title: words.title_date, button: words.continue,
-        body: <>{example}<MockChoices label={words.date_label} items={["Mon, 23 Nov", "Tue, 24 Nov", "Thu, 26 Nov"]} /></>,
+        body: <>{example}<MockChoices label={words.date_label} items={sample.days.length ? sample.days : ["—"]} /></>,
       },
       {
         caption: "Time", title: words.title_slot, button: words.continue,
-        body: <>{example}<MockChoices label={words.slot_label} items={["10:00 am", "10:30 am", "11:00 am"]} /></>,
+        body: <>{example}<MockChoices label={words.slot_label} items={sample.times.length ? sample.times : ["—"]} /></>,
       },
     );
     const chunks = questionChunks(fields, false);
@@ -468,7 +496,7 @@ export function LiveFormPhonePreview({
       caption: "Last screen", title: words.title_confirm, button: words.submit,
       body: (
         <>
-          <p className="rounded-lg bg-[#f0f2f5] px-2.5 py-2 text-[12px] font-semibold text-[#111b21]">Mon, 23 Nov · 10:30 am</p>
+          <p className="rounded-lg bg-[#f0f2f5] px-2.5 py-2 text-[12px] font-semibold text-[#111b21]">{sample.days[0] ?? "—"} · {sample.times[0] ?? "—"}</p>
           <p className="whitespace-pre-line text-[12px] leading-snug text-[#111b21]">{words.form_note}</p>
           <ConsentBox text={words.consent} />
         </>

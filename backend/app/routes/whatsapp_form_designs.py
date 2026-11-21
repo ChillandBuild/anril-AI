@@ -119,7 +119,7 @@ def setup(ctx: dict = Depends(require_read)):
 
 LIVE_NAMES = {
     "order": ("Product order", "பொருள் ஆர்டர்", "Product order"),
-    "booking": ("Appointment booking", "சந்திப்பு முன்பதிவு", "Appointment booking"),
+    "booking": ("Time slot booking", "நேர முன்பதிவு", "Slot booking"),
 }
 
 
