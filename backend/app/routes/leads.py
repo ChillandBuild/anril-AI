@@ -570,7 +570,7 @@ BROADCAST_PAGE = 1000  # PostgREST caps one response at 1000 rows
 def _broadcast_targets(db, ctx: dict, f: LeadFilters) -> tuple[int, list[dict], set[str]]:
     """(leads the table shows, those with an opt-in record, ids inside the 24-hour window)."""
     tenant_id = ctx["tenant_id"]
-    query = _filtered_leads_query(db, ctx, f, columns="id,phone,source,ig_user_id,tg_user_id,fb_user_id,opt_in_source")
+    query = _filtered_leads_query(db, ctx, f, columns="id,phone,source,ig_user_id,tg_user_id,fb_user_id,opt_in_source,blocked_at")
     if query is None:
         return 0, [], set()
     rows: list[dict] = []
@@ -581,6 +581,9 @@ def _broadcast_targets(db, ctx: dict, f: LeadFilters) -> tuple[int, list[dict], 
         if len(page) < BROADCAST_PAGE:
             break
     # Hard invariant: bulk-send rejects leads with null opt_in_source
+    # Full block: a blocked person is never a broadcast target, and is not counted as a match
+    # or as "no opt-in" either, so the preview numbers only describe people who can be messaged.
+    rows = [r for r in rows if not r.get("blocked_at")]
     targets = [r for r in rows if r.get("opt_in_source")]
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -1302,7 +1305,32 @@ async def toggle_block(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
     if blocking:
         update["ai_enabled"] = False  # blocked contacts must not get auto-replies
     res = db.table("leads").update(update).eq("id", str(lead_id)).eq("tenant_id", tenant_id).execute()
+    # Full block: nothing is sent to a blocked person (services/blocked_guard.py). Forget the
+    # cached list so this process obeys the change at once; other workers within a minute.
+    from app.services.blocked_guard import invalidate
+    invalidate(tenant_id)
+    if blocking:
+        _close_handovers_for_blocked(db, ctx, tenant_id, str(lead_id))
     return res.data[0] if res.data else update
+
+
+def _close_handovers_for_blocked(db, ctx: dict, tenant_id: str, lead_id: str) -> None:
+    """A blocked person must not sit in the Needs you tab, the sidebar count or the team's
+    claim banner: close their open handovers. Never fails the block itself."""
+    try:
+        done = db.table("chat_handovers").update({
+            "status": "resolved",
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_by": ctx.get("user_id"),
+            "resolved_by_name": actor_name(db, ctx),
+        }).eq("lead_id", lead_id).eq("tenant_id", tenant_id).eq("status", "pending").execute().data or []
+        if done:
+            from app.services.notify import clear_pool_notifications_for_lead
+            clear_pool_notifications_for_lead(tenant_id, lead_id, db=db)
+        db.table("leads").update({"needs_human_attention": False, "escalation_reason": None}) \
+            .eq("id", lead_id).eq("tenant_id", tenant_id).execute()
+    except Exception as e:
+        logger.warning(f"Block: could not close open handovers for lead {lead_id}: {e}")
 
 
 @router.post("/{lead_id}/send")
@@ -1317,9 +1345,12 @@ async def send_human_message(
         raise HTTPException(status_code=400, detail="Message is empty")
 
     db = get_supabase()
-    lead = db.table("leads").select("phone,source,ig_user_id,tg_user_id,fb_user_id").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
+    lead = db.table("leads").select("phone,source,ig_user_id,tg_user_id,fb_user_id,blocked_at").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
     if not lead.data:
         raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.data.get("blocked_at"):
+        # Fresh read of the lead itself, not the cached list: a blocked person gets no staff reply.
+        raise HTTPException(status_code=409, detail="This person is blocked. Unblock to reply.")
 
     source = lead.data.get("source")
     channel = (
@@ -1479,6 +1510,8 @@ async def compose_new_message(
         raise HTTPException(status_code=400, detail="Send either a message or a template")
 
     phone = _compose_phone(payload.phone)
+    from app.services.blocked_guard import ensure_not_blocked
+    await ensure_not_blocked(tenant_id, phone)  # full block: 409 "This person is blocked. Unblock to reply."
     db = get_supabase()
     lead_id = _compose_lead(db, tenant_id, phone, payload.name)
 

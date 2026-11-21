@@ -899,13 +899,18 @@ async def notify(db, tenant_id: str, deal_id: str, kind: str, *, user_id: str | 
     lead = {}
     if deal.get("lead_id"):
         res = (
-            db.table("leads").select("id, phone, opted_out, last_inbound_at")
+            db.table("leads").select("id, phone, opted_out, last_inbound_at, blocked_at")
             .eq("id", deal["lead_id"]).eq("tenant_id", tenant_id).maybe_single().execute()
         )
         lead = (res.data if res else None) or {}
     phone = lead.get("phone")
     if not phone:
         result["reason"] = "no_phone"
+        return result
+    if lead.get("blocked_at"):
+        # Full block (services/blocked_guard.py): no message and no "share it yourself" link.
+        logger.info(f"Order {deal_id}: {kind} message not sent, the person is blocked")
+        result["reason"] = "blocked"
         return result
     result["share_url"] = share_url(phone, text)
     if lead.get("opted_out"):

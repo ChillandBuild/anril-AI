@@ -73,7 +73,7 @@ async def run_due_follow_ups(limit: int = Query(20, ge=1, le=100), ctx: dict = D
         processed += 1
         lead = (
             db.table("leads")
-            .select("id,name,phone,segment,converted_at,ai_enabled")
+            .select("id,name,phone,segment,converted_at,ai_enabled,blocked_at")
             .eq("id", job["lead_id"])
             .eq("tenant_id", tenant_id)
             .maybe_single()
@@ -85,6 +85,7 @@ async def run_due_follow_ups(limit: int = Query(20, ge=1, le=100), ctx: dict = D
             or lead_data.get("converted_at")
             or not lead_data.get("ai_enabled", True)
             or not lead_data.get("phone")
+            or lead_data.get("blocked_at")  # full block: a blocked person gets no follow-up
             or (lead_data.get("segment") or "D") not in {"A", "B"}
         ):
             db.table("follow_up_jobs").update(

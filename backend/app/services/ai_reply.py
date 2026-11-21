@@ -4,6 +4,7 @@ import re
 import time
 import httpx
 from app.db.supabase import get_supabase
+from app.services.blocked_guard import BLOCKED_DETAIL, RecipientBlocked, is_blocked, lead_is_blocked_sync
 from app.services.growth import record_stage_event, sync_follow_up_jobs
 from app.services.knowledge_service import get_knowledge_context
 from app.services.catalog_retrieval import (
@@ -753,6 +754,17 @@ def _language_rule_block(mode: str, message: str) -> str:
 _LAST_SEND_ERROR: str | None = None
 
 
+async def _blocked_recipient(tenant_id: str | None, recipient: str, channel: str) -> bool:
+    """Full block (services/blocked_guard.py): True when this person is blocked in this
+    business. Records the plain reason where callers read get_last_send_error()."""
+    global _LAST_SEND_ERROR
+    if not await is_blocked(tenant_id, recipient, channel):
+        return False
+    _LAST_SEND_ERROR = BLOCKED_DETAIL
+    logger.info(f"{channel.capitalize()} message not sent: the person is blocked")
+    return True
+
+
 def get_last_send_error() -> str | None:
     return _LAST_SEND_ERROR
 
@@ -794,6 +806,9 @@ async def send_whatsapp_voice_reply(
         mid = (data.get("messages") or [{}])[0].get("id")
         logger.info(f"Meta voice reply sent to {to_phone}: id={mid}")
         return mid
+    except RecipientBlocked:
+        logger.info("WhatsApp voice reply not sent: the person is blocked")
+        return None
     except Exception as e:
         logger.error(f"WhatsApp voice reply failed to {to_phone}: {e}")
         return None
@@ -828,6 +843,11 @@ async def send_whatsapp(
         logger.info(f"Meta sent to {to_phone}: id={mid}")
         _LAST_SEND_ERROR = None
         return mid
+    except RecipientBlocked as blocked:
+        # A blocked person is not an API failure: no error log, no "System API Failure" bell.
+        _LAST_SEND_ERROR = str(blocked.detail)
+        logger.info("WhatsApp message not sent: the person is blocked")
+        return None
     except Exception as e:
         err_msg = str(e)
         # Surface Meta's actual error body so the UI can show it
@@ -862,6 +882,8 @@ async def send_instagram(ig_user_id: str, message: str, tenant_id: str | None = 
     Uses Page Access Token — requires pages_messaging + instagram_manage_messages scope.
     """
     from app.config_dynamic import get_setting
+    if await _blocked_recipient(tenant_id, ig_user_id, "instagram"):
+        return None
     access_token = get_setting("instagram_access_token", tenant_id=tenant_id)
     if not access_token:
         logger.error(f"instagram_access_token not configured for tenant {tenant_id} — cannot send Instagram DM")
@@ -894,6 +916,8 @@ async def send_instagram(ig_user_id: str, message: str, tenant_id: str | None = 
 async def send_telegram(tg_user_id: str, message: str, tenant_id: str | None = None) -> str | None:
     """Send a Telegram message via Bot API. Returns message ID (as string) or None on failure."""
     from app.config_dynamic import get_setting
+    if await _blocked_recipient(tenant_id, tg_user_id, "telegram"):
+        return None
     bot_token = get_setting("telegram_bot_token", tenant_id=tenant_id)
     if not bot_token:
         logger.error(f"telegram_bot_token not configured for tenant {tenant_id} — cannot send Telegram DM")
@@ -939,6 +963,8 @@ async def send_telegram(tg_user_id: str, message: str, tenant_id: str | None = N
 async def send_facebook(fb_user_id: str, message: str, tenant_id: str | None = None) -> str | None:
     """Send a Facebook Messenger message via Graph API. Returns message id or None on failure."""
     from app.config_dynamic import get_setting
+    if await _blocked_recipient(tenant_id, fb_user_id, "facebook"):
+        return None
     access_token = get_setting("facebook_access_token", tenant_id=tenant_id)
     if not access_token:
         logger.error(f"facebook_access_token not configured for tenant {tenant_id} — cannot send Facebook DM")
@@ -1199,6 +1225,8 @@ def _trigger_chat_escalation(
     )
     if existing and existing.data:
         return  # already has an open handover
+    if lead_is_blocked_sync(db, tenant_id, lead_id):
+        return  # a blocked person raises no handover and no alert (full block)
 
     # NOTE: ai_enabled is deliberately NOT touched here. The AI stays live for
     # the whole handover so an escalated customer is never met with silence —

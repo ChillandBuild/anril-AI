@@ -71,7 +71,7 @@ def notify_assigned_caller_of_reply(lead_id: str, tenant_id: str, *, db=None) ->
     try:
         lead = (
             db.table("leads")
-            .select("assigned_to,name")
+            .select("assigned_to,name,blocked_at")
             .eq("id", lead_id)
             .maybe_single()
             .execute()
@@ -79,6 +79,8 @@ def notify_assigned_caller_of_reply(lead_id: str, tenant_id: str, *, db=None) ->
         data = lead.data if lead else None
         if not data or not data.get("assigned_to"):
             return
+        if data.get("blocked_at"):
+            return  # a blocked person's message is saved but never alerts the team (full block)
         caller = (
             db.table("callers")
             .select("user_id")

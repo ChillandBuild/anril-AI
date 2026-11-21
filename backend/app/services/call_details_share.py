@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.config_dynamic import get_setting
 from app.services.ai_reply import get_last_send_error, send_whatsapp
+from app.services.blocked_guard import BLOCKED_DETAIL
 from app.services.call_wrapup import REMINDER_OUTCOMES, next_step_phrase
 from app.services.intake import get_intake_config, normalize_packages
 from app.services.meta_cloud import send_template_message
@@ -107,7 +108,7 @@ def window_open(last_inbound_at: str | None, now: datetime) -> bool:
 
 def _lead(db, tenant_id: str, lead_id: str) -> dict | None:
     rows = (
-        db.table("leads").select("id,name,phone,opted_out,last_inbound_at")
+        db.table("leads").select("id,name,phone,opted_out,last_inbound_at,blocked_at")
         .eq("id", lead_id).eq("tenant_id", tenant_id).is_("deleted_at", "null").limit(1).execute()
     ).data or []
     return rows[0] if rows else None
@@ -115,7 +116,8 @@ def _lead(db, tenant_id: str, lead_id: str) -> dict | None:
 
 def _whatsapp_ready(tenant_id: str, lead: dict) -> bool:
     connected = get_setting("meta_phone_number_id", tenant_id=tenant_id) and get_setting("meta_access_token", tenant_id=tenant_id)
-    return bool(connected and lead.get("phone") and not lead.get("opted_out"))
+    # A blocked person (leads.blocked_at) is never "ready": nothing is sent to them (full block).
+    return bool(connected and lead.get("phone") and not lead.get("opted_out") and not lead.get("blocked_at"))
 
 
 def _business_name(db, tenant_id: str) -> str:
@@ -229,6 +231,8 @@ async def send_details(db, tenant_id: str, lead_id: str, *, text: str | None, te
     lead = _lead(db, tenant_id, lead_id)
     if not lead:
         raise ShareError("Lead not found.")
+    if lead.get("blocked_at"):
+        raise ShareError(BLOCKED_DETAIL)
     if not _whatsapp_ready(tenant_id, lead):
         raise ShareError("WhatsApp isn't available for this lead.")
     if text is not None:

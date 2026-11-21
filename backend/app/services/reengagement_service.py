@@ -115,7 +115,7 @@ def _fetch_leads_by_id(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dic
         batch = lead_ids[i:i + _IN_CLAUSE_BATCH_SIZE]
         res = (
             db.table("leads")
-            .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out")
+            .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at")
             .eq("tenant_id", tenant_id)
             .in_("id", batch)
             .execute()
@@ -204,7 +204,7 @@ async def process_due_reengagements() -> int:
             # Find leads with last_inbound_at
             leads_res = (
                 db.table("leads")
-                .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out")
+                .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at")
                 .eq("tenant_id", tenant_id)
                 .not_.is_("last_inbound_at", "null")
                 .execute()

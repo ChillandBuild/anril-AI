@@ -303,6 +303,7 @@ async def _dispatch_alerts(
                 lang_code=template.get("language") or "en",
                 components=components,
                 tenant_id=tenant_id,
+                skip_blocked_check=True,  # goes to the business's own staff numbers, not the customer
             )
         except Exception as e:
             logger.exception("WhatsApp admin alert failed to %s for lead %s", phone, lead_id)
@@ -402,6 +403,14 @@ async def process_due_whatsapp_alerts() -> None:
                 db.table("pending_whatsapp_alerts").update(
                     {"status": "processing"}
                 ).eq("id", alert_id).execute()
+
+                # A blocked person raises no alert for the team (full block).
+                from app.services.blocked_guard import lead_is_blocked_sync
+                if lead_is_blocked_sync(db, tenant_id, lead_id):
+                    db.table("pending_whatsapp_alerts").update(
+                        {"status": "cancelled"}
+                    ).eq("id", alert_id).execute()
+                    continue
 
                 # Escalation alerts have their own verification rules.
                 if alert.get("alert_type") == "escalation":

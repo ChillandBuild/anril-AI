@@ -463,6 +463,11 @@ async def send_payment_link(tenant_id: str, deal_id: str, *, send_whatsapp_messa
 
     message_sent = False
     if send_whatsapp_message and phone:
+        from app.services.blocked_guard import is_blocked
+        if await is_blocked(tenant_id, phone):
+            # Full block: the link is made (staff can see it) but nothing is sent to a blocked person.
+            logger.info(f"Deal {deal_id}: payment link not sent, the person is blocked")
+            return {"payment_link": link["payment_link_url"], "message_sent": False, "deal_patch": patch}
         text = quote_summary_block(items, deal["total_paise"])
         if amount != deal["total_paise"]:
             text += f"\nTo pay now: {_rupees(amount)}"

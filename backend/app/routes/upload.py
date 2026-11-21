@@ -11,13 +11,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_permission
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, get_tenant_id, require_permission
 from app.services.ai_reply import send_whatsapp
 from app.services.delivery_status import nearest_record, nearest_status, parse_ts
 from app.services.gemini_client import gemini_extract_contacts_csv
 from app.services.growth import get_or_create_campaign, record_stage_event, sync_follow_up_jobs
 from app.services.meta_cloud import send_template_message
 from app.services.broadcast_executor import next_send_time
+from app.services import reach_audience, reach_results
 from app.services.outbound_router import SenderPicker, get_best_number
 from app.services.template_params import HEADER_COLS, body_parameters, header_components, template_status
 from app.services.segmentation import new_lead_score_and_segment
@@ -356,6 +357,18 @@ class BulkSendRequest(BaseModel):
     tag_id: Optional[str] = None  # broadcast tag for per-product interest tracking
     exclude_negative_replies: bool = False  # skip leads who previously rejected a broadcast
     include_opted_out: bool = False  # send to opted-out leads if True
+    # A Customers group as the audience (Reach "Customers group"). When set, `leads` is ignored and the
+    # people are read from the group here, never trusted from the browser.
+    group_id: Optional[str] = None
+
+
+class ReachPreviewRequest(BaseModel):
+    """The confirm step's question: who would this campaign reach, and what does Meta charge?"""
+    group_id: Optional[str] = None
+    leads: list[BulkLeadItem] = []          # the uploaded list, when no group is picked
+    tag_id: Optional[str] = None
+    exclude_negative_replies: bool = False
+    include_opted_out: bool = False
 
 
 class RiskAuditRequest(BaseModel):
@@ -669,6 +682,77 @@ async def risk_audit(body: RiskAuditRequest, tenant_id: str = Depends(get_tenant
     }
 
 
+def _resolve_group_or_http(db, ctx: dict, group_id: str) -> dict:
+    """A Customers group's people for Reach, or a plain 403 / 404. Reading a group needs the same
+    access as the Customers page (leads.view); another tenant's group reads as missing."""
+    if not _has_permission(ctx, "leads.view"):
+        raise HTTPException(status_code=403, detail="Sending to a group needs access to Customers.")
+    try:
+        group_id = str(uuid.UUID(str(group_id)))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Group not found")
+    try:
+        return reach_audience.resolve_group(db, ctx, group_id)
+    except reach_audience.GroupNotFound:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+
+def _group_leads(resolved: dict) -> list[BulkLeadItem]:
+    """The people of a resolved group who can be messaged (opted in), as the pipeline's lead items."""
+    return [
+        BulkLeadItem(phone=p["phone"], name=p.get("name"), opt_in_source=p["opt_in_source"],
+                     extra_cols={"Name": p.get("name") or "", "Phone": p["phone"]})
+        for p in resolved["people"] if p["opted_in"]
+    ]
+
+
+@router.post("/reach-preview")
+async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_outbound_manage)):
+    """The Reach confirm step: how many people are in the audience, who will be left out and why,
+    how many will get it, and what Meta charges for those (rate from META_MARKETING_RATE_INR)."""
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    group = None
+    stopped_in_group = 0
+    no_number = 0
+    if body.group_id:
+        resolved = await asyncio.to_thread(_resolve_group_or_http, db, ctx, body.group_id)
+        group = {**resolved["group"], "members": resolved["members"]}
+        stopped_in_group = resolved["stopped"]
+        no_number = resolved["no_whatsapp"]
+        people = [{"phone": p["phone"], "opted_in": p["opted_in"]} for p in resolved["people"]]
+        # People who said stop are never sent to, whatever the include_opted_out switch says.
+        include_opted_out = False
+    else:
+        people = []
+        for lead in body.leads:
+            source = (lead.opt_in_source or "").strip().lower()
+            people.append({"phone": lead.phone, "opted_in": bool(source) and source != "manual"})
+        include_opted_out = body.include_opted_out
+    nums = await asyncio.to_thread(
+        lambda: reach_audience.preview_numbers(
+            db, tenant_id, people, tag_id=body.tag_id, include_opted_out=include_opted_out,
+            exclude_negative_replies=body.exclude_negative_replies))
+    no_number += nums["invalid"]
+    said_stop = nums["said_stop"] + stopped_in_group
+    in_audience = (group["members"] if group else nums["total"] + nums["invalid"])
+    return {
+        "audience": "group" if group else "list",
+        "group": group,
+        "in_audience": in_audience,
+        "said_stop": said_stop,
+        "no_opt_in": nums["no_opt_in"],
+        "no_number": no_number,
+        "blocked": nums["blocked"],
+        "negative_reply": nums["negative_reply"],
+        "over_cap": nums["over_cap"],
+        "will_get": nums["will_get"],
+        "monthly_limit": nums["monthly_limit"],
+        "rate_inr": nums["rate_inr"],
+        "cost_inr": nums["cost_inr"],
+    }
+
+
 async def _execute_immediate_send(
     *,
     tenant_id: str,
@@ -689,6 +773,8 @@ async def _execute_immediate_send(
     tpl_lang: str,
     tpl_header: dict,
     _has_fail_reason: bool,
+    blocked_keys: frozenset | set = frozenset(),
+    monthly_limit_keys: frozenset | set = frozenset(),
 ) -> None:
     """Background worker for an immediate 'Send Now' broadcast. bulk_send() has already
     returned {"status": "queued", ...} to the client by the time this runs — progress is
@@ -697,6 +783,8 @@ async def _execute_immediate_send(
     sent = 0
     failed = 0
     opted_out_skipped = 0
+    skipped_monthly = 0   # already got MONTHLY_LIMIT Reach campaigns this IST month
+    skipped_blocked = 0   # blocked people (leads.blocked_at)
     recipient_rows = []
     aborted = False
     deferred_leads: list = []
@@ -721,6 +809,7 @@ async def _execute_immediate_send(
                         "result": json.dumps({
                             "sent": sent, "failed": failed,
                             "opted_out_skipped": opted_out_skipped, "total": len(eligible),
+                            "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked,
                         }),
                     }).eq("id", broadcast_id).execute()
                 except Exception:
@@ -773,6 +862,31 @@ async def _execute_immediate_send(
                     row["fail_reason"] = "negative_reply_excluded"
                 recipient_rows.append(row)
                 logger.info(f"Bulk-send skipped negative-reply lead {phone}")
+                continue
+
+            # Blocked people and the 2-offers-a-month limit (services/reach_audience.py). Kept as
+            # opted_out_skip rows with a fail_reason: the send_status CHECK has no "skipped" value.
+            skip_key = reach_audience.phone_key(phone)
+            skip_reason = (reach_audience.SKIP_BLOCKED if skip_key in blocked_keys
+                           else reach_audience.SKIP_MONTHLY if skip_key in monthly_limit_keys else None)
+            if skip_reason:
+                if skip_reason == reach_audience.SKIP_BLOCKED:
+                    skipped_blocked += 1
+                else:
+                    skipped_monthly += 1
+                row = {
+                    "tenant_id": tenant_id,
+                    "broadcast_id": broadcast_id,
+                    "lead_id": lead_id,
+                    "phone": phone,
+                    "name": lead_name,
+                    "send_status": "opted_out_skip",
+                    "tag_id": body.tag_id,
+                }
+                if _has_fail_reason:
+                    row["fail_reason"] = skip_reason
+                recipient_rows.append(row)
+                logger.info(f"Bulk-send skipped ({skip_reason}) lead (id={lead_id})")
                 continue
 
             sender = picker.next()
@@ -1024,6 +1138,8 @@ async def _execute_immediate_send(
                 "csv_file_path": body.csv_file_path,
                 "csv_file_name": body.csv_file_name,
                 "tag_id": body.tag_id,
+                "skipped_monthly_limit": skipped_monthly,
+                "skipped_blocked": skipped_blocked,
             })
             history = history[:50]
 
@@ -1046,6 +1162,8 @@ async def _execute_immediate_send(
                 "number_used": picker.numbers_used_label(),
                 "total": len(eligible),
                 "deferred_to_tomorrow": len(deferred_leads),
+                "skipped_monthly_limit": skipped_monthly,
+                "skipped_blocked": skipped_blocked,
             }),
         }).eq("id", broadcast_id).execute()
         logger.info(f"Immediate broadcast {broadcast_id}: sent={sent} failed={total_failed} aborted={aborted}")
@@ -1082,6 +1200,18 @@ async def bulk_send(
                     f"{body.template_name} isn't approved by Meta ({(tpl_status or 'not found').title()}), so it can't be sent."),
         )
 
+    # A Customers group as the audience: its people are read here from the group (never trusted from the
+    # browser), then go through the SAME pipeline below as an uploaded list. People who said stop and
+    # people with no opt-in are left out up front; blocked people and the monthly limit are handled at
+    # send time, like for an uploaded list.
+    group_resolved: dict | None = None
+    if body.group_id:
+        group_resolved = await asyncio.to_thread(_resolve_group_or_http, get_supabase(), _ctx, body.group_id)
+        body.leads = _group_leads(group_resolved)
+        body.include_opted_out = False
+        body.csv_file_url = body.csv_file_path = None
+        body.csv_file_name = f"{reach_audience.GROUP_LABEL_PREFIX}{group_resolved['group']['name']}"
+
     eligible = []
     rejected = []
     invalid_leads = []
@@ -1102,7 +1232,11 @@ async def bulk_send(
     eligible = deduped
 
     if not eligible:
-        raise HTTPException(status_code=400, detail="No eligible leads")
+        raise HTTPException(
+            status_code=400,
+            detail=("Nobody in this group can be messaged right now (said stop, no opt-in, or no WhatsApp number)."
+                    if group_resolved else "No eligible leads"),
+        )
 
     db = get_supabase()
 
@@ -1248,6 +1382,10 @@ async def bulk_send(
         if not phone:
             invalid_leads.append(lead)
             continue
+        if group_resolved is not None:
+            # Group people are already Customers: re-saving them as "upload" would overwrite their
+            # source, name and score.
+            continue
         upsert_rows.append({
             "phone": phone,
             "name": _clean_text(lead.name),
@@ -1284,13 +1422,24 @@ async def bulk_send(
             .execute()
 
     all_phones = [_normalize_phone(l.phone or "") for l in eligible + rejected + invalid_leads if _normalize_phone(l.phone or "")]
-    lead_rows = db.table("leads").select("id,phone,name").in_("phone", all_phones).eq("tenant_id", tenant_id).execute()
-    phone_to_lead_id = {r["phone"]: r["id"] for r in (lead_rows.data or [])}
-    phone_to_lead_name = {r["phone"]: r.get("name") for r in (lead_rows.data or [])}
+    if group_resolved is not None:
+        # The group already told us each person's lead id: no phone lookup (a big group would not fit in one request).
+        phone_to_lead_id = {p["phone"]: p["lead_id"] for p in group_resolved["people"]}
+        phone_to_lead_name = {p["phone"]: p.get("name") for p in group_resolved["people"]}
+    else:
+        lead_rows = db.table("leads").select("id,phone,name").in_("phone", all_phones).eq("tenant_id", tenant_id).execute()
+        phone_to_lead_id = {r["phone"]: r["id"] for r in (lead_rows.data or [])}
+        phone_to_lead_name = {r["phone"]: r.get("name") for r in (lead_rows.data or [])}
 
     tag_opted_out_phones: set[str] = set()
     globally_opted_out_phones: set[str] = set()
-    if all_phones and body.tag_id:
+    if group_resolved is not None:
+        # Chunked lookups for a big group. Said-stop people are already out of a group, so only tag opt-outs remain.
+        tag_opted_out_phones = {
+            f"+{k}" for k in reach_audience._tag_opted_out_keys(
+                db, tenant_id, {reach_audience.phone_key(ph) for ph in all_phones} - {None}, body.tag_id)
+        }
+    if all_phones and body.tag_id and group_resolved is None:
         try:
             rows = (
                 db.table("lead_tag_opt_outs")
@@ -1304,7 +1453,7 @@ async def bulk_send(
         except Exception as e:
             logger.warning(f"Per-tag opt-out lookup failed: {e}")
 
-    if all_phones:
+    if all_phones and group_resolved is None:
         try:
             rows = (
                 db.table("lead_tag_opt_outs")
@@ -1320,7 +1469,7 @@ async def bulk_send(
         except Exception as e:
             logger.warning(f"Global tag opt-out lookup failed: {e}")
 
-    if all_phones:
+    if all_phones and group_resolved is None:
         try:
             rows = (
                 db.table("leads")
@@ -1396,6 +1545,10 @@ async def bulk_send(
     except Exception as sb_err:
         logger.error(f"scheduled_broadcasts tracking row insert failed: {sb_err}")
 
+    # The monthly limit and the blocked list are read once, now; the send loop only checks the sets.
+    blocked_keys, monthly_limit_keys = await asyncio.to_thread(
+        reach_audience.send_time_skips, db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id)
+
     asyncio.create_task(_execute_immediate_send(
         tenant_id=tenant_id,
         broadcast_id=broadcast_id,
@@ -1415,6 +1568,8 @@ async def bulk_send(
         tpl_lang=tpl_lang,
         tpl_header=tpl_header,
         _has_fail_reason=_has_fail_reason,
+        blocked_keys=blocked_keys,
+        monthly_limit_keys=monthly_limit_keys,
     ))
 
     return {
@@ -1811,7 +1966,8 @@ def _classify_broadcast_outcomes(
     if not recipients:
         return {
             "found": False,
-            "counts": {"sent": 0, "delivered": 0, "opened": 0, "failed": 0, "total": 0},
+            "counts": {"sent": 0, "delivered": 0, "opened": 0, "failed": 0, "total": 0,
+                       "skipped_monthly_limit": 0, "skipped_blocked": 0},
             "failures": [],
         }
 
@@ -1915,6 +2071,7 @@ def _classify_broadcast_outcomes(
         logger.warning(f"Classifier delivery-status lookup failed: {e}")
 
     sent = delivered = opened = failed = opted_out = 0
+    skipped_monthly = skipped_blocked = 0
     failures: list[dict] = []
     seen_phones: set[str] = set()
 
@@ -1923,6 +2080,15 @@ def _classify_broadcast_outcomes(
         name = r.get("name") or ""
         send_status = r.get("send_status") or ""
         lead_id = r.get("lead_id")
+
+        # Skipped on purpose at send time (monthly limit / blocked): neither failed nor an opt-out.
+        if send_status == "opted_out_skip" and r.get("fail_reason") in (
+                reach_audience.SKIP_MONTHLY, reach_audience.SKIP_BLOCKED):
+            if r.get("fail_reason") == reach_audience.SKIP_MONTHLY:
+                skipped_monthly += 1
+            else:
+                skipped_blocked += 1
+            continue
 
         reason: str | None = None
         fail_reason: str | None = None
@@ -2017,7 +2183,9 @@ def _classify_broadcast_outcomes(
 
     return {
         "found": True,
-        "counts": {"sent": sent, "delivered": delivered, "opened": opened, "failed": failed, "opted_out": opted_out, "total": len(recipients)},
+        "counts": {"sent": sent, "delivered": delivered, "opened": opened, "failed": failed, "opted_out": opted_out,
+                   "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked,
+                   "total": len(recipients)},
         "failures": failures,
     }
 
@@ -2125,8 +2293,11 @@ async def get_failed_csv(
 
 
 @router.get("/history")
-async def get_broadcast_history(tenant_id: str = Depends(get_tenant_id)):
-    """Return the last 50 broadcast records with per-broadcast hot/warm/cold counts."""
+async def get_broadcast_history(tenant_id: str = Depends(get_tenant_id), ctx: dict = Depends(get_tenant_and_role)):
+    """Return the last 50 broadcast records with per-broadcast hot/warm/cold counts, and how many
+    people paid within 7 days of each (rupees only for callers with deals.view).
+    The operator console calls this function directly with a tenant_id and no caller: then `ctx` is
+    not a dict and the paid figures are left out."""
     db = get_supabase()
     row = (
         db.table("app_settings")
@@ -2236,6 +2407,28 @@ async def get_broadcast_history(tenant_id: str = Depends(get_tenant_id)):
                 h["replied_neutral"]  = neu_map.get(bid, 0)
         except Exception:
             pass
+
+    # A group send carries its group's name in the file-name slot (see bulk_send).
+    for h in history:
+        name = h.get("csv_file_name") or ""
+        if name.startswith(reach_audience.GROUP_LABEL_PREFIX) and not h.get("csv_file_url") and not h.get("csv_file_path"):
+            h["audience_type"] = "group"
+            h["group_name"] = name[len(reach_audience.GROUP_LABEL_PREFIX):]
+
+    # Paid within 7 days of each campaign (a won order). Batched, not per person; see services/reach_results.py.
+    sent_campaigns = [{"broadcast_id": h["broadcast_id"], "sent_at": h.get("timestamp")}
+                      for h in history if h.get("broadcast_id") and (h.get("sent") or 0) > 0]
+    if sent_campaigns and isinstance(ctx, dict):
+        include_amount = _has_permission(ctx, "deals.view")
+        paid = await asyncio.to_thread(
+            reach_results.paid_within_window, db, tenant_id, sent_campaigns, include_amount=include_amount)
+        for h in history:
+            p = paid.get(h.get("broadcast_id"))
+            if p:
+                h["paid_count"] = p["paid_count"]
+                h["paid_window_open"] = p["paid_window_open"]
+                if include_amount:
+                    h["paid_amount_inr"] = p["paid_amount_inr"]
 
     return {"data": history}
 
@@ -2433,6 +2626,8 @@ async def refresh_broadcast_metrics(
                     record["delivered"] = counts["delivered"]
                     record["opened"] = counts["opened"]
                     record["failed"] = counts["failed"]
+                    record["skipped_monthly_limit"] = counts.get("skipped_monthly_limit", 0)
+                    record["skipped_blocked"] = counts.get("skipped_blocked", 0)
                 else:
                     # broadcast_id exists but no recipients yet — fallback to time-window
                     _refresh_delivered_opened_timewindow(db, record, tenant_id, window_start, window_end)

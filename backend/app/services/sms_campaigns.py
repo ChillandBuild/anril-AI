@@ -31,6 +31,7 @@ INSERT_CHUNK = 500
 # Exact exclusion strings from the API contract.
 R_OPTED_OUT = "Opted out"
 R_NO_CONSENT = "No SMS consent (promotional template)"
+R_BLOCKED = "Blocked"
 R_NOT_INDIAN = "Not an Indian mobile number"
 R_DUPLICATE = "Duplicate number"
 
@@ -785,6 +786,12 @@ def _recipient_skip(db, row: dict, campaign: dict) -> str | None:
     lead or contact can change after the campaign was created."""
     source = campaign.get("source") or "leads"
     promotional = campaign.get("template_type") == "promotional"
+    # Full block (services/blocked_guard.py): whatever list the number came from, a blocked
+    # person of THIS business gets no SMS. Same wording whichever list it came from.
+    from app.services.blocked_guard import is_blocked_sync
+    if is_blocked_sync(row.get("tenant_id"), row.get("phone"), "sms"):
+        logger.info("SMS not sent: the person is blocked (tenant %s)", row.get("tenant_id"))
+        return R_BLOCKED
     if source == "numbers":
         return None  # consent was confirmed for the whole pasted list
     if source == "contacts":

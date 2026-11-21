@@ -503,6 +503,7 @@ async def _send_whatsapp(db, tenant_id: str, row: dict, code: str, cfg: dict, *,
         res = await meta_cloud.send_template_message(
             row["phone"], cfg["wa_template_name"], cfg["wa_template_language"],
             components=_wa_components(code), tenant_id=tenant_id,
+            skip_blocked_check=True,  # the client's website login, not a chat: never blocked
         )
         wamid = ((res.get("messages") or [{}])[0] or {}).get("id")
         patch = {"whatsapp_status": "sent", "whatsapp_message_id": wamid}

@@ -62,3 +62,20 @@ def _kb_helper_inline(monkeypatch):
     from app.companion.kb import helper
 
     monkeypatch.setattr(helper, "INLINE", True)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_blocked_lookup(monkeypatch):
+    """Every WhatsApp / Instagram / Facebook / Telegram / SMS send first asks "is this person blocked?"
+    (services/blocked_guard.py), which reads the tenant's blocked leads. Tests never reach the real
+    database for that: the lookup sees an empty in-memory one (nobody blocked) unless a test gives
+    blocked_guard its own get_supabase. The 60-second caches start and end empty."""
+    from app.services import blocked_guard
+    from tests.fake_supabase import FakeSupabase
+
+    blocked_guard.invalidate()
+    blocked_guard._number_cache.clear()
+    monkeypatch.setattr(blocked_guard, "get_supabase", lambda: FakeSupabase())
+    yield
+    blocked_guard.invalidate()
+    blocked_guard._number_cache.clear()

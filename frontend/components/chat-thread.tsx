@@ -407,6 +407,20 @@ export function ChatThread({
     }
   }
 
+  // A blocked person gets nothing from us, so the send box gives way to a plain Unblock button.
+  const [unblocking, setUnblocking] = useState(false);
+  async function unblock() {
+    setUnblocking(true);
+    try {
+      const updated = await api.leads.block(current.id);
+      const next = { ...current, ...updated };
+      setCurrent(next);
+      onLeadUpdate?.(next);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't unblock this person");
+    } finally { setUnblocking(false); }
+  }
+
   function closeTemplateModal() {
     setTemplateModalOpen(false);
     // Show the template that was just sent.
@@ -482,7 +496,7 @@ export function ChatThread({
 
   async function sendReply() {
     const text = draft.trim();
-    if (!canReplyToConversations || replyLocked || !text || sending) return;
+    if (!canReplyToConversations || replyLocked || current.blocked_at || !text || sending) return;
     setSending(true);
     setSendError(null);
     // Answering a chat the AI handed over is the moment to teach it (owner only).
@@ -865,7 +879,7 @@ export function ChatThread({
 
       {/* Input area */}
       <div className="border-t border-[#e2e8f0] bg-white px-5 pt-3 pb-4">
-        {outsideWindow && isWhatsApp && (
+        {!current.blocked_at && outsideWindow && isWhatsApp && (
           <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <p className="font-label text-[11px] leading-snug">
@@ -875,7 +889,7 @@ export function ChatThread({
         )}
 
         {/* Quick actions row. Templates, products and payment links go out on WhatsApp only. */}
-        {isWhatsApp && canReplyToConversations && (
+        {!current.blocked_at && isWhatsApp && canReplyToConversations && (
         <div className="mb-2 flex flex-wrap gap-2">
           <button
             type="button"
@@ -951,7 +965,21 @@ export function ChatThread({
           />
         )}
 
-        {selectedFile ? (
+        {current.blocked_at ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3">
+            <p className="text-[13px] font-medium text-[#334155]">This person is blocked. Unblock to reply.</p>
+            {canReplyToConversations && (
+              <button
+                type="button"
+                onClick={() => void unblock()}
+                disabled={unblocking}
+                className="h-9 rounded-xl bg-primary px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {unblocking ? "Unblocking…" : "Unblock"}
+              </button>
+            )}
+          </div>
+        ) : selectedFile ? (
           /* File preview + send */
           <div className="space-y-2">
             <FilePreview file={selectedFile} onRemove={() => { setSelectedFile(null); setFileCaption(""); }} />

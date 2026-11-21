@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.db.supabase import get_supabase
+from app.services.blocked_guard import BLOCKED_DETAIL
 from app.services.call_details_share import ShareError, _lead, _whatsapp_ready, prepare_template, send_approved_template
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ def schedule_template(db, tenant_id: str, user_id: str | None, lead_id: str, tem
     lead = _lead(db, tenant_id, lead_id)
     if not lead:
         raise NotFound("Lead not found.")
+    if lead.get("blocked_at"):
+        raise ShareError(BLOCKED_DETAIL)
     if not _whatsapp_ready(tenant_id, lead):
         raise ShareError("WhatsApp isn't available for this lead.")
     pending = (
@@ -192,6 +195,9 @@ async def send_one(db, row: dict) -> bool:
     skip_reason = None
     if not lead:
         skip_reason = "The lead was removed."
+    elif lead.get("blocked_at"):
+        # Full block: blocked after it was scheduled. Skipped, never sent, never a failure.
+        skip_reason = BLOCKED_DETAIL
     elif lead.get("opted_out"):
         skip_reason = "The customer opted out."
     elif not _whatsapp_ready(tenant_id, lead):
