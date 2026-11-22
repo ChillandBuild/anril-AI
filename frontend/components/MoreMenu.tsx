@@ -29,11 +29,7 @@ import {
   Zap,
   StickyNote,
   Users,
-<<<<<<< HEAD
-  X, Truck, Wallet } from "lucide-react";
-=======
-  X, Truck, GraduationCap } from "lucide-react";
->>>>>>> 058b11a87b8df1821abdc4bb361cd426707dbee4
+  X, Truck, Wallet, GraduationCap } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
