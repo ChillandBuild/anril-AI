@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ArrowLeftRight, Check, Loader2, Plus, Search, Settings2, Trash2, Truck, X } from "lucide-react";
@@ -416,6 +416,14 @@ function PlacesDialog({ places, onClose, onSaved }: { places: StockPlaceCard[]; 
       ready_note: p.ready_note, archived: false, tempKey: p.id, pieces: p.pieces })),
   );
   const [saving, setSaving] = useState(false);
+  // Who works where (Team: staff tied to a place). Hidden when the viewer can't see the team.
+  const [staff, setStaff] = useState<{ user_id: string; name: string; owner: boolean; place_id: string | null }[] | null>(null);
+  const [staffPlace, setStaffPlace] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api.catalog.placeStaff()
+      .then((res) => { setStaff(res.data); setStaffPlace(Object.fromEntries(res.data.map((m) => [m.user_id, m.place_id ?? ""]))); })
+      .catch(() => setStaff(null));
+  }, []);
   const live = rows.filter((r) => !r.archived);
   const set = (key: string, patch: Partial<StockPlace>) => setRows(rows.map((r) => (r.tempKey === key ? { ...r, ...patch } : r)));
   const only = (key: string, flag: "bills_from" | "online_from") => setRows(rows.map((r) => ({ ...r, [flag]: r.tempKey === key })));
@@ -442,6 +450,12 @@ function PlacesDialog({ places, onClose, onSaved }: { places: StockPlaceCard[]; 
         id: r.id, name: r.name.trim(), kind: r.kind, bills_from: r.bills_from, online_from: r.online_from,
         ready_note: r.ready_note?.trim() || null, archived: r.archived,
       })));
+      for (const m of staff ?? []) {
+        const next = staffPlace[m.user_id] ?? "";
+        if (next !== (m.place_id ?? "") && (!next || rows.some((r) => r.id === next && !r.archived))) {
+          await api.catalog.setPlaceStaff(m.user_id, next || null);
+        }
+      }
       toast.success("Places saved.");
       onSaved();
     } catch (err) {
@@ -506,6 +520,22 @@ function PlacesDialog({ places, onClose, onSaved }: { places: StockPlaceCard[]; 
         <Plus size={15} /> Add a place
       </button>
       {problem && <p className="mt-3 text-sm text-danger">{problem}</p>}
+      {staff && staff.some((m) => !m.owner) && (
+        <div className="mt-5 border-t border-border pt-4">
+          <p className="font-display text-sm font-bold text-ink">Who works where</p>
+          <p className="text-xs text-ink-muted">Their counter bills take stock from their place first, and only they can tap Received for stock coming to it. Owners can do everything.</p>
+          <div className="mt-2 space-y-1.5">
+            {staff.filter((m) => !m.owner).map((m) => (
+              <div key={m.user_id} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{m.name}</span>
+                <Select size="sm" value={staffPlace[m.user_id] ?? ""} onChange={(v) => setStaffPlace((s) => ({ ...s, [m.user_id]: v }))}
+                  aria-label={`Place of ${m.name}`} className="w-52"
+                  options={[{ value: "", label: "All places" }, ...live.filter((r) => r.id).map((r) => ({ value: r.id as string, label: r.name }))]} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }

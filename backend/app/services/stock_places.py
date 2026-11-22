@@ -78,6 +78,28 @@ def _place_problems(rows: list[dict]) -> list[str]:
     return out
 
 
+def staff(db, tenant_id: str) -> list[dict]:
+    """The team, with the place each works at (None = all places)."""
+    rows = (db.table("tenant_users").select("user_id, full_name, role, place_id").eq("tenant_id", tenant_id)
+            .limit(500).execute().data or [])
+    return [{"user_id": r["user_id"], "name": r.get("full_name") or "Teammate", "owner": r.get("role") == "owner",
+             "place_id": r.get("place_id")} for r in rows]
+
+
+def set_staff_place(db, tenant_id: str, user_id: str, place_id: str | None) -> None:
+    if not _UUID.fullmatch(str(user_id or "")):
+        raise StockPlaceError("Pick the teammate again.")
+    member = (db.table("tenant_users").select("role").eq("tenant_id", tenant_id).eq("user_id", user_id)
+              .limit(1).execute().data or [])
+    if not member:
+        raise StockPlaceError("Pick the teammate again.")
+    if place_id is not None:
+        if not _UUID.fullmatch(str(place_id)) or not (db.table("stock_places").select("id").eq("id", place_id)
+                                                      .eq("tenant_id", tenant_id).eq("archived", False).limit(1).execute().data):
+            raise StockPlaceError("Pick the place again.")
+    db.table("tenant_users").update({"place_id": place_id}).eq("tenant_id", tenant_id).eq("user_id", user_id).execute()
+
+
 def save_places(db, tenant_id: str, payload: list) -> list[dict]:
     """Replace the place settings with what the Places dialog saved (nothing applies until Save)."""
     if not isinstance(payload, list):
@@ -348,10 +370,28 @@ def send_move(db, tenant_id: str, payload: dict, *, user_id: str | None, user_na
     return {"id": move_id}
 
 
-def finish_move(db, tenant_id: str, move_id: str, *, received: bool, user_id: str | None, user_name: str | None) -> bool:
-    """Received or Cancel. False when the move was already received or cancelled (by anyone)."""
+def staff_place(db, tenant_id: str, user_id: str | None) -> str | None:
+    if not user_id:
+        return None
+    rows = (db.table("tenant_users").select("place_id").eq("tenant_id", tenant_id).eq("user_id", user_id)
+            .limit(1).execute().data or [])
+    place = rows[0].get("place_id") if rows else None
+    return place if isinstance(place, str) else None
+
+
+def finish_move(db, tenant_id: str, move_id: str, *, received: bool, user_id: str | None, user_name: str | None,
+                role: str | None = None) -> bool:
+    """Received or Cancel. False when the move was already received or cancelled (by anyone). Staff tied
+    to a place receive only moves coming to it, and cancel only moves leaving it (owners: any)."""
     if not _UUID.fullmatch(str(move_id)):
         return False
+    mine = None if role == "owner" else staff_place(db, tenant_id, user_id)
+    if mine:
+        move = (db.table("stock_moves").select("from_place_id, to_place_id").eq("id", move_id).eq("tenant_id", tenant_id)
+                .limit(1).execute().data or [])
+        if move and (move[0]["to_place_id"] if received else move[0]["from_place_id"]) != mine:
+            raise StockPlaceError("Only the staff of the other place can do that." if received
+                                  else "Only the place that sent it can cancel it.")
     try:
         return bool(db.rpc("finish_stock_move", {
             "p_tenant_id": tenant_id, "p_move": move_id, "p_received": received, "p_user": user_id,

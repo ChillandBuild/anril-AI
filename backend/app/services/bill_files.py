@@ -345,3 +345,76 @@ def sample_bill(shop: str = "Demo Silks", bill_type: str = "simple") -> dict:
         "prices_include_gst": True, "total_paise": 380000, "paid_paise": 380000, "balance_paise": 0, "cancelled": False,
         "refunded_paise": 0, "methods": ["UPI"],
     }
+
+
+def purchase_order_pdf(po: dict, business: dict) -> bytes:
+    """The purchase order the supplier gets (PO-0043.pdf): who orders, what, how many, at what cost, by when."""
+    from fpdf import FPDF
+
+    pdf = FPDF(format="A4", unit="mm")
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_font("Noto", "", str(REGULAR))
+    pdf.add_font("Noto", "B", str(BOLD))
+    pdf.set_title(f"Purchase order {po['po_number']}")
+    pdf.add_page()
+    left, right = 16, 194
+    pdf.set_left_margin(left)
+    pdf.set_right_margin(210 - right)
+    pdf.set_font("Noto", "B", 16)
+    pdf.cell(110, 8, business.get("legal_name") or "Purchase order", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Noto", "", 9)
+    pdf.set_text_color(90, 100, 110)
+    address = ", ".join(p for p in (business.get("address"), business.get("city"), business.get("state"), business.get("pincode")) if p)
+    if address:
+        pdf.multi_cell(105, 4.6, address, new_x="LMARGIN", new_y="NEXT")
+    for extra in (business.get("phone"), f"GSTIN {business['gstin']}" if business.get("gstin") else None):
+        if extra:
+            pdf.cell(105, 4.6, extra, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_xy(130, 16)
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_font("Noto", "B", 13)
+    pdf.cell(64, 7, "PURCHASE ORDER", align="R", new_x="LEFT", new_y="NEXT")
+    pdf.set_font("Noto", "", 10)
+    pdf.cell(64, 5.5, po["po_number"], align="R", new_x="LEFT", new_y="NEXT")
+    created = str(po.get("created_at") or "")[:10]
+    if created:
+        pdf.cell(64, 5.5, f"Date: {datetime.fromisoformat(created).strftime('%d %b %Y')}", align="R", new_x="LEFT", new_y="NEXT")
+    if po.get("need_by"):
+        pdf.cell(64, 5.5, f"Need by: {datetime.fromisoformat(str(po['need_by'])).strftime('%d %b %Y')}", align="R",
+                 new_x="LEFT", new_y="NEXT")
+    supplier = po.get("supplier") or {}
+    pdf.set_xy(left, max(pdf.get_y(), 44) + 4)
+    pdf.set_font("Noto", "B", 10)
+    pdf.cell(0, 5.5, "To", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Noto", "", 10)
+    pdf.cell(0, 5.5, supplier.get("name") or "", new_x="LMARGIN", new_y="NEXT")
+    if supplier.get("gstin"):
+        pdf.cell(0, 5.5, f"GSTIN {supplier['gstin']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    widths = (88, 20, 28, 16, 26)
+    pdf.set_font("Noto", "B", 9)
+    pdf.set_fill_color(241, 245, 249)
+    for w, head, align in zip(widths, ("Item", "Qty", "Cost each", "GST", "Amount"), ("L", "R", "R", "R", "R")):
+        pdf.cell(w, 7, head, border="B", align=align, fill=True)
+    pdf.ln()
+    pdf.set_font("Noto", "", 9.5)
+    for li in po.get("lines") or []:
+        amount = int(li["unit_cost_paise"]) * int(li["qty_ordered"])
+        pdf.cell(widths[0], 7, str(li["label"])[:60])
+        pdf.cell(widths[1], 7, str(li["qty_ordered"]), align="R")
+        pdf.cell(widths[2], 7, _rupees(int(li["unit_cost_paise"])), align="R")
+        pdf.cell(widths[3], 7, f"{float(li.get('gst_rate') or 0):g}%", align="R")
+        pdf.cell(widths[4], 7, _rupees(amount), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    pdf.set_font("Noto", "", 10)
+    for label, paise in (("Items", int(po.get("items_paise") or 0)), ("GST", int(po.get("gst_paise") or 0))):
+        pdf.cell(sum(widths[:4]), 6, label, align="R")
+        pdf.cell(widths[4], 6, _rupees(paise), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Noto", "B", 11)
+    pdf.cell(sum(widths[:4]), 7, "Total", align="R")
+    pdf.cell(widths[4], 7, _rupees(int(po.get("total_paise") or 0)), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+    pdf.set_font("Noto", "", 9)
+    pdf.set_text_color(90, 100, 110)
+    pdf.multi_cell(0, 4.6, "Please confirm on WhatsApp, or tell us if the date doesn't work. Quote this PO number on your bill.")
+    return bytes(pdf.output())

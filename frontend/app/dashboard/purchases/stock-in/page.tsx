@@ -12,6 +12,7 @@ import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
 import { usePurchaseOptions, usePurchaseOrder } from "@/hooks/useApi";
 import { Field, GST_RATES, ItemPicker, inputCls, lastCost, rupees, toPaise, todayIso, variantLabel } from "../shared";
+import { ScanBox } from "../../catalog/ScanBox";
 
 /* Stock in: what came from a supplier. Opened with ?po=<id> it is "Goods came" for that purchase
  * order: the lines are the order's, so staff only tick what arrived. */
@@ -32,6 +33,8 @@ interface Line {
   /** Batches & expiry: only for items that track batches. */
   batch_no?: string;
   expiry?: string;
+  /** From the bill photo: a size/colour the item doesn't have yet (made on Save). */
+  newVariant?: { size: string | null; colour: string | null } | null;
 }
 
 const DAMAGED: { value: DamagedAction; label: string }[] = [
@@ -98,6 +101,11 @@ export default function StockInPage() {
   if (error) return <p className="text-sm text-danger">Couldn&apos;t load your items. Reload the page.</p>;
   if (!opts || (poId && !po)) return <AiraLoader inline className="min-h-[50vh]" />;
 
+  const addPicked = (item: (typeof opts.items)[number], variantId: string | null) => {
+    setLines((ls) => [...ls, { key: `${item.id}:${variantId ?? ""}:${Date.now()}`, catalog_item_id: item.id, variant_id: variantId,
+      po_line_id: null, label: variantLabel(item, variantId), ordered: null, still: null, good: "1", damaged: "0", action: null,
+      cost: String(lastCost(item, variantId) / 100), gst_rate: item.gst_rate }]);
+  };
   const update = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((li) => (li.key === key ? { ...li, ...patch } : li)));
   const needsAction = lines.some((li) => Number(li.damaged) > 0 && !li.action);
   const paidPaise = toPaise(paidText);
@@ -120,6 +128,7 @@ export default function StockInPage() {
       const matched = read.lines.filter((li) => li.catalog_item_id);
       setLines((ls) => [...ls, ...matched.map((li, i) => ({
         key: `read-${Date.now()}-${i}`, catalog_item_id: li.catalog_item_id!, variant_id: li.variant_id, po_line_id: null,
+        newVariant: li.variant_id ? null : li.new_variant ?? null,
         label: li.label!, ordered: null, still: null, good: String(li.qty_good), damaged: "0", action: null,
         cost: String(li.unit_cost_paise / 100), gst_rate: Number(li.gst_rate) || 0,
       }))]);
@@ -148,6 +157,7 @@ export default function StockInPage() {
           qty_good: Number(li.good) || 0, qty_damaged: Number(li.damaged) || 0,
           damaged_action: Number(li.damaged) > 0 ? li.action : null, unit_cost_paise: toPaise(li.cost) || 0, gst_rate: li.gst_rate,
           batch_no: li.batch_no?.trim() || undefined, expiry_date: li.expiry || undefined,
+          new_size: li.newVariant?.size ?? undefined, new_colour: li.newVariant?.colour ?? undefined,
         })),
       });
       setDone(out);
@@ -243,6 +253,7 @@ export default function StockInPage() {
                     <tr key={li.key} className="border-b border-border-subtle align-top last:border-b-0">
                       <td className="px-4 py-2.5 font-semibold text-ink">
                         {li.label}
+                        {li.newVariant && <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">new size/colour: added on Save</span>}
                         {opts.items.find((it) => it.id === li.catalog_item_id)?.tracks_batches && (
                           <div className="mt-1.5 flex flex-wrap gap-1.5 font-normal">
                             <input value={li.batch_no ?? ""} maxLength={40} placeholder="Batch no." aria-label={`Batch no. of ${li.label}`}
@@ -303,11 +314,15 @@ export default function StockInPage() {
                 })}
               </tbody>
             </table>
-            <div className="border-t border-border px-4 py-3">
-              <ItemPicker items={opts.items} label="Add item" onPick={(item, variantId) => {
-                setLines((ls) => [...ls, { key: `${item.id}:${variantId ?? ""}:${Date.now()}`, catalog_item_id: item.id, variant_id: variantId,
-                  po_line_id: null, label: variantLabel(item, variantId), ordered: null, still: null, good: "1", damaged: "0", action: null,
-                  cost: String(lastCost(item, variantId) / 100), gst_rate: item.gst_rate }]);
+            <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+              <ItemPicker items={opts.items} label="Add item" onPick={addPicked} />
+              <span className="text-sm text-ink-muted">or</span>
+              <ScanBox className="min-w-[220px] flex-1" placeholder="Scan barcode (each scan adds 1)" onFound={(found) => {
+                const item = opts.items.find((i) => i.id === found.catalog_item_id);
+                if (!item) { toast.error(`${found.name} isn't in the list here.`); return; }
+                const same = lines.find((li) => li.catalog_item_id === item.id && li.variant_id === found.variant_id && !li.po_line_id);
+                if (same) update(same.key, { good: String((Number(same.good) || 0) + 1) });
+                else addPicked(item, found.variant_id);
               }} />
             </div>
           </div>
@@ -353,7 +368,7 @@ export default function StockInPage() {
             <li>✓ Stock goes up by <b>{totals.pieces}</b> {totals.pieces === 1 ? "piece" : "pieces"}{damagedAside ? ` (${damagedAside} damaged kept aside)` : ""}</li>
             <li>✓ Cost price updated, so profit is real</li>
             {pay !== "paid" && totals.total > 0 && <li>✓ You owe the supplier {rupees(pay === "part" && paidPaise > 0 ? totals.total - paidPaise : totals.total)}</li>}
-            {poId && short > 0 && <li>✓ {short} still to come is tracked on the order</li>}
+            {poId && short > 0 && <li>✓ {short} still to come is tracked on the order; on the expected date the supplier gets a reminder</li>}
           </ul>
           {needsAction && <p className="text-xs font-semibold text-amber-800">Pick what to do with the damaged pieces.</p>}
           <button type="button" onClick={save} disabled={!ready || saving} className="btn-primary flex h-11 w-full items-center justify-center gap-2 disabled:opacity-50">

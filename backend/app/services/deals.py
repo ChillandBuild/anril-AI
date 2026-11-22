@@ -215,9 +215,11 @@ def _deduct_for_deal(tenant_id: str, deal_id: str, created_by: str | None, db, *
     first_place = None  # counter bills: the bill place; online orders: where they are packed
     if items:
         try:
-            deal = (db.table("deals").select("channel").eq("id", deal_id).eq("tenant_id", tenant_id)
+            deal = (db.table("deals").select("channel, place_id").eq("id", deal_id).eq("tenant_id", tenant_id)
                     .limit(1).execute()).data or []
-            if not deal or deal[0].get("channel") != "store":
+            if deal and isinstance(deal[0].get("place_id"), str):  # a counter bill made by staff of a place
+                first_place = deal[0]["place_id"]
+            elif not deal or deal[0].get("channel") != "store":
                 from app.services.stock_places import online_first_place
                 first_place = online_first_place(db, tenant_id)
         except Exception:

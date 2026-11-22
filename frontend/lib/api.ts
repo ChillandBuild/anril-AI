@@ -3359,6 +3359,24 @@ export const api = {
     stockAsksCsvPath: (days = 30) => `/api/v1/catalog/stock-asks.csv?days=${days}`,
     stockOverview: () => apiFetch<StockOverview>(`/api/v1/stock/overview`),
     batches: () => apiFetch<BatchesOverview>(`/api/v1/stock/batches`),
+    stockCounts: () => apiFetch<StockCountsView>(`/api/v1/stock/counts`),
+    startCount: (placeId: string, sections: string[]) =>
+      apiFetch<StockCountRow>(`/api/v1/stock/counts`, { method: "POST", body: JSON.stringify({ place_id: placeId, sections }) }),
+    countLine: (countId: string, body: { item_id: string; variant_id: string | null; section?: string; qty?: number; add?: number }) =>
+      apiFetch<CountLine>(`/api/v1/stock/counts/${encodeURIComponent(countId)}/lines`, { method: "POST", body: JSON.stringify(body) }),
+    countReason: (lineId: string, reason: CountReason | null) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/counts/lines/${encodeURIComponent(lineId)}`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+    countAction: (countId: string, action: "pause" | "resume" | "cancel" | "finish") =>
+      apiFetch<{ ok?: boolean; changed?: number; loss_paise?: number; gain_paise?: number }>(`/api/v1/stock/counts/${encodeURIComponent(countId)}/${action}`, { method: "POST" }),
+    stockCorrections: () => apiFetch<{ data: StockCorrection[] }>(`/api/v1/stock/corrections`),
+    labelOptions: () => apiFetch<LabelOptions>(`/api/v1/stock/labels/options`),
+    labels: (body: { source: "stock_in" | "pick" | "no_code"; stock_in_id?: string; lines?: { item_id: string; variant_id: string | null; qty: number }[] }) =>
+      apiFetch<{ labels: PrintLabel[]; kept_company: number; shop_name: string }>(`/api/v1/stock/labels`, { method: "POST", body: JSON.stringify(body) }),
+    scan: (code: string) => apiFetch<ScanResult>(`/api/v1/stock/scan?code=${encodeURIComponent(code)}`),
+    itemCodes: (itemId: string) =>
+      apiFetch<{ data: { variant_id: string | null; code: string; company: boolean }[] }>(`/api/v1/stock/items/${encodeURIComponent(itemId)}/codes`),
+    setCompanyCode: (itemId: string, variantId: string | null, code: string) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/items/${encodeURIComponent(itemId)}/company-code`, { method: "PUT", body: JSON.stringify({ variant_id: variantId, code }) }),
     itemBatches: (itemId: string, variantId?: string | null) =>
       apiFetch<{ data: SellableBatch[] }>(`/api/v1/stock/items/${encodeURIComponent(itemId)}/batches${variantId ? `?variant_id=${encodeURIComponent(variantId)}` : ""}`),
     setBatchTracking: (itemId: string, on: boolean) =>
@@ -3369,6 +3387,9 @@ export const api = {
       apiFetch<{ ok: boolean; quantity: number }>(`/api/v1/stock/batches/${encodeURIComponent(id)}/write-off`, { method: "POST", body: JSON.stringify({ quantity }) }),
     returnBatch: (id: string, quantity?: number) =>
       apiFetch<{ ok: boolean; quantity: number; credit_paise: number }>(`/api/v1/stock/batches/${encodeURIComponent(id)}/return`, { method: "POST", body: JSON.stringify({ quantity }) }),
+    placeStaff: () => apiFetch<{ data: { user_id: string; name: string; owner: boolean; place_id: string | null }[] }>(`/api/v1/stock/places/staff`),
+    setPlaceStaff: (userId: string, placeId: string | null) =>
+      apiFetch<{ ok: boolean }>(`/api/v1/stock/places/staff`, { method: "PUT", body: JSON.stringify({ user_id: userId, place_id: placeId }) }),
     saveStockPlaces: (places: StockPlace[]) =>
       apiFetch<{ data: StockPlace[] }>(`/api/v1/stock/places`, { method: "PUT", body: JSON.stringify({ places }) }),
     sendStockMove: (body: { from_place_id: string; to_place_id: string; note?: string; lines: StockMoveLineInput[] }) =>
@@ -4207,6 +4228,21 @@ export const api = {
         `/api/v1/instant-forms/ads/download?${new URLSearchParams({ ad_ids: adIds.join(","), ...range })}`,
         `leads_${range.date_from}_${range.date_to}.csv`,
       ),
+  },
+  expenses: {
+    month: (month?: string) => apiFetch<ExpensesMonth>(`/api/v1/expenses${month ? `?month=${encodeURIComponent(month)}` : ""}`),
+    excelPath: (month: string) => `/api/v1/expenses/excel?month=${encodeURIComponent(month)}`,
+    add: (body: { amount_paise: number; category: ExpenseCategory; method: ExpenseMethod; label?: string; day?: string }) =>
+      apiFetch<Expense>(`/api/v1/expenses`, { method: "POST", body: JSON.stringify(body) }),
+    remove: (id: string) => apiFetch<{ ok: boolean }>(`/api/v1/expenses/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    attachBill: (id: string, file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return smsMultipart<{ ok: boolean }>(`/api/v1/expenses/${encodeURIComponent(id)}/bill`, fd);
+    },
+    billUrl: (id: string) => apiFetch<{ url: string }>(`/api/v1/expenses/${encodeURIComponent(id)}/bill`),
+    saveRepeat: (body: Omit<ExpenseRepeat, "id">, id?: string) =>
+      apiFetch<ExpenseRepeat>(`/api/v1/expenses/repeats${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PUT" : "POST", body: JSON.stringify(body) }),
   },
   marketplace: {
     status: () => apiFetch<Record<"indiamart" | "justdial", MarketplaceStatus>>("/api/v1/marketplace/status"),
@@ -5776,6 +5812,68 @@ export interface DayClosing {
   expiring?: { expired: number; soon: number; names: string[] };
 }
 
+/** Barcodes (backend services/barcodes.py). */
+export interface LabelLine { item_id: string; variant_id: string | null; name: string; variant_label: string; company: boolean }
+export interface LabelOptions {
+  stock_in: { id: string; bill_no: string | null; created_at: string; labels: number } | null;
+  no_code: number;
+  shop_name: string;
+  lines: LabelLine[];
+}
+export interface PrintLabel { code: string; name: string; variant_label: string; price_paise: number | null; qty: number }
+export interface ScanResult {
+  catalog_item_id: string; variant_id: string | null; name: string; variant_label: string; code: string; price_paise: number | null;
+}
+
+/** Expenses (backend services/expenses.py). */
+export type ExpenseCategory = "rent" | "salary" | "electricity" | "transport" | "food" | "packing" | "other";
+export type ExpenseMethod = "cash" | "upi" | "bank" | "card";
+export interface Expense {
+  id: string; day: string; label: string; amount_paise: number; category: ExpenseCategory; method: ExpenseMethod;
+  spent_by: string | null; repeat_id: string | null; category_label: string; method_label: string; has_bill: boolean;
+}
+export interface ExpenseRepeat {
+  id: string; category: ExpenseCategory; label: string; amount_paise: number; method: ExpenseMethod; day_of_month: number; active: boolean;
+}
+export interface ExpensesMonth {
+  month: string; month_label: string; is_current: boolean;
+  expenses: Expense[];
+  auto: { key: string; label: string; amount_paise: number; note: string; in_profit: boolean }[];
+  repeats: ExpenseRepeat[];
+  profit: { sales_paise: number; refunds_paise: number; cogs_paise: number; expenses_paise: number; profit_paise: number };
+}
+
+/** Stock count (backend services/stock_counts.py). */
+export type CountReason = "damaged" | "lost" | "count_wrong" | "found" | "other";
+export interface CountLine {
+  id: string; catalog_item_id: string; variant_id: string | null; section: string | null; system_qty: number; counted_qty: number;
+  counted_by_name: string | null; counted_at: string; reason: CountReason | null; name: string; variant_label: string;
+  difference: number; value_paise: number;
+}
+export interface StockCountRow {
+  id: string; place_id: string; place?: string | null; status: "open" | "paused" | "finished" | "cancelled"; sections: string[];
+  started_by_name: string | null; started_at: string; finished_at?: string | null; finished_by_name?: string | null;
+  loss_paise?: number; gain_paise?: number;
+}
+export interface StockCountFull extends StockCountRow {
+  lines: CountLine[];
+  cards: {
+    counted: number; total: number; match: number; not_counted: number; counters: string[];
+    less: { items: number; pieces: number; value_paise: number }; more: { items: number; pieces: number; value_paise: number };
+  };
+  not_counted: { catalog_item_id: string; variant_id: string | null; name: string; variant_label: string; system_qty: number }[];
+  missing_reasons: number;
+}
+export interface StockCountsView {
+  places: { id: string; name: string; bills_from: boolean }[];
+  open: StockCountRow[];
+  finished: StockCountRow[];
+  count: StockCountFull | null;
+}
+export interface StockCorrection {
+  name: string; variant_label: string; delta: number; reason: string; note: string | null; by: string | null; at: string;
+}
+
 /** Batches & expiry (backend services/stock_batches.py). */
 export type BatchBucket = "expired" | "soon" | "later" | "fine";
 export interface StockBatch {
@@ -6058,6 +6156,8 @@ export interface SuppliersView {
   bought_from: number;
   owe_paise: number;
   owe_to: number;
+  /** Stock on hand at cost price. */
+  stock_value_paise?: number;
   low_stock: number;
 }
 
@@ -6181,6 +6281,12 @@ export interface StockInLineInput {
   damaged_action: DamagedAction | null;
   unit_cost_paise: number;
   gst_rate: number;
+  /** Batches & expiry items only. */
+  batch_no?: string;
+  expiry_date?: string;
+  /** A size/colour from the bill photo that the item doesn't have yet (made on Save). */
+  new_size?: string;
+  new_colour?: string;
 }
 
 export interface StockInInput {
@@ -6231,6 +6337,8 @@ export interface BillRead {
     read_name: string;
     catalog_item_id: string | null;
     variant_id: string | null;
+    /** A size/colour the bill has but the item doesn't yet: added under the item on Save. */
+    new_variant?: { size: string | null; colour: string | null } | null;
     label: string | null;
     qty_good: number;
     unit_cost_paise: number;

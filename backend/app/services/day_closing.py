@@ -51,7 +51,7 @@ def summary(db, tenant_id: str, day: date) -> dict:
     ).data or []
     expenses = (
         db.table("cash_expenses").select("id, label, amount_paise, spent_by, created_at").eq("tenant_id", tenant_id)
-        .eq("day", day.isoformat()).order("created_at").execute()
+        .eq("day", day.isoformat()).eq("method", "cash").order("created_at").execute()  # the drawer: cash only (313)
     ).data or []
     closed = (
         db.table("day_closings").select("*").eq("tenant_id", tenant_id).eq("day", day.isoformat()).limit(1).execute()
@@ -156,7 +156,7 @@ def add_expense(db, tenant_id: str, day: date, label: str, amount_paise: int, sp
         raise OrderError("Type the amount")
     rows = db.table("cash_expenses").insert({
         "tenant_id": tenant_id, "day": day.isoformat(), "label": label, "amount_paise": int(amount_paise),
-        "spent_by": (spent_by or "").strip()[:60] or None, "created_by": user_id,
+        "spent_by": (spent_by or "").strip()[:60] or None, "created_by": user_id, "method": "cash",
     }).execute().data or []
     return rows[0] if rows else {}
 

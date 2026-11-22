@@ -323,6 +323,12 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Your products, prices and stock — what Anril can recommend and sell.",
     };
   }
+  if (pathname === "/dashboard/expenses") {
+    return { title: "Expenses", description: "What you spend, so profit is real." };
+  }
+  if (pathname === "/dashboard/catalog/labels") {
+    return { title: "Catalogue / Barcode labels", description: "Print price tags, then scan to bill and scan to stock in." };
+  }
   if (pathname === "/dashboard/catalog/price-list") {
     return { title: "Catalogue / Upload price list", description: "Add or update many items at once. Nothing changes until you save." };
   }

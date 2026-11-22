@@ -12,6 +12,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { computeBill } from "../orders/billMath";
 import { reportSend, rupees } from "../orders/orderUi";
+import { ScanBox } from "../../catalog/ScanBox";
 
 type Line = {
   key: string; item: NewBillItem; variant: NewBillVariant | null; qty: number;
@@ -308,6 +309,15 @@ export default function NewBillPage() {
                 className="h-9 w-full rounded-xl border border-[#e2e8f0] bg-white pl-9 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary-200" />
             </label>
           </div>
+          <ScanBox className="mt-2" placeholder="Scan a barcode to add it (USB scanner or camera)" onFound={(found) => {
+            const item = items.find((i) => i.id === found.catalog_item_id);
+            const variant = item?.variants.find((v) => v.id === found.variant_id) ?? null;
+            if (!item) { toast.error(`${found.name} isn't ready to sell. Tick Ready to sell on the item.`); return; }
+            if (found.variant_id && !variant) { toast.error("That size or colour isn't on the item any more."); return; }
+            if (!variant && item.price_paise == null) { toast.error(`${item.name} has no price yet. Add one in Catalogue.`); return; }
+            addLine(item, variant);
+            toast.success(`Added ${item.name}${variant ? ` · ${variant.label}` : ""}`);
+          }} />
 
           {error ? (
             <p className="rounded-2xl border border-[#e2e8f0] bg-white p-8 text-center text-sm text-on-surface-muted">Couldn&apos;t load your items. Refresh to try again.</p>
