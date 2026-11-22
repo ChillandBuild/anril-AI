@@ -248,8 +248,8 @@ export default function OAuthConsentPage({
         <h1 className="text-base font-bold text-ink font-display">Nothing to approve</h1>
         <p className="text-sm text-ink-secondary mt-2 font-body">
           This page opens from the Claude app when you connect it. Start from the Claude app, or go to{" "}
-          <Link href="/operator/claude-access" className="text-primary hover:underline">
-            Operator Console → Claude Access
+          <Link href="/operator/mcp" className="text-primary hover:underline">
+            Operator Console → MCP
           </Link>
           .
         </p>
@@ -357,8 +357,8 @@ export default function OAuthConsentPage({
         <h1 className="text-base font-bold text-ink font-display">Claude is already approved</h1>
         <p className="text-sm text-ink-secondary mt-2 font-body">
           Open{" "}
-          <Link href="/operator/claude-access" className="text-primary hover:underline">
-            Operator Console → Claude Access
+          <Link href="/operator/mcp" className="text-primary hover:underline">
+            Operator Console → MCP
           </Link>
           . The connection is switched off there. Press Reset sign-in on that page, then connect again from the
           Claude app to see the Allow screen.
@@ -487,7 +487,7 @@ export default function OAuthConsentPage({
         </button>
       </div>
       <p className="text-xs text-ink-muted mt-4 font-body">
-        You can switch this off any time in Operator Console → Claude Access.
+        You can switch this off any time in Operator Console → MCP.
       </p>
     </Shell>
   );

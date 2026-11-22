@@ -22,7 +22,7 @@ const NAV_ITEMS: { id: string; label: string; hint: string; icon: typeof Users; 
   { id: "nav-subscription", label: "Subscription", hint: "Go to Subscription", icon: CreditCard, href: "/operator/subscription" },
   { id: "nav-scheduler", label: "Schedulers", hint: "Go to Schedulers", icon: CalendarClock, href: "/operator/scheduler" },
   { id: "nav-audit-log", label: "Audit Log", hint: "Go to Audit Log", icon: ScrollText, href: "/operator/audit-log" },
-  { id: "nav-claude-access", label: "Claude Access", hint: "Go to Claude Access", icon: Bot, href: "/operator/claude-access" },
+  { id: "nav-mcp", label: "MCP", hint: "Go to MCP", icon: Bot, href: "/operator/mcp" },
   { id: "nav-new-client", label: "New Client", hint: "Create a client", icon: Plus, href: "/operator" },
 ];
 

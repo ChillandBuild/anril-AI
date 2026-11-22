@@ -1,4 +1,4 @@
-"""Operator Console → Claude Access: see the connection, allow it, switch it off.
+"""Operator Console → MCP: the admin connector (see, allow, switch off) and each client's connector.
 
 System admins only. These are the Console's own endpoints; the MCP tools never call them.
 """
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.supabase import get_supabase
 from app.dependencies.system_admin import get_system_admin
-from app.services import mcp_connections
+from app.services import client_claude, mcp_connections
 from app.services.audit_log import record_audit_event
 
 router = APIRouter()
@@ -109,3 +109,101 @@ def revoke_claude_access(admin: dict = Depends(get_system_admin)):
         metadata={"revoked": revoked},
     )
     return {"revoked": revoked, "connection": mcp_connections.current(db)}
+
+
+# ── the client connectors (one switch per client) ─────────────────────────────
+
+def _client_public_url() -> str:
+    from app.client_mcp.server import public_url  # imported here: the MCP package loads only when used
+
+    return public_url()
+
+
+def _rows(result) -> list[dict]:
+    # The real database library can answer None; read through it, like client_claude does.
+    return (result.data if result else None) or []
+
+
+def _clamped_cap(value) -> int:
+    """Same clamp as client_claude.daily_cap, applied to a value already read."""
+    try:
+        return max(0, min(int(value), client_claude.MAX_DAILY_CAP))
+    except (TypeError, ValueError):
+        return client_claude.DEFAULT_DAILY_CAP
+
+
+def _connection_facts(rows: list[dict]) -> dict[str, dict]:
+    """tenant_id -> {connected_at, last_used_at} from the active connection rows."""
+    facts: dict[str, dict] = {}
+    for row in rows:
+        fact = facts.setdefault(str(row["tenant_id"]), {"connected_at": None, "last_used_at": None})
+        for field in ("connected_at", "last_used_at"):
+            value = row.get("created_at" if field == "connected_at" else field)
+            if value and (fact[field] is None or value > fact[field]):
+                fact[field] = value
+    return facts
+
+
+@router.get("/mcp/clients")
+def mcp_clients(_admin: dict = Depends(get_system_admin)):
+    """Every client with its connector switch, connection state, today's sends and cap.
+    Four queries in all, joined here, so the list stays one round trip however many clients."""
+    db = get_supabase()
+    tenants = _rows(db.table("tenants").select("id, name, status, enabled_features").execute())
+    active = _rows(
+        db.table(client_claude.TABLE).select("tenant_id, created_at, last_used_at").eq("status", "active").execute()
+    )
+    sent = _rows(db.table("claude_send_days").select("tenant_id, sent").eq("day", client_claude.ist_day()).execute())
+    caps = _rows(db.table("app_settings").select("tenant_id, value").eq("key", client_claude.CAP_KEY).execute())
+    facts = _connection_facts(active)
+    sent_by = {str(r["tenant_id"]): int(r["sent"] or 0) for r in sent}
+    cap_by = {str(r["tenant_id"]): _clamped_cap(r.get("value")) for r in caps}
+    clients = []
+    for t in sorted(tenants, key=lambda t: (t.get("name") or "").lower()):
+        tid = str(t["id"])
+        fact = facts.get(tid)
+        clients.append({
+            "tenant_id": tid,
+            "name": t.get("name") or "",
+            "status": t.get("status"),
+            "on": client_claude.FEATURE in (t.get("enabled_features") or []),
+            "connected": fact is not None,
+            "connected_at": fact["connected_at"] if fact else None,
+            "last_used_at": fact["last_used_at"] if fact else None,
+            "sent_today": sent_by.get(tid, 0),
+            "daily_cap": cap_by.get(tid, client_claude.DEFAULT_DAILY_CAP),
+        })
+    return {
+        "enabled": settings.mcp_client_enabled,
+        "mcp_url": _client_public_url(),
+        "default_daily_cap": client_claude.DEFAULT_DAILY_CAP,
+        "clients": clients,
+    }
+
+
+class ClientSwitchBody(BaseModel):
+    on: bool
+
+
+@router.put("/mcp/clients/{tenant_id}")
+def switch_client_connector(tenant_id: str, body: ClientSwitchBody, admin: dict = Depends(get_system_admin)):
+    """Switch one client's connector on or off. Touches only the "claude" feature key, so it cannot
+    wipe the other features the way PATCH /clients/{id}/features (which replaces the list) can.
+    Off needs no connection revoked: the connector re-checks the key on every request."""
+    db = get_supabase()
+    rows = _rows(db.table("tenants").select("id, enabled_features").eq("id", tenant_id).limit(1).execute())
+    if not rows:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    current = list(rows[0].get("enabled_features") or [])
+    if body.on:
+        features = current if client_claude.FEATURE in current else current + [client_claude.FEATURE]
+    else:
+        features = [f for f in current if f != client_claude.FEATURE]
+    if features != current:
+        db.table("tenants").update({"enabled_features": features}).eq("id", tenant_id).execute()
+        record_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=admin.get("user_id"), actor_role="system_admin",
+            action="operator.features_updated", target_type="tenant", target_id=tenant_id,
+            metadata={"features": features, "changed": {client_claude.FEATURE: body.on}},
+        )
+    return {"tenant_id": tenant_id, "on": body.on}
