@@ -51,7 +51,7 @@ def public_url() -> str:
 
 def _load_tools() -> None:
     # Importing a tool module registers its tools (wrapper.client_tool).
-    from app.client_mcp import tools_edit, tools_read, tools_send  # noqa: F401
+    from app.client_mcp import tools_edit, tools_read, tools_read_ai, tools_read_money, tools_read_setup, tools_send  # noqa: F401
 
 
 def build_server() -> MCPServer:

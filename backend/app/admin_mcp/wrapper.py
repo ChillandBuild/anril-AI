@@ -57,6 +57,19 @@ APPROVED_TOOLS: dict[str, str] = {
     "find_lead": "New Operator read: lead search",
     "lead_thread": "New Operator read: full chat thread",
     "what_anril_saw": "Operator Console → client → Anril Brain (what Anril saw)",
+    # gaps: one client
+    "client_team": "Operator Console → client → Team",
+    "client_templates": "Operator Console → client → Templates",
+    "client_numbers": "Operator Console → client → Numbers Pool",
+    "client_knowledge": "Operator Console → client → Knowledge Base",
+    "client_calling_provider": "Operator Console → client → Configuration → calling provider",
+    "client_private_send": "Operator Console → client → Private Send",
+    "client_audit_logs": "Operator Console → client → Audit Logs",
+    # gaps: the platform
+    "subscription_plans": "Operator Console → Subscription (feature catalog and plans)",
+    "master_prompt": "Operator Console → Master Prompt (read only)",
+    "provider_rates": "Operator Console → AI Spend → provider rates",
+    "clients_waiting": "Operator Console → Clients (waiting on client)",
 }
 
 MAX_RESULT_CHARS = 140_000  # Claude's cap is about 150,000 per tool result

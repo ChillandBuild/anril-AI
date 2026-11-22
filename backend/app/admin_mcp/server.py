@@ -49,7 +49,7 @@ def public_url() -> str:
 
 def _load_tools() -> None:
     # Importing a tool module registers its tools (wrapper.admin_tool).
-    from app.admin_mcp import tools_broadcasts, tools_client, tools_fleet, tools_leads  # noqa: F401
+    from app.admin_mcp import tools_broadcasts, tools_client, tools_fleet, tools_gaps, tools_leads  # noqa: F401
 
 
 def build_server() -> MCPServer:
