@@ -70,6 +70,7 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   { label: "Delivery Reports", href: "/dashboard/sms/reports" },
   { label: "Transactions", href: "/dashboard/sms/transactions" },
   { label: "Dev API", href: "/dashboard/sms/developer" },
+  { label: "Overview", href: "/dashboard/otp/overview" },
   { label: "Send & check", href: "/dashboard/otp" },
   { label: "History", href: "/dashboard/otp/history" },
   { label: "Settings", href: "/dashboard/otp/settings" },
@@ -262,10 +263,11 @@ describe("Anril OTP section", () => {
   const otpSection = NAV_SECTIONS.find((section) => section.key === "otp")!;
   const otpLinks = (access: NavAccess) => visibleEntries(otpSection, access) as NavLeaf[];
 
-  it("is its own main-menu section with the 3 rows, just before Anril SMS", () => {
+  it("is its own main-menu section with the 4 rows, Overview first, just before Anril SMS", () => {
     expect(otpSection.title).toBe("Anril OTP");
-    expect(otpLinks(allAccess).map((leaf) => leaf.label)).toEqual(["Send & check", "History", "Setup"]);
+    expect(otpLinks(allAccess).map((leaf) => leaf.label)).toEqual(["Overview", "Send & check", "History", "Setup"]);
     expect(otpLinks(allAccess).map((leaf) => leaf.href)).toEqual([
+      "/dashboard/otp/overview",
       "/dashboard/otp",
       "/dashboard/otp/history",
       "/dashboard/otp/settings",
@@ -282,7 +284,7 @@ describe("Anril OTP section", () => {
       can: (value) => value === permission,
       canAny: (values) => values.includes(permission),
     };
-    expect(otpLinks(access)).toHaveLength(3);
+    expect(otpLinks(access)).toHaveLength(4);
   });
 
   it("hides the section without an active subscription", () => {
@@ -294,8 +296,11 @@ describe("Anril OTP section", () => {
   });
 
   it("marks the root page active only on its exact path", () => {
-    const [sendCheck, history] = otpLinks(allAccess);
+    const [overview, sendCheck, history] = otpLinks(allAccess);
+    expect(overview.isActive("/dashboard/otp/overview")).toBe(true);
+    expect(overview.isActive("/dashboard/otp")).toBe(false);
     expect(sendCheck.isActive("/dashboard/otp")).toBe(true);
+    expect(sendCheck.isActive("/dashboard/otp/overview")).toBe(false);
     expect(sendCheck.isActive("/dashboard/otp/history")).toBe(false);
     expect(history.isActive("/dashboard/otp/history")).toBe(true);
     expect(history.isActive("/dashboard/otp/history-other")).toBe(false);
@@ -528,9 +533,13 @@ describe("Settings home: one Settings row, last in the menu", () => {
     expect(leafHref(settings, a)).toBe("/dashboard/subscription");
   });
 
-  it("is hidden for a user with none of the gates, and for an unsubscribed user who has only settings or roles", () => {
-    expect(settings.visible(access("caller", []))).toBe(false);
-    expect(settings.visible(access("caller", ["leads.view"]))).toBe(false);
+  it("shows Text size to any subscribed user; hidden for an unsubscribed user who has only settings or roles", () => {
+    // Text size is open to everyone (it only changes their own screen).
+    expect(settings.visible(access("caller", []))).toBe(true);
+    expect(settings.visible(access("caller", ["leads.view"]))).toBe(true);
+    // With no settings permission, the row skips the Settings home and opens Text size.
+    expect(leafHref(settings, access("caller", ["leads.view"]))).toBe("/dashboard/settings/display");
+    expect(leafHref(settings, access("caller", ["settings.view"]))).toBe("/dashboard/settings");
     expect(settings.visible(access("caller", ["settings.view", "roles.view"], "none"))).toBe(false);
     expect(settings.visible(noAccess)).toBe(false);
   });

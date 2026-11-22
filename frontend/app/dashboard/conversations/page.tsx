@@ -134,7 +134,8 @@ export default function ConversationsPage() {
   }, []);
 
   const searchParams = useSearchParams();
-  const deepLinkLeadId = searchParams.get("lead");
+  // "lead_id" too: WhatsApp alerts already sent to owners (template_fields.chat_link) and push links use it.
+  const deepLinkLeadId = searchParams.get("lead") ?? searchParams.get("lead_id");
   const deepLinked = useRef(false);
 
   const fetchEscalationCount = useCallback(async () => {

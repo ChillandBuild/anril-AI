@@ -7,9 +7,14 @@ import { usePolling } from "@/hooks/usePolling";
 import { fetchTodayCallbacks } from "@/app/dashboard/telecalling/lib/notes-api";
 import type { CallbackJob } from "@/app/dashboard/telecalling/types";
 import { Clock } from "lucide-react";
+import { fetchBellAlerts } from "@/lib/bellApi";
+import type { BellAlert } from "@/components/bell/alertKinds";
 
 interface NotificationContextType {
   notifications: AppNotification[];
+  /** Unread plus the last 7 days of read alerts; null until the bell has been opened once. */
+  recent: BellAlert[] | null;
+  loadRecent: () => Promise<void>;
   callbacks: CallbackJob[];
   pool: PoolItem[];
   markRead: (id: string) => Promise<void>;
@@ -22,6 +27,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { role, callerId } = useAuthRole();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [recent, setRecent] = useState<BellAlert[] | null>(null);
   const [pool, setPool] = useState<PoolItem[]>([]);
   const [callbacks, setCallbacks] = useState<CallbackJob[]>([]);
 
@@ -76,7 +82,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 action: {
                   label: "Chat",
                   onClick: () => {
-                    window.location.href = `/dashboard/conversations?lead_id=${leadId}`;
+                    window.location.href = `/dashboard/conversations?lead=${leadId}`;
                   }
                 }
               });
@@ -153,10 +159,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   usePolling(reloadAll, 30_000, !!role);
 
+  const loadRecent = useCallback(async () => {
+    if (role !== "caller" && role !== "owner") return;
+    try {
+      setRecent(await fetchBellAlerts());
+    } catch (err) {
+      console.error("recent alerts load failed", err);
+    }
+  }, [role]);
+
   const markRead = useCallback(async (id: string) => {
     try {
       await api.notifications.markRead(id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setRecent((prev) => (prev ? prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)) : prev));
     } catch (err) {
       console.error("markRead failed", err);
     }
@@ -166,6 +182,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       await api.notifications.markAllRead();
       setNotifications([]);
+      setRecent((prev) => (prev ? prev.map((n) => ({ ...n, is_read: true })) : prev));
     } catch (err) {
       console.error("markAllRead failed", err);
     }
@@ -176,6 +193,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     {
       value: {
         notifications,
+        recent,
+        loadRecent,
         callbacks,
         pool,
         markRead,

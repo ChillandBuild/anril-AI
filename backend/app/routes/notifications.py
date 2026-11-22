@@ -1,10 +1,11 @@
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_permission
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, get_tenant_id, require_permission
 from app.dependencies.auth import get_current_user
 from app.services.notification_config import (
     get_notification_config,
@@ -69,25 +70,51 @@ class NotificationConfigIn(BaseModel):
     whatsapp_notifications: WhatsAppNotificationConfig = WhatsAppNotificationConfig()
     whatsapp_escalation_notifications: WhatsAppEscalationConfig = WhatsAppEscalationConfig()
 
+# Alert types that carry order/payment money information. Only the owner or someone with deals.view
+# gets them. Keep in step with the "money" category in frontend/components/bell/alertKinds.ts.
+MONEY_ALERT_TYPES = (
+    "deal_double_payment",
+    "intake_double_payment",
+    "intake_paid",
+    "quote_accepted",
+    "day_closing",
+    "purchase_order",
+)
+
+_READ_WINDOW_DAYS = 7
+_INCLUDE_READ_LIMIT = 100
+
+
 @router.get("/")
 async def list_notifications(
-    tenant_id: str = Depends(get_tenant_id),
+    include_read: bool = False,
+    ctx: dict = Depends(get_tenant_and_role),
     user: dict = Depends(get_current_user)
 ):
-    """Fetch unread notifications for the current user."""
-    db = get_supabase()
+    """Fetch notifications for the current user.
 
-    rows = (
+    Default: unread only (max 50). Money alerts are left out for people without deals.view. `?include_read=true`: every unread alert plus the read ones from
+    the last 7 days, newest first (max 100).
+    """
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+
+    query = (
         db.table("app_notifications")
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("user_id", user["user_id"])
-        .eq("is_read", False)
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
     )
-    
+    if not _has_permission(ctx, "deals.view"):
+        query = query.not_.in_("type", list(MONEY_ALERT_TYPES))
+    if include_read:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=_READ_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Unread alerts always show (even older than 7 days); read ones only inside the window.
+        query = query.or_(f"is_read.eq.false,created_at.gte.{cutoff}").order("created_at", desc=True).limit(_INCLUDE_READ_LIMIT)
+    else:
+        query = query.eq("is_read", False).order("created_at", desc=True).limit(50)
+    rows = query.execute()
+
     return {"data": rows.data or []}
 
 @router.patch("/read")

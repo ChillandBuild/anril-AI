@@ -9,6 +9,8 @@ import { AiraLoader } from "@/components/AiraLoader";
 import { formatRupees } from "./deals/money";
 import { ChatFilterPopover } from "./chats/ChatFilterPopover";
 import { SaveGroupDialog } from "./chats/SaveGroupDialog";
+import { NotificationBell } from "./NotificationBell";
+import { GlobalSearch } from "./search/GlobalSearch";
 import {
   activeFilterCount,
   filterPills,
@@ -178,23 +180,28 @@ export function ConversationList(props: Props) {
       )}>
         <div className="flex w-full items-center justify-between">
           <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
-          {!fullScreen && (
-          <div className="relative" ref={menuRef}>
-            <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
-              <MoreVertical size={18} />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20 py-1.5">
-                <button onClick={() => { setSelectionMode(true); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-                  Select chats
+          <div className="flex items-center gap-1">
+            {/* Chats has no top bar, so search and alerts live here (the top bar has them on every other page). */}
+            <GlobalSearch variant="icon" />
+            <NotificationBell />
+            {!fullScreen && (
+              <div className="relative" ref={menuRef}>
+                <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
+                  <MoreVertical size={18} />
                 </button>
-                <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-                  Select all
-                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20 py-1.5">
+                    <button onClick={() => { setSelectionMode(true); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                      Select chats
+                    </button>
+                    <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                      Select all
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
-          )}
         </div>
       </div>
 

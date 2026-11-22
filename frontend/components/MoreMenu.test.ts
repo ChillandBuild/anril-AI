@@ -201,8 +201,8 @@ describe("Settings box in the drawer", () => {
   it("has the 4 groups then Plans & subscription for an owner", () => {
     expect(box("owner", [])).toEqual({
       groups: [
-        ["My business", ["Business details"]],
-        ["Connections", ["Channels", "Calling"]],
+        ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
+        ["Connections", ["Channels", "Calling", "Limits & Meta charges"]],
         ["Team & roles", ["Team & roles"]],
         ["Alerts & automations", ["Alerts"]],
       ],
@@ -211,10 +211,11 @@ describe("Settings box in the drawer", () => {
   });
 
   it("hides a group with no visible row, and keeps each row's gate", () => {
-    expect(box("agent", ["roles.view"])).toEqual({ groups: [["Team & roles", ["Team & roles"]]], loose: [] });
-    expect(box("agent", ["subscription.view"])).toEqual({ groups: [], loose: ["Plans & subscription"] });
+    const textSize = ["My business", ["Text size"]];
+    expect(box("agent", ["roles.view"])).toEqual({ groups: [textSize, ["Team & roles", ["Team & roles"]]], loose: [] });
+    expect(box("agent", ["subscription.view"])).toEqual({ groups: [textSize], loose: ["Plans & subscription"] });
     expect(box("agent", ["settings.view"]).groups.map(([g]) => g)).toEqual(["My business", "Connections", "Alerts & automations"]);
-    expect(box("agent", [])).toEqual({ groups: [], loose: [] });
+    expect(box("agent", [])).toEqual({ groups: [textSize], loose: [] });
   });
 
   it("the box highlight and the sidebar use the same Settings-page rule", () => {
