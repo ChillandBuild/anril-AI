@@ -878,6 +878,26 @@ export interface AutoMessageSendsPage {
   has_more: boolean;
 }
 
+/** One row of Auto-Messages > Sent (backend routes/auto_messages_sent.py). */
+export interface AutoMessageSentRow {
+  source: "auto_message" | "scheduled_template" | "silence_nudge" | "follow_up";
+  lead_id: string | null;
+  name: string | null;
+  phone: string | null;
+  label: string;
+  at: string;
+  status: "delivered" | "read" | "sent" | "not_sent" | "will_retry";
+  why: string | null;
+  action: { kind: string; label: string; href: string | null };
+}
+
+export interface AutoMessageSentPage {
+  today_not_sent: number;
+  total: number;
+  has_more: boolean;
+  rows: AutoMessageSentRow[];
+}
+
 export interface AutoMessagePreviewResult {
   status: "sent" | "failed";
   reason: string | null;
@@ -977,6 +997,8 @@ export interface ReengagementLog {
   step_id: string;
   lead_id: string;
   status: "sent" | "sent_fallback" | "skipped_window" | "failed";
+  /** Plain words for a failed or skipped row (absent until migration 311 is applied). */
+  reason?: string | null;
   sent_at: string;
   leads?: { name: string | null; phone: string; segment: string | null } | null;
 }
@@ -2421,6 +2443,33 @@ export type HomeLayout = {
   is_custom: boolean;
 };
 export type HomeLayoutSave = { boxes: HomeBoxKey[]; lists: Record<HomeListKey, boolean> };
+
+export type TeachKind = "answer" | "word";
+export interface TeachItem {
+  id: string;
+  kind: TeachKind;
+  prompt: string;
+  reply: string;
+  source: "manual" | "chat" | "couldnt_answer";
+  times_taught: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface TeachOffer {
+  id: string;
+  title: string;
+  details: string | null;
+  starts_on: string;
+  ends_on: string;
+  source: "manual" | "reach";
+  status: "live" | "upcoming" | "ended";
+}
+export interface TeachOfferInput {
+  title: string;
+  details?: string | null;
+  starts_on?: string | null;
+  ends_on: string | null;
+}
 
 export const api = {
   otp: {
@@ -4042,6 +4091,15 @@ export const api = {
       return apiFetch<AutoMessageSendsPage>(`/api/v1/auto-messages/sends?${q.toString()}`);
     },
     privateSend: () => apiFetch<PrivateSendStatus>("/api/v1/auto-messages/private-send"),
+    sent: (params: { days: 7 | 30; onlyNotSent: boolean; limit?: number; offset?: number }) => {
+      const q = new URLSearchParams({
+        days: String(params.days),
+        only_not_sent: String(params.onlyNotSent),
+        limit: String(params.limit ?? 50),
+        offset: String(params.offset ?? 0),
+      });
+      return apiFetch<AutoMessageSentPage>(`/api/v1/auto-messages/sent?${q.toString()}`);
+    },
   },
   /** Purchases & suppliers (backend routes/purchases.py). */
   purchases: {
@@ -4207,6 +4265,26 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ when, say }),
       }),
+  },
+  /** Anril Setup > Teach & offers (backend routes/ai_teach.py). */
+  aiTeach: {
+    items: (kind?: TeachKind) =>
+      apiFetch<TeachItem[]>(`/api/v1/ai-teach/items${kind ? `?kind=${kind}` : ""}`),
+    addItem: (body: { kind: TeachKind; prompt: string; reply: string; source?: "couldnt_answer" }) =>
+      apiFetch<TeachItem>("/api/v1/ai-teach/items", { method: "POST", body: JSON.stringify(body) }),
+    saveItem: (id: string, body: { prompt?: string; reply?: string }) =>
+      apiFetch<TeachItem>(`/api/v1/ai-teach/items/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deleteItem: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/v1/ai-teach/items/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    offers: () => apiFetch<TeachOffer[]>("/api/v1/ai-teach/offers"),
+    addOffer: (body: TeachOfferInput) =>
+      apiFetch<TeachOffer>("/api/v1/ai-teach/offers", { method: "POST", body: JSON.stringify(body) }),
+    saveOffer: (id: string, body: Partial<TeachOfferInput>) =>
+      apiFetch<TeachOffer>(`/api/v1/ai-teach/offers/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    endOffer: (id: string) =>
+      apiFetch<{ ended: boolean; deleted: boolean }>(`/api/v1/ai-teach/offers/${encodeURIComponent(id)}/end`, { method: "POST" }),
+    deleteOffer: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/v1/ai-teach/offers/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   chatHandovers: {
     count: (todayOnly?: boolean) =>

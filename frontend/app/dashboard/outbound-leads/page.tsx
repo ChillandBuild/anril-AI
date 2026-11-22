@@ -14,6 +14,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 import { TickMark } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
+import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, type ReachOfferDraft } from "./ReachOfferBox";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -679,6 +680,8 @@ export default function OutboundLeadsPage() {
   const { role, permissions, loading: roleLoading } = useAuthRole();
   const canViewOutbound = role === "owner" || permissions.includes("outbound_leads.view") || permissions.includes("outbound_leads.manage");
   const canManageOutbound = role === "owner" || permissions.includes("outbound_leads.manage");
+  // Marking a campaign as an offer teaches the AI agent, so it needs the Knowledge Base edit right.
+  const canTeachAi = role === "owner" || permissions.includes("knowledge.manage");
   const [currentStep, setCurrentStep] = useState(1);
 
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -693,6 +696,7 @@ export default function OutboundLeadsPage() {
   const searchParams = useSearchParams();
   const [templateName, setTemplateName] = useState(searchParams.get("template") ?? "");
   const [scheduleType, setScheduleType] = useState<ScheduleType>("now");
+  const [reachOffer, setReachOffer] = useState<ReachOfferDraft>(NO_REACH_OFFER);
   const [scheduleAt, setScheduleAt] = useState("");
   const [dripDays, setDripDays] = useState("");
   const [dripSendTime, setDripSendTime] = useState("");
@@ -1224,6 +1228,7 @@ export default function OutboundLeadsPage() {
     setOptInValidation(null);
     setTemplateName("");
     setScheduleType("now");
+    setReachOffer(NO_REACH_OFFER);
     setScheduleAt("");
     setDripDays("");
     setSendError(null);
@@ -1498,6 +1503,11 @@ export default function OutboundLeadsPage() {
       return;
     }
     setSendError(null);
+    const offerProblem = reachOfferProblem(reachOffer);
+    if (offerProblem) {
+      setSendError(offerProblem);
+      return;
+    }
 
     try {
       let leads: Awaited<ReturnType<typeof buildCsvLeads>> = [];
@@ -1543,6 +1553,7 @@ export default function OutboundLeadsPage() {
         tag_id: selectedTag || undefined,
         exclude_negative_replies: isGroup ? false : excludeNegativeReplies,
         include_opted_out: isGroup ? false : includeOptedOut,
+        offer: reachOfferPayload(reachOffer),
       };
 
       const auth = await getAuthHeaders();
@@ -2600,6 +2611,10 @@ export default function OutboundLeadsPage() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {canManageOutbound && canTeachAi && (
+                  <ReachOfferBox templateName={templateName} value={reachOffer} onChange={setReachOffer} />
                 )}
 
                 {sendError && (

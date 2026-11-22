@@ -43,7 +43,9 @@ from app.routes import scheduled_overview
 from app.routes import sms, sms_contacts, sms_webhooks, operator_sms
 from app.routes import home
 from app.routes import auto_messages
+from app.routes import auto_messages_sent
 from app.routes import private_send, private_send_keys
+from app.routes import ai_teach as ai_teach_routes
 
 # Configure logging
 logging.basicConfig(
@@ -430,6 +432,7 @@ app.include_router(business_details.router, prefix="/api/v1/business-details", t
 app.include_router(marketplace_public_router, prefix="/api/v1/marketplace", tags=["marketplace-webhook"])
 app.include_router(auto_messages.public_router, prefix="/api/v1/auto-messages", tags=["auto-messages-webhook"])
 app.include_router(auto_messages.router, prefix="/api/v1/auto-messages", tags=["auto-messages"], dependencies=_auth)
+app.include_router(auto_messages_sent.router, prefix="/api/v1/auto-messages", tags=["auto-messages-sent"], dependencies=_auth)
 app.include_router(private_send.public_router, prefix="/api/v1/private-send", tags=["private-send"])
 app.include_router(private_send_keys.router, prefix="/api/v1/private-send", tags=["private-send-keys"], dependencies=_auth)
 app.include_router(otp_routes.public_router, prefix="/api/v1/otp", tags=["otp-api"])
@@ -485,6 +488,7 @@ app.include_router(media.router, prefix="/api/v1/leads", tags=["media"], depende
 app.include_router(todos.router, prefix="/api/v1/todos", tags=["todos"], dependencies=_auth)
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"], dependencies=_auth)
 app.include_router(chat_actions.router, prefix="/api/v1/chats", tags=["chats"], dependencies=_auth)
+app.include_router(ai_teach_routes.router, prefix="/api/v1/ai-teach", tags=["ai-teach"], dependencies=_auth)
 app.include_router(operator.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_brain.router, prefix="/api/v1/operator", tags=["operator"])
 app.include_router(operator_sms.router, prefix="/api/v1/operator", tags=["operator-sms"])

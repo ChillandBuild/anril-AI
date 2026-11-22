@@ -29,7 +29,7 @@ import {
   Zap,
   StickyNote,
   Users,
-  X, Truck } from "lucide-react";
+  X, Truck, GraduationCap } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
@@ -124,6 +124,7 @@ export const MORE_ITEMS: MoreMenuItem[] = [
   { key: "numbers", icon: Layers, label: "Numbers", section: "whatsapp", pages: [{ href: "/dashboard/numbers", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "brain", icon: Brain, label: "Anril Brain", section: "setup", pages: [{ href: BRAIN_HREF, permissionAny: ["brain.view"], anyFeature: MESSAGING_FEATURES }] },
   { key: "knowledge", icon: BookOpen, label: "Knowledge Base", section: "setup", pages: [{ href: "/dashboard/knowledge", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "teach", icon: GraduationCap, label: "Teach & offers", section: "setup", pages: [{ href: "/dashboard/teach", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
   {
     key: "replies",
     icon: Sparkles,

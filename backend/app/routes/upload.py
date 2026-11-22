@@ -343,6 +343,13 @@ class BulkLeadItem(BaseModel):
     extra_cols: dict[str, str] = {}  # all CSV columns keyed by header name
 
 
+class ReachOffer(BaseModel):
+    """Reach confirm step: "This is an offer -- tell the AI agent about it until [date]"."""
+    title: str
+    ends_on: str
+    details: Optional[str] = None
+
+
 class BulkSendRequest(BaseModel):
     leads: list[BulkLeadItem]
     template_name: str
@@ -360,6 +367,9 @@ class BulkSendRequest(BaseModel):
     # A Customers group as the audience (Reach "Customers group"). When set, `leads` is ignored and the
     # people are read from the group here, never trusted from the browser.
     group_id: Optional[str] = None
+    # Unset = exactly the old flow. Set = after a successful send/schedule the AI agent is told about
+    # this offer until its end date (Teach & offers, ai_offers source 'reach').
+    offer: Optional[ReachOffer] = None
 
 
 class ReachPreviewRequest(BaseModel):
@@ -402,6 +412,34 @@ def _create_csv_signed_url(db, path: str, expires_in: int = 300) -> str | None:
         or getattr(result, "signedURL", None)
         or getattr(result, "url", None)
     )
+
+
+def _ist_day(moment: datetime) -> str:
+    return (moment.astimezone(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
+
+
+def _check_reach_offer_or_http(ctx: dict, body: "BulkSendRequest", starts_on: str | None = None) -> None:
+    """Before anything is sent: only people who may teach the AI (owner / knowledge.manage) can add an
+    offer to its prompt, and the offer's dates must be valid (ends today or later, after it starts)."""
+    if not body.offer:
+        return
+    if not _has_permission(ctx, "knowledge.manage"):
+        raise HTTPException(status_code=403, detail="Only people who can teach the AI agent can mark this as an offer.")
+    from app.services import ai_teach
+    try:
+        ai_teach.check_reach_offer(body.offer.title, body.offer.ends_on, body.offer.details, starts_on)
+    except ai_teach.TeachError as exc:
+        raise HTTPException(status_code=422, detail=f"Offer: {exc}") from None
+
+
+def _record_reach_offer(db, tenant_id: str, body: "BulkSendRequest", broadcast_ref: str | None, user_id,
+                        starts_on: str | None = None) -> None:
+    """The campaign is queued or scheduled: tell the AI agent about the offer. Never raises."""
+    if not body.offer:
+        return
+    from app.services import ai_teach
+    ai_teach.create_reach_offer(db, tenant_id, body.offer.title, body.offer.ends_on, body.offer.details,
+                                broadcast_ref, user_id, starts_on=starts_on)
 
 
 def _insert_scheduled_broadcast(db, record: dict) -> None:
@@ -1200,6 +1238,8 @@ async def bulk_send(
                     f"{body.template_name} isn't approved by Meta ({(tpl_status or 'not found').title()}), so it can't be sent."),
         )
 
+    _check_reach_offer_or_http(_ctx, body)
+
     # A Customers group as the audience: its people are read here from the group (never trusted from the
     # browser), then go through the SAME pipeline below as an uploaded list. People who said stop and
     # people with no opt-in are left out up front; blocked people and the monthly limit are handled at
@@ -1267,7 +1307,12 @@ async def bulk_send(
                 fire_at = datetime.fromisoformat(body.schedule_at.replace("Z", "+00:00"))
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid schedule_at format")
+            # The offer starts the day the campaign goes out; it must not end before that.
+            offer_start = _ist_day(fire_at if fire_at.tzinfo else fire_at.replace(tzinfo=timezone.utc))
+            _check_reach_offer_or_http(_ctx, body, offer_start)
+            scheduled_id = str(uuid.uuid4())
             _insert_scheduled_broadcast(db, {
+                "id": scheduled_id,
                 "tenant_id": tenant_id,
                 "template_name": body.template_name,
                 "schedule_type": "scheduled",
@@ -1281,6 +1326,7 @@ async def bulk_send(
                 "created_by": _ctx.get("user_id"),
                 "recipient_count": len(leads_payload),
             })
+            _record_reach_offer(db, tenant_id, body, scheduled_id, _ctx.get("user_id"), offer_start)
             return {"status": "scheduled", "fire_at": fire_at.isoformat(), "total": len(eligible)}
 
         if body.schedule_type == "drip" and body.drip_days and body.drip_days > 0:
@@ -1321,7 +1367,10 @@ async def bulk_send(
                     "recipient_count": len(batch),
                 })
             if records:
+                offer_start = _ist_day(datetime.fromisoformat(records[0]["fire_at"].replace("Z", "+00:00")))
+                _check_reach_offer_or_http(_ctx, body, offer_start)
                 _insert_scheduled_broadcasts(db, records)
+                _record_reach_offer(db, tenant_id, body, drip_group_id, _ctx.get("user_id"), offer_start)
             return {"status": "drip_scheduled", "batches": len(records), "total": len(eligible)}
 
         raise HTTPException(status_code=400, detail="schedule_at required for scheduled type, drip_days required for drip")
@@ -1572,6 +1621,7 @@ async def bulk_send(
         monthly_limit_keys=monthly_limit_keys,
     ))
 
+    _record_reach_offer(db, tenant_id, body, broadcast_id, _ctx.get("user_id"))
     return {
         "status": "queued",
         "broadcast_id": broadcast_id,

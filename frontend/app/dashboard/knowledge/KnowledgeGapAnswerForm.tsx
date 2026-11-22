@@ -16,8 +16,9 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
   const [answer, setAnswer] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [documentId, setDocumentId] = useState<string | null>(uploadedDocumentId ?? null);
+  const documentId = uploadedDocumentId ?? null;
   const [uploaded, setUploaded] = useState(Boolean(uploadedDocumentId));
+  const [savedToTeach, setSavedToTeach] = useState(false);
   const answerRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -32,10 +33,14 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
     setUploading(true);
     setError(null);
     try {
-      const body = `Question\n${question.trim()}\n\nAnswer\n${cleanAnswer}\n`;
-      const file = new File([body], `answer-${Date.now()}.txt`, { type: "text/plain" });
-      const uploaded = (await api.knowledge.uploadDocument(file, null, null)) as { id?: string };
-      setDocumentId(uploaded.id ?? null);
+      // Saved into Teach & offers (one shared list); the AI uses it from the next reply.
+      await api.aiTeach.addItem({
+        kind: "answer",
+        prompt: question.trim().slice(0, 300),
+        reply: cleanAnswer,
+        source: "couldnt_answer",
+      });
+      setSavedToTeach(true);
       setUploaded(true);
       try {
         await onUploaded();
@@ -60,7 +65,7 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
         <div className="min-w-0 flex-1">
           <h2 id="knowledge-gap-title" className="font-display text-base font-bold text-on-surface">Add the missing answer</h2>
           <p className="mt-1 font-body text-xs text-on-surface-muted">
-            This creates a knowledge document. Anril will sort it, and it must be reviewed before the answer becomes active.
+            Saved in Teach &amp; offers. Anril uses it from the next reply, and you can change or delete it there.
           </p>
         </div>
       </div>
@@ -72,10 +77,15 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
 
       {uploaded ? (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-          <p className="font-display text-sm font-bold text-emerald-800">Answer added and sent for sorting</p>
-          <p className="mt-1 font-body text-xs text-emerald-800/80">Review and approve the sorted document before testing the answer.</p>
+          <p className="font-display text-sm font-bold text-emerald-800">{savedToTeach ? "Answer saved. Anril will use it from the next reply." : "Answer added and sent for sorting"}</p>
+          {!savedToTeach && <p className="mt-1 font-body text-xs text-emerald-800/80">Review and approve the sorted document before testing the answer.</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            {documentId && (
+            {savedToTeach && (
+              <Link href="/dashboard/teach" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-3 font-label text-xs font-bold text-white hover:bg-primary/90">
+                See it in Teach &amp; offers <ArrowRight size={13} aria-hidden />
+              </Link>
+            )}
+            {!savedToTeach && documentId && (
               <Link
                 href={`/dashboard/knowledge?tab=documents&status=review&review=${encodeURIComponent(documentId)}&uploaded=${encodeURIComponent(documentId)}&question=${encodeURIComponent(question)}`}
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-3 font-label text-xs font-bold text-white hover:bg-primary/90"
@@ -83,7 +93,7 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
                 Review this answer <ArrowRight size={13} aria-hidden />
               </Link>
             )}
-            <Link href="/dashboard/brain?section=approvals" className="inline-flex min-h-9 items-center rounded-lg border border-surface-mid bg-white px-3 font-label text-xs font-bold text-on-surface hover:border-primary/40">All approvals</Link>
+            {!savedToTeach && <Link href="/dashboard/brain?section=approvals" className="inline-flex min-h-9 items-center rounded-lg border border-surface-mid bg-white px-3 font-label text-xs font-bold text-on-surface hover:border-primary/40">All approvals</Link>}
             <Link href={retestHref} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-surface-mid bg-white px-3 font-label text-xs font-bold text-on-surface hover:border-primary/40">
               Return to Test Anril
             </Link>
@@ -98,9 +108,9 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
             rows={5}
-            maxLength={12000}
+            maxLength={1000}
             disabled={!canManage || uploading}
-            placeholder="Write the answer Anril should learn"
+            placeholder="Write the answer Anril should give"
             className="mt-1.5 w-full resize-y rounded-xl border border-surface-mid bg-white px-3 py-2 font-body text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-mid disabled:opacity-60"
           />
           {!canManage && <p className="mt-2 font-body text-xs text-on-surface-muted">You need knowledge management access to add an answer.</p>}
@@ -111,7 +121,7 @@ export default function KnowledgeGapAnswerForm({ question, uploadedDocumentId, c
             className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 font-label text-sm font-bold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <BookOpen size={15} aria-hidden />}
-            {uploading ? "Adding answer…" : "Add answer for review"}
+            {uploading ? "Saving…" : "Save answer"}
           </button>
         </form>
       )}

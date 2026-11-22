@@ -12,7 +12,7 @@ const owner = buildNavAccess({
 const labels = (pathname: string, access = owner, tab = "") => chipRowFor(pathname, access, tab)?.chips.map((c) => c.label);
 const active = (pathname: string, access = owner, tab = "") => chipRowFor(pathname, access, tab)?.activeHref;
 
-const AUTO = ["When something happens", "Follow-ups", "One-time sends"];
+const AUTO = ["When something happens", "Follow-ups", "One-time sends", "Sent"];
 const REPLIES = ["Auto-reply", "Handover"];
 const OTP = ["Rules", "Connect your website"];
 
@@ -39,6 +39,7 @@ describe("chipRowFor: the 7 chip pages", () => {
 
   it("a sub-path keeps its chip active", () => {
     expect(active("/dashboard/scheduled-templates/123")).toBe("/dashboard/scheduled-templates");
+    expect(active("/dashboard/auto-messages/sent")).toBe("/dashboard/auto-messages/sent");
   });
 });
 
@@ -61,7 +62,7 @@ describe("chipRowFor: hides chips the user cannot open", () => {
       enabledFeatures: ["outbound_messaging"],
       subStatus: "active",
     }).access;
-    expect(labels("/dashboard/auto-messages", twoOfThree)).toEqual(["When something happens", "Follow-ups"]);
+    expect(labels("/dashboard/auto-messages", twoOfThree)).toEqual(["When something happens", "Follow-ups", "Sent"]);
   });
 
   it("no row when fewer than 2 chips are visible", () => {

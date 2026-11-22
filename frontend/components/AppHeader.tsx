@@ -371,6 +371,18 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Send your approved WhatsApp template when something happens: a form fill, a sign-up or a purchase.",
     };
   }
+  if (pathname === "/dashboard/auto-messages/sent") {
+    return {
+      title: "Auto-Messages / Sent",
+      description: "Every message that went out by itself, and the ones that didn't, with the reason in plain words.",
+    };
+  }
+  if (pathname === "/dashboard/teach") {
+    return {
+      title: "Teach & offers",
+      description: "Show the AI how to answer doubts, the words your shop uses, and which offers are on now.",
+    };
+  }
   if (pathname === "/dashboard/scheduled-templates") {
     return {
       title: "Auto-Messages / One-time sends",

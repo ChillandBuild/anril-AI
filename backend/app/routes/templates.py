@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import re
@@ -20,7 +21,7 @@ from app.services.meta_cloud import (
     _strip_emojis,
     build_core_components,
 )
-from app.services import template_fields, template_media, template_rules
+from app.services import template_bulk, template_fields, template_media, template_rules, template_usage
 from app.config import settings as env_settings
 from app.config_dynamic import get_setting
 from app.services.meta_webhook_verify import verify_meta_signature
@@ -226,6 +227,84 @@ async def list_templates(tenant_id: str = Depends(get_tenant_id)):
     return {"data": rows}
 
 
+@router.get("/usage")
+async def templates_usage(tenant_id: str = Depends(get_tenant_id)):
+    """{template_id: [{area, label, href}]}: where each template is used, for the "Used in" line.
+    One call for the whole page; a place that can't be read is left out instead of failing."""
+    db = get_supabase()
+    result = db.table("message_templates").select("id,name,language,meta_template_id,meta_waba_id,status").eq("tenant_id", tenant_id).execute()
+    rows = _filter_templates_for_waba(result.data or [], get_setting("meta_waba_id", tenant_id=tenant_id))
+    return {"data": template_usage.build_usage(db, tenant_id, rows)}
+
+
+def _bulk_existing(db, tenant_id: str, waba_id: str | None) -> list[dict]:
+    """This account's templates, the same ones POST / counts as "already there"."""
+    result = (
+        db.table("message_templates").select("name,language,body_text,footer_text,meta_template_id,meta_waba_id,status")
+        .eq("tenant_id", tenant_id).execute()
+    )
+    return [r for r in (result.data or []) if _belongs_to_current_waba(r, waba_id)]
+
+
+def _bulk_counts(verdicts: list[dict]) -> dict:
+    return {k: sum(1 for v in verdicts if v["status"] == k) for k in ("ready", "need_fix", "exists")}
+
+
+_BULK_FILE_MAX_BYTES = 2 * 1024 * 1024
+
+
+@router.post("/bulk/check")
+async def bulk_check_templates(
+    file: UploadFile = File(...),
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_templates_manage),
+):
+    """Read an Excel file of simple templates and say, row by row, what is ready, what needs a fix
+    and what is already on the account. Nothing is sent."""
+    if file.size is not None and file.size > _BULK_FILE_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="That file is too big. Upload an Excel file under 2 MB.")
+    content = await file.read(_BULK_FILE_MAX_BYTES + 1)
+    if len(content) > _BULK_FILE_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="That file is too big. Upload an Excel file under 2 MB.")
+    try:
+        rows = await asyncio.to_thread(template_bulk.parse_workbook, content)
+    except template_bulk.BulkFileError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
+    verdicts = template_bulk.check_rows(rows, _bulk_existing(get_supabase(), tenant_id, waba_id))
+    return {"rows": verdicts, "counts": _bulk_counts(verdicts)}
+
+
+class BulkSubmit(BaseModel):
+    rows: list[dict]
+
+
+@router.post("/bulk/submit")
+async def bulk_submit_templates(
+    payload: BulkSubmit,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_templates_manage),
+):
+    """Re-check the rows, then send the ready ones to Meta one by one through the same path as POST /."""
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="There are no templates to send.")
+    if len(payload.rows) > template_bulk.MAX_ROWS:
+        raise HTTPException(status_code=422, detail=f"Send at most {template_bulk.MAX_ROWS} templates at a time.")
+    waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
+    if not waba_id:
+        raise HTTPException(status_code=400, detail="Connect Meta WhatsApp (meta_waba_id) in Settings first")
+    rows = [{**r, "row": r.get("row") or i} for i, r in enumerate(payload.rows, start=1)]
+
+    async def create(fields: dict) -> dict:
+        return await create_template_record(CreateTemplate(**fields), tenant_id)
+
+    results = await template_bulk.submit_rows(rows, _bulk_existing(get_supabase(), tenant_id, waba_id), create)
+    return {
+        "results": results,
+        "counts": {k: sum(1 for r in results if r["status"] == k) for k in ("sent", "refused", "skipped")},
+    }
+
+
 def _pin_form_buttons(tenant_id: str, buttons: list[dict]) -> list[dict]:
     """An "Open form" button opens the form version that is live now: pin its flow id. Buttons
     are stored in Meta's order so a button's position is its send index (whatsapp_form_reach)."""
@@ -253,6 +332,12 @@ async def create_template(
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_templates_manage),
 ):
+    return await create_template_record(payload, tenant_id)
+
+
+async def create_template_record(payload: CreateTemplate, tenant_id: str) -> dict:
+    """The whole "send one template to Meta" path. POST / and the Excel bulk upload both
+    run it, so a template made either way gets exactly the same checks and the same save."""
     name = payload.name.strip().lower().replace(" ", "_")
     category = payload.category.upper()
     if category not in ("MARKETING", "UTILITY", "AUTHENTICATION"):

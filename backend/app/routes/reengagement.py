@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
+from app.services.template_params import template_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,19 +58,34 @@ def list_steps(
 VALID_SOURCES = {"organic", "meta_ads", "csv", "telegram", "instagram", "facebook"}
 
 
+MAX_DELAY_HOURS = 720  # 30 days
+DAY_STEP_HOURS = 24    # from here on WhatsApp only allows an approved template
+DAY_STEP_MESSAGE = "After 24 hours WhatsApp only allows an approved template. Pick one."
+
+
 def _validate_step_fields(
     delay_hours: int,
     message_type: str,
     target_sources: list[str] | None,
+    *,
+    db=None,
+    tenant_id: str | None = None,
+    template_name: str | None = None,
 ) -> None:
     if message_type not in ("freeform", "template"):
         raise HTTPException(status_code=400, detail="Invalid message type")
     if delay_hours <= 0:
         raise HTTPException(status_code=400, detail="delay_hours must be positive")
-    if delay_hours > 24:
-        raise HTTPException(status_code=400, detail="delay_hours must be within the 24h window (1-24)")
+    if delay_hours > MAX_DELAY_HOURS:
+        raise HTTPException(status_code=400, detail="A follow-up can wait at most 30 days (720 hours)")
     if target_sources and not set(target_sources).issubset(VALID_SOURCES):
         raise HTTPException(status_code=400, detail="Invalid source in target_sources")
+    if delay_hours >= DAY_STEP_HOURS:
+        # Past the 24-hour window only an approved template may go out.
+        if message_type != "template" or not (template_name or "").strip():
+            raise HTTPException(status_code=400, detail=DAY_STEP_MESSAGE)
+        if db is not None and tenant_id and template_status(db, tenant_id, template_name.strip()) != "APPROVED":
+            raise HTTPException(status_code=400, detail=DAY_STEP_MESSAGE)
 
 
 @router.post("/steps")
@@ -81,9 +97,11 @@ def create_step(
         raise HTTPException(status_code=400, detail="Invalid step type")
     if payload.type == "broadcast" and not payload.broadcast_id:
         raise HTTPException(status_code=400, detail="broadcast_id is required for broadcast steps")
-    _validate_step_fields(payload.delay_hours, payload.message_type, payload.target_sources)
-
     db = get_supabase()
+    _validate_step_fields(
+        payload.delay_hours, payload.message_type, payload.target_sources,
+        db=db, tenant_id=ctx["tenant_id"], template_name=payload.template_name,
+    )
     row = {
         "tenant_id": ctx["tenant_id"],
         "type": payload.type,
@@ -108,9 +126,11 @@ def update_step(
     payload: ReengagementStepUpdate,
     ctx: dict = Depends(require_leads_manage),
 ):
-    _validate_step_fields(payload.delay_hours, payload.message_type, payload.target_sources)
-
     db = get_supabase()
+    _validate_step_fields(
+        payload.delay_hours, payload.message_type, payload.target_sources,
+        db=db, tenant_id=ctx["tenant_id"], template_name=payload.template_name,
+    )
     row = {
         "delay_hours": payload.delay_hours,
         "target_segments": payload.target_segments,
@@ -140,14 +160,19 @@ def list_logs(
     ctx: dict = Depends(require_leads_view),
 ):
     db = get_supabase()
-    q = (
-        db.table("reengagement_logs")
-        .select("id, step_id, lead_id, status, sent_at, leads(name, phone, segment)")
-        .eq("tenant_id", ctx["tenant_id"])
-    )
-    if step_id:
-        q = q.eq("step_id", step_id)
-    rows = q.order("sent_at", desc=True).limit(500).execute()
+
+    def _read(columns: str):
+        q = db.table("reengagement_logs").select(columns).eq("tenant_id", ctx["tenant_id"])
+        if step_id:
+            q = q.eq("step_id", step_id)
+        return q.order("sent_at", desc=True).limit(500).execute()
+
+    try:
+        rows = _read("id, step_id, lead_id, status, reason, sent_at, leads(name, phone, segment)")
+    except Exception as e:
+        # Migration 311 (the reason column) may not be applied yet.
+        logger.warning(f"reengagement logs: reading without reason ({e})")
+        rows = _read("id, step_id, lead_id, status, sent_at, leads(name, phone, segment)")
     return {"data": rows.data or []}
 
 

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import {
   ArrowRight,
   Bell,
+  CalendarDays,
   Clock,
   Minus,
   Moon,
@@ -13,8 +14,10 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSettingsForm } from "../SettingsFormContext";
 import { parseSilenceDelays } from "../parseSilenceDelays";
+import FollowUpStepsSection from "./FollowUpStepsSection";
 import {
   Fact,
   Facts,
@@ -82,6 +85,10 @@ function formatTime12h(timeStr: string): string {
 export default function FollowUpsSettingsPage() {
   const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave } =
     useSettingsForm();
+  // Follow-up steps are the same data as Leads > Follow-ups, so they use the Leads rights.
+  const { role, permissions } = useAuthRole();
+  const canManageLeads = role === "owner" || permissions.includes("leads.manage");
+  const canViewLeads = canManageLeads || permissions.includes("leads.view");
 
   const stored = (key: string) => {
     const s = settingFor(key)?.display_value;
@@ -132,12 +139,12 @@ export default function FollowUpsSettingsPage() {
   const quietEnd = value(SILENCE_NUDGE_KEYS.quietEnd);
 
   return (
-    <SettingsAccordion>
+    <SettingsAccordion defaultOpenId={canViewLeads ? ["silence-nudge", "follow-up-steps"] : "silence-nudge"}>
       <SettingsSection
         id="silence-nudge"
         icon={Timer}
         accent="emerald"
-        title="Auto follow-up when a lead goes quiet"
+        title="Quick nudges (inside 24 hours, free text)"
         description="After the AI answers, if the lead stays silent, send one short message about what they were discussing. Never sent while your team has taken over the chat, or during a paid consultation."
         status={{ label: enabled ? "On" : "Off", tone: enabled ? "on" : "off" }}
         dirty={dirty}
@@ -554,7 +561,18 @@ export default function FollowUpsSettingsPage() {
           </SectionFooter>
         </div>
       </SettingsSection>
+
+      {canViewLeads && (
+        <SettingsSection
+          id="follow-up-steps"
+          icon={CalendarDays}
+          accent="emerald"
+          title="Follow-up steps (hours or days)"
+          description="Follow up with people after a few hours or a few days. After 24 hours WhatsApp only allows an approved template. These are the same steps as Leads › Follow-ups."
+        >
+          <FollowUpStepsSection canManage={canManageLeads} />
+        </SettingsSection>
+      )}
     </SettingsAccordion>
   );
 }
-

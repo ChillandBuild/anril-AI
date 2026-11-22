@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api, ReengagementLog, ReengagementStep, WabaTemplate } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
+import {
+  DelayUnit,
+  MAX_DELAY_DAYS,
+  MAX_DELAY_HOURS,
+  formatDelay,
+  isDayStep,
+  splitDelay,
+  toDelayHours,
+} from "./reengagementDelay";
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   sent: { label: "Sent", cls: "bg-emerald-100 text-emerald-700" },
@@ -59,6 +68,7 @@ function StepLogPanel({ stepId }: { stepId: string }) {
                   <td className="px-3 py-1.5 font-mono">{l.leads?.phone || l.lead_id.slice(0, 8)}</td>
                   <td className="px-3 py-1.5">
                     <span className={`rounded-full px-2 py-0.5 ${s.cls}`}>{s.label}</span>
+                    {l.reason && <span className="mt-1 block text-ink-muted">{l.reason}</span>}
                   </td>
                   <td className="px-3 py-1.5 text-on-surface-muted">
                     {new Date(l.sent_at).toLocaleString()}
@@ -84,7 +94,8 @@ const SOURCE_LABELS: Record<string, string> = {
   instagram: "Instagram",
   facebook: "Facebook",
 };
-const MAX_DELAY = 24;
+const DAY_STEP_NOTE =
+  "After 24 hours WhatsApp only allows an approved template (Meta charges for it). Sends 10 AM–8 PM, Mon–Sat, at most 1 a day per person.";
 
 function placeholderCount(body?: string | null): number {
   if (!body) return 0;
@@ -107,13 +118,26 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
-  const [delayHours, setDelayHours] = useState(6);
+  const [delayValue, setDelayValue] = useState(6);
+  const [delayUnit, setDelayUnit] = useState<DelayUnit>("hours");
   const [segments, setSegments] = useState<string[]>(["C"]);
   const [sources, setSources] = useState<string[]>([]);
   const [messageType, setMessageType] = useState<"freeform" | "template">("freeform");
   const [content, setContent] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [fallbackTemplate, setFallbackTemplate] = useState("");
+
+  // What is stored (hours), or null while the typed number is not a whole number from 1 to 30 days.
+  const delayHours = toDelayHours(delayValue, delayUnit);
+  const dayStep = delayHours !== null && isDayStep(delayHours);
+
+  /** From 24 hours on only an approved template may go out, so free text is switched off. */
+  function changeDelay(value: number, unit: DelayUnit) {
+    setDelayValue(value);
+    setDelayUnit(unit);
+    const hours = toDelayHours(value, unit);
+    if (hours !== null && isDayStep(hours)) setMessageType("template");
+  }
 
   const varCountByName = useMemo(() => {
     const m: Record<string, number> = {};
@@ -157,7 +181,8 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   }
 
   function resetForm() {
-    setDelayHours(6);
+    setDelayValue(6);
+    setDelayUnit("hours");
     setSegments(["C"]);
     setSources([]);
     setMessageType("freeform");
@@ -169,7 +194,9 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   function startEdit(step: ReengagementStep) {
     if (!canManage) return;
     setEditingId(step.id);
-    setDelayHours(step.delay_hours);
+    const d = splitDelay(step.delay_hours);
+    setDelayValue(d.value);
+    setDelayUnit(d.unit);
     setSegments(step.target_segments);
     setSources(step.target_sources ?? []);
     setMessageType(step.message_type);
@@ -187,8 +214,12 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
 
   async function saveStep() {
     if (!canManage) return;
-    if (delayHours < 1 || delayHours > MAX_DELAY) {
-      toast.error(`Delay must be between 1 and ${MAX_DELAY} hours`);
+    if (delayHours === null) {
+      toast.error(`Wait must be a whole number, from 1 hour up to ${MAX_DELAY_DAYS} days`);
+      return;
+    }
+    if (isDayStep(delayHours) && messageType !== "template") {
+      toast.error("After 24 hours WhatsApp only allows an approved template. Pick one.");
       return;
     }
     if (segments.length === 0) {
@@ -200,7 +231,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
       return;
     }
     if (messageType === "template" && !templateName) {
-      toast.error("Select a template");
+      toast.error(isDayStep(delayHours) ? "After 24 hours WhatsApp only allows an approved template. Pick one." : "Select a template");
       return;
     }
     if (messageType === "template" && (varCountByName[templateName] ?? 0) >= 2) {
@@ -253,6 +284,8 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
     }
   }
 
+  // The bar covers the 24-hour window, or stretches to the longest day-step.
+  const timelineMax = Math.max(24, ...steps.map((s) => s.delay_hours));
   const anchorLabel = type === "broadcast" ? "after the broadcast was sent" : "after the lead replied";
 
   return (
@@ -273,27 +306,39 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
             Freeform delivers inside the window; add a backup template to be safe near the edge.</>
           )}
         </p>
+        <p className="mt-2 text-sm text-on-surface">
+          Want to follow up after a day or more? Set the wait in <strong>days</strong> (up to {MAX_DELAY_DAYS}). Those
+          steps always use an approved template, send only 10 AM–8 PM Mon–Sat, and reach a person at most once a day.
+          People who already bought are skipped.
+        </p>
       </div>
 
       {/* 24h timeline */}
       <div className="rounded-2xl border border-on-surface/10 p-5">
         <div className="mb-3 flex items-center justify-between">
-          <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">24-hour window</span>
-          <span className="text-xs text-on-surface-muted">0h → 24h close</span>
+          <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">
+            {timelineMax > 24 ? "Timeline" : "24-hour window"}
+          </span>
+          <span className="text-xs text-on-surface-muted">
+            {timelineMax > 24 ? `Red line = 24-hour window closes · up to ${formatDelay(timelineMax)}` : "0h → 24h close"}
+          </span>
         </div>
         <div className="relative h-10 rounded-full bg-gradient-to-r from-emerald-100 to-emerald-50">
-          <div className="absolute right-0 top-0 h-full w-px bg-red-300" />
+          <div
+            className="absolute top-0 h-full w-px bg-red-300"
+            style={{ left: `${(Math.min(24, timelineMax) / timelineMax) * 100}%` }}
+          />
           {steps.map((s) => {
-            const left = Math.min(100, (s.delay_hours / MAX_DELAY) * 100);
+            const left = Math.min(100, (s.delay_hours / timelineMax) * 100);
             return (
               <div
                 key={s.id}
                 className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
                 style={{ left: `${left}%` }}
-                title={`${s.delay_hours}h · ${s.message_type}`}
+                title={`${formatDelay(s.delay_hours)} · ${s.message_type}`}
               >
                 <div className={`h-4 w-4 rounded-full border-2 border-white shadow ${s.message_type === "template" ? "bg-primary" : "bg-emerald-600"}`} />
-                <span className="mt-1 block text-[10px] text-on-surface-muted">{s.delay_hours}h</span>
+                <span className="mt-1 block whitespace-nowrap text-xs text-on-surface-muted">{formatDelay(s.delay_hours)}</span>
               </div>
             );
           })}
@@ -313,7 +358,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
                     <span className="rounded bg-on-surface/10 px-2 py-0.5 text-xs">Step {i + 1}</span>
-                    <span>{s.delay_hours}h {anchorLabel}</span>
+                    <span>{formatDelay(s.delay_hours)} {anchorLabel}</span>
                     <span className="text-on-surface-muted">·</span>
                     <span>{s.target_segments.map((x) => SEGMENT_LABELS[x] || x).join(", ")}</span>
                     {s.target_sources && s.target_sources.length > 0 && (
@@ -327,7 +372,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                   </div>
                   <div className="text-xs text-on-surface-muted">
                     {s.message_type === "template" ? (
-                      <>Template: <span className="font-mono">{s.template_name}</span> · always delivers</>
+                      <>Template: <span className="font-mono">{s.template_name}</span> · {isDayStep(s.delay_hours) ? "sends 10 AM–8 PM, Mon–Sat" : "always delivers"}</>
                     ) : (
                       <>Freeform{s.fallback_template_name ? <> → backup template <span className="font-mono">{s.fallback_template_name}</span></> : <> · skipped if window closed</>}</>
                     )}
@@ -365,17 +410,33 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
       {showAdd ? (
         <div className="space-y-4 rounded-2xl border border-on-surface/15 p-5">
           <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Delay (hours)</span>
-              <input
-                type="number"
-                min={1}
-                max={MAX_DELAY}
-                value={delayHours}
-                onChange={(e) => setDelayHours(Number(e.target.value) || 1)}
-                className="mt-1 w-full rounded-xl border border-on-surface/20 px-3 py-2"
-              />
-            </label>
+            <div role="group" aria-labelledby="delay-label">
+              <span id="delay-label" className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Wait</span>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={delayUnit === "days" ? MAX_DELAY_DAYS : MAX_DELAY_HOURS}
+                  aria-label="Wait time"
+                  value={delayValue}
+                  onChange={(e) => changeDelay(Number(e.target.value) || 1, delayUnit)}
+                  className="w-24 rounded-xl border border-on-surface/20 px-3 py-2"
+                />
+                <Select
+                  aria-label="Hours or days"
+                  value={delayUnit}
+                  onChange={(v) => changeDelay(delayValue, v as DelayUnit)}
+                  className="w-28"
+                  options={[
+                    { value: "hours", label: "Hours" },
+                    { value: "days", label: "Days" },
+                  ]}
+                />
+              </div>
+              {delayHours === null && (
+                <p className="mt-1 text-xs text-red-600">Use a whole number, up to {MAX_DELAY_DAYS} days.</p>
+              )}
+            </div>
             <div role="group" aria-labelledby="seg-label">
               <span id="seg-label" className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Target segments</span>
               <div className="mt-1 flex gap-2">
@@ -420,8 +481,10 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
             <button
               type="button"
               aria-pressed={messageType === "freeform"}
+              disabled={dayStep}
+              title={dayStep ? "After 24 hours WhatsApp only allows an approved template" : undefined}
               onClick={() => setMessageType("freeform")}
-              className={`rounded-xl px-4 py-2 text-sm ${messageType === "freeform" ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`}
+              className={`rounded-xl px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 ${messageType === "freeform" ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`}
             >
               Freeform (window only)
             </button>
@@ -434,6 +497,10 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
               Approved template (always sent)
             </button>
           </div>
+
+          {dayStep && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{DAY_STEP_NOTE}</p>
+          )}
 
           {messageType === "freeform" ? (
             <>

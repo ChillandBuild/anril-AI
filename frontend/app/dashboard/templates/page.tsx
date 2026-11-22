@@ -25,46 +25,14 @@ import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 import { KpiCard } from "@/components/kpi-card";
 import { LANGUAGES, STATUS_COLORS } from "./types";
-import type { Template } from "./types";
+import type { Template, TemplateUsage } from "./types";
+import { NO_FILTERS, filterTemplates, languageOptions, usedInOptions } from "./template-filters";
+import ExcelPanel from "./components/excel-panel";
+import TemplateNotes from "./components/template-notes";
 import TemplateCard from "./components/template-card";
 import WhatsAppPreview from "./components/whatsapp-preview";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AiraId from "./components/aira-id";
-
-// Shared by the on-screen list and the CSV export so "download based on the filter" always matches what's visible.
-function filterTemplates(list: Template[], searchQuery: string, category: string, status: string): Template[] {
-  const q = searchQuery.trim().toLowerCase();
-  return list.filter((t) => {
-    const matchesSearch = !q ||
-      t.name.toLowerCase().includes(q) ||
-      t.body_text.toLowerCase().includes(q) ||
-      (t.short_code ?? "").includes(q);
-    const matchesCategory = category === "ALL" || t.category === category;
-    const matchesStatus = status === "ALL" || t.status === status;
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
-}
-
-// Template parts split into their own spreadsheet columns, so each template reads as one tidy row
-function headerCell(t: Template): string {
-  if (t.header_text) return t.header_text;
-  if (t.header_media_type && t.header_media_type !== "NONE") return `[${t.header_media_type}]`;
-  return "";
-}
-
-function buttonsCell(t: Template): string {
-  return (t.buttons ?? []).map((b) => {
-    if (b.type === "URL") return `URL: ${b.text} (${b.url || ""})`;
-    if (b.type === "PHONE_NUMBER") return `Call: ${b.text} (${b.phone || ""})`;
-    if (b.type === "ONE_TAP") return `OTP Autofill: ${b.autofill_text || b.text}`;
-    if (b.type === "COPY_CODE") return `Copy Code: ${b.text}`;
-    return `${b.type}: ${b.text}`;
-  }).join(" | ");
-}
-
-function carouselCell(t: Template): string {
-  return (t.carousel_cards ?? []).map((c, i) => `Card ${i + 1}: ${c.body_text}`).join("\n");
-}
 
 // Remembers filters, view mode and list scroll for the session, so opening a template and coming back lands where you left off
 const VIEW_STATE_KEY = "templates:view-state";
@@ -73,6 +41,8 @@ type SavedViewState = {
   searchQuery: string;
   selectedCategory: string;
   selectedStatus: string;
+  selectedLanguage: string;
+  selectedUsedIn: string;
   viewMode: "GRID" | "TABLE";
   scrollTop: number;
 };
@@ -98,18 +68,23 @@ export default function TemplatesPage() {
   const { role, permissions } = useAuthRole();
   const canManageTemplates = role === "owner" || permissions.includes("templates.manage");
   const [templates, setTemplates] = useState<Template[]>([]);
+  // Where each template is used. Loaded beside the list; if it fails the list still works, just without "Used in".
+  const [usage, setUsage] = useState<TemplateUsage>({});
+  const [usageReady, setUsageReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Sync / Action states
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [excelOpen, setExcelOpen] = useState(false);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("ALL");
+  const [selectedUsedIn, setSelectedUsedIn] = useState<string>("ALL");
   const [viewMode, setViewMode] = useState<"GRID" | "TABLE">("GRID");
 
   // Scroll memory for the list area (the header above it stays locked)
@@ -143,6 +118,22 @@ export default function TemplatesPage() {
     } finally {
       setLoading(false);
     }
+    loadUsage();
+  }
+
+  async function fetchUsage(): Promise<TemplateUsage> {
+    const res = await fetch(`${API_URL}/api/v1/templates/usage`, { headers: await getAuthHeaders() });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    return (await res.json()).data || {};
+  }
+
+  async function loadUsage() {
+    try {
+      setUsage(await fetchUsage());
+      setUsageReady(true);
+    } catch {
+      setUsageReady(false);
+    }
   }
 
   useEffect(() => {
@@ -154,6 +145,8 @@ export default function TemplatesPage() {
     if (saved.searchQuery) setSearchQuery(saved.searchQuery);
     if (saved.selectedCategory) setSelectedCategory(saved.selectedCategory);
     if (saved.selectedStatus) setSelectedStatus(saved.selectedStatus);
+    if (saved.selectedLanguage) setSelectedLanguage(saved.selectedLanguage);
+    if (saved.selectedUsedIn) setSelectedUsedIn(saved.selectedUsedIn);
     if (saved.viewMode === "GRID" || saved.viewMode === "TABLE") setViewMode(saved.viewMode);
     pendingScrollTop.current = saved.scrollTop ?? null;
     setViewStateRestored(true);
@@ -161,8 +154,8 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     if (!viewStateRestored) return;
-    writeViewState({ searchQuery, selectedCategory, selectedStatus, viewMode });
-  }, [viewStateRestored, searchQuery, selectedCategory, selectedStatus, viewMode]);
+    writeViewState({ searchQuery, selectedCategory, selectedStatus, selectedLanguage, selectedUsedIn, viewMode });
+  }, [viewStateRestored, searchQuery, selectedCategory, selectedStatus, selectedLanguage, selectedUsedIn, viewMode]);
 
   // Once the list has rendered, jump back to where the user was
   useEffect(() => {
@@ -171,48 +164,18 @@ export default function TemplatesPage() {
     pendingScrollTop.current = null;
   }, [loading, viewStateRestored]);
 
-  // Export the currently filtered list as an Excel sheet, re-fetching first so an approval since page-load is reflected
-  async function handleExportExcel() {
-    setExporting(true);
-    setError(null);
+  // "Download all" in the Excel panel: the whole account, fresh, so an approval since page-load is in it
+  async function loadAllForExcel(): Promise<{ templates: Template[]; usage: TemplateUsage }> {
+    const res = await fetch(`${API_URL}/api/v1/templates/`, { headers: await getAuthHeaders() });
+    if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    let fresh: TemplateUsage = usage;
     try {
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch(`${API_URL}/api/v1/templates/`, { headers: authHeaders });
-      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
-      const data = await res.json();
-      const freshTemplates: Template[] = data.data || [];
-      const rows = filterTemplates(freshTemplates, searchQuery, selectedCategory, selectedStatus);
-
-      const header = ["Template Name", "Anril ID", "Category", "Language", "Status", "Header", "Body", "Footer", "Buttons", "Carousel Cards"];
-      const body = rows.map((t) => [
-        t.name,
-        t.short_code || "",
-        t.category,
-        LANGUAGES.find((l) => l.code === t.language)?.label || t.language,
-        t.status,
-        headerCell(t),
-        t.body_text,
-        t.footer_text || "",
-        buttonsCell(t),
-        carouselCell(t),
-      ]);
-
-      const XLSX = await import("xlsx");
-      const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-      // Size each column to its longest single line, capped so long bodies don't make one giant column
-      const maxWidths = [40, 12, 14, 16, 12, 30, 70, 30, 40, 50];
-      ws["!cols"] = header.map((h, col) => ({
-        wch: Math.min(maxWidths[col], Math.max(h.length, ...body.map((r) => Math.max(0, ...r[col].split("\n").map((line) => line.length)))) + 2),
-      }));
-      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: header.length - 1 } }) };
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Templates");
-      XLSX.writeFile(wb, `whatsapp-templates-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to export Excel file");
-    } finally {
-      setExporting(false);
+      fresh = await fetchUsage();
+    } catch {
+      // "used in" stays as last loaded
     }
+    return { templates: data.data || [], usage: fresh };
   }
 
   // Sync all templates from Meta
@@ -351,10 +314,22 @@ export default function TemplatesPage() {
   }
 
   // Filter Logic
-  const filteredTemplates = filterTemplates(templates, searchQuery, selectedCategory, selectedStatus);
+  const filteredTemplates = filterTemplates(
+    templates,
+    { ...NO_FILTERS, search: searchQuery, category: selectedCategory, status: selectedStatus, language: selectedLanguage, usedIn: selectedUsedIn },
+    usage,
+  );
+  const languageChoices = languageOptions(templates);
+  const usedInChoices = usedInOptions(usage);
 
-  const hasFilters = !!(searchQuery || selectedCategory !== "ALL" || selectedStatus !== "ALL");
-  const activeFilterCount = [searchQuery, selectedCategory !== "ALL" ? selectedCategory : "", selectedStatus !== "ALL" ? selectedStatus : ""].filter(Boolean).length;
+  const hasFilters = !!(searchQuery || selectedCategory !== "ALL" || selectedStatus !== "ALL" || selectedLanguage !== "ALL" || selectedUsedIn !== "ALL");
+  const activeFilterCount = [
+    searchQuery,
+    selectedCategory !== "ALL" ? selectedCategory : "",
+    selectedStatus !== "ALL" ? selectedStatus : "",
+    selectedLanguage !== "ALL" ? selectedLanguage : "",
+    selectedUsedIn !== "ALL" ? selectedUsedIn : "",
+  ].filter(Boolean).length;
 
   // Calculate statistics
   const countApproved = templates.filter((t) => t.status === "APPROVED").length;
@@ -384,13 +359,12 @@ export default function TemplatesPage() {
             Carousel
           </Link>
           <button
-            onClick={handleExportExcel}
-            disabled={exporting || filteredTemplates.length === 0}
-            title="Download the currently filtered templates as an Excel file"
-            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+            onClick={() => setExcelOpen(true)}
+            title="Upload many templates, or download all of them, as Excel"
+            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
           >
-            <Download size={12} className={exporting ? "animate-pulse" : ""} />
-            {exporting ? "Exporting..." : "Excel"}
+            <Download size={12} />
+            Excel
           </button>
           <Link
             href="/dashboard/templates/new"
@@ -428,7 +402,7 @@ export default function TemplatesPage() {
 
       {/* Filter Results Panel */}
       <div className="rounded-2xl border border-surface-mid/80 bg-white/95 p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap">
+        <div className="flex flex-wrap items-center gap-2.5 xl:flex-nowrap">
           <div className="flex shrink-0 items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-700 ring-1 ring-primary-100">
               <Filter size={14} />
@@ -492,6 +466,28 @@ export default function TemplatesPage() {
             ]}
           />
 
+          <Select
+            size="sm"
+            aria-label="Filter by language"
+            className="w-[140px] shrink-0 sm:w-[160px]"
+            value={selectedLanguage}
+            onChange={setSelectedLanguage}
+            options={[{ value: "ALL", label: "All languages" }, ...languageChoices]}
+          />
+
+          <Select
+            size="sm"
+            aria-label="Filter by where it is used"
+            className="w-[150px] shrink-0 sm:w-[180px]"
+            value={selectedUsedIn}
+            onChange={setSelectedUsedIn}
+            options={[
+              { value: "ALL", label: "Used in: All" },
+              { value: "NONE", label: "Used in: Not used yet" },
+              ...usedInChoices.map((o) => ({ value: o.value, label: `Used in: ${o.label}` })),
+            ]}
+          />
+
           <div className="flex shrink-0 items-center gap-2">
             {hasFilters && (
               <button
@@ -499,6 +495,8 @@ export default function TemplatesPage() {
                   setSearchQuery("");
                   setSelectedCategory("ALL");
                   setSelectedStatus("ALL");
+                  setSelectedLanguage("ALL");
+                  setSelectedUsedIn("ALL");
                 }}
                 className="flex h-9 items-center gap-1 rounded-full border border-transparent px-2.5 text-[11px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
               >
@@ -564,6 +562,9 @@ export default function TemplatesPage() {
             <TemplateCard
               key={t.id}
               template={t}
+              usage={usage[t.id]}
+              usageReady={usageReady}
+              canFix={canManageTemplates}
               onEdit={(tmpl) => router.push(`/dashboard/templates/${tmpl.id}`)}
               onDelete={canManageTemplates ? (tmpl) => handleDelete(tmpl.id) : undefined}
               onSync={canManageTemplates ? (tmpl) => handleSyncSingle(tmpl.id) : undefined}
@@ -598,6 +599,7 @@ export default function TemplatesPage() {
                       {t.status}
                     </span>
                   </div>
+                  <TemplateNotes template={t} usage={usage[t.id]} usageReady={usageReady} canFix={canManageTemplates} className="mt-3" />
                   <div className="mt-4 flex flex-wrap justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setSelectedTemplate(t)} className="rounded-lg bg-surface-subtle p-2 text-ink-muted hover:text-ink" title="View Preview"><Eye size={14} /></button>
                     {canManageTemplates && <button onClick={(e) => handleSyncSingle(t.id, e)} disabled={syncingId === t.id} className="rounded-lg bg-surface-subtle p-2 text-ink-muted hover:text-ink disabled:opacity-50" title="Sync Status"><RefreshCw size={14} className={syncingId === t.id ? "animate-spin" : ""} /></button>}
@@ -618,6 +620,7 @@ export default function TemplatesPage() {
                   <th className="px-5 py-3.5">Category</th>
                   <th className="px-5 py-3.5">Language</th>
                   <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Used in / Why</th>
                   <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -647,6 +650,9 @@ export default function TemplatesPage() {
                           <span className={`w-1 h-1 rounded-full ${statusColors.dot}`} />
                           {t.status}
                         </span>
+                      </td>
+                      <td className="px-5 py-3 max-w-[300px]" onClick={(e) => e.stopPropagation()}>
+                        <TemplateNotes template={t} usage={usage[t.id]} usageReady={usageReady} canFix={canManageTemplates} />
                       </td>
                       <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
@@ -703,6 +709,15 @@ export default function TemplatesPage() {
         </div>
       )}
       </div>
+
+      <ExcelPanel
+        open={excelOpen}
+        onClose={() => setExcelOpen(false)}
+        totalCount={templates.length}
+        canManage={canManageTemplates}
+        loadAll={loadAllForExcel}
+        onSubmitted={loadTemplates}
+      />
 
       {/* ── View Detail Drawer/Modal ─────────────────────────────────────────── */}
       {selectedTemplate && (

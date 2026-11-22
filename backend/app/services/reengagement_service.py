@@ -2,11 +2,18 @@ import logging
 import re
 from datetime import datetime, timezone, timedelta
 from app.db.supabase import get_supabase
-from app.services.ai_reply import send_whatsapp
+from app.services.ai_reply import send_whatsapp, get_last_send_error
 from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
+from app.services.send_reasons import REASON_TEXT, plain_reason
 from app.services.template_params import template_status
+
+# Day-steps (a wait of 24 hours or more) go out only as approved templates, inside this window.
+DAY_STEP_HOURS = 24
+DAY_SEND_START_HOUR = 10   # 10:00 IST
+DAY_SEND_END_HOUR = 20     # until 20:00 IST
+_IST = timedelta(hours=5, minutes=30)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +82,63 @@ def _header_component(db, tenant_id: str, template_name: str, lead: dict) -> dic
     return None
 
 
+def _is_day_step(step: dict) -> bool:
+    try:
+        return int(step.get("delay_hours") or 0) >= DAY_STEP_HOURS
+    except (TypeError, ValueError):
+        return False
+
+
+def _in_day_send_window(now: datetime) -> bool:
+    """10:00-20:00 India time, Monday to Saturday."""
+    ist = now + _IST
+    return ist.weekday() != 6 and DAY_SEND_START_HOUR <= ist.hour < DAY_SEND_END_HOUR
+
+
+def _ist_day_start_utc(now: datetime) -> datetime:
+    ist = now + _IST
+    return ist.replace(hour=0, minute=0, second=0, microsecond=0) - _IST
+
+
+def _day_step_sent_today(db, tenant_id: str, lead_id: str, now: datetime) -> bool:
+    """True when this lead already got a day-step follow-up (a step waiting 24h or more) today, India time."""
+    logs = (
+        db.table("reengagement_logs").select("step_id")
+        .eq("tenant_id", tenant_id).eq("lead_id", lead_id)
+        .in_("status", ["sent", "sent_fallback"])
+        .gte("sent_at", _ist_day_start_utc(now).isoformat())
+        .execute().data or []
+    )
+    step_ids = list({r["step_id"] for r in logs if r.get("step_id")})
+    if not step_ids:
+        return False
+    day_steps = (
+        db.table("reengagement_steps").select("id")
+        .eq("tenant_id", tenant_id).in_("id", step_ids).gte("delay_hours", DAY_STEP_HOURS)
+        .limit(1).execute().data or []
+    )
+    return bool(day_steps)
+
+
+def _insert_log(db, row: dict, reason: str | None = None) -> None:
+    """Write a reengagement_logs row. The plain-words `reason` column comes with migration 311;
+    until it is applied the row is written without it."""
+    if reason:
+        try:
+            db.table("reengagement_logs").insert({**row, "reason": reason[:300]}).execute()
+            return
+        except Exception as e:
+            logger.warning(f"reengagement_logs.reason not available yet ({e}); logging without it")
+    db.table("reengagement_logs").insert(row).execute()
+
+
+def _failure_reason(exc: Exception) -> str:
+    detail = getattr(exc, "detail", None) or str(exc)
+    if "empty SID" in str(detail):
+        detail = get_last_send_error() or ""
+    return plain_reason(detail)
+
+
 _IN_CLAUSE_BATCH_SIZE = 200
 
 
@@ -115,7 +179,7 @@ def _fetch_leads_by_id(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dic
         batch = lead_ids[i:i + _IN_CLAUSE_BATCH_SIZE]
         res = (
             db.table("leads")
-            .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at")
+            .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at, converted_at")
             .eq("tenant_id", tenant_id)
             .in_("id", batch)
             .execute()
@@ -130,7 +194,7 @@ async def process_due_reengagements() -> int:
     db = get_supabase()
     
     # 1. Fetch all re-engagement steps
-    steps_res = db.table("reengagement_steps").select("*").execute()
+    steps_res = db.table("reengagement_steps").select("*").order("delay_hours").execute()
     steps = steps_res.data or []
     if not steps:
         return 0
@@ -145,7 +209,11 @@ async def process_due_reengagements() -> int:
         target_segments = step["target_segments"] or []
         target_sources = step.get("target_sources") or []
         message_type = step["message_type"]
-        
+
+        # Day-steps only go out 10 AM-8 PM IST, Mon-Sat: don't even look for due leads outside it.
+        if _is_day_step(step) and not _in_day_send_window(now):
+            continue
+
         if step["type"] == "broadcast":
             # A. Broadcast-specific re-engagement
             broadcast_id = step["broadcast_id"]
@@ -194,6 +262,10 @@ async def process_due_reengagements() -> int:
                 if not _lead_matches_sources(lead, target_sources):
                     continue
 
+                # Day-steps never chase someone who already bought; skip here so they cost no query each tick.
+                if _is_day_step(step) and lead.get("converted_at"):
+                    continue
+
                 # Process sending
                 success = await _send_reengagement(db, tenant_id, lead, step)
                 if success:
@@ -204,7 +276,7 @@ async def process_due_reengagements() -> int:
             # Find leads with last_inbound_at
             leads_res = (
                 db.table("leads")
-                .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at")
+                .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at, converted_at")
                 .eq("tenant_id", tenant_id)
                 .not_.is_("last_inbound_at", "null")
                 .execute()
@@ -232,6 +304,10 @@ async def process_due_reengagements() -> int:
 
             for lead in due_leads:
                 if lead["id"] in processed_ids:
+                    continue
+
+                # Day-steps never chase someone who already bought; skip here so they cost no query each tick.
+                if _is_day_step(step) and lead.get("converted_at"):
                     continue
 
                 # Process sending
@@ -335,6 +411,11 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
     lead_id = lead["id"]
     phone = lead["phone"]
     step_id = step["id"]
+    day_step = _is_day_step(step)
+    # Day-steps (24h or more) go out only 10 AM-8 PM India time, Monday-Saturday. Outside that we
+    # do nothing and write no log row, so the step goes at the next allowed minute.
+    if day_step and not _in_day_send_window(utcnow()):
+        return False
     if not ai_replies_allowed(tenant_id, "whatsapp", lead.get("source")):
         logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (ai_auto_reply disabled for tenant {tenant_id})")
         return False
@@ -356,6 +437,16 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
     if _lead_already_logged(db, step_id, lead_id):
         logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (already handled by another run)")
         return False
+
+    if day_step:
+        # Someone who already bought doesn't need a chase (same signal silence nudges use: leads.converted_at).
+        if lead.get("converted_at"):
+            logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (already converted)")
+            return False
+        # At most one day-step follow-up per person per India day; the rest wait for tomorrow.
+        if _day_step_sent_today(db, tenant_id, lead_id, utcnow()):
+            logger.info(f"Re-engagement step {step_id} waits for lead {lead_id} (already got a follow-up today)")
+            return False
 
     # Check 24-hour WhatsApp session window for freeform messages
     is_window_active = False
@@ -386,20 +477,20 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
                     return False
                 except Exception as e:
                     logger.error(f"Re-engagement fallback template {step_id} failed for lead {lead_id}: {e}")
-                    db.table("reengagement_logs").insert({
+                    _insert_log(db, {
                         "tenant_id": tenant_id,
                         "lead_id": lead_id,
                         "step_id": step_id,
                         "status": "failed",
-                    }).execute()
+                    }, _failure_reason(e))
                     return False
 
-            db.table("reengagement_logs").insert({
+            _insert_log(db, {
                 "tenant_id": tenant_id,
                 "lead_id": lead_id,
                 "step_id": step_id,
                 "status": "skipped_window",
-            }).execute()
+            }, REASON_TEXT["skipped_window"])
             logger.info(f"Re-engagement step {step_id} skipped for lead {lead_id} (outside 24h window, no fallback)")
             return False
 
@@ -430,12 +521,12 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
             return True
         except Exception as e:
             logger.error(f"Failed to send re-engagement freeform step {step_id} to lead {lead_id}: {e}")
-            db.table("reengagement_logs").insert({
+            _insert_log(db, {
                 "tenant_id": tenant_id,
                 "lead_id": lead_id,
                 "step_id": step_id,
                 "status": "failed",
-            }).execute()
+            }, _failure_reason(e))
             return False
 
     elif message_type == "template":
@@ -450,12 +541,12 @@ async def _send_reengagement(db, tenant_id: str, lead: dict, step: dict) -> bool
             return False
         except Exception as e:
             logger.error(f"Failed to send re-engagement template step {step_id} to lead {lead_id}: {e}")
-            db.table("reengagement_logs").insert({
+            _insert_log(db, {
                 "tenant_id": tenant_id,
                 "lead_id": lead_id,
                 "step_id": step_id,
                 "status": "failed",
-            }).execute()
+            }, _failure_reason(e))
             return False
 
     return False

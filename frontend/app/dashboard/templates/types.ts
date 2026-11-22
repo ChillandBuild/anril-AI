@@ -106,3 +106,12 @@ export const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   UTILITY: { bg: 'bg-blue-50', text: 'text-blue-700' },
   AUTHENTICATION: { bg: 'bg-teal-50', text: 'text-teal-700' },
 };
+
+/** One place a template is used (GET /api/v1/templates/usage). `ended`: it was used there, but isn't now. */
+export type UsageEntry = { area: string; label: string; href: string; ended?: boolean };
+export type TemplateUsage = Record<string, UsageEntry[]>;
+
+/** "English", "Tamil"... for a language code; an unknown code is shown as it is. */
+export function languageName(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+}
