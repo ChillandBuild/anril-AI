@@ -41,7 +41,7 @@ const PRINT_CSS: Record<Size, string> = {
 export default function LabelsPage() {
   const { role, permissions } = useAuthRole();
   const canManage = role === "owner" || permissions.includes("catalog.manage");
-  const { data: opts, error } = useSWR("stock/labels/options", () => api.catalog.labelOptions());
+  const { data: opts, error, mutate: mutateOpts } = useSWR("stock/labels/options", () => api.catalog.labelOptions());
   const [source, setSource] = useState<Source>("stock_in");
   const [size, setSize] = useState<Size>("38x25");
   const [show, setShow] = useState<Set<Show>>(new Set(SHOWS.map((s) => s.value)));
@@ -58,14 +58,15 @@ export default function LabelsPage() {
   }, [opts, source]);
 
   const pickedLines = useMemo(() => Object.values(picked), [picked]);
+  const request = useCallback((save: boolean) => (source === "pick"
+    ? { source, save, lines: pickedLines.map((p) => ({ item_id: p.line.item_id, variant_id: p.line.variant_id, qty: p.qty })) }
+    : source === "stock_in" ? { source, save, stock_in_id: opts?.stock_in?.id } : { source, save }), [source, pickedLines, opts]);
   const load = useCallback(async () => {
     if (!canManage || !opts) return;
     if (source === "pick" && pickedLines.length === 0) { setLabels([]); setKept(0); return; }
     setLoading(true);
     try {
-      const out = await api.catalog.labels(source === "pick"
-        ? { source, lines: pickedLines.map((p) => ({ item_id: p.line.item_id, variant_id: p.line.variant_id, qty: p.qty })) }
-        : source === "stock_in" ? { source, stock_in_id: opts.stock_in?.id } : { source });
+      const out = await api.catalog.labels(request(false));
       setLabels(out.labels);
       setKept(out.kept_company);
     } catch (err) {
@@ -74,8 +75,24 @@ export default function LabelsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canManage, opts, source, pickedLines]);
+  }, [canManage, opts, source, pickedLines, request]);
   useEffect(() => { load(); }, [load]);
+
+  // Print saves the codes first (the preview only shows what they will be), then opens the print window.
+  async function print() {
+    setLoading(true);
+    try {
+      const out = await api.catalog.labels(request(true));
+      setLabels(out.labels);
+      setKept(out.kept_company);
+      mutateOpts();
+      window.setTimeout(() => window.print(), 50);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't make the labels.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const total = (labels ?? []).reduce((n, l) => n + l.qty, 0);
   const shopName = opts?.shop_name || "";
@@ -93,7 +110,7 @@ export default function LabelsPage() {
         <Link href="/dashboard/catalog" className="inline-flex items-center gap-1 text-sm font-semibold text-ink-muted hover:text-ink">
           <ChevronLeft size={16} /> Catalogue
         </Link>
-        <button type="button" onClick={() => window.print()} disabled={!total || loading}
+        <button type="button" onClick={print} disabled={!total || loading}
           className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50">
           <Printer size={15} /> Print {total} {total === 1 ? "label" : "labels"}
         </button>

@@ -250,9 +250,14 @@ def corrections(db, tenant_id: str, limit: int = 200) -> list[dict]:
     variants = {r["id"]: r for r in (db.table("catalog_item_variants").select("id, size, colour").eq("tenant_id", tenant_id)
                                      .in_("id", variant_ids).execute().data or [])} if variant_ids else {}
     users = list({r["created_by"] for r in rows if r.get("created_by")})
-    who = {u["user_id"]: u.get("full_name") for u in (db.table("tenant_users").select("user_id, full_name")
-                                                      .eq("tenant_id", tenant_id).in_("user_id", users).execute().data or [])} \
-        if users else {}
+    who: dict[str, str] = {}
+    if users:  # the same name the rest of the app shows: the caller profile's, else the team member's
+        for u in db.table("tenant_users").select("user_id, full_name").eq("tenant_id", tenant_id).in_("user_id", users).execute().data or []:
+            if u.get("full_name"):
+                who[u["user_id"]] = u["full_name"]
+        for c in db.table("callers").select("user_id, name").eq("tenant_id", tenant_id).in_("user_id", users).execute().data or []:
+            if c.get("name"):
+                who[c["user_id"]] = c["name"]
     return [{"name": names.get(r["catalog_item_id"], "Removed item"),
              "variant_label": variant_label(variants[r["variant_id"]]) if r.get("variant_id") in variants else "",
              "delta": r["delta"], "reason": r["reason"], "note": r.get("note"), "by": who.get(r.get("created_by")),

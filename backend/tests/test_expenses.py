@@ -1,7 +1,7 @@
 """Expenses (migration 313, services/expenses.py): quick add, repeats once a month, the month view and
 Real profit, the accountant's Excel, and Day closing counting only cash."""
 import io
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -121,3 +121,10 @@ def test_a_bill_must_really_be_a_photo(db):
     row = ex.add(db, T, {"amount_paise": 100}, None)
     with pytest.raises(ex.ExpenseError, match="isn't a real"):
         ex.attach_bill(db, T, row["id"], b"not a pdf", "application/pdf")
+
+
+def test_a_retried_save_is_not_a_second_expense(db):
+    first = ex.add(db, T, {"amount_paise": 120000, "category": "transport"}, "user-1")
+    db.rows("cash_expenses")[0]["created_at"] = datetime.now(ex.IST).isoformat()
+    again = ex.add(db, T, {"amount_paise": 120000, "category": "transport"}, "user-1")
+    assert again["id"] == first["id"] and len(db.rows("cash_expenses")) == 1

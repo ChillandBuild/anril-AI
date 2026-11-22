@@ -4,6 +4,7 @@ import {
   ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
   Truck, CalendarClock, QrCode, MousePointerClick,
+  Wallet,
 } from "lucide-react";
 import {
   SETTINGS_HOME_HREF, SETTINGS_ITEMS, isSettingsPath, settingsItemVisible,
@@ -358,6 +359,17 @@ const PURCHASES: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/purchases"),
 };
 
+/** Expenses: what the business spends, and real profit (purchases money permissions). */
+const EXPENSES: NavLeaf = {
+  kind: "link",
+  key: "expenses",
+  href: "/dashboard/expenses",
+  label: "Expenses",
+  icon: Wallet,
+  visible: (a) => a.isSubscribed && a.canAny(["purchases.view", "purchases.manage"]),
+  isActive: (p) => p.startsWith("/dashboard/expenses"),
+};
+
 const TC_QUEUE = "/dashboard/telecalling";
 const TC_DIAL = "/dashboard/telecalling/dial";
 const TC_UPLOAD = "/dashboard/telecalling/upload";
@@ -524,7 +536,7 @@ const SETTINGS = pagesLeaf({ key: "settings", label: "Settings", icon: Settings,
 const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, BOOKINGS, META_ADS, GOOGLE_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
-const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES] };
+const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES, EXPENSES] };
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
 const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL, QR_LINKS] };

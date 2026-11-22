@@ -1423,6 +1423,11 @@ _SEND_QUOTE_TOOL = {
                     "items": {"type": "integer"},
                     "description": "Quantity for each item_id, same order and length as item_ids. Omit for 1 each.",
                 },
+                "discount_pct": {
+                    "type": "integer",
+                    "description": ("Only when the customer asked for a lower price AND the item says you MAY offer a "
+                                    "discount: the % off you agreed (never above that item's limit). Omit otherwise."),
+                },
             },
             "required": ["item_ids"],
         },
@@ -1515,12 +1520,25 @@ def catalog_prompt(items: list[dict], directive: str, rules: dict) -> tuple[str,
             if row.get("price_note"):
                 price_str += f" ({row['price_note']})"
             line += f" — {price_str}"
+        if row.get("ai_share_price") is False:  # the team shares this item's price and photos themselves
+            line = f"  • {row['name']} ({row['item_type']}) [id: {row['id']}]"
+            if row.get("description"):
+                line += f" — {row['description']}"
+            line += (" — PRICE NOT SHARED: you may describe it, but never say or guess its price; say the team will "
+                     "message the price. Do NOT call recommend_catalog_item or send_quote for it")
+            item_lines.append(line)
+            continue
         offer = (row.get("offers") or {}).get(row["id"])
         if offer and row.get("price_paise") is not None:
             now_rupees = round(row["price_paise"] * (100 - offer) / 100) / 100
             line += f" — ON OFFER NOW: {offer}% off, ₹{now_rupees:.0f} (the payment link uses this price)"
         if row.get("description"):
             line += f" — {row['description']}"
+        if int(row.get("ai_max_discount_pct") or 0) > 0:
+            line += (f" — you MAY give up to {int(row['ai_max_discount_pct'])}% off, only if the customer asks for a "
+                     "lower price (start smaller; pass discount_pct to send_quote)")
+        if row.get("advance_text"):
+            line += f" — advance to book: {row['advance_text']} (the payment link asks only this)"
         if out_of_stock:
             line += " — OUT OF STOCK: if asked, say so honestly, but do NOT call recommend_catalog_item for this item"
         elif row.get("stock_quantity") is not None:
@@ -1603,13 +1621,39 @@ def _attach_variants(db, tenant_id: str, items: list[dict]) -> list[dict]:
     except Exception:
         logger.warning("Couldn't read stock per place for the catalog prompt (tenant %s)", tenant_id)
         elsewhere = {}
+    try:  # Item page: price shared?, AI discount limit, advance to book (migration 315)
+        settings = {r["id"]: r for r in (db.table("catalog_items").select("id, ai_share_price, ai_max_discount_pct, advance_rule")
+                                         .eq("tenant_id", tenant_id).in_("id", ids).execute().data or [])}
+        from app.services.order_quotes import advance_rule as shop_advance_rule, clean_item_rule, rule_text
+        shop_rule = shop_advance_rule(tenant_id)
+    except Exception:
+        logger.warning("Couldn't read item AI settings for the catalog prompt (tenant %s)", tenant_id)
+        settings, shop_rule = {}, None
+
+    def _advance_text(item_id: str) -> str | None:
+        raw = (settings.get(item_id) or {}).get("advance_rule")
+        try:
+            own = clean_item_rule(raw) if isinstance(raw, dict) else None
+        except Exception:
+            own = None
+        if own:
+            if own["kind"] == "none":
+                return None
+            return f"{own['value']:g}% of the price" if own["kind"] == "percent" else f"₹{own['value']:,.0f} per piece"
+        if shop_rule and shop_rule.get("kind") != "none":
+            return rule_text(shop_rule) + " of the order"
+        return None
+
     try:  # Batches & expiry: a batch on a small discount is the one being sold
         from app.services.stock_batches import ai_offers
         offers = ai_offers(db, tenant_id, ids)
     except Exception:
         logger.warning("Couldn't read batch offers for the catalog prompt (tenant %s)", tenant_id)
         offers = {}
-    return [{**row, "variants": by_item.get(row["id"], []), "elsewhere": elsewhere, "offers": offers} for row in items]
+    return [{**row, "variants": by_item.get(row["id"], []), "elsewhere": elsewhere, "offers": offers,
+             "ai_share_price": (settings.get(row["id"]) or {}).get("ai_share_price", True) is not False,
+             "ai_max_discount_pct": int((settings.get(row["id"]) or {}).get("ai_max_discount_pct") or 0),
+             "advance_text": _advance_text(row["id"])} for row in items]
 
 
 async def _build_catalog_context(db, tenant_id: str, message: str) -> tuple[str, list[dict], dict[str, dict], int]:

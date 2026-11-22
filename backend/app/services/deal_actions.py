@@ -626,7 +626,7 @@ def _open_awaiting_deals(ctx: DealContext) -> list[dict]:
     try:
         deals = (
             ctx.db.table("deals")
-            .select("id,stage,payment_link,total_paise,link_expires_at,razorpay_payment_link_id")
+            .select("id,stage,payment_link,total_paise,paid_paise,advance_paise,link_expires_at,razorpay_payment_link_id")
             .eq("tenant_id", ctx.tenant_id)
             .eq("lead_id", ctx.lead_id)
             .eq("stage", "awaiting_payment")
@@ -649,7 +649,12 @@ def _open_awaiting_deals(ctx: DealContext) -> list[dict]:
 def _same_lines(deal: dict, lines: list[dict]) -> bool:
     have = sorted((i.get("catalog_item_id"), i.get("qty")) for i in deal.get("items") or [])
     want = sorted((line["catalog_item_id"], line["qty"]) for line in lines)
-    return have == want
+    if have != want:
+        return False
+    # a discounted quote is a new price: never hand back the old full-price link (and vice versa)
+    prices = {(i.get("catalog_item_id"), i.get("qty")): int(i.get("line_total_paise") or 0) for i in deal.get("items") or []}
+    return all(prices.get((li["catalog_item_id"], li["qty"])) == li["unit_price_paise"] * li["qty"]
+               for li in lines if li.get("unit_price_paise") is not None)
 
 
 async def _recommend_item(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
@@ -659,6 +664,9 @@ async def _recommend_item(ctx: DealContext, args: dict, turn: _Turn) -> str | No
         return f"recommend_catalog_item refused: '{item_id}' is not in the catalog shown to you."
     if item.get("stock_quantity") == 0:
         return f"recommend_catalog_item refused: {item['name']} is out of stock. Say so honestly and offer an alternative."
+    if item.get("ai_share_price") is False:
+        return (f"recommend_catalog_item refused: the team shares {item['name']}'s photos and price themselves. "
+                "Describe it in words and say the team will send the price.")
     if item_id in turn.image_item_ids:
         return None
     if ctx.max_images and len(turn.image_item_ids) >= ctx.max_images:
@@ -675,6 +683,9 @@ async def _recommend_item(ctx: DealContext, args: dict, turn: _Turn) -> str | No
 def _quote_lines(ctx: DealContext, args: dict) -> tuple[list[dict], str | None]:
     item_ids = args.get("item_ids") or []
     quantities = args.get("quantities") or []
+    discount = args.get("discount_pct") or 0
+    if not isinstance(discount, int) or not 0 <= discount <= 50:
+        return [], "send_quote refused: discount_pct must be a whole number from 0 to 50."
     if not isinstance(item_ids, list) or not item_ids:
         return [], "send_quote refused: pass the item_ids the customer wants."
     lines: list[dict] = []
@@ -685,7 +696,18 @@ def _quote_lines(ctx: DealContext, args: dict) -> tuple[list[dict], str | None]:
         qty = quantities[idx] if idx < len(quantities) else 1
         if not isinstance(qty, int) or qty < 1:
             return [], "send_quote refused: each quantity must be a whole number of at least 1. Ask how many they want."
-        lines.append({"catalog_item_id": item_id, "name": item["name"], "qty": qty})
+        if item.get("ai_share_price") is False:
+            return [], (f"send_quote refused: the team shares the price of {item['name']} themselves. "
+                        "Tell the customer the team will message them the price.")
+        line = {"catalog_item_id": item_id, "name": item["name"], "qty": qty}
+        pct = discount if isinstance(discount, int) else 0
+        if pct:
+            cap = int(item.get("ai_max_discount_pct") or 0)
+            if pct > cap:
+                return [], (f"send_quote refused: you may give at most {cap}% off {item['name']}." if cap else
+                            f"send_quote refused: no discount is allowed on {item['name']}. Quote the full price.")
+            line["unit_price_paise"] = round(int(item["price_paise"]) * (100 - pct) / 100)
+        lines.append(line)
     return lines, None
 
 
@@ -707,8 +729,12 @@ def _stock_problem(ctx: DealContext, lines: list[dict]) -> str | None:
     return None
 
 
-def _quote_text(items: list[dict], total_paise: int, link: str) -> str:
+def _quote_text(items: list[dict], total_paise: int, link: str, advance_paise: int = 0) -> str:
     from app.services import deals
+    if 0 < advance_paise < total_paise:  # the link asks only the advance (item / shop rule, migration 315)
+        return (deals.quote_summary_block(items, total_paise)
+                + f"\nAdvance to book: {deals._rupees(advance_paise)} (the rest, {deals._rupees(total_paise - advance_paise)}, later)"
+                + f"\n\nPay the advance here: {link}")
     return deals.quote_summary_block(items, total_paise) + f"\n\nPay here: {link}"
 
 
@@ -736,25 +762,29 @@ async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
         if not _same_lines(deal, lines):
             continue
         link = deal["payment_link"]
+        advance = int(deal.get("advance_paise") or 0) if not int(deal.get("paid_paise") or 0) else 0
         if not deals._link_is_live(deal):
             # Never hand the customer a dead link: make a new one (the old one is cancelled).
             try:
-                link = (await deals.send_payment_link(ctx.tenant_id, deal["id"], send_whatsapp_message=False, db=ctx.db))["payment_link"]
+                link = (await deals.send_payment_link(ctx.tenant_id, deal["id"], send_whatsapp_message=False,
+                                                      amount_paise=advance or None, db=ctx.db))["payment_link"]
             except Exception:
                 logger.exception("Relinking deal %s failed for lead %s", deal["id"], ctx.lead_id)
                 return _quote_failed(ctx, turn)
-        turn.quote_text = _quote_text(deal["items"], deal["total_paise"], link)
+        turn.quote_text = _quote_text(deal["items"], deal["total_paise"], link, advance)
         return None
     try:
         created = await deals.create_deal(
-            ctx.tenant_id, ctx.lead_id, lines, "whatsapp", "awaiting_payment", send_link=False, db=ctx.db,
+            ctx.tenant_id, ctx.lead_id, lines, "whatsapp", "awaiting_payment", send_link=False,
+            advance_by_rule=True, db=ctx.db,
         )
     except Exception:
         logger.exception("create_deal (send_quote) failed for lead %s", ctx.lead_id)
         created = {}
     if not created.get("payment_link"):
         return _quote_failed(ctx, turn)
-    turn.quote_text = _quote_text(created["items"], created["deal"]["total_paise"], created["payment_link"])
+    turn.quote_text = _quote_text(created["items"], created["deal"]["total_paise"], created["payment_link"],
+                                  int(created["deal"].get("advance_paise") or 0))
     return None
 
 

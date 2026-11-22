@@ -84,7 +84,8 @@ class TestLabels:
         assert out["kept_company"] == 1 and out["shop_name"] == "Demo Silks"
 
     def test_items_with_no_barcode_yet_skip_services(self, db):
-        out = bc.labels(db, T, {"source": "no_code"})
+        assert bc.labels(db, T, {"source": "no_code"})["labels"] and bc.options(db, T)["no_code"] == 3  # preview saves nothing
+        out = bc.labels(db, T, {"source": "no_code", "save": True})
         assert sorted(l["code"] for l in out["labels"]) == ["DS-KP-RL", "DS-KP-RM", "DS-SS"]
         assert bc.options(db, T)["no_code"] == 0
 

@@ -85,8 +85,24 @@ export default function NewQuotePage() {
   const subtotal = rows.reduce((a, r) => a + r.unit_price_paise * r.qty, 0);
   const discount = discountKind === "percent" ? Math.round((subtotal * (Number(discountText) || 0)) / 100) : paise(discountText);
   const totals = computeBill(rows, { discount_paise: discount, include_gst: includeGst, bill_type: "gst" });
+  // "The rule" = each item's own advance, else the shop's (same as backend order_quotes.order_advance)
+  const ruleAdvance = (() => {
+    const total = totals.total_paise;
+    const shop = rule ?? { kind: "none", value: 0 };
+    if (!lines.some((l) => l.item?.advance_rule)) return advanceFor(total, shop);
+    const share = (i: number) => Math.round((total * rows[i].unit_price_paise * rows[i].qty) / (subtotal || 1));
+    let adv = advanceFor(lines.reduce((n, l, i) => n + (l.item?.advance_rule ? 0 : share(i)), 0), shop);
+    lines.forEach((l, i) => {
+      const r = l.item?.advance_rule;
+      if (!r || r.kind === "none") return;
+      const part = share(i);
+      const ask = r.kind === "percent" ? Math.round((part * r.value) / 100) : Math.round(r.value * 100) * rows[i].qty;
+      adv += Math.max(0, Math.min(ask, part));
+    });
+    return Math.max(0, Math.min(adv, total));
+  })();
   const advance = advanceKind === "rule"
-    ? advanceFor(totals.total_paise, rule ?? { kind: "none", value: 0 })
+    ? ruleAdvance
     : advanceKind === "none" ? 0
     : advanceFor(totals.total_paise, { kind: advanceKind, value: Number(advanceText) || 0 });
   const gstRates = new Set(lines.map((l) => l.item?.gst_rate || 0).filter(Boolean));

@@ -133,11 +133,29 @@ export default function NewBillPage() {
     { discount_paise: rupeesToPaise(discountText), include_gst: includeGst, bill_type: billType },
   );
   // The shop rule's advance (same as backend order_quotes.advance_for); typing another amount is noted on the order.
+  // Same as backend order_quotes.order_advance: items with their own rule use it (fixed = per piece,
+  // percent = of that line's share of the total); the rest use the shop rule on their share.
   const ruleAdvance = (() => {
-    if (!shopRule || shopRule.kind === "none" || !totals.total_paise) return 0;
-    if (shopRule.min_total_paise && totals.total_paise < shopRule.min_total_paise) return 0;
-    const a = shopRule.kind === "percent" ? Math.round((totals.total_paise * shopRule.value) / 100) : Math.round(shopRule.value * 100);
-    return Math.min(a, totals.total_paise);
+    const total = totals.total_paise;
+    if (!total) return 0;
+    const shopOn = (amount: number) => {
+      if (!shopRule || shopRule.kind === "none" || amount <= 0) return 0;
+      if (shopRule.min_total_paise && amount < shopRule.min_total_paise) return 0;
+      const a = shopRule.kind === "percent" ? Math.round((amount * shopRule.value) / 100) : Math.round(shopRule.value * 100);
+      return Math.min(a, amount);
+    };
+    if (!lines.some((l) => l.item.advance_rule)) return shopOn(total);
+    const subtotal = lines.reduce((n, l) => n + linePrice(l) * l.qty, 0) || 1;
+    const share = (l: Line) => Math.round((total * linePrice(l) * l.qty) / subtotal);
+    let adv = shopOn(lines.filter((l) => !l.item.advance_rule).reduce((n, l) => n + share(l), 0));
+    for (const l of lines) {
+      const r = l.item.advance_rule;
+      if (!r || r.kind === "none") continue;
+      const part = share(l);
+      const ask = r.kind === "percent" ? Math.round((part * r.value) / 100) : Math.round(r.value * 100) * l.qty;
+      adv += Math.max(0, Math.min(ask, part));
+    }
+    return Math.max(0, Math.min(adv, total));
   })();
   const advance = mode === "later" ? Math.min(advanceText.trim() ? rupeesToPaise(advanceText) : ruleAdvance, totals.total_paise) : totals.total_paise;
   const hasPhone = phone.replace(/\D/g, "").length >= 10;

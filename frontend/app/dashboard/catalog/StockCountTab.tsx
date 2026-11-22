@@ -24,6 +24,10 @@ const MORE: { value: CountReason; label: string }[] = [
   { value: "found", label: "Found in shop" }, { value: "count_wrong", label: "Count wrong" },
 ];
 
+function items(n: number) {
+  return `${n} ${n === 1 ? "item" : "items"}`;
+}
+
 function time(iso: string) {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 }
@@ -227,12 +231,12 @@ function OpenCount({ count, canCount, isOwner, toolbarSlot, onChanged }: {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon="🔢" label="Counted" value={`${c.counted} of ${c.total} items`}
+        <StatCard icon="🔢" label="Counted" value={`${c.counted} of ${items(c.total)}`}
           sub={`${c.counters.length ? `by ${c.counters.join(" and ")} · ` : ""}${count.place} · started ${time(count.started_at)}${paused ? " · paused" : ""}`} />
-        <StatCard icon="✅" label="Match" value={`${c.match} items`} sub="no change" />
-        <StatCard icon="➖" label="Less than system" tone={c.less.items ? "red" : "plain"} value={`${c.less.items} items · ${c.less.pieces} pcs`} sub={`${formatPaise(c.less.value_paise)} at cost`} />
-        <StatCard icon="➕" label="More than system" value={`${c.more.items} items · ${c.more.pieces} pcs`} sub={formatPaise(c.more.value_paise)} />
-        <StatCard icon="⏳" label="Not counted yet" tone={c.not_counted ? "amber" : "plain"} value={`${c.not_counted} items`}
+        <StatCard icon="✅" label="Match" value={items(c.match)} sub="no change" />
+        <StatCard icon="➖" label="Less than system" tone={c.less.items ? "red" : "plain"} value={`${items(c.less.items)} · ${c.less.pieces} pcs`} sub={`${formatPaise(c.less.value_paise)} at cost`} />
+        <StatCard icon="➕" label="More than system" value={`${items(c.more.items)} · ${c.more.pieces} pcs`} sub={formatPaise(c.more.value_paise)} />
+        <StatCard icon="⏳" label="Not counted yet" tone={c.not_counted ? "amber" : "plain"} value={items(c.not_counted)}
           sub="tap to see them" onClick={() => setShowMissing((v) => !v)} active={showMissing} />
       </div>
 
