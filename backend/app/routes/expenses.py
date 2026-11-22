@@ -11,7 +11,6 @@ from app.services import expenses as ex
 from app.services.audit_log import record_audit_event
 
 router = APIRouter()
-require_view = require_any_permission("purchases.view", "deals.manage")
 require_profit = require_permission("purchases.view")
 require_add = require_any_permission("purchases.manage", "deals.manage")
 require_manage = require_permission("purchases.manage")
@@ -41,10 +40,15 @@ async def add(payload: dict = Body(...), ctx: dict = Depends(require_add)):
     return await _run(ex.add, get_supabase(), ctx["tenant_id"], payload, ctx.get("user_id"))
 
 
+def _is_manager(ctx: dict) -> bool:
+    from app.dependencies.tenant import _has_permission
+    return _has_permission(ctx, "purchases.manage")
+
+
 @router.delete("/{expense_id}")
 async def delete(expense_id: str, ctx: dict = Depends(require_add)):
     db = get_supabase()
-    await _run(ex.delete, db, ctx["tenant_id"], expense_id)
+    await _run(ex.delete, db, ctx["tenant_id"], expense_id, user_id=ctx.get("user_id"), manager=_is_manager(ctx))
     record_audit_event(db, tenant_id=ctx["tenant_id"], actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
                        action="expense.deleted", target_type="expense", target_id=expense_id, metadata={})
     return {"ok": True}
@@ -53,11 +57,12 @@ async def delete(expense_id: str, ctx: dict = Depends(require_add)):
 @router.post("/{expense_id}/bill")
 async def bill(expense_id: str, file: UploadFile = File(...), ctx: dict = Depends(require_add)):
     content = await file.read(8 * 1024 * 1024 + 1)
-    path = await _run(ex.attach_bill, get_supabase(), ctx["tenant_id"], expense_id, content, file.content_type or "")
+    path = await _run(ex.attach_bill, get_supabase(), ctx["tenant_id"], expense_id, content, file.content_type or "",
+                      user_id=ctx.get("user_id"), manager=_is_manager(ctx))
     return {"ok": True, "path": path}
 
 
-@router.get("/{expense_id}/bill", dependencies=[Depends(require_view)])
+@router.get("/{expense_id}/bill", dependencies=[Depends(require_profit)])
 async def bill_link(expense_id: str, tenant_id: str = Depends(get_tenant_id)):
     return {"url": await _run(ex.bill_url, get_supabase(), tenant_id, expense_id)}
 

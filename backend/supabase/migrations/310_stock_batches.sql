@@ -43,6 +43,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS stock_batches_uq ON stock_batches (
   WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS stock_batches_tenant_idx ON stock_batches (tenant_id, expiry_date) WHERE status = 'active';
 ALTER TABLE stock_batches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_batches_tenant_member_select ON stock_batches;
 CREATE POLICY stock_batches_tenant_member_select ON stock_batches
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS deal_item_batches (
 );
 CREATE INDEX IF NOT EXISTS deal_item_batches_item_idx ON deal_item_batches (deal_item_id);
 ALTER TABLE deal_item_batches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS deal_item_batches_tenant_member_select ON deal_item_batches;
 CREATE POLICY deal_item_batches_tenant_member_select ON deal_item_batches
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 
@@ -74,6 +76,7 @@ CREATE TABLE IF NOT EXISTS supplier_returns (
 );
 CREATE INDEX IF NOT EXISTS supplier_returns_supplier_idx ON supplier_returns (tenant_id, supplier_id);
 ALTER TABLE supplier_returns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS supplier_returns_tenant_member_select ON supplier_returns;
 CREATE POLICY supplier_returns_tenant_member_select ON supplier_returns
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 

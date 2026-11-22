@@ -17,5 +17,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS stock_codes_code_uq ON stock_codes (tenant_id,
 CREATE UNIQUE INDEX IF NOT EXISTS stock_codes_line_uq
   ON stock_codes (catalog_item_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)));
 ALTER TABLE stock_codes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_codes_tenant_member_select ON stock_codes;
 CREATE POLICY stock_codes_tenant_member_select ON stock_codes
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));

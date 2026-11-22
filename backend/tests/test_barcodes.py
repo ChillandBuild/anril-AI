@@ -67,6 +67,12 @@ class TestScanAndCompanyCodes:
         bc.set_company_code(db, T, SILK, None, "")
         assert db.rows("stock_codes") == []
 
+    def test_a_typo_never_wipes_the_code_on_printed_labels(self, db):
+        bc.ensure_codes(db, T, [(SILK, None)])
+        with pytest.raises(bc.BarcodeError):
+            bc.set_company_code(db, T, SILK, None, "12345")
+        assert [c["code"] for c in db.rows("stock_codes")] == ["DS-SS"]
+
 
 class TestLabels:
     def test_picked_items_print_with_their_price_and_company_codes_are_left_out(self, db):

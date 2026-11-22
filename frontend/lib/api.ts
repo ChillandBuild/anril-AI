@@ -3366,7 +3366,7 @@ export const api = {
     countReason: (lineId: string, reason: CountReason | null) =>
       apiFetch<{ ok: boolean }>(`/api/v1/stock/counts/lines/${encodeURIComponent(lineId)}`, { method: "PATCH", body: JSON.stringify({ reason }) }),
     countAction: (countId: string, action: "pause" | "resume" | "cancel" | "finish") =>
-      apiFetch<{ ok?: boolean; changed?: number; loss_paise?: number; gain_paise?: number }>(`/api/v1/stock/counts/${encodeURIComponent(countId)}/${action}`, { method: "POST" }),
+      apiFetch<{ ok?: boolean; changed?: number; loss_paise?: number; gain_paise?: number; not_applied?: number }>(`/api/v1/stock/counts/${encodeURIComponent(countId)}/${action}`, { method: "POST" }),
     stockCorrections: () => apiFetch<{ data: StockCorrection[] }>(`/api/v1/stock/corrections`),
     labelOptions: () => apiFetch<LabelOptions>(`/api/v1/stock/labels/options`),
     labels: (body: { source: "stock_in" | "pick" | "no_code"; stock_in_id?: string; lines?: { item_id: string; variant_id: string | null; qty: number }[] }) =>

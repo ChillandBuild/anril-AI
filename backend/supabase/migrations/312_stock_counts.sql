@@ -25,6 +25,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS stock_counts_one_open_uq ON stock_counts (tena
   WHERE status IN ('open', 'paused');
 CREATE INDEX IF NOT EXISTS stock_counts_tenant_idx ON stock_counts (tenant_id, started_at DESC);
 ALTER TABLE stock_counts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_counts_tenant_member_select ON stock_counts;
 CREATE POLICY stock_counts_tenant_member_select ON stock_counts
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS stock_count_lines (
 CREATE UNIQUE INDEX IF NOT EXISTS stock_count_lines_uq
   ON stock_count_lines (count_id, catalog_item_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)));
 ALTER TABLE stock_count_lines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_count_lines_tenant_member_select ON stock_count_lines;
 CREATE POLICY stock_count_lines_tenant_member_select ON stock_count_lines
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 

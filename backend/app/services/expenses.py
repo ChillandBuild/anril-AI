@@ -75,6 +75,9 @@ def add(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
         raise ExpenseError("Pick the date.")
     if day > today():
         raise ExpenseError("The date can't be in the future.")
+    if method == "cash" and day < today() and (db.table("day_closings").select("id").eq("tenant_id", tenant_id)
+                                                 .eq("day", day.isoformat()).limit(1).execute().data):
+        raise ExpenseError("That day is already closed in Day closing: pick UPI / bank, or today's date.")
     return db.table("cash_expenses").insert({
         "tenant_id": tenant_id, "day": day.isoformat(), "label": label, "amount_paise": _amount(data.get("amount_paise")),
         "category": category, "method": method, "spent_by": " ".join(str(data.get("spent_by") or "").split())[:60] or None,
@@ -82,13 +85,20 @@ def add(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
     }).execute().data[0]
 
 
-def delete(db, tenant_id: str, expense_id: str) -> None:
+def _own_today(row: dict, user_id: str | None) -> bool:
+    return bool(user_id) and row.get("created_by") == user_id and str(row.get("day")) == today().isoformat()
+
+
+def delete(db, tenant_id: str, expense_id: str, *, user_id: str | None = None, manager: bool = True) -> None:
+    """Managers (purchases.manage) delete any; a cashier only what they typed today."""
     if not _UUID.fullmatch(str(expense_id)):
         raise ExpenseError("That expense isn't there any more.")
-    rows = (db.table("cash_expenses").select("bill_path").eq("id", expense_id).eq("tenant_id", tenant_id)
+    rows = (db.table("cash_expenses").select("bill_path, created_by, day").eq("id", expense_id).eq("tenant_id", tenant_id)
             .limit(1).execute().data or [])
     if not rows:
         raise ExpenseError("That expense isn't there any more.")
+    if not manager and not _own_today(rows[0], user_id):
+        raise ExpenseError("You can delete only what you added today.")
     db.table("cash_expenses").delete().eq("id", expense_id).eq("tenant_id", tenant_id).execute()
     if rows[0].get("bill_path"):
         try:
@@ -97,7 +107,8 @@ def delete(db, tenant_id: str, expense_id: str) -> None:
             logger.warning("Couldn't remove the bill photo of expense %s", expense_id)
 
 
-def attach_bill(db, tenant_id: str, expense_id: str, content: bytes, mime: str) -> str:
+def attach_bill(db, tenant_id: str, expense_id: str, content: bytes, mime: str, *, user_id: str | None = None,
+                manager: bool = True) -> str:
     """A photo / PDF of the bill, kept privately with the expense."""
     if not _UUID.fullmatch(str(expense_id)):
         raise ExpenseError("That expense isn't there any more.")
@@ -110,8 +121,12 @@ def attach_bill(db, tenant_id: str, expense_id: str, content: bytes, mime: str) 
     if (ext == "pdf" and not head.startswith(b"%PDF")) or (ext == "png" and not head.startswith(b"\x89PNG")) \
             or (ext == "jpg" and not head.startswith(b"\xff\xd8")):
         raise ExpenseError("That file isn't a real photo or PDF.")
-    if not (db.table("cash_expenses").select("id").eq("id", expense_id).eq("tenant_id", tenant_id).limit(1).execute().data):
+    row = (db.table("cash_expenses").select("id, created_by, day").eq("id", expense_id).eq("tenant_id", tenant_id)
+           .limit(1).execute().data or [])
+    if not row:
         raise ExpenseError("That expense isn't there any more.")
+    if not manager and not _own_today(row[0], user_id):
+        raise ExpenseError("You can add a bill only to what you added today.")
     path = f"{tenant_id}/{expense_id}.{ext}"
     db.storage.from_(BILL_BUCKET).upload(path, content, {"content-type": mime, "upsert": "true"})
     db.table("cash_expenses").update({"bill_path": path}).eq("id", expense_id).eq("tenant_id", tenant_id).execute()
@@ -160,7 +175,9 @@ def _due_day(day_of_month: int, month_start: date) -> date:
 
 
 def run_repeats(db=None, now: date | None = None, tenant_id: str | None = None) -> int:
-    """Add each active repeat for this month once its day has come (the daily job; safe to run twice)."""
+    """Add each active repeat on its day (the daily job; safe to run twice). Only ON the day, so a month's
+    entry the owner deleted doesn't come back the next morning; a repeat saved after its day this month is
+    added once when it is saved (tenant_id given)."""
     from app.db.supabase import get_supabase
 
     db = db or get_supabase()
@@ -172,7 +189,7 @@ def run_repeats(db=None, now: date | None = None, tenant_id: str | None = None) 
     added = 0
     for r in q.limit(10000).execute().data or []:
         due = _due_day(int(r["day_of_month"]), month)
-        if due > now:
+        if due > now or (tenant_id is None and due != now):
             continue
         if db.table("cash_expenses").select("id").eq("repeat_id", r["id"]).eq("repeat_month", month.isoformat()) \
                 .limit(1).execute().data:
@@ -245,7 +262,7 @@ def month_view(db, tenant_id: str, month: str | None = None) -> dict:
                .execute().data or [])
     ads = _meta_ads_paise(db, tenant_id, start, end)
     plan = _plan_paise(db, tenant_id)
-    loss = stock_loss(db, tenant_id, _ist_iso(start)) if start <= today() else 0
+    loss = stock_loss(db, tenant_id, _ist_iso(start), _ist_iso(end)) if start <= today() else 0
     auto = [r for r in (
         {"key": "purchases", "label": "Purchases (from Stock in)", "amount_paise": sum(int(p["total_paise"]) for p in purchases),
          "note": "becomes cost of items sold when it sells", "in_profit": False},
@@ -269,6 +286,13 @@ def month_view(db, tenant_id: str, month: str | None = None) -> dict:
                    "profit_paise": sales - refunded - cogs - expenses_total},
         "by_category": {k: sum(int(r["amount_paise"]) for r in typed if r.get("category") == k) for k in CATEGORIES},
     }
+
+
+def _cell(value):
+    """Text a spreadsheet must never run as a formula (a customer name like '=HYPERLINK(...)')."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
 
 
 def month_excel(db, tenant_id: str, month: str | None = None) -> tuple[bytes, str]:
@@ -295,7 +319,7 @@ def month_excel(db, tenant_id: str, month: str | None = None) -> tuple[bytes, st
               .eq("stage", "won").gte("won_at", _ist_iso(start)).lt("won_at", _ist_iso(end)).order("won_at")
               .limit(50000).execute().data or []):
         total, gst = int(d.get("total_paise") or 0), int(d.get("gst_paise") or 0)
-        sales.append([str(d.get("won_at") or "")[:10], d.get("invoice_number") or "", d.get("customer_name") or "",
+        sales.append([str(d.get("won_at") or "")[:10], _cell(d.get("invoice_number") or ""), _cell(d.get("customer_name") or ""),
                       total / 100, gst / 100, (total - gst) / 100])
 
     pur = wb.create_sheet("Purchases")
@@ -304,13 +328,13 @@ def month_excel(db, tenant_id: str, month: str | None = None) -> tuple[bytes, st
     for s in (db.table("stock_ins").select("bill_date, bill_no, supplier_id, supplier_gstin, items_paise, gst_paise, total_paise")
               .eq("tenant_id", tenant_id).gte("bill_date", start.isoformat()).lt("bill_date", end.isoformat()).order("bill_date")
               .limit(20000).execute().data or []):
-        pur.append([s["bill_date"], s.get("bill_no") or "", sups.get(s.get("supplier_id") or "", ""), s.get("supplier_gstin") or "",
+        pur.append([s["bill_date"], _cell(s.get("bill_no") or ""), _cell(sups.get(s.get("supplier_id") or "", "")), s.get("supplier_gstin") or "",
                     int(s.get("items_paise") or 0) / 100, int(s.get("gst_paise") or 0) / 100, int(s.get("total_paise") or 0) / 100])
 
     exp = wb.create_sheet("Expenses")
     exp.append(["Date", "Type", "What", "Paid by", "Amount (₹)"])
     for e in sorted(view["expenses"], key=lambda e: e["day"]):
-        exp.append([e["day"], e["category_label"], e["label"], e["method_label"], int(e["amount_paise"]) / 100])
+        exp.append([e["day"], e["category_label"], _cell(e["label"]), e["method_label"], int(e["amount_paise"]) / 100])
     for a in view["auto"]:
         exp.append([view["month"], "Added by itself", a["label"], "", a["amount_paise"] / 100])
     for sheet in wb.worksheets:

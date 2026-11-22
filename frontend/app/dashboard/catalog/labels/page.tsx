@@ -33,8 +33,8 @@ const SHOWS: { value: Show; label: string }[] = [
 ];
 
 const PRINT_CSS: Record<Size, string> = {
-  "38x25": "@page { size: 38mm 25mm; margin: 0 } .lbl { width: 38mm; height: 25mm; break-after: page }",
-  "50x25": "@page { size: 50mm 25mm; margin: 0 } .lbl { width: 50mm; height: 25mm; break-after: page }",
+  "38x25": "@page { size: 38mm 25mm; margin: 0 } .lbl { width: 38mm; height: 25mm } .lbl:not(:last-child) { break-after: page }",
+  "50x25": "@page { size: 50mm 25mm; margin: 0 } .lbl { width: 50mm; height: 25mm } .lbl:not(:last-child) { break-after: page }",
   a4_65: "@page { size: A4; margin: 10.7mm 4.7mm } #anril-labels-print { display: grid !important; grid-template-columns: repeat(5, 38.1mm); column-gap: 2.5mm; grid-auto-rows: 21.2mm } .lbl { width: 38.1mm; height: 21.2mm }",
 };
 

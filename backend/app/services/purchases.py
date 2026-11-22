@@ -210,7 +210,9 @@ def _own_stock_in(db, tenant_id: str, supplier_id: str, stock_in_id) -> str | No
 # ── items, places, cost ───────────────────────────────────────────────────────
 
 
-def _resolve_line(db, tenant_id: str, line: dict) -> tuple[dict, dict | None, str]:
+def _resolve_line(db, tenant_id: str, line: dict, *, allow_new: bool = False) -> tuple[dict, dict | None, str]:
+    """allow_new (Stock in only): a size/colour from the bill photo the item doesn't have yet comes back as
+    {"pending_new": True, size, colour}; it is made only once the whole stock in is valid."""
     from app.services.deals import variant_label
 
     item_id = str(line.get("catalog_item_id") or "")
@@ -225,8 +227,12 @@ def _resolve_line(db, tenant_id: str, line: dict) -> tuple[dict, dict | None, st
         if not rows:
             raise PurchaseError(f"{items[0]['name']}: that size or colour isn't on the item")
         variant = rows[0]
-    elif line.get("new_size") or line.get("new_colour"):
-        variant = _new_variant(db, tenant_id, items[0], line.get("new_size"), line.get("new_colour"))
+    elif allow_new and (line.get("new_size") or line.get("new_colour")):
+        if not (db.table("catalog_item_variants").select("id").eq("catalog_item_id", item_id).eq("tenant_id", tenant_id)
+                .limit(1).execute().data):
+            raise PurchaseError(f"{items[0]['name']} has no sizes or colours yet: add them on the item first")
+        variant = {"pending_new": True, "size": _one_line(line.get("new_size"))[:30] or None,
+                   "colour": _one_line(line.get("new_colour"))[:30] or None}
     elif (db.table("catalog_item_variants").select("id").eq("catalog_item_id", item_id).eq("tenant_id", tenant_id)
           .limit(1).execute().data):
         raise PurchaseError(f"{items[0]['name']} has sizes and colours: pick one")
@@ -324,14 +330,14 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
         damaged = _int(raw.get("qty_damaged"), "Damaged pieces")
         if good + damaged == 0:
             continue
-        item, variant, label = _resolve_line(db, tenant_id, raw)
+        item, variant, label = _resolve_line(db, tenant_id, raw, allow_new=True)
         action = raw.get("damaged_action") or None
         if damaged and action not in DAMAGED_ACTIONS:
             raise PurchaseError(f"{label}: pick what to do with the damaged pieces")
         po_line = po_lines.get(raw.get("purchase_order_line_id")) if raw.get("purchase_order_line_id") else None
         if raw.get("purchase_order_line_id") and (
                 not po_line or po_line["catalog_item_id"] != item["id"]
-                or (po_line.get("variant_id") or None) != (variant["id"] if variant else None)):
+                or (po_line.get("variant_id") or None) != ((variant or {}).get("id"))):
             raise PurchaseError(f"{label} isn't on this purchase order")
         cost = _int(raw.get("unit_cost_paise"), "Cost each", 0, 10**10)
         batch = None
@@ -356,6 +362,9 @@ def stock_in(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
         raise PurchaseError("Part paid: enter less than the bill total")
     if paid_now and not supplier_id:
         raise PurchaseError("Pick the supplier you paid")
+    for li in lines:  # every line is valid: now make the new sizes/colours from the bill photo
+        if li["variant"] and li["variant"].get("pending_new"):
+            li["variant"] = _new_variant(db, tenant_id, li["item"], li["variant"]["size"], li["variant"]["colour"])
     row = (db.table("stock_ins").insert({
         "tenant_id": tenant_id, "supplier_id": supplier_id, "purchase_order_id": po["id"] if po else None,
         "bill_no": _one_line(data.get("bill_no"))[:40] or None,

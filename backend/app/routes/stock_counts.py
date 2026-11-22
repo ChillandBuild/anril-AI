@@ -22,7 +22,8 @@ async def _run(fn, *args, **kwargs):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/counts", dependencies=[Depends(require_view)])
+@router.get("/counts", dependencies=[Depends(require_any_permission("catalog.view", "catalog.manage", "purchases.manage",
+                                                                    "deals.manage"))])
 async def counts(tenant_id: str = Depends(get_tenant_id)):
     return await _run(sc.view, get_supabase(), tenant_id)
 

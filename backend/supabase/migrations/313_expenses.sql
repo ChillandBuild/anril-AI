@@ -26,9 +26,11 @@ CREATE TABLE IF NOT EXISTS expense_repeats (
 );
 CREATE INDEX IF NOT EXISTS expense_repeats_tenant_idx ON expense_repeats (tenant_id) WHERE active;
 ALTER TABLE expense_repeats ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS expense_repeats_tenant_member_select ON expense_repeats;
 CREATE POLICY expense_repeats_tenant_member_select ON expense_repeats
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 
+ALTER TABLE cash_expenses DROP CONSTRAINT IF EXISTS cash_expenses_repeat_fk;
 ALTER TABLE cash_expenses ADD CONSTRAINT cash_expenses_repeat_fk
   FOREIGN KEY (repeat_id) REFERENCES expense_repeats(id) ON DELETE SET NULL;
 -- A repeat is added once a month, even if the daily job runs twice.
@@ -37,6 +39,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS cash_expenses_repeat_month_uq ON cash_expenses
 
 -- Bill photos of expenses: private (read through a short signed link), written by the server only.
 INSERT INTO storage.buckets (id, name, public) VALUES ('expense-bills', 'expense-bills', false) ON CONFLICT (id) DO NOTHING;
+UPDATE storage.buckets SET file_size_limit = 8388608, allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'application/pdf']
+ WHERE id = 'expense-bills';
 
 -- Purchases: pieces still to come on a part-received order get one reminder to the supplier on the
 -- expected date (inside WhatsApp's 24-hour window; otherwise the owner is told to send it).

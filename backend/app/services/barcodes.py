@@ -137,17 +137,19 @@ def set_company_code(db, tenant_id: str, item_id: str, variant_id: str | None, c
     if variant_id and not (db.table("catalog_item_variants").select("id").eq("id", variant_id).eq("tenant_id", tenant_id)
                            .eq("catalog_item_id", item_id).limit(1).execute().data):
         raise BarcodeError("That size or colour isn't on this item.")
+    code = re.sub(r"\s", "", str(code or ""))
+    # check the new one first: a typo must never wipe the code already printed on labels
+    if code and not _COMPANY.fullmatch(code):
+        raise BarcodeError("A company barcode is 8, 12, 13 or 14 digits (the number under the bars).")
+    if code:
+        other = (db.table("stock_codes").select("catalog_item_id, variant_id").eq("tenant_id", tenant_id).ilike("code", code)
+                 .limit(1).execute().data or [])
+        if other and (other[0]["catalog_item_id"], other[0].get("variant_id")) != (item_id, variant_id):
+            raise BarcodeError("Another item already has this barcode.")
     q = db.table("stock_codes").delete().eq("tenant_id", tenant_id).eq("catalog_item_id", item_id)
     (q.eq("variant_id", variant_id) if variant_id else q.is_("variant_id", "null")).execute()
-    code = re.sub(r"\s", "", str(code or ""))
     if not code:
         return None
-    if not _COMPANY.fullmatch(code):
-        raise BarcodeError("A company barcode is 8, 12, 13 or 14 digits (the number under the bars).")
-    other = (db.table("stock_codes").select("catalog_item_id").eq("tenant_id", tenant_id).ilike("code", code)
-             .limit(1).execute().data)
-    if other:
-        raise BarcodeError("Another item already has this barcode.")
     return (db.table("stock_codes").insert({"tenant_id": tenant_id, "catalog_item_id": item_id, "variant_id": variant_id,
                                             "code": code, "company": True}).execute().data or [None])[0]
 

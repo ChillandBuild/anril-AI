@@ -1109,9 +1109,11 @@ def _staff_place(db, tenant_id: str, user_id: str | None) -> str | None:
     if not user_id:
         return None
     try:
-        rows = (db.table("tenant_users").select("place_id").eq("tenant_id", tenant_id).eq("user_id", user_id)
+        rows = (db.table("tenant_users").select("place_id, role").eq("tenant_id", tenant_id).eq("user_id", user_id)
                 .limit(1).execute().data or [])
     except Exception:
+        return None
+    if rows and rows[0].get("role") == "owner":  # owners are never tied to a place
         return None
     place = rows[0].get("place_id") if rows else None
     return place if isinstance(place, str) else None

@@ -174,6 +174,7 @@ function OpenCount({ count, canCount, isOwner, toolbarSlot, onChanged }: {
     try {
       const out = await api.catalog.countAction(count.id, "finish");
       toast.success(`Stock fixed: ${out.changed ?? 0} ${out.changed === 1 ? "item" : "items"} changed${out.loss_paise ? `, ${formatPaise(out.loss_paise)} stock loss` : ""}.`);
+      if (out.not_applied) toast.error(`${out.not_applied} ${out.not_applied === 1 ? "change" : "changes"} couldn't be applied (the stock moved meanwhile). Check those items and correct them by hand.`);
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't finish. Try again.");

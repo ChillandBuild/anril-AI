@@ -138,6 +138,8 @@ def save_places(db, tenant_id: str, payload: list) -> list[dict]:
             problems.append("A place you are removing has stock on the way: receive or cancel that move first.")
     if problems:
         raise StockPlaceError(" ".join(problems))
+    if to_archive:  # staff of a removed place work at all places again
+        db.table("tenant_users").update({"place_id": None}).eq("tenant_id", tenant_id).in_("place_id", to_archive).execute()
     # The two "one per business" flags are unique: clear them all first, then write each place.
     db.table("stock_places").update({"bills_from": False, "online_from": False}).eq("tenant_id", tenant_id).execute()
     for r in sorted(rows, key=lambda r: not r["archived"]):  # removals first, so a new place may take a freed name

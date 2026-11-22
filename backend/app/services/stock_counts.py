@@ -214,6 +214,7 @@ def finish(db, tenant_id: str, count_id: str, *, user_id: str | None, user_name:
         raise CountError("That count is already finished or cancelled.")
     costs = _costs(db, tenant_id, off)
     loss = gain = changed = 0
+    skipped: list[str] = []
     for l in off:
         delta = int(l["counted_qty"]) - int(l["system_qty"])
         if delta < 0:  # never below zero: bills during the count may already have taken some
@@ -226,12 +227,13 @@ def finish(db, tenant_id: str, count_id: str, *, user_id: str | None, user_name:
                else adjust_stock(tenant_id, l["catalog_item_id"], delta, "count", **common))
         if not res["ok"]:
             logger.warning("Count %s: couldn't apply %s to %s", count_id, delta, l["id"])
+            skipped.append(l["id"])
             continue
         db.table("stock_count_lines").update({"applied_delta": delta}).eq("id", l["id"]).eq("tenant_id", tenant_id).execute()
         value = abs(delta) * costs.get((l["catalog_item_id"], l.get("variant_id")), 0)
         loss, gain, changed = loss + (value if delta < 0 else 0), gain + (value if delta > 0 else 0), changed + 1
     db.table("stock_counts").update({"loss_paise": loss, "gain_paise": gain}).eq("id", count_id).eq("tenant_id", tenant_id).execute()
-    return {"changed": changed, "loss_paise": loss, "gain_paise": gain}
+    return {"changed": changed, "loss_paise": loss, "gain_paise": gain, "not_applied": len(skipped)}
 
 
 def corrections(db, tenant_id: str, limit: int = 200) -> list[dict]:
@@ -257,8 +259,9 @@ def corrections(db, tenant_id: str, limit: int = 200) -> list[dict]:
              "at": r["created_at"]} for r in rows]
 
 
-def stock_loss(db, tenant_id: str, since_iso: str) -> int:
-    """Stock loss (at cost) of counts finished since then, less what counts found."""
-    rows = (db.table("stock_counts").select("loss_paise, gain_paise").eq("tenant_id", tenant_id).eq("status", "finished")
-            .gte("finished_at", since_iso).limit(1000).execute().data or [])
+def stock_loss(db, tenant_id: str, since_iso: str, until_iso: str | None = None) -> int:
+    """Stock loss (at cost) of counts finished in [since, until), less what counts found."""
+    q = (db.table("stock_counts").select("loss_paise, gain_paise").eq("tenant_id", tenant_id).eq("status", "finished")
+         .gte("finished_at", since_iso))
+    rows = (q.lt("finished_at", until_iso) if until_iso else q).limit(1000).execute().data or []
     return sum(int(r["loss_paise"]) - int(r["gain_paise"]) for r in rows)

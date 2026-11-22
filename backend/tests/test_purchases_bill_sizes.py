@@ -30,11 +30,21 @@ def test_an_exact_size_matches_and_a_new_one_is_flagged_not_misplaced():
     assert out[2]["variant_id"] is None and out[2]["new_variant"] is None
 
 
+def test_a_new_size_waits_until_the_stock_in_is_valid():
+    db = _db()
+    _, pending, label = purchases._resolve_line(db, T, {"catalog_item_id": KP, "new_size": "XL", "new_colour": "Red"}, allow_new=True)
+    assert pending["pending_new"] and label == "Kanchi pattu · Red · XL" and len(db.rows("catalog_item_variants")) == 2
+    import pytest
+    with pytest.raises(purchases.PurchaseError, match="pick one"):  # a purchase order can't make sizes
+        purchases._resolve_line(db, T, {"catalog_item_id": KP, "new_size": "XL", "new_colour": "Red"})
+
+
 def test_the_new_size_is_made_once_under_the_item_with_the_colours_price():
     db = _db()
-    item, variant, label = purchases._resolve_line(db, T, {"catalog_item_id": KP, "new_size": "XL", "new_colour": "Red"})
-    assert label == "Kanchi pattu · Red · XL" and variant["price_paise"] == 1050000 and variant["sort_order"] == 2
-    _, again, _ = purchases._resolve_line(db, T, {"catalog_item_id": KP, "new_size": "xl", "new_colour": "red"})
+    item = db.rows("catalog_items")[0]
+    variant = purchases._new_variant(db, T, item, "XL", "Red")
+    assert variant["price_paise"] == 1050000 and variant["sort_order"] == 2
+    again = purchases._new_variant(db, T, item, "xl", "red")
     assert again["id"] == variant["id"] and len(db.rows("catalog_item_variants")) == 3
 
 

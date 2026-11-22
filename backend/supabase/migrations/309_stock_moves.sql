@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS stock_moves (
 CREATE INDEX IF NOT EXISTS stock_moves_tenant_idx ON stock_moves (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS stock_moves_open_idx ON stock_moves (tenant_id) WHERE status = 'on_the_way';
 ALTER TABLE stock_moves ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_moves_tenant_member_select ON stock_moves;
 CREATE POLICY stock_moves_tenant_member_select ON stock_moves
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS stock_move_lines (
 );
 CREATE INDEX IF NOT EXISTS stock_move_lines_move_idx ON stock_move_lines (move_id);
 ALTER TABLE stock_move_lines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stock_move_lines_tenant_member_select ON stock_move_lines;
 CREATE POLICY stock_move_lines_tenant_member_select ON stock_move_lines
   FOR SELECT TO authenticated USING (is_tenant_member(tenant_id));
 

@@ -84,7 +84,7 @@ def test_finish_needs_every_reason_then_applies_each_difference_once(db, monkeyp
     calls = []
     monkeypatch.setattr(deals, "adjust_variant_stock", lambda *a, **k: calls.append((a, k)) or {"ok": True})
     out = sc.finish(db, T, count["id"], user_id=None, user_name="Owner")
-    assert out == {"changed": 1, "loss_paise": 620000, "gain_paise": 0}
+    assert out == {"changed": 1, "loss_paise": 620000, "gain_paise": 0, "not_applied": 0}
     (args, kw), = calls
     assert args[1:4] == (RM, -1, "count") and kw["place_id"] == SHOP and kw["note"] == "Stock count: Damaged"
     with pytest.raises(sc.CountError, match="already finished"):
