@@ -66,8 +66,10 @@ def _codes(db, tenant_id: str) -> list[dict]:
             .limit(50000).execute().data or [])
 
 
-def ensure_codes(db, tenant_id: str, lines: list[tuple[str, str | None]]) -> dict[tuple[str, str | None], dict]:
-    """The code for each (item, size/colour) line, making Anril's own code where there is none yet."""
+def ensure_codes(db, tenant_id: str, lines: list[tuple[str, str | None]], *, save: bool = True
+                 ) -> dict[tuple[str, str | None], dict]:
+    """The code for each (item, size/colour) line, making Anril's own code where there is none yet.
+    save=False only works out what the new codes would be (the labels preview)."""
     existing = _codes(db, tenant_id)
     by_line = {(c["catalog_item_id"], c.get("variant_id")): c for c in existing}
     taken = {c["code"].upper() for c in existing}
@@ -88,6 +90,11 @@ def ensure_codes(db, tenant_id: str, lines: list[tuple[str, str | None]]) -> dic
             code, n = base, 2
             while code.upper() in taken:
                 code, n = f"{base}{n}", n + 1
+            if not save:
+                by_line[(item_id, variant_id)] = {"catalog_item_id": item_id, "variant_id": variant_id, "code": code,
+                                                  "company": False, "new": True}
+                taken.add(code.upper())
+                continue
             try:
                 row = (db.table("stock_codes").insert({"tenant_id": tenant_id, "catalog_item_id": item_id,
                                                        "variant_id": variant_id, "code": code, "company": False})
@@ -241,7 +248,7 @@ def labels(db, tenant_id: str, payload: dict) -> dict:
     wanted = [w for w in wanted if w[2] > 0]
     if sum(q for _, _, q in wanted) > MAX_LABELS:
         raise BarcodeError(f"That is more than {MAX_LABELS} labels. Print in parts.")
-    codes = ensure_codes(db, tenant_id, [(i, v) for i, v, _ in wanted])
+    codes = ensure_codes(db, tenant_id, [(i, v) for i, v, _ in wanted], save=payload.get("save") is True)
     item_ids = list({i for i, _, _ in wanted})
     items = {r["id"]: r for r in (db.table("catalog_items").select("id, name, price_paise").eq("tenant_id", tenant_id)
                                   .in_("id", item_ids).execute().data or [])} if item_ids else {}

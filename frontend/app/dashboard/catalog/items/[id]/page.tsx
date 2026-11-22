@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, ExternalLink, History, Loader2, Lock, Minus, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { api, CatalogItemDetail, CatalogVariantGroup, StockWhy } from "@/lib/api";
+import { api, CatalogItemDetail, CatalogVariantGroup, StockWhy, type AdvanceRule } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import { useAuthRole } from "../../../contexts/AuthRoleContext";
@@ -84,6 +84,13 @@ export default function CatalogueItemPage() {
   const [batches, setBatches] = useState(false);
   // Barcodes: the maker's barcode (EAN) is typed here; Anril's own code is made when labels are printed.
   const [ean, setEan] = useState("");
+  // Advance payment and what the AI agent can tell customers (migration 315)
+  const [advMode, setAdvMode] = useState<"shop" | "own" | "none">("shop");
+  const [advKind, setAdvKind] = useState<"percent" | "fixed">("fixed");
+  const [advValue, setAdvValue] = useState("");
+  const [sharePrice, setSharePrice] = useState(true);
+  const [aiDiscount, setAiDiscount] = useState("0");
+  const [shopRule, setShopRule] = useState<AdvanceRule | null>(null);
   const [savedEan, setSavedEan] = useState("");
   const [ownCode, setOwnCode] = useState<string | null>(null);
   const [openingStock, setOpeningStock] = useState("");
@@ -115,8 +122,10 @@ export default function CatalogueItemPage() {
   const isProduct = itemType === "product";
 
   const formState = useCallback(() => JSON.stringify({
-    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, openingStock, sizes, colours, rowPrice, newStock,
-  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, openingStock, sizes, colours, rowPrice, newStock]);
+    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, advMode, advKind, advValue, sharePrice,
+    aiDiscount, openingStock, sizes, colours, rowPrice, newStock,
+  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, advMode, advKind, advValue,
+    sharePrice, aiDiscount, openingStock, sizes, colours, rowPrice, newStock]);
 
   const fill = useCallback((d: CatalogItemDetail) => {
     setDetail(d);
@@ -132,6 +141,12 @@ export default function CatalogueItemPage() {
     setDescription(d.description ?? "");
     setReady(d.status === "ready");
     setBatches(d.tracks_batches === true);
+    const rule = d.advance_rule;
+    setAdvMode(!rule ? "shop" : rule.kind === "none" ? "none" : "own");
+    setAdvKind(rule && rule.kind === "percent" ? "percent" : "fixed");
+    setAdvValue(rule && rule.kind !== "none" ? String(rule.value) : "");
+    setSharePrice(d.ai_share_price !== false);
+    setAiDiscount(String(d.ai_max_discount_pct ?? 0));
     setOpeningStock("");
     setSizes(d.sizes);
     setColours(d.colours);
@@ -147,6 +162,7 @@ export default function CatalogueItemPage() {
 
   useEffect(() => {
     api.catalog.listVariantGroups().then(setGroups).catch(() => setGroups([]));
+    api.orders.advanceRule().then(setShopRule).catch(() => setShopRule(null));
     if (isNew) {
       snapshot.current = "";
       return;
@@ -219,6 +235,10 @@ export default function CatalogueItemPage() {
         hsn_code: hsn.trim() || null,
         cost_price_paise: toPaise(cost),
         low_stock_at: lowAt.trim() === "" ? null : Math.round(Number(lowAt)),
+        advance_rule: advMode === "shop" ? null : advMode === "none" ? { kind: "none" as const, value: 0 }
+          : { kind: advKind, value: Number(advValue) || 0 },
+        ai_share_price: sharePrice,
+        ai_max_discount_pct: Math.max(0, Math.min(50, Math.round(Number(aiDiscount) || 0))),
         status: (ready ? "ready" : "draft") as "ready" | "draft",
         ...(isNew && isProduct && !useGrid && openingStock.trim() !== "" ? { stock_quantity: Math.round(Number(openingStock)) } : {}),
       };
@@ -553,9 +573,16 @@ export default function CatalogueItemPage() {
                 <Row label="Sold this month">{detail.sold_this_month}</Row>
                 <Row label="Asked but out">{detail.waiting ? `${detail.waiting} on the waiting list` : "Nobody waiting"}</Row>
               </dl>
-              <button type="button" onClick={() => setHistoryOpen(true)} className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-                <History size={14} /> Stock history
-              </button>
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                <button type="button" onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                  <History size={14} /> Stock history
+                </button>
+                {canManage && isProduct && (
+                  <Link href="/dashboard/purchases/stock-in" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                    <Plus size={14} /> Stock in
+                  </Link>
+                )}
+              </div>
             </Card>
           )}
 
@@ -589,6 +616,44 @@ export default function CatalogueItemPage() {
               </button>
               <p className="mt-2 text-xs text-ink-muted">Saved in the stock history with your name and the reason.</p>
             </section>
+          )}
+
+          {(detail || isNew) && price.trim() !== "" && (
+            <Card title="Advance payment">
+              <div className="space-y-2">
+                {([
+                  ["shop", "Use shop rule", shopRule ? (shopRule.kind === "none" ? "No advance · set in Orders › Advance rule" : `${shopRule.kind === "percent" ? `${shopRule.value}%` : formatPaise(Math.round(shopRule.value * 100))} · set in Orders › Advance rule`) : "The shop's advance rule"],
+                  ["own", "Own rule for this item", advMode === "own" && Number(advValue) > 0 ? (advKind === "percent" ? `${advValue}% of the price` : `${formatPaise(Math.round(Number(advValue) * 100))} per piece`) : "A % or a fixed amount per piece"],
+                  ["none", "No advance", "Pay full at pickup or by link"],
+                ] as ["shop" | "own" | "none", string, string][]).map(([value, label, sub]) => (
+                  <label key={value} className={cn("flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5",
+                    advMode === value ? "border-primary bg-primary-50/50" : "border-border")}>
+                    <input type="radio" name="advance" checked={advMode === value} disabled={ro} onChange={() => setAdvMode(value)} className="mt-1 accent-[var(--primary)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-ink">{label}</span>
+                      <span className="block text-xs text-ink-muted">{sub}</span>
+                      {value === "own" && advMode === "own" && (
+                        <span className="mt-2 flex items-center gap-2">
+                          <Select size="sm" value={advKind} onChange={(v) => setAdvKind(v as "percent" | "fixed")} className="w-36" aria-label="Kind of advance"
+                            options={[{ value: "fixed", label: "₹ per piece" }, { value: "percent", label: "% of price" }]} />
+                          <input value={advValue} onChange={(e) => setAdvValue(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal"
+                            placeholder={advKind === "percent" ? "30" : "1000"} aria-label="Advance"
+                            className="h-8 w-24 rounded-lg border border-border px-2 text-sm tabular-nums outline-none focus:border-primary" />
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-muted">Bills, quotes and the AI agent&apos;s payment link ask for this. Staff can still change it on one order.</p>
+            </Card>
+          )}
+
+          {(detail || isNew) && (
+            <AiCard name={name} price={price} sizes={sizes} colours={colours} stock={total} sharePrice={sharePrice} setSharePrice={setSharePrice}
+              discount={aiDiscount} setDiscount={setAiDiscount} ro={ro}
+              advance={advMode === "none" ? null : advMode === "own" ? (Number(advValue) > 0 ? (advKind === "percent" ? `${advValue}%` : formatPaise(Math.round(Number(advValue) * 100))) : null)
+                : shopRule && shopRule.kind !== "none" ? (shopRule.kind === "percent" ? `${shopRule.value}%` : formatPaise(Math.round(shopRule.value * 100))) : null} />
           )}
 
           {detail && isProduct && <WhatsAppCard detail={detail} />}
@@ -641,5 +706,52 @@ function WhatsAppCard({ detail }: { detail: CatalogItemDetail }) {
         </a>
       )}
     </section>
+  );
+}
+
+
+/* What the AI agent can tell customers (migration 315): the two switches and an example reply built
+ * from this item. The AI writes its own words, in the customer's language; this shows what it may say. */
+function AiCard({ name, price, sizes, colours, stock, sharePrice, setSharePrice, discount, setDiscount, advance, ro }: {
+  name: string; price: string; sizes: string[]; colours: string[]; stock: number | null; sharePrice: boolean;
+  setSharePrice: (v: boolean) => void; discount: string; setDiscount: (v: string) => void; advance: string | null; ro: boolean;
+}) {
+  const canDiscount = Number(discount) > 0;
+  const bits = [
+    sizes.length ? `Sizes ${sizes.length > 2 ? `${sizes[0]} to ${sizes[sizes.length - 1]}` : sizes.join(", ")}` : "",
+    colours.length ? `${colours.length} ${colours.length === 1 ? "colour" : "colours"}` : "",
+  ].filter(Boolean).join(", ");
+  const title = name.trim() || "This item";
+  const reply = sharePrice
+    ? `${title} ${price.trim() ? `₹${Number(price).toLocaleString("en-IN")} ` : ""}🙏${bits ? ` ${bits}.` : ""}${stock != null && stock > 0 && stock <= 3 ? ` Only ${stock} left!` : ""}${advance ? ` ${advance} advance-la book pannalam.` : ""} Photos anuppava?`
+    : `${title} irukku 🙏${bits ? ` ${bits}.` : ""} Price-a namma team ungalukku message pannuvanga.`;
+  return (
+    <Card title="What the AI agent can tell customers">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={sharePrice} disabled={ro} onChange={(e) => setSharePrice(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
+          Share price and photos
+        </label>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={canDiscount} disabled={ro || !sharePrice} onChange={(e) => setDiscount(e.target.checked ? "5" : "0")} className="h-4 w-4 accent-[var(--primary)]" />
+          Can give discount
+          {canDiscount && sharePrice && (
+            <span className="inline-flex items-center gap-1">
+              up to
+              <input value={discount} onChange={(e) => setDiscount(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" disabled={ro} aria-label="Most the AI may take off"
+                className="h-8 w-12 rounded-lg border border-border px-2 text-right tabular-nums outline-none focus:border-primary" />%
+            </span>
+          )}
+        </label>
+      </div>
+      <div className="mt-3 rounded-xl bg-[#efeae2] p-3">
+        <p className="max-w-[95%] rounded-lg bg-white px-3 py-2 text-[13px] leading-snug text-[#111b21] shadow-sm">{reply}</p>
+      </div>
+      <p className="mt-2 text-xs text-ink-muted">
+        {sharePrice ? (canDiscount ? `If a customer asks for less, the AI may come down by up to ${discount}% (never more); the payment link uses that price.` : "The AI never offers a discount on this item.")
+          : "The AI talks about it but never says the price, sends no photo and no payment link: your team shares the price."}
+        {" "}Example only: the AI writes its own words, in the customer&apos;s language.
+      </p>
+    </Card>
   );
 }

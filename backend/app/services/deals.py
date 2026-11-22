@@ -383,6 +383,8 @@ async def create_deal(
     created_by: str | None = None,
     intake_session_id: str | None = None,
     send_link: bool = False,
+    advance_paise: int | None = None,
+    advance_by_rule: bool = False,
     db=None,
 ) -> dict:
     """Create a deal with its lines. stage='won' deducts stock now;
@@ -412,6 +414,14 @@ async def create_deal(
     if stage == "won":
         row["won_at"] = _now_iso()
         row["payment_method"] = payment_method or "cash"
+    link_amount = None
+    if advance_by_rule and stage == "awaiting_payment":  # each item's own advance rule, else the shop's (315)
+        from app.services.order_quotes import order_advance
+        advance_paise = order_advance(db, tenant_id, resolved, row["total_paise"])
+    if advance_paise is not None and stage == "awaiting_payment" and 0 < int(advance_paise) < row["total_paise"]:
+        # the link asks only the advance; the rest is paid later (like a staff quote's advance)
+        link_amount = int(advance_paise)
+        row["advance_paise"] = link_amount
     deal = db.table("deals").insert(row).execute().data[0]
     items = _insert_items(tenant_id, deal["id"], resolved, db)
 
@@ -421,7 +431,8 @@ async def create_deal(
     elif stage == "awaiting_payment" or send_link:
         # The AI's send_quote tool passes send_link=False: the link goes out in
         # its own reply text, so a second WhatsApp message would duplicate it.
-        link = await send_payment_link(tenant_id, deal["id"], send_whatsapp_message=send_link, db=db)
+        link = await send_payment_link(tenant_id, deal["id"], send_whatsapp_message=send_link, amount_paise=link_amount,
+                                       db=db)
         result["payment_link"] = link["payment_link"]
         result["message_sent"] = link["message_sent"]
         result["deal"] = {**deal, **link.get("deal_patch", {})}

@@ -60,6 +60,52 @@ def save_advance_rule(db, tenant_id: str, rule: dict) -> dict:
     return clean
 
 
+def clean_item_rule(raw) -> dict | None:
+    """An item's own advance rule (migration 315); None = the shop's rule."""
+    if not isinstance(raw, dict) or raw.get("kind") not in ("none", "percent", "fixed"):
+        return None
+    if raw["kind"] == "none":
+        return {"kind": "none", "value": 0}
+    try:
+        value = float(raw.get("value") or 0)
+    except (TypeError, ValueError):
+        raise OrderError("Type the advance as a number")
+    if raw["kind"] == "percent" and not 0 < value <= 100:
+        raise OrderError("The advance percent must be between 1 and 100")
+    if raw["kind"] == "fixed" and not 0 < value <= 10_000_000:
+        raise OrderError("Type the advance amount")
+    return {"kind": raw["kind"], "value": value}
+
+
+def order_advance(db, tenant_id: str, lines: list[dict], total_paise: int) -> int:
+    """The advance for an order: lines of items with their own rule use it (a fixed amount is per
+    piece, a percent is of that line's share of the total); the rest use the shop's rule on their
+    share. Never more than the total. Every item on the shop rule = the shop rule on the total."""
+    shop = advance_rule(tenant_id)
+    ids = list({li["catalog_item_id"] for li in lines if li.get("catalog_item_id")})
+    own: dict[str, dict] = {}
+    if ids:
+        for r in (db.table("catalog_items").select("id, advance_rule").eq("tenant_id", tenant_id).in_("id", ids)
+                  .execute().data or []):
+            rule = clean_item_rule(r.get("advance_rule")) if isinstance(r.get("advance_rule"), dict) else None
+            if rule:
+                own[r["id"]] = rule
+    if not own:
+        return advance_for(total_paise, shop)
+    subtotal = sum(int(li.get("line_total_paise") or 0) for li in lines) or 1
+    share = lambda li: round(total_paise * int(li.get("line_total_paise") or 0) / subtotal)  # noqa: E731
+    shop_part = sum(share(li) for li in lines if li.get("catalog_item_id") not in own)
+    advance = advance_for(shop_part, shop) if shop_part else 0
+    for li in lines:
+        rule = own.get(li.get("catalog_item_id") or "")
+        if not rule or rule["kind"] == "none":
+            continue
+        part = share(li)
+        ask = round(part * rule["value"] / 100) if rule["kind"] == "percent" else round(rule["value"] * 100) * int(li.get("qty") or 1)
+        advance += max(0, min(ask, part))
+    return max(0, min(advance, total_paise))
+
+
 def rule_text(rule: dict) -> str:
     """"30%" / "₹1,000" / "30% above ₹5,000"."""
     if rule.get("kind") == "percent":
@@ -150,8 +196,9 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     rule = shop_rule if asked.get("kind") == "rule" else asked
     if rule.get("kind") not in ("none", "percent", "fixed"):
         raise OrderError("Pick how much advance to ask for")
-    advance = advance_for(total, rule)
-    shop_advance = advance_for(total, shop_rule)
+    # "The rule" = each item's own rule, else the shop's (migration 315)
+    shop_advance = order_advance(db, tenant_id, lines, total)
+    advance = shop_advance if asked.get("kind") == "rule" else advance_for(total, rule)
     advance_note = None
     if asked.get("kind") != "rule" and shop_rule["kind"] != "none" and advance != shop_advance:
         advance_note = (f"Advance rule {rule_text(shop_rule)} ({_rupees(shop_advance)}). "

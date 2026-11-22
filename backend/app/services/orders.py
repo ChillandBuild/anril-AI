@@ -1161,10 +1161,10 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         raise OrderError("The advance can't be more than the total")
     advance_note = None
     if mode == "later":
-        from app.services.order_quotes import advance_for, advance_rule, rule_text
+        from app.services.order_quotes import advance_rule, order_advance, rule_text
         rule = advance_rule(tenant_id)
-        asked = advance_for(total, rule)
-        if rule["kind"] != "none" and advance != asked:
+        asked = order_advance(db, tenant_id, lines, total)  # each item's own rule, else the shop's (315)
+        if (rule["kind"] != "none" or asked) and advance != asked:
             advance_note = (f"Advance rule {rule_text(rule)} ({_rupees(asked)}). "
                             f"Staff changed it to {_rupees(advance)} for this order.")
     ready_by = None
@@ -1280,7 +1280,7 @@ def bill_options(db, tenant_id: str) -> dict:
     the team for Handled by, and the GST setup."""
     from app.services.business_details import get_business_details
     items = (
-        db.table("catalog_items").select("id, name, item_type, price_paise, gst_rate, stock_quantity, attributes, status, tracks_batches")
+        db.table("catalog_items").select("id, name, item_type, price_paise, gst_rate, stock_quantity, attributes, status, tracks_batches, advance_rule")
         .eq("tenant_id", tenant_id).eq("status", "ready").order("name").limit(1000).execute()
     ).data or []
     variants = (
@@ -1303,6 +1303,7 @@ def bill_options(db, tenant_id: str) -> dict:
             "price_paise": it.get("price_paise"), "gst_rate": it.get("gst_rate"),
             "stock": it.get("stock_quantity"),
             "tracks_batches": it.get("tracks_batches") is True,
+            "advance_rule": it.get("advance_rule") if isinstance(it.get("advance_rule"), dict) else None,
             "variants": [
                 {"id": v["id"], "size": v.get("size"), "colour": v.get("colour"), "stock": v["stock_quantity"],
                  "price_paise": v.get("price_paise"), "label": deals_service.variant_label(v)}

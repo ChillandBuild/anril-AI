@@ -669,7 +669,7 @@ class TestSendQuote:
         shop = Shop(monkeypatch, existing=dead)
         regenerated = []
 
-        async def send_payment_link(tenant_id, deal_id, *, send_whatsapp_message=True, db=None):
+        async def send_payment_link(tenant_id, deal_id, *, send_whatsapp_message=True, amount_paise=None, db=None):
             regenerated.append((tenant_id, deal_id, send_whatsapp_message))
             return {"payment_link": "https://rzp.io/l/fresh", "message_sent": False}
 

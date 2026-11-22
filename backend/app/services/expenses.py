@@ -78,8 +78,18 @@ def add(db, tenant_id: str, data: dict, user_id: str | None) -> dict:
     if method == "cash" and day < today() and (db.table("day_closings").select("id").eq("tenant_id", tenant_id)
                                                  .eq("day", day.isoformat()).limit(1).execute().data):
         raise ExpenseError("That day is already closed in Day closing: pick UPI / bank, or today's date.")
+    amount = _amount(data.get("amount_paise"))
+    # A retry after a lost reply (shaky shop Wi-Fi) must not save the same expense twice: the same person,
+    # same amount, type, method and words within a minute is that same save.
+    if user_id:
+        since = (datetime.now(IST) - timedelta(seconds=60)).isoformat()
+        same = (db.table("cash_expenses").select("*").eq("tenant_id", tenant_id).eq("created_by", user_id)
+                .eq("day", day.isoformat()).eq("amount_paise", amount).eq("category", category).eq("method", method)
+                .eq("label", label).gte("created_at", since).limit(1).execute().data or [])
+        if same:
+            return same[0]
     return db.table("cash_expenses").insert({
-        "tenant_id": tenant_id, "day": day.isoformat(), "label": label, "amount_paise": _amount(data.get("amount_paise")),
+        "tenant_id": tenant_id, "day": day.isoformat(), "label": label, "amount_paise": amount,
         "category": category, "method": method, "spent_by": " ".join(str(data.get("spent_by") or "").split())[:60] or None,
         "created_by": user_id,
     }).execute().data[0]

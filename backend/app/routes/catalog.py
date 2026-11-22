@@ -140,6 +140,23 @@ def _clean_stock_fields(payload: dict) -> dict:
             if level < 0 or level > 100_000:
                 raise HTTPException(status_code=400, detail="The alert level must be 0 or more")
         out["low_stock_at"] = level
+    # Item page bits (migration 315): the item's own advance, and what the AI may say about it
+    if "advance_rule" in payload:
+        from app.services.order_quotes import OrderError, clean_item_rule
+        try:
+            out["advance_rule"] = clean_item_rule(payload["advance_rule"])
+        except OrderError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    if "ai_share_price" in payload:
+        out["ai_share_price"] = payload["ai_share_price"] is not False
+    if "ai_max_discount_pct" in payload:
+        try:
+            pct = int(payload["ai_max_discount_pct"] or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="The discount must be a whole number")
+        if not 0 <= pct <= 50:
+            raise HTTPException(status_code=400, detail="The AI's discount can be 0 to 50%")
+        out["ai_max_discount_pct"] = pct
     return out
 
 

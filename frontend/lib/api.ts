@@ -243,6 +243,10 @@ export interface CatalogItem {
   low_stock_at?: number | null;
   /** Batches & expiry switched on for this item. */
   tracks_batches?: boolean;
+  /** Item page (migration 315): own advance (null = the shop's rule), what the AI may say. */
+  advance_rule?: { kind: "none" | "percent" | "fixed"; value: number } | null;
+  ai_share_price?: boolean;
+  ai_max_discount_pct?: number;
   meta_sync_state?: "sending" | "synced" | "error" | "skipped" | null;
   meta_sync_error?: string | null;
   meta_pending?: boolean;
@@ -3370,7 +3374,7 @@ export const api = {
       apiFetch<{ ok?: boolean; changed?: number; loss_paise?: number; gain_paise?: number; not_applied?: number }>(`/api/v1/stock/counts/${encodeURIComponent(countId)}/${action}`, { method: "POST" }),
     stockCorrections: () => apiFetch<{ data: StockCorrection[] }>(`/api/v1/stock/corrections`),
     labelOptions: () => apiFetch<LabelOptions>(`/api/v1/stock/labels/options`),
-    labels: (body: { source: "stock_in" | "pick" | "no_code"; stock_in_id?: string; lines?: { item_id: string; variant_id: string | null; qty: number }[] }) =>
+    labels: (body: { source: "stock_in" | "pick" | "no_code"; stock_in_id?: string; lines?: { item_id: string; variant_id: string | null; qty: number }[]; save?: boolean }) =>
       apiFetch<{ labels: PrintLabel[]; kept_company: number; shop_name: string }>(`/api/v1/stock/labels`, { method: "POST", body: JSON.stringify(body) }),
     scan: (code: string) => apiFetch<ScanResult>(`/api/v1/stock/scan?code=${encodeURIComponent(code)}`),
     itemCodes: (itemId: string) =>
@@ -5964,6 +5968,8 @@ export interface NewBillItem {
   stock: number | null;
   /** Batches & expiry on: the bill line shows (and can change) the batch. */
   tracks_batches?: boolean;
+  /** The item's own advance (null = the shop's rule). */
+  advance_rule?: { kind: "none" | "percent" | "fixed"; value: number } | null;
   variants: NewBillVariant[];
 }
 
