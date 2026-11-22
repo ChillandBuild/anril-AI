@@ -58,7 +58,7 @@ OutcomeValue = Literal[
 ReasonValue = Literal["price", "already_bought", "no_need", "other", "never_enquired", "not_a_fit", "not_decision_maker"]
 LanguageValue = Literal["tamil", "english", "hindi", "telugu", "malayalam", "kannada", "other"]
 
-_MESSAGE_LEAD_SOURCES = {"whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form"}
+_MESSAGE_LEAD_SOURCES = {"whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form", "qr"}
 _SEGMENT_RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
 
 

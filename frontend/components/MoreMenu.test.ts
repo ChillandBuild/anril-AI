@@ -27,9 +27,9 @@ describe("More drawer layout", () => {
     const byTitle = MORE_SECTIONS.map((s) => [s.title, rows.filter((r) => r.section === s.key).map((r) => r.label)]);
     expect(byTitle).toEqual([
       [null, ["Customers"]],
-      ["WhatsApp", ["Templates", "Numbers"]],
+      ["WhatsApp", ["Templates", "Numbers", "QR & links"]],
       ["Anril Setup", ["Anril Brain", "Knowledge Base", "Teach & offers", "Replies & handover"]],
-      ["Engage", ["Inbound Leads", "Meta Ads", "Auto-Messages"]],
+      ["Engage", ["Inbound Leads", "Bookings", "Meta Ads", "Google Ads", "Auto-Messages"]],
       [null, ["Reach"]],
       ["Anril OTP", ["Send & check", "History", "Setup"]],
       ["Anril SMS", ["Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API"]],

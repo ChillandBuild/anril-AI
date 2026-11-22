@@ -285,6 +285,15 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Leads from your Facebook and Instagram instant forms, with every answer, and the WhatsApp message each one gets.",
     };
   }
+  if (pathname?.startsWith("/dashboard/bookings")) {
+    return { title: "Engage / Bookings", description: "Who is coming when, with whom — and the link customers book from." };
+  }
+  if (pathname?.startsWith("/dashboard/google-ads")) {
+    return { title: "Engage / Google Ads", description: "What each Google Ads campaign spent and what it brought: chats, calls, Hot and paid." };
+  }
+  if (pathname?.startsWith("/dashboard/qr-links")) {
+    return { title: "WhatsApp / QR & links", description: "One QR per place, each with its own first message, so you see where customers came from." };
+  }
   if (pathname?.startsWith("/dashboard/meta-ads")) {
     return {
       title: "Meta Ads / Messaging ads",

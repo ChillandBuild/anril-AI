@@ -23,6 +23,8 @@ PERMISSION_CATALOG: list[dict] = [
     {"key": "purchases.manage", "label": "Stock in, purchase orders and supplier payments", "group": "Leads"},
     {"key": "meta_ads.view", "label": "View Meta ads", "group": "Leads"},
     {"key": "meta_ads.manage", "label": "Manage Meta ads", "group": "Leads"},
+    {"key": "bookings.view", "label": "View bookings", "group": "Leads"},
+    {"key": "bookings.manage", "label": "Manage bookings, services and staff hours", "group": "Leads"},
     {"key": "outbound_leads.view", "label": "View outbound leads", "group": "Messaging"},
     {"key": "outbound_leads.manage", "label": "Manage outbound leads", "group": "Messaging"},
     {"key": "templates.view", "label": "View templates", "group": "Messaging"},

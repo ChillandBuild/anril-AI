@@ -106,7 +106,7 @@ class CustomBroadcastRequest(LeadFilters):
     message: str
 
 
-INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form')
+INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form', 'qr')
 
 # Reads of whole tables go through PostgREST, which caps one response at 1000 rows.
 _PAGE = 1000
@@ -556,6 +556,7 @@ async def list_leads(
                 lead["broadcast_sent_at"] = br_time_by_lead[lead["id"]]
 
         _customer_fields(db, tenant_id, leads_data)
+        _add_came_from(db, tenant_id, leads_data)
 
     return PaginatedResponse(
         data=leads_data,
@@ -563,6 +564,20 @@ async def list_leads(
         page=page,
         limit=limit,
     )
+
+
+def _add_came_from(db, tenant_id: str, leads: list[dict]) -> None:
+    """Set came_from ("from Google Ads · summer_sale", "from Meta ad · …", "from QR · …") for the chat header."""
+    try:
+        from app.services.google_ads_report import came_from_labels
+        labels = came_from_labels(db, tenant_id, leads)
+    except Exception as e:  # a label is never worth failing the list
+        logger.warning("came_from lookup failed: %s", e)
+        return
+    for lead in leads:
+        label = labels.get(str(lead.get("id")))
+        if label:
+            lead["came_from"] = label
 
 
 BROADCAST_PAGE = 1000  # PostgREST caps one response at 1000 rows
@@ -1139,7 +1154,8 @@ async def get_lead(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
         if campaign and campaign.data:
             lead["ad_campaign_name"] = campaign.data["campaign_name"]
             lead["channel"] = campaign.data["platform"]
-            
+
+    _add_came_from(db, tenant_id, [lead])
     return lead
 
 @router.patch("/{lead_id}", response_model=Lead)

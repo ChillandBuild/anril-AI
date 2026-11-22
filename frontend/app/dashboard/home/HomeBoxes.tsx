@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import type { HomeBox, HomeBoxKey } from "@/lib/api";
-import { BOX_META, formatBoxValue } from "./todayLayout";
+import type { HomeBox } from "@/lib/api";
+import { BOX_META, formatBoxValue, type BoxKey } from "./todayLayout";
 
 /** The number boxes: 6 per row on a laptop, 3 on a tablet, 2 on a phone. Each one is a link. */
-export function HomeBoxes({ keys, boxes }: { keys: HomeBoxKey[]; boxes: Partial<Record<HomeBoxKey, HomeBox>> }) {
+export function HomeBoxes({ keys, boxes }: { keys: BoxKey[]; boxes: Partial<Record<BoxKey, HomeBox>> }) {
   const shown = keys.filter((k) => boxes[k]);
   if (shown.length === 0) return null;
   return (
@@ -19,7 +19,7 @@ export function HomeBoxes({ keys, boxes }: { keys: HomeBoxKey[]; boxes: Partial<
   );
 }
 
-function HomeBoxCard({ boxKey, box }: { boxKey: HomeBoxKey; box: HomeBox }) {
+function HomeBoxCard({ boxKey, box }: { boxKey: BoxKey; box: HomeBox }) {
   const meta = BOX_META[boxKey];
   const Icon = meta.icon;
   return (

@@ -52,6 +52,13 @@ function fixed(label: string, href: string | null): AlertAction {
 /** Chat-type alerts: no fixed page; the stored link or the [lead_id:] tag decides, else the chats page. */
 const chatAction: AlertAction = { label: "Open chat", href: () => null };
 
+const BOOKINGS = "/dashboard/bookings";
+
+/** Booking alerts open the page stored with the alert (the day and booking), else the Bookings page. */
+function bookingsAction(label: string): AlertAction {
+  return { label, href: (n) => safeInternalPath(n.url) ?? BOOKINGS };
+}
+
 const KINDS: Record<string, AlertKind> = {
   lead_replied: { category: "needs_you", icon: "chat", module: "Chats", action: chatAction },
   lead_assigned: { category: "needs_you", icon: "chat", module: "Leads", action: chatAction },
@@ -59,6 +66,9 @@ const KINDS: Record<string, AlertKind> = {
   handover_new: { category: "needs_you", icon: "chat", module: "Chats", action: chatAction },
   lead_hot: { category: "needs_you", icon: "chat", module: "Leads", action: chatAction },
   supplier_message: { category: "needs_you", icon: "chat", module: "Purchases", action: chatAction },
+  booking_new: { category: "needs_you", icon: "info", module: "Bookings", action: bookingsAction("Open bookings") },
+  booking_cancelled: { category: "needs_you", icon: "alert", module: "Bookings", action: bookingsAction("Open bookings") },
+  booking_call_now: { category: "calls", icon: "phone", module: "Bookings", action: bookingsAction("Call now") },
 
   callback_taken_over: { category: "calls", icon: "phone", module: "Calling", action: fixed("Call back list", SCHEDULED) },
   callback_reminder: { category: "calls", icon: "phone", module: "Calling", action: fixed("Call back list", SCHEDULED) },

@@ -165,6 +165,15 @@ async def list_conversations(
         lead["wants"] = wants.get(lid)
         leads.append(lead)
 
+    try:  # "from Google Ads · …" for the chat header; a label is never worth failing the inbox
+        from app.services.google_ads_report import came_from_labels
+        labels = came_from_labels(db, tenant_id, leads)
+        for lead in leads:
+            if labels.get(str(lead["id"])):
+                lead["came_from"] = labels[str(lead["id"])]
+    except Exception as e:
+        logger.warning("came_from lookup failed: %s", e)
+
     return {"leads": leads, "total": total}
 
 

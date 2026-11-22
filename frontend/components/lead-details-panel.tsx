@@ -138,6 +138,7 @@ const CHANNEL_BADGE: Record<string, string> = {
   meta_form: "IF",
   indiamart: "IM",
   justdial: "JD",
+  qr: "QR",
 };
 
 // ─── Score event card ─────────────────────────────────────────────────────────

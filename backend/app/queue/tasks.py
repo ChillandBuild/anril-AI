@@ -44,6 +44,9 @@ RETRY_CLASS: dict[str, str] = {
     "expense-repeats": "A",
     "order-payment-reminders": "C",
     "meta-catalogue-sync": "A",
+    "booking-release-holds": "C",
+    "booking-reminders": "C",
+    "booking-call-now": "C",
 }
 
 
@@ -380,3 +383,28 @@ async def meta_catalogue_sync(timestamp: int) -> None:
     """Catalogue changes (a sale, a price, a photo) to each shop's Meta catalogue, within a minute."""
     from app.services.meta_catalog import sync_all_tenants
     await sync_all_tenants()
+
+
+# Bookings (v9.2 #19). Class C: they message customers, so never two copies at once and never re-run.
+@queue_app.periodic(cron="* * * * *", periodic_id="booking-release-holds")
+@queue_app.task(name="booking-release-holds", **_one_at_a_time("booking-release-holds"), queue="messages")
+async def booking_release_holds(timestamp: int) -> None:
+    """A held slot whose advance is not paid within 15 minutes is released; one that was paid is booked."""
+    from app.services.booking_messages import release_holds
+    await release_holds()
+
+
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="booking-reminders")
+@queue_app.task(name="booking-reminders", **_one_at_a_time("booking-reminders"), queue="messages")
+async def booking_reminders(timestamp: int) -> None:
+    """Day-before (9 AM-8 PM IST) and 2-hour reminders with Yes, coming / Cancel buttons."""
+    from app.services.booking_messages import send_reminders
+    await send_reminders()
+
+
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="booking-call-now")
+@queue_app.task(name="booking-call-now", **_one_at_a_time("booking-call-now"), queue="messages")
+def booking_call_now(timestamp: int) -> None:
+    """No 'Yes, coming' an hour after the 2-hour reminder: flag the booking Call now, one bell."""
+    from app.services.booking_messages import flag_call_now
+    flag_call_now()

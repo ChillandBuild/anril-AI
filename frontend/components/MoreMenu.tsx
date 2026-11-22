@@ -29,7 +29,7 @@ import {
   Zap,
   StickyNote,
   Users,
-  X, Truck, Wallet, GraduationCap } from "lucide-react";
+  X, Truck, Wallet, GraduationCap, CalendarClock, QrCode, MousePointerClick } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
 import { cn, isActive } from "@/lib/utils";
@@ -122,6 +122,7 @@ export const MORE_ITEMS: MoreMenuItem[] = [
   { key: "leads", icon: Users, label: "Customers", section: "customers", pages: [{ href: "/dashboard/leads", permissionAny: ["leads.view", "leads.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "templates", icon: SquarePen, label: "Templates", section: "whatsapp", pages: [{ href: "/dashboard/templates", permissionAny: ["templates.view", "templates.manage"], feature: "outbound_messaging" }] },
   { key: "numbers", icon: Layers, label: "Numbers", section: "whatsapp", pages: [{ href: "/dashboard/numbers", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "qr-links", icon: QrCode, label: "QR & links", section: "whatsapp", pages: [{ href: "/dashboard/qr-links", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "brain", icon: Brain, label: "Anril Brain", section: "setup", pages: [{ href: BRAIN_HREF, permissionAny: ["brain.view"], anyFeature: MESSAGING_FEATURES }] },
   { key: "knowledge", icon: BookOpen, label: "Knowledge Base", section: "setup", pages: [{ href: "/dashboard/knowledge", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "teach", icon: GraduationCap, label: "Teach & offers", section: "setup", pages: [{ href: "/dashboard/teach", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
@@ -136,7 +137,9 @@ export const MORE_ITEMS: MoreMenuItem[] = [
     ],
   },
   { key: "inbound-leads", icon: Inbox, label: "Inbound Leads", section: "engage", pages: [{ href: "/dashboard/inbound-leads", permissionAny: ["inbound_leads.view", "inbound_leads.manage"], feature: "inbound_messaging" }] },
+  { key: "bookings", icon: CalendarClock, label: "Bookings", section: "engage", pages: [{ href: "/dashboard/bookings", permissionAny: ["bookings.view", "bookings.manage"] }] },
   { key: "meta-ads", icon: Megaphone, label: "Meta Ads", section: "engage", pages: [{ href: "/dashboard/meta-ads", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" }] },
+  { key: "google-ads", icon: MousePointerClick, label: "Google Ads", section: "engage", pages: [{ href: "/dashboard/google-ads", permissionAny: ["meta_ads.view", "meta_ads.manage"], feature: "inbound_messaging" }] },
   {
     key: "auto-messages",
     icon: Zap,

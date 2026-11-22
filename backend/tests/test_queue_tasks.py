@@ -23,6 +23,7 @@ MESSAGES = {
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
     "unmarked-bookings", "order-payment-reminders", "batch-expiry",
+    "booking-release-holds", "booking-reminders", "booking-call-now",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep"}
 COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "companion-kb-learning"}
@@ -30,11 +31,12 @@ CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "priva
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
     "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders", "batch-expiry",
+    "booking-release-holds", "booking-reminders", "booking-call-now",
 }
 SYNC_JOBS = {
     "assignment-sweep", "recycle-contacts", "callback-notifications", "call-alert-summary",
     "ad-insights-sync", "brain-weekly-digest", "inbound-stopped-replying", "unmarked-bookings", "batch-expiry",
-    "expense-repeats",
+    "expense-repeats", "booking-call-now",
 }
 
 # id -> (patch target, is the callee async, receives the Supabase client)
@@ -77,6 +79,9 @@ CALLEES = {
     "batch-expiry": ("app.services.stock_batches.ring_expiry_bells", False, False),
     "expense-repeats": ("app.services.expenses.run_repeats", False, False),
     "meta-catalogue-sync": ("app.services.meta_catalog.sync_all_tenants", True, False),
+    "booking-release-holds": ("app.services.booking_messages.release_holds", True, False),
+    "booking-reminders": ("app.services.booking_messages.send_reminders", True, False),
+    "booking-call-now": ("app.services.booking_messages.flag_call_now", False, False),
 }
 
 
@@ -89,7 +94,8 @@ EVERY = {
     "scheduled-broadcasts": 60, "reengagement-rules": 60, "silence-nudge": 60,
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
     "scheduled-templates": 60, "sms-send": 60, "companion-kb-ingest": 60, "otp-sweep": 60,
-    "meta-catalogue-sync": 60,
+    "meta-catalogue-sync": 60, "booking-release-holds": 60,
+    "booking-reminders": 300, "booking-call-now": 300,
     "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "crm-cutoff-sweep": 600,
     "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "instant-forms-catch-up": 1800, "ad-insights-sync": 3600,
@@ -132,7 +138,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 38
+    assert len(_periodic()) == 41
 
 
 def test_task_name_matches_periodic_id():
@@ -185,7 +191,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (24, 5, 9)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (24, 5, 12)
 
 
 def test_sync_and_async_split():

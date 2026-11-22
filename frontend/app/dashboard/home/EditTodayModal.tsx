@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, type HomeBoxKey, type HomeLayout, type HomeListKey, type HomeToday } from "@/lib/api";
+import { api, type HomeLayout, type HomeListKey, type HomeToday } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   BOX_KEYS,
@@ -32,6 +32,7 @@ import {
   removeBox,
   resolveBoxes,
   type BoxGroup,
+  type BoxKey,
 } from "./todayLayout";
 
 function Switch({
@@ -76,11 +77,11 @@ function SortableRow({
   onMove,
   onRemove,
 }: {
-  boxKey: HomeBoxKey;
+  boxKey: BoxKey;
   index: number;
   count: number;
-  onMove: (key: HomeBoxKey, delta: -1 | 1) => void;
-  onRemove: (key: HomeBoxKey) => void;
+  onMove: (key: BoxKey, delta: -1 | 1) => void;
+  onRemove: (key: BoxKey) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: boxKey });
   const meta = BOX_META[boxKey];
@@ -147,7 +148,7 @@ export function EditTodayModal({
   /** Called with the layout the server returned, after a save or a reset. */
   onSaved: (layout: HomeLayout) => void;
 }) {
-  const [selected, setSelected] = useState<HomeBoxKey[]>(() => resolveBoxes(layout, today));
+  const [selected, setSelected] = useState<BoxKey[]>(() => resolveBoxes(layout, today));
   const [lists, setLists] = useState<Record<HomeListKey, boolean>>(() => listsFromLayout(layout));
   const [group, setGroup] = useState<"all" | BoxGroup>("all");
   const [query, setQuery] = useState("");
@@ -182,15 +183,15 @@ export function EditTodayModal({
   const matches = (label: string, g: BoxGroup) => (group === "all" || group === g) && (!q || label.toLowerCase().includes(q));
 
   const canAdd = BOX_KEYS.filter(
-    (k) => today.available.includes(k) && !selected.includes(k) && matches(BOX_META[k].label, BOX_META[k].group),
+    (k) => (today.available as readonly string[]).includes(k) && !selected.includes(k) && matches(BOX_META[k].label, BOX_META[k].group),
   );
   const comingSoon = COMING_SOON_BOXES.filter((b) => matches(b.label, b.group));
   const totalBoxes = today.available.length + COMING_SOON_BOXES.length;
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
-    const from = selected.indexOf(e.active.id as HomeBoxKey);
-    const to = selected.indexOf(e.over.id as HomeBoxKey);
+    const from = selected.indexOf(e.active.id as BoxKey);
+    const to = selected.indexOf(e.over.id as BoxKey);
     if (from < 0 || to < 0) return;
     setSelected(arrayMove(selected, from, to));
   }

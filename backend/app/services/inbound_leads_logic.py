@@ -1,6 +1,6 @@
 """Pure logic for inbound lead reporting. No DB, no network — unit-testable."""
 
-INBOUND_SOURCES = ("whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form")
+INBOUND_SOURCES = ("whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form", "qr")
 
 
 def is_inbound_lead(lead: dict) -> bool:

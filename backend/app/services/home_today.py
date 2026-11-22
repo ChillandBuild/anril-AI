@@ -8,6 +8,7 @@ Every number comes from the same code the linked page uses, so Home never disagr
   ads_today                                    -> services/growth.build_ad_performance (Ad Spend card)
   quotes_open                                  -> services/order_quotes._expired (quote rules)
   low_stock                                    -> catalogue stock rules (catalog/money.ts isLow)
+  bookings_today / todays_bookings             -> services/bookings (live bookings today, IST, the person's own columns)
   target_month                                 -> services/sales_target (Settings > Target & profit)
 
 Each source runs on its own: one that fails is logged and left out, never a 500.
@@ -23,9 +24,9 @@ logger = logging.getLogger(__name__)
 # The only working boxes, in DEFAULT PRIORITY ORDER.
 BOX_KEYS = (
     "money_in_today", "new_enquiries_today", "hot_waiting", "to_collect", "callbacks_today",
-    "orders_pending", "ads_today", "quotes_open", "won_month", "target_month", "low_stock",
+    "orders_pending", "ads_today", "quotes_open", "won_month", "target_month", "bookings_today", "low_stock",
 )
-LIST_KEYS = ("waiting", "low_stock")
+LIST_KEYS = ("waiting", "low_stock", "todays_bookings")
 MAX_BOXES = 12
 DEFAULT_COUNT = 6
 
@@ -35,7 +36,7 @@ HREF = {
     "new_enquiries_today": "/dashboard/inbound-leads", "won_month": "/dashboard/inbound-leads",
     "hot_waiting": "/dashboard/conversations", "callbacks_today": "/dashboard/telecalling/scheduled",
     "ads_today": "/dashboard/meta-ads", "low_stock": "/dashboard/catalog",
-    "target_month": "/dashboard/settings/target",
+    "target_month": "/dashboard/settings/target", "bookings_today": "/dashboard/bookings",
 }
 
 _FAILED = object()
@@ -120,6 +121,11 @@ def _gates(db, ctx: dict, tenant_id: str) -> dict:
         scheduled_ok = _has_permission(ctx, "telecalling.scheduled.view") or _has_permission(ctx, "telecalling.scheduled")
         if scheduled_ok and _callbacks_feature_on(features):
             gates["callbacks_today"] = True
+
+    if _has_permission(ctx, "bookings.view"):
+        # the client uses bookings once it has set up a service people can book
+        gates["bookings_today"] = bool(_safe(
+            "gate bookings", lambda: _count_one(db, "booking_services", tenant_id, active=True), False))
 
     if _has_permission(ctx, "conversations.view"):
         gates["hot_waiting"] = True
@@ -316,10 +322,36 @@ def _box_low_stock(stock: dict) -> dict:
     return {"value": stock["total"], "unit": "count", "sub": f"{out} out of stock" if out else "running low"}
 
 
+# ───────────────────────────────────────────────────────────── bookings
+
+def _bookings_today(db, ctx: dict, t: dict) -> dict:
+    """Today's bookings (IST) in the columns this person may see: the box + the next 10 on the list."""
+    from app.services import booking_setup as bsetup
+    from app.services import bookings as bk
+    tenant_id = ctx["tenant_id"]
+    columns = bk.scoped_columns(db, ctx)
+    names = {r["id"]: r["name"] for r in columns}
+    day = t["today"].date()
+    rows = bk.bookings_on(db, tenant_id, day, day, list(names))
+    live = [r for r in rows if r["status"] in ("held", "booked", "came")]
+    came = sum(1 for r in rows if r["status"] == "came")
+    missed = sum(1 for r in rows if r["status"] == "no_show")
+    sub = f"{came} came · {missed} didn't come"
+    services = bk.service_map(db, tenant_id)
+    now = t["now"]
+    upcoming = [r for r in rows if r["status"] in ("held", "booked") and bk.parse_ts(r["end_at"]) >= now]
+    items = [{
+        "id": r["id"], "start_at": r["start_at"], "status": r["status"], "customer_name": r.get("customer_name") or r.get("phone"),
+        "service_name": (services.get(r["service_id"]) or {}).get("name"), "resource_name": names.get(r["resource_id"]),
+    } for r in upcoming[:10]]
+    return {"box": {"value": len(live), "unit": "count", "sub": sub},
+            "list": {"total": len(upcoming), "items": items}}
+
+
 # ───────────────────────────────────────────────────────────── the whole answer
 
 def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
-    """available / defaults / boxes / hot_bar / waiting / low_stock for this person."""
+    """available / defaults / boxes / hot_bar / waiting / low_stock / todays_bookings for this person."""
     from app.services.orders import _now
     tenant_id = ctx["tenant_id"]
     t = _times(now or _now())
@@ -367,6 +399,13 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
     if box is not _FAILED and box is not None:
         boxes["target_month"] = box
 
+    todays_bookings = None
+    if gates["bookings_today"]:
+        got = _safe("bookings", lambda: _bookings_today(db, ctx, t))
+        if got is not _FAILED:
+            boxes["bookings_today"] = got["box"]
+            todays_bookings = got["list"]
+
     if gates["low_stock"]:
         got = _safe("low stock", lambda: _low_stock(db, tenant_id))
         if got is not _FAILED:
@@ -383,4 +422,5 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
         "hot_bar": hot_bar,
         "waiting": waiting,
         "low_stock": low_stock,
+        "todays_bookings": todays_bookings,
     }

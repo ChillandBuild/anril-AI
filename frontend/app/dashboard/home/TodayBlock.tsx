@@ -7,8 +7,10 @@ import { api, type HomeLayout, type HomeToday } from "@/lib/api";
 import { HomeBoxes } from "./HomeBoxes";
 import { WaitingList } from "./WaitingList";
 import { LowStockList } from "./LowStockList";
+import { BookingsTodayList } from "./BookingsTodayList";
+import { todayIst } from "../bookings/bookingsTime";
 import { EditTodayModal } from "./EditTodayModal";
-import { listIsOn, resolveBoxes, waitingMinutes } from "./todayLayout";
+import { listIsOn, resolveBoxes, waitingMinutes, type TodaysBookings } from "./todayLayout";
 
 const swrOpts = {
   revalidateOnFocus: true,
@@ -93,6 +95,8 @@ function TodayBody({ today, layout }: { today: HomeToday; layout: HomeLayout | u
   const showWaiting = today.waiting !== null && listIsOn(layout, "waiting");
   const showStock = today.low_stock !== null && listIsOn(layout, "low_stock");
   const bar = today.hot_bar;
+  // The server sends the Today's bookings list only to people who may see Bookings.
+  const bookings = (today as HomeToday & { todays_bookings?: TodaysBookings | null }).todays_bookings ?? null;
 
   return (
     <>
@@ -131,10 +135,11 @@ function TodayBody({ today, layout }: { today: HomeToday; layout: HomeLayout | u
 
       <HomeBoxes keys={keys} boxes={today.boxes} />
 
-      {(showWaiting || showStock) && (
+      {(showWaiting || showStock || bookings) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {showWaiting && today.waiting && <WaitingList total={today.waiting.total} items={today.waiting.items} />}
           {showStock && today.low_stock && <LowStockList total={today.low_stock.total} items={today.low_stock.items} />}
+          {bookings && <BookingsTodayList data={bookings} date={todayIst()} />}
         </div>
       )}
     </>

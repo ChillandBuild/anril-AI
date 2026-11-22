@@ -1900,6 +1900,10 @@ def build_reply_system_prompt(
     # services/ai_teach.py; never raises, adds only the date line if its tables can't be read.
     from app.services import ai_teach
     system_prompt += ai_teach.prompt_block(db, tenant_id)
+    # Bookings set up (link on + a service): the booking link, the AI's one booking ability.
+    # services/booking_ai.py; never raises, adds nothing when Bookings isn't set up.
+    from app.services import booking_ai
+    system_prompt += booking_ai.prompt_block(db, tenant_id)
 
     # Last, so it is the freshest instruction when the model decides how to ask a question.
     from app.services.choices import PROMPT_BLOCK as _CHOICES_BLOCK

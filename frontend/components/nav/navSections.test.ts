@@ -142,7 +142,8 @@ describe("navSections tab coverage", () => {
     // Call IQ: the Telecalling group's 4 pages and Team become 4 rows (Calling, Leads to call, Call reviews, Team), and
     // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
     expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
-      + 1 /* Purchases (2026-11-21) */ + 1 /* Teach & offers (2026-11-22) */);
+      + 1 /* Purchases (2026-11-21) */ + 1 /* Teach & offers (2026-11-22) */
+      + 3 /* Bookings, Google Ads, QR & links (2026-11-23) */);
     expect(allEntries().every((e) => e.kind === "link")).toBe(true);
   });
 
@@ -348,7 +349,7 @@ describe("Phase 2: Auto-Messages row stands for 3 pages", () => {
 
   it("sits in Engage and the old Scheduled templates row is gone", () => {
     const engage = NAV_SECTIONS.find((s) => s.key === "engage")!;
-    expect(engage.entries.map((e) => (e as NavLeaf).label)).toEqual(["Inbound Leads", "Meta Ads", "Auto-Messages"]);
+    expect(engage.entries.map((e) => (e as NavLeaf).label)).toEqual(["Inbound Leads", "Bookings", "Meta Ads", "Google Ads", "Auto-Messages"]);
   });
 });
 

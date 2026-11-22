@@ -31,6 +31,7 @@ const CHANNEL_DOT: Record<string, string> = {
   telegram: "bg-sky-500",
   indiamart: "bg-amber-500",
   justdial: "bg-orange-500",
+  qr: "bg-teal-500",
 };
 
 const CAME_FROM_OPTIONS: FilterMenuOption[] = [
@@ -42,6 +43,7 @@ const CAME_FROM_OPTIONS: FilterMenuOption[] = [
   { value: "telegram", label: "Telegram" },
   { value: "indiamart", label: "IndiaMART" },
   { value: "justdial", label: "JustDial" },
+  { value: "qr", label: "QR" },
 ];
 
 const ORIGIN_OPTIONS: FilterMenuOption[] = [
@@ -430,7 +432,6 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
 // a [GADS:<slug>] tag so inbound WhatsApp leads get attributed to Google.
 function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
   const [campaign, setCampaign] = useState("");
-  const [gclid, setGclid] = useState("");
   const [link, setLink] = useState("");
   const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
@@ -444,7 +445,7 @@ function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
     }
     setLoading(true);
     try {
-      const res = await api.inboundLeads.googleLink(name, gclid.trim() || undefined);
+      const res = await api.inboundLeads.googleLink(name);
       setLink(res.link);
       setSlug(res.campaign_slug);
       setCopied(false);
@@ -494,16 +495,6 @@ function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => setCampaign(e.target.value)}
           placeholder="e.g. Summer Sale 2026"
           className="w-full px-3 py-2 bg-surface-low border border-surface-mid rounded-xl font-body text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-300 mb-3"
-        />
-
-        <label className="block font-label text-[10px] font-bold text-on-surface-muted uppercase tracking-wider mb-1.5">
-          Google Click ID <span className="normal-case font-normal text-[#94a3b8]">(optional — for spend sync later)</span>
-        </label>
-        <input
-          value={gclid}
-          onChange={(e) => setGclid(e.target.value)}
-          placeholder="{gclid}"
-          className="w-full px-3 py-2 bg-surface-low border border-surface-mid rounded-xl font-mono text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-300 mb-4"
         />
 
         <button

@@ -130,7 +130,7 @@ const SOURCE_FILTERS: FilterMenuOption[] = [
 ];
 
 const SOURCE_NAMES: Record<string, string> = {
-  whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook", telegram: "Telegram", meta_form: "Instant form",
+  whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook", telegram: "Telegram", meta_form: "Instant form", qr: "QR",
   indiamart: "IndiaMART", justdial: "Justdial",
 };
 

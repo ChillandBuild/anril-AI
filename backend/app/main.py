@@ -48,6 +48,7 @@ from app.routes import private_send, private_send_keys
 from app.routes import ai_teach as ai_teach_routes
 from app.routes import otp_overview, connections_overview, my_business
 from app.routes import global_search
+from app.routes import bookings as bookings_routes, qr_links, google_ads
 
 # Configure logging
 logging.basicConfig(
@@ -443,6 +444,11 @@ app.include_router(otp_overview.router, prefix="/api/v1/otp-overview", tags=["ot
 app.include_router(connections_overview.router, prefix="/api/v1/connections", tags=["connections"], dependencies=_auth)
 app.include_router(my_business.router, prefix="/api/v1/my-business", tags=["my-business"], dependencies=_auth)
 app.include_router(global_search.router, prefix="/api/v1/search", tags=["search"], dependencies=_auth)
+app.include_router(bookings_routes.router, prefix="/api/v1/bookings", tags=["bookings"], dependencies=_auth)
+app.include_router(bookings_routes.public_router, prefix="/api/v1/public/bookings", tags=["bookings-public"])
+app.include_router(qr_links.router, prefix="/api/v1/qr-links", tags=["qr-links"], dependencies=_auth)
+app.include_router(qr_links.public_router, prefix="/api/v1/public/qr", tags=["qr-public"])
+app.include_router(google_ads.router, prefix="/api/v1/google-ads", tags=["google-ads"], dependencies=_auth)
 # Legacy prefix. Razorpay's dashboard has /api/v1/expert-handoff/razorpay-webhook
 # registered externally; remove these two lines only after updating it there.
 app.include_router(intake_public_router, prefix="/api/v1/expert-handoff", tags=["intake-webhook-legacy"])

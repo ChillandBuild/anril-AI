@@ -61,6 +61,7 @@ class FakeDB:
 ALL_BOXES_DB = {
     "deals": [{"id": "d1"}],
     "catalog_items": [{"id": "c1"}],
+    "booking_services": [{"id": "s1"}],
     "tenants": [{"enabled_features": ["inbound_messaging", "telecalling.scheduled"]}],
 }
 
@@ -205,7 +206,7 @@ def test_today_route_needs_dashboard_view(monkeypatch):
 def test_today_route_returns_the_contract_shape(client, monkeypatch, stub_sources):
     _use_db(monkeypatch, FakeDB(ALL_BOXES_DB))
     body = client.get("/api/v1/home/today").json()
-    assert set(body) == {"available", "defaults", "boxes", "hot_bar", "waiting", "low_stock"}
+    assert set(body) == {"available", "defaults", "boxes", "hot_bar", "waiting", "low_stock", "todays_bookings"}
 
 
 def test_layout_get_without_row_is_the_no_row_shape(client, monkeypatch):
@@ -257,7 +258,7 @@ def test_put_saves_and_returns_the_get_shape(client, monkeypatch):
     res = client.put("/api/v1/home/layout", json={"boxes": ["to_collect", "money_in_today"], "lists": {"waiting": False}})
     assert res.status_code == 200
     assert res.json() == {"boxes": ["to_collect", "money_in_today"],
-                          "lists": {"waiting": False, "low_stock": True}, "is_custom": True}
+                          "lists": {"waiting": False, "low_stock": True, "todays_bookings": True}, "is_custom": True}
     table, (op, args, kwargs) = db.writes[0]
     assert table == "home_layouts" and op == "upsert"
     assert args[0]["tenant_id"] == "t1" and args[0]["user_id"] == "u1"

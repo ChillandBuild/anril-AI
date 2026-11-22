@@ -172,6 +172,8 @@ export interface Lead {
   template_name?: string | null;
   tag_name?: string | null;
   ad_campaign_name?: string | null;
+  /** "from Google Ads · Diwali offer" / "from Meta ad · …" / "from QR · …" (v9.2). */
+  came_from?: string | null;
   channel?: string | null;
   call_status?: LeadCallStatus | null;
   do_not_call?: boolean;
@@ -3920,9 +3922,8 @@ export const api = {
       );
       return res.data || [];
     },
-    googleLink: async (campaign: string, gclid?: string) => {
+    googleLink: async (campaign: string) => {
       const qs = new URLSearchParams({ campaign });
-      if (gclid) qs.set("gclid", gclid);
       return apiFetch<{ link: string; campaign_slug: string; whatsapp_number: string }>(
         `/api/v1/inbound-leads/google-link?${qs}`
       );

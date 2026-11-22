@@ -4,12 +4,13 @@ export const MIN_QUERY = 2;
 export const MAX_QUERY = 60;
 export const DEBOUNCE_MS = 250;
 
-export type GroupKey = "customers" | "orders" | "items" | "chats";
+export type GroupKey = "customers" | "orders" | "bookings" | "items" | "chats";
 
 /** Fixed order and wording of the groups (the server sends them in the same order). */
 export const GROUPS: readonly { key: GroupKey; heading: string }[] = [
   { key: "customers", heading: "CUSTOMERS" },
   { key: "orders", heading: "ORDERS & BILLS" },
+  { key: "bookings", heading: "BOOKINGS" },
   { key: "items", heading: "ITEMS" },
   { key: "chats", heading: "CHATS" },
 ];
@@ -47,7 +48,7 @@ export function canUseSearch(role: string | null, permissions: string[]): boolea
   if (!role) return false;
   if (role === "owner") return true;
   const has = (area: string) => permissions.includes(`${area}.view`) || permissions.includes(`${area}.manage`);
-  return has("leads") || has("deals") || has("catalog") || has("conversations") || permissions.includes("conversations.reply");
+  return has("leads") || has("deals") || has("catalog") || has("conversations") || has("bookings") || permissions.includes("conversations.reply");
 }
 
 /** Minimal shape of a keyboard event / DOM node so this file stays testable without a browser. */
@@ -111,6 +112,18 @@ function safeHref(href: unknown, fallback: string): string {
   return h.startsWith("/dashboard/") && !h.startsWith("//") ? h : fallback;
 }
 
+/** Opens the Day tab on the booking's day when that is known, so the booking is in view. */
+function bookingHref(id: string, date: string): string {
+  return `/dashboard/bookings?${date ? `date=${date}&` : ""}booking=${encodeURIComponent(id)}`;
+}
+
+/** The IST calendar day (YYYY-MM-DD) of a timestamp, or "" when it is not a valid time. */
+function istDate(value: unknown): string {
+  const ms = Date.parse(str(value));
+  if (Number.isNaN(ms)) return "";
+  return new Date(ms + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 function rowFor(key: GroupKey, item: Raw): SearchRow | null {
   if (key === "customers") {
     const id = str(item.id);
@@ -129,6 +142,14 @@ function rowFor(key: GroupKey, item: Raw): SearchRow | null {
     return {
       id: `orders:${id}`, groupKey: key, title: str(item.label) || "Order", subtitle: str(item.detail), meta: "",
       href: safeHref(item.href, `/dashboard/deals/orders/${id}`),
+    };
+  }
+  if (key === "bookings") {
+    const id = str(item.id);
+    if (!id) return null;
+    return {
+      id: `bookings:${id}`, groupKey: key, title: str(item.label) || "Booking", subtitle: str(item.detail), meta: "",
+      href: safeHref(item.href, bookingHref(id, istDate(item.start_at))),
     };
   }
   if (key === "items") {

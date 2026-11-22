@@ -13,6 +13,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   website: "Website form",
   api: "App / API",
   store: "Shop counter",
+  qr: "QR",
 };
 
 export function LeadSourceSection({ overview }: { overview: AnalyticsOverview }) {

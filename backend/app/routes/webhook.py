@@ -334,6 +334,32 @@ async def _transcribe_whatsapp_audio(media_id: str, tenant_id: str) -> tuple[str
     return transcript, mime_type
 
 
+async def _handle_booking_message(db, tenant_id: str, lead_id: str, phone: str, msg_type: str, msg: dict, body: str) -> bool:
+    """v9.2 Bookings: a reminder's "Yes, coming" / "Cancel" button (payload bk_yes:/bk_cancel:) or a
+    booking code ("BK-0012", sent from the booking page's WhatsApp button). True = handled: the
+    message is already saved in the chat, and it is NOT passed on to the AI. Never raises."""
+    try:
+        from app.services import booking_messages
+        # Outside the 24h window the reminder is a template: a tap arrives as type "button" with
+        # the payload. Inside it the reminder is sent as reply buttons: a tap arrives as type
+        # "interactive" with button_reply.id. Both carry "bk_yes:<id>" / "bk_cancel:<id>".
+        if msg_type == "button":
+            payload = ((msg.get("button") or {}).get("payload") or "").strip()
+        elif msg_type == "interactive":
+            payload = str(((msg.get("interactive") or {}).get("button_reply") or {}).get("id") or "").strip()
+        else:
+            payload = ""
+        if payload.startswith("bk_"):
+            return bool(await booking_messages.handle_booking_button(db, tenant_id, phone, payload))
+        if msg_type in ("button", "interactive"):
+            return False
+        if msg_type == "text" and body and "bk" in body.lower():
+            return bool(await booking_messages.handle_booking_code(db, tenant_id, lead_id, phone, body))
+    except Exception as e:
+        logger.error(f"booking message handling failed tenant={tenant_id}: {type(e).__name__}: {e}")
+    return False
+
+
 async def _process_inbound_message_background(
     lead_id: str,
     tenant_id: str,
@@ -939,6 +965,20 @@ async def whatsapp_webhook(
                     # transcribed voice note, so it flows through unchanged --
                     # including mid-intake, where it can answer a field like
                     # "which area" with no field-name special-casing needed.
+                    # v9.2 Bookings: a 👍 on a booking reminder counts as "Yes, coming". Every other
+                    # reaction is still ignored, as before.
+                    if msg_type == "reaction":
+                        try:
+                            from app.services import booking_messages
+                            reaction = msg.get("reaction") or {}
+                            wa_from = msg.get("from", "")
+                            await booking_messages.handle_booking_reaction(
+                                db, tenant_id, f"+{wa_from}" if wa_from and not wa_from.startswith("+") else wa_from,
+                                str(reaction.get("message_id") or ""), str(reaction.get("emoji") or ""),
+                            )
+                        except Exception as e:
+                            logger.error(f"booking reaction handling failed tenant={tenant_id}: {type(e).__name__}")
+                        continue
                     if msg_type not in (
                         "text", "button", "interactive", "audio",
                         "image", "document", "video", "sticker", "location",
@@ -1188,8 +1228,7 @@ async def whatsapp_webhook(
                                         ).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
                                         logger.info(
                                             f"Google Ads referral: lead {lead_id} linked to "
-                                            f"campaign {campaign['id']} (tag={google_ref.campaign}, "
-                                            f"gclid={google_ref.gclid})"
+                                            f"campaign {campaign['id']} (tag={google_ref.campaign})"
                                         )
                             except Exception as gads_err:
                                 logger.warning(f"Google Ads attribution failed for lead {lead_id}: {gads_err}")
@@ -1197,6 +1236,15 @@ async def whatsapp_webhook(
                     already = db.table("messages").select("id").eq("meta_message_id", msg_id).eq("tenant_id", tenant_id).limit(1).execute()
                     if already.data:
                         continue
+
+                    # v9.2 QR & links: "(Q-7K2P)" at the end of a QR's first message. After the duplicate check, so a Meta retry is not a second chat. Counts the chat
+                    # for that QR; "Came from" is set on first contact only (never over an ad).
+                    if body and not ad_attributed and "(q-" in body.lower():
+                        try:
+                            from app.services.qr_links import handle_inbound_qr
+                            await asyncio.to_thread(handle_inbound_qr, db, tenant_id, lead_id, body, is_new_lead=not existing.data)
+                        except Exception as qr_err:
+                            logger.warning(f"QR attribution failed for lead {lead_id}: {qr_err}")
 
                     _is_first = (
                         db.table("messages")
@@ -1280,6 +1328,9 @@ async def whatsapp_webhook(
                                 db.table("leads").update({"outbound_no_reply_count": 0}).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
                             except Exception:
                                 pass
+
+                    if lead_id and await _handle_booking_message(db, tenant_id, lead_id, phone, msg_type, msg, body):
+                        continue
 
                     # Delegate state tracking, compaction, and reply to background task to avoid Meta timeout
                     background_tasks.add_task(

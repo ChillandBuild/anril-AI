@@ -4,6 +4,7 @@ import {
   BOX_KEYS,
   BOX_META,
   COMING_SOON_BOX_KEYS,
+  COMING_SOON_LISTS,
   MAX_BOXES,
   addBox,
   buildSavePayload,
@@ -68,9 +69,11 @@ describe("resolveBoxes", () => {
 describe("max 12 guard", () => {
   const twelve = BOX_KEYS.slice(0, 11) as HomeBoxKey[];
 
-  it("only 11 working boxes exist, so 12 can never be reached with real keys", () => {
-    expect(BOX_KEYS).toHaveLength(11);
+  it("12 working boxes exist, so the cap of 12 can now be reached with real keys", () => {
+    expect(BOX_KEYS).toHaveLength(12);
     expect(MAX_BOXES).toBe(12);
+    expect(addBox(BOX_KEYS.slice(0, 11), "bookings_today")).toEqual(BOX_KEYS);
+    expect(addBox(BOX_KEYS, "low_stock")).toEqual(BOX_KEYS);
   });
 
   it("canAddBox turns false at 12", () => {
@@ -124,7 +127,7 @@ describe("Target this month box", () => {
 
 describe("coming-soon keys", () => {
   it("are never selectable", () => {
-    expect(COMING_SOON_BOX_KEYS).toHaveLength(5);
+    expect(COMING_SOON_BOX_KEYS).toHaveLength(4);
     for (const key of COMING_SOON_BOX_KEYS) {
       expect(isBoxKey(key)).toBe(false);
       expect(BOX_KEYS).not.toContain(key);
@@ -186,5 +189,24 @@ describe("waitingFor", () => {
     expect(waitingFor("2026-11-18T10:00:00Z", now)).toBe("3d");
     expect(waitingFor("2026-11-21T10:00:00Z", now)).toBe("just now");
     expect(waitingFor(null, now)).toBe("");
+  });
+});
+
+describe("Bookings today box", () => {
+  it("is a working box now, not coming soon", () => {
+    expect(BOX_KEYS).toContain("bookings_today");
+    expect(isBoxKey("bookings_today")).toBe(true);
+    expect(BOX_META.bookings_today.label).toBe("Bookings today");
+    expect(COMING_SOON_BOX_KEYS).not.toContain("bookings_today");
+    expect(COMING_SOON_LISTS.map((l) => l.key)).not.toContain("bookings");
+  });
+  it("is kept only when this person may see it", () => {
+    const some = { available: ["hot_waiting", "bookings_today"] as HomeBoxKey[], defaults: ["hot_waiting"] as HomeBoxKey[] };
+    expect(resolveBoxes({ boxes: ["bookings_today", "hot_waiting"] as HomeBoxKey[] }, some)).toEqual(["bookings_today", "hot_waiting"]);
+    expect(resolveBoxes({ boxes: ["bookings_today", "hot_waiting"] as HomeBoxKey[] }, { available: ["hot_waiting"], defaults: ["hot_waiting"] })).toEqual(["hot_waiting"]);
+  });
+  it("saves like any other box and shows as a count", () => {
+    expect(buildSavePayload(["bookings_today"], { waiting: true, low_stock: true }).boxes).toEqual(["bookings_today"]);
+    expect(formatBoxValue({ value: 7, unit: "count" })).toBe("7");
   });
 });

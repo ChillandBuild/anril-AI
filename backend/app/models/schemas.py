@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 # --- Enums as Literals ---
-SourceType = Literal["whatsapp", "instagram", "facebook", "telegram", "upload", "csv", "manual", "indiamart", "justdial", "website", "api", "store", "meta_form"]
+SourceType = Literal["whatsapp", "instagram", "facebook", "telegram", "upload", "csv", "manual", "indiamart", "justdial", "website", "api", "store", "meta_form", "qr"]
 SegmentType = Literal["A", "B", "C", "D"]
 DirectionType = Literal["inbound", "outbound"]
 PlatformType = Literal["instagram", "facebook", "google"]
@@ -50,6 +50,7 @@ class Lead(LeadBase):
     template_name: Optional[str] = None
     tag_name: Optional[str] = None
     ad_campaign_name: Optional[str] = None
+    came_from: Optional[str] = None
     channel: Optional[str] = None
     model_config = {"from_attributes": True}
 

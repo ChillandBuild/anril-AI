@@ -3,7 +3,7 @@ import {
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
-  Truck,
+  Truck, CalendarClock, QrCode, MousePointerClick,
 } from "lucide-react";
 import {
   SETTINGS_HOME_HREF, SETTINGS_ITEMS, isSettingsPath, settingsItemVisible,
@@ -195,6 +195,26 @@ const META_ADS: NavLeaf = {
   icon: Megaphone,
   visible: (a) => a.isSubscribed && a.canAny(["meta_ads.view", "meta_ads.manage"]) && a.inboundOn,
   isActive: (p) => p.startsWith("/dashboard/meta-ads"),
+};
+
+const GOOGLE_ADS: NavLeaf = {
+  kind: "link",
+  key: "google-ads",
+  href: "/dashboard/google-ads",
+  label: "Google Ads",
+  icon: MousePointerClick,
+  visible: (a) => a.isSubscribed && a.canAny(["meta_ads.view", "meta_ads.manage"]) && a.inboundOn,
+  isActive: (p) => p.startsWith("/dashboard/google-ads"),
+};
+
+const BOOKINGS: NavLeaf = {
+  kind: "link",
+  key: "bookings",
+  href: "/dashboard/bookings",
+  label: "Bookings",
+  icon: CalendarClock,
+  visible: (a) => a.isSubscribed && a.canAny(["bookings.view", "bookings.manage"]),
+  isActive: (p) => p.startsWith("/dashboard/bookings"),
 };
 
 const prefixPage = (key: string, label: string, href: string, visible: NavPage["visible"]): NavPage => ({
@@ -463,6 +483,16 @@ const NUMBERS_POOL: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/numbers"),
 };
 
+const QR_LINKS: NavLeaf = {
+  kind: "link",
+  key: "qr-links",
+  href: "/dashboard/qr-links",
+  label: "QR & links",
+  icon: QrCode,
+  visible: (a) => a.isSubscribed && a.canAny(["numbers.view", "numbers.manage"]) && a.messagingOn,
+  isActive: (p) => p.startsWith("/dashboard/qr-links"),
+};
+
 /**
  * The last row of the menu. It stands for every page in the Settings list (see
  * SETTINGS_ITEMS) and keeps each page's own gate: it shows if the user may open
@@ -491,13 +521,13 @@ const SETTINGS_PAGES: readonly NavPage[] = [
 
 const SETTINGS = pagesLeaf({ key: "settings", label: "Settings", icon: Settings, pages: SETTINGS_PAGES });
 
-const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] };
+const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, BOOKINGS, META_ADS, GOOGLE_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES] };
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
 const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
-const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
+const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL, QR_LINKS] };
 
 /** The main menu below Home, top to bottom. */
 export const NAV_MENU: readonly NavMenuItem[] = [

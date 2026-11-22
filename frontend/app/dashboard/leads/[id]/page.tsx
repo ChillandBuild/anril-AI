@@ -36,6 +36,7 @@ const SOURCE_LABELS: Partial<Record<string, string>> = {
   facebook: "Facebook",
   telegram: "Telegram",
   meta_form: "Instant form",
+  qr: "QR",
   indiamart: "IndiaMART",
   justdial: "Justdial",
 };

@@ -1,8 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { CalendarCheck, ChevronDown, ChevronRight, Loader2, Receipt, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
+import useSWR from "swr";
 import { api, DealSummary, Lead } from "@/lib/api";
+import { bookingsApi } from "@/lib/bookingsApi";
+import { NewBookingDialog } from "@/app/dashboard/bookings/NewBookingDialog";
+import { istOf } from "@/app/dashboard/bookings/bookingsTime";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { formatRupees } from "@/components/deals/money";
@@ -60,6 +65,15 @@ export function CustomerActions({
   const { role, permissions, callerId } = useAuthRole();
   const canReply = role === "owner" || permissions.includes("conversations.reply");
   const canManageDeals = role === "owner" || permissions.includes("deals.manage");
+  const canSeeMoney = role === "owner" || permissions.includes("deals.view") || canManageDeals;
+  // Real bookings: only people who can make them ask, and only when at least one service is offered.
+  const canBook = role === "owner" || permissions.includes("bookings.manage");
+  const { data: bookingSetup } = useSWR(canBook ? "bookings/setup" : null, () => bookingsApi.setup(), {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const realBookings = canReply && canBook && !!bookingSetup && bookingSetup.services.some((s) => s.active);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookFor, setBookFor] = useState("");
   const [bookNote, setBookNote] = useState("");
@@ -71,6 +85,7 @@ export function CustomerActions({
 
   useEffect(() => {
     setBookingOpen(false);
+    setPickerOpen(false);
     setLostOpen(false);
   }, [lead.id]);
 
@@ -117,15 +132,25 @@ export function CustomerActions({
               </p>
               {lead.booking_note && <p className="truncate text-[11.5px] text-sky-800">{lead.booking_note}</p>}
             </div>
-            {canReply && (
-              <button
-                type="button"
-                onClick={() => void run("undo", () => api.chats.cancelBooking(lead.id), "Booking removed")}
-                disabled={busy !== null}
+            {realBookings ? (
+              // A real booking has a time held on a column: it is moved or cancelled in Bookings, never "removed" here.
+              <Link
+                href={`/dashboard/bookings${lead.booked_for && istOf(lead.booked_for) ? `?date=${istOf(lead.booked_for)?.date}` : ""}`}
                 className="shrink-0 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-sky-800 hover:bg-sky-100"
               >
-                Remove
-              </button>
+                Open in Bookings
+              </Link>
+            ) : (
+              canReply && (
+                <button
+                  type="button"
+                  onClick={() => void run("undo", () => api.chats.cancelBooking(lead.id), "Booking removed")}
+                  disabled={busy !== null}
+                  className="shrink-0 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-sky-800 hover:bg-sky-100"
+                >
+                  Remove
+                </button>
+              )
             )}
           </div>
         ) : bookingOpen ? (
@@ -168,7 +193,7 @@ export function CustomerActions({
         ) : (
           <button
             type="button"
-            onClick={() => setBookingOpen(true)}
+            onClick={() => (realBookings ? setPickerOpen(true) : setBookingOpen(true))}
             disabled={!canReply}
             title={canReply ? undefined : "You have read-only access to conversations"}
             className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-45"
@@ -287,6 +312,18 @@ export function CustomerActions({
         defaultSoldBy={lead.assigned_to ?? callerId}
         onRecorded={onDealsChanged}
       />
+      {pickerOpen && bookingSetup && (
+        <NewBookingDialog
+          setup={bookingSetup}
+          canSeeMoney={canSeeMoney}
+          prefill={{ phone: lead.phone ?? "", name: lead.name ?? "", leadId: lead.id, source: "chat" }}
+          onClose={() => setPickerOpen(false)}
+          onCreated={(b) => {
+            setPickerOpen(false);
+            onLeadUpdate?.({ ...lead, booked_at: lead.booked_at ?? new Date().toISOString(), booked_for: b.start_at });
+          }}
+        />
+      )}
     </div>
   );
 }

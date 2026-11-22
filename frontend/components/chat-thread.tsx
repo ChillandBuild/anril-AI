@@ -234,6 +234,14 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
 }
 
 // ─── Main ChatThread component ────────────────────────────────────────────────
+/** "from Google Ads · summer_sale" / "from Meta ad · …" / "from QR · …": the server sends came_from. */
+function cameFromLabel(lead: Lead): string | null {
+  const sent = lead.came_from;
+  if (sent) return sent;
+  if (lead.ad_campaign_name) return `from ${lead.ad_campaign_name}`;
+  return lead.ad_campaign_id ? "from an ad" : null;
+}
+
 export function ChatThread({
   lead,
   team = [],
@@ -665,10 +673,10 @@ export function ChatThread({
             {current.phone && current.name && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
             {current.phone && current.name && <span className="text-[#cbd5e1]">·</span>}
             <span className="whitespace-nowrap">{CHANNEL_LABEL[getChannel(current.source)]}</span>
-            {current.ad_campaign_id || current.ad_campaign_name ? (
+            {cameFromLabel(current) ? (
               <>
                 <span className="text-[#cbd5e1]">·</span>
-                <span className="truncate">from {current.ad_campaign_name || "a Meta ad"}</span>
+                <span className="truncate">{cameFromLabel(current)}</span>
               </>
             ) : null}
           </p>

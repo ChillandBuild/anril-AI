@@ -48,6 +48,14 @@ the first line:
 Read once per reply (cached 60 s per tenant, cleared when the owner saves). If the tables
 cannot be read, only the TODAY line is added. Test Anril uses the same function.
 
+**Bookings block (appended right after the Teach & offers blocks; text built in
+`services/booking_ai.py`, v9.2 #19).** Only when the business has Bookings set up: the booking
+link is on and at least one service is active. One paragraph:
+`BOOKINGS: customers can book a time themselves at this link: <FRONTEND_URL>/book/<token>
+(bookable: <up to 8 service names>). When someone wants to book, visit, or fix a time, send them
+this link…` and the reminder that the AI cannot see free times (it matches deal_engine's "You
+cannot see a diary or slots" rule). Cached 60 s per tenant; any read problem adds nothing.
+
 ---
 
 ## The prompt
