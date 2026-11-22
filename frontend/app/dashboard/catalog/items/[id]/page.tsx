@@ -82,6 +82,10 @@ export default function CatalogueItemPage() {
   const [description, setDescription] = useState("");
   const [ready, setReady] = useState(true);
   const [batches, setBatches] = useState(false);
+  // Barcodes: the maker's barcode (EAN) is typed here; Anril's own code is made when labels are printed.
+  const [ean, setEan] = useState("");
+  const [savedEan, setSavedEan] = useState("");
+  const [ownCode, setOwnCode] = useState<string | null>(null);
   const [openingStock, setOpeningStock] = useState("");
   // sizes x colours
   const [sizes, setSizes] = useState<string[]>([]);
@@ -111,8 +115,8 @@ export default function CatalogueItemPage() {
   const isProduct = itemType === "product";
 
   const formState = useCallback(() => JSON.stringify({
-    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, openingStock, sizes, colours, rowPrice, newStock,
-  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, openingStock, sizes, colours, rowPrice, newStock]);
+    name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, openingStock, sizes, colours, rowPrice, newStock,
+  }), [name, itemType, groupId, price, priceNote, gst, hsn, cost, lowAt, description, ready, batches, ean, openingStock, sizes, colours, rowPrice, newStock]);
 
   const fill = useCallback((d: CatalogItemDetail) => {
     setDetail(d);
@@ -147,7 +151,15 @@ export default function CatalogueItemPage() {
       snapshot.current = "";
       return;
     }
-    api.catalog.item(id).then(fill).catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't load this item"));
+    Promise.all([api.catalog.item(id), api.catalog.itemCodes(id).catch(() => ({ data: [] }))])
+      .then(([d, codes]) => {
+        const mine = codes.data.find((c) => !c.variant_id);
+        setEan(mine?.company ? mine.code : "");
+        setSavedEan(mine?.company ? mine.code : "");
+        setOwnCode(mine && !mine.company ? mine.code : null);
+        fill(d);
+      })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't load this item"));
   }, [id, isNew, fill]);
 
   // The first render after loading is the "saved" state; anything after is unsaved.
@@ -224,6 +236,11 @@ export default function CatalogueItemPage() {
         await api.catalog.saveVariants(item.id, { sizes: useGrid ? sizes : [], colours: useGrid ? colours : [], cells });
       }
       if (isProduct && batches !== (detail?.tracks_batches === true)) await api.catalog.setBatchTracking(item.id, batches);
+      if (isProduct && !useGrid && ean.trim() !== savedEan) {
+        await api.catalog.setCompanyCode(item.id, null, ean.trim());
+        setSavedEan(ean.trim());
+        if (ean.trim()) setOwnCode(null);
+      }
       toast.success(isNew ? "Item added" : "Saved");
       snapshot.current = "";
       if (isNew) {
@@ -417,6 +434,13 @@ export default function CatalogueItemPage() {
                   </span>
                 </span>
               </label>
+            )}
+            {isProduct && !hasGrid && (
+              <Field label="Company barcode (EAN)" className="mt-3"
+                hint={ownCode ? `Anril's own label code: ${ownCode}. Type the maker's barcode only if the item already has one printed.` : "Only if the maker printed one (8–14 digits). Otherwise Anril makes its own code when you print labels."}>
+                <input value={ean} disabled={ro} onChange={(e) => setEan(e.target.value.replace(/\D/g, "").slice(0, 14))} inputMode="numeric"
+                  placeholder="e.g. 8901030865278" className="h-10 w-full rounded-xl border border-border bg-white px-3 font-mono text-sm outline-none focus:border-primary" />
+              </Field>
             )}
           </Card>
 

@@ -159,7 +159,23 @@ def suppliers_view(db, tenant_id: str, now: datetime | None = None) -> dict:
         "bought_from": sum(1 for r in rows if r["bought_this_month_paise"]),
         "owe_paise": sum(r["owe_paise"] for r in rows),
         "owe_to": sum(1 for r in rows if r["owe_paise"]),
+        "stock_value_paise": stock_value(db, tenant_id),
     }
+
+
+def stock_value(db, tenant_id: str) -> int:
+    """What the stock on hand cost: each size/colour (or item without sizes) × its cost price."""
+    items = (db.table("catalog_items").select("id, stock_quantity, cost_price_paise").eq("tenant_id", tenant_id)
+             .gt("stock_quantity", 0).limit(10000).execute().data or [])
+    if not items:
+        return 0
+    cost = {i["id"]: int(i.get("cost_price_paise") or 0) for i in items}
+    variants = (db.table("catalog_item_variants").select("catalog_item_id, stock_quantity, cost_price_paise")
+                .eq("tenant_id", tenant_id).gt("stock_quantity", 0).limit(50000).execute().data or [])
+    with_sizes = {v["catalog_item_id"] for v in variants}
+    total = sum(int(v["stock_quantity"]) * int(v.get("cost_price_paise") or cost.get(v["catalog_item_id"], 0))
+                for v in variants)
+    return total + sum(int(i["stock_quantity"]) * cost[i["id"]] for i in items if i["id"] not in with_sizes)
 
 
 def record_payment(db, tenant_id: str, supplier_id: str, data: dict, user_id: str | None) -> dict:
@@ -209,11 +225,33 @@ def _resolve_line(db, tenant_id: str, line: dict) -> tuple[dict, dict | None, st
         if not rows:
             raise PurchaseError(f"{items[0]['name']}: that size or colour isn't on the item")
         variant = rows[0]
+    elif line.get("new_size") or line.get("new_colour"):
+        variant = _new_variant(db, tenant_id, items[0], line.get("new_size"), line.get("new_colour"))
     elif (db.table("catalog_item_variants").select("id").eq("catalog_item_id", item_id).eq("tenant_id", tenant_id)
           .limit(1).execute().data):
         raise PurchaseError(f"{items[0]['name']} has sizes and colours: pick one")
     label = items[0]["name"] + (f" · {variant_label(variant)}" if variant else "")
     return items[0], variant, label
+
+
+def _new_variant(db, tenant_id: str, item: dict, size, colour) -> dict:
+    """A size/colour the supplier's bill has but the item doesn't yet: added under the same item
+    (only for items that already have sizes/colours; its price is the same colour's, else the item's)."""
+    size, colour = _one_line(size)[:30] or None, _one_line(colour)[:30] or None
+    siblings = (db.table("catalog_item_variants").select("id, size, colour, price_paise, sort_order")
+                .eq("catalog_item_id", item["id"]).eq("tenant_id", tenant_id).limit(500).execute().data or [])
+    if not siblings:
+        raise PurchaseError(f"{item['name']} has no sizes or colours yet: add them on the item first")
+    same = next((v for v in siblings if (v.get("size") or "").lower() == (size or "").lower()
+                 and (v.get("colour") or "").lower() == (colour or "").lower()), None)
+    if same:
+        return same
+    price = next((v.get("price_paise") for v in siblings if colour and (v.get("colour") or "").lower() == colour.lower()
+                  and v.get("price_paise") is not None), None)
+    return db.table("catalog_item_variants").insert({
+        "tenant_id": tenant_id, "catalog_item_id": item["id"], "size": size, "colour": colour, "price_paise": price,
+        "stock_quantity": 0, "sort_order": max(int(v.get("sort_order") or 0) for v in siblings) + 1,
+    }).execute().data[0]
 
 
 def _place(db, tenant_id: str, place_id: str | None) -> str:
@@ -636,6 +674,8 @@ async def send_po(db, tenant_id: str, po_id: str, user_id: str | None) -> dict:
 
                 resp = await send_interactive_buttons(phone, text[:1024], buttons, tenant_id=tenant_id)
                 sid, via = ((resp or {}).get("messages") or [{}])[0].get("id"), "text"
+                if sid:
+                    await _send_po_pdf(db, tenant_id, phone, po_id)
             else:
                 from app.services.orders import _send_order_template
 
@@ -656,6 +696,26 @@ async def send_po(db, tenant_id: str, po_id: str, user_id: str | None) -> dict:
     db.table("purchase_orders").update({"status": "sent", "sent_at": _now().isoformat(), "sent_via": via or "share"}) \
         .eq("id", po_id).eq("tenant_id", tenant_id).execute()
     return result
+
+
+def po_pdf(db, tenant_id: str, po_id: str) -> tuple[bytes, str]:
+    from app.services.bill_files import purchase_order_pdf
+    from app.services.business_details import get_business_details
+
+    view = po_view(db, tenant_id, po_id)
+    return purchase_order_pdf(view, get_business_details(tenant_id, db) or {}), f"{view['po_number']}.pdf"
+
+
+async def _send_po_pdf(db, tenant_id: str, phone: str, po_id: str) -> None:
+    """The PO as a PDF right after the message (inside the 24-hour window only). Never blocks the send."""
+    try:
+        from app.services.meta_cloud import send_media_message, upload_media_to_meta
+
+        content, name = po_pdf(db, tenant_id, po_id)
+        media_id = await upload_media_to_meta(content, "application/pdf", name, tenant_id=tenant_id)
+        await send_media_message(phone, media_id=media_id, wa_type="document", filename=name, tenant_id=tenant_id)
+    except Exception as exc:
+        logger.warning("PO %s PDF to supplier failed: %s", po_id, exc)
 
 
 def button_po(interactive_id: str | None) -> tuple[str, str] | None:
@@ -713,6 +773,56 @@ def sweep_unanswered(db, now: datetime | None = None, limit: int = 200) -> int:
     return len(rows)
 
 
+async def remind_short(db, now: datetime | None = None, limit: int = 100) -> int:
+    """Part-received orders on their expected date: one reminder to the supplier for what is still to
+    come (a WhatsApp text inside the 24-hour window), else one bell to the owner to send it (Remind)."""
+    from app.config_dynamic import get_setting
+    from app.services.brain_digest import owner_user_ids
+    from app.services.call_details_share import window_open
+    from app.services.notify import notify_user
+    from app.services.orders import _first_name, _shop_name
+
+    now = now or _now()
+    today_ist = now.astimezone(IST).date().isoformat()
+    rows = (db.table("purchase_orders").select("id, tenant_id, number, supplier_id, need_by").eq("status", "part_received")
+            .is_("short_reminded_at", "null").not_.is_("need_by", "null").lte("need_by", today_ist)
+            .limit(limit).execute().data or [])
+    for po in rows:
+        tenant_id = po["tenant_id"]
+        short = [li for li in _po_lines(db, tenant_id, po["id"]) if int(li["qty_received"]) < int(li["qty_ordered"])]
+        # claim first: a second run (or an overlap) never reminds twice
+        claimed = (db.table("purchase_orders").update({"short_reminded_at": now.isoformat()}).eq("id", po["id"])
+                   .is_("short_reminded_at", "null").execute().data)
+        if not claimed or not short:
+            continue
+        sup = (db.table("suppliers").select("name, phone").eq("id", po["supplier_id"]).eq("tenant_id", tenant_id)
+               .limit(1).execute().data or [{}])[0]
+        number = po_number(po["number"])
+        text = (f"Vanakkam {_first_name(sup.get('name'))}, a reminder about {number} from {_shop_name(db, tenant_id)}. Still to come:\n"
+                + "\n".join(f"• {li['label']} × {int(li['qty_ordered']) - int(li['qty_received'])}" for li in short)
+                + "\nWhen can we expect them?")
+        sent = False
+        phone = sup.get("phone")
+        if phone and get_setting("meta_phone_number_id", tenant_id=tenant_id) and get_setting("meta_access_token", tenant_id=tenant_id):
+            lead = (db.table("leads").select("last_inbound_at").eq("tenant_id", tenant_id).eq("phone", phone)
+                    .limit(1).execute().data or [{}])[0]
+            if window_open(lead.get("last_inbound_at"), now):
+                try:
+                    from app.services.meta_cloud import send_text_message
+                    await send_text_message(phone, text, tenant_id=tenant_id)
+                    sent = True
+                except Exception as exc:
+                    logger.warning("Still-to-come reminder for %s failed: %s", number, exc)
+        pieces = sum(int(li["qty_ordered"]) - int(li["qty_received"]) for li in short)
+        for user_id in owner_user_ids(db, tenant_id):
+            notify_user(tenant_id, user_id, "purchase_order",
+                        f"{number}: {pieces} still to come" + (" (reminded)" if sent else ""),
+                        (f"Anril reminded {sup.get('name') or 'the supplier'} on WhatsApp." if sent else
+                         f"Send {sup.get('name') or 'the supplier'} a reminder: open the order and tap Remind."),
+                        db=db, push_url=f"/dashboard/purchases/orders/{po['id']}")
+    return len(rows)
+
+
 # ── reading a supplier bill photo ─────────────────────────────────────────────
 
 BILL_INSTRUCTION = (
@@ -747,12 +857,16 @@ def match_lines(db, tenant_id: str, lines: list[dict]) -> list[dict]:
         name = norm(raw.get("name"))
         item = next((i for i in items if norm(i["name"]) == name), None) or \
             next((i for i in items if name and (norm(i["name"]) in name or name in norm(i["name"]))), None)
-        variant = None
+        variant, new = None, None
         if item:
             mine = [v for v in variants if v["catalog_item_id"] == item["id"]]
             size, colour = norm(raw.get("size")), norm(raw.get("colour"))
-            variant = next((v for v in mine if norm(v.get("size")) == size and norm(v.get("colour")) == colour), None) or \
-                next((v for v in mine if (size and norm(v.get("size")) == size) or (colour and norm(v.get("colour")) == colour)), None)
+            # Only a size/colour that fits everything the bill says; never "same colour, another size".
+            fits = [v for v in mine if (size or colour) and (not size or norm(v.get("size")) == size)
+                    and (not colour or norm(v.get("colour")) == colour)]
+            variant = fits[0] if len(fits) == 1 else None
+            if mine and not fits and (size or colour):  # a new size/colour: added under this item on Save
+                new = {"size": _one_line(raw.get("size"))[:30] or None, "colour": _one_line(raw.get("colour"))[:30] or None}
         try:
             qty = max(0, int(raw.get("qty") or 0))
             cost = max(0, int(round(float(raw.get("unit_cost") or 0) * 100)))
@@ -761,7 +875,9 @@ def match_lines(db, tenant_id: str, lines: list[dict]) -> list[dict]:
         out.append({
             "read_name": _one_line(raw.get("name"))[:120], "catalog_item_id": item["id"] if item else None,
             "variant_id": variant["id"] if variant else None,
-            "label": (item["name"] + (f" · {variant_label(variant)}" if variant else "")) if item else None,
+            "label": (item["name"] + (f" · {variant_label(variant)}" if variant else
+                                      f" · {variant_label(new)} (new)" if new else "")) if item else None,
+            "new_variant": new,
             "qty_good": qty, "unit_cost_paise": cost,
             "gst_rate": raw.get("gst_rate") if raw.get("gst_rate") is not None else (item or {}).get("gst_rate") or 0,
         })

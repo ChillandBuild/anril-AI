@@ -39,6 +39,23 @@ async def save_places(payload: dict = Body(...), ctx: dict = Depends(require_man
     return {"data": rows}
 
 
+@router.get("/places/staff", dependencies=[Depends(require_permission("team.view"))])
+async def list_staff(tenant_id: str = Depends(get_tenant_id)):
+    return {"data": await asyncio.to_thread(sp.staff, get_supabase(), tenant_id)}
+
+
+@router.put("/places/staff")
+async def set_staff(payload: dict = Body(...), ctx: dict = Depends(require_permission("team.manage"))):
+    """Who works at which place: team.manage (it limits what a teammate can receive and bill from)."""
+    db = get_supabase()
+    try:
+        await asyncio.to_thread(sp.set_staff_place, db, ctx["tenant_id"], payload.get("user_id"), payload.get("place_id") or None)
+    except sp.StockPlaceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _audit(db, ctx, "team.place_set", payload.get("user_id"), {"place_id": payload.get("place_id")})
+    return {"ok": True}
+
+
 @router.post("/moves")
 async def send_move(payload: dict = Body(...), ctx: dict = Depends(require_manage)):
     db = get_supabase()
@@ -55,7 +72,7 @@ async def _finish(move_id: str, ctx: dict, received: bool) -> dict:
     db = get_supabase()
     try:
         done = await asyncio.to_thread(sp.finish_move, db, ctx["tenant_id"], move_id, received=received,
-                                       user_id=ctx.get("user_id"), user_name=actor_name(db, ctx))
+                                       user_id=ctx.get("user_id"), user_name=actor_name(db, ctx), role=ctx.get("role"))
     except sp.StockPlaceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not done:

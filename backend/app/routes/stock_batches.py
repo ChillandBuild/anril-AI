@@ -4,12 +4,14 @@ import asyncio
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_permission
+from app.dependencies.tenant import get_tenant_id, require_any_permission, require_permission
 from app.services import stock_batches as sb
 from app.services.audit_log import record_audit_event
 
-router = APIRouter(dependencies=[Depends(require_permission("catalog.view"))])
+router = APIRouter()
+require_view = require_permission("catalog.view")
 require_manage = require_permission("catalog.manage")
+require_billing = require_any_permission("catalog.view", "deals.manage")  # New bill picks a batch
 
 
 def _audit(db, ctx: dict, action: str, target_id: str, metadata: dict) -> None:
@@ -24,12 +26,12 @@ async def _run(fn, *args, **kwargs):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/batches")
+@router.get("/batches", dependencies=[Depends(require_view)])
 async def overview(tenant_id: str = Depends(get_tenant_id)):
     return await _run(sb.overview, get_supabase(), tenant_id)
 
 
-@router.get("/items/{item_id}/batches")
+@router.get("/items/{item_id}/batches", dependencies=[Depends(require_billing)])
 async def item_batches(item_id: str, variant_id: str | None = None, tenant_id: str = Depends(get_tenant_id)):
     """Sellable batches for one item / size-colour, in the order selling takes them (bill line pick)."""
     if not sb._UUID.fullmatch(item_id) or (variant_id and not sb._UUID.fullmatch(variant_id)):

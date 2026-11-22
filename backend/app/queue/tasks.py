@@ -41,6 +41,7 @@ RETRY_CLASS: dict[str, str] = {
     "inbound-stopped-replying": "A",
     "unmarked-bookings": "C",
     "batch-expiry": "C",
+    "expense-repeats": "A",
     "order-payment-reminders": "C",
     "meta-catalogue-sync": "A",
 }
@@ -294,6 +295,15 @@ def batch_expiry(timestamp: int) -> None:
     """Batches & expiry: owners hear about expired and soon-expiring batches at 9:30 AM IST."""
     from app.services.stock_batches import ring_expiry_bells
     ring_expiry_bells()
+
+
+# Class A: each repeat is added once a month (unique index), so a re-run adds nothing twice.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(6, 15), periodic_id="expense-repeats")
+@queue_app.task(name="expense-repeats", **_one_at_a_time("expense-repeats"), queue="maintenance")
+def expense_repeats(timestamp: int) -> None:
+    """Expenses: rent, salary… added by themselves on their day each month (6:15 AM IST)."""
+    from app.services.expenses import run_repeats
+    run_repeats()
 
 
 @queue_app.periodic(cron="30 3 * * 1", periodic_id="brain-weekly-digest")  # Monday 09:00 IST

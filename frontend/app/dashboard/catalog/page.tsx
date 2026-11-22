@@ -12,13 +12,15 @@ import { AiRulesTab } from "./AiRulesTab";
 import { StockAsksTab } from "./StockAsksTab";
 import { ShopGodownTab } from "./ShopGodownTab";
 import { BatchesTab } from "./BatchesTab";
+import { StockCountTab } from "./StockCountTab";
 
-type CatalogTab = "items" | "media" | "batches" | "places" | "ai-rules" | "asked";
+type CatalogTab = "items" | "media" | "batches" | "count" | "places" | "ai-rules" | "asked";
 
 const TABS: { id: CatalogTab; label: string; icon: string }[] = [
   { id: "items", label: "Items", icon: "🏷️" },
   { id: "media", label: "Media", icon: "🖼️" },
   { id: "batches", label: "Batches & expiry", icon: "⏳" },
+  { id: "count", label: "Stock count", icon: "🔢" },
   { id: "places", label: "Shop & godown", icon: "🏬" },
   { id: "ai-rules", label: "AI rules", icon: "🤖" },
   { id: "asked", label: "Asked but out of stock", icon: "📉" },
@@ -91,6 +93,10 @@ export default function CatalogPage() {
       {tab === "items" && <ConflictsLink />}
       {tab === "items" && <ItemsTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "media" && <MediaTab canManage={canManageCatalog} />}
+      {tab === "count" && (
+        <StockCountTab toolbarSlot={toolbarSlot} isOwner={role === "owner"}
+          canCount={role === "owner" || ["catalog.manage", "purchases.manage", "deals.manage"].some((p) => permissions.includes(p))} />
+      )}
       {tab === "batches" && <BatchesTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "places" && <ShopGodownTab canManage={canManageCatalog} toolbarSlot={toolbarSlot} />}
       {tab === "ai-rules" && <AiRulesTab canManage={canManageCatalog} />}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
 import { Download, Loader2, MessageCircle, Plus, Send, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, api, getAuthHeaders } from "@/lib/api";
@@ -283,6 +284,7 @@ function maskPhone(phone: string | null): string {
 
 function SuppliersTab({ canManage }: { canManage: boolean }) {
   const { data, error, mutate } = useSuppliers();
+  const [view, setView] = useState<"suppliers" | "corrections">("suppliers");
   const [adding, setAdding] = useState(false);
   const [paying, setPaying] = useState<string | null>(null);
   if (error) return <ErrorBox onRetry={() => mutate()} />;
@@ -317,10 +319,24 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
           sub={`${data.bought_from} ${data.bought_from === 1 ? "supplier" : "suppliers"}`} />
         <StatCard icon="⏳" label="You owe" tone={data.owe_paise ? "red" : "plain"} value={rupees(data.owe_paise)}
           sub={`${data.owe_to} ${data.owe_to === 1 ? "supplier" : "suppliers"}`} />
-        <StatCard icon="🏭" label="Suppliers" value={String(data.suppliers.length)} sub="you buy from" />
+        <StatCard icon="📦" label="Stock value" value={rupees(data.stock_value_paise ?? 0)} sub="at cost price" />
         <StatCard icon="📉" label="Low stock" tone={data.low_stock ? "amber" : "plain"}
           value={`${data.low_stock} ${data.low_stock === 1 ? "item" : "items"}`} sub="reorder suggested" />
       </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setView("suppliers")} aria-pressed={view === "suppliers"}
+          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "suppliers" ? "bg-[#0A1528] text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
+          Suppliers · {data.suppliers.length}
+        </button>
+        <Link href="/dashboard/purchases?tab=stock-in" className="inline-flex h-9 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-low">
+          Stock-in history
+        </Link>
+        <button type="button" onClick={() => setView("corrections")} aria-pressed={view === "corrections"}
+          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "corrections" ? "bg-[#0A1528] text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
+          Stock corrections
+        </button>
+      </div>
+      {view === "corrections" ? <StockCorrections /> : <>
       {adding && <SupplierForm onClose={() => setAdding(false)} onSaved={() => { setAdding(false); mutate(); }} />}
       <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
         <table className="w-full min-w-[900px] text-sm">
@@ -378,7 +394,50 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
       <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm text-ink">
         Reorder opens WhatsApp on your phone with the list of low-stock items for that supplier.
       </p>
+      </>}
     </>
+  );
+}
+
+const CORRECTION_LABEL: Record<string, string> = {
+  adjustment: "Corrected", count: "Stock count", write_off: "Removed", supplier_return: "Returned to supplier",
+};
+
+/* Every stock change that isn't a sale, a purchase or a move: corrections, counts, write-offs, returns. */
+function StockCorrections() {
+  const { data, error, mutate } = useSWR("stock/corrections", () => api.catalog.stockCorrections());
+  if (error) return <ErrorBox onRetry={() => mutate()} />;
+  if (!data) return <AiraLoader inline className="min-h-[30vh]" />;
+  return (
+    <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+            <th className="px-4 py-3">Item</th>
+            <th className="px-3 py-3">Change</th>
+            <th className="px-3 py-3">Kind</th>
+            <th className="px-3 py-3">Why</th>
+            <th className="px-3 py-3">By</th>
+            <th className="px-3 py-3">When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.data.length === 0 && (
+            <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">No corrections yet. Counts, write-offs and corrected stock show here.</td></tr>
+          )}
+          {data.data.map((r, i) => (
+            <tr key={`${r.at}-${i}`} className="border-b border-border-subtle last:border-b-0">
+              <td className="px-4 py-3 font-semibold text-ink">{r.name}{r.variant_label ? ` · ${r.variant_label}` : ""}</td>
+              <td className={cn("px-3 py-3 font-bold tabular-nums", r.delta < 0 ? "text-rose-700" : "text-emerald-700")}>{r.delta > 0 ? `+${r.delta}` : r.delta}</td>
+              <td className="px-3 py-3 text-ink">{CORRECTION_LABEL[r.reason] ?? r.reason}</td>
+              <td className="px-3 py-3 text-ink-muted">{r.note ?? "—"}</td>
+              <td className="px-3 py-3 text-ink">{r.by ?? "—"}</td>
+              <td className="px-3 py-3 text-ink-muted">{new Date(r.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

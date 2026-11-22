@@ -151,6 +151,12 @@ def get_po(po_id: str, ctx: dict = Depends(require_read)):
     return _run(svc.po_view, get_supabase(), ctx["tenant_id"], _id(po_id, "Purchase order"))
 
 
+@router.get("/orders/{po_id}/pdf")
+def po_pdf(po_id: str, ctx: dict = Depends(require_read)):
+    content, name = _run(svc.po_pdf, get_supabase(), ctx["tenant_id"], _id(po_id, "Purchase order"))
+    return Response(content, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @router.put("/orders/{po_id}")
 def update_po(po_id: str, payload: dict, ctx: dict = Depends(require_manage)):
     return _run(svc.save_po, get_supabase(), ctx["tenant_id"], payload, ctx.get("user_id"), _id(po_id, "Purchase order"))

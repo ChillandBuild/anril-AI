@@ -181,3 +181,50 @@ class TestWhatTheAiSays:
         db.tables["stock_places"] = []
         assert sp.elsewhere_notes(db, T, [ITEM]) == {}
         assert db.rows("stock_places") == []
+
+
+class TestStaffTiedToAPlace:
+    STAFF = "ffffffff-0000-0000-0000-000000000001"
+    MOVE = "eeeeeeee-0000-0000-0000-000000000009"
+
+    def _setup(self, db, place):
+        db.add("tenant_users", tenant_id=T, user_id=self.STAFF, role="member", full_name="Bala", place_id=place)
+        db.add("stock_moves", id=self.MOVE, tenant_id=T, from_place_id=SHOP, to_place_id=GD, status="on_the_way")
+        db.rpc_handlers["finish_stock_move"] = lambda p: True
+
+    def test_godown_staff_receive_moves_to_the_godown_only(self, db):
+        self._setup(db, SHOP)
+        with pytest.raises(sp.StockPlaceError, match="other place"):
+            sp.finish_move(db, T, self.MOVE, received=True, user_id=self.STAFF, user_name="Bala")
+        assert sp.finish_move(db, T, self.MOVE, received=False, user_id=self.STAFF, user_name="Bala")  # it left their shop
+        assert sp.finish_move(db, T, self.MOVE, received=True, user_id=self.STAFF, user_name="Owner", role="owner")
+
+    def test_staff_with_no_place_do_everything(self, db):
+        self._setup(db, None)
+        assert sp.finish_move(db, T, self.MOVE, received=True, user_id=self.STAFF, user_name="Bala")
+
+    def test_setting_a_place_checks_both_belong_here(self, db):
+        self._setup(db, None)
+        sp.set_staff_place(db, T, self.STAFF, GD)
+        assert sp.staff_place(db, T, self.STAFF) == GD
+        with pytest.raises(sp.StockPlaceError, match="place again"):
+            sp.set_staff_place(db, T, self.STAFF, "bbbbbbbb-0000-0000-0000-00000000dead")
+        with pytest.raises(sp.StockPlaceError, match="teammate again"):
+            sp.set_staff_place(db, T, "ffffffff-0000-0000-0000-00000000dead", GD)
+
+    def test_a_counter_bill_made_by_godown_staff_starts_at_the_godown(self):
+        db = MagicMock()
+
+        def table(name):
+            q = MagicMock()
+            data = {"deal_items": [{"id": "li-1", "catalog_item_id": ITEM, "variant_id": None, "name": "K", "qty": 1}],
+                    "deals": [{"channel": "store", "place_id": GD}]}.get(name, [])
+            for m in ("select", "eq", "order", "limit", "in_"):
+                getattr(q, m).return_value = q
+            q.execute.return_value.data = data
+            return q
+
+        db.table.side_effect = table
+        db.rpc.return_value.execute.return_value.data = [{"ok": True, "tracked": True, "quantity_after": 1}]
+        deals._deduct_for_deal(T, "deal-1", None, db, direction=-1)
+        assert db.rpc.call_args[0][1]["p_first_place"] == GD

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Loader2, Plus, Search, Sparkles, Upload } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Printer, Search, Sparkles, Upload } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ItemThumb } from "./ItemThumb";
@@ -202,6 +202,12 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
             <Link href="/dashboard/catalog/price-list"
               className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-low">
               <Upload size={15} /> Upload price list
+            </Link>
+          )}
+          {canManage && (
+            <Link href="/dashboard/catalog/labels"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-low">
+              <Printer size={15} /> Barcode labels
             </Link>
           )}
           {canManage && (

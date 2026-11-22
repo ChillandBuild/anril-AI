@@ -96,6 +96,23 @@ it); Return to supplier = stock out AND what you owe that supplier goes down; on
 - **Alerts:** one bell a day to owners when something expired or expires in 30 days; Day closing gets an
   "Expiring" block.
 
+## The rest, decided with Prem (2026-11-22): Barcodes → Stock count → Expenses → gaps
+- **Barcodes (311):** a code per item and size/colour (own short code like DS-KP-RM, made by itself; a company
+  EAN typed on the item is kept and never printed). Catalogue → Barcode labels: what to print (today's stock in /
+  pick items / items with no barcode yet), size (38×25 roll, 50×25 roll, A4 65 per page), what shows; prints from the
+  browser. Scan (USB scanner or phone camera) on New bill, Stock in and Stock count.
+- **Stock count (312):** a count per place with sections; staff count by scanning or typing; system vs counted vs
+  difference, who counted, a reason per difference; bills during the count are allowed for by themselves; Pause;
+  **Finish and fix stock** = owner only, each change with its reason (reason `count`), loss = "Stock loss".
+  Purchases → Suppliers gets Stock value, Stock-in history and Stock corrections.
+- **Expenses (313):** own tab; quick add (Rent, Salary, Electricity, Transport, Tea & food, Other; cash/UPI/bank;
+  bill photo); rent and salary added by themselves each month on their date; purchases, supplier payments, Meta ads
+  and the Anril plan added by themselves; Real profit = sales − refunds − cost of items sold − expenses;
+  **Send month to accountant** = one Excel file. Day closing's cash expenses are the same records.
+- **Gaps:** PO as a PDF to the supplier; a reminder to the supplier for pieces still to come; the bill photo adds a
+  new size/colour under the same item (and never falls back to another size); staff tied to a place (Team & roles:
+  their bills take from it, they receive moves to it).
+
 ## Rules for every phase
 - Customer-facing words in English / Tamil / Tanglish and editable; dashboard copy plain English; "Anril" only.
 - Settings apply on Save; header shows "Catalogue / <tab>"; RLS member-select on every new table; tenant_id on

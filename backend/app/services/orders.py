@@ -1104,6 +1104,19 @@ def _check_stock(db, tenant_id: str, lines: list[dict]) -> list[dict]:
     return short
 
 
+def _staff_place(db, tenant_id: str, user_id: str | None) -> str | None:
+    """The place a teammate works at (Team: staff tied to a place, migration 314); None = the bill place."""
+    if not user_id:
+        return None
+    try:
+        rows = (db.table("tenant_users").select("place_id").eq("tenant_id", tenant_id).eq("user_id", user_id)
+                .limit(1).execute().data or [])
+    except Exception:
+        return None
+    place = rows[0].get("place_id") if rows else None
+    return place if isinstance(place, str) else None
+
+
 async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = None, sender: dict | None = None) -> dict:
     """The shop counter. data:
        mode "now" (customer takes it) | "later" (pickup or courier, maybe an advance)
@@ -1170,6 +1183,7 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         "customer_name": (data.get("name") or "").strip()[:120] or None,
         "sold_by": data.get("sold_by") or None, "sold_by_ai": bool(data.get("sold_by_ai")) and not data.get("sold_by"),
         "created_by": user_id, "ready_by": ready_by, "notes": (data.get("notes") or "").strip()[:2000] or None,
+        **({"place_id": staff_place} if (staff_place := _staff_place(db, tenant_id, user_id)) else {}),
         "bill_token": secrets.token_urlsafe(16), "advance_note": advance_note,
     }
     deal = db.table("deals").insert(row).execute().data[0]
@@ -1229,8 +1243,9 @@ async def send_due_reminders(db=None, now: datetime | None = None, limit: int = 
     except Exception as e:
         logger.warning(f"Quote reminders/expiry failed: {e}")
     try:
-        from app.services.purchases import sweep_unanswered
+        from app.services.purchases import remind_short, sweep_unanswered
         sweep_unanswered(db, now)  # purchase orders a supplier hasn't answered in 2 days
+        await remind_short(db, now)  # pieces still to come, on the expected date
     except Exception as e:
         logger.warning(f"Purchase order reminders failed: {e}")
     rows = (
