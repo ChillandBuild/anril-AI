@@ -44,7 +44,8 @@ def operator_me(user: dict = Depends(get_current_user)):
         .maybe_single()
         .execute()
     )
-    if not result.data:
+    # No matching row comes back as None, not as an object with empty .data.
+    if not result or not result.data:
         raise HTTPException(status_code=403, detail="Access denied.")
     return {"is_system_admin": True, "user_id": user["user_id"]}
 
