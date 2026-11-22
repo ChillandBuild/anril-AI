@@ -3,9 +3,13 @@ import {
   Headset,
   Megaphone,
   RadioTower,
+  Receipt,
   ShieldCheck,
   Sparkles,
+  Target,
+  Type,
   UserCircle,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import type { NavAccess } from "@/components/nav/navSections";
@@ -22,6 +26,8 @@ export type SettingsNavItem = {
   entitlement?: "notifications" | "claude";
   /** Any of these permissions opens the page (owners always pass). */
   permissionAny: readonly string[];
+  /** Open to everyone logged in, whatever their permissions (Text size). The subscription rule still applies. */
+  openToAll?: true;
   /** The page needs an active subscription. False only for Plans & subscription, so unsubscribed users can still pay. */
   needsSubscription: boolean;
 };
@@ -48,8 +54,13 @@ const settingsPage = (
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
   settingsPage("/dashboard/settings/account", UserCircle, "Business details", "My business"),
   settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "My business", "claude"),
+  settingsPage("/dashboard/settings/payments", Wallet, "Payments & advance", "My business"),
+  settingsPage("/dashboard/settings/target", Target, "Target & profit", "My business"),
+  // Every person picks their own text size, telecallers included, so this row has no permission gate.
+  { href: "/dashboard/settings/display", icon: Type, label: "Text size", group: "My business", permissionAny: [], openToAll: true, needsSubscription: true },
   settingsPage("/dashboard/settings/connect-channels", RadioTower, "Channels", "Connections"),
   settingsPage("/dashboard/settings/telecalling-behavior", Headset, "Calling", "Connections"),
+  settingsPage("/dashboard/settings/meta-charges", Receipt, "Limits & Meta charges", "Connections"),
   { href: ROLES_HREF, icon: ShieldCheck, label: "Team & roles", group: "Team & roles", permissionAny: ROLES_PERMS, needsSubscription: true },
   settingsPage("/dashboard/settings/notifications", Megaphone, "Alerts", "Alerts & automations", "notifications"),
   { href: SUBSCRIPTION_HREF, icon: CreditCard, label: "Plans & subscription", group: null, permissionAny: SUBSCRIPTION_PERMS, needsSubscription: false },
@@ -60,7 +71,7 @@ export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["My business", "Connection
 
 /** One plain line per group, shown on its Settings home card. */
 export const SETTINGS_GROUP_INFO: Record<SettingsGroup, { description: string }> = {
-  "My business": { description: "Your business name, address and tax details." },
+  "My business": { description: "Business details, payments, your target and text size." },
   Connections: { description: "Connect your messaging channels and set how calling works." },
   "Team & roles": { description: "Add your team and choose what each person can see." },
   "Alerts & automations": { description: "Choose which alerts reach you, and where." },
@@ -103,7 +114,7 @@ export function getVisibleSettingsItems(purchasedFeatures: string[], claudeOn = 
 
 /** May this user open the page? Gate only (no entitlements): the desktop rule, subscription included. */
 export function settingsItemVisible(item: SettingsNavItem, access: NavAccess): boolean {
-  return (!item.needsSubscription || access.isSubscribed) && access.canAny([...item.permissionAny]);
+  return (!item.needsSubscription || access.isSubscribed) && (item.openToAll === true || access.canAny([...item.permissionAny]));
 }
 
 /** Desktop: the items this user sees, in list order. */
@@ -120,7 +131,7 @@ export function settingsItemsForMember(
   role: string | null, permissions: string[], purchasedFeatures: string[], claudeOn: boolean,
 ): SettingsNavItem[] {
   return getVisibleSettingsItems(purchasedFeatures, claudeOn).filter(
-    (item) => role === "owner" || item.permissionAny.some((permission) => permissions.includes(permission)),
+    (item) => role === "owner" || item.openToAll === true || item.permissionAny.some((permission) => permissions.includes(permission)),
   );
 }
 

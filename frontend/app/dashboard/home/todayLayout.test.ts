@@ -66,10 +66,10 @@ describe("resolveBoxes", () => {
 });
 
 describe("max 12 guard", () => {
-  const twelve = BOX_KEYS.slice(0, 10) as HomeBoxKey[];
+  const twelve = BOX_KEYS.slice(0, 11) as HomeBoxKey[];
 
-  it("only 10 working boxes exist, so 12 can never be reached with real keys", () => {
-    expect(BOX_KEYS).toHaveLength(10);
+  it("only 11 working boxes exist, so 12 can never be reached with real keys", () => {
+    expect(BOX_KEYS).toHaveLength(11);
     expect(MAX_BOXES).toBe(12);
   });
 
@@ -95,9 +95,36 @@ describe("max 12 guard", () => {
   });
 });
 
+describe("Target this month box", () => {
+  it("is a working box now, and profit stays coming soon", () => {
+    expect(BOX_KEYS).toContain("target_month");
+    expect(isBoxKey("target_month")).toBe(true);
+    expect(BOX_META.target_month.label).toBe("Target this month");
+    expect(COMING_SOON_BOX_KEYS).not.toContain("target_month");
+    expect(COMING_SOON_BOX_KEYS).toContain("profit_month");
+  });
+
+  it("can be added and saved like any other box", () => {
+    expect(addBox([], "target_month")).toEqual(["target_month"]);
+    expect(buildSavePayload(["target_month", "hot_waiting"], { waiting: true, low_stock: true }).boxes).toEqual(["target_month", "hot_waiting"]);
+  });
+
+  it("is kept by resolveBoxes only when this person may see it", () => {
+    const withTarget = { available: ["hot_waiting", "target_month"] as HomeBoxKey[], defaults: ["hot_waiting"] as HomeBoxKey[] };
+    expect(resolveBoxes({ boxes: ["target_month", "hot_waiting"] as HomeBoxKey[] }, withTarget)).toEqual(["target_month", "hot_waiting"]);
+    expect(resolveBoxes({ boxes: ["target_month", "hot_waiting"] as HomeBoxKey[] }, { available: ["hot_waiting"] as HomeBoxKey[], defaults: ["hot_waiting"] as HomeBoxKey[] })).toEqual(["hot_waiting"]);
+  });
+
+  it("shows money for the owner, a percent for the team, and Set a target when none", () => {
+    expect(formatBoxValue({ value: 18_600_000, unit: "paise" })).toBe("₹1,86,000");
+    expect(formatBoxValue({ value: 93, unit: "percent" })).toBe("93%");
+    expect(formatBoxValue({ value: 0, unit: "set_target" })).toBe("Set a target");
+  });
+});
+
 describe("coming-soon keys", () => {
   it("are never selectable", () => {
-    expect(COMING_SOON_BOX_KEYS).toHaveLength(6);
+    expect(COMING_SOON_BOX_KEYS).toHaveLength(5);
     for (const key of COMING_SOON_BOX_KEYS) {
       expect(isBoxKey(key)).toBe(false);
       expect(BOX_KEYS).not.toContain(key);

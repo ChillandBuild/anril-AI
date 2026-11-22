@@ -316,6 +316,49 @@ async def _dispatch_alerts(
             })
 
 
+_HOT_BELL_DEDUPE_MINUTES = 60
+
+
+def notify_owners_lead_hot(db, tenant_id: str, lead: dict) -> None:
+    """Put a "<name> is Hot" row in every owner's bell when a Hot WhatsApp alert goes out.
+
+    One unread/recent row per lead per owner within an hour. Bell only (the WhatsApp
+    message is the push). Never raises.
+    """
+    try:
+        lead_id = lead.get("id")
+        if not lead_id:
+            return
+        owners = (
+            db.table("tenant_users").select("user_id")
+            .eq("tenant_id", tenant_id).eq("role", "owner").limit(20).execute()
+        )
+        owner_ids = [o["user_id"] for o in (owners.data or []) if o.get("user_id")]
+        if not owner_ids:
+            return
+        tag = f"[lead_id:{lead_id}]"
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=_HOT_BELL_DEDUPE_MINUTES)).isoformat()
+        recent = (
+            db.table("app_notifications").select("user_id")
+            .eq("tenant_id", tenant_id).eq("type", "lead_hot")
+            .gte("created_at", cutoff).like("message", f"%{tag}%")
+            .limit(50).execute()
+        )
+        already = {r.get("user_id") for r in (recent.data or [])}
+        name = (lead.get("name") or "").strip() or "A lead"
+        from app.services.notify import notify_user
+        for uid in owner_ids:
+            if uid in already:
+                continue
+            notify_user(
+                tenant_id, uid, "lead_hot", f"{name} is Hot",
+                f"{name} just turned Hot. Reach out now. {tag}",
+                db=db, push_url=f"/dashboard/conversations?lead={lead_id}", push=False,
+            )
+    except Exception:
+        logger.exception("lead_hot bell row failed for tenant %s", tenant_id)
+
+
 def queue_admin_whatsapp_alert(
     db,
     tenant_id: str,
@@ -512,6 +555,9 @@ async def process_due_whatsapp_alerts() -> None:
                 db.table("pending_whatsapp_alerts").update(
                     {"status": "sent"}
                 ).eq("id", alert_id).execute()
+
+                if to_segment == "A":  # Hot
+                    notify_owners_lead_hot(db, tenant_id, lead)
 
             except Exception as e:
                 logger.exception("Failed to process pending alert %s", alert_id)

@@ -45,7 +45,7 @@ export type BoxMeta = {
   tint: string;
 };
 
-/** The 10 working boxes, in default priority order. */
+/** The 11 working boxes, in default priority order. */
 export const BOX_KEYS: HomeBoxKey[] = [
   "money_in_today",
   "new_enquiries_today",
@@ -56,6 +56,7 @@ export const BOX_KEYS: HomeBoxKey[] = [
   "ads_today",
   "quotes_open",
   "won_month",
+  "target_month",
   "low_stock",
 ];
 
@@ -69,6 +70,7 @@ export const BOX_META: Record<HomeBoxKey, BoxMeta> = {
   ads_today: { label: "Ads today", icon: Megaphone, group: "leads", module: "Ads", tint: "bg-indigo-50 text-indigo-700" },
   quotes_open: { label: "Quotes not confirmed", icon: ReceiptText, group: "leads", module: "Commerce", tint: "bg-teal-50 text-teal-700" },
   won_month: { label: "Won this month", icon: Trophy, group: "leads", module: "Leads", tint: "bg-yellow-50 text-yellow-700" },
+  target_month: { label: "Target this month", icon: Target, group: "money", module: "Settings", tint: "bg-lime-50 text-lime-700" },
   low_stock: { label: "Low stock", icon: Package, group: "work", module: "Catalogue", tint: "bg-stone-100 text-stone-700" },
 };
 
@@ -80,7 +82,6 @@ export function isBoxKey(key: string): key is HomeBoxKey {
 export const COMING_SOON_BOXES: { key: string; label: string; icon: LucideIcon; group: BoxGroup; module: string }[] = [
   { key: "expenses_today", label: "Expenses today", icon: HandCoins, group: "money", module: "Commerce" },
   { key: "profit_month", label: "Profit this month (owner)", icon: TrendingUp, group: "money", module: "Reports" },
-  { key: "target_month", label: "Target this month", icon: Target, group: "money", module: "Reports" },
   { key: "bookings_today", label: "Bookings today", icon: CalendarCheck, group: "work", module: "Engage" },
   { key: "feedback_week", label: "Feedback this week", icon: Star, group: "work", module: "Customers" },
   { key: "renewals_due", label: "Renewals due", icon: CalendarClock, group: "work", module: "Customers" },
@@ -172,6 +173,9 @@ export function formatRupees(paise: number | null | undefined): string {
 
 export function formatBoxValue(box: Pick<HomeBox, "value" | "unit">): string {
   if (box.unit === "paise") return formatRupees(box.value);
+  // The Target box: a percent for the team, and "Set a target" for an owner who has not set one.
+  if (box.unit === "percent") return Number.isFinite(box.value) ? `${box.value.toLocaleString("en-IN")}%` : "—";
+  if (box.unit === "set_target") return "Set a target";
   return Number.isFinite(box.value) ? box.value.toLocaleString("en-IN") : "—";
 }
 

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { PwaRegistrar } from "@/components/PwaRegistrar";
+import { TEXT_SIZE_INIT_SCRIPT } from "@/lib/textSize";
 import "./globals.css";
 
 // Fonts are self-hosted (latin subset, variable files in app/fonts) instead of
@@ -88,8 +89,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${manrope.variable} ${jetbrainsMono.variable} ${plusJakarta.variable} ${dancingScript.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${manrope.variable} ${jetbrainsMono.variable} ${plusJakarta.variable} ${dancingScript.variable}`}>
       <head>
+        {/* Puts the saved Text size / Darker text on <html> before the first paint, so nothing flashes. */}
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_INIT_SCRIPT }} />
         <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
       </head>
       <body className="antialiased">

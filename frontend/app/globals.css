@@ -44,6 +44,11 @@
   --ink: #0A1528;
   --ink-secondary: #475569;
   --ink-muted: #667085;
+  /* Channel forms of the tailwind colours ink, ink-muted, on-surface-muted (same colours as the hex above),
+     so tailwind's opacity modifiers (text-ink-muted/60) keep working. "Darker text" overrides them below. */
+  --ink-rgb: 10 21 40;
+  --ink-muted-rgb: 102 112 133;
+  --on-surface-muted-rgb: 102 112 133;
   --border: #e2e8f0;
   --border-subtle: #f1f5f9;
   --navy: #0A1528;
@@ -55,6 +60,18 @@
   --radius-card: 1.25rem;
   --shadow-card: 0 2px 16px -2px rgba(10,21,40,.07), 0 1px 4px -1px rgba(10,21,40,.04);
   --shadow-card-hover: 0 8px 28px -4px rgba(10,21,40,.12), 0 3px 8px -2px rgba(10,21,40,.05);
+}
+
+/* Text size (Settings > Text size). Set on <html> before first paint by the script in app/layout.tsx;
+   "normal" is the browser default, so it needs no rule. rem-based text scales with it. */
+html[data-text-size="big"] { font-size: 110%; }
+html[data-text-size="bigger"] { font-size: 120%; }
+
+/* Darker text (Settings > Text size): the grey muted text gets darker (#3f4a57, about 9:1 on white). */
+html[data-darker-text="1"] {
+  --ink-muted: #3f4a57;
+  --ink-muted-rgb: 63 74 87;
+  --on-surface-muted-rgb: 63 74 87;
 }
 
 * {

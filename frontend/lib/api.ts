@@ -1723,7 +1723,7 @@ async function downloadCsv(path: string, fileName: string): Promise<void> {
   window.URL.revokeObjectURL(url);
 }
 
-async function apiFetch<T>(path: string, opts: RequestInit = {}, timeoutOverrideMs?: number): Promise<T> {
+export async function apiFetch<T>(path: string, opts: RequestInit = {}, timeoutOverrideMs?: number): Promise<T> {
   const method = (opts.method ?? "GET").toUpperCase();
   // Only idempotent reads are retried — retrying a POST/PATCH/DELETE could
   // double-send a broadcast/message/assignment if the first reached the server.
@@ -2403,6 +2403,7 @@ export type HomeBoxKey =
   | "ads_today"
   | "quotes_open"
   | "won_month"
+  | "target_month"
   | "low_stock";
 export type HomeBox = {
   /** Paise when unit is "paise"; a plain number when "count". */

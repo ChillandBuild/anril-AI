@@ -48,9 +48,11 @@ const config: Config = {
         },
         "navy-accent": "#3fbcbf",
 
-        ink: "#0A1528",
+        // ink / ink-muted / on-surface-muted read CSS variables (defaults in globals.css = the same
+        // hex values as before) so "Darker text" in Settings can swap the muted ones.
+        ink: "rgb(var(--ink-rgb) / <alpha-value>)",
         "ink-secondary": "#475569",
-        "ink-muted": "#667085",
+        "ink-muted": "rgb(var(--ink-muted-rgb) / <alpha-value>)",
 
         border: "#e2e8f0",
         "border-subtle": "#f1f5f9",
@@ -65,7 +67,7 @@ const config: Config = {
         "secondary-text": "#0A1528",
         tertiary: "#13284A",
         "on-surface": "#0A1528",
-        "on-surface-muted": "#667085",
+        "on-surface-muted": "rgb(var(--on-surface-muted-rgb) / <alpha-value>)",
 
         "segment-a-bg": "#ecfdf5",
         "segment-a-text": "#15803d",

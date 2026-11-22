@@ -44,7 +44,7 @@ describe("chipRowFor: the 7 chip pages", () => {
 });
 
 describe("chipRowFor: no row", () => {
-  it.each(["/dashboard", "/dashboard/otp", "/dashboard/otp/history", "/dashboard/settings/general", "/dashboard/meta-ads"])(
+  it.each(["/dashboard", "/dashboard/otp", "/dashboard/otp/overview", "/dashboard/otp/history", "/dashboard/settings/general", "/dashboard/meta-ads"])(
     "%s has no chips",
     (path) => expect(chipRowFor(path, owner)).toBeNull(),
   );

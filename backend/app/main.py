@@ -46,6 +46,8 @@ from app.routes import auto_messages
 from app.routes import auto_messages_sent
 from app.routes import private_send, private_send_keys
 from app.routes import ai_teach as ai_teach_routes
+from app.routes import otp_overview, connections_overview, my_business
+from app.routes import global_search
 
 # Configure logging
 logging.basicConfig(
@@ -437,6 +439,10 @@ app.include_router(private_send.public_router, prefix="/api/v1/private-send", ta
 app.include_router(private_send_keys.router, prefix="/api/v1/private-send", tags=["private-send-keys"], dependencies=_auth)
 app.include_router(otp_routes.public_router, prefix="/api/v1/otp", tags=["otp-api"])
 app.include_router(otp_routes.router, prefix="/api/v1/otp-console", tags=["otp"], dependencies=_auth)
+app.include_router(otp_overview.router, prefix="/api/v1/otp-overview", tags=["otp-overview"], dependencies=_auth)
+app.include_router(connections_overview.router, prefix="/api/v1/connections", tags=["connections"], dependencies=_auth)
+app.include_router(my_business.router, prefix="/api/v1/my-business", tags=["my-business"], dependencies=_auth)
+app.include_router(global_search.router, prefix="/api/v1/search", tags=["search"], dependencies=_auth)
 # Legacy prefix. Razorpay's dashboard has /api/v1/expert-handoff/razorpay-webhook
 # registered externally; remove these two lines only after updating it there.
 app.include_router(intake_public_router, prefix="/api/v1/expert-handoff", tags=["intake-webhook-legacy"])

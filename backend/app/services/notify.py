@@ -5,6 +5,36 @@ from app.db.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 
+# migration 315 adds app_notifications.url. Until it is applied the insert is retried without it.
+_url_column_warned = False
+
+
+def _is_missing_url_column(err: Exception) -> bool:
+    msg = str(err).lower()
+    if "url" not in msg:
+        return False
+    return any(k in msg for k in ("column", "schema cache", "pgrst204", "42703"))
+
+
+def _insert_notification(db, row: dict, url: str | None = None) -> None:
+    """Insert one app_notifications row, with its link when given.
+
+    If the url column does not exist yet (migration 315 not applied), retry once without it.
+    Any other error is raised to the caller.
+    """
+    global _url_column_warned
+    if url:
+        try:
+            db.table("app_notifications").insert({**row, "url": url}).execute()
+            return
+        except Exception as e:
+            if not _is_missing_url_column(e):
+                raise
+            if not _url_column_warned:
+                _url_column_warned = True
+                logger.warning("app_notifications.url is missing (migration 315 not applied); saving alerts without a link")
+    db.table("app_notifications").insert(row).execute()
+
 
 def notify_user(
     tenant_id: str,
@@ -16,8 +46,13 @@ def notify_user(
     db=None,
     dedupe_lead_id: str | None = None,
     push_url: str | None = None,
+    push: bool = True,
 ) -> None:
-    """Insert a single notification for one user. Best-effort: never raises."""
+    """Insert a single notification for one user. Best-effort: never raises.
+
+    `push_url` is also stored as the alert's link (app_notifications.url) so the bell can open it.
+    `push=False` writes the bell row only (no web push).
+    """
     if not user_id:
         return
     db = db or get_supabase()
@@ -35,16 +70,16 @@ def notify_user(
             )
             if existing.data:
                 return
-        db.table("app_notifications").insert({
+        _insert_notification(db, {
             "tenant_id": tenant_id,
             "user_id": user_id,
             "type": type,
             "title": title,
             "message": message,
-        }).execute()
+        }, push_url)
         try:
             from app.services.notification_config import push_allowed
-            if push_allowed(tenant_id, type, db=db):
+            if push and push_allowed(tenant_id, type, db=db):
                 from app.services.web_push import send_user_push
                 push_body = re.sub(r"\s*\[(lead_id|handover_id):.*?\]", "", message)
                 send_user_push(
@@ -100,7 +135,7 @@ def notify_assigned_caller_of_reply(lead_id: str, tenant_id: str, *, db=None) ->
             f"'{data.get('name') or 'Your lead'}' just replied.",
             db=db,
             dedupe_lead_id=lead_id,
-            push_url=f"/dashboard/conversations?lead_id={lead_id}",
+            push_url=f"/dashboard/conversations?lead={lead_id}",
         )
     except Exception as e:
         logger.warning(f"notify_assigned_caller_of_reply failed (lead={lead_id}): {e}")
@@ -214,14 +249,21 @@ def notify_pool(
     db=None,
     segments: list | None = None,
     exclude_user_ids: list[str] | None = None,
+    url: str | None = None,
 ) -> None:
     """Fan out one notification per active caller + owner. Best-effort: never raises.
 
     `segments` is accepted for future per-segment routing; the callers table has
     no segment column today, so it does not filter recipients yet.
+    `url` is the page the alert opens; a handover alert whose message carries a
+    [lead_id:...] tag falls back to that lead's chat.
     """
     db = db or get_supabase()
     exclude = set(exclude_user_ids or [])
+    if not url and type == "handover_new":
+        m = re.search(r"\[lead_id:([^\]\s]+)\]", message or "")
+        if m:
+            url = f"/dashboard/conversations?lead={m.group(1)}"
     try:
         recipients = set(_active_caller_user_ids(db, tenant_id))
         owner = _owner_user_id(db, tenant_id)
@@ -230,13 +272,13 @@ def notify_pool(
         for uid in recipients:
             if uid in exclude:
                 continue
-            db.table("app_notifications").insert({
+            _insert_notification(db, {
                 "tenant_id": tenant_id,
                 "user_id": uid,
                 "type": type,
                 "title": title,
                 "message": message,
-            }).execute()
+            }, url)
     except Exception as e:
         logger.warning(f"notify_pool failed (type={type}): {e}")
 

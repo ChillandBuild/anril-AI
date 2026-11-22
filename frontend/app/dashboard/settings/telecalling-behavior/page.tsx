@@ -3,6 +3,7 @@ import { useSettingsForm } from "../SettingsFormContext";
 import { SettingsAccordion } from "../SettingsSection";
 import { CallingCredentialsSection } from "../CallingCredentialsSection";
 import { TelecallingConfigPanel } from "../TelecallingConfigPanel";
+import { CallingOverviewCard } from "./CallingOverviewCard";
 
 export default function TelecallingBehaviorSettingsPage() {
   const { canManageSettings, hasTelecmiConfig } = useSettingsForm();
@@ -12,6 +13,7 @@ export default function TelecallingBehaviorSettingsPage() {
   // provider is TeleCMI.
   return (
     <SettingsAccordion>
+      <CallingOverviewCard />
       <TelecallingConfigPanel canManage={canManageSettings} />
       {hasTelecmiConfig && (
         <div id="calling">

@@ -5,6 +5,7 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { ChevronsDownUp, ChevronsUpDown, Clock, LayoutGrid, List, Plus, ScrollText, ShieldCheck, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { ProfileMenu } from "@/components/ProfileMenu";
 import { MoreMenu } from "@/components/MoreMenu";
 import { AgentsMenu } from "@/components/agents/AgentsMenu";
@@ -31,6 +32,10 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
   "telecalling-behavior": "How calls are assigned and your cloud calling setup.",
   notifications: "Choose which alerts you receive.",
   claude: "Ask about your business, update leads and message customers from your own Claude app.",
+  payments: "How customers pay you, and how much they pay first.",
+  target: "Set your monthly target once. Home shows how close you are.",
+  display: "Make Anril easy to read on this screen.",
+  "meta-charges": "What Meta charged this month, and the AI replies you used.",
 };
 
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
@@ -42,6 +47,10 @@ const SETTINGS_ROUTE_LABELS: Record<string, string> = {
   "telecalling-behavior": "Calling",
   notifications: "Alerts",
   claude: "Anril AI for Claude",
+  payments: "Payments & advance",
+  target: "Target & profit",
+  display: "Text size",
+  "meta-charges": "Limits & Meta charges",
 };
 
 /** Settings pages that live elsewhere in the menu since v9.2 Phase 2. */
@@ -426,7 +435,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     };
   }
   if (pathname === "/dashboard/otp" || pathname.startsWith("/dashboard/otp/")) {
-    const otpTab: Record<string, string> = { "": "Send & check", history: "History", settings: "Setup", api: "Connect your website" };
+    const otpTab: Record<string, string> = { "": "Send & check", overview: "Overview", history: "History", settings: "Setup", api: "Connect your website" };
     const tab = otpTab[pathname.split("/")[3] ?? ""] ?? otpTab[""];
     return {
       title: `Anril OTP / ${tab}`,
@@ -781,6 +790,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
           <span>{time || "—"}</span>
           <span className="sr-only">Schedule & Notes</span>
         </button>
+        <GlobalSearch />
         <NotificationBell />
         <ProfileMenu />
       </div>

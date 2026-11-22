@@ -8,6 +8,7 @@ Every number comes from the same code the linked page uses, so Home never disagr
   ads_today                                    -> services/growth.build_ad_performance (Ad Spend card)
   quotes_open                                  -> services/order_quotes._expired (quote rules)
   low_stock                                    -> catalogue stock rules (catalog/money.ts isLow)
+  target_month                                 -> services/sales_target (Settings > Target & profit)
 
 Each source runs on its own: one that fails is logged and left out, never a 500.
 Who sees what: _has_permission AND "the client uses it" (see _gates).
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 # The only working boxes, in DEFAULT PRIORITY ORDER.
 BOX_KEYS = (
     "money_in_today", "new_enquiries_today", "hot_waiting", "to_collect", "callbacks_today",
-    "orders_pending", "ads_today", "quotes_open", "won_month", "low_stock",
+    "orders_pending", "ads_today", "quotes_open", "won_month", "target_month", "low_stock",
 )
 LIST_KEYS = ("waiting", "low_stock")
 MAX_BOXES = 12
@@ -34,6 +35,7 @@ HREF = {
     "new_enquiries_today": "/dashboard/inbound-leads", "won_month": "/dashboard/inbound-leads",
     "hot_waiting": "/dashboard/conversations", "callbacks_today": "/dashboard/telecalling/scheduled",
     "ads_today": "/dashboard/meta-ads", "low_stock": "/dashboard/catalog",
+    "target_month": "/dashboard/settings/target",
 }
 
 _FAILED = object()
@@ -359,6 +361,12 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
             if gates["hot_waiting"]:
                 boxes["hot_waiting"] = {"value": hot_count, "unit": "count", "sub": "waiting for your reply"}
 
+    # Target box: its own rule (who may see money vs only a %), decided in sales_target.home_box.
+    from app.services import sales_target
+    box = _safe("target", lambda: sales_target.home_box(db, ctx, t["now"]))
+    if box is not _FAILED and box is not None:
+        boxes["target_month"] = box
+
     if gates["low_stock"]:
         got = _safe("low stock", lambda: _low_stock(db, tenant_id))
         if got is not _FAILED:
@@ -367,7 +375,7 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
 
     available = [k for k in BOX_KEYS if k in boxes]
     for k in available:
-        boxes[k]["href"] = HREF[k]
+        boxes[k].setdefault("href", HREF[k])
     return {
         "available": available,
         "defaults": available[:DEFAULT_COUNT],

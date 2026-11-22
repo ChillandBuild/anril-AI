@@ -281,6 +281,7 @@ const OTP_SETUP_PAGES: readonly NavPage[] = [
 
 const OTP_PAGES: NavLeaf[] = [
   ...([
+    ["overview", "Overview", LayoutDashboard],
     ["", "Send & check", KeyRound],
     ["history", "History", History],
   ] as const satisfies readonly (readonly [string, string, LucideIcon])[]).map(([slug, label, icon]): NavLeaf => {
@@ -292,6 +293,7 @@ const OTP_PAGES: NavLeaf[] = [
       label,
       icon,
       visible: otpVisible,
+      // Overview comes first, so clicking Anril OTP opens it. Send & check keeps the bare /dashboard/otp, exact match.
       isActive: (p) => (slug ? p === href || p.startsWith(`${href}/`) : p === href),
     };
   }),
@@ -473,7 +475,9 @@ const SETTINGS_PAGES: readonly NavPage[] = [
     key: "settings-home",
     label: "Settings",
     href: SETTINGS_HOME_HREF,
-    visible: (a) => a.isSubscribed && SETTINGS_ITEMS.some((item) => settingsItemVisible(item, a)),
+    // Text size is open to everyone; someone who can open ONLY that row skips the
+    // Settings home (which needs settings.view) and lands on Text size itself.
+    visible: (a) => a.isSubscribed && SETTINGS_ITEMS.some((item) => !item.openToAll && settingsItemVisible(item, a)),
     isActive: isSettingsPath,
   },
   ...SETTINGS_ITEMS.map((item): NavPage => ({

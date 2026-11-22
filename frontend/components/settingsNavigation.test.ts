@@ -6,6 +6,7 @@ import {
   getVisibleSettingsItems,
   groupSettingsItems,
   isSettingsPath,
+  SETTINGS_GROUP_INFO,
   SETTINGS_GROUP_ORDER,
   SETTINGS_ITEMS,
   settingsItemsFor,
@@ -95,8 +96,12 @@ describe("the Settings list", () => {
     expect(SETTINGS_ITEMS.map((item) => [item.group, item.label, item.href])).toEqual([
       ["My business", "Business details", "/dashboard/settings/account"],
       ["My business", "Anril AI for Claude", "/dashboard/settings/claude"],
+      ["My business", "Payments & advance", "/dashboard/settings/payments"],
+      ["My business", "Target & profit", "/dashboard/settings/target"],
+      ["My business", "Text size", "/dashboard/settings/display"],
       ["Connections", "Channels", "/dashboard/settings/connect-channels"],
       ["Connections", "Calling", "/dashboard/settings/telecalling-behavior"],
+      ["Connections", "Limits & Meta charges", "/dashboard/settings/meta-charges"],
       ["Team & roles", "Team & roles", "/dashboard/roles"],
       ["Alerts & automations", "Alerts", "/dashboard/settings/notifications"],
       [null, "Plans & subscription", "/dashboard/subscription"],
@@ -106,8 +111,8 @@ describe("the Settings list", () => {
   it("groups the items for rendering, with Plans & subscription left loose", () => {
     const { groups, loose } = groupSettingsItems(getVisibleSettingsItems([], false));
     expect(groups.map((g) => [g.group, g.items.map((i) => i.label)])).toEqual([
-      ["My business", ["Business details"]],
-      ["Connections", ["Channels", "Calling"]],
+      ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
+      ["Connections", ["Channels", "Calling", "Limits & Meta charges"]],
       ["Team & roles", ["Team & roles"]],
       ["Alerts & automations", ["Alerts"]],
     ]);
@@ -129,7 +134,8 @@ describe("per-item gates (desktop)", () => {
 
   it("an active owner sees everything (with Claude switched on)", () => {
     expect(labels(access("owner", []))).toEqual([
-      "Business details", "Anril AI for Claude", "Channels", "Calling", "Team & roles", "Alerts", "Plans & subscription",
+      "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
+      "Channels", "Calling", "Limits & Meta charges", "Team & roles", "Alerts", "Plans & subscription",
     ]);
   });
 
@@ -139,12 +145,15 @@ describe("per-item gates (desktop)", () => {
   });
 
   it("a settings-only member sees the settings pages but not Team & roles or Plans", () => {
-    expect(labels(access("caller", ["settings.view"]))).toEqual(["Business details", "Anril AI for Claude", "Channels", "Calling", "Alerts"]);
+    expect(labels(access("caller", ["settings.view"]))).toEqual([
+      "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
+      "Channels", "Calling", "Limits & Meta charges", "Alerts",
+    ]);
   });
 
   it("a roles-only subscribed member sees only Team & roles", () => {
-    expect(labels(access("caller", ["roles.view"]))).toEqual(["Team & roles"]);
-    expect(labels(access("caller", ["roles.manage"]))).toEqual(["Team & roles"]);
+    expect(labels(access("caller", ["roles.view"]))).toEqual(["Text size", "Team & roles"]);
+    expect(labels(access("caller", ["roles.manage"]))).toEqual(["Text size", "Team & roles"]);
   });
 
   it("Team & roles needs a subscription even with roles.manage", () => {
@@ -156,8 +165,23 @@ describe("per-item gates (desktop)", () => {
     expect(labels(access("caller", ["subscription.manage"], "expired"))).toEqual(["Plans & subscription"]);
   });
 
-  it("a member with none of the permissions sees nothing", () => {
-    expect(labels(access("caller", ["leads.view"]))).toEqual([]);
+  it("a telecaller with no settings permissions still sees Text size, and nothing else", () => {
+    expect(labels(access("caller", ["leads.view"]))).toEqual(["Text size"]);
+    expect(labels(access("caller", []))).toEqual(["Text size"]);
+  });
+
+  it("Text size still follows the subscription rule", () => {
+    expect(labels(access("caller", ["leads.view"], "none"))).toEqual([]);
+    expect(labels(access("caller", ["leads.view"], "expired"))).toEqual([]);
+  });
+
+  it("only Text size is open to all; every other row keeps a permission", () => {
+    expect(SETTINGS_ITEMS.filter((item) => item.openToAll).map((item) => item.label)).toEqual(["Text size"]);
+    expect(SETTINGS_ITEMS.filter((item) => !item.openToAll).every((item) => item.permissionAny.length > 0)).toBe(true);
+  });
+
+  it("the My business card describes its new rows", () => {
+    expect(SETTINGS_GROUP_INFO["My business"].description).toBe("Business details, payments, your target and text size.");
   });
 
   it("Alerts still needs the notifications entitlement", () => {
@@ -171,13 +195,19 @@ describe("per-item gates (phone drawer: permissions only, no subscription check,
     settingsItemsForMember(role, permissions, [], false).map((item) => item.label);
 
   it("owner sees every row", () => {
-    expect(labels("owner", [])).toEqual(["Business details", "Channels", "Calling", "Team & roles", "Alerts", "Plans & subscription"]);
+    expect(labels("owner", [])).toEqual([
+      "Business details", "Payments & advance", "Target & profit", "Text size",
+      "Channels", "Calling", "Limits & Meta charges", "Team & roles", "Alerts", "Plans & subscription",
+    ]);
   });
 
   it("each row keeps its own permission", () => {
-    expect(labels("agent", ["settings.manage"])).toEqual(["Business details", "Channels", "Calling", "Alerts"]);
-    expect(labels("agent", ["roles.view"])).toEqual(["Team & roles"]);
-    expect(labels("agent", ["subscription.manage"])).toEqual(["Plans & subscription"]);
-    expect(labels("agent", ["leads.view"])).toEqual([]);
+    expect(labels("agent", ["settings.manage"])).toEqual([
+      "Business details", "Payments & advance", "Target & profit", "Text size", "Channels", "Calling", "Limits & Meta charges", "Alerts",
+    ]);
+    expect(labels("agent", ["roles.view"])).toEqual(["Text size", "Team & roles"]);
+    expect(labels("agent", ["subscription.manage"])).toEqual(["Text size", "Plans & subscription"]);
+    expect(labels("agent", ["leads.view"])).toEqual(["Text size"]);
+    expect(labels(null, [])).toEqual(["Text size"]);
   });
 });
