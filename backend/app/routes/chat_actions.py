@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
-from app.services import teach
+from app.services import ai_teach, teach
 from app.services.knowledge_versions import save_description
 
 logger = logging.getLogger(__name__)
@@ -141,9 +141,18 @@ class TeachIn(BaseModel):
 
 @router.post("/teach")
 def save_taught_answer(payload: TeachIn, background_tasks: BackgroundTasks, ctx: dict = Depends(require_owner)):
-    """Adds the rule under YOUR JOB IN EVERY CONVERSATION. Saved as a Description version,
-    so the owner can change or undo it from Knowledge Base > Description."""
+    """Saves the answer into Anril Setup > Teach & offers (ai_teach_items), where the owner can
+    change or delete it. The same question taught again updates that entry. Until migration 311 is
+    applied, falls back to the old way: one rule line in the Description."""
     tenant_id = ctx["tenant_id"]
+    try:
+        item = ai_teach.save_item(get_supabase(), tenant_id, "answer", payload.when, payload.say,
+                                  source="chat", user_id=ctx.get("user_id"))
+        return {"saved": True, "line": teach.rule_line(payload.when, payload.say), "item_id": item.get("id")}
+    except ai_teach.TeachError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    except ai_teach.TableMissing:
+        logger.warning("ai_teach_items missing (migration 311 not applied): saving the taught answer in the Description")
     line = teach.rule_line(payload.when, payload.say)
     text, errors = teach.description_with_rule(tenant_id, line)
     if errors:

@@ -10,10 +10,11 @@ from datetime import datetime, time, timedelta, timezone
 
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
-from app.services.ai_reply import generate_silence_nudge, send_whatsapp
+from app.services.ai_reply import generate_silence_nudge, get_last_send_error, send_whatsapp
 from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.entitlements import check_quota, meter
 from app.services.growth import IST_OFFSET
+from app.services.send_reasons import plain_reason
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +353,8 @@ async def _process_job(db, job: dict) -> bool:
     text = await generate_silence_nudge(job["lead_id"], db=db)
     sid = await send_whatsapp(lead["phone"], text, tenant_id=tenant_id)
     if not sid:
-        _mark(db, job, "failed", "channel send returned no id")
+        # Keep the real reason (blocked, Meta's error ...) in plain words, so the Sent page can show it.
+        _mark(db, job, "failed", plain_reason(get_last_send_error() or "channel send returned no id"))
         return False
 
     res = db.table("messages").insert({

@@ -15,7 +15,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.tenant import get_tenant_and_role
 from app.routes import chat_actions
 from app.routes.deals import record_payment_lines
-from app.services import teach
+from app.services import ai_teach, teach
 from tests.fake_supabase import FakeSupabase
 
 
@@ -116,10 +116,12 @@ class TeachTests(_Base):
             got = asyncio.run(teach.suggest("Discount?", "5% discount tharom", tenant_id="t1"))
         self.assertEqual(got, {"when": "someone asks for a discount", "say": "5% discount irukku"})
 
-    def test_saving_adds_one_line_under_your_job(self):
+    def test_saving_adds_one_line_under_your_job_until_migration_311_is_applied(self):
+        """Old path, kept as the fallback while ai_teach_items does not exist yet."""
         saved = {}
         desc = "ABOUT US\nWe sell sarees.\n\nYOUR JOB IN EVERY CONVERSATION\n- Be warm."
-        with patch.object(teach, "get_setting", return_value=desc), \
+        with patch.object(ai_teach, "save_item", side_effect=ai_teach.TableMissing()), \
+             patch.object(teach, "get_setting", return_value=desc), \
              patch.object(chat_actions, "save_description", side_effect=lambda db, t, text, reason, uid: saved.update(text=text, reason=reason)), \
              patch("app.routes.ai_tune.queue_rubric_for_description"), \
              patch("app.services.consistency.run_check_safely"):
@@ -133,7 +135,8 @@ class TeachTests(_Base):
 
     def test_a_full_description_refuses_instead_of_overflowing(self):
         full = "YOUR JOB IN EVERY CONVERSATION\n" + "word " * 699
-        with patch.object(teach, "get_setting", return_value=full), \
+        with patch.object(ai_teach, "save_item", side_effect=ai_teach.TableMissing()), \
+             patch.object(teach, "get_setting", return_value=full), \
              patch.object(chat_actions, "save_description") as save:
             res = self.client.post("/api/v1/chats/teach", json={"when": "someone asks a thing", "say": "answer here"})
         self.assertEqual(res.status_code, 422)

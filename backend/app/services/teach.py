@@ -1,6 +1,6 @@
 """Teach the Anril AI: after a teammate answers a chat the AI handed over, turn that
-reply into one general line the AI can reuse, and (owner only) save it into the
-Description's "YOUR JOB IN EVERY CONVERSATION" section -- the part sent with every reply."""
+reply into one general line the AI can reuse. Saving (owner only) goes to Teach & offers
+(services/ai_teach.py); description_with_rule is only the fallback while migration 311 is not applied."""
 import json
 import logging
 import re

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.db.supabase import get_supabase
 from app.services.blocked_guard import RecipientBlocked
+from app.services.send_reasons import META_CODE_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -454,17 +455,8 @@ async def send_one(db, send: dict) -> bool:
 PREVIEW_FIRST_NAME = "Priya"
 _META_CODE_RE = re.compile(r'"code"\s*:\s*(\d+)')
 _META_MESSAGE_RE = re.compile(r'"message"\s*:\s*"([^"]+)"')
-_PLAIN_META_FAILURES = {
-    "131026": "WhatsApp couldn't deliver to this number. Check that it is on WhatsApp.",
-    "131030": "This number isn't on your WhatsApp test list yet.",
-    "131056": "WhatsApp is slowing this account down. Try again in a minute.",
-    "130429": "WhatsApp is slowing this account down. Try again in a minute.",
-    "132000": "The template and its values don't match. Check the message's variables.",
-    "132001": "WhatsApp can't find this template. It may have been deleted.",
-    "132005": "The template and its values don't match. Check the message's variables.",
-    "132012": "The template and its values don't match. Check the message's variables.",
-    "190": "Your WhatsApp connection has expired. Reconnect it in Settings.",
-}
+# One shared map (services/send_reasons.py); the original nine sentences are unchanged.
+_PLAIN_META_FAILURES = META_CODE_TEXT
 
 
 def _plain_failure(detail) -> str:

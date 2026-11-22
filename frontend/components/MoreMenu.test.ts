@@ -28,7 +28,7 @@ describe("More drawer layout", () => {
     expect(byTitle).toEqual([
       [null, ["Customers"]],
       ["WhatsApp", ["Templates", "Numbers"]],
-      ["Anril Setup", ["Anril Brain", "Knowledge Base", "Replies & handover"]],
+      ["Anril Setup", ["Anril Brain", "Knowledge Base", "Teach & offers", "Replies & handover"]],
       ["Engage", ["Inbound Leads", "Meta Ads", "Auto-Messages"]],
       [null, ["Reach"]],
       ["Anril OTP", ["Send & check", "History", "Setup"]],

@@ -141,7 +141,7 @@ describe("navSections tab coverage", () => {
     // Call IQ: the Telecalling group's 4 pages and Team become 4 rows (Calling, Leads to call, Call reviews, Team), and
     // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
     expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
-      + 1 /* Purchases (2026-11-21) */);
+      + 1 /* Purchases (2026-11-21) */ + 1 /* Teach & offers (2026-11-22) */);
     expect(allEntries().every((e) => e.kind === "link")).toBe(true);
   });
 
@@ -374,6 +374,7 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
     { path: "/dashboard/auto-messages", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
     { path: "/dashboard/settings/follow-ups", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
     { path: "/dashboard/scheduled-templates", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
+    { path: "/dashboard/auto-messages/sent", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
     { path: "/dashboard/settings/auto-reply", row: "replies-handover", section: "aiSetup", chipSet: "replies" },
     { path: "/dashboard/settings/inbox", row: "replies-handover", section: "aiSetup", chipSet: "replies" },
     { path: "/dashboard/otp/settings", row: "otp-settings", section: "otp", chipSet: "otpSetup" },
@@ -385,6 +386,7 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
       ["When something happens", "/dashboard/auto-messages"],
       ["Follow-ups", "/dashboard/settings/follow-ups"],
       ["One-time sends", "/dashboard/scheduled-templates"],
+      ["Sent", "/dashboard/auto-messages/sent"],
     ],
     replies: [
       ["Auto-reply", "/dashboard/settings/auto-reply"],

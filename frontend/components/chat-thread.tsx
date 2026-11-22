@@ -872,7 +872,7 @@ export function ChatThread({
             </div>
           </div>
           <p className="mt-2 text-[11px] text-[#64748b]">
-            Only the owner can save answers. It&apos;s added to Anril Setup › Knowledge Base › Description, where you can change or undo it.
+            Only the owner can save answers. It&apos;s added to Anril Setup › Teach &amp; offers, where you can change or delete it.
           </p>
         </div>
       )}

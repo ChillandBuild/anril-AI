@@ -11,9 +11,10 @@ import {
   FileText,
   Image as ImageIcon,
 } from "lucide-react";
-import type { Template } from "../types";
+import type { Template, UsageEntry } from "../types";
 import { STATUS_COLORS, CATEGORY_COLORS, LANGUAGES } from "../types";
 import AiraId from "./aira-id";
+import TemplateNotes from "./template-notes";
 
 type TemplateCardProps = {
   template: Template;
@@ -22,6 +23,11 @@ type TemplateCardProps = {
   onDuplicate?: (t: Template) => void;
   onSend?: (t: Template) => void;
   onSync?: (t: Template) => void;
+  /** Where it is used (the "Used in" line); undefined until the usage call answers. */
+  usage?: UsageEntry[];
+  usageReady?: boolean;
+  /** Shows "Fix and send again" on a rejected template. */
+  canFix?: boolean;
 };
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -96,6 +102,9 @@ export default function TemplateCard({
   onDuplicate,
   onSend,
   onSync,
+  usage,
+  usageReady = false,
+  canFix = false,
 }: TemplateCardProps) {
   const [hovered, setHovered] = useState(false);
 
@@ -174,6 +183,9 @@ export default function TemplateCard({
           <AiraId code={t.short_code} size="lg" className="w-full justify-between" />
         </div>
       )}
+
+      {/* ── Where it is used, why it isn't working: above the hover overlay so the link stays clickable ── */}
+      <TemplateNotes template={t} usage={usage} usageReady={usageReady} canFix={canFix} className="relative z-30 px-4 pb-3" />
 
       {/* ── Bottom: status + date ─────────────────── */}
       <div className="px-4 pb-3 flex items-center justify-between">

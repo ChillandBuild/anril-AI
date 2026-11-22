@@ -1,5 +1,5 @@
 import {
-  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, Coins, FileCheck, HandCoins,
+  ArrowDownToLine, BarChart2, BookOpen, Brain, Calendar, Coins, FileCheck, GraduationCap, HandCoins,
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
@@ -204,11 +204,16 @@ const prefixPage = (key: string, label: string, href: string, visible: NavPage["
 /** Follow-ups was a Settings page, so it keeps the Settings gate. */
 const settingsVisible = (a: NavAccess) => a.isSubscribed && a.canSettings;
 
+const autoMessagesVisible = (a: NavAccess) =>
+  a.isSubscribed && a.canAny(["auto_messages.view", "auto_messages.manage"]) && a.outboundOn;
+const AUTO_MESSAGES_SENT = "/dashboard/auto-messages/sent";
+
 const AUTO_MESSAGE_PAGES: readonly NavPage[] = [
-  prefixPage(
-    "auto-messages", "When something happens", "/dashboard/auto-messages",
-    (a) => a.isSubscribed && a.canAny(["auto_messages.view", "auto_messages.manage"]) && a.outboundOn,
-  ),
+  {
+    ...prefixPage("auto-messages", "When something happens", "/dashboard/auto-messages", autoMessagesVisible),
+    // /dashboard/auto-messages/sent is its own chip (Sent), so it must not light this one.
+    isActive: (p) => p.startsWith("/dashboard/auto-messages") && !p.startsWith(AUTO_MESSAGES_SENT),
+  },
   prefixPage("follow-ups", "Follow-ups", "/dashboard/settings/follow-ups", settingsVisible),
   prefixPage(
     "scheduled-templates", "One-time sends", "/dashboard/scheduled-templates",
@@ -217,6 +222,7 @@ const AUTO_MESSAGE_PAGES: readonly NavPage[] = [
       a.canAny(["leads.manage", "conversations.reply", "telecalling.dialer", "outbound_leads.view", "outbound_leads.manage"]) &&
       (a.outboundOn || a.messagingOn),
   ),
+  prefixPage("auto-messages-sent", "Sent", AUTO_MESSAGES_SENT, autoMessagesVisible),
 ];
 
 const AUTO_MESSAGES = pagesLeaf({ key: "auto-messages", label: "Auto-Messages", icon: Zap, pages: AUTO_MESSAGE_PAGES });
@@ -424,6 +430,17 @@ const KNOWLEDGE_BASE: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/knowledge"),
 };
 
+/** Teach & offers: same gate as Knowledge Base (it teaches the same AI agent). */
+const TEACH_AND_OFFERS: NavLeaf = {
+  kind: "link",
+  key: "teach-offers",
+  href: "/dashboard/teach",
+  label: "Teach & offers",
+  icon: GraduationCap,
+  visible: (a) => a.isSubscribed && a.canAny(["knowledge.view", "knowledge.manage"]) && a.messagingOn,
+  isActive: (p) => p.startsWith("/dashboard/teach"),
+};
+
 const TEMPLATES: NavLeaf = {
   kind: "link",
   key: "templates",
@@ -475,7 +492,7 @@ const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareTex
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES] };
 const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
-const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, REPLIES_AND_HANDOVER] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
 
 /** The main menu below Home, top to bottom. */

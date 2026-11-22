@@ -534,6 +534,11 @@ function WhatsAppAlertCard({
                 placeholder="Select a template…"
                 options={[{ value: "", label: "No template" }, ...approvedTemplates.map((t) => ({ value: t.id, label: t.name }))]}
               />
+              {selectedTemplate?.category?.toUpperCase() === "MARKETING" && (
+                <p role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Staff alert set as Marketing: costs more and Meta may block it. Make a Utility copy.
+                </p>
+              )}
               {selectedTemplate && (
                 <div className="mt-2 rounded-xl border border-border-subtle bg-white p-3">
                   <p className="mb-1 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Preview</p>

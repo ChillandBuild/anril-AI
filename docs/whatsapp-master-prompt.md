@@ -33,6 +33,21 @@ block, knowledge excerpts and catalog. **Do not duplicate those here.**
 Tenants add persona and subject matter through their business description only. They
 cannot override anything in sections 1–8 below.
 
+**Teach & offers blocks (appended by `build_reply_system_prompt`, after the catalog, before the
+choices block; text built in `services/ai_teach.py`).** These are facts the owner gave, so
+they are the one place offers and dates may be mentioned. Tenants with nothing saved get only
+the first line:
+
+- `TODAY: Sunday 22 November 2026 (India time).` — always, date only, so end dates work.
+- `OFFERS ON NOW (mention only these; never invent offers or dates):` — offers whose start
+  date <= today (IST) <= end date, each with `ends <date>`. Ended and future offers never appear.
+- `ANSWERS THE OWNER TAUGHT YOU (use these exact facts when a customer asks something similar):`
+  — `- question -> answer`, newest first, at most 60 items / ~2,500 characters.
+- `WORDS THIS SHOP USES:` — `- word = meaning`, at most 80 items.
+
+Read once per reply (cached 60 s per tenant, cleared when the owner saves). If the tables
+cannot be read, only the TODAY line is added. Test Anril uses the same function.
+
 ---
 
 ## The prompt
