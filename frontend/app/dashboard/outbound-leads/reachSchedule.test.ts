@@ -28,3 +28,12 @@ describe("Reach schedule hours", () => {
     expect(dripTimeProblem("07:15")).not.toBeNull();
   });
 });
+
+describe("time left while sending", () => {
+  it("guesses from the pace so far, and waits until there is enough to go on", async () => {
+    const { timeLeftText } = await import("./reachSchedule");
+    expect(timeLeftText(312, 772, 3 * 60_000)).toBe("about 4 minutes left");
+    expect(timeLeftText(2, 772, 10_000)).toBeNull();
+    expect(timeLeftText(770, 772, 600_000)).toBe("less than a minute left");
+  });
+});

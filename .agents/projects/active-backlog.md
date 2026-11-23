@@ -20,6 +20,40 @@ host=github.com
 
 ## Active Backlog
 
+### v9.2 — held for later by Prem (2026-11-24; build list items 1–31 go first)
+Screen numbers are in the pending page `docs/research/v92-pending-list.html`.
+1. Questions & scoring editable: questions table, add, suggest, result %, sample chat, rules per level
+2. Knowledge: one table "Comes from", missing items, whole website + weekly re-read
+3. Teach: "Suggest common ones"; Undo + AI ON in header on 168/170/171
+4. Meta Ads: real cost per lead + cost per hot lead tiles
+5. Auto-messages "When something happens": all events, read/replied, 10–8 banner, results
+6. Follow-ups: replied counts, In it now, Booked after, Paused switch, empty state
+7. One-time sends: replied / booked / came, "Message needs a fix"
+8. Edit message: Before the booking, Don't send if, send a test; Mark number wrong
+9. Consent asked per list; "Not sure" = only past chatters
+10. Campaign: send again to non-readers, funnel, in store / online
+11. Top up (how is it paid?), latest list, Blocked tries tile
+12. Evaluation: rank, 8-week trend, script %, objections, tone, stars, best calls
+13. Team: leave request + approve, leads back, roles, languages, shift
+14. Incoming call pop-up
+15. Uploads: undo, download taken out, sample, result column
+16. Telecaller phone app screens, per-person SIM
+17. Alerts: missed call, named people, channel per alert, + New alert, odd OTP, ad money
+18. Monthly report on WhatsApp + PDF
+19. Items: asked-but-missed, fittings came; Campaigns: Meta charges
+20. Ads verdict per ad; Team per-person chats / reply time / mis
+21. Forgot password: separate email and phone boxes
+22. "Stay logged in on this laptop" + staff email note
+23. Google sign-in (Google Cloud + Supabase provider)
+Also later: paid GSTIN lookup (name + address from the GST record); the free part (state, PAN, check digit) shipped.
+Left from the build list (2026-11-24):
+- #12 Follow-ups back in the Settings list: the page is unchanged at Engage > Auto-messages > Follow-ups; adding it to Settings breaks 13 menu tests that lock Prem's v9.2 menu. Needs Prem's yes.
+- #13 "In Anril + phone app" column on Numbers: needs Meta's coexistence field verified before the number sync asks for it.
+- #20 / #30 WhatsApp copies of the 8 PM "not marked" nudge and the 9 AM campaign summary: both go as bell + push today; WhatsApp needs approved templates.
+- #28 Google Ads live connect + sync (spend, clicks): needs a Google Ads API developer token + OAuth app. Spend still comes from the report upload.
+- #29 One campaign from groups + notebook + file: waits on "Consent asked per list" (held item 9).
+- #31 Calling settings (record, keep period, IVR, missed call -> WhatsApp, voicemail, top up): mostly set in TeleCMI; needs a decision on what Anril controls.
+
 ### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329, 330 live)
 - Migration 330 (Courses tables): its objects went live on 2026-11-23, but apply_migration was declined each time,
   so the ledger row was inserted by hand (version 20261123081813) after checking every table, index, trigger and RLS.

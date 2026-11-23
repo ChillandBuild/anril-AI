@@ -22,7 +22,7 @@ MESSAGES = {
     "scheduled-broadcasts", "reengagement-rules", "silence-nudge", "callback-notifications",
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
-    "unmarked-bookings", "order-payment-reminders", "batch-expiry", "alert-sweeps",
+    "unmarked-bookings", "campaign-morning-summary", "order-payment-reminders", "batch-expiry", "alert-sweeps",
     "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup", "course-waitlist-seats",
     "feedback-ask", "reports-monthly-bells", "evening-summary", "comeback-offers", "fee-reminders",
 }
@@ -31,13 +31,13 @@ COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "comp
 CLASS_B = {"numbers-pool-sync", "send-log-prune", "password-help-prune", "scheduler-runs-prune", "private-send-meta-reconcile", "auto-archive-idle"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
-    "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders", "batch-expiry",
+    "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "campaign-morning-summary", "order-payment-reminders", "batch-expiry",
     "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup", "course-waitlist-seats",
     "feedback-ask", "reports-monthly-bells", "call-break-limits", "evening-summary", "comeback-offers", "fee-reminders",
 }
 SYNC_JOBS = {
     "assignment-sweep", "recycle-contacts", "password-help-prune", "callback-notifications", "call-alert-summary",
-    "ad-insights-sync", "brain-weekly-digest", "handover-stale-alert", "inbound-stopped-replying", "unmarked-bookings", "batch-expiry", "alert-sweeps",
+    "ad-insights-sync", "brain-weekly-digest", "handover-stale-alert", "inbound-stopped-replying", "unmarked-bookings", "campaign-morning-summary", "batch-expiry", "alert-sweeps",
     "expense-repeats", "booking-call-now", "reports-monthly-bells", "call-break-limits",
     "evening-summary", "comeback-offers",
 }
@@ -80,6 +80,7 @@ CALLEES = {
     "inbound-stopped-replying": ("app.services.inbound_auto_results.mark_stopped_replying", False, False),
     "handover-stale-alert": ("app.services.handover_alerts.sweep_stale_handovers", False, False),
     "unmarked-bookings": ("app.services.inbound_auto_results.remind_unmarked_bookings", False, False),
+    "campaign-morning-summary": ("app.services.campaign_morning_summary.send_morning_summaries", False, False),
     "order-payment-reminders": ("app.services.orders.send_due_reminders", True, False),
     "batch-expiry": ("app.services.stock_batches.ring_expiry_bells", False, False),
     "alert-sweeps": ("app.services.alert_events.sweep_hot_leads", False, False),
@@ -120,6 +121,7 @@ AT_IST = {
     "companion-kb-learning": (["02:30"], None),
     "inbound-stopped-replying": ([f"{h:02d}:47" for h in range(24)], None),  # hourly at :17 UTC
     "unmarked-bookings": (["20:00"], None),
+    "campaign-morning-summary": (["09:00"], None),
     "batch-expiry": (["09:30"], None),
     "expense-repeats": (["06:15"], None),
     "order-payment-reminders": ([f"{h:02d}:53" for h in range(24)], None),  # hourly at :23 UTC
@@ -157,7 +159,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 52
+    assert len(_periodic()) == 53
 
 
 def test_task_name_matches_periodic_id():
@@ -210,7 +212,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (26, 6, 20)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (26, 6, 21)
 
 
 def test_sync_and_async_split():

@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, Lock, Pencil } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { googleAdsApi } from "@/lib/googleAdsApi";
 import type { GoogleAdsReport, GoogleAdsRow } from "@/lib/googleAdsApi";
+import Link from "next/link";
+import { GoogleAdsSummary } from "./GoogleAdsSummary";
 import { NewLinkCard } from "./NewLinkCard";
 import { SpendEditor } from "./SpendEditor";
 import { UploadCard } from "./UploadCard";
@@ -81,6 +83,8 @@ export function GoogleAdsClient() {
           <button type="button" onClick={() => void load()} className="font-bold underline">Try again</button>
         </p>
       )}
+
+      {report && report.rows.length > 0 && <GoogleAdsSummary report={report} showMoney={showMoney} />}
 
       <section aria-label="Campaigns" className="card rounded-2xl p-2 sm:p-4">
         {loading && !report ? (
@@ -185,7 +189,14 @@ function RowGroup({ row, showMoney, canEdit, busy, editing, setEditing, month, r
   return (
     <>
       <tr className="border-b border-surface-mid/60">
-        <th scope="row" className="px-3 py-2.5 text-left text-sm font-bold text-on-surface">{row.name}</th>
+        <th scope="row" className="px-3 py-2.5 text-left text-sm font-bold text-on-surface">
+          {row.name}
+          {row.chats > 0 && (
+            <Link href={`/dashboard/leads?ad_campaign_id=${encodeURIComponent(row.campaign_id)}`} className="ml-2 text-xs font-bold text-primary hover:underline">
+              Open ›
+            </Link>
+          )}
+        </th>
         {showMoney && <td className={td}>{formatRupees(row.spent_paise)}</td>}
         <td className={td}>{countCell(row.clicks)}</td>
         <td className={td}>{countCell(row.chats)}</td>

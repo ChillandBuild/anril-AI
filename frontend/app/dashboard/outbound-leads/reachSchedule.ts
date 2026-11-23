@@ -26,3 +26,12 @@ export function dripTimeProblem(hhmm: string): string | null {
   if (Number.isNaN(hour)) return null;
   return hourOk(hour) ? null : "That time is outside 9 AM to 9 PM India time. Pick a time in the day.";
 }
+
+/** "about 4 minutes left" from how fast it has gone so far; null until there is enough to judge. */
+export function timeLeftText(done: number, total: number, elapsedMs: number): string | null {
+  if (done < 3 || elapsedMs < 3000 || done >= total) return null;
+  const msLeft = ((total - done) * elapsedMs) / done;
+  const min = Math.round(msLeft / 60000);
+  if (min < 1) return "less than a minute left";
+  return `about ${min} ${min === 1 ? "minute" : "minutes"} left`;
+}

@@ -42,6 +42,7 @@ RETRY_CLASS: dict[str, str] = {
     "inbound-stopped-replying": "A",
     "handover-stale-alert": "A",
     "unmarked-bookings": "C",
+    "campaign-morning-summary": "C",
     "batch-expiry": "C",
     "alert-sweeps": "A",
     "expense-repeats": "A",
@@ -314,6 +315,14 @@ async def order_payment_reminders(timestamp: int) -> None:
 
 
 # Class C: one bell per owner per day (it checks for today's bell first), never two at once.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(9, 0), periodic_id="campaign-morning-summary")
+@queue_app.task(name="campaign-morning-summary", **_one_at_a_time("campaign-morning-summary"), queue="messages")
+def campaign_morning_summary(timestamp: int) -> None:
+    """9 AM IST: yesterday's campaigns (sent, read, replied) as a bell to the owner and admins."""
+    from app.services.campaign_morning_summary import send_morning_summaries
+    send_morning_summaries()
+
+
 @queue_app.periodic(cron=_daily_ist_as_utc_cron(20, 0), periodic_id="unmarked-bookings")
 @queue_app.task(name="unmarked-bookings", **_one_at_a_time("unmarked-bookings"), queue="messages")
 def unmarked_bookings(timestamp: int) -> None:

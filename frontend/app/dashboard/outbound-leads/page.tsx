@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles, Users } from "lucide-react";
 import { API_URL, api, getAuthHeaders, type CustomerGroup } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
+import { timeLeftText } from "./reachSchedule";
 import { checkRow, parseScanCsv, rowsToCsv, type ScanRow } from "@/lib/scanReview";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -446,6 +447,7 @@ function SegmentDropdown({ tagId, dark }: { tagId: string, dark?: boolean }) {
 
 // ─── Live sending visualizer (immediate broadcast in flight) ─────────────────
 function SendingProgress({ names, index, total }: { names: string[]; index: number; total: number }) {
+  const [startedAt] = useState(() => Date.now());
   const ROW = 46;
   const VISIBLE = 5;
   const safeTotal = Math.max(total, 1);
@@ -456,9 +458,10 @@ function SendingProgress({ names, index, total }: { names: string[]; index: numb
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Dispatching campaign…</h2>
+        <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Your offer is going out</h2>
         <p className="font-body text-sm text-on-surface-muted">
-          Sending one by one — keep this tab open until it finishes.
+          You can close this page: it keeps sending. Replies come to Chats and the AI agent answers them. Tomorrow at
+          9 AM you get a summary in your Anril alerts: sent, read and replied.
         </p>
       </div>
 
@@ -468,7 +471,9 @@ function SendingProgress({ names, index, total }: { names: string[]; index: numb
             <Loader2 size={15} className="animate-spin text-primary" />
             Sending <span className="text-primary">{done.toLocaleString()}</span> of {total.toLocaleString()} contacts
           </span>
-          <span className="font-display text-sm font-bold text-primary tabular-nums">{pct}%</span>
+          <span className="font-body text-xs text-on-surface-muted tabular-nums">
+            {timeLeftText(done, safeTotal, Date.now() - startedAt) ?? `${pct}%`}
+          </span>
         </div>
 
         <div className="h-2 w-full rounded-full bg-surface-mid overflow-hidden mb-4">
@@ -2478,6 +2483,14 @@ export default function OutboundLeadsPage() {
                 index={sendingIndex}
                 total={sendingNames.length || audienceTotal}
               />
+              <div className="flex flex-wrap justify-center gap-3">
+                <a href="/dashboard/conversations" className="inline-flex items-center rounded-xl border border-surface-mid bg-white px-5 py-2.5 font-label text-sm font-semibold text-on-surface hover:bg-surface-low">
+                  See replies in Chats
+                </a>
+                <button type="button" onClick={() => setActiveTab("history")} className="inline-flex items-center rounded-xl bg-primary px-5 py-2.5 font-label text-sm font-semibold text-white hover:bg-primary-dark">
+                  See results
+                </button>
+              </div>
               {activeBroadcastId && (
                 <button
                   onClick={handleAbortSend}
