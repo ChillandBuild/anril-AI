@@ -95,6 +95,7 @@ describe("the Settings list", () => {
     expect(SETTINGS_GROUP_ORDER).toEqual(["My business", "Connections", "Team & roles", "Alerts & automations"]);
     expect(SETTINGS_ITEMS.map((item) => [item.group, item.label, item.href])).toEqual([
       ["My business", "Business details", "/dashboard/settings/account"],
+      ["My business", "Open hours", "/dashboard/settings/business-hours"],
       ["My business", "Anril AI for Claude", "/dashboard/settings/claude"],
       ["My business", "Payments & advance", "/dashboard/settings/payments"],
       ["My business", "Target & profit", "/dashboard/settings/target"],
@@ -114,7 +115,7 @@ describe("the Settings list", () => {
   it("groups the items for rendering, with Plans & subscription left loose", () => {
     const { groups, loose } = groupSettingsItems(getVisibleSettingsItems([], false));
     expect(groups.map((g) => [g.group, g.items.map((i) => i.label)])).toEqual([
-      ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
+      ["My business", ["Business details", "Open hours", "Payments & advance", "Target & profit", "Text size"]],
       ["Connections", ["Channels", "Calling", "Calling rules", "Limits & Meta charges"]],
       ["Team & roles", ["Team & roles"]],
       ["Alerts & automations", ["Alerts", "Push & lead claims", "Automations"]],
@@ -137,7 +138,7 @@ describe("per-item gates (desktop)", () => {
 
   it("an active owner sees everything (with Claude switched on)", () => {
     expect(labels(access("owner", []))).toEqual([
-      "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
+      "Business details", "Open hours", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
       "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
     ]);
   });
@@ -149,7 +150,7 @@ describe("per-item gates (desktop)", () => {
 
   it("a settings-only member sees the settings pages but not Team & roles or Plans", () => {
     expect(labels(access("caller", ["settings.view"]))).toEqual([
-      "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
+      "Business details", "Open hours", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
       "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
     ]);
   });
@@ -184,7 +185,7 @@ describe("per-item gates (desktop)", () => {
   });
 
   it("the My business card describes its new rows", () => {
-    expect(SETTINGS_GROUP_INFO["My business"].description).toBe("Business details, payments, your target and text size.");
+    expect(SETTINGS_GROUP_INFO["My business"].description).toBe("Business details, open hours, payments, your target and text size.");
   });
 
   it("Alerts still needs the notifications entitlement", () => {
@@ -199,14 +200,14 @@ describe("per-item gates (phone drawer: permissions only, no subscription check,
 
   it("owner sees every row", () => {
     expect(labels("owner", [])).toEqual([
-      "Business details", "Payments & advance", "Target & profit", "Text size",
+      "Business details", "Open hours", "Payments & advance", "Target & profit", "Text size",
       "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
     ]);
   });
 
   it("each row keeps its own permission", () => {
     expect(labels("agent", ["settings.manage"])).toEqual([
-      "Business details", "Payments & advance", "Target & profit", "Text size", "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
+      "Business details", "Open hours", "Payments & advance", "Target & profit", "Text size", "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
     ]);
     expect(labels("agent", ["roles.view"])).toEqual(["Text size", "Team & roles"]);
     expect(labels("agent", ["subscription.manage"])).toEqual(["Text size", "Plans & subscription"]);

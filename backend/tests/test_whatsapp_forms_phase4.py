@@ -162,6 +162,14 @@ class TestBooking:
         assert [s.hour for s in slots] == [10, 11, 12]  # 9 am now + 60 min notice
         assert live.free_slots(db, TENANT, _booking(), date(2026, 11, 25), NOW) == []  # Wednesday closed
 
+    def test_shop_open_hours_cut_the_form_slots(self, db):
+        # v9.2 #59: the shop opens at 11 on Monday and is shut on Tuesday.
+        from app.services import open_hours
+        open_hours.save(db, TENANT, {"hours": {"0": [["11:00", "20:00"]], "2": [["10:00", "20:00"]]}})
+        assert [s.hour for s in live.free_slots(db, TENANT, _booking(), date(2026, 11, 23), NOW)] == [11, 12]
+        assert live.free_slots(db, TENANT, _booking(), date(2026, 11, 24), NOW) == []
+        assert live.free_dates(db, TENANT, _booking(), NOW) == [date(2026, 11, 23)]
+
     def test_dates_in_tamil_and_full_days_left_out(self, db):
         reply = live.handle_request(db, TENANT, {"action": "INIT", "flow_token": _token(FORM_2)}, now=NOW)
         assert [d["id"] for d in reply["data"]["dates"]] == ["2026-11-23", "2026-11-24"]

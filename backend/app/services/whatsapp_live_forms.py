@@ -523,12 +523,29 @@ def offered_starts(design: dict, day: date, now: datetime | None = None) -> list
     return starts
 
 
-def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None = None) -> list[datetime]:
+def _inside_shop_hours(starts: list[datetime], step: timedelta, shop: dict, day: date) -> list[datetime]:
+    """v9.2 #59: only slots inside the shop's open hours (nothing on a closed day). Hours not set -> unchanged."""
+    from app.services import booking_setup as bsetup
+    from app.services import open_hours
+    if not shop.get("set"):
+        return starts
+    if open_hours.closed_on(shop, day):
+        return []
+    blocks = bsetup.hours_minutes(shop.get("hours")).get(day.weekday(), [])
+    mins = int(step.total_seconds() // 60)
+    return [s for s in starts if any(a <= s.hour * 60 + s.minute and s.hour * 60 + s.minute + mins <= b for a, b in blocks)]
+
+
+def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None = None,
+               shop: dict | None = None) -> list[datetime]:
     settings = clean_settings("booking", design.get("settings"))
-    starts = offered_starts(design, day, now)
+    step = timedelta(minutes=settings["slot_minutes"])
+    if shop is None:
+        from app.services import open_hours
+        shop = open_hours.read(db, tenant_id)
+    starts = _inside_shop_hours(offered_starts(design, day, now), step, shop, day)
     if not starts:
         return []
-    step = timedelta(minutes=settings["slot_minutes"])
     taken = _taken(db, tenant_id, design["id"], starts[0], starts[-1] + step)
     return [s for s in starts if taken.get(_slot_id(s), 0) < settings["capacity"]]
 
@@ -536,10 +553,12 @@ def free_slots(db, tenant_id: str, design: dict, day: date, now: datetime | None
 def free_dates(db, tenant_id: str, design: dict, now: datetime | None = None) -> list[date]:
     settings = clean_settings("booking", design.get("settings"))
     today = (now or datetime.now(timezone.utc)).astimezone(IST).date()
+    from app.services import open_hours
+    shop = open_hours.read(db, tenant_id)
     out = []
     for offset in range(settings["days_ahead"]):
         day = today + timedelta(days=offset)
-        if settings["hours"][DAYS[day.weekday()]] and free_slots(db, tenant_id, design, day, now):
+        if settings["hours"][DAYS[day.weekday()]] and free_slots(db, tenant_id, design, day, now, shop):
             out.append(day)
         if len(out) >= LIST_MAX * 10:
             break

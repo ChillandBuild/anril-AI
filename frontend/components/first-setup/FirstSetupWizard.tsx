@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { OpenHoursEditor } from "@/components/OpenHoursEditor";
 import { api } from "@/lib/api";
 import { FIRST_SETUP_STEPS, firstSetupApi, setAiAgentOn, type FirstSetupStep } from "@/lib/firstSetupApi";
 import { InterviewQuestionsForm, InterviewReview, StarterStep } from "./WorkspaceSteps";
@@ -16,7 +17,7 @@ import { setupHelpApi } from "@/lib/setupHelpApi";
 const TITLES: Record<FirstSetupStep, string> = {
   business: "What is your business?",
   items: "What do you sell?",
-  hours: "Open hours",
+  hours: "When is your shop open?",
   alerts: "Who gets alerts?",
   connect: "Connect your accounts",
   ai: "Switch on your AI agent",
@@ -305,12 +306,15 @@ export function FirstSetupWizard({ onFinish }: { onFinish: () => void }) {
         />
       )}
       {step === "hours" && (
-        <LinkStep
-          title={TITLES.hours}
-          text="Write your opening hours in your business description, so the AI agent can tell customers when you are open."
-          links={[{ href: "/dashboard/knowledge?tab=description", label: "Write my open hours" }]}
-          onNext={() => move(true)}
-        />
+        // v9.2 #59: the real open-hours setting, the same one Settings › Open hours edits.
+        <div className={card}>
+          <h1 className={heading}>When is your shop open?</h1>
+          <p className={sub}>The AI agent only books inside these hours, and tells customers when you&apos;re closed.</p>
+          <OpenHoursEditor saveLabel="Save, next: who gets alerts" footerNote="You can change this later in Settings" onSaved={() => move(true)} />
+          <button type="button" onClick={() => move(false)} className="mt-3 w-full text-center font-body text-xs font-semibold text-ink-muted underline">
+            Skip for now
+          </button>
+        </div>
       )}
       {step === "alerts" && (
         <LinkStep

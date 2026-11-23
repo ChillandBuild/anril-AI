@@ -1294,7 +1294,7 @@ def _escalation_prompt_block(handover_line: str = "", now=None) -> str:
         "This customer is waiting for a person on this team, who has been alerted and will "
         f"reply in this chat. It is now {when}. If they ask for a person, ask about their "
         f"request, or say nobody has helped them yet, {wording}If they ask when, answer from "
-        "the team hours in your description if it gives them; otherwise say the team will reply "
+        "the OPEN HOURS section if there is one, else the team hours in your description; otherwise say the team will reply "
         "as soon as they can.\n"
         "Rules:\n"
         "- Never promise a specific time, a named person, a call or a callback.\n"
@@ -1854,6 +1854,9 @@ def build_reply_system_prompt(
         )
     system_prompt += _language_rule_block(reply_language_mode, message)
     system_prompt += _HUMAN_TOUCH_BLOCK
+    # v9.2 #59: the shop's open hours and whether it is open right now ("closed today" replies). Never raises.
+    from app.services import open_hours as _open_hours
+    system_prompt += _open_hours.prompt_block(db, tenant_id)
 
     # Intake context takes priority over the generic escalation holding message --
     # it is the more specific, money-aware story (names the expert/service, forbids

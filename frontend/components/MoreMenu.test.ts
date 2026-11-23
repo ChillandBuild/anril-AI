@@ -201,7 +201,7 @@ describe("Settings box in the drawer", () => {
   it("has the 4 groups then Plans & subscription for an owner", () => {
     expect(box("owner", [])).toEqual({
       groups: [
-        ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
+        ["My business", ["Business details", "Open hours", "Payments & advance", "Target & profit", "Text size"]],
         ["Connections", ["Channels", "Calling", "Calling rules", "Limits & Meta charges"]],
         ["Team & roles", ["Team & roles"]],
         ["Alerts & automations", ["Alerts", "Push & lead claims", "Automations"]],

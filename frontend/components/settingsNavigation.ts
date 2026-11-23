@@ -56,6 +56,7 @@ const settingsPage = (
 // home page and the mobile "More" menu: see sidebar.tsx / MoreMenu.tsx.
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
   settingsPage("/dashboard/settings/account", UserCircle, "Business details", "My business"),
+  settingsPage("/dashboard/settings/business-hours", Clock, "Open hours", "My business"),
   settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "My business", "claude"),
   settingsPage("/dashboard/settings/payments", Wallet, "Payments & advance", "My business"),
   settingsPage("/dashboard/settings/target", Target, "Target & profit", "My business"),
@@ -77,7 +78,7 @@ export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["My business", "Connection
 
 /** One plain line per group, shown on its Settings home card. */
 export const SETTINGS_GROUP_INFO: Record<SettingsGroup, { description: string }> = {
-  "My business": { description: "Business details, payments, your target and text size." },
+  "My business": { description: "Business details, open hours, payments, your target and text size." },
   Connections: { description: "Connect your messaging channels and set how calling works." },
   "Team & roles": { description: "Add your team and choose what each person can see." },
   "Alerts & automations": { description: "Choose which alerts reach you and when, and see every automatic message." },

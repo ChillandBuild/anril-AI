@@ -257,10 +257,19 @@ def free_times(db, tenant_id: str, service: dict, resources: list[dict], days: l
     ids = [r["id"] for r in resources]
     live = _live_by_resource(db, tenant_id, ids, min(days), max(days), exclude_booking_id)
     leave = _leave_by_resource(db, tenant_id, ids, min(days), max(days))
+    # v9.2 #59: customers (the booking link the AI sends) only get times inside the shop's open hours.
+    # Staff booking by phone or at the counter keep each column's own hours.
+    from app.services import open_hours
+    shop = {"set": False} if staff else open_hours.read(db, tenant_id)
     for d in days:
+        if open_hours.closed_on(shop, d):
+            continue
         for r in resources:
             off = any(a <= d <= b for a, b in leave.get(r["id"], []))
-            for start in slots_for_day(r.get("hours") or {}, service, d, earliest=earliest,
+            hours = r.get("hours") or {}
+            if shop.get("set"):
+                hours = open_hours.limit_hours(hours, shop)
+            for start in slots_for_day(hours, service, d, earliest=earliest,
                                        live=live.get(r["id"], []), on_leave=off):
                 out[d].append((start, r))
     return out

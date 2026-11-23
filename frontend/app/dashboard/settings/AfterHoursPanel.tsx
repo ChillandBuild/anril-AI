@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Moon } from "lucide-react";
 import { toast } from "sonner";
-import { afterHoursProblem, replySettingsApi, type AfterHours } from "@/lib/replySettingsApi";
+import { afterHoursProblem, openHoursApi, replySettingsApi, type AfterHours, type OpenHours } from "@/lib/replySettingsApi";
 import {
   SaveButton,
   SaveStatus,
@@ -25,13 +26,16 @@ export function AfterHoursPanel({ canManage = true }: { canManage?: boolean }) {
   const [loadState, setLoadState] = useState<SectionLoadState>("loading");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
+  // v9.2 #59: when the team is "out" comes from the shop's open hours (one place), not times kept here.
+  const [hours, setHours] = useState<OpenHours | null>(null);
 
   const load = useCallback(async () => {
     setLoadState("loading");
     try {
-      const r = await replySettingsApi.afterHours();
+      const [r, h] = await Promise.all([replySettingsApi.afterHours(), openHoursApi.get().catch(() => null)]);
       setSaved(r);
       setDraft(r);
+      setHours(h);
       setLoadState("ready");
     } catch {
       setLoadState("error");
@@ -79,7 +83,7 @@ export function AfterHoursPanel({ canManage = true }: { canManage?: boolean }) {
       }
       summary={
         loadState !== "ready" ? undefined : draft.enabled ? (
-          <SummaryHint>Team in {saved.open} to {saved.close} (India time).</SummaryHint>
+          <SummaryHint>{hours?.set ? `Out whenever the shop is closed (${hours.summary}).` : `Team in ${saved.open} to ${saved.close} (India time).`}</SummaryHint>
         ) : (
           <SummaryHint>Off. The AI does not mention your hours.</SummaryHint>
         )
@@ -87,13 +91,22 @@ export function AfterHoursPanel({ canManage = true }: { canManage?: boolean }) {
     >
       <SectionLoadGate state={loadState} onRetry={load}>
         <div className="space-y-4">
+          {hours?.set ? (
+            <p className="rounded-xl bg-surface-low px-3 py-2 font-body text-sm text-ink">
+              The team counts as out whenever the shop is closed: <span className="font-semibold">{hours.summary}</span>.{" "}
+              <Link href="/dashboard/settings/business-hours" className="font-semibold text-primary underline">Change open hours</Link>
+            </p>
+          ) : (
           <div className="flex flex-wrap items-center gap-3">
             <label className="font-label text-sm font-semibold text-ink" htmlFor="ah-open">Team is in from</label>
             <input id="ah-open" type="time" value={draft.open} disabled={!canManage} onChange={(e) => setDraft({ ...draft, open: e.target.value })} className={FIELD} />
             <label className="font-label text-sm font-semibold text-ink" htmlFor="ah-close">until</label>
             <input id="ah-close" type="time" value={draft.close} disabled={!canManage} onChange={(e) => setDraft({ ...draft, close: e.target.value })} className={FIELD} />
-            <span className="font-body text-xs text-ink-muted">India time</span>
+            <span className="font-body text-xs text-ink-muted">
+              India time. Or <Link href="/dashboard/settings/business-hours" className="font-semibold text-primary underline">set your open hours</Link> and this follows them.
+            </span>
           </div>
+          )}
           <div>
             <label className="mb-1 block font-label text-sm font-semibold text-ink" htmlFor="ah-message">Message</label>
             <textarea

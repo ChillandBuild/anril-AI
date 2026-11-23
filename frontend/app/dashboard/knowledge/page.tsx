@@ -28,6 +28,7 @@ import KnowledgeReviewModal from "./KnowledgeReviewModal";
 import KnowledgeHistoryModal from "./KnowledgeHistoryModal";
 import DeleteDocumentModal from "./DeleteDocumentModal";
 import ProfileSectionsEditor from "./ProfileSectionsEditor";
+import { OpenHoursLine } from "./OpenHoursLine";
 import { AutoGrowTextarea } from "./useAutoGrow";
 import KitStarter from "./KitStarter";
 import { Select } from "@/components/ui/Select";
@@ -1660,6 +1661,7 @@ export default function KnowledgePage() {
       ) : (
         /* ── Description Tab ─────────────────────────────────────────────── */
         <div className="space-y-6">
+          <OpenHoursLine />
           {/* Business Profile Editor */}
           <ProfileSectionsEditor
             canEdit={isOwner}

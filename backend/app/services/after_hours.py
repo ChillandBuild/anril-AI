@@ -91,10 +91,22 @@ def is_after_hours(cfg: dict, now: datetime | None = None) -> bool:
 def prompt_line(db, tenant_id: str, now: datetime | None = None) -> str:
     """Added to the escalation prompt. "" when the setting is off, the team is in, or nothing could be read."""
     cfg = read(db, tenant_id)
-    if not (cfg["enabled"] and cfg["message"]) or not is_after_hours(cfg, now):
+    if not (cfg["enabled"] and cfg["message"]):
         return ""
+    # v9.2 #59: when the shop's open hours are set they decide when the team is out (one place);
+    # the old open/close pair here is only used by a business that has not set open hours.
+    from app.services import open_hours
+    shop = open_hours.read(db, tenant_id)
+    if shop.get("set"):
+        if open_hours.is_open(shop, now):
+            return ""
+        back = open_hours.next_open(shop, now) or "as soon as they can"
+    else:
+        if not is_after_hours(cfg, now):
+            return ""
+        back = f"at {cfg['open']}"
     return (
-        f"AFTER HOURS: the team is out right now and is back at {cfg['open']} (India time). Tell the customer "
+        f"AFTER HOURS: the team is out right now and is back {back} (India time). Tell the customer "
         f"this once, in their language, using the owner's message as the base: \"{cfg['message']}\". "
         "Do not promise a call or a time.\n"
     )

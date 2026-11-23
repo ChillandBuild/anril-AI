@@ -40,6 +40,7 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
 
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
   account: "Business details",
+  "business-hours": "Open hours",
   "connect-channels": "Channels",
   "auto-reply": "Auto-Reply",
   "follow-ups": "Follow-Ups",
