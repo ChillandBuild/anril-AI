@@ -618,3 +618,15 @@ Measure first: ~10 questions where the Rule Book has the rule and a book has the
 - **Per-profile memory not live:** AstroTamil's app sends no `profile_id` on /chat, so one user's profiles share one memory. Their side: send `profile_id` (and `profile_name`) per chart. Ours is built and tested (`tests/test_companion_profiles.py`).
 - **Search failure = silent own answer:** a knowledge search that fails (RemoteProtocolError, 1 in 7 days) answers with no files and logs no gap. Low priority; a single retry in `kb/search.py` would cover it.
 - **Test data left on purpose:** the car-colour answer typed in Missing answers during the test is live in "Owner answers" (Prem: keep).
+
+## v9.2 Batches I–M + tab bars — shipped 2026-11-23 (723d0be2, 96991d79; migrations 321–325 applied)
+Not checked logged in yet (tests/tsc/lint only). Leftovers:
+- Call reviews page does not read `?call=<call_log_id>` yet (Call IQ Evaluation "Review call" links just open the page).
+- Hidden numbers: applied to next-lead, /initiate (cloud) and the lead list; NOT to lead detail (`GET /leads/{id}` has no ctx) or customer_profile. SIM callers always see numbers (the phone dialer needs them).
+- Per-person SIM/cloud is used by /initiate only; callers.py (167, 281, 616, 641), call_review.py, leads.py:1868, analytics.py still read the business setting.
+- Assignment Log needs a label for reason "moved_for_leave".
+- Nothing emits a "number_disconnected" alert yet (key reserved in quiet-time allow list).
+- Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
+- Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
+- services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).
+- Tab bars: viewport-height pages (templates, telecalling AdminView/CallerView, notes) may now scroll slightly; check on screen.
