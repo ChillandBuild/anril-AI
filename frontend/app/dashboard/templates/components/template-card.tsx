@@ -261,7 +261,7 @@ function NoteRow({
 type MenuItem = { label: string; icon: React.ElementType; onClick: () => void; danger?: boolean };
 
 // The preview clips its overflow, so the menu opens in a portal, pinned under the ⋯ button.
-function MoreMenu({ items, code }: { items: MenuItem[]; code?: string }) {
+function MoreMenu({ items }: { items: MenuItem[] }) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -285,7 +285,7 @@ function MoreMenu({ items, code }: { items: MenuItem[]; code?: string }) {
       window.removeEventListener("resize", gone);
     };
   }, [open]);
-  if (!items.length && !code) return null;
+  if (!items.length) return null;
   const toggle = () => {
     if (open) return setPos(null);
     const r = btn.current?.getBoundingClientRect();
@@ -312,12 +312,6 @@ function MoreMenu({ items, code }: { items: MenuItem[]; code?: string }) {
           style={{ top: pos.top, right: pos.right }}
           className="fixed z-dialog w-52 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white py-1 shadow-xl"
         >
-          {code && (
-            <div className="flex items-center justify-between gap-2 border-b border-[#f1f5f9] px-3 py-2">
-              <span className="text-[11px] font-semibold text-ink-muted">Anril ID</span>
-              <AiraId code={code} />
-            </div>
-          )}
           {items.map((it) => (
             <button
               key={it.label}
@@ -401,7 +395,7 @@ export default function TemplateCard({
           {onEdit && <Pill icon={Pencil} label="Edit" onClick={() => onEdit(t)} />}
           {onDuplicate && <Pill icon={Copy} label="Copy" onClick={() => onDuplicate(t)} />}
           {onSend && t.status === "APPROVED" && <Pill icon={Send} label="Send" onClick={() => onSend(t)} />}
-          <MoreMenu items={menu} code={t.short_code} />
+          <MoreMenu items={menu} />
         </div>
       </div>
 
@@ -417,6 +411,7 @@ export default function TemplateCard({
         <div className="flex items-center gap-1.5">
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${cat.bg} ${cat.text}`}>{t.category}</span>
           <span className="rounded-full bg-[#f4f1ec] px-2.5 py-0.5 text-[12px] font-medium text-[#475569]">{languageName(t.language)}</span>
+          <AiraId code={t.short_code} className="ml-auto" />
         </div>
         <p className="truncate text-[13px] text-ink-secondary">
           {!usageReady ? (
