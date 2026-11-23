@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MORE_ITEMS, MORE_SECTIONS, getVisibleMoreItems, isItemActive } from "./MoreMenu";
+import { MORE_ITEMS, MORE_SECTIONS, getVisibleMoreItems, getVisibleMoreModules, isItemActive, isModuleActive } from "./MoreMenu";
 import { groupSettingsItems, isSettingsPath, settingsItemsForMember } from "./settingsNavigation";
 
 const ALL_FEATURES = ["outbound_messaging", "inbound_messaging", "sms", "telecalling.upload", "telecalling.scheduled", "telecalling.notes"];
@@ -28,13 +28,13 @@ describe("More drawer layout", () => {
     expect(byTitle).toEqual([
       [null, ["Customers"]],
       ["WhatsApp", ["Templates", "Numbers", "QR & links"]],
-      ["Anril Setup", ["Anril Brain", "Knowledge Base", "Teach & offers", "Replies & handover"]],
+      ["Anril Setup", ["Anril Brain", "Couldn't answer", "AI report card", "Questions & scoring", "Knowledge Base", "Teach & offers", "Replies & handover"]],
       ["Engage", ["Inbound Leads", "Bookings", "Meta Ads", "Google Ads", "Auto-Messages"]],
       [null, ["Reach"]],
       ["Anril OTP", ["Send & check", "History", "Setup"]],
       ["Anril SMS", ["Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API"]],
       ["Commerce", ["Orders & payments", "Catalogue", "Purchases", "Expenses"]],
-      ["Call IQ", ["Leads to call", "Call reviews", "Team"]],
+      ["Call IQ", ["Leads to call", "Call reviews", "Team", "Live", "Evaluation", "Results"]],
       [null, ["Reports"]],
       [null, []],
     ]);
@@ -223,5 +223,59 @@ describe("Settings box in the drawer", () => {
       expect(isSettingsPath(path), path).toBe(true);
     }
     expect(isSettingsPath("/dashboard/settings/inbox")).toBe(false);
+  });
+});
+
+describe("flat module rows in the drawer", () => {
+  const modules = (role: string, permissions: string[], features = ALL_FEATURES) => getVisibleMoreModules(role, features, permissions);
+
+  it("an owner sees the same flat rows as the sidebar, in order, with Settings left to its box", () => {
+    expect(modules("owner", []).map((m) => m.label)).toEqual([
+      "Customers", "WhatsApp", "Anril Setup", "Engage", "Reach", "Anril OTP", "Anril SMS", "Commerce", "Call IQ", "Reports",
+    ]);
+  });
+
+  it("a module row opens its first page the user may open", () => {
+    const hrefs = Object.fromEntries(modules("owner", []).map((m) => [m.label, m.href]));
+    expect(hrefs["Customers"]).toBe("/dashboard/leads");
+    expect(hrefs["WhatsApp"]).toBe("/dashboard/templates");
+    expect(hrefs["Engage"]).toBe("/dashboard/inbound-leads");
+    expect(hrefs["Call IQ"]).toBe("/dashboard/telecalling/upload");
+    // Only the settings gate: Anril Setup skips Brain, Knowledge and Teach and opens Auto-reply.
+    const settingsOnly = modules("agent", ["settings.view"]);
+    expect(settingsOnly.find((m) => m.label === "Anril Setup")?.href).toBe("/dashboard/settings/auto-reply");
+  });
+
+  it("a module row is visible exactly when any of its pages is, and keeps every page's gate", () => {
+    // Every row that used to show is still inside exactly one module row, and no module row shows without one.
+    for (const permissions of [[], ["settings.view"], ["leads.view"], ["numbers.view"], ["sms.view"], ["team.view"], ["deals.view", "catalog.view"]]) {
+      const rows = getVisibleMoreItems("agent", ALL_FEATURES, permissions);
+      const mods = modules("agent", permissions);
+      expect(mods.flatMap((m) => m.items.map((i) => i.key)).sort()).toEqual(rows.map((r) => r.key).sort());
+      expect(mods.every((m) => m.items.length > 0)).toBe(true);
+    }
+    expect(modules("agent", [])).toEqual([]);
+    expect(modules("agent", ["sms.view"], []).map((m) => m.label)).toEqual(["Anril OTP"]);
+  });
+
+  it("one-page modules keep their page's label and icon; multi-page modules take the module name", () => {
+    const byKey = Object.fromEntries(modules("owner", []).map((m) => [m.key, m]));
+    expect(byKey.customers.items.map((i) => i.key)).toEqual(["leads"]);
+    expect(byKey.reach.label).toBe("Reach");
+    expect(byKey.reports.label).toBe("Reports");
+    expect(byKey.sms.items).toHaveLength(7);
+  });
+
+  it("a module row is active on every page of the module, including ?tab= pages", () => {
+    const byKey = Object.fromEntries(modules("owner", []).map((m) => [m.key, m]));
+    expect(isModuleActive(byKey.callIq, "/dashboard/team", "log")).toBe(true);
+    expect(isModuleActive(byKey.callIq, "/dashboard/notes")).toBe(true);
+    expect(isModuleActive(byKey.setup, "/dashboard/settings/inbox")).toBe(true);
+    expect(isModuleActive(byKey.commerce, "/dashboard/services")).toBe(true);
+    expect(isModuleActive(byKey.sms, "/dashboard/sms/reports")).toBe(true);
+    expect(isModuleActive(byKey.commerce, "/dashboard/sms")).toBe(false);
+    for (const path of ["/dashboard/otp", "/dashboard/otp/history", "/dashboard/otp/api"]) {
+      expect(Object.values(byKey).filter((m) => isModuleActive(m, path)).map((m) => m.key), path).toEqual(["otp"]);
+    }
   });
 });

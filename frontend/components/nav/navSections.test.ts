@@ -6,13 +6,14 @@ import {
   CHIP_SETS,
   NAV_LINKS,
   NAV_MENU,
+  NAV_ROWS,
   NAV_SECTIONS,
   TELECALLING_ITEMS,
   callIqRouteMeta,
   chipSetFor,
   dashboardEntry,
   leafHref,
-  resolveOpenSection,
+  moduleForPage,
   sectionContainsPage,
   sidebarFoldsOn,
   visibleEntries,
@@ -105,6 +106,9 @@ const TELECALLING_HREFS = [
   "/dashboard/notes",
 ];
 
+/** The module (section key) a page belongs to, or null: what the sidebar lights and the tab bar belongs to. */
+const openSection = (pathname: string, tab = "") => moduleForPage(pathname, tab)?.key ?? null;
+
 function allEntries(): NavEntry[] {
   return [...NAV_LINKS, ...NAV_SECTIONS.flatMap((section) => section.entries)];
 }
@@ -188,21 +192,16 @@ describe("navSections defaults and gating", () => {
   });
 });
 
-describe("section open state", () => {
-  it("uses the click when one is set, including all shut", () => {
-    expect(resolveOpenSection("reach", NAV_SECTIONS, "/dashboard/conversations")).toBe("reach");
-    expect(resolveOpenSection(null, NAV_SECTIONS, "/dashboard/conversations")).toBeNull();
-  });
-
-  it("opens only the section holding the current page", () => {
+describe("which module holds a page", () => {
+  it("is the one module holding the current page", () => {
     const aiSetup = NAV_SECTIONS.find((s) => s.key === "aiSetup")!;
     expect(sectionContainsPage(aiSetup, "/dashboard/brain/rules")).toBe(true);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/brain/rules")).toBe("aiSetup");
+    expect(openSection("/dashboard/brain/rules")).toBe("aiSetup");
   });
 
-  it("shuts every section on pages outside them (Home and the plain links)", () => {
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard")).toBeNull();
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/analytics")).toBeNull();
+  it("is no module on pages outside them (Home and the plain links)", () => {
+    expect(openSection("/dashboard")).toBeNull();
+    expect(openSection("/dashboard/analytics")).toBeNull();
   });
 
   it("the Catalogue entry is active on both catalog and services pages", () => {
@@ -256,8 +255,8 @@ describe("Anril SMS section", () => {
     expect(setup.isActive("/dashboard/sms/setup-other")).toBe(false);
     expect(sectionContainsPage(smsSection, "/dashboard/sms/otp")).toBe(false);
     expect(sectionContainsPage(smsSection, "/dashboard/sms-other")).toBe(false);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms")).toBe("sms");
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/sms/send")).toBe("sms");
+    expect(openSection("/dashboard/sms")).toBe("sms");
+    expect(openSection("/dashboard/sms/send")).toBe("sms");
   });
 });
 
@@ -306,7 +305,7 @@ describe("Anril OTP section", () => {
     expect(sendCheck.isActive("/dashboard/otp/history")).toBe(false);
     expect(history.isActive("/dashboard/otp/history")).toBe(true);
     expect(history.isActive("/dashboard/otp/history-other")).toBe(false);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/otp/api")).toBe("otp");
+    expect(openSection("/dashboard/otp/api")).toBe("otp");
   });
 });
 
@@ -408,7 +407,7 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
   it.each(CASES)("$path lights only the $row row and opens $section", ({ path, row, section }) => {
     const active = allLeaves().filter((leaf) => leaf.isActive(path)).map((leaf) => leaf.key);
     expect(active).toEqual([row]);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, path)).toBe(section);
+    expect(openSection(path)).toBe(section);
     expect(NAV_SECTIONS.filter((s) => sectionContainsPage(s, path)).map((s) => s.key)).toEqual([section]);
   });
 
@@ -464,10 +463,20 @@ describe("v9.2 main menu (Phase 1)", () => {
     expect(ANALYTICS_LINK.label).toBe("Reports");
   });
 
+  it("the sidebar is 12 flat rows below Home: the 5 links and the 7 module rows, same order and names", () => {
+    expect(NAV_ROWS.map((leaf) => leaf.label)).toEqual(NAV_MENU.map(row));
+    expect(NAV_ROWS).toHaveLength(12);
+    expect(NAV_ROWS.every((leaf) => leaf.kind === "link")).toBe(true);
+  });
+
+  it("the 5 plain links are the same rows as before", () => {
+    expect(NAV_ROWS.filter((leaf) => NAV_LINKS.includes(leaf)).map((leaf) => leaf.label)).toEqual(["Chats", "Customers", "Reach", "Reports", "Settings"]);
+  });
+
   it("Reach opens the outbound page on its sub-routes too", () => {
     const reach = NAV_LINKS.find((leaf) => leaf.label === "Reach")!;
     expect(reach.isActive("/dashboard/outbound-leads")).toBe(true);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/outbound-leads")).toBeNull();
+    expect(openSection("/dashboard/outbound-leads")).toBeNull();
   });
 });
 
@@ -570,8 +579,8 @@ describe("Settings home: one Settings row, last in the menu", () => {
   );
 
   it("is not inside any folding section, so no section opens on a Settings page", () => {
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/roles")).toBeNull();
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, "/dashboard/subscription")).toBeNull();
+    expect(openSection("/dashboard/roles")).toBeNull();
+    expect(openSection("/dashboard/subscription")).toBeNull();
   });
 });
 
@@ -608,7 +617,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 
   it.each(ACTIVE)("%s ?tab=%s lights only the %s row and opens Call IQ", (path, tab, row) => {
     expect(allLeaves().filter((leaf) => leaf.isActive(path, tab)).map((leaf) => leaf.key)).toEqual([row]);
-    expect(resolveOpenSection(undefined, NAV_SECTIONS, path, tab)).toBe("callIq");
+    expect(openSection(path, tab)).toBe("callIq");
     expect(sectionContainsPage(callIq, path, tab)).toBe(true);
   });
 
@@ -706,8 +715,9 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
     expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: ["telecalling_sim"], subStatus: "expired" }).access)).toEqual([]);
   });
 
-  it("the call-alert badge rides on the Team row only", () => {
-    expect(allLeaves().filter((leaf) => leaf.badge === "alerts").map((leaf) => leaf.key)).toEqual(["team"]);
+  it("the call-alert badge rides on the Call IQ module row, not on the Team page", () => {
+    expect(allLeaves().filter((leaf) => leaf.badge === "alerts")).toEqual([]);
+    expect(NAV_ROWS.filter((leaf) => leaf.badge === "alerts").map((leaf) => leaf.key)).toEqual(["callIq"]);
   });
 
   function CALLING_CHIPS(access: NavAccess) {
@@ -738,5 +748,58 @@ describe("Call IQ titles", () => {
   it("is null for every other address", () => {
     expect(callIqRouteMeta("/dashboard/leads", "")).toBeNull();
     expect(callIqRouteMeta("/dashboard", "")).toBeNull();
+  });
+});
+
+describe("flat module rows (v9.2 tab bars)", () => {
+  const rowOf = (label: string) => NAV_ROWS.find((leaf) => leaf.label === label)!;
+  const noGates = buildNavAccess({ role: "owner", permissions: [], enabledFeatures: [], subStatus: "active" }).access;
+
+  it("a module row is visible exactly when any of its pages is (the old section heading rule)", () => {
+    for (const section of NAV_SECTIONS) {
+      const moduleRow = NAV_ROWS.find((leaf) => leaf.key === section.key)!;
+      for (const access of [allAccess, noAccess, noGates]) {
+        expect(moduleRow.visible(access), section.key).toBe(visibleEntries(section, access).length > 0);
+      }
+    }
+  });
+
+  it("a module row opens the first page of the module the user may open", () => {
+    expect(leafHref(rowOf("Engage"), allAccess)).toBe("/dashboard/inbound-leads");
+    expect(leafHref(rowOf("Call IQ"), allAccess)).toBe("/dashboard/telecalling");
+    expect(leafHref(rowOf("Anril SMS"), allAccess)).toBe("/dashboard/sms");
+    expect(leafHref(rowOf("Anril OTP"), allAccess)).toBe("/dashboard/otp/overview");
+    // Only the settings gate: Engage skips Inbound Leads, Bookings, Meta Ads and Google Ads and opens Auto-Messages > Follow-ups.
+    const settingsOnly = buildNavAccess({ role: "caller", permissions: ["settings.view"], enabledFeatures: ["outbound_messaging"], subStatus: "active" }).access;
+    expect(leafHref(rowOf("Engage"), settingsOnly)).toBe("/dashboard/settings/follow-ups");
+  });
+
+  it("a module row is active on every page of the module, including ?tab= pages", () => {
+    expect(rowOf("Call IQ").isActive("/dashboard/team", "log")).toBe(true);
+    expect(rowOf("Call IQ").isActive("/dashboard/call-iq/results")).toBe(true);
+    expect(rowOf("Anril Setup").isActive("/dashboard/settings/auto-reply")).toBe(true);
+    expect(rowOf("Commerce").isActive("/dashboard/services")).toBe(true);
+    expect(rowOf("Commerce").isActive("/dashboard/analytics")).toBe(false);
+    expect(rowOf("Engage").isActive("/dashboard/meta-ads/all-ads")).toBe(true);
+  });
+
+  it("exactly one row is lit on every page of a module", () => {
+    for (const section of NAV_SECTIONS) {
+      for (const entry of section.entries) {
+        const path = entry.href.split("?")[0];
+        const lit = NAV_ROWS.filter((leaf) => leaf.isActive(path, "")).map((leaf) => leaf.key);
+        expect(lit, entry.href).toEqual([section.key]);
+      }
+    }
+  });
+
+  it("the counts sit on Chats, Anril Setup (Brain) and Call IQ (call alerts), and nowhere else", () => {
+    expect(NAV_ROWS.filter((leaf) => leaf.badge).map((leaf) => [leaf.label, leaf.badge])).toEqual([
+      ["Chats", "conversations"],
+      ["Anril Setup", "brain"],
+      ["Call IQ", "alerts"],
+    ]);
+    // The pages inside a module carry no badge of their own any more.
+    expect(allLeaves().filter((leaf) => leaf.badge).map((leaf) => leaf.key)).toEqual(["conversations"]);
   });
 });

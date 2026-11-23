@@ -80,14 +80,17 @@ export interface NavSection {
   title: string;
   /** Icon on the section's row in the sidebar. */
   icon: LucideIcon;
+  /** The count that rides on the module's sidebar row (Anril Setup: Brain count, Call IQ: call alerts). */
+  badge?: NavBadgeKey;
   entries: NavEntry[];
 }
 
 /**
- * One row of the main menu, top to bottom (Home sits above it). A link is a
- * one-page module shown as a plain row; a section folds open to its pages.
- * Order and names follow the v9.2 redesign menu (Phase 1: menu only, every
- * page keeps its address).
+ * One module of the main menu, top to bottom (Home sits above it). A link is a
+ * one-page module; a section is a module with a tab bar (its entries are the
+ * tabs). The sidebar draws every module as one flat row (NAV_ROWS); the tab
+ * bar under the page header draws a section's entries (moduleTabsFor).
+ * Order and names follow the v9.2 redesign menu (every page keeps its address).
  */
 export type NavMenuItem =
   | { kind: "link"; leaf: NavLeaf }
@@ -132,9 +135,15 @@ function pagesLeaf(leaf: Pick<NavLeaf, "key" | "label" | "icon"> & { pages: read
   };
 }
 
-/** Where a row opens for this user: the first of its pages they can see, else the row's own address. */
+/**
+ * Where a row opens for this user: the first of its pages they can see, else the row's own address.
+ * A module row's pages are tabs that may themselves stand for several pages (Auto-Messages), so this looks one level deeper.
+ */
 export function leafHref(leaf: NavLeaf, access: NavAccess): string {
-  return leaf.pages?.find((page) => page.visible(access))?.href ?? leaf.href;
+  const page = leaf.pages?.find((candidate) => candidate.visible(access));
+  if (!page) return leaf.href;
+  const inner = (page as Partial<NavLeaf>).pages;
+  return inner ? leafHref(page as NavLeaf, access) : page.href;
 }
 
 const startsWithAny = (pathname: string, prefixes: readonly string[]): boolean =>
@@ -431,14 +440,13 @@ const CALL_REVIEWS: NavLeaf = {
   isActive: (p) => p.startsWith(NOTES),
 };
 
-/** The alert count (unseen call alerts, owners and managers) rides on this row: the Needs attention list that handles them is on the Team page. */
+/** The Team page holds the Needs attention list that handles the unseen call alerts; the count itself rides on the Call IQ module row. */
 const TEAM_ROW: NavLeaf = {
   kind: "link",
   key: "team",
   href: TEAM,
   label: "Team",
   icon: Trophy,
-  badge: "alerts",
   visible: teamVisible,
   isActive: (p, tab = "") => p.startsWith(TEAM) && tab !== "log",
 };
@@ -513,7 +521,6 @@ const ANRIL_BRAIN: NavLeaf = {
   href: "/dashboard/brain",
   label: "Anril Brain",
   icon: Brain,
-  badge: "brain",
   visible: (a) => a.brainGate,
   isActive: (p) => p.startsWith("/dashboard/brain") && !["/couldnt-answer", "/report-card", "/scoring"].some((sub) => p.startsWith(`/dashboard/brain${sub}`)),
 };
@@ -601,8 +608,8 @@ const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, e
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES, EXPENSES] };
-const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW, CALL_IQ_LIVE, CALL_IQ_EVALUATION, CALL_IQ_RESULTS] };
-const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, COULDNT_ANSWER, AI_REPORT_CARD, QUESTIONS_SCORING, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
+const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, badge: "alerts", entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW, CALL_IQ_LIVE, CALL_IQ_EVALUATION, CALL_IQ_RESULTS] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, badge: "brain", entries: [ANRIL_BRAIN, COULDNT_ANSWER, AI_REPORT_CARD, QUESTIONS_SCORING, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL, QR_LINKS] };
 
 /** The main menu below Home, top to bottom. */
@@ -632,24 +639,64 @@ export function visibleEntries(section: NavSection, access: NavAccess): NavEntry
   return section.entries.filter((entry) => entry.visible(access));
 }
 
-/**
- * The one open section (an accordion, so the menu never grows past the
- * screen). A click wins (null = all shut); otherwise the section holding the
- * current page. Pages outside every section (Home and the plain links) shut all.
- * `tab` is the current ?tab= value, for rows that split one path by tab.
- */
-export function resolveOpenSection(
-  choice: string | null | undefined,
-  sections: readonly NavSection[],
-  pathname: string,
-  tab = "",
-): string | null {
-  if (choice !== undefined) return choice;
-  return sections.find((s) => sectionContainsPage(s, pathname, tab))?.key ?? null;
-}
-
 export function sectionContainsPage(section: NavSection, pathname: string, tab = ""): boolean {
   return section.entries.some((entry) => entry.isActive(pathname, tab));
+}
+
+/** A module as one flat sidebar row: visible when any of its pages is, opens the first one the user may open, active on all of them. */
+function moduleRow(section: NavSection): NavLeaf {
+  return { ...pagesLeaf({ key: section.key, label: section.title, icon: section.icon, pages: section.entries }), badge: section.badge };
+}
+
+/** The sidebar's rows below Home, flat, in menu order: one row per module, no fold-out groups. */
+export const NAV_ROWS: readonly NavLeaf[] = NAV_MENU.map((item) => (item.kind === "link" ? item.leaf : moduleRow(item.section)));
+
+/** The module that holds this page (`tab` = its ?tab= value), or null for Home, the plain rows and Settings. */
+export function moduleForPage(pathname: string, tab = ""): NavSection | null {
+  return NAV_SECTIONS.find((section) => sectionContainsPage(section, pathname, tab)) ?? null;
+}
+
+export interface ModuleTab {
+  key: string;
+  label: string;
+  /** Where the tab opens for this user (the first page of the tab they may open). */
+  href: string;
+  active: boolean;
+}
+
+export interface ModuleTabs {
+  section: NavSection;
+  tabs: readonly ModuleTab[];
+}
+
+/**
+ * The tab bar for the page you are on, or null when there should be none: the
+ * page is in no module, or the user may open fewer than two of its tabs (a bar
+ * with one tab is just the page title again). One tab per entry of the module's
+ * section, only the ones this user may open. `tab` is the page's ?tab= value.
+ */
+export function moduleTabsFor(pathname: string, access: NavAccess, tab = ""): ModuleTabs | null {
+  const section = moduleForPage(pathname, tab);
+  if (!section) return null;
+  const tabs = visibleEntries(section, access).map((entry): ModuleTab => ({
+    key: entry.key,
+    label: entry.label,
+    href: leafHref(entry, access),
+    active: entry.isActive(pathname, tab),
+  }));
+  if (tabs.length < 2) return null;
+  return { section, tabs };
+}
+
+/**
+ * "Module / Tab" for a page title. The page's own title already names the tab
+ * (or the page), so this only puts the module in front of it. Left alone when
+ * the page is in no module or the title already starts with the module's name.
+ */
+export function withModuleTitle(title: string, pathname: string, tab = ""): string {
+  const section = moduleForPage(pathname, tab);
+  if (!section || title === section.title || title.startsWith(`${section.title} / `)) return title;
+  return `${section.title} / ${title}`;
 }
 
 /** Wide pages that fold the desktop sidebar to its icon strip when opened. Telecalling (queue, dial, upload, scheduled) and Call reviews fold, as before; Team does not. */
