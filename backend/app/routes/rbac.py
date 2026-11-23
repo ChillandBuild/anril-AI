@@ -395,9 +395,25 @@ def list_users(ctx: dict = Depends(require_roles_read)):
     seat_used = _active_telecaller_count(db, ctx["tenant_id"])
     teams = team_by_caller(db, ctx["tenant_id"])
     led = teams_led_by_user(db, ctx["tenant_id"])
+    from app.dependencies.tenant import _has_permission
+    from app.services.team_list_extras import build as team_extras, role_summary
+
+    extras = team_extras(db, ctx["tenant_id"], _has_permission(ctx, "deals.view"))
+    data = []
+    for m in (members.data or []):
+        row = _serialize_user(db, ctx["tenant_id"], m, roles, teams, led)
+        uid = str(m["user_id"])
+        role = roles.get(m.get("role_id") or "") or {}
+        row["can_do"] = role_summary(m.get("role"), role.get("permissions"))
+        row["on_leave_today"] = uid in extras["leave"]
+        row["leave_until"] = extras["leave"].get(uid)
+        if extras["sales"] is not None:  # only with deals.view
+            row["sales_paise"] = extras["sales"].get(uid, 0)
+        data.append(row)
     return {
-        "data": [_serialize_user(db, ctx["tenant_id"], m, roles, teams, led) for m in (members.data or [])],
+        "data": data,
         "telecaller_seats": {"limit": seat_limit, "used": seat_used},
+        "sales_period": "this month",
     }
 
 

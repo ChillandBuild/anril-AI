@@ -145,6 +145,8 @@ export type ResultsPeriod = "today" | "7d" | "30d";
 export interface ResultsRow {
   calls: number;
   connected: number;
+  /** Visits booked by phone. Left out by an older server. */
+  visits?: number;
   orders: number;
   revenue_paise?: number;
 }

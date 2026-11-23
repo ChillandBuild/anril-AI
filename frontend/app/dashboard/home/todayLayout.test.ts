@@ -24,7 +24,7 @@ import {
   waitingFor,
 } from "./todayLayout";
 
-const ALL_LISTS_ON = { waiting: true, low_stock: true, todays_feedback: true };
+const ALL_LISTS_ON = { waiting: true, low_stock: true, todays_bookings: true, todays_feedback: true };
 
 const today = {
   available: ["money_in_today", "new_enquiries_today", "hot_waiting", "to_collect", "callbacks_today", "orders_pending", "ads_today"] as HomeBoxKey[],
@@ -101,10 +101,10 @@ describe("max 12 guard", () => {
 
   it("buildSavePayload never sends more than 12 or an unknown key", () => {
     const many = [...BOX_KEYS, ...BOX_KEYS, "profit_month"] as unknown as HomeBoxKey[];
-    const payload = buildSavePayload(many, { waiting: true, low_stock: false, todays_feedback: true });
+    const payload = buildSavePayload(many, { waiting: true, low_stock: false, todays_bookings: true, todays_feedback: true });
     expect(payload.boxes.length).toBeLessThanOrEqual(MAX_BOXES);
     expect(payload.boxes.every(isBoxKey)).toBe(true);
-    expect(payload.lists).toEqual({ waiting: true, low_stock: false, todays_feedback: true });
+    expect(payload.lists).toEqual({ waiting: true, low_stock: false, todays_bookings: true, todays_feedback: true });
   });
 });
 
@@ -171,8 +171,8 @@ describe("lists", () => {
   it("default on, off only when the layout says false", () => {
     expect(listIsOn(null, "waiting")).toBe(true);
     expect(listIsOn({ lists: null }, "low_stock")).toBe(true);
-    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_feedback: true } }, "waiting")).toBe(false);
-    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_feedback: true } }, "low_stock")).toBe(true);
+    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_bookings: true, todays_feedback: true } }, "waiting")).toBe(false);
+    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_bookings: true, todays_feedback: true } }, "low_stock")).toBe(true);
   });
 });
 
@@ -278,21 +278,34 @@ describe("Feedback this week box", () => {
   });
 });
 
+describe("Today's bookings list", () => {
+  it("can be switched on and off, default on", () => {
+    expect(LIST_KEYS).toContain("todays_bookings");
+    expect(LIST_LABELS.todays_bookings).toBe("Today's bookings");
+    expect(listIsOn(null, "todays_bookings")).toBe(true);
+    expect(listIsOn({ lists: { waiting: true, low_stock: true, todays_bookings: false, todays_feedback: true } }, "todays_bookings")).toBe(false);
+  });
+  it("is saved with the layout", () => {
+    expect(buildSavePayload(["hot_waiting"], { waiting: true, low_stock: true, todays_bookings: false, todays_feedback: true }).lists.todays_bookings).toBe(false);
+  });
+});
+
 describe("Today's feedback list", () => {
   it("can be switched on and off like the others, default on", () => {
     expect(LIST_KEYS).toContain("todays_feedback");
     expect(LIST_LABELS.todays_feedback).toBe("Today's feedback");
     expect(listIsOn(null, "todays_feedback")).toBe(true);
-    expect(listIsOn({ lists: { waiting: true, low_stock: true, todays_feedback: false } }, "todays_feedback")).toBe(false);
+    expect(listIsOn({ lists: { waiting: true, low_stock: true, todays_bookings: true, todays_feedback: false } }, "todays_feedback")).toBe(false);
   });
   it("an older saved layout without it still shows it", () => {
     const old = { lists: { waiting: false, low_stock: true } } as unknown as Parameters<typeof listsFromLayout>[0];
-    expect(listsFromLayout(old)).toEqual({ waiting: false, low_stock: true, todays_feedback: true });
+    expect(listsFromLayout(old)).toEqual({ waiting: false, low_stock: true, todays_bookings: true, todays_feedback: true });
   });
   it("is saved with the layout", () => {
-    expect(buildSavePayload(["hot_waiting"], { waiting: true, low_stock: true, todays_feedback: false }).lists).toEqual({
+    expect(buildSavePayload(["hot_waiting"], { waiting: true, low_stock: true, todays_bookings: true, todays_feedback: false }).lists).toEqual({
       waiting: true,
       low_stock: true,
+      todays_bookings: true,
       todays_feedback: false,
     });
   });

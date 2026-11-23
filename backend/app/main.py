@@ -569,6 +569,8 @@ app.include_router(whatsapp_form_designs.public_router, prefix="/api/v1/whatsapp
 app.include_router(reengagement.router, prefix="/api/v1/reengagement", tags=["reengagement"], dependencies=_auth)
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"], dependencies=_auth)
 app.include_router(assignment_log.router, prefix="/api/v1/assignment-log", tags=["assignment-log"], dependencies=_auth)
+from app.routes import dial_lookup as dial_lookup_routes  # v9.2 #231: Dial a number > matching customers
+app.include_router(dial_lookup_routes.router, prefix="/api/v1/dial", tags=["dial"], dependencies=_auth)
 app.include_router(push.public_router, prefix="/api/v1/push", tags=["push-public"])
 app.include_router(push.router, prefix="/api/v1/push", tags=["push"], dependencies=_auth)
 app.include_router(call_scripts.router, prefix="/api/v1/call-scripts", tags=["call-scripts"], dependencies=_auth)

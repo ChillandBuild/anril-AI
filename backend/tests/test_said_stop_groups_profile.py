@@ -116,6 +116,92 @@ class SaidStopRouteTests(_Base):
         other = next(r for r in self.db.rows("leads") if r["name"] == "other")
         self.assertTrue(other["opted_out"])
 
+    def test_blocked_people_are_listed_labelled_and_stay_out_of_the_stop_rate(self):
+        _lead(self.db, "kumar", blocked_at=ago(1))
+        _lead(self.db, "gone", blocked_at=ago(1), deleted_at=ago(0))
+        _lead(self.db, "stopped_and_blocked", opted_out=True, opted_out_at=ago(3), opted_out_source="call",
+              blocked_at=ago(2))
+        body = self.client.get("/api/v1/said-stop").json()
+        people = {p["name"]: p for p in body["people"]}
+        self.assertNotIn("gone", people)
+        self.assertEqual(people["kumar"]["source"], "blocked")
+        self.assertEqual(people["kumar"]["source_label"], "Blocked by you")
+        self.assertTrue(people["kumar"]["blocked"])
+        self.assertEqual(people["kumar"]["opted_out_at"], next(r for r in self.db.rows("leads") if r["name"] == "kumar")["blocked_at"])
+        self.assertEqual(people["stopped_and_blocked"]["source"], "call")  # said stop wins, listed once
+        self.assertEqual(body["summary"]["on_list"], 4)
+        self.assertEqual(body["summary"]["this_week_by_source"].get("blocked"), 1)
+        self.assertEqual(body["summary"]["stopped_in_window"], 2)  # divya, stopped_and_blocked; not kumar (blocked), not sathya (40 days)
+        self.assertNotIn("other", people)
+
+    def test_add_number_that_is_new_makes_a_stopped_record_not_an_inbound_lead(self):
+        res = self.client.post("/api/v1/said-stop/add-number", json={"phone": "98765 43210", "name": "  Ravi  K "})
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["added"], 1)
+        self.assertTrue(res.json()["created"])
+        row = next(r for r in self.db.rows("leads") if r.get("phone") == "+919876543210")
+        self.assertEqual((row["tenant_id"], row["name"], row["source"]), ("tenant-1", "Ravi K", "manual"))
+        self.assertTrue(row["opted_out"])
+        self.assertEqual((row["opted_out_source"], row["opted_out_detail"]), ("staff", "Meena"))
+        self.assertEqual(self.db.rows("lead_stage_events") if "lead_stage_events" in self.db.tables else [], [])
+        listed = [p["name"] for p in self.client.get("/api/v1/said-stop").json()["people"]]
+        self.assertIn("Ravi K", listed)
+        # The same number again is already on the list: nothing added, no second record.
+        again = self.client.post("/api/v1/said-stop/add-number", json={"phone": "+91 98765-43210"}).json()
+        self.assertEqual((again["added"], again["created"], again["already_on_list"]), (0, False, True))
+        self.assertEqual(sum(1 for r in self.db.rows("leads") if r.get("phone") == "+919876543210"), 1)
+
+    def test_add_number_of_a_known_person_uses_the_same_lead(self):
+        self.db.rows("leads")[2]["phone"] = "+919000000001"  # priya
+        res = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9000000001"})
+        self.assertEqual(res.json()["added"], 1)
+        self.assertFalse(res.json()["created"])
+        priya = next(r for r in self.db.rows("leads") if r["name"] == "priya")
+        self.assertTrue(priya["opted_out"])
+        self.assertEqual(priya["opted_out_source"], "staff")
+        self.assertEqual(sum(1 for r in self.db.rows("leads") if r["tenant_id"] == "tenant-1"), 3)
+
+    def test_add_number_is_tenant_scoped_and_rejects_bad_numbers(self):
+        other = next(r for r in self.db.rows("leads") if r["name"] == "other")
+        other["opted_out"] = None
+        other["phone"] = "+919111111111"
+        res = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9111111111"})
+        self.assertTrue(res.json()["created"])  # tenant-2's lead is not tenant-1's person
+        self.assertIsNone(other["opted_out"])
+        self.assertEqual(self.client.post("/api/v1/said-stop/add-number", json={"phone": "abc"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/v1/said-stop/add-number", json={"phone": "12"}).status_code, 400)
+
+    def test_add_number_needs_manage_and_a_caller_keeps_to_their_own_people(self):
+        self.ctx = VIEWER
+        self.assertEqual(self.client.post("/api/v1/said-stop/add-number", json={"phone": "9222222222"}).status_code, 403)
+        self.ctx = {"tenant_id": "tenant-1", "role": "caller", "caller_id": "k1", "user_id": "user-3",
+                    "permissions": ["leads.manage"]}
+        _lead(self.db, "theirs", phone="+919222222222", assigned_to="k2")
+        res = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9222222222"})
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(next(r for r in self.db.rows("leads") if r["name"] == "theirs")["opted_out"])
+        # A brand-new number gets the same answer as someone else's customer: no way to probe who exists.
+        new = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9333333333"})
+        self.assertEqual((new.status_code, new.json()), (res.status_code, res.json()))
+        self.assertFalse(any(r.get("phone") == "+919333333333" for r in self.db.rows("leads")))
+        _lead(self.db, "mine", phone="+919555555555", assigned_to="k1")
+        ok = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9555555555"})
+        self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertTrue(next(r for r in self.db.rows("leads") if r["name"] == "mine")["opted_out"])
+
+    def test_add_number_brings_back_a_deleted_record_on_the_list(self):
+        _lead(self.db, "old", phone="+919444444444", deleted_at=ago(5))
+        res = self.client.post("/api/v1/said-stop/add-number", json={"phone": "9444444444"})
+        self.assertEqual(res.json()["added"], 1)
+        old = next(r for r in self.db.rows("leads") if r["name"] == "old")
+        self.assertIsNone(old["deleted_at"])
+        self.assertTrue(old["opted_out"])
+
+    def test_add_number_leaves_a_deleted_record_alone_when_it_already_said_stop(self):
+        _lead(self.db, "gone", phone="+919666666666", deleted_at=ago(5), opted_out=True)
+        self.client.post("/api/v1/said-stop/add-number", json={"phone": "9666666666"})
+        self.assertIsNotNone(next(r for r in self.db.rows("leads") if r["name"] == "gone")["deleted_at"])
+
     def test_viewer_can_see_but_not_change(self):
         self.ctx = VIEWER
         self.assertEqual(self.client.get("/api/v1/said-stop").status_code, 200)

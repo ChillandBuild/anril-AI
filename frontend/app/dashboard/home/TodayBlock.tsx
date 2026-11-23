@@ -99,6 +99,7 @@ function TodayBody({ today, layout }: { today: HomeToday; layout: HomeLayout | u
   const bar = today.hot_bar;
   // The server sends the Today's bookings list only to people who may see Bookings.
   const bookings = (today as HomeToday & { todays_bookings?: TodaysBookings | null }).todays_bookings ?? null;
+  const showBookings = !!bookings && listIsOn(layout, "todays_bookings");
 
   return (
     <>
@@ -137,11 +138,11 @@ function TodayBody({ today, layout }: { today: HomeToday; layout: HomeLayout | u
 
       <HomeBoxes keys={keys} boxes={today.boxes} />
 
-      {(showWaiting || showStock || bookings || showFeedback) && (
+      {(showWaiting || showStock || showBookings || showFeedback) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {showWaiting && today.waiting && <WaitingList total={today.waiting.total} items={today.waiting.items} />}
           {showStock && today.low_stock && <LowStockList total={today.low_stock.total} items={today.low_stock.items} />}
-          {bookings && <BookingsTodayList data={bookings} date={todayIst()} />}
+          {showBookings && bookings && <BookingsTodayList data={bookings} date={todayIst()} />}
           {showFeedback && today.todays_feedback && (
             <FeedbackTodayList total={today.todays_feedback.total} items={today.todays_feedback.items} />
           )}

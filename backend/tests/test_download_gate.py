@@ -151,10 +151,13 @@ class AssignmentLogCsvTests(_Base):
         meta = self.audit()[0]["metadata"]
         self.assertEqual((meta["list"], meta["rows"], meta["filters"]), ("Assignment log", 1, {"segment": "A"}))
 
-    def test_a_non_owner_never_reaches_it(self):
-        self.ctx = dict(STAFF_WITH)
+    def test_a_non_owner_needs_the_download_permission_too(self):
+        self.ctx = dict(STAFF)  # can see the page (team.manage) but may not download
         self.assertEqual(self.client.get("/api/v1/assignment-log", params={"format": "csv"}).status_code, 403)
         self.assertEqual(self.audit(), [])
+        self.ctx = dict(STAFF_WITH)
+        self.assertEqual(self.client.get("/api/v1/assignment-log", params={"format": "csv"}).status_code, 200)
+        self.assertEqual(self.audit()[0]["metadata"]["rows"], 1)
 
 
 if __name__ == "__main__":

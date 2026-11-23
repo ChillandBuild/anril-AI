@@ -18,6 +18,7 @@ import type { Option } from "@/components/chats/inboxFilters";
 import { CheckTick } from "@/components/ui/controls";
 import { SendMessageModal } from "@/app/dashboard/leads/SendMessageModal";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { followUpHrefForGroup, savePickedPeopleAsGroup, tagsApi, type TagCount } from "@/lib/customersApi";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -555,6 +556,10 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
   const [search, setSearch] = useState("");
   const [source, setSource] = useState("all");
   const [origin, setOrigin] = useState("all");
+  /** A customer tag, or "all". */
+  const [tag, setTag] = useState("all");
+  const [tagCounts, setTagCounts] = useState<TagCount[]>([]);
+  const [startingFollowUp, setStartingFollowUp] = useState(false);
   /** One Meta ad (its Meta id), offered once "Ad: From an ad" is picked. */
   const [adId, setAdId] = useState("");
   const [added, setAdded] = useState("30");
@@ -570,6 +575,11 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
   const [labels, setLabels] = useState<InboundResultLabels>(DEFAULT_LABELS);
   const { role, permissions } = useAuthRole();
   const canDownload = role === "owner" || permissions.includes("leads.download");
+  const canManageLeads = role === "owner" || permissions.includes("leads.manage");
+
+  useEffect(() => {
+    tagsApi.list().then(setTagCounts).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.inboundLeads.resultLabels().then(setLabels).catch(() => {});
@@ -598,13 +608,14 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
     meta_ad_id: origin === "ad" ? adId || undefined : undefined,
     search: search || undefined,
     date_from: added === "any" ? undefined : istDate(Number(added)),
-  }), [origin, source, adId, search, added]);
+    tag: tag === "all" ? undefined : tag,
+  }), [origin, source, adId, search, added, tag]);
   const filters: InboundLeadFilters = { ...baseFilters, segment, result, waiting: waiting || undefined };
 
-  useEffect(() => { setPage(1); }, [origin, source, adId, search, added, segment, result, waiting]);
-  useEffect(() => { setSelected(new Set()); }, [origin, source, adId, search, added, segment, result, waiting, page]);
+  useEffect(() => { setPage(1); }, [origin, source, adId, search, added, tag, segment, result, waiting]);
+  useEffect(() => { setSelected(new Set()); }, [origin, source, adId, search, added, tag, segment, result, waiting, page]);
 
-  const isFirstView = page === 1 && !search && source === "all" && origin === "all" && !adId && added === "30"
+  const isFirstView = page === 1 && !search && source === "all" && origin === "all" && !adId && added === "30" && tag === "all"
     && !segment && !result && !waiting;
   const { data, error, mutate, isValidating } = useInboundLeads(
     { ...filters, page, limit: PAGE_SIZE, sort: waiting ? "waiting" : "newest" },
@@ -619,10 +630,10 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
   const loading = !data && !error;
   const ads = adsData ?? [];
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = !!(search || source !== "all" || origin !== "all" || adId || added !== "30" || segment || result || waiting);
+  const hasFilters = !!(search || source !== "all" || origin !== "all" || adId || added !== "30" || tag !== "all" || segment || result || waiting);
 
   function clearFilters() {
-    setSearchInput(""); setSearch(""); setSource("all"); setOrigin("all"); setAdId("");
+    setSearchInput(""); setSearch(""); setSource("all"); setOrigin("all"); setAdId(""); setTag("all");
     setAdded("30"); setSegment(undefined); setResult(undefined); setWaiting(false);
   }
 
@@ -652,6 +663,20 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
     if (on) next.add(id);
     else next.delete(id);
     setSelected(next);
+  }
+
+  /** The ticked people become a fixed "Picked" group, then Follow-ups opens with that group chosen. */
+  async function startFollowUp() {
+    if (selectedRows.length === 0 || startingFollowUp) return;
+    setStartingFollowUp(true);
+    try {
+      const group = await savePickedPeopleAsGroup(selectedRows.map((l) => l.id));
+      toast.success(`Saved ${selectedRows.length} ${selectedRows.length === 1 ? "person" : "people"} as "${group.name}"`);
+      router.push(followUpHrefForGroup(group.id));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the group");
+      setStartingFollowUp(false);
+    }
   }
 
   async function undoAutoLost(lead: InboundLead) {
@@ -692,6 +717,17 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
               aria-label="Which ad"
               className="w-auto min-w-0 max-w-fit basis-[140px] grow gap-1.5 pl-2.5 pr-2 text-xs font-bold text-[#0A1528] [&>span>span]:min-w-0 [&>span>span]:overflow-hidden"
               options={[{ value: "", label: "All ads" }, ...ads.map((a) => ({ value: a.meta_ad_id, label: a.name }))]}
+            />
+          )}
+          {tagCounts.length > 0 && (
+            <FilterMenu
+              label="Tag"
+              options={[
+                { value: "all", label: "All" },
+                ...tagCounts.map((t) => ({ value: t.tag, label: t.count > 0 ? `${t.tag} (${t.count})` : t.tag })),
+              ]}
+              value={tag}
+              onChange={(v) => setTag(v ?? "all")}
             />
           )}
           <FilterMenu label="Added" options={ADDED_OPTIONS} value={added} onChange={(v) => setAdded(v ?? "30")} />
@@ -778,10 +814,12 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
               className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20">
               <MessageSquare size={12} /> Send message or template
             </button>
-            <button type="button" onClick={() => router.push("/dashboard/leads?tab=follow-ups")}
-              title="Follow-ups run by rule (e.g. Hot leads who went quiet) and are set up in Customers › Follow-ups"
-              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20">
-              <Repeat size={12} /> Start a follow-up
+            <button type="button" onClick={() => void startFollowUp()} disabled={startingFollowUp || !canManageLeads}
+              title={canManageLeads
+                ? "Saves these people as a group and opens Follow-ups with it picked"
+                : "You need permission to manage customers"}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50">
+              <Repeat size={12} /> {startingFollowUp ? "Saving…" : "Start a follow-up"}
             </button>
             <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-xs font-semibold text-white/70 hover:text-white">
               Clear

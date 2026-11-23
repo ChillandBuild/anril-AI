@@ -52,12 +52,14 @@ def _won_deals(db, tenant_id: str, since: datetime, until: datetime) -> list[dic
 
 
 def paid_within_window(db, tenant_id: str, campaigns: list[dict], *, include_amount: bool,
-                       now: datetime | None = None) -> dict[str, dict]:
+                       now: datetime | None = None, people: dict[str, list[dict]] | None = None) -> dict[str, dict]:
     """broadcast_id -> {"paid_count", "paid_amount_inr" (None unless include_amount), "paid_window_open"}.
 
     campaigns: [{"broadcast_id", "sent_at"}]; sent_at (the history timestamp) is only used to
     bound the deal lookup and to say whether the 7 days are still running.
     include_amount: the caller has deals.view. Without it only the count is returned.
+    people: pass an empty dict to also learn WHO paid: it is filled with broadcast_id ->
+    [{"lead_id", "paid_paise", "paid_at"}] using the same counting rule, one row per person.
     """
     now = now or datetime.now(timezone.utc)
     window = timedelta(days=WINDOW_DAYS)
@@ -118,6 +120,8 @@ def paid_within_window(db, tenant_id: str, campaigns: list[dict], *, include_amo
             if first is None:
                 continue
             counted.add((bid, lead_id))
+            if people is not None:
+                people.setdefault(bid, []).append({"lead_id": lead_id, "paid_paise": first[1], "paid_at": first[0].isoformat()})
             results[bid]["paid_count"] += 1
             if include_amount:
                 results[bid]["paid_amount_inr"] += first[1] / 100
@@ -130,3 +134,75 @@ def paid_within_window(db, tenant_id: str, campaigns: list[dict], *, include_amo
             if r["paid_amount_inr"] is not None:
                 r["paid_amount_inr"] = round(r["paid_amount_inr"], 2)
     return results
+
+
+# ── one campaign's results (the drawer on the Reach history) ─────────────────
+
+def said_stop_counts(db, tenant_id: str, broadcast_ids: list[str]) -> dict[str, int]:
+    """broadcast id -> how many people said stop after that campaign (opted_out_at set on their row)."""
+    from app.services.reports_common import chunks, paged
+    out = {str(b): 0 for b in broadcast_ids}
+    for part in chunks(list(out), 50):
+        for r in paged(lambda part=part: db.table("broadcast_recipients").select("id,broadcast_id")
+                       .eq("tenant_id", tenant_id).in_("broadcast_id", part).not_.is_("opted_out_at", "null")):
+            bid = str(r.get("broadcast_id"))
+            if bid in out:
+                out[bid] += 1
+    return out
+
+
+def back_per_rupee(paid_inr, cost_inr) -> float | None:
+    """Rupees paid back for each rupee of message cost (an estimate), or None when there is no cost."""
+    if paid_inr is None or not cost_inr:
+        return None
+    return round(float(paid_inr) / float(cost_inr), 2)
+
+
+def campaign_results(db, tenant_id: str, item: dict, *, include_amount: bool, now: datetime | None = None) -> dict:
+    """Everything the one-campaign drawer shows. `item` is the campaign's history entry.
+
+    Rupee figures (paid amount, estimated cost, back per Re 1, each person's amount) are only present
+    when include_amount (deals.view). Cost = messages sent x the one rate setting (meta_marketing_rate_inr).
+    A part that fails to load comes back as None (the drawer shows a dash), never a made-up 0."""
+    from app.services.reach_audience import cost_for
+    from app.services.reports_common import chunks, paged
+    bid = str(item["broadcast_id"])
+    sent = int(item.get("sent") or 0)
+    collected: dict[str, list[dict]] = {}
+    paid = paid_within_window(db, tenant_id, [{"broadcast_id": bid, "sent_at": item.get("timestamp")}],
+                              include_amount=include_amount, now=now, people=collected).get(bid) or {}
+    try:
+        said_stop = said_stop_counts(db, tenant_id, [bid]).get(bid)
+    except Exception:
+        logger.exception("Reach: said-stop count failed")
+        said_stop = None
+
+    rows = sorted(collected.get(bid, []), key=lambda r: r["paid_at"]) if paid.get("paid_count") is not None else []
+    who: list[dict] = []
+    if rows:
+        by_id: dict[str, dict] = {}
+        try:
+            for part in chunks([r["lead_id"] for r in rows], 200):
+                for lead in paged(lambda part=part: db.table("leads").select("id,name,phone")
+                                  .eq("tenant_id", tenant_id).in_("id", part)):
+                    by_id[lead["id"]] = lead
+        except Exception:
+            logger.exception("Reach: who-paid names failed")
+        for r in rows:
+            lead = by_id.get(r["lead_id"]) or {}
+            person = {"lead_id": r["lead_id"], "name": lead.get("name"), "phone": lead.get("phone"), "paid_at": r["paid_at"]}
+            if include_amount:
+                person["paid_inr"] = round(r["paid_paise"] / 100, 2)
+            who.append(person)
+
+    out = {
+        "broadcast_id": bid, "sent": sent, "said_stop": said_stop,
+        "paid_count": paid.get("paid_count"), "paid_window_open": paid.get("paid_window_open", False),
+        "paid_people": who,
+    }
+    if include_amount:
+        cost = cost_for(sent)
+        amount = paid.get("paid_amount_inr")
+        out.update({"paid_amount_inr": amount, "cost_inr": cost["cost_inr"], "rate_inr": cost["rate_inr"],
+                    "back_per_rupee": back_per_rupee(amount, cost["cost_inr"])})
+    return out

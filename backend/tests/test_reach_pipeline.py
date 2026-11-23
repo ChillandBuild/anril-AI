@@ -34,6 +34,13 @@ def now_iso(**delta) -> str:
     return (datetime.now(timezone.utc) + timedelta(**delta)).isoformat()
 
 
+def day_time_iso(days: int, hour_ist: int = 11) -> str:
+    """`days` from today at `hour_ist` India time: a schedule time inside 9 AM-9 PM whatever the clock says."""
+    ist = timezone(timedelta(hours=5, minutes=30))
+    day = datetime.now(ist).date() + timedelta(days=days)
+    return datetime(day.year, day.month, day.day, hour_ist, 0, tzinfo=ist).isoformat()
+
+
 class _Picker:
     def __init__(self, tenant_id):
         self.sent = []
@@ -161,7 +168,7 @@ class GroupSendTests(ReachBase):
         run.assert_not_called()
 
     def test_a_scheduled_group_send_keeps_the_group_label_and_people(self):
-        res, _ = self.send(schedule_type="scheduled", schedule_at=now_iso(days=1))
+        res, _ = self.send(schedule_type="scheduled", schedule_at=day_time_iso(1))
         self.assertEqual(res.status_code, 200, res.text)
         row = self.db.rows("scheduled_broadcasts")[0]
         self.assertEqual(row["csv_file_name"], "Group: Insta Hot")

@@ -26,8 +26,8 @@ export function TeamClient({ fallbackTeam, fallbackCallers }: TeamClientProps) {
   const isLeader = roleSlug === "team_leader";
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
-  // The assignment log is owner-level; a Team leader only gets the performance view.
-  const tab = (rawTab === "log" && !isLeader ? "log" : "performance") as "performance" | "log";
+  // The server shows the log to each person's own scope: everyone, their team (Team leader), or only themself.
+  const tab = (rawTab === "log" ? "log" : "performance") as "performance" | "log";
   const canViewTeam = role === "owner" || permissions.includes("team.view") || fallbackTeam !== null;
 
   const { data: callersData, mutate: reloadCallers } = useCallers(

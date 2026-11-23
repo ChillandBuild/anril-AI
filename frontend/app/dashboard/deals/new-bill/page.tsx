@@ -11,6 +11,7 @@ import { api, type NewBillItem, type NewBillResult, type NewBillVariant, type Se
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { computeBill } from "../orders/billMath";
+import { unpaidHintText } from "./unpaidHint";
 import { reportSend, rupees } from "../orders/orderUi";
 import { ScanBox } from "../../catalog/ScanBox";
 
@@ -70,6 +71,8 @@ export default function NewBillPage() {
   const canManage = role === "owner" || permissions.includes("deals.manage");
   const { data: options, error } = useSWR("new-bill-options", () => api.orders.billOptions(), { revalidateOnFocus: false });
   const { data: shopRule } = useSWR("orders-advance-rule", () => api.orders.advanceRule(), { revalidateOnFocus: false });
+  const { data: advanceOpts } = useSWR("orders-advance-options", () => api.orders.advanceOptions(), { revalidateOnFocus: false });
+  const advanceLocked = role !== "owner" && advanceOpts?.staff_can_change === false; // v9.2 screen 155
 
   const [mode, setMode] = useState<"now" | "later">("now");
   const [group, setGroup] = useState("all");
@@ -79,7 +82,7 @@ export default function NewBillPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [known, setKnown] = useState<{ name?: string | null; orders?: number } | null>(null);
+  const [known, setKnown] = useState<{ name?: string | null; orders?: number; unpaidOrders?: number; unpaidOrderId?: string | null } | null>(null);
   const [b2b, setB2b] = useState(false);
   const [gstin, setGstin] = useState("");
   const [business, setBusiness] = useState("");
@@ -104,7 +107,7 @@ export default function NewBillPage() {
     }
     const t = setTimeout(() => {
       api.orders.findCustomer(phone).then((r) => {
-        setKnown(r.found ? { name: r.name, orders: r.orders } : null);
+        setKnown(r.found ? { name: r.name, orders: r.orders, unpaidOrders: r.unpaid_orders, unpaidOrderId: r.unpaid_order_id } : null);
         if (r.found && r.name && !name) setName(r.name);
       }).catch(() => setKnown(null));
     }, 350);
@@ -447,6 +450,12 @@ export default function NewBillPage() {
               className="mt-2 h-9 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200" />
           )}
           {known && <p className="mt-1 text-[11px] text-emerald-700">Returning customer{known.orders ? ` · ${known.orders} ${known.orders === 1 ? "order" : "orders"} before` : ""}</p>}
+          {known?.unpaidOrderId && (known.unpaidOrders ?? 0) > 0 && (
+            <p className="mt-1 text-[11px] text-amber-700">
+              {unpaidHintText(known.unpaidOrders ?? 1)} ·{" "}
+              <Link href={`/dashboard/deals/orders/${known.unpaidOrderId}`} className="font-bold underline">{(known.unpaidOrders ?? 1) === 1 ? "Open it" : "Open the latest"}</Link>
+            </p>
+          )}
 
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs">
             <input type="checkbox" checked={b2b} onChange={(e) => setB2b(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
@@ -560,8 +569,9 @@ export default function NewBillPage() {
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[11px] font-bold text-[#334155]">Advance now
                   <input value={advanceText} onChange={(e) => setAdvanceText(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal"
-                    placeholder={ruleAdvance ? `₹${ruleAdvance / 100} (shop rule)` : "₹0"}
-                    className="mt-1 h-9 w-full rounded-lg border border-[#e2e8f0] bg-white px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200" />
+                    placeholder={ruleAdvance ? `₹${ruleAdvance / 100} (shop rule)` : "₹0"} disabled={advanceLocked}
+                    title={advanceLocked ? "The owner set one advance rule for every order" : undefined}
+                    className="mt-1 h-9 w-full rounded-lg border border-[#e2e8f0] bg-white px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:bg-[#f1f5f9] disabled:text-[#64748b]" />
                 </label>
                 <label className="text-[11px] font-bold text-[#334155]">Ready by
                   <input type="date" value={readyBy} onChange={(e) => setReadyBy(e.target.value)}

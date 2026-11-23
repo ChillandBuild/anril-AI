@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { CalendarCheck, ChevronRight, Download, Hourglass, IndianRupee, Loader2, MessageCircle, Package, ReceiptText, Search, Settings2 } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { OrderSettingsDialog } from "./orders/OrderSettingsDialog";
-import { api, type OrderChip, type OrderRow, type OrdersPage } from "@/lib/api";
+import { api, type OrderChip, type OrderRow, type OrdersPage, type RemindAllResult } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
 import { DeliveryBadge, PaymentBadge, reportSend, rupees, whenShort } from "./orders/orderUi";
@@ -95,6 +95,9 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
     revalidateOnFocus: false,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [bulk, setBulk] = useState<RemindAllResult | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => setBulk(null), [chip, channel, days]); // counts belong to the filters they were made for
 
   const rows = data?.data ?? [];
   const counts = data?.counts;
@@ -102,6 +105,30 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
   const period = periodText(days);
   const missing = useMemo(() => (setup?.templates ?? []).filter((t) => t.status === "MISSING" || t.status === "REJECTED"), [setup]);
   const pending = (setup?.templates ?? []).filter((t) => t.status === "PENDING");
+
+  // v9.2 screen 127: "Remind all" on Still to collect. First a dry run for the counts, then send.
+  async function remindAll(send: boolean) {
+    setBulkBusy(true);
+    try {
+      const out = await api.orders.remindAll({ channel, days: Number(days), state: chip === "advance" ? "advance" : "waiting", dry_run: !send });
+      if (!send) {
+        if (!out.will_send) toast.info(out.skipped_recent ? "Everyone here was reminded in the last day." : "Nobody to remind.");
+        setBulk(out.will_send ? out : null);
+        return;
+      }
+      setBulk(null);
+      const parts = [`Reminded ${out.sent}`];
+      if (out.share_only) parts.push(`${out.share_only} need Share on WhatsApp (open each order)`);
+      if (out.failed) parts.push(`${out.failed} couldn't get a pay link (is Razorpay connected in Settings › Payments?)`);
+      if (out.left) parts.push(`${out.left} more left: tap Remind all again`);
+      toast.success(parts.join(" · "));
+      await mutate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send the reminders");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function rowAction(row: OrderRow) {
     if (row.next_action === "remind") {
@@ -222,6 +249,12 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           <Select size="sm" value={channel} onChange={(v) => setChannel(v as typeof channel)} options={CHANNELS} aria-label="Online or store"
             className="w-auto text-xs font-bold" />
           <Select size="sm" value={days} onChange={setDays} options={DAYS} aria-label="Period" className="w-auto text-xs font-bold" />
+          {canManage && (chip === "waiting" || chip === "advance") && (
+            <button type="button" onClick={() => remindAll(false)} disabled={bulkBusy}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 font-label text-xs font-bold text-amber-800 hover:border-amber-300 disabled:opacity-50">
+              {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <MessageCircle size={13} />} Remind all
+            </button>
+          )}
           <Link href="/dashboard/deals/day-closing" title="Check today's money against the cash drawer"
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
             <CalendarCheck size={13} /> Day closing
@@ -231,6 +264,24 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
             <Settings2 size={14} />
           </button>
         </div>
+
+        {bulk && (
+          <div role="alertdialog" aria-label="Remind all" className="flex flex-wrap items-center gap-3 border-b border-amber-100 bg-amber-50/60 px-4 py-3">
+            <p className="min-w-0 flex-1 font-body text-xs leading-5 text-[#0A1528]">
+              <span className="font-bold">Send a payment reminder to {bulk.will_send} {bulk.will_send === 1 ? "customer" : "customers"}?</span>{" "}
+              Each gets their pay link on WhatsApp.
+              {bulk.left ? ` ${bulk.left} more after this (at most 20 a tap).` : ""}
+              {bulk.skipped_recent ? ` Skipped: ${bulk.skipped_recent} reminded in the last day.` : ""}
+              {bulk.skipped_cant ? ` ${bulk.skipped_cant} said stop, are blocked or have no phone.` : ""}
+            </p>
+            <button type="button" onClick={() => setBulk(null)} disabled={bulkBusy}
+              className="rounded-xl border border-[#e2e8f0] bg-white px-3 py-1.5 font-label text-xs font-bold text-[#334155]">Cancel</button>
+            <button type="button" onClick={() => remindAll(true)} disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 font-label text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-50">
+              {bulkBusy && <Loader2 size={13} className="animate-spin" />} Send {bulk.will_send}
+            </button>
+          </div>
+        )}
 
         {isLoading && !data ? (
           <div className="flex min-h-[260px] items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>

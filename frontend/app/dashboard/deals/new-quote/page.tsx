@@ -53,6 +53,8 @@ export default function NewQuotePage() {
   const canManage = role === "owner" || permissions.includes("deals.manage");
   const { data: options } = useSWR("new-bill-options", () => api.orders.billOptions(), { revalidateOnFocus: false });
   const { data: rule, mutate: mutateRule } = useSWR("orders-advance-rule", () => api.orders.advanceRule(), { revalidateOnFocus: false });
+  const { data: advanceOpts } = useSWR("orders-advance-options", () => api.orders.advanceOptions(), { revalidateOnFocus: false });
+  const advanceLocked = role !== "owner" && advanceOpts?.staff_can_change === false; // v9.2 screen 155
 
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -279,7 +281,8 @@ export default function NewQuotePage() {
             <div>
               <span className="font-label text-xs font-bold text-[#0A1528]">Advance to confirm</span>
               <div className="mt-1 flex gap-2">
-                <Select value={advanceKind} onChange={(v) => setAdvanceKind(v as AdvanceKind)} options={advanceOptions} className="flex-1 text-sm" />
+                <Select value={advanceKind} onChange={(v) => setAdvanceKind(v as AdvanceKind)} options={advanceOptions} className="flex-1 text-sm"
+                  disabled={advanceLocked} aria-label="Advance to confirm" />
                 {(advanceKind === "percent" || advanceKind === "fixed") && (
                   <input value={advanceText} onChange={(e) => setAdvanceText(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal"
                     placeholder={advanceKind === "percent" ? "30 %" : "₹ 1,000"} aria-label="Advance"
@@ -288,6 +291,7 @@ export default function NewQuotePage() {
               </div>
               <p className="mt-1 text-[11px] text-on-surface-muted">
                 {advance ? `${rupees(advance)} on Accept` : "No advance: Accept just confirms the order"}
+                {advanceLocked ? " · the owner set this for every order" : ""}
                 {role === "owner" && (advanceKind === "percent" || advanceKind === "fixed") && Number(advanceText) > 0 && (
                   <> · <button type="button" onClick={saveAsShopRule} className="font-bold text-primary-700 hover:text-primary-900">Make this the shop rule</button></>
                 )}

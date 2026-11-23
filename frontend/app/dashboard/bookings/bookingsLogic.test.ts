@@ -216,7 +216,7 @@ describe("summaries", () => {
       { status: "booked", resource_id: "r1" }, { status: "came", resource_id: "r1" }, { status: "held", resource_id: "r2" },
       { status: "cancelled", resource_id: "r2" }, { status: "no_show", resource_id: "r2" },
     ]);
-    expect(s).toEqual({ total: 3, came: 1, noShow: 1, byResource: { r1: 2, r2: 1 } });
+    expect(s).toEqual({ total: 3, came: 1, noShow: 1, toCome: 2, byResource: { r1: 2, r2: 1 } });
   });
   it("lists the columns that do a service", () => {
     const r = (id: string, active: boolean, ids: string[]) => ({ id, active, service_ids: ids }) as never;

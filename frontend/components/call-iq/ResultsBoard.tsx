@@ -14,9 +14,10 @@ function Row({ title, row, money, big }: { title: string; row: ResultsRow; money
   return (
     <Card className={big ? "bg-primary/5" : undefined}>
       <h2 className="font-display text-base font-bold text-primary">{title}</h2>
-      <div className={money ? "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4" : "mt-3 grid grid-cols-3 gap-3"}>
+      <div className={money ? "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5" : "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"}>
         <Stat label="Calls" value={row.calls} />
         <Stat label="Picked up" value={row.connected} hint={pickedUpText(row)} />
+        <Stat label="Visits booked" value={row.visits ?? 0} hint="Booked by phone" />
         <Stat label="Orders" value={row.orders} />
         {money ? <Stat label="Money" value={formatRupees(row.revenue_paise ?? 0)} hint="Sales before GST" /> : null}
       </div>
@@ -44,7 +45,7 @@ export function ResultsBoard() {
               {data.callers.map((p) => <Row key={p.caller_id} title={p.name} row={p} money={money} />)}
             </div>
             <p className="font-label text-xs text-ink-secondary">
-              An order counts for the person who sold it, on the day it was paid. Picked up means the telecaller marked the call as connected.
+              An order counts for the person who sold it, on the day it was paid. Picked up means the telecaller marked the call as connected. A visit counts for the person who booked it, on the day they booked it.
             </p>
           </div>
         )

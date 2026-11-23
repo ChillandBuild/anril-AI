@@ -21,6 +21,15 @@ const METHODS: { value: Method; label: string; icon: typeof Banknote }[] = [
 
 const QUICK_PICKS = 3;
 
+const INVOICE_WHY: Record<string, string> = {
+  no_phone: "This customer has no phone number.",
+  blocked: "This customer is blocked.",
+  opted_out: "They said stop on WhatsApp.",
+  whatsapp_not_connected: "WhatsApp isn't connected yet.",
+  outside_24h_no_template: "They haven't messaged in 24 hours and the bill message isn't approved yet.",
+  send_failed: "WhatsApp didn't take it.",
+};
+
 function toPaise(rupees: string): number {
   const n = Number(rupees.replace(/[^\d.]/g, ""));
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
@@ -57,6 +66,8 @@ export function RecordPaymentDialog({
   const [picked, setPicked] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(false);
   const [pricesIncludeGst, setPricesIncludeGst] = useState(true);
+  const [gstRegistered, setGstRegistered] = useState(false);
+  const [sendInvoice, setSendInvoice] = useState(false);
   const [saving, setSaving] = useState(false);
   const name = lead.name || formatPhone(lead.phone) || "the customer";
 
@@ -68,6 +79,7 @@ export function RecordPaymentDialog({
     setSoldBy(defaultSoldBy ?? "");
     setPicked([]);
     setShowMore(false);
+    setSendInvoice(false);
     let live = true;
     api.catalog.listItems()
       .then((items) => live && setCatalog(items.filter((i) => i.price_paise != null)))
@@ -77,6 +89,7 @@ export function RecordPaymentDialog({
         if (!live) return;
         setSuggested(o.suggested_item_ids);
         setPricesIncludeGst(o.prices_include_gst);
+        setGstRegistered(o.gst_registered === true);
       })
       .catch(() => {});
     return () => { live = false; };
@@ -127,6 +140,9 @@ export function RecordPaymentDialog({
     : picked.length > 1 && amountPaise < othersTotal ? `The products picked come to more than this. Raise the amount or remove one.`
     : null;
   const canSave = amountPaise >= 100 && !amountError && !saving;
+  // The invoice goes out once the money is in, so it needs Cash, UPI or Card.
+  const invoiceAllowed = gstRegistered && method !== "link";
+  const invoiceOn = invoiceAllowed && sendInvoice;
 
   async function save() {
     if (!canSave) return;
@@ -138,12 +154,17 @@ export function RecordPaymentDialog({
         amount_paise: amountPaise,
         item_ids: picked,
         sold_by: soldBy || null,
+        ...(invoiceOn ? { send_gst_invoice: true } : {}),
       });
       if (method === "link") {
         if (res.message_sent) toast.success(`Payment link sent to ${name}`);
-        else toast.warning("Link made, but WhatsApp didn't send it. Copy it from Deals and share it yourself.");
+        else toast.warning("Link made, but WhatsApp didn't send it. Copy it from Orders & payments and share it yourself.");
       } else {
         toast.success(`${formatRupees(res.deal?.total_paise ?? payable)} recorded as paid`);
+        if (invoiceOn && res.invoice) {
+          if (res.invoice.sent) toast.success(`GST invoice sent to ${name}`);
+          else toast.warning(`Saved, but the invoice wasn't sent. ${INVOICE_WHY[res.invoice.reason ?? ""] ?? ""} Send it from Orders & payments.`.replace("  ", " "));
+        }
       }
       onRecorded?.();
       onClose();
@@ -179,7 +200,7 @@ export function RecordPaymentDialog({
               Record payment · {name}
             </h2>
             <p className="mt-0.5 text-[12px] leading-snug text-[#64748b]">
-              Saved as an order in <span className="font-semibold text-primary">Commerce › Deals</span>.
+              Saved as an order in <span className="font-semibold text-primary">Commerce › Orders &amp; payments</span>.
               The chat becomes <span className="font-semibold text-[#0A1528]">Came / Paid</span> once it&apos;s paid.
             </p>
           </div>
@@ -318,20 +339,32 @@ export function RecordPaymentDialog({
             )}
           </section>
 
-          {/* GST invoice: shown now, switched on once GST details are collected at onboarding. */}
-          <section className="flex items-center gap-3 rounded-xl border border-[#eef1f5] bg-[#fbfcfd] px-4 py-3">
-            <SwitchPill on={false} disabled onChange={() => {}} size="sm" aria-label="Send GST invoice on WhatsApp" />
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[#0A1528]">Send GST invoice on WhatsApp</p>
-              <p className="text-[11.5px] text-[#64748b]">Coming soon. It switches on once your GST details are set up.</p>
-            </div>
-          </section>
+          {/* GST invoice: only for shops registered for GST. Goes out after Cash / UPI / Card is recorded. */}
+          {gstRegistered && (
+            <section className="flex items-center gap-3 rounded-xl border border-[#eef1f5] bg-[#fbfcfd] px-4 py-3">
+              <SwitchPill
+                on={invoiceOn}
+                disabled={!invoiceAllowed}
+                onChange={setSendInvoice}
+                size="sm"
+                aria-label="Send GST invoice on WhatsApp"
+              />
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold text-[#0A1528]">Send GST invoice on WhatsApp</p>
+                <p className="text-[11.5px] text-[#64748b]">
+                  {invoiceAllowed
+                    ? "The bill goes to the chat as soon as the payment is recorded."
+                    : "For Cash, UPI or Card. A link order can send its bill from Orders & payments."}
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* What happens next, in plain words */}
           <div className="rounded-xl bg-[#ecfdf5] px-4 py-3 text-[12.5px] leading-relaxed text-[#065f46]">
             {method === "link" ? (
               <>
-                The link goes to {name}&apos;s chat. When they pay, the order is marked paid in Deals and the chat
+                The link goes to {name}&apos;s chat. When they pay, the order is marked paid in Orders &amp; payments and the chat
                 becomes <span className="font-bold">Came / Paid {amountPaise ? formatRupees(payable) : ""}</span> by itself. No more taps.
               </>
             ) : (

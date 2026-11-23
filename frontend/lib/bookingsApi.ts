@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api";
+import { API_URL, apiFetch, getAuthHeaders } from "@/lib/api";
 
 /** Bookings (staff side). Every call is /api/v1/bookings/...; shapes follow the Bookings API contract. */
 
@@ -198,4 +198,17 @@ export const bookingsApi = {
     apiFetch<Booking>(`${BASE}/${encodeURIComponent(id)}/cancel`, json("POST", { reason: reason || undefined })),
   came: (id: string) => apiFetch<{ deal_id: string | null; href: string | null; order_error?: string | null }>(`${BASE}/${encodeURIComponent(id)}/came`, json("POST")),
   noShow: (id: string) => apiFetch<Booking>(`${BASE}/${encodeURIComponent(id)}/no-show`, json("POST")),
+  /** The list for one day (end left out) or a week, as a file. Needs "Download lists". */
+  exportCsv: async (start: string, end?: string) => {
+    const res = await fetch(`${API_URL}${BASE}/export${q({ start, end })}`, { headers: await getAuthHeaders() });
+    if (!res.ok) throw new Error(res.status === 403 ? "You don't have permission to download lists." : "Could not prepare the download. Try again.");
+    const url = window.URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bookings_${start}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };

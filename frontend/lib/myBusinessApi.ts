@@ -37,4 +37,10 @@ export const myBusinessApi = {
   /** The existing Orders API: owner only. */
   saveAdvanceRule: (body: AdvanceRuleBody) =>
     apiFetch<AdvanceRuleBody>("/api/v1/orders/advance-rule", { method: "PUT", body: JSON.stringify(body) }),
+  /** v9.2 screen 155: may staff change one order's advance; may the AI send a pay-full link. Owner saves. */
+  advanceOptions: () => apiFetch<AdvanceOptions>("/api/v1/orders/advance-options"),
+  saveAdvanceOptions: (body: AdvanceOptions) =>
+    apiFetch<AdvanceOptions>("/api/v1/orders/advance-options", { method: "PUT", body: JSON.stringify(body) }),
 };
+
+export type AdvanceOptions = { staff_can_change: boolean; ai_pay_full: boolean };

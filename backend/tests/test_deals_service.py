@@ -484,3 +484,14 @@ async def test_a_quoted_order_takes_no_property_units_yet(db):
          patch.object(deals, "send_payment_link"):
         await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 1}], "walk_in", "quoted", db=db)
     assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_an_order_made_already_paid_gets_one_full_payment_row(db):
+    """Record payment "paid now" / a won wrap-up: Money in and the bill read deal_payments."""
+    with patch("app.services.properties.on_deal_paid", return_value=0):
+        out = await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 2}], "walk_in", "won",
+                                      payment_method="upi", created_by="u1", db=db)
+    rows = db.tables.get("deal_payments", [])
+    assert len(rows) == 1 and rows[0]["kind"] == "full" and rows[0]["method"] == "upi"
+    assert rows[0]["amount_paise"] == out["deal"]["total_paise"] == out["deal"]["paid_paise"] > 0

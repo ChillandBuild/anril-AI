@@ -418,7 +418,7 @@ def deals_for_lead(lead_id: str, ctx: dict = Depends(require_deals_view)):
 def record_payment_options(lead_id: str, ctx: dict = Depends(require_deals_manage)):
     """What the Record payment pop-up needs besides the catalogue and the team: the GST
     setup, and the products this customer was already quoted (suggested first)."""
-    from app.services.business_details import get_business_details, prices_include_gst
+    from app.services.business_details import charges_gst, get_business_details, prices_include_gst
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     quoted = (
@@ -439,6 +439,8 @@ def record_payment_options(lead_id: str, ctx: dict = Depends(require_deals_manag
     return {
         "prices_include_gst": prices_include_gst(tenant_id, db),
         "gstin_set": bool((details.get("gstin") or "").strip()),
+        # Only a shop registered for GST (not composition / none) can send a GST invoice.
+        "gst_registered": bool(charges_gst(tenant_id, db)),
         "suggested_item_ids": suggested[:3],
     }
 
@@ -449,6 +451,8 @@ class RecordPaymentIn(BaseModel):
     amount_paise: int = Field(..., ge=100, le=10_000_000_00)
     item_ids: list[str] = Field(default_factory=list, max_length=10)
     sold_by: str | None = Field(None, max_length=64)
+    # After a paid-now record, send the order's bill/invoice on WhatsApp (same as Orders > Send bill).
+    send_gst_invoice: bool = False
 
 
 def record_payment_lines(amount_paise: int, items: list[dict]) -> list[dict]:
@@ -497,6 +501,12 @@ async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_d
         items = [by_id[i] for i in ids]
     lines = record_payment_lines(payload.amount_paise, items)
     paid_now = payload.method != "link"
+    if payload.send_gst_invoice:
+        from app.services.business_details import charges_gst
+        if not paid_now:
+            raise HTTPException(status_code=400, detail="The invoice can go out once it's paid. Pick Cash, UPI or Card.")
+        if not charges_gst(tenant_id, db):
+            raise HTTPException(status_code=400, detail="Your shop doesn't charge GST, so there is no GST invoice to send.")
     try:
         result = await deals_service.create_deal(
             tenant_id, payload.lead_id, lines,
@@ -510,13 +520,32 @@ async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_d
     deal_id = result["deal"]["id"]
     if payload.sold_by:
         db.table("deals").update({"sold_by": payload.sold_by}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+    invoice = None
+    if payload.send_gst_invoice:
+        invoice = await _send_paid_invoice(db, tenant_id, deal_id, result["deal"], payload.method, ctx)
     deal = _full(_load_deal(db, tenant_id, deal_id), db, tenant_id)
     return {
         "deal": deal,
         "payment_link": result["payment_link"],
         "message_sent": result["message_sent"],
         "stock_warnings": result["stock_warnings"],
+        "invoice": invoice,
     }
+
+
+async def _send_paid_invoice(db, tenant_id: str, deal_id: str, deal: dict, method: str, ctx: dict) -> dict:
+    """Give the just-paid order its invoice number, then send its bill the way Orders > Send bill does
+    (orders.notify, kind "bill"). create_deal already wrote the payment row. Never raises: the payment
+    is already saved. Returns {"sent": bool, "reason": str | None}."""
+    from app.services import orders as orders_service
+    try:
+        orders_service.ensure_invoice(db, tenant_id, deal_id)
+        sender = {"sent_by_user_id": ctx["user_id"]} if ctx.get("user_id") else {}
+        out = await orders_service.notify(db, tenant_id, deal_id, "bill", user_id=ctx.get("user_id"), sender=sender)
+        return {"sent": bool(out.get("sent")), "reason": out.get("reason")}
+    except Exception as e:
+        logger.warning(f"Record payment: invoice for deal {deal_id} didn't go: {e}")
+        return {"sent": False, "reason": "send_failed"}
 
 
 @router.get("/{deal_id}")

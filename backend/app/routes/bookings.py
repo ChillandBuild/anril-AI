@@ -6,6 +6,8 @@ The rules live in services/bookings.py and services/booking_setup.py; money goes
 services/booking_orders.py. Money columns need deals.view.
 """
 import asyncio
+import csv
+import io
 import logging
 import threading
 import os
@@ -14,12 +16,13 @@ from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import _has_permission, require_permission
 from app.routes.auto_messages import _client_ip, _SlidingWindow
+from app.services.download_gate import log_download, require_download
 from app.services import booking_setup as bsetup
 from app.services import bookings as bk
 from app.services.booking_setup import BookingError
@@ -296,6 +299,61 @@ def get_week(start: str | None = Query(None, max_length=10), ctx: dict = Depends
         days.append({"date": d.isoformat(),
                      "bookings": [b for b in shaped if bk.ist_date(bk.parse_ts(b["start_at"])) == d]})
     return {"start": first.isoformat(), "days": days, "resources": [_resource_out(r) for r in resources]}
+
+
+_EXPORT_DAYS = 92
+_STATUS_WORDS = {"held": "Waiting for advance", "booked": "Booked", "came": "Came", "no_show": "Didn't come"}
+
+
+def _csv_cell(value):
+    """A cell that starts with = + - @ would run as a formula in Excel; a leading quote keeps it text."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@") else text
+
+
+@router.get("/export")
+def export_bookings(
+    start: str | None = Query(None, max_length=10), end: str | None = Query(None, max_length=10),
+    ctx: dict = Depends(view),
+):
+    """CSV of the bookings on screen: the Day view (start only) or the Week view (start to end), only the
+    columns this person may see. Needs "Download lists"; the amount column needs deals.view."""
+    require_download(ctx)
+    db, tid = get_supabase(), ctx["tenant_id"]
+    with _errors():
+        first = _day_param(start)
+        last = bk.parse_day(end, "end date") if end else first
+    if last < first or (last - first).days >= _EXPORT_DAYS:
+        raise HTTPException(status_code=400, detail=f"Pick a range of up to {_EXPORT_DAYS} days")
+    resources = _visible(db, ctx)
+    names = {r["id"]: r["name"] for r in resources}
+    shaped = _shape_all(db, ctx, bk.bookings_on(db, tid, first, last, list(names)))
+    show = _money(ctx)
+    fields = ["date", "time", "code", "customer", "phone", "service", "staff_or_chair", "status", "source", "advance_paid", "note"]
+    if show:
+        fields.insert(10, "advance_amount_rupees")
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=fields)
+    writer.writeheader()
+    for b in shaped:
+        local = bk.parse_ts(b["start_at"]).astimezone(bk.IST)
+        row = {
+            "date": local.date().isoformat(), "time": local.strftime("%H:%M"), "code": b["code"],
+            "customer": _csv_cell(b.get("customer_name")), "phone": b.get("phone") or "",
+            "service": _csv_cell(b.get("service_name")), "staff_or_chair": _csv_cell(names.get(b.get("resource_id"))),
+            "status": _STATUS_WORDS.get(b["status"], b["status"]), "source": b.get("source") or "",
+            "advance_paid": ("Yes" if b["advance_paid"] else "No") if b["advance_needed"] else "",
+            "note": _csv_cell(b.get("note")),
+        }
+        if show:
+            row["advance_amount_rupees"] = f"{int(b.get('advance_paise') or 0) / 100:g}" if b["advance_needed"] else ""
+        writer.writerow(row)
+    log_download(db, ctx, list_name="Bookings", row_count=len(shaped),
+                 filters={"from": first.isoformat(), "to": last.isoformat() if last != first else None})
+    return StreamingResponse(
+        io.BytesIO(out.getvalue().encode("utf-8-sig")), media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=bookings_{first.isoformat()}.csv"},
+    )
 
 
 def _service_for_free(db, tenant_id: str, service_id: str) -> dict:

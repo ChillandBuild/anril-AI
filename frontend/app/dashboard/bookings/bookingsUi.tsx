@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { bookingsApi, type BookingSetup } from "@/lib/bookingsApi";
@@ -32,10 +33,31 @@ export function useBookingsSetup() {
 export function useBookingsAccess() {
   const { role, permissions, loading } = useAuthRole();
   const owner = role === "owner";
+  const download = owner || permissions.includes("leads.download");
   const manage = owner || permissions.includes("bookings.manage");
   const view = manage || permissions.includes("bookings.view");
   const money = owner || permissions.includes("deals.view") || permissions.includes("deals.manage");
-  return { loading, view, manage, money };
+  return { loading, view, manage, money, download };
+}
+
+/** "Download the list" for the day or week on screen. The server checks the permission again. */
+export function DownloadListButton({ start, end, disabled }: { start: string; end?: string; disabled?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    try {
+      await bookingsApi.exportCsv(start, end);
+    } catch (err) {
+      toast.error(errorText(err, "Could not prepare the download. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button type="button" className={BTN_SECONDARY} onClick={() => void go()} disabled={busy || disabled} title="Download this list">
+      <Download size={16} aria-hidden /> Download the list
+    </button>
+  );
 }
 
 export function Field({ label, children, hint, htmlFor }: { label: string; children: ReactNode; hint?: string; htmlFor?: string }) {

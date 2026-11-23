@@ -110,10 +110,11 @@ function BookingsPage() {
             onOpenId={(id) => go({ booking: id })}
             canManage={canManage}
             canSeeMoney={access.money}
+            canDownload={access.download}
           />
         )}
         {setup && tab === "week" && (
-          <WeekTab weekStart={mondayOf(date)} onWeek={(m) => go({ date: m })} onPickDay={(d) => go({ tab: "day", date: d })} />
+          <WeekTab weekStart={mondayOf(date)} onWeek={(m) => go({ date: m })} onPickDay={(d) => go({ tab: "day", date: d })} canDownload={access.download} />
         )}
         {setup && tab === "staff" && <StaffTab setup={setup} canManage={canManage} onChanged={() => void mutate()} />}
         {setup && tab === "link" && <LinkTab setup={setup} canManage={canManage} onChanged={() => void mutate()} />}

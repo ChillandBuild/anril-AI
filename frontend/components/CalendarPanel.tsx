@@ -175,8 +175,8 @@ export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
             </div>
 
             <div className="grid grid-cols-7 gap-1">
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-                <div key={d} className="text-center text-[10px] font-bold text-ink-muted/40 py-2">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <div key={i} className="text-center text-[10px] font-bold text-ink-muted/40 py-2">
                   {d}
                 </div>
               ))}

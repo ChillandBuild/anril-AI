@@ -2,7 +2,7 @@
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Users, Upload, QrCode } from "lucide-react";
+import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
@@ -14,10 +14,12 @@ import {
   ADD_CALLER_HREF,
   NO_CALLERS_TEXT,
   callingApi,
+  campaignHrefForGroup,
   describeCallingResult,
   describeTagResult,
   downloadLeadsCsv,
   parseTagInput,
+  savePickedPeopleAsGroup,
   tagsApi,
   useLeadsPageX,
   useLeadsSummaryX,
@@ -352,6 +354,7 @@ export function LeadsClient() {
   const [tagInput, setTagInput] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [callingBusy, setCallingBusy] = useState(false);
+  const [campaignBusy, setCampaignBusy] = useState(false);
 
   // Re-engagement states
   const [wabaTemplates, setWabaTemplates] = useState<WabaTemplate[]>([]);
@@ -721,6 +724,22 @@ export function LeadsClient() {
       toast.error(err instanceof Error ? err.message : "Could not send to calling");
     } finally {
       setCallingBusy(false);
+    }
+  }
+
+  /** The ticked people become a fixed "Picked" group, then Reach opens with that group chosen.
+   *  Said-stop people in the group are left out by Reach itself. */
+  async function bulkSendCampaign() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || campaignBusy) return;
+    setCampaignBusy(true);
+    try {
+      const group = await savePickedPeopleAsGroup(ids);
+      toast.success(`Saved ${ids.length} ${ids.length === 1 ? "person" : "people"} as "${group.name}"`);
+      router.push(campaignHrefForGroup(group.id));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the group");
+      setCampaignBusy(false);
     }
   }
 
@@ -1441,6 +1460,17 @@ export function LeadsClient() {
                       </form>
                     )}
                   </div>
+                )}
+                {canManageLeads && (
+                  <button
+                    onClick={bulkSendCampaign}
+                    disabled={campaignBusy}
+                    title="Saves these people as a group and opens Reach with it picked"
+                    className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Megaphone size={12} />
+                    {campaignBusy ? "Saving…" : "Send campaign"}
+                  </button>
                 )}
                 {canManageLeads && (
                   <button

@@ -13,9 +13,11 @@ import {
   followUpHrefForGroup,
   isDontCallRow,
   lastDaysRange,
+  looksLikePhone,
   normalizeTagList,
   parseTagInput,
   percentText,
+  pickedGroupName,
   refundMethodWords,
   starsText,
   telHref,
@@ -170,5 +172,26 @@ describe("customer page events", () => {
     expect(refundMethodWords(null)).toBeNull();
     expect(bookingStatusWords("no_show")).toBe("didn't come");
     expect(bookingStatusWords("x")).toBeNull();
+  });
+});
+
+describe("Picked people become a group", () => {
+  it("names the group by India time and varies the name when it is taken", () => {
+    const at = new Date("2026-11-23T10:15:30Z"); // 3:45:30 pm IST
+    expect(pickedGroupName(at, 0)).toBe("Picked · 23 Nov, 3:45 pm");
+    expect(pickedGroupName(at, 1)).toBe("Picked · 23 Nov, 3:45:30 pm");
+    expect(pickedGroupName(at, 2)).toMatch(/^Picked · 23 Nov, 3:45:30 pm .+$/);
+    expect(pickedGroupName(at, 0).length).toBeLessThanOrEqual(80);
+  });
+});
+
+describe("looksLikePhone", () => {
+  it("accepts numbers however they are typed and rejects words and short digits", () => {
+    expect(looksLikePhone("98765 43210")).toBe(true);
+    expect(looksLikePhone("+91 98765-43210")).toBe(true);
+    expect(looksLikePhone("(044) 2345 6789")).toBe(true);
+    expect(looksLikePhone("priya")).toBe(false);
+    expect(looksLikePhone("12345")).toBe(false);
+    expect(looksLikePhone("98765abc43210")).toBe(false);
   });
 });

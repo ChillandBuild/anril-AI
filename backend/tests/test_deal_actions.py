@@ -863,6 +863,13 @@ class TestPayFullInsteadOfAdvance:
         run_shop([call("send_quote", item_ids=["sku-runner"], quantities=[2])])
         assert shop.created[0]["advance_by_rule"] is True
 
+    def test_pay_full_is_ignored_when_the_owner_switched_it_off(self, monkeypatch):
+        from app.services import order_quotes
+        monkeypatch.setattr(order_quotes, "advance_options", lambda t: {"staff_can_change": True, "ai_pay_full": False})
+        shop = Shop(monkeypatch)
+        run_shop([call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)])
+        assert shop.created[0]["advance_by_rule"] is True
+
     def test_pay_full_makes_a_new_quote_without_the_advance_rule(self, monkeypatch):
         shop = Shop(monkeypatch)
         out = run_shop([call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)])
