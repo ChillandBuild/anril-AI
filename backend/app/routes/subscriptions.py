@@ -7,7 +7,7 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, require_permission
 from app.services.entitlements import add_one_month, get_billing_period
 from datetime import date
-from app.services.subscription_requests import submit_request
+from app.services.subscription_requests import OPERATOR_ONLY_FEATURES, submit_request
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,7 +15,6 @@ require_subscription_manage = require_permission("subscription.manage")
 
 # Switched on by the operator only (licence + tier set in the operator console),
 # so clients never see them in the cart or request them.
-OPERATOR_ONLY_FEATURES = frozenset({"private_send"})
 
 
 @router.get("/catalog")

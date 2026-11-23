@@ -1,5 +1,6 @@
 import {
   Code2,
+  Gauge,
   Home,
   KeyRound,
   Library,
@@ -50,6 +51,7 @@ export const AGENTS_NAV: readonly { title: string | null; items: readonly Agents
     items: [
       { href: "/dashboard/agents/keys", label: "API Keys", icon: KeyRound, description: "Secret keys let your server talk to your characters." },
       { href: "/dashboard/agents/install", label: "Install", icon: Code2, description: "Put a character on your website or in your app." },
+      { href: "/dashboard/agents/usage", label: "Usage", icon: Gauge, description: "Agent replies this month against your plan." },
       { href: "/dashboard/agents/requests", label: "Requests", icon: Activity, description: "Every call to your characters. Message text is never stored." },
       { href: "/dashboard/agents/insights", label: "User Insights", icon: Sparkles, description: "", later: true },
       { href: "/dashboard/agents/settings", label: "Settings", icon: Settings, description: "Memory settings for your whole business." },

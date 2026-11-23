@@ -519,3 +519,70 @@ def test_the_sorry_line_follows_reply_language(env, monkeypatch):
     english = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={**ask, "reply_language": "en"}).json()
     tamil = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json=ask).json()
     assert english["text"] == engine.FALLBACK_LINES["en"] and tamil["text"] == engine.FALLBACK_LINES["ta"]
+
+
+# --- agent reply counting (Agents -> Usage) -----------------------------------------------------
+
+@pytest.fixture
+def counted(env, monkeypatch):
+    seen = []
+
+    async def count(tenant_id):
+        seen.append(tenant_id)
+    monkeypatch.setattr(store, "count_agent_reply", count)
+    return seen
+
+
+def test_a_finished_reply_counts_once(env, counted):
+    r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "Vanakkam"})
+    assert r.status_code == 200 and counted == ["t1"]
+    env.client.post(f"{PUB}/widget/chat", json={**signed(env), "message": "hi"})
+    assert counted == ["t1", "t1"]
+
+
+def test_errors_and_forget_do_not_count(env, counted):
+    env.client.post(f"{PUB}/chat", json={"companion_id": env.live["id"], "user_id": "48213", "message": "hi"})  # 401
+    env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.draft["id"], "user_id": "48213", "message": "hi"})   # 409 not live
+    env.client.post(f"{PUB}/forget", headers=bearer(env.key), json={"user_id": "48213"})
+    assert counted == []
+
+
+def test_a_tool_pause_does_not_count_but_the_reply_after_it_does(env, counted):
+    env.state["script"] = [("", [call()]), ("[mood: warm] Ungal lagnam Kumbham.", [])]
+    first = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "En jathagam",
+        "tools": [GET_CHART.model_dump()]}).json()
+    assert first["status"] == "tool_call" and counted == []
+    env.client.post(f"{PUB}/chat/continue", headers=bearer(env.key), json={
+        "user_id": "48213", "turn_id": first["turn_id"], "results": [{"id": "call_1", "output": CHART}]})
+    assert counted == ["t1"]
+
+
+def test_a_failing_counter_never_breaks_the_reply(env, monkeypatch):
+    async def broken(tenant_id):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(store, "count_agent_reply", broken)
+    r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "Vanakkam"})
+    assert r.status_code == 200 and r.json()["text"] == "Vanakkam Karthik!"
+
+
+def test_usage_page_shows_only_this_business_and_hides_unknown_ids(env, monkeypatch):
+    from app.services import agent_billing
+    monkeypatch.setattr(agent_billing, "usage", lambda db, t: {
+        "period_start": "2026-11-01", "period_end": "2026-12-01", "used": 3, "included": 10, "over": 0,
+        "plan": {"included": 10, "monthly_price": 100.0}})
+    monkeypatch.setattr(companions, "get_supabase", lambda: env.db)
+    for cid, tenant in ((env.live["id"], "t1"), (env.live["id"], "t1"), (env.other["id"], "t1"),
+                        (env.live["id"], "t2")):
+        env.db.add("companion_request_log", tenant_id=tenant, companion_id=cid, kind="chat", status=200,
+                   external_user_id="u", ms=10, created_at="2026-11-23T10:00:00+00:00")
+    env.db.add("companion_request_log", tenant_id="t1", companion_id=env.live["id"], kind="widget_session",
+               status=200, external_user_id="u", ms=10, created_at="2026-11-23T10:00:00+00:00")
+    body = env.client.get(f"{DASH}/usage").json()
+    assert body["used"] == 3 and body["plan"]["monthly_price"] == 100.0
+    assert body["daily"] == [{"date": "2026-11-23", "count": 3,
+                              "by_companion": {env.live["id"]: 2, "unknown": 1}}]
+    assert env.other["id"] not in str(body)

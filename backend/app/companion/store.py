@@ -695,6 +695,37 @@ async def log_request(row: dict) -> None:
     await asyncio.to_thread(_q)
 
 
+AGENT_REPLY_METRIC = "agent_reply"   # tenant_usage_counters metric (migration 342)
+
+
+async def count_agent_reply(tenant_id: str) -> None:
+    """+1 agent reply on the business's monthly counter (Agents -> Usage). Never raises."""
+    from app.services import entitlements
+    await asyncio.to_thread(entitlements.add_usage, get_supabase(), tenant_id, AGENT_REPLY_METRIC)
+
+
+REPLY_LOG_KINDS = ("chat", "chat_continue", "widget_chat", "widget_continue")
+
+
+async def replies_by_day(tenant_id: str, since: str) -> dict:
+    """Agents -> Usage chart: answered calls (status 200) per UTC day and character since `since`
+    ("2026-11-05"). From the request log, so a tool pause shows as its own row there.
+    -> {"daily": [{"date": "2026-11-23", "count": 2, "by_companion": {"<id>": 2}}], "capped": False}"""
+    def _q():
+        return (get_supabase().table("companion_request_log").select("companion_id, created_at")
+                .eq("tenant_id", tenant_id).eq("status", 200).in_("kind", list(REPLY_LOG_KINDS))
+                .gte("created_at", since).order("created_at", desc=True).limit(REQUEST_LOG_SCAN)
+                .execute().data or [])
+    rows = await asyncio.to_thread(_q)
+    daily: dict[str, dict] = {}
+    for r in rows:
+        day = daily.setdefault(str(r["created_at"])[:10], {"count": 0, "by_companion": {}})
+        day["count"] += 1
+        cid = r.get("companion_id") or "unknown"
+        day["by_companion"][cid] = day["by_companion"].get(cid, 0) + 1
+    return {"daily": [{"date": d, **daily[d]} for d in sorted(daily)], "capped": len(rows) >= REQUEST_LOG_SCAN}
+
+
 async def request_log(tenant_id: str, *, kind: str | None = None, status: str | None = None,
                       days: int = 7) -> dict:
     """The Requests page. status "ok" = below 400, "error" = 400 and up. Example: days=7 →

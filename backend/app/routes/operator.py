@@ -23,6 +23,7 @@ from app.services.deal_settings import (
     validate_deal_idle_close_days,
 )
 from app.services.entitlements import compute_period_key, get_billing_period
+from app.services import agent_billing
 from app.services import private_send as private_send_svc
 from app.services.token_pricing import estimate_cost, get_rates, upsert_rate
 from app.services.subscription_requests import approve_request, reject_request
@@ -871,6 +872,36 @@ async def update_private_send_settings(
         raise HTTPException(status_code=e.status_code, detail=e.message)
     _audit_private_send(db, _admin, tenant_id, "operator.private_send_settings_updated", tenant_id, changes)
     return private_send_svc.operator_overview(db, tenant_id)
+
+
+class AgentRepliesPayload(BaseModel):
+    included: int = Field(ge=0, le=agent_billing.MAX_INCLUDED)
+    monthly_price: float = Field(ge=0, le=agent_billing.MAX_PRICE)
+
+
+@router.get("/clients/{tenant_id}/agent-replies")
+def get_agent_replies(tenant_id: str, _admin: dict = Depends(get_system_admin)):
+    """The client's Agent replies plan and this cycle's usage (same numbers as their Agents -> Usage)."""
+    db = get_supabase()
+    _require_tenant(db, tenant_id)
+    return agent_billing.usage(db, tenant_id)
+
+
+@router.put("/clients/{tenant_id}/agent-replies")
+def set_agent_replies(tenant_id: str, payload: AgentRepliesPayload, _admin: dict = Depends(get_system_admin)):
+    """{"included": 10000, "monthly_price": 3000} -> that client's plan; included 0 removes it."""
+    db = get_supabase()
+    _require_tenant(db, tenant_id)
+    try:
+        agent_billing.set_plan(db, tenant_id, payload.included, payload.monthly_price)
+    except agent_billing.PlanError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    record_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=_admin.get("user_id"), actor_role="system_admin",
+        action="operator.agent_replies_plan_set", target_type="subscription_item",
+        target_id=agent_billing.FEATURE_KEY, metadata=payload.model_dump(),
+    )
+    return agent_billing.usage(db, tenant_id)
 
 
 @router.get("/clients/{tenant_id}/entitlements")

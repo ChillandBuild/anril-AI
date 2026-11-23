@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 USAGE_METRICS = (
     "message_sent", "ai_reply", "call_minute", "team_seat_active",
     "storage_gb", "ai_call_summary", "ai_call_scoring", "phone_number",
-    "ai_speech_to_text", "ai_text_to_speech",
+    "ai_speech_to_text", "ai_text_to_speech", "agent_reply",
 )
 
 
@@ -230,6 +230,29 @@ def increment_usage(
         "over_cap": over_cap,
         "warning": warning,
     }
+
+
+# (tenant_id, period, metric) rows add_usage already saw exist, so it skips resolving `included` again.
+# Per process; a restart only costs one extra resolve per business.
+_COUNTER_SEEN: set[tuple[str, str, str]] = set()
+
+
+def add_usage(db, tenant_id: str, metric: str, delta: int = 1) -> None:
+    """Atomic +delta on this period's counter (RPC add_usage, migration 342), for busy metrics where
+    meter()'s read-then-write would lose counts (an agent answering several people a second).
+    The first call of a period also writes `included` from the plan. TRACK-ONLY, never raises.
+    Example: Astro Tamil's 3,421st agent reply this cycle -> used 3420 -> 3421."""
+    if not tenant_id or delta <= 0:
+        return
+    try:
+        period = get_billing_period(db, tenant_id)
+        seen = (tenant_id, period, metric)
+        included = 0 if seen in _COUNTER_SEEN else resolve_entitlements(db, tenant_id)["quotas"].get(metric, 0)
+        db.rpc("add_usage", {"p_tenant": tenant_id, "p_period": period, "p_metric": metric,
+                             "p_delta": delta, "p_included": int(included)}).execute()
+        _COUNTER_SEEN.add(seen)
+    except Exception as e:
+        logger.warning(f"usage add failed (tenant={tenant_id}, metric={metric}): {e}")
 
 
 def meter(db, tenant_id: str, metric: str, delta: int = 1) -> None:

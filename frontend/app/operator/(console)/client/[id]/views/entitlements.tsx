@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { CreditCard, Check, ExternalLink, Activity, AlertTriangle } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { SkeletonCard } from "../components/skeleton";
+import { AgentRepliesCard } from "./agent-replies";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await getAuthHeaders();
@@ -48,6 +49,7 @@ const METRIC_LABELS: Record<string, string> = {
   ai_call_scoring: "AI Call Scoring",
   ai_text_to_speech: "TTS",
   ai_speech_to_text: "STT",
+  agent_reply: "Agent Replies",
 };
 
 function UsageMeterRow({ item }: { item: UsageMetric }) {
@@ -188,6 +190,8 @@ export function EntitlementsView({ tenantId }: { tenantId: string }) {
           <p className="py-2 text-sm text-ink-muted">No usage recorded this cycle.</p>
         )}
       </div>
+
+      <AgentRepliesCard tenantId={tenantId} />
 
       <button
         onClick={() => router.push(`/operator/subscription-requests?tenant_id=${tenantId}`)}

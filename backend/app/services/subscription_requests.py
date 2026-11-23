@@ -60,12 +60,24 @@ def _monthly_price_for_item(catalog_row: dict, quantity: int, existing_quantity:
     return float(unit_price) * (new_billable - already_billable)
 
 
+# Set per client by the operator (their own screens), never bought through a cart request. Checked here, not
+# only in the route: a tenant owner can insert a subscription_requests row directly (RLS allows owners), and
+# approving one with "agent_replies" (catalog price 0) would hand out free replies (security review 23 Nov).
+OPERATOR_ONLY_FEATURES = frozenset({"private_send", "agent_replies"})
+
+
+def _without_operator_only(items: list[dict]) -> list[dict]:
+    return [i for i in items if i.get("feature_key") not in OPERATOR_ONLY_FEATURES]
+
+
 def submit_request(db, tenant_id: str, requested_items: list[dict], package_id: str | None = None, start_date: str | None = None, end_date: str | None = None) -> dict:
     """
     Create a subscription_requests row for a cart submission (first-time
     onboarding or a later top-up ask) and flip the tenant into
     pending_approval. `requested_items` is [{"feature_key": str, "quantity": int}].
+    Operator-only items are dropped (OPERATOR_ONLY_FEATURES).
     """
+    requested_items = _without_operator_only(requested_items)
     feature_keys = [i["feature_key"] for i in requested_items]
     catalog_res = db.table("feature_catalog").select(
         "feature_key, monthly_price, unit_price, included_qty"
@@ -152,7 +164,7 @@ def approve_request(db, request_id: str, reviewer_user_id: str) -> dict:
 
     tenant_id = req.data["tenant_id"]
     package_id = req.data.get("package_id")
-    requested_items = req.data.get("requested_items") or []
+    requested_items = _without_operator_only(req.data.get("requested_items") or [])   # see OPERATOR_ONLY_FEATURES
     is_initial = req.data.get("is_initial", True)
     start_date = req.data.get("start_date")
     end_date = req.data.get("end_date")

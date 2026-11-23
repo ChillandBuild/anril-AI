@@ -241,12 +241,31 @@ async def _log_request(row: dict) -> None:
         logger.warning("companion public api: request log insert failed (%s)", type(exc).__name__)
 
 
+# The calls that end in an agent reply. Each finished one ("status": "done") is +1 on the business's monthly
+# agent_reply counter (Agents -> Usage); a tool pause is not, the reply after the tools is.
+REPLY_KINDS = frozenset({"chat", "chat_continue", "widget_chat", "widget_continue"})
+
+
+async def _after_response(row: dict, count_reply: bool) -> None:
+    """Runs after the response is sent: the request log row, then the usage count. Never raises."""
+    await _log_request(row)
+    if count_reply:
+        try:
+            await store.count_agent_reply(row["tenant_id"])
+        except Exception as exc:
+            logger.warning("companion public api: usage count failed (%s)", type(exc).__name__)
+
+
 async def _run(call, kind: str, log: dict) -> JSONResponse:
     """Runs one public call and, once the business is known (log["tenant_id"], set by call()),
-    queues one companion_request_log row to be written after the response. No message text."""
+    queues one companion_request_log row to be written after the response (no message text), plus
+    one agent_reply count when the call finished a reply."""
     started = time.monotonic()
+    replied = False
     try:
-        response = _json(await call())
+        result = await call()
+        replied = kind in REPLY_KINDS and isinstance(result, dict) and result.get("status") == "done"
+        response = _json(result)
     except ApiError as exc:
         response = _error(exc)
     except (engine.CompanionError, ToolsInvalid) as exc:
@@ -254,12 +273,12 @@ async def _run(call, kind: str, log: dict) -> JSONResponse:
         logger.info("companion public api: %s", api.code)
         response = _error(api)
     if log.get("tenant_id"):
-        response.background = BackgroundTask(_log_request, {
+        response.background = BackgroundTask(_after_response, {
             "tenant_id": log["tenant_id"], "companion_id": log.get("companion_id"), "kind": kind,
             "external_user_id": log.get("user_id"), "status": response.status_code,
             "ms": int((time.monotonic() - started) * 1000),
             "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        }, replied)
     return response
 
 

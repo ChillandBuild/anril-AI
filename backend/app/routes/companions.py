@@ -107,6 +107,25 @@ async def list_models(ctx: dict = Depends(require_companions_manage)):
             "playground_defaults": playground.live_defaults()}
 
 
+@router.get("/usage")
+async def agent_usage(ctx: dict = Depends(require_companions_manage)):
+    """Agents -> Usage: this cycle's agent replies against the plan, plus replies per day per character.
+    {"period_start", "period_end", "used", "included", "over", "plan": {"included", "monthly_price"} | None,
+     "daily": [{"date", "count", "by_companion"}], "companions": {"<id>": "Jothidar AI"}, "capped"}"""
+    from app.services import agent_billing
+    tenant_id = ctx["tenant_id"]
+    summary = await asyncio.to_thread(agent_billing.usage, get_supabase(), tenant_id)
+    chart = await store.replies_by_day(tenant_id, summary["period_start"])
+    names = {c["id"]: c["name"] for c in await store.list_companions(tenant_id)}
+    for day in chart["daily"]:   # another business's or a deleted id: folded into "unknown", never echoed
+        folded: dict[str, int] = {}
+        for cid, n in day["by_companion"].items():
+            key = cid if cid in names else "unknown"
+            folded[key] = folded.get(key, 0) + n
+        day["by_companion"] = folded
+    return {**summary, **chart, "companions": names}
+
+
 @router.get("/requests")
 async def list_requests(kind: Literal[store.REQUEST_KINDS] | None = None,  # type: ignore[valid-type]
                         status: Literal["ok", "error"] | None = None,

@@ -27,6 +27,7 @@ const METRIC_LABELS: Record<string, string> = {
   message_sent: "Outbound Messages", ai_reply: "AI Replies", call_minute: "Call Minutes",
   team_seat_active: "Telecaller Seats", phone_number: "Phone Numbers",
   storage_gb: "Storage (GB)", ai_call_summary: "AI Call Summaries", ai_call_scoring: "AI Call Scoring",
+  agent_reply: "Agent Replies",
 };
 
 function UsageMeterRow({ item }: { item: UsageMetric }) {

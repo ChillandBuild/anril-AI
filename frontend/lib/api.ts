@@ -5491,6 +5491,19 @@ export type CompanionRequestLog = {
   capped: boolean;
 };
 
+/** Agents -> Usage: this cycle's agent replies against the plan (GET /companions/usage). */
+export type AgentUsage = {
+  period_start: string;
+  period_end: string | null;
+  used: number;
+  included: number;
+  over: number;
+  plan: { included: number; monthly_price: number } | null;
+  daily: { date: string; count: number; by_companion: Record<string, number> }[];
+  companions: Record<string, string>;
+  capped: boolean;
+};
+
 export type CompanionSearchIn = PlaygroundSources;
 export type CompanionKnowledgeHit = {
   document: string;
@@ -5618,6 +5631,8 @@ export const companionsApi = {
     const qs = query.toString();
     return apiFetch<CompanionRequestLog>(`${COMPANIONS}/requests${qs ? `?${qs}` : ""}`);
   },
+
+  usage: () => apiFetch<AgentUsage>(`${COMPANIONS}/usage`),
 
   models: () =>
     apiFetch<{ models: CompanionModel[]; default: string | null; playground_defaults?: PlaygroundDefaults }>(`${COMPANIONS}/models`),
