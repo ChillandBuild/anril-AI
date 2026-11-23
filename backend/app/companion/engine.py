@@ -34,7 +34,7 @@ from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
 from app.companion.prompt import (build_messages, label_reply, parse_mood, parse_used, said_talk, split_working,
-                                  who_block)
+                                  who_block, with_reply_language)
 from app.companion.reply_format import ReplyFormat, finalize, read_format, strip_tags
 from app.services import ai_reply
 
@@ -129,7 +129,12 @@ def handoff_line(companion: dict) -> str:
     {"handoff_line": "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது."} -> that line;
     {"language": "ta"} -> "இதற்கு எங்கள் குழுவிடம் கேட்பது நல்லது." """
     own = (companion.get("handoff_line") or "").strip()
-    return own or HANDOFF_LINES.get(companion.get("language") or "", HANDOFF_LINES["en"])
+    return own or HANDOFF_LINES.get(line_language(companion) or "", HANDOFF_LINES["en"])
+
+
+def line_language(companion: dict) -> str | None:
+    """The code for the fixed lines: the app's reply_language for this reply, else the character's."""
+    return companion.get("reply_language_code") or companion.get("language")
 
 
 def _person_today(companion: dict, person: dict):
@@ -198,6 +203,7 @@ async def reply(
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
     model: str | None = None, use_memory: bool = True, timezone_name: str | None = None,
     app_data: str | None = None, profile_name: str | None = None, reply_format: ReplyFormat | None = None,
+    reply_language: str | None = None,
 ) -> CompanionReply:
     """model and use_memory are for the dashboard Playground only; the public API never sets them.
     use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
@@ -207,10 +213,12 @@ async def reply(
     into this reply's prompt only; it is never saved (a paused tool turn keeps its prompt for 2 minutes).
     profile_name: whose profile this person row is about (e.g. "Karthik" for the chart in app_data); saved on
     the person like display_name, and both go into the prompt's WHO line (prompt.who_block).
-    reply_format: the app wants bubbles, chips, a button and a tag (reply_format.py); None = text only, as before."""
+    reply_format: the app wants bubbles, chips, a button and a tag (reply_format.py); None = text only, as before.
+    reply_language: the language the app wants this reply in ("en", "English"); None = the character's own."""
     tools = tools or []
     app_tools.validate_tools(tools)
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
+    companion = with_reply_language(companion, reply_language)
     sem = await _take_slot(companion_id)
     try:
         if not use_memory:
@@ -235,6 +243,7 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
         state = turn["messages"]
         model = state.get("model")   # set only by a Playground turn (owner-test person)
         companion, provider = await _live_companion(tenant_id, turn["companion_id"], require_live, model)
+        companion = with_reply_language(companion, state.get("reply_language"))
         conversation = await store.get_conversation(tenant_id, turn["conversation_id"])
         if not conversation:
             raise TurnExpired(turn_id)
@@ -515,6 +524,8 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             state["reply_format"] = reply_format.model_dump()
         if app_data and companion.get("chart_guard"):
             state["app_data"] = strip_app_data(app_data)
+        if companion.get("reply_language"):   # the sorry and handoff lines after the tools speak it too
+            state["reply_language"] = companion["reply_language"]
         turn_id = await store.create_pending_turn(
             tenant_id, companion_id, conversation["id"], state, [t.model_dump() for t in tools], round_no)
         logger.info("companion %s: paused for %d tool call(s) on round %d (llm %dms)",
@@ -595,7 +606,7 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, compan
     text, mood = parse_mood(text, previous_mood)
     text = text.strip()
     if not text:
-        return fallback_line(companion.get("language")), previous_mood, None, []
+        return fallback_line(line_language(companion)), previous_mood, None, []
     basis, sources = label_reply(kb, used)
     if basis == "own" and (said_talk(raw) or _not_an_answer(text, reply_format)):
         basis = "chat"
@@ -638,7 +649,7 @@ def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, c
     handed = _handed_off(basis, companion)
     shaped = finalize(read_format(text, fmt), fmt, small_talk=is_small_talk(kb), handed_off=handed,
                       failed=not _has_text(raw, with_format=True), text=text, own=basis == "own",
-                      fallback_text=handoff_line(companion) if handed else fallback_line(companion.get("language")))
+                      fallback_text=handoff_line(companion) if handed else fallback_line(line_language(companion)))
     return "\n\n".join(shaped.bubbles), shaped._asdict()
 
 

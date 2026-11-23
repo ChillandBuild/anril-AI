@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from app.companion.languages import read_language
 from app.companion.platform_rules import MOODS
 
 Mood = Literal["calm", "warm", "happy", "concerned", "encouraging", "serious"]
@@ -39,6 +40,17 @@ def app_data_text(value: str | dict | None) -> str | None:
 
 
 AppData = Annotated[str | dict | None, AfterValidator(app_data_text)]
+
+def reply_language_text(value: str | None) -> str | None:
+    """The language the app wants this reply in ("en", "English", "Tamil, written in Tamil script"), checked
+    by languages.read_language: an unknown language is a 422. Blank -> None (the character's own)."""
+    if value is None or not value.strip():
+        return None
+    read_language(value)
+    return " ".join(value.split())
+
+
+ReplyLanguage = Annotated[str | None, Field(None, max_length=60), AfterValidator(reply_language_text)]
 
 
 def _known_model(value: str | None) -> str | None:

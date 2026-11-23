@@ -117,6 +117,7 @@ If the data is a horoscope, send your chart engine's JSON as it is (Anril's char
   "display_name": "Ravi",
   "profile_name": "Meena",
   "timezone": "Asia/Kolkata",
+  "reply_language": "English",
   "message": "What should Meena focus on this month?",
   "app_data": { "...": "the selected profile's data" },
   "reply_format": {
@@ -127,6 +128,9 @@ If the data is a horoscope, send your chart engine's JSON as it is (Anril's char
 \`\`\`
 
 - \`message\`: 1-4,000 characters. \`timezone\`: the user's IANA zone; always send it.
+- \`reply_language\`: the language the user reads in the app (their app-language setting), e.g. \`"English"\`,
+  \`"ta"\` or \`"Tamil, written in Tamil script"\`. The bubbles and chips come in it, whatever language the
+  question was typed in. Leave it out to use the agent's own language. Up to 60 characters; an unknown language is a 422.
 - \`reply_format\` (recommended): the reply comes as short bubbles plus follow-ups.
   - \`buttons\`: up to 6 of YOUR action buttons. \`id\`: lowercase letters, digits, \`_\`, up to 32, not one of
     \`counted ask_back greeting off_topic need_details none failed handoff\`. \`when\`: when to show it (up to 200

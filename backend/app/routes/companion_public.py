@@ -25,7 +25,7 @@ from starlette.background import BackgroundTask
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.companion import engine, keys, store
-from app.companion.models import AppData, AppTool, ToolResult
+from app.companion.models import AppData, AppTool, ReplyLanguage, ToolResult
 from app.companion.reply_format import ReplyFormat
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
@@ -121,6 +121,7 @@ class ServerChatIn(_Body):
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
     app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 12,000 chars)
     reply_format: ReplyFormat | None = None   # opt in to bubbles, chips, a button and a tag (reply_format.py)
+    reply_language: ReplyLanguage = None   # "en", "ta", "ta-en" or a name like "English"; None = the character's
 
 
 class ServerContinueIn(_Body):
@@ -151,6 +152,7 @@ class WidgetChatIn(WidgetAuthIn):
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
     app_data: AppData = None
     reply_format: ReplyFormat | None = None
+    reply_language: ReplyLanguage = None
 
 
 class WidgetContinueIn(WidgetAuthIn):
@@ -283,7 +285,8 @@ async def server_chat(body: ServerChatIn, request: Request):
         result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
                                     timezone_name=body.timezone, app_data=body.app_data,
-                                    profile_name=body.profile_name, reply_format=body.reply_format)
+                                    profile_name=body.profile_name, reply_format=body.reply_format,
+                                    reply_language=body.reply_language)
         return result.model_dump()
     return await _run(call, "chat", log)
 
@@ -381,7 +384,8 @@ async def widget_chat(body: WidgetChatIn, request: Request):
         result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
                                     timezone_name=body.timezone, app_data=body.app_data,
-                                    profile_name=body.profile_name, reply_format=body.reply_format)
+                                    profile_name=body.profile_name, reply_format=body.reply_format,
+                                    reply_language=body.reply_language)
         return result.model_dump()
     return await _run(call, "widget_chat", log)
 

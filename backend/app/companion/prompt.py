@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.companion.birth_guard import strip_app_data, strip_birth_text
 from app.companion.kb.types import KbResult, Passage
+from app.companion.languages import LANGUAGES, read_language
 from app.companion.platform_rules import (
     MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES, WORKING_RULE,
 )
@@ -21,11 +22,32 @@ from app.companion.platform_rules import (
 if TYPE_CHECKING:   # reply_format imports fence from here, so the real import is inside build_messages
     from app.companion.reply_format import ReplyFormat
 
-LANGUAGES = {
-    "ta-en": "Tanglish (Tamil written in English letters, mixed with English)",
-    "ta": "Tamil (Tamil script)",
-    "en": "English",
-}
+def with_reply_language(companion: dict, wanted: str | None) -> dict:
+    """The character, for this one reply, in the language the app asked for (languages.read_language).
+    Adds reply_language (the name the prompt uses; never the app's own text) and reply_language_code (the
+    code for the sorry and handoff lines: English for a language we have no lines in). companions.language
+    is left alone, so memory facts and diaries stay in the character's language. The business's own
+    handoff_line is dropped when the code differs: it is written in the character's language.
+    ({"language": "ta"}, "en") -> {"language": "ta", "reply_language": "English", "reply_language_code": "en",
+    "handoff_line": None, ...}; None -> unchanged."""
+    if not wanted:
+        return companion
+    code, name = read_language(wanted)
+    out = {**companion, "reply_language": name, "reply_language_code": code or "en"}
+    if out["reply_language_code"] != (companion.get("language") or "ta-en"):
+        out["handoff_line"] = None
+    return out
+
+
+def reply_language_block(language: str) -> str:
+    """Last section of the system prompt, so it outweighs a character whose rules and samples are all in
+    another language. Live, 23 Nov: Jothidar (Tamil rules, Tamil samples) answered an English question with
+    reply_language English sent inside app_data in Tamil."""
+    return (f"[REPLY LANGUAGE — set by the business's app for this person]\n"
+            f"Write this reply in {language}: every sentence and every follow-up chip. This wins over every other "
+            f"language rule, the speaking style and the sample lines above, and over the language of earlier "
+            f"messages and of this message. Names, and terms with no common word in {language}, may stay as they are.")
+
 
 _MOOD_TAG = re.compile(r"^\s*\[\s*mood\s*:\s*([a-z]+)\s*\]\s*", re.IGNORECASE)
 _USED_TAG = re.compile(r"\[\s*used\s*:([^\]]*)\]\s*", re.IGNORECASE)
@@ -45,8 +67,11 @@ def _character_block(s: Mapping) -> str:
         value = fence(s.get(key) or "")
         if value:
             lines.append(f"{label}: {value}")
-    lang = s.get("language") or "ta-en"
-    lines.append(f"Language: reply in {LANGUAGES.get(lang, fence(lang))}, unless the user clearly writes in another language.")
+    if s.get("reply_language"):   # the app chose it for this person (with_reply_language)
+        lines.append(f"Language: reply in {s['reply_language']} (set by the app for this person).")
+    else:
+        lang = s.get("language") or "ta-en"
+        lines.append(f"Language: reply in {LANGUAGES.get(lang, fence(lang))}, unless the user clearly writes in another language.")
     goals = [fence(g) for g in s.get("goals") or [] if g.strip()]
     if goals:
         lines.append("Goals, in priority order:")
@@ -225,6 +250,8 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
         sections.append(who)
     if app_data and fence(app_data):
         sections.append(APP_DATA_LABEL + "\n" + fence(app_data))
+    if settings.get("reply_language"):
+        sections.append(reply_language_block(settings["reply_language"]))
 
     messages = [{"role": "system", "content": "\n\n".join(sections)}]
     messages += [{"role": m["role"], "content": m["content"]} for m in history

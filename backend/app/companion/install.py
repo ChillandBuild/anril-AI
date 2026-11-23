@@ -67,19 +67,18 @@ function companionSignature(userId) {
   -d '{{"companion_id": "{cid}",
        "user_id": "48213", "profile_id": "102",
        "display_name": "Ravi", "profile_name": "Meena",
-       "timezone": "Asia/Kolkata",
+       "timezone": "Asia/Kolkata", "reply_language": "English",
        "message": "Hello!",
        "app_data": {{"plan": "Gold"}},
        "reply_format": {{"buttons": [], "questions_left": null}}}}'"""
-    chat_python = f'''import os
-import requests   # pip install requests
+    chat_python = f'''import os, requests   # pip install requests
 
 ANRIL_CHAT = "{api}/api/v1/companion/chat"
 COMPANION_ID = "{cid}"
 
 
 def ask_anril(user_id, message, profile_id=None, display_name=None, profile_name=None,
-              app_data=None, timezone="Asia/Kolkata", questions_left=None):
+              app_data=None, timezone="Asia/Kolkata", questions_left=None, reply_language=None):
     """Call on YOUR server for each message. Returns the reply: text, bubbles, chips, button, tag."""
     body = {{
         "companion_id": COMPANION_ID,
@@ -88,6 +87,7 @@ def ask_anril(user_id, message, profile_id=None, display_name=None, profile_name
         "display_name": display_name,             # who is typing
         "profile_name": profile_name,             # whose profile app_data is about
         "timezone": timezone,
+        "reply_language": reply_language,         # e.g. "English" or "ta"; None = the agent's own language
         "message": message,
         "app_data": app_data,                     # that profile's data, every message (never stored)
         "reply_format": {{"buttons": [], "questions_left": questions_left}},
@@ -104,7 +104,7 @@ const ANRIL_CHAT = "{api}/api/v1/companion/chat";
 const COMPANION_ID = "{cid}";
 
 async function askAnril({{ userId, message, profileId, displayName, profileName, appData,
-                          timezone = "Asia/Kolkata", questionsLeft = null }}) {{
+                          timezone = "Asia/Kolkata", questionsLeft = null, replyLanguage }}) {{
   const body = {{
     companion_id: COMPANION_ID,
     user_id: String(userId),                                  // your login's id
@@ -112,6 +112,7 @@ async function askAnril({{ userId, message, profileId, displayName, profileName,
     display_name: displayName,                                // who is typing
     profile_name: profileName,                                // whose profile appData is about
     timezone,
+    reply_language: replyLanguage,                            // e.g. "English"; undefined = the agent's own
     message,
     app_data: appData,                                        // that profile's data, every message
     reply_format: {{ buttons: [], questions_left: questionsLeft }},
@@ -129,7 +130,8 @@ async function askAnril({{ userId, message, profileId, displayName, profileName,
     chat_php = f'''<?php
 // Call on YOUR server for each message (plain PHP or Laravel).
 function ask_anril($userId, $message, $profileId = null, $displayName = null, $profileName = null,
-                   $appData = null, $timezone = "Asia/Kolkata", $questionsLeft = null) {{
+                   $appData = null, $timezone = "Asia/Kolkata", $questionsLeft = null,
+                   $replyLanguage = null) {{
     $body = array_filter([
         "companion_id" => "{cid}",
         "user_id" => (string) $userId,                                  // your login's id
@@ -137,6 +139,7 @@ function ask_anril($userId, $message, $profileId = null, $displayName = null, $p
         "display_name" => $displayName,                                 // who is typing
         "profile_name" => $profileName,                                 // whose profile $appData is about
         "timezone" => $timezone,
+        "reply_language" => $replyLanguage,                             // e.g. "English"; null = the agent's own
         "message" => $message,
         "app_data" => $appData,                                         // that profile's data, every message
         "reply_format" => ["buttons" => [], "questions_left" => $questionsLeft],

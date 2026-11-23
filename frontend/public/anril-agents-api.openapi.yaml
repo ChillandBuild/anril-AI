@@ -32,6 +32,7 @@ paths:
               display_name: "Ravi"
               profile_name: "Meena"
               timezone: "Asia/Kolkata"
+              reply_language: "English"
               message: "What does my plan include?"
               app_data: { plan: "Gold", renews_on: "2026-12-31" }
               reply_format:
@@ -126,6 +127,11 @@ components:
         display_name: { type: string, maxLength: 100, description: Who the agent is talking to. }
         profile_name: { type: string, maxLength: 100, description: Whose profile the app_data is about. }
         timezone: { type: string, maxLength: 64, description: 'IANA zone, e.g. "Asia/Kolkata".' }
+        reply_language:
+          type: string
+          maxLength: 60
+          pattern: "^[A-Za-z][A-Za-z ,()\\-]*$"
+          description: 'The language for this reply, bubbles and chips: a code ("en", "ta", "ta-en", "hi"...) or a language name ("English", "Tamil, written in Tamil script", "Hindi"). An unknown language is refused (422). Wins over the agent''s own language and the language the user typed in. Leave it out to use the agent''s language.'
         message: { type: string, minLength: 1, maxLength: 4000 }
         app_data:
           description: What you know about this profile (e.g. plan, orders, a horoscope JSON). Send with every message; never stored. Up to 12,000 characters.
