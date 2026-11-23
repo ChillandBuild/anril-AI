@@ -1,5 +1,6 @@
 import {
   BellRing,
+  Building2,
   Clock,
   CreditCard,
   Headset,
@@ -55,7 +56,9 @@ const settingsPage = (
 // Order here is the order groups and items render in the sidebar, the Settings
 // home page and the mobile "More" menu: see sidebar.tsx / MoreMenu.tsx.
 export const SETTINGS_ITEMS: SettingsNavItem[] = [
-  settingsPage("/dashboard/settings/account", UserCircle, "Business details", "My business"),
+  // Every signed-in person manages their own password and passkeys, so this row has no permission gate.
+  { href: "/dashboard/settings/your-account", icon: UserCircle, label: "Your account", group: "My business", permissionAny: [], openToAll: true, needsSubscription: true },
+  settingsPage("/dashboard/settings/account", Building2, "Business details", "My business"),
   settingsPage("/dashboard/settings/business-hours", Clock, "Open hours", "My business"),
   settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "My business", "claude"),
   settingsPage("/dashboard/settings/payments", Wallet, "Payments & advance", "My business"),

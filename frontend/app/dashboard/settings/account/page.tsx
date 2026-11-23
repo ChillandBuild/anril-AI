@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Crown, Eye, Lock, MapPin, Receipt, UserCircle } from "lucide-react";
+import { Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchBusinessDetails,
@@ -14,23 +14,11 @@ import {
   type BrandImageKind,
   type BusinessDetails,
 } from "@/lib/businessDetailsApi";
-import { BusinessDetailsFields } from "@/components/business-details/BusinessDetailsFields";
+import { BUSINESS_DETAILS_GROUPS, BusinessDetailsFields } from "@/components/business-details/BusinessDetailsFields";
 import { InvoicePreview } from "@/components/business-details/InvoicePreview";
 import { businessDetailErrors } from "@/components/business-details/validate";
-import { PasskeySettings } from "@/app/dashboard/profile/PasskeySettings";
-import { useAuthRole } from "../../contexts/AuthRoleContext";
-import {
-  Fact,
-  Facts,
-  SaveButton,
-  SaveStatus,
-  SectionFooter,
-  SettingsAccordion,
-  SettingsSection,
-  SummaryHint,
-} from "../SettingsSection";
+import { SaveButton, SaveStatus } from "../SettingsSection";
 import { useSettingsForm } from "../SettingsFormContext";
-import ChangePasswordCard from "../ChangePasswordCard";
 import { AiraLoader } from "@/components/AiraLoader";
 
 /** The part of the details the form edits: pictures and their links are handled on their own. */
@@ -41,8 +29,7 @@ function typedFields(d: BusinessDetails) {
 }
 
 export default function AccountSettingsPage() {
-  const { fullName, initials, email, memberSince, canManageSettings } = useSettingsForm();
-  const { tenantName } = useAuthRole();
+  const { canManageSettings } = useSettingsForm();
 
   const [profile, setProfile] = useState<BusinessDetails>(EMPTY_BUSINESS_DETAILS);
   const [draft, setDraft] = useState<BusinessDetails>(EMPTY_BUSINESS_DETAILS);
@@ -75,6 +62,9 @@ export default function AccountSettingsPage() {
     if (!canManageSettings) return;
     if (hasErrors) {
       setShowErrors(true);
+      const n = Object.keys(errors).length;
+      toast.error(`${n} field${n === 1 ? " needs" : "s need"} fixing before you can save`);
+      requestAnimationFrame(() => document.querySelector("[data-field-error]")?.scrollIntoView({ behavior: "smooth", block: "center" }));
       return;
     }
     setSaveState("saving");
@@ -120,103 +110,21 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <SettingsAccordion defaultOpenId="profile">
-      {/* Your profile always opens first here: an exception to the
-          "two or more sections start closed" rule. */}
-
-      <SettingsSection
-        id="profile"
-        icon={UserCircle}
-        accent="violet"
-        title="Your profile"
-        description="Who's signed in, and since when."
-        summary={
-          <Facts>
-            <Fact icon={UserCircle}>{fullName}</Fact>
-            {email && <Fact>{email}</Fact>}
-            {tenantName && <Fact icon={Building2}>{tenantName}</Fact>}
-          </Facts>
-        }
-      >
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--primary-950)] to-primary text-sm font-bold text-white shadow-md shadow-primary/20">
-            {initials}
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-display text-sm font-bold text-ink">{fullName}</span>
-              <span className="badge-violet inline-flex items-center gap-1 px-2 py-0.5 font-label text-[10px] font-bold uppercase tracking-wider">
-                <Crown size={11} />
-                Admin
-              </span>
-            </div>
-            {email && <p className="break-all font-body text-xs text-ink-muted">{email}</p>}
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3 sm:gap-4">
-          {tenantName && (
-            <span className="font-label text-xs text-ink-muted">Workspace: {tenantName}</span>
-          )}
-          {memberSince && (
-            <span className="font-label text-xs text-ink-muted">Member since {memberSince}</span>
-          )}
-          <span className="flex items-center gap-1.5 font-label text-xs text-emerald-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            All systems online
-          </span>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        id="security"
-        icon={Lock}
-        accent="sky"
-        title="Sign-in & security"
-        description="Your password and the passkeys you can sign in with instead."
-      >
-        <div className="space-y-5">
-          <ChangePasswordCard />
-          <PasskeySettings />
-        </div>
-      </SettingsSection>
-
-      {/* Anchor for /dashboard/settings/business, which redirects to #business */}
-      <div id="business">
-        <SettingsSection
-          id="business-details"
-          icon={Building2}
-          accent="violet"
-          title="Business details"
-          description="What your bills say: name, address, GST, UPI and bank, terms, logo and signature. Also used on the monthly export for your auditor."
-          dirty={isDirty}
-          summary={
-            isLoading ? undefined : profile.legal_name.trim() ? (
-              <Facts>
-                <Fact icon={Building2}>{profile.legal_name}</Fact>
-                {profile.city.trim() && <Fact icon={MapPin}>{profile.city}</Fact>}
-                <Fact icon={Receipt} mono={profile.gst_type === "regular" && !!profile.gstin}>
-                  {profile.gst_type === "composition"
-                    ? "Composition (bill of supply)"
-                    : profile.gst_type === "none"
-                      ? "Not GST registered"
-                      : profile.gstin
-                        ? `GSTIN ${profile.gstin}`
-                        : "No GSTIN"}
-                </Fact>
-                {profile.bill_prefix && <Fact mono>Bills {profile.bill_prefix}/…</Fact>}
-                <Fact>{profile.prices_include_gst ? "Prices include GST" : "GST added at checkout"}</Fact>
-              </Facts>
-            ) : (
-              <SummaryHint>Not filled in yet. Your auditor&apos;s monthly export uses these details.</SummaryHint>
-            )
-          }
-        >
-          {isLoading ? (
+    <div className="flex flex-wrap items-start gap-4">
+      <div className="flex min-w-0 flex-[3_1_560px] flex-col gap-3.5">
+        {isLoading ? (
+          <div className="rounded-2xl border border-border/70 bg-white p-5">
             <AiraLoader inline className="min-h-[120px]" />
-          ) : (
-            <div className="space-y-7">
+          </div>
+        ) : (
+          BUSINESS_DETAILS_GROUPS.map((g) => (
+            <section key={g.id} className="rounded-2xl border border-border/70 bg-white p-5 shadow-[0_1px_2px_rgba(28,25,23,0.03)]">
+              <div className="mb-4">
+                <h2 className="font-display text-base font-bold text-ink">{g.title}</h2>
+                <p className="font-body text-xs text-ink-secondary">{g.hint}</p>
+              </div>
               <BusinessDetailsFields
+                group={g.id}
                 draft={draft}
                 onChange={(patch) => setDraft((prev) => ({ ...prev, ...patch }))}
                 errors={showErrors ? errors : {}}
@@ -227,20 +135,38 @@ export default function AccountSettingsPage() {
                 onPickImage={handlePickImage}
                 onRemoveImage={handleRemoveImage}
               />
-              <section>
-                <h3 className="mb-3 inline-flex items-center gap-1.5 font-display text-sm font-bold text-ink">
-                  <Eye size={15} aria-hidden /> Bill preview
-                </h3>
-                <InvoicePreview details={draft} logoUrl={pictures.logo} signatureUrl={pictures.signature} />
-              </section>
-            </div>
-          )}
+            </section>
+          ))
+        )}
 
-          <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} />}>
+        <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(10,21,40,0.10)]">
+          <div className="flex min-h-[20px] items-center">
+            <SaveStatus state={saveState} dirty={isDirty} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(profile);
+                setShowErrors(false);
+              }}
+              disabled={!isDirty || saveState === "saving" || isLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border px-4 py-2 font-label text-sm font-semibold text-ink transition hover:bg-surface-low disabled:cursor-default disabled:opacity-50"
+            >
+              <Undo2 size={14} aria-hidden /> Undo
+            </button>
             <SaveButton state={saveState} dirty={isDirty} disabled={!canManageSettings || isLoading} onClick={handleSave} />
-          </SectionFooter>
-        </SettingsSection>
+          </div>
+        </div>
       </div>
-    </SettingsAccordion>
+
+      <aside className="flex min-w-0 flex-[2_1_380px] flex-col gap-2.5 lg:sticky lg:top-3">
+        <div className="flex items-center justify-between">
+          <span className="font-label text-xs font-bold uppercase tracking-wider text-ink-secondary">Bill preview</span>
+          <span className="font-body text-xs text-ink-secondary">Updates as you type</span>
+        </div>
+        <InvoicePreview details={draft} logoUrl={pictures.logo} signatureUrl={pictures.signature} />
+      </aside>
+    </div>
   );
 }

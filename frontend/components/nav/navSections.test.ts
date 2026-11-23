@@ -95,7 +95,6 @@ const OLD_TABS: Array<{ label: string; href: string }> = [
   // Settings > Anril group, before Phase 2.
   { label: "Auto-Reply", href: "/dashboard/settings/auto-reply" },
   { label: "Follow-Ups", href: "/dashboard/settings/follow-ups" },
-  { label: "Inbox & Handover", href: "/dashboard/settings/inbox" },
 ];
 
 const TELECALLING_HREFS = [
@@ -141,7 +140,7 @@ describe("navSections tab coverage", () => {
     // Settings home: Users & Roles and Subscription fold into the one Settings row.
     // Call IQ: the Telecalling group's 4 pages and Team become 4 rows (Calling, Leads to call, Call reviews, Team), and
     // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
-    expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
+    expect(allLeaves()).toHaveLength(OLD_TABS.length - 2 /* settings pages; Inbox & Handover left OLD_TABS, it redirects */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
       + 1 /* Purchases (2026-11-21) */ + 1 /* Teach & offers (2026-11-22) */ + 1 /* Expenses (2026-11-23) */
       + 3 /* Bookings, Google Ads, QR & links (2026-11-23) */
       + 3 /* Call IQ Live, Evaluation, Results */ + 3 /* Couldn't answer, AI report card, Questions & scoring */);
@@ -382,8 +381,6 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
     { path: "/dashboard/settings/follow-ups", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
     { path: "/dashboard/scheduled-templates", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
     { path: "/dashboard/auto-messages/sent", row: "auto-messages", section: "engage", chipSet: "autoMessages" },
-    { path: "/dashboard/settings/auto-reply", row: "replies-handover", section: "aiSetup", chipSet: "replies" },
-    { path: "/dashboard/settings/inbox", row: "replies-handover", section: "aiSetup", chipSet: "replies" },
     { path: "/dashboard/otp/settings", row: "otp-settings", section: "otp", chipSet: "otpSetup" },
     { path: "/dashboard/otp/api", row: "otp-settings", section: "otp", chipSet: "otpSetup" },
   ];
@@ -394,10 +391,6 @@ describe("Phase 2: the 7 moved or renamed addresses", () => {
       ["Follow-ups", "/dashboard/settings/follow-ups"],
       ["One-time sends", "/dashboard/scheduled-templates"],
       ["Sent", "/dashboard/auto-messages/sent"],
-    ],
-    replies: [
-      ["Auto-reply", "/dashboard/settings/auto-reply"],
-      ["Handover", "/dashboard/settings/inbox"],
     ],
     otpSetup: [
       ["Rules", "/dashboard/otp/settings"],
@@ -539,8 +532,8 @@ describe("Settings home: one Settings row, last in the menu", () => {
     // Text size is open to everyone (it only changes their own screen).
     expect(settings.visible(access("caller", []))).toBe(true);
     expect(settings.visible(access("caller", ["leads.view"]))).toBe(true);
-    // With no settings permission, the row skips the Settings home and opens Text size.
-    expect(leafHref(settings, access("caller", ["leads.view"]))).toBe("/dashboard/settings/display");
+    // With no settings permission, the row skips the Settings home and opens Your account (the first open-to-all row).
+    expect(leafHref(settings, access("caller", ["leads.view"]))).toBe("/dashboard/settings/your-account");
     expect(leafHref(settings, access("caller", ["settings.view"]))).toBe("/dashboard/settings");
     expect(settings.visible(access("caller", ["settings.view", "roles.view"], "none"))).toBe(false);
     expect(settings.visible(noAccess)).toBe(false);
@@ -706,8 +699,8 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
     expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: ["telecalling_sim"], subStatus: "expired" }).access)).toEqual([]);
   });
 
-  it("the call-alert badge rides on the Team row only", () => {
-    expect(allLeaves().filter((leaf) => leaf.badge === "alerts").map((leaf) => leaf.key)).toEqual(["team"]);
+  it("the call-alert badge rides on the Evaluation row only", () => {
+    expect(allLeaves().filter((leaf) => leaf.badge === "alerts").map((leaf) => leaf.key)).toEqual(["call-iq-evaluation"]);
   });
 
   function CALLING_CHIPS(access: NavAccess) {
@@ -756,5 +749,14 @@ describe("AI report card is hidden from telecallers (its endpoint refuses that r
   it("buildNavAccess marks the caller role", () => {
     const state = buildNavAccess({ role: "caller", permissions: ["knowledge.view"], enabledFeatures: ["inbound_messaging"], subStatus: "active" });
     expect(row.visible(state.access)).toBe(false);
+  });
+});
+
+describe("Replies & handover is one page (2026-11-23)", () => {
+  it.each(["/dashboard/settings/auto-reply", "/dashboard/settings/inbox"])("%s lights only that row and has no chips", (path) => {
+    expect(allLeaves().filter((leaf) => leaf.isActive(path)).map((leaf) => leaf.key)).toEqual(["replies-handover"]);
+    expect(resolveOpenSection(undefined, NAV_SECTIONS, path)).toBe("aiSetup");
+    expect(chipSetFor(path)).toBeNull();
+    expect(isSettingsPath(path)).toBe(false);
   });
 });

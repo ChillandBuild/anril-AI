@@ -1,22 +1,15 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MessagesSquare, Send, Sparkles } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, MessageCircle } from "lucide-react";
+import { toast } from "sonner";
 import { api, type AutoReplySource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSettingsForm } from "../SettingsFormContext";
-import {
-  Fact,
-  Facts,
-  SaveButton,
-  SaveStatus,
-  SectionFooter,
-  SectionLoadGate,
-  SettingsAccordion,
-  SettingsSection,
-  SummaryHint,
-  SwitchPill,
-  type SectionLoadState,
-} from "../SettingsSection";
+import { HandoverFields, useInboxConfig } from "../InboxConfigPanel";
+import { AfterHoursFields, useAfterHours } from "../AfterHoursPanel";
+import { SaveButton, SaveStatus, SectionLoadGate, SwitchPill, type SaveState, type SectionLoadState } from "../SettingsSection";
 
 // Backend: services/automation_guards.py. A missing value means ON, so a source added later starts on.
 const AI_KEY = "ai_auto_reply_enabled";
@@ -27,9 +20,13 @@ const SECTION_ID = "automations_ai";
 type Field = "ai" | "template";
 type Flags = Record<string, Partial<Record<Field, boolean>>>;
 
-const GROUP_LABELS: Record<AutoReplySource["group"], string> = {
-  channel: "Chat channels",
-  lead: "Lead sources",
+/** Where each lead source's welcome template is picked today. */
+const TEMPLATE_HOME: Record<string, { href: string; where: string }> = {
+  instant_forms: { href: "/dashboard/meta-ads/instant-forms", where: "each form" },
+  indiamart: { href: "/dashboard/settings/connect-channels", where: "IndiaMART tile" },
+  justdial: { href: "/dashboard/settings/connect-channels", where: "JustDial tile" },
+  website: { href: "/dashboard/auto-messages", where: "Website form" },
+  partner: { href: "/dashboard/developer", where: "Developer" },
 };
 
 function parseFlags(raw: string | undefined): Flags {
@@ -62,24 +59,26 @@ function isOn(flags: Flags, key: string, field: Field): boolean {
   return flags[key]?.[field] !== false;
 }
 
-export default function AutoReplySettingsPage() {
-  const { settingFor, drafts, setDrafts, saveStates, canManageSettings, handleSave } = useSettingsForm();
+export default function RepliesAndHandoverPage() {
+  const { settingFor, drafts, setDrafts, canManageSettings, handleSave } = useSettingsForm();
+  const inbox = useInboxConfig();
+  const afterHours = useAfterHours();
   const [sources, setSources] = useState<AutoReplySource[]>([]);
-  const [loadState, setLoadState] = useState<SectionLoadState>("loading");
+  const [sourcesState, setSourcesState] = useState<SectionLoadState>("loading");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [errors, setErrors] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
-    setLoadState("loading");
+  const loadSources = useCallback(async () => {
+    setSourcesState("loading");
     try {
       const res = await api.settings.getAutoReplySources();
       setSources(res.sources);
-      setLoadState("ready");
+      setSourcesState("ready");
     } catch {
-      setLoadState("error");
+      setSourcesState("error");
     }
   }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => void loadSources(), [loadSources]);
 
   // What was just saved, shown until the save's reload finishes. handleSave clears the drafts
   // before it reloads the settings, so without this the switches flash back to the old values.
@@ -94,17 +93,11 @@ export default function AutoReplySettingsPage() {
   const storedFlags = useMemo(() => parseFlags(settingFor(SOURCES_KEY)?.display_value), [settingFor]);
   const flags = saving?.flags ?? (drafts[SOURCES_KEY] ? parseFlags(drafts[SOURCES_KEY]) : storedFlags);
 
-  const save = async () => {
-    setSaving({ ai: aiOn, templates: templatesOn, flags });
-    try {
-      await handleSave(SECTION_ID, [AI_KEY, TEMPLATE_KEY, SOURCES_KEY]);
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const dirty =
+  const repliesDirty =
     aiOn !== storedMaster(AI_KEY) || templatesOn !== storedMaster(TEMPLATE_KEY) || !sameFlags(flags, storedFlags);
+  const dirty = repliesDirty || inbox.dirty || afterHours.dirty;
+  const busy = saveState === "saving";
+  const locked = !canManageSettings || busy;
 
   const setMaster = (key: string, next: boolean) => setDrafts((d) => ({ ...d, [key]: next ? "true" : "false" }));
   const setRow = (key: string, field: Field, next: boolean) => {
@@ -112,178 +105,204 @@ export default function AutoReplySettingsPage() {
     setDrafts((d) => ({ ...d, [SOURCES_KEY]: JSON.stringify(updated) }));
   };
 
-  const offRows = sources.filter(
-    (s) => (s.ai && !isOn(flags, s.key, "ai")) || (s.template && !isOn(flags, s.key, "template")),
-  );
-  const status =
-    !aiOn && !templatesOn
-      ? { label: "Off", tone: "off" as const }
-      : aiOn && templatesOn && offRows.length === 0
-        ? { label: "On", tone: "on" as const }
-        : { label: "Partly on", tone: "warn" as const };
+  /** One Save: the three settings groups save together; any that fail are named. */
+  const saveAll = async () => {
+    if (!canManageSettings || !dirty) return;
+    setSaveState("saving");
+    setErrors([]);
+    if (repliesDirty) setSaving({ ai: aiOn, templates: templatesOn, flags });
+    const jobs: Promise<string | null>[] = [];
+    if (repliesDirty) {
+      jobs.push(
+        handleSave(SECTION_ID, [AI_KEY, TEMPLATE_KEY, SOURCES_KEY])
+          .then((ok) => (ok ? null : "Welcome templates and AI replies did not save"))
+          .finally(() => setSaving(null)),
+      );
+    }
+    if (inbox.dirty) jobs.push(inbox.save());
+    if (afterHours.dirty) jobs.push(afterHours.save());
+    const failed = (await Promise.all(jobs)).filter((e): e is string => !!e);
+    if (failed.length) {
+      setErrors(failed);
+      setSaveState("idle");
+      toast.error(failed.length === jobs.length ? "Nothing saved. Please try again." : "Some changes did not save");
+      return;
+    }
+    setSaveState("saved");
+    toast.success("Replies & handover saved");
+    setTimeout(() => setSaveState("idle"), 2000);
+  };
 
-  const groups = (["channel", "lead"] as const)
-    .map((g) => ({ group: g, rows: sources.filter((s) => s.group === g) }))
+  const templateRows = sources.filter((s) => s.template);
+  const aiGroups = (["channel", "lead"] as const)
+    .map((g) => ({ group: g, rows: sources.filter((s) => s.group === g && s.ai) }))
     .filter((g) => g.rows.length > 0);
 
-  const cell = (source: AutoReplySource, field: Field, masterOn: boolean) =>
-    source[field] ? (
-      <SwitchPill
-        on={isOn(flags, source.key, field)}
-        size="sm"
-        disabled={!canManageSettings || !masterOn || saving !== null}
-        aria-label={`${source.label} ${field === "ai" ? "AI replies" : "instant template"}`}
-        onChange={(next) => setRow(source.key, field, next)}
-      />
-    ) : (
-      <span className="font-body text-xs text-ink-muted" aria-label="Not available">
-        –
-      </span>
-    );
+  const sourceSwitch = (s: AutoReplySource, field: Field, masterOn: boolean) => (
+    <SwitchPill
+      on={isOn(flags, s.key, field)}
+      size="sm"
+      disabled={locked || !masterOn}
+      aria-label={`${s.label} ${field === "ai" ? "AI replies" : "welcome template"}`}
+      onChange={(next) => setRow(s.key, field, next)}
+    />
+  );
 
   return (
-    <SettingsAccordion>
-      <SettingsSection
-        id="ai-auto-reply"
-        icon={Sparkles}
-        accent="violet"
-        title="Auto-Reply"
-        description="Control which messages are sent automatically: AI responses in conversations and welcome templates for new leads. Messages sent by your team are not affected."
-        status={status}
-        dirty={dirty}
-        summary={
-          status.tone === "off" ? (
-            <SummaryHint>Paused. No automatic messages are sent; incoming messages are held for your team.</SummaryHint>
-          ) : (
-            <Facts>
-              <Fact icon={MessagesSquare}>AI replies {aiOn ? "on" : "off"}</Fact>
-              <Fact icon={Send}>Instant templates {templatesOn ? "on" : "off"}</Fact>
-              {offRows.length > 0 && <Fact>{offRows.length} source{offRows.length === 1 ? "" : "s"} switched off</Fact>}
-            </Facts>
-          )
-        }
-      >
-        <SectionLoadGate state={loadState} onRetry={load}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MasterCard
-              icon={MessagesSquare}
-              title="AI Replies"
-              on={aiOn}
-              disabled={!canManageSettings || saving !== null}
-              onChange={(next) => setMaster(AI_KEY, next)}
-              offText="AI responses are paused on all channels, including media acknowledgements, typing indicators, follow-ups and reminders. Incoming messages are held for your team."
-              onText="AI responds to incoming messages on the channels and lead sources enabled below."
-            />
-            <MasterCard
-              icon={Send}
-              title="Instant Templates"
-              on={templatesOn}
-              disabled={!canManageSettings || saving !== null}
-              onChange={(next) => setMaster(TEMPLATE_KEY, next)}
-              offText="Welcome templates are paused for all lead sources. New leads are still created and assigned."
-              onText="New leads receive a welcome template from the lead sources enabled below."
-            />
-          </div>
-
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse font-body text-sm">
-              <thead>
-                <tr className="border-b border-border-subtle">
-                  <th className="py-2 pr-2 text-left font-label text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">Source</th>
-                  <th className="w-20 py-2 text-center font-label leading-tight sm:w-36 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">Instant template</th>
-                  <th className="w-20 py-2 text-center font-label leading-tight sm:w-36 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">AI replies</th>
-                </tr>
-              </thead>
-              {groups.map(({ group, rows }) => (
-                <tbody key={group}>
-                  <tr>
-                    <td colSpan={3} className="bg-surface-subtle px-2 py-1.5 font-label text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
-                      {GROUP_LABELS[group]}
-                    </td>
-                  </tr>
-                  {rows.map((s) => (
-                    <tr key={s.key} className="border-b border-border-subtle last:border-b-0">
-                      <td className="py-2.5 pr-2">
-                        <span className="font-medium text-ink">{s.label}</span>
-                        {s.hint && <span className="block text-xs text-ink-muted">{s.hint}</span>}
-                      </td>
-                      <td className="py-2.5 text-center">
-                        <div className="flex justify-center">{cell(s, "template", templatesOn)}</div>
-                      </td>
-                      <td className="py-2.5 text-center">
-                        <div className="flex justify-center">{cell(s, "ai", aiOn)}</div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              ))}
-            </table>
-          </div>
-
-          <p className="mt-3 font-body text-xs leading-relaxed text-ink-muted">
-            An automatic message is sent only when both its master setting above and its source are enabled. AI
-            response settings for a lead source also apply to that lead&apos;s later conversations; for example, an
-            IndiaMART lead messaging on WhatsApp requires both WhatsApp and IndiaMART to be enabled. Messages sent by
-            your team, broadcasts, scheduled templates, opt-out confirmations and payment notifications are always
-            delivered.
+    <div className="space-y-4 pb-24">
+      <div className="card flex flex-wrap items-center gap-5 rounded-2xl p-5">
+        <Image src="/login/tealy-poster.png" alt="Tealy" width={150} height={150} className="h-[150px] w-[150px] shrink-0 object-contain" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-headline text-lg font-bold text-ink">How Anril handles a new chat, start to finish</h2>
+          <p className="mt-1 max-w-prose font-body text-sm text-ink-muted">
+            Each step has its own switch. Turn a step off and the chat goes straight to the next one. Messages your team sends,
+            broadcasts, opt-out confirmations and payment notices always go out.
           </p>
+        </div>
+        <Link
+          href="/dashboard/brain?section=test"
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 font-label text-sm font-semibold text-ink hover:border-primary/40"
+        >
+          <MessageCircle size={15} className="text-primary" /> Try it in Test chat
+        </Link>
+      </div>
 
-          <SectionFooter
-            status={<SaveStatus state={saveStates[SECTION_ID] ?? "idle"} dirty={dirty} idleLabel={`Auto-Reply is ${status.label.toLowerCase()}`} />}
-          >
-            <SaveButton
-              state={saveStates[SECTION_ID] ?? "idle"}
-              dirty={dirty}
-              disabled={!canManageSettings}
-              onClick={save}
-            />
-          </SectionFooter>
-        </SectionLoadGate>
-      </SettingsSection>
-    </SettingsAccordion>
+      <div className="flex flex-wrap items-stretch gap-3 xl:flex-nowrap">
+        <Step n={1} title="New lead arrives" subtitle="Send your welcome template at once" on={templatesOn} onToggle={(v) => setMaster(TEMPLATE_KEY, v)} disabled={locked}>
+          <SectionLoadGate state={sourcesState} onRetry={loadSources}>
+            <ul className="space-y-2">
+              {templateRows.map((s) => {
+                const home = TEMPLATE_HOME[s.key];
+                return (
+                  <SourceRow key={s.key} label={s.label} control={sourceSwitch(s, "template", templatesOn)}>
+                    {home && (
+                      <Link href={home.href} className="font-body text-xs font-semibold text-primary hover:underline">
+                        Template: set in {home.where} · change
+                      </Link>
+                    )}
+                  </SourceRow>
+                );
+              })}
+            </ul>
+          </SectionLoadGate>
+        </Step>
+        <StepArrow />
+        <Step n={2} title="AI replies" subtitle="Anril answers on these sources" on={aiOn} onToggle={(v) => setMaster(AI_KEY, v)} disabled={locked}>
+          <SectionLoadGate state={sourcesState} onRetry={loadSources}>
+            <div className="space-y-3">
+              {aiGroups.map(({ group, rows }) => (
+                <div key={group}>
+                  <div className="mb-1.5 font-label text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                    {group === "channel" ? "Chat channels" : "Lead sources"}
+                  </div>
+                  <ul className="space-y-2">
+                    {rows.map((s) => (
+                      <SourceRow key={s.key} label={s.label} control={sourceSwitch(s, "ai", aiOn)} />
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <p className="font-body text-xs leading-relaxed text-ink-muted">
+                A lead from a source keeps that source&apos;s setting in later chats: an IndiaMART lead writing on WhatsApp needs both on.
+              </p>
+            </div>
+          </SectionLoadGate>
+        </Step>
+        <StepArrow />
+        <Step
+          n={3}
+          title="Hand to your team"
+          subtitle="When the AI should stop and pass the chat on"
+          on={inbox.draft.enabled}
+          onToggle={(v) => inbox.setDraft({ ...inbox.draft, enabled: v })}
+          disabled={locked || inbox.loadState !== "ready"}
+        >
+          <SectionLoadGate state={inbox.loadState} onRetry={inbox.load}>
+            <HandoverFields state={inbox} disabled={locked} />
+          </SectionLoadGate>
+        </Step>
+        <StepArrow />
+        <Step
+          n={4}
+          title="When you're closed"
+          subtitle="What Anril says while the team is out"
+          on={afterHours.draft.enabled}
+          onToggle={(v) => afterHours.setDraft({ ...afterHours.draft, enabled: v })}
+          disabled={locked || afterHours.loadState !== "ready"}
+        >
+          <SectionLoadGate state={afterHours.loadState} onRetry={afterHours.load}>
+            <AfterHoursFields state={afterHours} disabled={locked} />
+          </SectionLoadGate>
+        </Step>
+      </div>
+
+      <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+        <div className="min-w-0">
+          {errors.length > 0 ? (
+            <ul role="alert" className="font-body text-sm text-danger">
+              {errors.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          ) : (
+            <SaveStatus state={saveState} dirty={dirty} idleLabel="All four steps are saved" />
+          )}
+        </div>
+        <SaveButton state={saveState} dirty={dirty} disabled={!canManageSettings} onClick={saveAll} />
+      </div>
+    </div>
   );
 }
 
-function MasterCard({
-  icon: Icon,
+function Step({
+  n,
   title,
+  subtitle,
   on,
+  onToggle,
   disabled,
-  onChange,
-  onText,
-  offText,
+  children,
 }: {
-  icon: typeof Sparkles;
+  n: number;
   title: string;
+  subtitle: string;
   on: boolean;
+  onToggle: (next: boolean) => void;
   disabled: boolean;
-  onChange: (next: boolean) => void;
-  onText: string;
-  offText: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-3 rounded-xl border p-3.5 transition-colors",
-        on ? "border-primary/20 bg-primary/[0.03]" : "border-border bg-surface-subtle",
-      )}
-    >
-      <Icon size={16} className={cn("mt-0.5 shrink-0", on ? "text-primary" : "text-ink-muted")} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 font-body text-sm font-semibold text-ink">
-          {title}
-          <span
-            className={cn(
-              "rounded-full px-2 py-px font-label text-[10px] font-bold tracking-wide",
-              on ? "bg-emerald-50 text-emerald-700" : "bg-white text-ink-muted ring-1 ring-border",
-            )}
-          >
-            {on ? "ON" : "OFF"}
-          </span>
+    <section className={cn("card flex min-w-0 flex-[1_1_260px] flex-col gap-3 rounded-2xl p-4", !on && "bg-surface-subtle")}>
+      <div className="flex items-start gap-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary font-label text-sm font-bold text-white">{n}</span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-headline text-base font-bold text-ink">{title}</h2>
+          <p className="font-body text-xs text-ink-muted">{subtitle}</p>
         </div>
-        <p className="mt-0.5 font-body text-xs leading-relaxed text-ink-muted">{on ? onText : offText}</p>
+        <SwitchPill on={on} size="sm" disabled={disabled} aria-label={`${title} on or off`} onChange={onToggle} />
       </div>
-      <SwitchPill on={on} size="sm" disabled={disabled} aria-label={`${title} on or off`} onChange={onChange} />
+      {!on && <p className="font-body text-xs text-ink-muted">Off. Chats skip this step. You can still change it and turn it on later.</p>}
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function SourceRow({ label, control, children }: { label: string; control: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-3 rounded-xl border border-border-subtle px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <div className="font-body text-sm font-medium text-ink">{label}</div>
+        {children}
+      </div>
+      {control}
+    </li>
+  );
+}
+
+function StepArrow() {
+  return (
+    <div aria-hidden className="hidden shrink-0 items-center text-ink-muted xl:flex">
+      <ArrowRight size={18} />
     </div>
   );
 }

@@ -250,9 +250,15 @@ const AUTO_MESSAGE_PAGES: readonly NavPage[] = [
 
 const AUTO_MESSAGES = pagesLeaf({ key: "auto-messages", label: "Auto-Messages", icon: Zap, pages: AUTO_MESSAGE_PAGES });
 
+/** One page since 2026-11-23; the old Handover address redirects to it. */
 const REPLY_PAGES: readonly NavPage[] = [
-  prefixPage("auto-reply", "Auto-reply", "/dashboard/settings/auto-reply", settingsVisible),
-  prefixPage("inbox", "Handover", "/dashboard/settings/inbox", settingsVisible),
+  {
+    key: "auto-reply",
+    label: "Replies & handover",
+    href: "/dashboard/settings/auto-reply",
+    visible: settingsVisible,
+    isActive: (p) => p.startsWith("/dashboard/settings/auto-reply") || p.startsWith("/dashboard/settings/inbox"),
+  },
 ];
 
 const REPLIES_AND_HANDOVER = pagesLeaf({ key: "replies-handover", label: "Replies & handover", icon: Sparkles, pages: REPLY_PAGES });
@@ -433,14 +439,13 @@ const CALL_REVIEWS: NavLeaf = {
   isActive: (p) => p.startsWith(NOTES),
 };
 
-/** The alert count (unseen call alerts, owners and managers) rides on this row: the Needs attention list that handles them is on the Team page. */
+/** Team is people admin: teams, shifts, daily targets, attendance, moving leads. The numbers live on Live, Evaluation and Results. */
 const TEAM_ROW: NavLeaf = {
   kind: "link",
   key: "team",
   href: TEAM,
   label: "Team",
   icon: Trophy,
-  badge: "alerts",
   visible: teamVisible,
   isActive: (p, tab = "") => p.startsWith(TEAM) && tab !== "log",
 };
@@ -456,12 +461,14 @@ const CALL_IQ_LIVE: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/call-iq/live"),
 };
 
+/** The alert count (unseen call alerts, owners and managers) rides on this row: the Needs attention list that handles them is here. */
 const CALL_IQ_EVALUATION: NavLeaf = {
   kind: "link",
   key: "call-iq-evaluation",
   href: "/dashboard/call-iq/evaluation",
   label: "Evaluation",
   icon: ListChecks,
+  badge: "alerts",
   visible: teamVisible,
   isActive: (p) => p.startsWith("/dashboard/call-iq/evaluation"),
 };
@@ -664,7 +671,7 @@ export function sidebarFoldsOn(pathname: string): boolean {
 }
 
 export interface ChipSet {
-  key: "autoMessages" | "replies" | "otpSetup" | "calling" | "leadsToCall";
+  key: "autoMessages" | "otpSetup" | "calling" | "leadsToCall";
   /** The menu row these pages share. */
   leafKey: string;
   chips: readonly NavPage[];
@@ -673,7 +680,6 @@ export interface ChipSet {
 /** The pages that share one menu row, in chip order. The page header renders these as a row of chips. */
 export const CHIP_SETS: readonly ChipSet[] = [
   { key: "autoMessages", leafKey: AUTO_MESSAGES.key, chips: AUTO_MESSAGE_PAGES },
-  { key: "replies", leafKey: REPLIES_AND_HANDOVER.key, chips: REPLY_PAGES },
   { key: "otpSetup", leafKey: "otp-settings", chips: OTP_SETUP_PAGES },
   { key: "calling", leafKey: CALLING.key, chips: CALLING_PAGES },
   { key: "leadsToCall", leafKey: LEADS_TO_CALL.key, chips: LEADS_TO_CALL_PAGES },
@@ -688,7 +694,10 @@ const CALL_IQ_META: Record<string, { title: string; description: string }> = {
   [TC_QUEUE]: { title: "Calling / Call from the queue", description: "Manage calls, callers, and lead queues in real time." },
   [TC_DIAL]: { title: "Calling / Dial a number", description: "Call any number by hand, without adding it to a queue." },
   [TC_SCHEDULED]: { title: "Leads to call / Scheduled calls", description: "View and manage upcoming scheduled calls for leads." },
-  [NOTES]: { title: "Call reviews", description: "Browse and manage notes across your leads." },
+  [NOTES]: { title: "Call reviews", description: "Listen to calls, read the AI's marks and leave coaching notes." },
+  "/dashboard/call-iq/live": { title: "Call IQ / Live", description: "Who is on a call, on a break, free or not logged in, right now." },
+  "/dashboard/call-iq/evaluation": { title: "Call IQ / Evaluation", description: "How well each telecaller talks to customers, scored by the AI, and where each one can improve." },
+  "/dashboard/call-iq/results": { title: "Call IQ / Results", description: "Calls, then visits booked, then orders, then money, for each telecaller." },
 };
 
 /**
@@ -705,7 +714,7 @@ export function callIqRouteMeta(pathname: string, tab = ""): { title: string; de
   }
   if (pathname === TEAM) {
     if (tab === "log") return { title: "Leads to call / Who got which lead", description: "Which telecaller each lead went to, and why." };
-    return { title: "Team", description: "Add and manage telecallers under your account." };
+    return { title: "Team", description: "Your telecallers: teams, shift hours, daily targets, attendance and moving leads." };
   }
   return CALL_IQ_META[pathname] ?? null;
 }

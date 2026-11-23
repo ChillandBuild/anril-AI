@@ -72,12 +72,12 @@ export function ProfileMenu() {
 
             <div className="py-1">
               <Link
-                href="/dashboard/settings/account"
+                href="/dashboard/settings/your-account"
                 onClick={() => setOpen(false)}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#13284A] hover:bg-[#f8fafc] transition-colors text-left"
               >
                 <UserCircle size={16} className="text-[#475569]" />
-                <span>Profile & Business</span>
+                <span>Your account</span>
               </Link>
               {isTelecaller && (
                 <Link

@@ -1,14 +1,5 @@
-"use client";
-import { useSettingsForm } from "../SettingsFormContext";
-import { InboxConfigPanel } from "../InboxConfigPanel";
-import { AfterHoursPanel } from "../AfterHoursPanel";
+import { redirect } from "next/navigation";
 
 export default function InboxSettingsPage() {
-  const { canManageSettings } = useSettingsForm();
-  return (
-    <div className="space-y-4">
-      <InboxConfigPanel canManage={canManageSettings} />
-      <AfterHoursPanel canManage={canManageSettings} />
-    </div>
-  );
+  redirect("/dashboard/settings/auto-reply");
 }

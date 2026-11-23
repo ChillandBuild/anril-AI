@@ -8,7 +8,20 @@ import { cleanPrefix, financialYear, previewBillNumber, stateCodeOf } from "./ta
 import type { FieldErrors } from "./validate";
 
 
+export type BusinessDetailsGroup = "name" | "contact" | "tax" | "paid" | "terms";
+
+/** The five cards of the Business details page, in order, each with its one-line hint. */
+export const BUSINESS_DETAILS_GROUPS: { id: BusinessDetailsGroup; title: string; hint: string }[] = [
+  { id: "name", title: "Name and address", hint: "Who the bill is from" },
+  { id: "contact", title: "Contact and logo", hint: "How customers reach you" },
+  { id: "tax", title: "Tax and GST", hint: "How GST and bill numbers show on bills" },
+  { id: "paid", title: "Getting paid", hint: "Printed so customers can pay you" },
+  { id: "terms", title: "Terms and signature", hint: "The fine print at the bottom" },
+];
+
 type Props = {
+  /** Which card's fields to draw. */
+  group: BusinessDetailsGroup;
   draft: BusinessDetails;
   onChange: (patch: Partial<BusinessDetails>) => void;
   errors: FieldErrors;
@@ -48,17 +61,8 @@ function Field({
     <label className={className}>
       <span className={LABEL}>{label}</span>
       {children}
-      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : hint ? <p className={HINT}>{hint}</p> : null}
+      {error ? <p data-field-error className="mt-1 text-xs text-danger">{error}</p> : hint ? <p className={HINT}>{hint}</p> : null}
     </label>
-  );
-}
-
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h3 className="font-display text-sm font-bold text-ink">{title}</h3>
-      {children}
-    </section>
   );
 }
 
@@ -132,6 +136,7 @@ function PictureField({
 }
 
 export function BusinessDetailsFields({
+  group,
   draft,
   onChange,
   errors,
@@ -147,8 +152,9 @@ export function BusinessDetailsFields({
   const sample = previewBillNumber(draft.bill_prefix, financialYear(new Date()), 1);
 
   return (
-    <div className="space-y-7">
-      <Group title="Name and address">
+    <>
+      {group === "name" && (
+        <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Legal business name" className="sm:col-span-2">
             <input
@@ -201,6 +207,13 @@ export function BusinessDetailsFields({
               onChange={(e) => onChange({ state_code: e.target.value.replace(/\D/g, "") })}
             />
           </Field>
+        </div>
+      </div>
+      )}
+
+      {group === "contact" && (
+        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Email">
             <input className={INPUT} value={draft.email} disabled={off} placeholder="billing@yourbusiness.com" onChange={(e) => onChange({ email: e.target.value })} />
           </Field>
@@ -218,9 +231,11 @@ export function BusinessDetailsFields({
             onRemove={onRemoveImage}
           />
         </div>
-      </Group>
+      </div>
+      )}
 
-      <Group title="GST">
+      {group === "tax" && (
+        <div className="space-y-4">
         <div role="radiogroup" aria-label="GST type" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {GST_OPTIONS.map((o) => {
             const on = draft.gst_type === o.value;
@@ -289,9 +304,6 @@ export function BusinessDetailsFields({
             aria-label="Prices include GST"
           />
         </div>
-      </Group>
-
-      <Group title="Bill numbers">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
             label="Bill prefix"
@@ -308,9 +320,11 @@ export function BusinessDetailsFields({
           </Field>
         </div>
         <p className={HINT}>Bills you have already given keep their old numbers. Refund notes (CN) keep their own numbers.</p>
-      </Group>
+      </div>
+      )}
 
-      <Group title="Paying you">
+      {group === "paid" && (
+        <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="UPI ID" error={errors.upi_id} hint="Printed on the bill so customers can pay.">
             <input
@@ -353,9 +367,11 @@ export function BusinessDetailsFields({
             />
           </Field>
         </div>
-      </Group>
+      </div>
+      )}
 
-      <Group title="Terms and signature">
+      {group === "terms" && (
+        <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={`Terms (${draft.terms.length}/1000)`} className="sm:col-span-2">
             <textarea
@@ -378,7 +394,8 @@ export function BusinessDetailsFields({
             onRemove={onRemoveImage}
           />
         </div>
-      </Group>
-    </div>
+      </div>
+      )}
+    </>
   );
 }

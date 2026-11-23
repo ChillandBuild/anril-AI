@@ -13,7 +13,6 @@ const labels = (pathname: string, access = owner, tab = "") => chipRowFor(pathna
 const active = (pathname: string, access = owner, tab = "") => chipRowFor(pathname, access, tab)?.activeHref;
 
 const AUTO = ["When something happens", "Follow-ups", "One-time sends", "Sent"];
-const REPLIES = ["Auto-reply", "Handover"];
 const OTP = ["Rules", "Connect your website"];
 
 describe("chipRowFor: the 7 chip pages", () => {
@@ -21,8 +20,6 @@ describe("chipRowFor: the 7 chip pages", () => {
     ["/dashboard/auto-messages", AUTO, "/dashboard/auto-messages"],
     ["/dashboard/settings/follow-ups", AUTO, "/dashboard/settings/follow-ups"],
     ["/dashboard/scheduled-templates", AUTO, "/dashboard/scheduled-templates"],
-    ["/dashboard/settings/auto-reply", REPLIES, "/dashboard/settings/auto-reply"],
-    ["/dashboard/settings/inbox", REPLIES, "/dashboard/settings/inbox"],
     ["/dashboard/otp/settings", OTP, "/dashboard/otp/settings"],
     ["/dashboard/otp/api", OTP, "/dashboard/otp/api"],
   ])("%s shows its set in order with itself active", (path, expected, activeHref) => {
@@ -31,7 +28,7 @@ describe("chipRowFor: the 7 chip pages", () => {
   });
 
   it("exactly one chip is active", () => {
-    for (const path of ["/dashboard/auto-messages", "/dashboard/settings/inbox", "/dashboard/otp/api"]) {
+    for (const path of ["/dashboard/auto-messages", "/dashboard/settings/follow-ups", "/dashboard/otp/api"]) {
       const row = chipRowFor(path, owner)!;
       expect(row.chips.filter((c) => c.href === row.activeHref)).toHaveLength(1);
     }

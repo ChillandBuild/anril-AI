@@ -1,21 +1,10 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
-import { Inbox, MessagesSquare, UserCheck, Zap } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import {
-  Fact,
-  Facts,
-  SaveButton,
-  SaveStatus,
-  SectionFooter,
-  SectionLoadGate,
-  SettingsSection,
-  SummaryHint,
-  type SectionLoadState,
-} from "./SettingsSection";
-import { CheckField, SwitchPill, TickMark } from "@/components/ui/controls";
+import { CheckField, TickMark } from "@/components/ui/controls";
+import type { SectionLoadState } from "./SettingsSection";
 
-type InboxConfig = {
+export type InboxConfig = {
   enabled: boolean;
   auto_assign_enabled: boolean;
   channels: string[];
@@ -30,11 +19,11 @@ const DEFAULT: InboxConfig = {
 };
 
 const TRIGGER_LABELS: Record<string, { label: string; always?: boolean }> = {
-  A: { label: "AI couldn't answer — sent a generic holding reply" },
-  B: { label: "AI failed completely (technical error)" },
-  C: { label: "User explicitly asked to speak to a person", always: true },
-  D: { label: "User repeated the same question (AI not resolving it)" },
-  F: { label: "AI response indicated the team would follow up" },
+  A: { label: "AI couldn't answer and sent a holding reply" },
+  F: { label: "AI said the team would follow up" },
+  B: { label: "AI failed (technical error)" },
+  D: { label: "Customer asked the same thing again" },
+  C: { label: "Customer asked for a person", always: true },
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -48,10 +37,12 @@ function toggle<T>(arr: T[], item: T): T[] {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
 }
 
-export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) {
-  const [config, setConfig] = useState<InboxConfig>(DEFAULT);
+export type InboxConfigState = ReturnType<typeof useInboxConfig>;
+
+/** Handover settings (/settings/inbox-config): loaded once, edited as a draft, saved by the page's one Save bar. */
+export function useInboxConfig() {
+  const [saved, setSaved] = useState<InboxConfig>(DEFAULT);
   const [draft, setDraft] = useState<InboxConfig>(DEFAULT);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [loadState, setLoadState] = useState<SectionLoadState>("loading");
 
   const load = useCallback(async () => {
@@ -59,30 +50,21 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
     try {
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/settings/inbox-config`, { headers: auth });
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        setDraft(data);
-        setLoadState("ready");
-        return;
-      }
-      setLoadState("error");
+      if (!res.ok) throw new Error("load failed");
+      const data = (await res.json()) as InboxConfig;
+      setSaved(data);
+      setDraft(data);
+      setLoadState("ready");
     } catch {
       setLoadState("error");
     }
   }, []);
+  useEffect(() => void load(), [load]);
 
-  useEffect(() => { load(); }, [load]);
+  const dirty = loadState === "ready" && JSON.stringify(draft) !== JSON.stringify(saved);
 
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
-  const activeTriggers = Object.entries(TRIGGER_LABELS).filter(([k, t]) => t.always || draft.triggers.includes(k)).length;
-  const channelNames = Object.entries(CHANNEL_LABELS)
-    .filter(([ch]) => draft.channels.includes(ch))
-    .map(([, label]) => label);
-
-  async function handleSave() {
-    if (!canManage || loadState !== "ready") return;
-    setSaveState("saving");
+  /** Returns an error message, or null when saved. */
+  const save = useCallback(async (): Promise<string | null> => {
     try {
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/settings/inbox-config`, {
@@ -90,119 +72,67 @@ export function InboxConfigPanel({ canManage = true }: { canManage?: boolean }) 
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify(draft),
       });
-      if (!res.ok) throw new Error("Save failed");
-      const saved = await res.json();
-      setConfig(saved);
-      setDraft(saved);
-      setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
+      if (!res.ok) throw new Error("save failed");
+      const data = (await res.json()) as InboxConfig;
+      setSaved(data);
+      setDraft(data);
+      return null;
     } catch {
-      setSaveState("idle");
+      return "Handover settings did not save";
     }
-  }
+  }, [draft]);
 
+  return { draft, setDraft, loadState, load, dirty, save };
+}
+
+export function HandoverFields({ state, disabled }: { state: InboxConfigState; disabled: boolean }) {
+  const { draft, setDraft } = state;
   return (
-    <SettingsSection
-      id="inbox-escalation"
-      icon={Inbox}
-      accent="violet"
-      title="Inbox Escalation"
-      description="Configure when AI escalates leads to the omnichannel inbox for human follow-up."
-      status={loadState === "ready" ? { label: draft.enabled ? "Enabled" : "Disabled", tone: draft.enabled ? "on" : "off" } : undefined}
-      dirty={isDirty}
-      headerAction={
-        loadState === "ready" ? (
-          <SwitchPill
-            on={draft.enabled}
-            size="sm"
-            disabled={!canManage}
-            aria-label="Inbox escalation on or off"
-            onChange={(v) => setDraft({ ...draft, enabled: v })}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        {Object.entries(TRIGGER_LABELS).map(([key, { label, always }]) => (
+          <CheckField
+            key={key}
+            checked={always ? true : draft.triggers.includes(key)}
+            disabled={disabled}
+            locked={always}
+            lockedNote="Always on"
+            onChange={() => setDraft({ ...draft, triggers: toggle(draft.triggers, key) })}
+            label={label}
           />
-        ) : undefined
-      }
-      summary={
-        loadState !== "ready" ? undefined : draft.enabled ? (
-          <Facts>
-            <Fact icon={Zap}>
-              {activeTriggers} of {Object.keys(TRIGGER_LABELS).length} triggers
-            </Fact>
-            <Fact icon={MessagesSquare}>{channelNames.length ? channelNames.join(" · ") : "No channels"}</Fact>
-            <Fact icon={UserCheck}>{draft.auto_assign_enabled ? "Auto-assign on" : "Auto-assign off"}</Fact>
-          </Facts>
-        ) : (
-          <SummaryHint>Off. No handovers are created automatically.</SummaryHint>
-        )
-      }
-    >
-      <SectionLoadGate state={loadState} onRetry={load}>
-        <div className="space-y-5">
-          {/* Master toggles */}
-          {!draft.enabled && (
-            <p className="rounded-xl border border-border-subtle bg-surface-subtle px-3 py-2 font-body text-xs text-ink-muted">
-              Escalation is off, so no handovers are created automatically. Turn it on with the switch above, then Save.
-            </p>
-          )}
-          <div>
-            <CheckField
-              checked={draft.auto_assign_enabled}
-              disabled={!canManage}
-              onChange={(v) => setDraft({ ...draft, auto_assign_enabled: v })}
-              label="Auto-Assign (Round-Robin)"
-              description="Auto-assign escalated handovers to the active telecaller with fewest leads"
-            />
-          </div>
-
-          {/* Triggers */}
-          <div>
-            <div className="font-label text-sm font-semibold text-ink mb-2">Escalation Triggers</div>
-            <div className="space-y-2">
-              {Object.entries(TRIGGER_LABELS).map(([key, { label, always }]) => (
-                <CheckField
-                  key={key}
-                  checked={always ? true : draft.triggers.includes(key)}
-                  disabled={!canManage}
-                  locked={always}
-                  lockedNote="Always on — cannot be disabled (direct user request)"
-                  onChange={() => setDraft({ ...draft, triggers: toggle(draft.triggers, key) })}
-                  label={label}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Channels */}
-          <div>
-            <div className="font-label text-sm font-semibold text-ink mb-2">Channels</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(CHANNEL_LABELS).map(([ch, label]) => {
-                const active = draft.channels.includes(ch);
-                return (
-                  <button
-                    key={ch}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={active}
-                    disabled={!canManage}
-                    onClick={() => setDraft({ ...draft, channels: toggle(draft.channels, ch) })}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-                      active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
-                    }`}
-                  >
-                    <TickMark checked={active} size="sm" />
-                    <span className="font-label text-sm font-semibold text-ink">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
+        ))}
+      </div>
+      <CheckField
+        checked={draft.auto_assign_enabled}
+        disabled={disabled}
+        onChange={(v) => setDraft({ ...draft, auto_assign_enabled: v })}
+        label="Share out in turn to the team"
+        description="Each handed-over chat goes to the active telecaller with the fewest leads."
+      />
+      <div>
+        <div className="mb-2 font-label text-xs font-semibold uppercase tracking-wider text-ink-muted">On these channels</div>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(CHANNEL_LABELS).map(([ch, label]) => {
+            const active = draft.channels.includes(ch);
+            return (
+              <button
+                key={ch}
+                type="button"
+                role="checkbox"
+                aria-checked={active}
+                disabled={disabled}
+                onClick={() => setDraft({ ...draft, channels: toggle(draft.channels, ch) })}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+                  active ? "border-primary/25 bg-primary-light/50" : "border-border bg-surface-subtle hover:border-primary/40"
+                }`}
+              >
+                <TickMark checked={active} size="sm" />
+                <span className="font-label text-sm font-semibold text-ink">{label}</span>
+              </button>
+            );
+          })}
         </div>
-
-        <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} idleLabel={draft.enabled ? "Escalation is live" : "Escalation is off"} />}>
-          <SaveButton state={saveState} dirty={isDirty} disabled={!canManage} onClick={handleSave} />
-        </SectionFooter>
-      </SectionLoadGate>
-    </SettingsSection>
+      </div>
+    </div>
   );
 }
