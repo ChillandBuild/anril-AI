@@ -31,7 +31,7 @@ const KNOWN = [
   "purchase_order", "supplier_message", "unmarked_bookings", "brain_digest", "scheduled_template_failed",
   "intake_trigger_failed", "system_error", "handover_new", "deal_double_payment", "intake_double_payment",
   "intake_paid", "intake_bridge_auth_failed", "intake_astro_push_failed", "intake_reply_undelivered", "lead_hot",
-  "booking_new", "booking_cancelled", "booking_call_now", "hot_lead_waiting", "refund_done", "stock_low",
+  "booking_new", "booking_cancelled", "booking_call_now", "hot_lead_waiting", "refund_done", "stock_low", "course_seat_free",
 ];
 
 describe("alertKindFor", () => {

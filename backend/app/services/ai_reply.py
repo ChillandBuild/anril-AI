@@ -1834,6 +1834,11 @@ def build_reply_system_prompt(
         interest_line = ""
     if interest_line:
         lead_facts.append(interest_line)  # a fact, not an instruction
+    # v9.2 #216: told a course seat is free and not enrolled yet.
+    from app.services import courses as _courses_seat
+    seat_line = _courses_seat.lead_line(db, tenant_id, lead_id)
+    if seat_line:
+        lead_facts.append(seat_line)
     if summary:
         lead_facts.append(f"Earlier conversation summary:\n{summary}")
     system_prompt += "\n\nLEAD CONTEXT:\n" + "\n".join(lead_facts)
@@ -2174,6 +2179,14 @@ async def generate_reply(
                 catalog_tools = [*catalog_tools, file_tool]
         except Exception:
             logger.warning(f"Shop file tool skipped for tenant {tenant_id}")
+    # v9.2 #216: put the customer on a FULL course batch's waiting list (offered only while a batch is full).
+    try:
+        from app.services import courses as _courses_tool
+        course_tool = _courses_tool.ai_tool(db, tenant_id)
+        if course_tool:
+            catalog_tools = [*catalog_tools, course_tool]
+    except Exception:
+        logger.warning(f"Course waitlist tool skipped for tenant {tenant_id}")
 
     # Bound out here, not inside the try below: that block's except does not return,
     # it falls through to the channel dispatch, which reads both of these. A variable

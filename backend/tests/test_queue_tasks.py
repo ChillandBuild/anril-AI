@@ -23,7 +23,7 @@ MESSAGES = {
     "pending-whatsapp-alerts", "auto-messages", "scheduled-templates", "sms-send",
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
     "unmarked-bookings", "order-payment-reminders", "batch-expiry", "alert-sweeps",
-    "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup",
+    "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup", "course-waitlist-seats",
     "feedback-ask", "reports-monthly-bells", "evening-summary", "comeback-offers", "fee-reminders",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep", "call-break-limits"}
@@ -32,7 +32,7 @@ CLASS_B = {"numbers-pool-sync", "send-log-prune", "password-help-prune", "schedu
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
     "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders", "batch-expiry",
-    "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup",
+    "booking-release-holds", "booking-reminders", "booking-call-now", "visit-loan-followup", "course-waitlist-seats",
     "feedback-ask", "reports-monthly-bells", "call-break-limits", "evening-summary", "comeback-offers", "fee-reminders",
 }
 SYNC_JOBS = {
@@ -90,6 +90,7 @@ CALLEES = {
     "booking-call-now": ("app.services.booking_messages.flag_call_now", False, False),
     "feedback-ask": ("app.services.customer_feedback.ask_due_feedback", True, False),
     "visit-loan-followup": ("app.services.property_visit_messages.send_loan_followups", True, False),
+    "course-waitlist-seats": ("app.services.courses.tell_waitlists", True, False),
     "reports-monthly-bells": ("app.services.reports_monthly.send_due_bells", False, False),
     "call-break-limits": ("app.services.call_rules.check_break_limits", False, True),
     "evening-summary": ("app.services.evening_summary.send_evening_summaries", False, True),
@@ -108,7 +109,7 @@ EVERY = {
     "callback-notifications": 60, "pending-whatsapp-alerts": 60, "auto-messages": 60,
     "scheduled-templates": 60, "sms-send": 60, "companion-kb-ingest": 60, "otp-sweep": 60,
     "meta-catalogue-sync": 60, "booking-release-holds": 60,
-    "booking-reminders": 300, "booking-call-now": 300, "alert-sweeps": 300, "call-break-limits": 300, "feedback-ask": 900, "visit-loan-followup": 900,
+    "booking-reminders": 300, "booking-call-now": 300, "alert-sweeps": 300, "call-break-limits": 300, "feedback-ask": 900, "visit-loan-followup": 900, "course-waitlist-seats": 900,
     "assignment-sweep": 120, "call-ai-sweep": 180,
     "astro-push-reconcile": 300, "intake-staleness-sweep": 300, "handover-stale-alert": 300, "crm-cutoff-sweep": 600,
     "sms-reconcile": 900, "sms-balance-sync": 900, "recycle-contacts": 1800, "instant-forms-catch-up": 600, "ad-insights-sync": 3600,
@@ -156,7 +157,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 51
+    assert len(_periodic()) == 52
 
 
 def test_task_name_matches_periodic_id():
@@ -209,7 +210,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (26, 6, 19)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (26, 6, 20)
 
 
 def test_sync_and_async_split():

@@ -52,6 +52,7 @@ RETRY_CLASS: dict[str, str] = {
     "booking-call-now": "C",
     "feedback-ask": "C",
     "visit-loan-followup": "C",
+    "course-waitlist-seats": "C",
     "reports-monthly-bells": "C",
     "call-break-limits": "C",
     "evening-summary": "C",
@@ -455,6 +456,14 @@ async def visit_loan_followup(timestamp: int) -> None:
     """Property site visits marked "Liked it, thinking": the home-loan help message 2 days later (10 AM-8 PM IST)."""
     from app.services.property_visit_messages import send_loan_followups
     await send_loan_followups()
+
+
+@queue_app.periodic(cron="*/15 * * * *", periodic_id="course-waitlist-seats")
+@queue_app.task(name="course-waitlist-seats", **_one_at_a_time("course-waitlist-seats"), queue="messages")
+async def course_waitlist_seats(timestamp: int) -> None:
+    """v9.2 #216: a course seat freed: tell the next person on that batch's waiting list (9 AM-8 PM IST)."""
+    from app.services.courses import tell_waitlists
+    await tell_waitlists()
 
 
 # Customers › Feedback (v9.2 #17). Class C: it messages customers; the row is written before the send and

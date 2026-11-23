@@ -87,3 +87,28 @@ export function dropNotice(r: { order_cancelled: boolean; paid_paise: number }):
   if (r.order_cancelled || !(r.paid_paise > 0)) return "";
   return `Order kept: this student has paid ${rupees(r.paid_paise)}. Refund it from the order if needed.`;
 }
+
+/** v9.2 #216: the small line under a waiting-list person. */
+export function waitlistNote(w: { source?: string; told_at?: string | null; told_via?: string | null }): string {
+  const bits: string[] = [];
+  if (w.source === "ai") bits.push("Added by the AI agent");
+  if (w.told_at) {
+    const d = new Date(w.told_at);
+    const day = Number.isNaN(d.getTime()) ? "" : ` on ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
+    bits.push(w.told_via === "staff" ? `Seat free${day}: please call them` : `Told a seat is free${day}, held 2 days`);
+  }
+  return bits.join(" · ");
+}
+
+/** What the "a seat is free" WhatsApp message needs, in plain words. */
+export function seatTemplateHelp(status: string | null | undefined): { text: string; canSend: boolean } {
+  const s = (status || "").toUpperCase();
+  if (s === "APPROVED") return { text: "When a seat frees, the next person is told on WhatsApp by itself.", canSend: false };
+  if (s === "PENDING" || s === "IN_APPEAL") return { text: "When a seat frees, the next person is told on WhatsApp. The message for people who haven't chatted in 24 hours is waiting for WhatsApp's approval.", canSend: false };
+  return {
+    text: s === "REJECTED"
+      ? "WhatsApp turned down the seat message. Send it again; until then people who haven't chatted in 24 hours get a call from you (we ring the bell)."
+      : "When a seat frees, the next person is told on WhatsApp if they chatted in the last 24 hours; otherwise we ring the bell so you can call. Send the seat message for approval to reach everyone.",
+    canSend: true,
+  };
+}

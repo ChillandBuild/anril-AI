@@ -49,6 +49,7 @@ _CATALOG: tuple[dict, ...] = (
     {"key": "purchase_order", "label": "A purchase order needs you", "area": "Purchases", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "batch_expiry", "label": "Stock is about to expire", "area": "Stock", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "stock_low", "label": "An item is running low (under 3 left)", "area": "Stock", "who": ["owner"], "how": ["bell", "push"]},
+    {"key": "course_seat_free", "label": "A course seat freed for someone on the waiting list", "area": "Courses", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "booking_new", "label": "A new booking", "area": "Bookings", "who": ["team"], "how": ["bell", "push"]},
     {"key": "booking_cancelled", "label": "A booking was cancelled", "area": "Bookings", "who": ["team"], "how": ["bell", "push"]},
     {"key": "feedback_unhappy", "label": "An unhappy customer", "area": "Feedback", "who": ["owner"], "how": ["bell", "push"]},

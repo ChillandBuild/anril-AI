@@ -25,12 +25,13 @@ HREFS = {
     "comeback_offer": "/dashboard/automations",
     "balance_reminders": "/dashboard/settings/payments",
     "fee_reminders": "/dashboard/catalog/courses",
+    "course_seat_free": "/dashboard/catalog/courses",
     "booking_reminders": "/dashboard/bookings",
     "back_in_stock": "/dashboard/catalog",
 }
 
 
-OWN_PAGE_KEYS = ("balance_reminders", "fee_reminders", "booking_reminders", "back_in_stock")  # switched on their own pages
+OWN_PAGE_KEYS = ("balance_reminders", "fee_reminders", "booking_reminders", "back_in_stock", "course_seat_free")  # switched on their own pages
 
 
 def _humanise(key: str) -> str:
@@ -170,6 +171,20 @@ def _fee_reminders(db, tenant_id: str) -> list[dict]:
                       fee_plans.template_status(db, tenant_id), "Sent before each fee is due. Switch it on the Courses page.")]
 
 
+def _course_seat_free(db, tenant_id: str) -> list[dict]:
+    """v9.2 #216: the waiting list is told when a course seat frees (always on where there is a waiting list)."""
+    from app.services import courses
+    if not _has_rows(db, tenant_id, "batch_waitlist"):
+        return []
+    name = courses.SEAT_TEMPLATE["name"]
+    status = template_status_of(db, tenant_id, name)
+    return [_own_page("course_seat_free", "Tell the waiting list when a course seat frees", "course_seat_free", True,
+                      name, status,
+                      "WhatsApp inside 24 hours, the approved message after that, else a bell asks you to call."
+                      if status == "APPROVED" else
+                      "WhatsApp inside 24 hours, else a bell asks you to call. Send the message for approval on the Courses page.")]
+
+
 def _booking_reminders(db, tenant_id: str) -> list[dict]:
     from app.services import booking_messages
     if not (_has_rows(db, tenant_id, "booking_settings") or _has_rows(db, tenant_id, "bookings")):
@@ -201,7 +216,8 @@ def collect_automations(db, tenant_id: str) -> list[dict]:
                       ("follow-ups", _reengagement), ("feedback", _feedback),
                       ("evening summary", _evening), ("come-back offer", _comeback),
                       ("balance reminders", _balance_reminders), ("fee reminders", _fee_reminders),
-                      ("booking reminders", _booking_reminders), ("back in stock", _back_in_stock)):
+                      ("booking reminders", _booking_reminders), ("back in stock", _back_in_stock),
+                      ("course seat free", _course_seat_free)):
         out += _safe(label, lambda fn=fn: fn(db, tenant_id))
     return out
 

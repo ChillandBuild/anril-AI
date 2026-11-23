@@ -66,3 +66,16 @@ describe("dropping a student", () => {
     expect(partLabel({ paid: true, late: false, due_on: "2026-11-28", on_order: true })).toBe("Paid on the order");
   });
 });
+
+describe("waiting list notes (v9.2 #216)", () => {
+  it("says who added them and whether they were told", async () => {
+    const { waitlistNote, seatTemplateHelp } = await import("./coursesLogic");
+    expect(waitlistNote({ source: "staff" })).toBe("");
+    expect(waitlistNote({ source: "ai" })).toBe("Added by the AI agent");
+    expect(waitlistNote({ source: "ai", told_at: "2026-11-23T06:00:00Z", told_via: "text" })).toBe("Added by the AI agent · Told a seat is free on 23 Nov, held 2 days");
+    expect(waitlistNote({ told_at: "2026-11-23T06:00:00Z", told_via: "staff" })).toBe("Seat free on 23 Nov: please call them");
+    expect(seatTemplateHelp("APPROVED").canSend).toBe(false);
+    expect(seatTemplateHelp(null).canSend).toBe(true);
+    expect(seatTemplateHelp("rejected").text).toMatch(/turned down/);
+  });
+});

@@ -181,7 +181,17 @@ def batch_detail(batch_id: str, ctx: dict = Depends(view)):
                 for field in ("phone", "parent_phone"):
                     if row.get(field):
                         row[field] = mask(row[field])
+    if isinstance(out, dict):
+        out["seat_template"] = svc.seat_template_status(db, ctx["tenant_id"])  # v9.2 #216
     return out
+
+
+@router.post("/seat-template")
+async def submit_seat_template(ctx: dict = Depends(manage)):
+    """v9.2 #216: send the "a seat is free" message to WhatsApp for approval (used outside the 24-hour window)."""
+    with _errors():
+        status = await svc.submit_seat_template(get_supabase(), ctx["tenant_id"], ctx)
+    return {"seat_template": status}
 
 
 # ================================================================ students, waitlist

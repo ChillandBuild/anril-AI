@@ -917,6 +917,14 @@ async def _note_stock_request(ctx: DealContext, args: dict, turn: _Turn) -> str 
     return None
 
 
+async def _join_course_waitlist(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
+    """v9.2 #216: a full batch's waiting list, after the customer said yes (services/courses.py)."""
+    import asyncio
+    from app.services import courses
+    return await asyncio.to_thread(courses.ai_join_waitlist, ctx.db, ctx.tenant_id, ctx.lead_id, ctx.phone,
+                                   str(args.get("batch_id") or ""))
+
+
 _EXECUTORS = {
     deal_engine.TOOL_SHOW_OPTIONS: _show_options,
     deal_engine.TOOL_SELECT_OFFERING: _select_offering,
@@ -930,6 +938,7 @@ _EXECUTORS = {
     "send_form": _send_form,
     "note_out_of_stock_request": _note_stock_request,
     "send_file": _send_file,
+    "join_batch_waitlist": _join_course_waitlist,
 }
 
 

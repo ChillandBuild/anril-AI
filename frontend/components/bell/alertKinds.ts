@@ -90,6 +90,7 @@ const KINDS: Record<string, AlertKind> = {
 
   batch_expiry: { category: "stock", icon: "box", module: "Stock", action: fixed("See batches", "/dashboard/catalog?tab=batches") },
   stock_low: { category: "stock", icon: "box", module: "Stock", action: fixed("See stock", "/dashboard/catalog") },
+  course_seat_free: { category: "other", icon: "alert", module: "Courses", action: fixed("See batches", "/dashboard/catalog/courses") },
 
   sms_low_balance: { category: "other", icon: "sms", module: "SMS", action: fixed("Top up", "/dashboard/sms") },
   scheduled_template_failed: { category: "other", icon: "alert", module: "Scheduled messages", action: fixed("See", "/dashboard/scheduled-templates") },

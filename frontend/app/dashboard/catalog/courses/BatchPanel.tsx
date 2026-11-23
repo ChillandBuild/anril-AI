@@ -5,7 +5,7 @@ import { coursesApi, type Batch, type Course } from "@/lib/coursesApi";
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, ConfirmSheet, Field, INPUT_CLS, Notice, Sheet, errorText } from "@/app/dashboard/bookings/bookingsUi";
 import { EnrolSheet } from "./EnrolSheet";
 import { FeePlanView } from "./FeePlanView";
-import { dayText, dropNotice, modeLabel, seatsText } from "./coursesLogic";
+import { dayText, dropNotice, modeLabel, seatTemplateHelp, seatsText, waitlistNote } from "./coursesLogic";
 
 /** One batch: its students (with fee parts), the waitlist, and the buttons to enrol, edit or drop. */
 export function BatchPanel({ course, batchId, canManage, canMoney, canDeals, onClose, onEdit }: {
@@ -86,11 +86,28 @@ export function BatchPanel({ course, batchId, canManage, canMoney, canDeals, onC
             <ul className="space-y-1">
               {data.waitlist.map((w) => (
                 <li key={w.id} className="flex items-center justify-between gap-2 text-sm text-ink">
-                  <span className="min-w-0 truncate">{w.name ? `${w.name} · ` : ""}{w.phone}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{w.name ? `${w.name} · ` : ""}{w.phone}</span>
+                    {waitlistNote(w) ? <span className={`block text-xs ${w.told_via === "staff" ? "font-semibold text-amber-800" : "text-ink-secondary"}`}>{waitlistNote(w)}</span> : null}
+                  </span>
                   {canManage ? <button type="button" className={BTN_SECONDARY} disabled={busy} onClick={() => run(() => coursesApi.leaveWaitlist(w.id), "Could not remove that.")}>Remove</button> : null}
                 </li>
               ))}
             </ul>
+            {data.waitlist.length > 0 || batch.status !== "open" ? (() => {
+              const help = seatTemplateHelp(data.seat_template);
+              return (
+                <p className="mt-2 text-xs text-ink-secondary">
+                  {help.text}{" "}
+                  {canManage && help.canSend ? (
+                    <button type="button" className="font-semibold text-primary underline" disabled={busy}
+                      onClick={() => run(() => coursesApi.submitSeatTemplate(), "Could not send the message to WhatsApp.")}>
+                      Send the seat message for approval
+                    </button>
+                  ) : null}
+                </p>
+              );
+            })() : null}
             {canManage ? (
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <Field label="Name" htmlFor="w-name"><input id="w-name" className={INPUT_CLS} value={wName} onChange={(e) => setWName(e.target.value)} /></Field>
@@ -104,7 +121,7 @@ export function BatchPanel({ course, batchId, canManage, canMoney, canDeals, onC
 
       {enrol && batch ? <EnrolSheet batch={batch} onClose={() => setEnrol(false)} onDone={() => { setEnrol(false); void mutate(); }} /> : null}
       {dropId ? (
-        <ConfirmSheet title="Drop this student?" body="The seat is freed and an unpaid order is cancelled. Money already paid stays on record."
+        <ConfirmSheet title="Drop this student?" body="The seat is freed and an unpaid order is cancelled. Money already paid stays on record. If someone is on the waiting list, the first person is told the seat is free."
           confirmLabel="Drop student" tone="danger" busy={busy} onClose={() => setDropId(null)}
           onConfirm={() => {
             const id = dropId;

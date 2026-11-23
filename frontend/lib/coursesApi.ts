@@ -84,6 +84,9 @@ export interface WaitlistEntry {
   name: string | null;
   phone: string;
   created_at: string | null;
+  source?: "staff" | "ai";
+  told_at?: string | null; // v9.2 #216: when we told them a seat is free
+  told_via?: "text" | "template" | "staff" | null;
 }
 
 export interface BatchDetail {
@@ -91,6 +94,7 @@ export interface BatchDetail {
   students: Student[];
   waitlist: WaitlistEntry[];
   next_open_batch: Batch | null;
+  seat_template?: string | null; // batch_seat_free: APPROVED | PENDING | REJECTED | null (never sent)
 }
 
 export interface Receipt {
@@ -172,6 +176,7 @@ export const coursesApi = {
     apiFetch<{ dropped: boolean; order_cancelled: boolean; paid_paise: number }>(`${BASE}/enrolments/${id(enrolmentId)}/drop`, json("POST")),
   joinWaitlist: (batchId: string, body: { phone: string; name?: string }) =>
     apiFetch<{ id: string }>(`${BASE}/batches/${id(batchId)}/waitlist`, json("POST", body)),
+  submitSeatTemplate: () => apiFetch<{ seat_template: string | null }>(`${BASE}/seat-template`, json("POST")),
   leaveWaitlist: (waitlistId: string) => apiFetch<{ ok: boolean }>(`${BASE}/waitlist/${id(waitlistId)}`, json("DELETE")),
   saveFeePlan: (enrolmentId: string, parts: PartBody[]) =>
     apiFetch<FeePlan>(`${BASE}/enrolments/${id(enrolmentId)}/fee-plan`, json("PUT", { parts })),

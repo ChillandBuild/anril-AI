@@ -55,6 +55,7 @@ _NOTIFICATION_CONFIG_DEFAULT: dict = {
         "purchase_order": True,
         "day_closing": True,
         "batch_expiry": True,
+        "course_seat_free": True,
         "stock_low": True,
         "hot_lead_waiting": True,
         "refund_done": True,
