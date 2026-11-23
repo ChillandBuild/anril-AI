@@ -34,13 +34,31 @@ def _take_units(db):
     def handler(p):
         if any(r["deal_id"] == p["p_deal_id"] and r["item_id"] == p["p_item_id"] for r in db.rows("property_unit_log")):
             return 0
-        db.add("property_unit_log", deal_id=p["p_deal_id"], item_id=p["p_item_id"], tenant_id=p["p_tenant_id"], qty=p["p_qty"])
+        log = db.add("property_unit_log", deal_id=p["p_deal_id"], item_id=p["p_item_id"], tenant_id=p["p_tenant_id"],
+                     qty=p["p_qty"], taken=0)
         det = next((r for r in db.rows("property_details") if r["item_id"] == p["p_item_id"]), None)
         if not det or det.get("units_left") is None:
             return 0
         new = max(det["units_left"] - p["p_qty"], 0)
         taken, det["units_left"] = det["units_left"] - new, new
+        next(r for r in db.rows("property_unit_log") if r["deal_id"] == log["deal_id"] and r["item_id"] == log["item_id"])["taken"] = taken
         return taken
+    return handler
+
+
+def _give_units(db):
+    """Stand-in for property_give_units (migration 339): delete the order's log rows, add their units back, capped."""
+    def handler(p):
+        rows = [r for r in db.rows("property_unit_log") if r["deal_id"] == p["p_deal_id"] and r["tenant_id"] == p["p_tenant_id"]]
+        given = 0
+        for r in rows:
+            db.rows("property_unit_log").remove(r)
+            det = next((d for d in db.rows("property_details") if d["item_id"] == r["item_id"]), None)
+            if r["taken"] > 0 and det and det.get("units_left") is not None:
+                total = det.get("units_total")
+                det["units_left"] = det["units_left"] + r["taken"] if total is None else min(det["units_left"] + r["taken"], total)
+                given += r["taken"]
+        return given
     return handler
 
 
@@ -48,6 +66,7 @@ def _take_units(db):
 def db(monkeypatch):
     d = FakeSupabase()
     d.rpc_handlers["property_take_units"] = _take_units(d)
+    d.rpc_handlers["property_give_units"] = _give_units(d)
     d.add("tenants", id=T1, name="Sai Builders", business_type="Real Estate")
     monkeypatch.setattr(props, "_embed", lambda *a, **k: None)
     monkeypatch.setattr(bsetup, "_embed_item", lambda *a, **k: None)
@@ -245,6 +264,39 @@ def test_on_deal_paid_takes_units_once(client, db):
     assert db.rows("property_details")[0]["units_left"] == 18
     assert props.on_deal_paid(db, T1, deal) == 0                    # same order reported twice
     assert db.rows("property_details")[0]["units_left"] == 18
+
+
+def test_a_cancelled_order_gives_its_units_back_once_and_counts_again_if_paid_again(client, db):
+    as_(client, OWNER).post("/api/v1/properties", json=FORM)
+    pid = db.rows("catalog_items")[0]["id"]
+    deal = _deal(db, pid, 2)
+    props.on_deal_paid(db, T1, deal)
+    assert db.rows("property_details")[0]["units_left"] == 18
+    assert props.on_deal_lost(db, T1, deal) == 2
+    assert db.rows("property_details")[0]["units_left"] == 20
+    assert props.on_deal_lost(db, T1, deal) == 0                    # cancelled twice: given back once
+    assert db.rows("property_details")[0]["units_left"] == 20
+    assert props.on_deal_paid(db, T1, deal) == 2                    # paid again later: counted again
+    assert props.on_deal_lost(db, T1, "garbage") == 0
+
+
+def test_mark_lost_gives_property_units_back(client, db):
+    from app.services import deals as deals_svc
+    as_(client, OWNER).post("/api/v1/properties", json=FORM)
+    pid = db.rows("catalog_items")[0]["id"]
+    deal = _deal(db, pid, 3)
+    db.rows("deals")[-1].update(stage="awaiting_payment", paid_paise=100000)
+    props.on_deal_paid(db, T1, deal)
+    assert db.rows("property_details")[0]["units_left"] == 17
+    assert deals_svc.mark_lost(T1, deal, "Refunded · changed mind", db=db)
+    assert db.rows("property_details")[0]["units_left"] == 20
+
+
+def test_giving_back_never_raises():
+    class Boom:
+        def rpc(self, *a, **k):
+            raise RuntimeError("function property_give_units does not exist")
+    assert props.on_deal_lost(Boom(), T1, "d0000000-0000-4000-8000-000000000001") == 0
 
 
 def test_on_deal_paid_never_below_zero(client, db):

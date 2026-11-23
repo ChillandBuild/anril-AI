@@ -567,8 +567,10 @@ def prompt_block(db, tenant_id: str) -> str:
 def clear_cache(tenant_id: str | None = None) -> None:
     if tenant_id is None:
         _cache.clear()
+        _full_cache.clear()
     else:
         _cache.pop(tenant_id, None)
+        _full_cache.pop(tenant_id, None)
 
 
 # ───────────────────────────────────────────────────────────── v9.2 #216: AI waitlist tool and "a seat is free"
@@ -584,8 +586,21 @@ SEND_HOURS_IST = (9, 20)  # people are only told between 9 AM and 8 PM
 TOOL_JOIN_WAITLIST = "join_batch_waitlist"
 
 
+_full_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
 def full_batches(db, tenant_id: str) -> list[dict]:
-    """Open (not closed) batches that are full right now, for the AI's waitlist tool. [] on any error."""
+    """Open (not closed) batches that are full right now, for the AI's waitlist tool. [] on any error.
+    Cached 60 s like the prompt block (every reply asks); clear_cache empties it."""
+    hit = _full_cache.get(tenant_id)
+    if hit and time.monotonic() - hit[0] < _TTL:
+        return hit[1]
+    out = _full_batches(db, tenant_id)
+    _full_cache[tenant_id] = (time.monotonic(), out)
+    return out
+
+
+def _full_batches(db, tenant_id: str) -> list[dict]:
     try:
         batches = (db.table("course_batches").select("*").eq("tenant_id", tenant_id).neq("status", "closed")
                    .order("starts_on").limit(60).execute()).data or []
@@ -623,7 +638,7 @@ def ai_join_waitlist(db, tenant_id: str, lead_id: str, phone: str, batch_id: str
     """The tool's work. None when done, else a refusal the model reads."""
     if not is_uuid(batch_id):
         return f"{TOOL_JOIN_WAITLIST} refused: '{batch_id}' is not a batch id from COURSES AND BATCHES."
-    full = {b["id"]: b for b in full_batches(db, tenant_id)}
+    full = {b["id"]: b for b in _full_batches(db, tenant_id)}  # fresh: a seat may have freed since the reply began
     if batch_id not in full:
         return f"{TOOL_JOIN_WAITLIST} refused: that batch has a seat or is closed; offer the seat instead."
     lead = (db.table("leads").select("name, phone").eq("id", lead_id).eq("tenant_id", tenant_id)
@@ -703,6 +718,10 @@ async def _tell_one(db, tenant_id: str, row: dict, label: str, shop: str, templa
     phone = lead.get("phone") or row.get("phone")
     if not connected or not lead.get("id") or lead.get("opted_out") or lead.get("blocked_at") \
             or await blocked_guard.is_blocked(tenant_id, phone):
+        return "staff"
+    # Settings > Auto-Reply off for WhatsApp (or this lead's source) = nothing automatic; the bell asks the team to call.
+    from app.services.automation_guards import ai_replies_allowed_for_lead
+    if not await asyncio.to_thread(ai_replies_allowed_for_lead, db, tenant_id, "whatsapp", lead["id"]):
         return "staff"
     values = [_one_line(v) for v in (_first_name(lead.get("name") or row.get("name")), shop, label)]
     text = (f"Hi {values[0]}, good news from {values[1]}: a seat is now free in {values[2]}. Reply YES here to take it "

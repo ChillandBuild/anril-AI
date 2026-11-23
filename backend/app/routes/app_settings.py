@@ -2248,4 +2248,5 @@ async def patch_intake_config(
         # Published Meta forms can't be edited: a changed package, price or detail publishes a
         # new form version in the background (no-op when nothing the form shows changed).
         background_tasks.add_task(whatsapp_forms.sync_intake_form_safely, tenant_id)
-    return merged
+    from app.services.intake import _with_gst_gate
+    return _with_gst_gate(tenant_id, {k: v for k, v in merged.items() if k != "gst_blocked"}, get_supabase())

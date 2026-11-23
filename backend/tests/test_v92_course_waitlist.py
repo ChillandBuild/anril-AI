@@ -29,6 +29,7 @@ def _full_world():
 
 def test_tool_is_offered_only_while_a_batch_is_full_and_lists_only_full_ids():
     assert svc.ai_tool(world(seats=3), T) is None
+    svc.clear_cache()  # full batches are cached 60 s per business; a new world needs a fresh read
     tool = svc.ai_tool(_full_world(), T)
     assert tool["function"]["name"] == "join_batch_waitlist"
     assert tool["function"]["parameters"]["properties"]["batch_id"]["enum"] == [BATCH]
@@ -120,6 +121,16 @@ def test_outside_the_window_uses_the_approved_template_else_asks_the_team_to_cal
     told, text, tpl, bells = _run(db2)
     assert told == 1 and tpl.await_count == 0 and db2.rows("batch_waitlist")[0]["told_via"] == "staff"
     assert bells == ["Seat free in Weekend: call Wait1"]
+
+
+def test_auto_reply_switched_off_means_the_team_calls_instead():
+    db = world(seats=2)
+    enrol_row(db, 1, paid=1)
+    _waiting(db, 1, inbound=(NOW - timedelta(hours=2)).isoformat())
+    with patch("app.services.automation_guards.ai_replies_allowed_for_lead", return_value=False):
+        told, text, tpl, bells = _run(db)
+    assert told == 1 and text.await_count == 0 and tpl.await_count == 0
+    assert db.rows("batch_waitlist")[0]["told_via"] == "staff" and bells == ["Seat free in Weekend: call Wait1"]
 
 
 def test_nothing_is_told_when_full_closed_marked_full_or_out_of_hours():

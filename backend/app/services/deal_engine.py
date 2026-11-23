@@ -103,8 +103,8 @@ def _addon_sums(base: int, addons: list[dict]) -> set[int]:
 
 
 def gst_percent(config: dict) -> float:
-    """The tenant's GST added on top of packages at payment (0 = off)."""
-    return config.get("gst_percent") or 0
+    """The tenant's GST added on top of packages at payment (0 = off, or a business whose GST type adds none)."""
+    return 0 if config.get("gst_blocked") else (config.get("gst_percent") or 0)
 
 
 def allowed_prices(config: dict) -> set[float]:

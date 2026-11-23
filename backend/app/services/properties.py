@@ -487,6 +487,25 @@ def on_deal_paid(db, tenant_id: str, deal_id: str) -> int:
         return 0
 
 
+def on_deal_lost(db, tenant_id: str, deal_id: str) -> int:
+    """A cancelled or fully refunded order: the units it took go back to "units left" (capped at the total), once.
+    Returns the units given back. Never raises: a cancel must never fail because a property count could not move."""
+    try:
+        if not _uuid_ok(deal_id):
+            return 0
+        res = db.rpc("property_give_units", {"p_tenant_id": tenant_id, "p_deal_id": deal_id}).execute()
+        data = res.data
+        if isinstance(data, list):
+            data = data[0] if data else 0
+        given = int(data or 0)
+        if given:
+            clear_cache(tenant_id)  # the AI may offer these units again
+        return given
+    except Exception as e:  # e.g. migration 339 not applied yet
+        logger.warning("property units for cancelled deal %s not given back: %s", deal_id, e)
+        return 0
+
+
 # ── the AI ──────────────────────────────────────────────────────────────────
 
 _TTL = 60.0

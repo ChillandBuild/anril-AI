@@ -204,4 +204,6 @@ async def submit_template(ctx: dict = Depends(require_permission("templates.mana
 
 @router.get("/options")
 def form_options(ctx: dict = Depends(require_read)):
+    # Cost prices are shown here on purpose: whoever places purchase orders needs what an item costs to order it.
+    # Elsewhere (Catalogue, batches, counts) cost needs deals.view. Decided 2026-11-23 (v9.2 Batch 5).
     return svc.options(get_supabase(), ctx["tenant_id"])

@@ -801,6 +801,9 @@ def mark_lost(
     if not claimed.data:
         return None
     warnings = _deduct_for_deal(tenant_id, deal_id, created_by, db, direction=1) if was_won else []
+    # Property units taken when it was paid go back (no-op for an order that never took any; never raises).
+    from app.services import properties
+    properties.on_deal_lost(db, tenant_id, deal_id)
     return {"deal": claimed.data[0], "stock_warnings": warnings}
 
 

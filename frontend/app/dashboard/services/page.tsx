@@ -95,6 +95,8 @@ export default function ServicesPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   // The GST box keeps its own text so half-typed values ("1.") and out-of-range entries can show an error.
   const [gstText, setGstText] = useState("0");
+  // Composition / not registered for GST (Settings › Business details): the saved % is not added (worked out on the server).
+  const [gstBlocked, setGstBlocked] = useState(false);
   const [formStatus, setFormStatus] = useState<FormStatus>({ available: false });
   const { data: formSetup } = useWhatsappFormsSetup(formStatus.available);
   const [republishing, setRepublishing] = useState(false);
@@ -137,6 +139,7 @@ export default function ServicesPage() {
       if (res.ok) {
         const data = await res.json();
         const next = toSellConfig(data);
+        setGstBlocked(data.gst_blocked === true);
         setGstText(gstToText(next.gst_percent));
         setSaved(next);
         setDraft(next);
@@ -178,6 +181,7 @@ export default function ServicesPage() {
       }
       const data = await res.json();
       const next = toSellConfig(data);
+      setGstBlocked(data.gst_blocked === true);
       setGstText(gstToText(next.gst_percent));
       setSaved(next);
       setDraft(next);
@@ -335,6 +339,7 @@ export default function ServicesPage() {
           pct={draft.gst_percent}
           packages={draft.packages}
           canManage={canManageSettings}
+          blocked={gstBlocked}
           onChange={handleGstChange}
         />
       </Row>
@@ -523,13 +528,13 @@ function gstToText(pct: number): string {
 }
 
 function GstInput({
-  text, error, pct, packages, canManage, onChange,
+  text, error, pct, packages, canManage, blocked = false, onChange,
 }: {
-  text: string; error: string | null; pct: number; packages: IntakePackage[]; canManage: boolean;
+  text: string; error: string | null; pct: number; packages: IntakePackage[]; canManage: boolean; blocked?: boolean;
   onChange: (text: string) => void;
 }) {
   const price = leafPrices(packages)[0];
-  const showPreview = !error && pct > 0 && price !== undefined;
+  const showPreview = !blocked && !error && pct > 0 && price !== undefined;
   return (
     <div className="space-y-2">
       <label className="block font-label text-xs font-semibold text-ink" htmlFor="gst-percent">
@@ -552,6 +557,12 @@ function GstInput({
         Leave at 0 for no GST. Customers pay the package price plus this GST. Example: 18 for services.
       </p>
       {error && <p className="font-body text-xs font-semibold text-red-600">{error}</p>}
+      {blocked && pct > 0 && (
+        <p role="note" className="rounded-lg bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
+          No GST is added right now: your business is set as Composition or not registered for GST in{" "}
+          <a href="/dashboard/settings/account" className="font-semibold underline">Business details</a>, so customers pay the package price only.
+        </p>
+      )}
       {showPreview && (
         <p className="font-body text-xs text-ink-muted tabular-nums">
           {rupees(price)} → customer pays {rupees(chargePaise(price, pct))} ({rupees(gstPaise(price, pct))} GST)

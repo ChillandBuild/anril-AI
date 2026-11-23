@@ -86,14 +86,31 @@ def get_intake_config(tenant_id: str, db=None) -> dict:
     if row and row.data:
         try:
             stored = json.loads(row.data["value"])
-            return {**_DEFAULT_CONFIG, **stored}
+            return _with_gst_gate(tenant_id, {**_DEFAULT_CONFIG, **stored}, db)
         except Exception:
             logger.warning(f"Failed to parse intake_config for tenant {tenant_id}")
     return dict(_DEFAULT_CONFIG)
 
 
+def _with_gst_gate(tenant_id: str, config: dict, db) -> dict:
+    """A composition shop or one not registered for GST adds no GST, like its bills (business_details.charges_gst).
+    The saved percent is kept (so it comes back if the GST type changes); gst_blocked tells every reader to use 0."""
+    config.pop("gst_blocked", None)
+    if config.get("gst_percent"):
+        from app.services.business_details import charges_gst
+        if not charges_gst(tenant_id, db):
+            config["gst_blocked"] = True
+    return config
+
+
+def effective_gst_percent(config: dict):
+    """The GST really added at payment: 0 when off or when the business's GST type does not charge it."""
+    return 0 if config.get("gst_blocked") else (config.get("gst_percent") or 0)
+
+
 def save_intake_config(tenant_id: str, config: dict, db=None) -> None:
     """Persist intake_config to app_settings."""
+    config = {k: v for k, v in config.items() if k != "gst_blocked"}  # worked out on read, never stored
     if db is None:
         from app.db.supabase import get_supabase
         db = get_supabase()
@@ -1394,7 +1411,7 @@ async def route_intake(
                 logger.error(f"Intake session {session['id']} reached payment with no package amount")
                 await _say("payment_delay")
                 return True
-            gst_percent = config.get("gst_percent")
+            gst_percent = effective_gst_percent(config)
             gst_fields = gst_session_fields(subtotal_paise, gst_percent)
             service_noun = config["service_noun"].capitalize()
             try:
