@@ -75,7 +75,7 @@ def env(monkeypatch):
     monkeypatch.setattr(engine.kb_search, "search", kb)
     monkeypatch.setattr(companions, "record_audit_event", lambda db, **kw: state["audit"].append(kw))
     for limiter in (companion_public._ip_limiter, companion_public._tenant_limiter,
-                    companion_public._person_limiter, companions._key_limiter):
+                    companion_public._person_limiter, companion_public._forget_limiter, companions._key_limiter):
         limiter._hits.clear()
     companion_public._last_touch.clear()
 

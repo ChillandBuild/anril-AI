@@ -2,7 +2,7 @@
 
 Two doors, both ending in engine.reply / engine.continue_reply:
 - /chat, /chat/continue: server to server, "Authorization: Bearer acs_live_...". The tenant
-  comes from the key, never from the body.
+  comes from the key, never from the body. /forget (same key) wipes a deleted profile or account.
 - /widget/session, /widget/chat, /widget/chat/continue: the web widget. The body carries the
   character id plus a user id signed by the business's server (app/companion/keys.py). The
   tenant comes from the character, and the signature must match one of THAT tenant's keys.
@@ -28,7 +28,9 @@ from app.companion import engine, keys, store
 from app.companion.models import AppData, AppTool, ToolResult
 from app.companion.reply_format import ReplyFormat
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
+from app.db.supabase import get_supabase
 from app.routes.auto_messages import _SlidingWindow, _client_ip
+from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,9 @@ TOUCH_EVERY_SECONDS = 60
 _ip_limiter = _SlidingWindow(IP_PER_MINUTE, 60)
 _tenant_limiter = _SlidingWindow(TENANT_PER_MINUTE, 60)
 _person_limiter = _SlidingWindow(PERSON_PER_MINUTE, 60)
+# /forget has its own budget: a client's bulk delete job must not use up live chat's limits (or hit them).
+FORGET_PER_MINUTE = 600
+_forget_limiter = _SlidingWindow(FORGET_PER_MINUTE, 60)
 _NO_STORE = {"Cache-Control": "no-store"}
 _last_touch: dict[str, float] = {}
 
@@ -125,6 +130,11 @@ class ServerContinueIn(_Body):
     results: list[ToolResult] = Field(default_factory=list, max_length=MAX_TOOLS)
 
 
+class ServerForgetIn(_Body):
+    user_id: str = UserId
+    profile_id: str | None = ProfileId   # given: just this profile; left out: the user and every profile
+
+
 class WidgetAuthIn(_Body):
     companion_id: UUID
     user_id: str = UserId
@@ -155,16 +165,22 @@ def _check_ip(request: Request) -> None:
         raise _RATE
 
 
-def _check_person(tenant_id: str, user_id: str, profile_id: str | None = None) -> str:
+def _valid_person(user_id: str, profile_id: str | None = None) -> str:
     """The person's key (keys.person_key): "u42", or "u42~p7" when the app names a profile."""
     if not keys.valid_user_id(user_id):
         raise ApiError(422, "invalid_user_id", "user_id may use letters, digits and _ . @ : - (up to 128)")
     if profile_id is not None and not keys.valid_profile_id(profile_id):
         raise ApiError(422, "invalid_profile_id", "profile_id may use letters, digits and _ . @ : - (up to 64)")
+    return keys.person_key(user_id, profile_id)
+
+
+def _check_person(tenant_id: str, user_id: str, profile_id: str | None = None) -> str:
+    """_valid_person plus the chat rate limits."""
+    person_key = _valid_person(user_id, profile_id)
     # Person first: a person over their own limit must not use up the business-wide budget.
     if not _person_limiter.allow(f"{tenant_id}:{user_id}") or not _tenant_limiter.allow(tenant_id):
         raise _RATE
-    return keys.person_key(user_id, profile_id)
+    return person_key
 
 
 async def _touch(tenant_id: str, key_id: str) -> None:
@@ -179,7 +195,8 @@ async def _touch(tenant_id: str, key_id: str) -> None:
         logger.warning("companion key heartbeat failed (%s)", type(exc).__name__)
 
 
-async def _server_tenant(request: Request) -> str:
+async def _server_key(request: Request) -> dict:
+    """The active key row behind "Authorization: Bearer acs_live_...". Its tenant_id is the business."""
     _check_ip(request)
     header = request.headers.get("authorization") or ""
     raw = header[7:].strip() if header[:7].lower() == "bearer " else ""
@@ -189,7 +206,11 @@ async def _server_tenant(request: Request) -> str:
     if not row:
         raise ApiError(401, "invalid_key", "This key is wrong or was revoked")
     await _touch(row["tenant_id"], row["id"])
-    return row["tenant_id"]
+    return row
+
+
+async def _server_tenant(request: Request) -> str:
+    return (await _server_key(request))["tenant_id"]
 
 
 async def _widget_tenant(request: Request, body: WidgetAuthIn) -> str:
@@ -278,6 +299,49 @@ async def server_continue(body: ServerContinueIn, request: Request):
                                              external_user_id=person_key, require_live=True)
         return result.model_dump()
     return await _run(call, "chat_continue", log)
+
+
+@public_router.post("/forget")
+async def server_forget(body: ServerForgetIn, request: Request):
+    """The business deleted a profile or an account: {"user_id", "profile_id"?} → {"forgotten": bool}.
+    With profile_id ("48213" + "104"): that profile's chats and memories, with every character. Without it:
+    the user and every profile of theirs ("48213", "48213~101", "48213~104"...). false = they never chatted
+    here, not an error, so a delete job can call it for everyone. Server door only: deleting is not the
+    phone's job. A reply still being written at that moment may save one message after the wipe; calling
+    again clears it. Audited like the dashboard's "Delete this person"."""
+    log = {"companion_id": None, "user_id": body.user_id}
+
+    async def call():
+        key = await _server_key(request)
+        tenant_id = log["tenant_id"] = key["tenant_id"]
+        person_key = _valid_person(body.user_id, body.profile_id)
+        if not _forget_limiter.allow(tenant_id):
+            raise _RATE
+        try:
+            people = await store.find_person_rows(tenant_id, person_key)
+            if people:
+                await engine.forget_person(tenant_id, person_key)
+        except Exception as exc:   # e.g. the DB dropped mid-wipe: safe to call again, so say "retry"
+            logger.warning("companion api forget failed (%s)", type(exc).__name__)
+            raise ApiError(503, "busy", "Couldn't finish forgetting. Try again in a few seconds.",
+                           {"Retry-After": "5"}) from exc
+        for person in people:
+            _audit_api_forget(tenant_id, person["id"], key)
+        return {"forgotten": bool(people)}
+    return await _run(call, "forget", log)
+
+
+def _audit_api_forget(tenant_id: str, end_user_id: str, key: dict) -> None:
+    """Same action as the dashboard's forget; the actor is the key (its row id, from find_active_api_key's
+    "id, tenant_id"), not a login."""
+    try:
+        record_audit_event(
+            get_supabase(), tenant_id=tenant_id, actor_user_id=None, actor_role="api_key",
+            action="tenant.companion_person_forgotten", target_type="companion_end_user",
+            target_id=end_user_id, metadata={"via": "api", "key_id": key["id"]},
+        )
+    except Exception as exc:
+        logger.warning("companion api forget audit failed (%s)", type(exc).__name__)
 
 
 # --- web widget -------------------------------------------------------------------------------
