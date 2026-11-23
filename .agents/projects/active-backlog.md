@@ -224,7 +224,7 @@ host=github.com
 - [2026-08-23-nested-packages-and-settings-nav-design.md](../../docs/superpowers/specs/2026-08-23-nested-packages-and-settings-nav-design.md) is still approved and unbuilt. An earlier version of the 2026-08-24 button work added a `button_label` field to `intake_config` package nodes, which would have collided with that spec's recursive node shape. **That work was reverted** — `button_label` does not exist anywhere. The nested-packages plan can be written against the current flat node shape with no coordination needed.
 - The settings-nav restructure in that same spec (splitting the Automations tab into `/dashboard/settings/auto-reply`, `/follow-ups`, etc.) now also needs to relocate the new `QuickRepliesPanel`, which currently sits in the Automations tab alongside `IntakeConfigPanel`.
 
-## Dead `animate-in` usages across the frontend (2026-09-05; recounted 17 on 2026-10-08, 18 on 2026-11-12)
+## Dead `animate-in` usages across the frontend (2026-09-05; recounted 17 on 2026-10-08, 18 on 2026-11-12, 14 on 2026-11-23)
 - `tailwindcss-animate` was never installed, so every `animate-in` / `fade-in` / `zoom-in-95` / `slide-in-from-*` class in the repo is inert (see the `subsystem-notes.md` entry under Frontend styling conventions for the verification command). 10 files affected: `dashboard/ClientLayout.tsx`, `dashboard/knowledge/page.tsx`, `telecalling/components/CockpitModals.tsx`, `operator/.../alert-bell.tsx`, `operator/.../command-palette.tsx`, `operator/(console)/page.tsx`, `AiraLoader.tsx`, `conversation-list.tsx`, `MoreMenu.tsx`, `NotificationBell.tsx`.
 - Nothing is broken — these elements just appear instantly instead of animating in, which is why it went unnoticed. Two ways to close it: add the plugin (`npm i -D tailwindcss-animate` + register it in `tailwind.config.ts`, which makes all 17 start animating at once — worth eyeballing before shipping), or delete the dead classes and hand-roll the few that actually want motion. Not urgent; the cost of leaving it is that the next person also writes `animate-in` expecting it to work.
 
@@ -646,3 +646,6 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
 - Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
 - services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).
+
+## Catalogue "Insights" tab — deferred (2026-11-23)
+- Every other commerce screen (Shop & godown, batches, barcodes, stock count, expenses, purchases gaps, staff per place, item advance + AI card) is built, live (309–315) and browser-checked. The user said to leave Insights for now. Nothing has been built for it.

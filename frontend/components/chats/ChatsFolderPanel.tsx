@@ -87,7 +87,13 @@ const COLUMNS: CsvColumn<Lead>[] = [
   { header: "Last message", value: (l) => l.last_message_content },
   { header: "Last message at", value: (l) => istDateTime((l as Lead & { last_reply_at?: string }).last_reply_at) },
   { header: "Archived at", value: (l) => istDateTime(l.archived_at) },
-  { header: "Archived by", value: (l) => (l.archived_reason === "idle_30d" ? "Automatically: no messages for 30 days" : l.archived_by_name) },
+  {
+    header: "Archived by",
+    value: (l) =>
+      l.archived_reason === "idle_30d" ? "Automatically: no messages for 30 days"
+      : l.archived_reason === "order_delivered" ? "Automatically: order delivered"
+      : l.archived_by_name,
+  },
 ];
 
 const FOLDER: Record<FolderView, {
@@ -360,6 +366,8 @@ export function ChatsFolderPanel({
                                 {shortDate(l.archived_at)}
                                 {l.archived_reason === "idle_30d" ? (
                                   <span className="text-ink-muted" title="No messages either way for 30 days"> · by itself, 30 days quiet</span>
+                                ) : l.archived_reason === "order_delivered" ? (
+                                  <span className="text-ink-muted" title="Their order was marked delivered"> · by itself, order delivered</span>
                                 ) : l.archived_by_name ? (
                                   <span className="text-ink-muted"> · by {l.archived_by_name}</span>
                                 ) : null}

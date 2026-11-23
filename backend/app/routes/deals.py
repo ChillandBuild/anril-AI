@@ -449,6 +449,8 @@ class RecordPaymentIn(BaseModel):
     amount_paise: int = Field(..., ge=100, le=10_000_000_00)
     item_ids: list[str] = Field(default_factory=list, max_length=10)
     sold_by: str | None = Field(None, max_length=64)
+    # Record payment > "Send GST invoice on WhatsApp": only for money taken now (not a link), only with a GSTIN.
+    send_bill: bool = False
 
 
 def record_payment_lines(amount_paise: int, items: list[dict]) -> list[dict]:
@@ -510,13 +512,33 @@ async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_d
     deal_id = result["deal"]["id"]
     if payload.sold_by:
         db.table("deals").update({"sold_by": payload.sold_by}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+    bill_sent = None
+    if payload.send_bill and paid_now:
+        bill_sent = await _send_record_payment_bill(db, tenant_id, deal_id, ctx.get("user_id"))
     deal = _full(_load_deal(db, tenant_id, deal_id), db, tenant_id)
     return {
         "deal": deal,
         "payment_link": result["payment_link"],
         "message_sent": result["message_sent"],
         "stock_warnings": result["stock_warnings"],
+        "bill_sent": bill_sent,
     }
+
+
+async def _send_record_payment_bill(db, tenant_id: str, deal_id: str, user_id: str | None) -> bool:
+    """Send the order's bill (the GST invoice PDF on a GST order) right after Record payment.
+    Only when the business has a GSTIN. The payment is already saved, so a failed send never undoes it."""
+    from app.services import orders as orders_service
+    from app.services.business_details import get_business_details
+    try:
+        if not ((get_business_details(tenant_id, db) or {}).get("gstin") or "").strip():
+            return False
+        sender = {"sent_by_user_id": user_id} if user_id else {}
+        out = await orders_service.notify(db, tenant_id, deal_id, "bill", user_id=user_id, sender=sender)
+        return bool((out or {}).get("sent"))
+    except Exception:
+        logger.exception("Record payment: bill for deal %s didn't send", deal_id)
+        return False
 
 
 @router.get("/{deal_id}")

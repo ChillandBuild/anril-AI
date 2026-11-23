@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Banknote, Check, CreditCard, Loader2, MessageCircle, Plus, Receipt, Smartphone, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, CatalogItem, Lead } from "@/lib/api";
@@ -57,6 +58,8 @@ export function RecordPaymentDialog({
   const [picked, setPicked] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(false);
   const [pricesIncludeGst, setPricesIncludeGst] = useState(true);
+  const [gstinSet, setGstinSet] = useState(false);
+  const [sendBill, setSendBill] = useState(false);
   const [saving, setSaving] = useState(false);
   const name = lead.name || formatPhone(lead.phone) || "the customer";
 
@@ -68,6 +71,8 @@ export function RecordPaymentDialog({
     setSoldBy(defaultSoldBy ?? "");
     setPicked([]);
     setShowMore(false);
+    setGstinSet(false);
+    setSendBill(false);
     let live = true;
     api.catalog.listItems()
       .then((items) => live && setCatalog(items.filter((i) => i.price_paise != null)))
@@ -77,6 +82,8 @@ export function RecordPaymentDialog({
         if (!live) return;
         setSuggested(o.suggested_item_ids);
         setPricesIncludeGst(o.prices_include_gst);
+        setGstinSet(o.gstin_set);
+        setSendBill(o.gstin_set);
       })
       .catch(() => {});
     return () => { live = false; };
@@ -127,6 +134,8 @@ export function RecordPaymentDialog({
     : picked.length > 1 && amountPaise < othersTotal ? `The products picked come to more than this. Raise the amount or remove one.`
     : null;
   const canSave = amountPaise >= 100 && !amountError && !saving;
+  // The invoice goes for money taken now; a link's order gets its bill from the order page once paid.
+  const billCanGo = gstinSet && method !== "link";
 
   async function save() {
     if (!canSave) return;
@@ -138,12 +147,15 @@ export function RecordPaymentDialog({
         amount_paise: amountPaise,
         item_ids: picked,
         sold_by: soldBy || null,
+        send_bill: billCanGo && sendBill,
       });
       if (method === "link") {
         if (res.message_sent) toast.success(`Payment link sent to ${name}`);
         else toast.warning("Link made, but WhatsApp didn't send it. Copy it from Deals and share it yourself.");
       } else {
         toast.success(`${formatRupees(res.deal?.total_paise ?? payable)} recorded as paid`);
+        if (res.bill_sent === true) toast.success(`GST invoice sent to ${name}`);
+        else if (res.bill_sent === false) toast.warning("Payment saved. The GST invoice didn't go on WhatsApp; send it from the order page.");
       }
       onRecorded?.();
       onClose();
@@ -318,12 +330,26 @@ export function RecordPaymentDialog({
             )}
           </section>
 
-          {/* GST invoice: shown now, switched on once GST details are collected at onboarding. */}
+          {/* GST invoice: on by default when the business has a GSTIN; sent after the payment is saved. */}
           <section className="flex items-center gap-3 rounded-xl border border-[#eef1f5] bg-[#fbfcfd] px-4 py-3">
-            <SwitchPill on={false} disabled onChange={() => {}} size="sm" aria-label="Send GST invoice on WhatsApp" />
+            <SwitchPill
+              on={billCanGo && sendBill}
+              disabled={!billCanGo || saving}
+              onChange={setSendBill}
+              size="sm"
+              aria-label="Send GST invoice on WhatsApp"
+            />
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-[#0A1528]">Send GST invoice on WhatsApp</p>
-              <p className="text-[11.5px] text-[#64748b]">Coming soon. It switches on once your GST details are set up.</p>
+              <p className="text-[11.5px] text-[#64748b]">
+                {!gstinSet ? (
+                  <>Add your GSTIN in <Link href="/dashboard/settings/account" className="font-semibold text-primary-700 underline">Settings › Business details</Link> to send GST invoices.</>
+                ) : method === "link" ? (
+                  "For a payment link, send the invoice from the order page once they pay."
+                ) : (
+                  `The invoice PDF goes to ${name} once the payment is saved.`
+                )}
+              </p>
             </div>
           </section>
 

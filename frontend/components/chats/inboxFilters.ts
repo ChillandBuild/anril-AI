@@ -61,6 +61,7 @@ export const WAITING_OPTIONS: Option[] = [
   { value: "unread", label: "Unread" },
   { value: "over_1h", label: "Waiting over 1 hour" },
   { value: "payment_pending", label: "Payment pending" },
+  { value: "order_not_sent", label: "Order not sent" },
 ];
 
 export const DATE_OPTIONS: { value: DateRange; label: string }[] = [

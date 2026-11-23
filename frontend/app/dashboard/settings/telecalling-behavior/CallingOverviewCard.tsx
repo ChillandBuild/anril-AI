@@ -15,7 +15,6 @@ const COMING_LATER = [
   "Hide customer numbers",
   "Welcome menu (IVR)",
   "Missed call to WhatsApp",
-  "Break limit",
 ];
 
 const peopleText = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;

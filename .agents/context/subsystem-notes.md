@@ -1203,3 +1203,13 @@ Catalogue was removed from the Nira config on 2026-09-06 for this reason.
 - **Trap:** a failed knowledge search (e.g. RemoteProtocolError) answers as basis `own` with no files and is NOT logged, so no gap opens — retry the question when testing the learning loop.
 - **Testing without the browser:** `engine.reply(companion_id, tenant_id, "owner-test:<login id>", message, app_data=<companion_end_users.test_app_data>, profile_name=...)` is the Playground path; read `companion_messages`, `companion_kb_gaps`, `companion_memory_facts` by SQL.
 - **Profiles:** each AstroTamil profile is its own person row `user~profile` (`keys.person_key`), so memory and history never mix. AstroTamil's app sent no profile id as of 23 Nov (0 such rows) — until it does, all of one user's profiles share one memory.
+
+## Commerce stock — places, batches, codes, counts, expenses (2026-11-22/23, migrations 309–315; plan docs/plans/commerce-stock-plan.md)
+- **One writer:** every stock change goes through `_stock_change` (310) via `apply_stock_movement` / `apply_variant_stock_movement`. Never update `stock_levels` or item totals directly; totals are the sum of `stock_levels` per item/size/place.
+- **Selling spills across places** (bill place first, then the others). Batches pick first-expiring (FEFO); a sale never takes an expired batch. Moves carry their batches through the `_stock_taken` temp table.
+- **Moves happen once:** `send_stock_move` → On the way → `finish_stock_move` (Received or Cancel), and only once.
+- **Stock count:** `system_qty` is snapshotted when counted, so Finish applies counted − system_qty (clamped at 0) and sales during the count aren't lost. `claim_stock_count` makes Finish happen once; owner only.
+- **Barcodes:** the labels *preview* must not save codes (`ensure_codes(save=False)`); a company EAN is kept but never printed.
+- **Expenses:** Day closing counts cash only. Repeats are added on their own day only (06:15 IST job). The Excel export guards against formula injection (`_cell`). A new expense is deduped within 60 s because a network retry made duplicates.
+- **AI per item (315):** "price not shared" and the discount cap are enforced in code (`deal_actions._quote_lines`), not only told in the prompt. An AI pay link asks only the advance (`order_advance`).
+- **Windows local dev trap:** `uvicorn --reload` hangs and leaves `spawn_main` python workers holding :8000. Kill all of them before restarting `scripts/dev-backend.sh`.

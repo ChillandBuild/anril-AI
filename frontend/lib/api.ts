@@ -1945,6 +1945,8 @@ export interface DealMutationResult {
   payment_link?: string | null;
   message_sent?: boolean;
   stock_warnings: StockWarning[];
+  /** Record payment only: whether the GST invoice went on WhatsApp (null when not asked for). */
+  bill_sent?: boolean | null;
 }
 
 export interface DealStats {
@@ -4445,6 +4447,7 @@ export const api = {
       amount_paise: number;
       item_ids: string[];
       sold_by: string | null;
+      send_bill?: boolean;
     }) =>
       apiFetch<DealMutationResult>("/api/v1/deals/record-payment", {
         method: "POST",

@@ -1094,6 +1094,9 @@ async def move_delivery(db, tenant_id: str, deal_id: str, action: str, *, handov
     if tell_customer and action in ("ready", "shipped", "delivered"):
         link = await _balance_link(db, tenant_id, {**deal, **patch}) if action == "ready" else None
         message = await notify(db, tenant_id, deal_id, action, user_id=user_id, pay_link=link, sender=sender)
+    if action == "delivered":
+        from app.services.auto_archive import archive_after_delivery
+        archive_after_delivery(db, tenant_id, deal.get("lead_id"), deal_id)
     return {"message": message}
 
 

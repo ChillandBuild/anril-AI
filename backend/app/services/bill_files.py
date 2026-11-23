@@ -10,12 +10,15 @@ server has no font with the ₹ sign.
 from __future__ import annotations
 
 import io
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from app.services import bill_brand
 from app.services.deals import _rupees
 
+log = logging.getLogger(__name__)
 FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 REGULAR = FONTS / "NotoSans-Regular.ttf"
 BOLD = FONTS / "NotoSans-Bold.ttf"
@@ -113,6 +116,49 @@ def paid_line(bill: dict) -> tuple[str, str, str]:
     return "To pay", _rupees(balance or int(bill.get("total_paise") or 0)), "amber"
 
 
+def amount_due_paise(bill: dict) -> int:
+    """What the customer still owes on this bill: 0 when paid in full or cancelled. Same rule as paid_line."""
+    if bill.get("cancelled"):
+        return 0
+    paid, balance = int(bill.get("paid_paise") or 0), int(bill.get("balance_paise") or 0)
+    if balance:
+        return balance
+    return 0 if paid else int(bill.get("total_paise") or 0)
+
+
+def upi_link(upi_id: str, payee: str, amount_paise: int | None) -> str:
+    """The UPI deep link a payment app opens: upi://pay?pa=<id>&pn=<payee>&cu=INR, plus &am=<rupees> when an amount is due."""
+    link = f"upi://pay?pa={quote(upi_id.strip(), safe='@')}&pn={quote(payee.strip(), safe='')}&cu=INR"
+    if amount_paise and amount_paise > 0:
+        link += f"&am={amount_paise // 100}.{amount_paise % 100:02d}"
+    return link
+
+
+def upi_qr_png(upi_id: str, payee: str, amount_paise: int | None, scale: int = 6) -> bytes | None:
+    """A scannable UPI payment QR as PNG bytes (about 222px at scale 6), or None when there is no UPI id
+    or the QR can't be made. Never raises: the bill still prints without its QR."""
+    if not (upi_id or "").strip():
+        return None
+    try:
+        import segno
+
+        out = io.BytesIO()
+        segno.make(upi_link(upi_id, payee or "", amount_paise), error="m", micro=False).save(
+            out, kind="png", scale=scale, border=2)
+        return out.getvalue()
+    except Exception:
+        log.warning("UPI QR not drawn for bill", exc_info=True)
+        return None
+
+
+def _upi_qr_for(bill: dict, brand: dict, business: dict) -> tuple[int, bytes | None]:
+    """(amount still due, the UPI QR for it). No QR when nothing is owed or the shop has no UPI id."""
+    due = amount_due_paise(bill)
+    if due <= 0 or not brand.get("upi_id"):
+        return due, None
+    return due, upi_qr_png(brand["upi_id"], business.get("legal_name") or "", due)
+
+
 # ── the receipt picture ────────────────────────────────────────────────────────
 
 def bill_png(bill: dict) -> bytes:
@@ -204,6 +250,12 @@ def bill_png(bill: dict) -> bytes:
         dashed()
         if brand.get("upi_id"):
             centre(f"Pay by UPI: {brand['upi_id']}", f["small"], INK, 38)
+        due, qr = _upi_qr_for(bill, brand, business)
+        if qr:
+            centre(f"Scan to pay {_rupees(due)}", f["small"], INK, 40)
+            code = Image.open(io.BytesIO(qr)).convert("RGB")
+            img.paste(code, ((width - code.width) // 2, y))  # canvas is 3000px tall and cropped at the end
+            y += code.height + 18
         for text in bill_brand.bank_lines(brand):
             centre(text, f["small"], SUB, 36)
     if brand.get("terms"):
@@ -396,7 +448,7 @@ def invoice_pdf(bill: dict) -> bytes:
     elif paid and not balance:
         total_row("", "Paid in full · thank you", bold=True, colour=GREEN, size=8.5)
 
-    _pay_and_sign(pdf, brand, left, right)
+    _pay_and_sign(pdf, brand, left, right, _upi_qr_for(bill, brand, business)[1])
 
     pdf.ln(12)
     pdf.set_font("Noto", "", 8)
@@ -409,8 +461,9 @@ def invoice_pdf(bill: dict) -> bytes:
     return bytes(pdf.output())
 
 
-def _pay_and_sign(pdf, brand: dict, left: float, right: float) -> None:
-    """Under the totals: where to pay (UPI, bank), the terms, and the signature. Nothing when the shop set none."""
+def _pay_and_sign(pdf, brand: dict, left: float, right: float, qr: bytes | None = None) -> None:
+    """Under the totals: where to pay (UPI, bank), the terms, and the signature. Nothing when the shop set none.
+    `qr` is the UPI code for the balance, drawn to the right of the PAY TO text (between it and the signature)."""
     sign = _picture(brand.get("signature_url"), 360, 150)
     if not (bill_brand.has_pay_block(brand) or brand.get("terms") or sign):
         return
@@ -429,6 +482,9 @@ def _pay_and_sign(pdf, brand: dict, left: float, right: float) -> None:
         for text in bill_brand.bank_lines(brand):
             pdf.cell(100, 4.8, text, new_x="LMARGIN", new_y="NEXT")
     bottom = pdf.get_y()
+    if qr:
+        pdf.image(io.BytesIO(qr), x=left + 102, y=top, w=26)  # 118-144mm: clear of the signature block at 144mm+
+        bottom = max(bottom, top + 26)
     if sign:
         pdf.image(io.BytesIO(sign), x=right - 38, y=top, h=14)
         pdf.set_xy(right - 50, top + 15)
