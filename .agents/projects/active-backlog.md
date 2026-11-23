@@ -645,4 +645,4 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Nothing emits a "number_disconnected" alert yet (key reserved in quiet-time allow list).
 - Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
 - Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
-- services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).
+- ~~services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply"~~ done in 1e4227b6 (bill_brand.py); UPI still prints as text, no QR.
