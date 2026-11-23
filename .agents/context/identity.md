@@ -17,8 +17,13 @@
 
 ## UI Conventions (Prem's standing rules)
 - **Tabbed pages name the tab in the header:** "<Page> / <active tab>", like "Meta Ads / Messaging ads". `?tab=` header pills go in `HEADER_TABS` in `frontend/components/AppHeader.tsx`, which draws the pills and the title; route-based tabs get a per-route title in `getBaseRouteMetadata`. Never hand-write pills or the "/ tab" part (2026-11-12).
+- **A page's name appears once: in the app header.** The page body never repeats it as its own big title (no "Bookings" under "Engage / Bookings", no "QR & links" under "WhatsApp / QR & links"). The body starts straight with its content or toolbar, right under the header, with no empty band above it. Every route gets its own header title; none falls back to the generic "Anril AI" line (2026-11-23).
 - **Settings apply only on Save.** No control saves instantly; an on/off switch on a card header only edits the draft and marks the card "Unsaved" (a closed `SettingsSection` opens when its header control is used, so Save is in view) (2026-11-12).
-- **Settings cards:** two or more sections on a page start collapsed (Profile & Business is the one exception: "Your profile" opens first). A closed card shows what is set through its `summary` (`Facts`/`Fact`/`SummaryHint` in `SettingsSection.tsx`).
+- **Settings cards are always open** (2026-11-23, replaces "two or more start collapsed"). No open/close chevron; every section's fields show. One sticky Save bar per page where a page has several sections.
+- **Full width.** Pages use the full content width with the same left edge; no narrow centred column (`mx-auto max-w-3xl/4xl/5xl` wrappers). Only body paragraphs keep a reading cap (`max-w-prose`) and single inputs keep their own width (2026-11-23).
+- **Sub-tabs share the toolbar row:** tabs on the left, buttons on the right, one row (pattern: `frontend/app/dashboard/catalog/page.tsx`). Never a tab row on its own above a button row (2026-11-23).
+- **Settings items live on the Settings hub page, not in the sidebar** (2026-11-23).
+- **Mascots stay.** Use the login-page Tealy (teal, letter) and Healy (copper, compass) from `frontend/public/login/`, same size as each other on a page, on a plain card (no tinted band) (2026-11-23).
 
 ## Agent Dispatch
 - Spawn sub-agents automatically for tasks with 2+ independent work units.
