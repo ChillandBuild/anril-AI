@@ -216,6 +216,7 @@ def test_a_due_thread_is_asked_once_then_moves_to_already_asked(db, monkeypatch)
     async def no_hits(*a, **k):
         return []
     monkeypatch.setattr(memory_search, "search", no_hits)
+    card._due_shown.clear()  # other tests' chats must not leak in
     yesterday = (card.datetime.now(card.timezone.utc).date() - card.timedelta(days=2)).isoformat()
     due = fact(db, "Zoho interview", "threads", valid_from=yesterday)
     later = fact(db, "CA exam", "threads", valid_from="2999-12-05")

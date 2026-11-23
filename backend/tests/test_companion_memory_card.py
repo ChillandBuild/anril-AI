@@ -122,14 +122,15 @@ def test_day1_example_saves_four_facts(db, llm):
       {"op":"add","section":"life","text":"lost job","valid_from":"2026-10","quote":"Job poiduchu"},
       {"op":"add","section":"people","text":"son, in 10th standard","quote":"En paiyan ku 10th exam"},
       {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03","quote":"10th exam March la"},
-      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20","quote":"Zoho la interview 20th"}]''')
+      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2099-11-20","quote":"Zoho la interview 20th"}]''')
+    # 2099: the thread stays open (not due) whatever day the suite runs
     done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", DAY1))
     assert done["add"] == 4
     call = llm["calls"][0]
     assert call["purpose"] == "companion_memory" and call["tenant_id"] == "t1"
     rendered = run(card.MemoryCard().context_for("t1", "jothidar", "karthik", "Hi"))
     assert rendered.splitlines()[0].startswith("Open threads: ")
-    assert "Zoho interview (20 Nov 2026)" in rendered and "son's 10th exam (Mar 2027)" in rendered
+    assert "Zoho interview (20 Nov 2099)" in rendered and "son's 10th exam (Mar 2027)" in rendered
     assert "People: son, in 10th standard" in rendered and "Life: lost job (since Oct 2026)" in rendered
     job = next(f for f in db.rows("companion_memory_facts") if f["text"] == "lost job")
     assert job["quote"] == "Job poiduchu" and job["source_message_id"] is None  # DAY1 rows carry no id
