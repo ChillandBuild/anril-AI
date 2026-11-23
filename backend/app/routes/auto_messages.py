@@ -10,6 +10,8 @@ per tenant. It can never read data.
 
 Authenticated: setup (URL + snippet), rules, custom events, send log, preview send.
 """
+import functools
+import ipaddress
 import json
 import logging
 import secrets
@@ -45,16 +47,31 @@ _PUBLIC_HEADERS = {"Access-Control-Allow-Origin": "*", "Cache-Control": "no-stor
 
 class _SlidingWindow:
     """`limit` hits per `window` seconds per key, in-process (same approach as
-    brain_sandbox: slowapi in main.py is per IP only and can't express per tenant)."""
+    brain_sandbox: slowapi in main.py is per IP only and can't express per tenant).
+    Keys whose hits have all expired are swept out once per window, so memory is bounded
+    by the keys seen in the last window, not every IP since the process started."""
 
     def __init__(self, limit: int, window_seconds: float):
         self._limit, self._window = limit, window_seconds
         self._hits: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
+        self._next_sweep = time.monotonic() + window_seconds
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._hits)
+
+    def _sweep(self, now: float) -> None:
+        stale = [k for k, hits in self._hits.items() if not hits or now - hits[-1] >= self._window]
+        for k in stale:
+            del self._hits[k]
+        self._next_sweep = now + self._window
 
     def allow(self, key: str) -> bool:
         now = time.monotonic()
         with self._lock:
+            if now >= self._next_sweep:
+                self._sweep(now)
             hits = self._hits.setdefault(key, deque())
             while hits and now - hits[0] >= self._window:
                 hits.popleft()
@@ -99,18 +116,59 @@ def _resolve_tenant(db, token: str) -> str | None:
     return rows[0]["tenant_id"] if rows else None
 
 
+# Where requests reach us from in production (checked live 2026-11-23):
+#   client -> Cloudflare (Render's DDoS edge: the onrender.com host is a CNAME to
+#   *.cdn.cloudflare.net, answers with server: cloudflare + cf-ray) -> Render's load balancer
+#   (peer 10.209.x.x in the uvicorn access log) -> uvicorn -> this app.
+# Uvicorn on Render trusts every proxy (FORWARDED_ALLOW_IPS=* behaviour): it replaces
+# request.client with the LEFTMOST X-Forwarded-For entry, which the caller types. A request
+# with "X-Forwarded-For: 203.0.113.77" was logged as 203.0.113.77:0. So request.client.host
+# is NOT a safe key on Render, and neither is anything we parse out of X-Forwarded-For.
+# CF-Connecting-IP is: Cloudflare overwrites it on every request, and the service is only
+# reachable through Cloudflare (render.com/docs/web-services: the port "is not directly
+# reachable via the public internet").
+# TRUSTED_PROXY_CIDRS (optional, for a setup where uvicorn's rewrite is switched off): when
+# set, CF-Connecting-IP is only believed from a peer inside those ranges.
+
+
+@functools.lru_cache(maxsize=1)
+def _trusted_proxies() -> tuple | None:
+    raw = env_settings.trusted_proxy_cidrs
+    if raw is None:
+        return None
+    nets = []
+    for cidr in (c.strip() for c in raw.split(",")):
+        if not cidr:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("TRUSTED_PROXY_CIDRS: ignoring %r, not a CIDR", cidr)
+    return tuple(nets)
+
+
+def _parse_ip(value: str | None) -> str | None:
+    try:
+        return str(ipaddress.ip_address((value or "").strip()))
+    except ValueError:
+        return None
+
+
 def _client_ip(request: Request) -> str:
-    """The first X-Forwarded-For entry is whatever the client sent, so it can't
-    key a rate limit. Prefer the edge-set client IP headers, then the entry
-    the nearest proxy appended (rightmost)."""
-    for header in ("cf-connecting-ip", "true-client-ip"):
-        value = (request.headers.get(header) or "").strip()
-        if value:
-            return value
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
+    """The client address a per-IP rate limit keys on.
+
+    CF-Connecting-IP when it holds a valid IP (Cloudflare sets it on every request and
+    overwrites a client-typed one), else request.client.host. X-Forwarded-For and
+    True-Client-IP are never read here: the caller controls the leftmost X-Forwarded-For
+    entry, and True-Client-IP is not set on every Cloudflare plan, so a typed one passes
+    through. With TRUSTED_PROXY_CIDRS set, CF-Connecting-IP only counts from those peers."""
+    peer = request.client.host if request.client and request.client.host else "unknown"
+    trusted = _trusted_proxies()
+    if trusted is not None:
+        peer_ip = _parse_ip(peer)
+        if peer_ip is None or not any(ipaddress.ip_address(peer_ip) in net for net in trusted):
+            return peer
+    return _parse_ip(request.headers.get("cf-connecting-ip")) or peer
 
 
 async def _read_payload(request: Request) -> dict:

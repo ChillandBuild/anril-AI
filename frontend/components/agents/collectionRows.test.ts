@@ -110,8 +110,8 @@ describe("shortcut and gap rows", () => {
   it("counts in plain words", () => {
     expect(usedText(1)).toBe("Used 1 time");
     expect(usedText(14)).toBe("Used 14 times");
-    expect(askedText(1)).toBe("Asked 1 time this month");
-    expect(askedText(6)).toBe("Asked 6 times this month");
+    expect(askedText(1)).toBe("Asked 1 time");
+    expect(askedText(6)).toBe("Asked 6 times");
   });
 });
 

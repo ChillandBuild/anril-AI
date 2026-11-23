@@ -189,6 +189,26 @@ def _fetch_leads_by_id(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dic
     return leads_by_id
 
 
+def _group_member_ids(db, tenant_id: str, group_id: str, cache: dict) -> set[str] | None:
+    """Lead ids in one Customers group (picked or rule), worked out once per run and kept in `cache`.
+
+    Returns None when the group cannot be read: the step then sends nothing this run, because a
+    follow-up meant for one group must never fall back to everybody."""
+    key = (tenant_id, str(group_id))
+    if key not in cache:
+        from app.services.reach_audience import GroupNotFound, resolve_group
+
+        try:
+            res = resolve_group(db, {"tenant_id": tenant_id, "role": "owner"}, str(group_id))
+            cache[key] = {str(p["lead_id"]) for p in res.get("people", [])}
+        except GroupNotFound:
+            cache[key] = set()  # the group is gone: nobody is in it
+        except Exception as e:
+            logger.warning("reengagement: could not read group %s for tenant %s: %s", group_id, tenant_id, e)
+            cache[key] = None
+    return cache[key]
+
+
 async def process_due_reengagements() -> int:
     """Query and process all pending re-engagement steps for all tenants."""
     db = get_supabase()
@@ -201,6 +221,7 @@ async def process_due_reengagements() -> int:
 
     sent_count = 0
     now = utcnow()
+    group_cache: dict = {}
 
     for step in steps:
         step_id = step["id"]
@@ -213,6 +234,14 @@ async def process_due_reengagements() -> int:
         # Day-steps only go out 10 AM-8 PM IST, Mon-Sat: don't even look for due leads outside it.
         if _is_day_step(step) and not _in_day_send_window(now):
             continue
+
+        # A step aimed at one Customers group also needs the lead to be in that group
+        # (no target_group_id, or the column not there yet = everybody, as before).
+        group_ids = None
+        if step.get("target_group_id"):
+            group_ids = _group_member_ids(db, tenant_id, step["target_group_id"], group_cache)
+            if not group_ids:
+                continue
 
         if step["type"] == "broadcast":
             # A. Broadcast-specific re-engagement
@@ -261,6 +290,8 @@ async def process_due_reengagements() -> int:
                     continue
                 if not _lead_matches_sources(lead, target_sources):
                     continue
+                if group_ids is not None and str(lead_id) not in group_ids:
+                    continue
 
                 # Day-steps never chase someone who already bought; skip here so they cost no query each tick.
                 if _is_day_step(step) and lead.get("converted_at"):
@@ -295,6 +326,8 @@ async def process_due_reengagements() -> int:
                 if lead.get("segment") not in target_segments:
                     continue
                 if not _lead_matches_sources(lead, target_sources):
+                    continue
+                if group_ids is not None and str(lead["id"]) not in group_ids:
                     continue
                 due_leads.append(lead)
             if not due_leads:

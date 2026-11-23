@@ -442,3 +442,73 @@ def test_the_customer_lookup_for_orders_is_newest_activity_first(db):
     ids = [i["id"] for i in _group(gs.search(db, _ctx(), "zed"), "orders")]
     # Z59 is among the newest 50 by last message, so its order is found (it would be cut by an unordered limit)
     assert "DZ" in ids
+
+
+# ---------------------------------------------------------------- bookings group (v9.2 #19)
+
+def _bk_db(db):
+    db.add("booking_resources", id="R1", tenant_id=T1, name="Ravi", kind="person", user_id="u-ravi",
+           hours={}, active=True, sort=0)
+    db.add("booking_resources", id="R2", tenant_id=T1, name="Chair 2", kind="chair", user_id=None,
+           hours={}, active=True, sort=1)
+    db.add("booking_services", id="S1", tenant_id=T1, name="Reading", duration_min=30, price_paise=50000,
+           advance_paise=0, gap_after_min=0, active=True, sort=0)
+    rows = [("B1", 12, "Priya Raman", "+916369781582", "R1", "booked", "2026-11-24T04:30:00+00:00"),
+            ("B2", 13, "Priya Kumar", "+919876500000", "R2", "booked", "2026-11-24T05:30:00+00:00"),
+            ("B3", 14, "Priya Gone", "+919000000000", "R1", "cancelled", "2026-11-24T06:30:00+00:00")]
+    for id_, number, name, phone, res, status, start in rows:
+        db.add("bookings", id=id_, tenant_id=T1, number=number, customer_name=name, phone=phone, service_id="S1",
+               resource_id=res, start_at=start, end_at=start, block_end_at=start, status=status)
+    db.add("bookings", id="BX", tenant_id=T2, number=12, customer_name="Priya Other Shop", phone="+916369781582",
+           service_id="S1", resource_id="RX", start_at="2026-11-24T04:30:00+00:00", status="booked")
+    return db
+
+
+def test_booking_number_forms():
+    for form in ("BK-0012", "bk12", "#12", "12", "BK-12"):
+        assert gs.booking_number(form) == 12, form
+    assert gs.booking_number("Priya") is None
+    assert gs.booking_number("9876543210") is None
+
+
+def test_bookings_group_needs_bookings_view_and_comes_after_orders(db):
+    _bk_db(db)
+    assert "bookings" not in _keys(gs.search(db, _ctx(role="staff"), "priya"))
+    ctx = _ctx(role="staff", permissions=ALL + ("bookings.view",))
+    result = gs.search(db, ctx, "priya")
+    assert _keys(result) == ["customers", "orders", "bookings"]
+    items = _group(result, "bookings")
+    assert {i["id"] for i in items} == {"B1", "B2"}                 # cancelled one and the other business are out
+    one = next(i for i in items if i["id"] == "B1")
+    assert one["label"] == "BK-0012 · Priya Raman"
+    assert one["detail"] == "Tue 10:00 AM · Reading · Ravi"          # Indian time
+    assert one["href"] == "/dashboard/bookings?date=2026-11-24&booking=B1"
+    assert set(one) == {"id", "label", "detail", "href"}
+
+
+def test_bookings_found_by_code_number_and_phone_digits(db):
+    _bk_db(db)
+    ctx = _ctx(role="staff", permissions=("bookings.view",))
+    for q in ("BK-0012", "bk12", "#12"):
+        assert [i["id"] for i in _group(gs.search(db, ctx, q), "bookings")] == ["B1"], q
+    assert [i["id"] for i in _group(gs.search(db, ctx, "63697 81582"), "bookings")] == ["B1"]
+
+
+def test_a_linked_staff_member_searches_only_their_own_column(db):
+    _bk_db(db)
+    ctx = {**_ctx(role="staff", permissions=("bookings.view",)), "user_id": "u-ravi"}
+    assert [i["id"] for i in _group(gs.search(db, ctx, "priya"), "bookings")] == ["B1"]
+    manager = _ctx(role="staff", permissions=("bookings.manage",))
+    assert {i["id"] for i in _group(gs.search(db, manager, "priya"), "bookings")} == {"B1", "B2"}
+
+
+def test_bookings_search_lists_upcoming_first_then_past_most_recent_first(db, monkeypatch):
+    from app.services import bookings as bk
+    now = datetime(2026, 11, 23, 4, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(bk, "_now", lambda: now)
+    for i, hours in enumerate((-72, -2, 30, 5), start=1):               # two past, two upcoming
+        start = bk.iso(now + timedelta(hours=hours))
+        db.add("bookings", id=f"O{i}", tenant_id=T1, number=900 + i, customer_name="Zed Order", phone="+910000000000",
+               service_id="S1", resource_id="R1", start_at=start, end_at=start, block_end_at=start, status="booked")
+    ctx = _ctx(role="staff", permissions=("bookings.view",))
+    assert [i["id"] for i in _group(gs.search(db, ctx, "zed order"), "bookings")] == ["O4", "O3", "O2", "O1"]

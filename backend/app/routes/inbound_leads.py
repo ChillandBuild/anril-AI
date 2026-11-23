@@ -40,6 +40,7 @@ CHANNEL_LABELS = {
     "indiamart": "IndiaMART",
     "justdial": "JustDial",
     "meta_form": "Instant form",
+    "qr": "QR",
 }
 
 SEGMENT_LABELS = {

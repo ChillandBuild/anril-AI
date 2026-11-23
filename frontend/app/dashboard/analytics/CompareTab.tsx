@@ -257,8 +257,8 @@ function SegmentMixChart({
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+          <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#556274" }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#556274" }} />
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Bar dataKey="hot" stackId="mix" fill={SEGMENT_MIX_COLORS.hot} name="Hot" />
@@ -353,8 +353,8 @@ function ComparisonChart({
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#556274" }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#556274" }} />
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Line
@@ -435,10 +435,12 @@ export function CompareTab({
   range: RangeValue;
   comparison: ComparisonSelection;
   onDataChange?: (ready: boolean) => void;
-  filtersOpen: boolean;
-  onToggleFilters: () => void;
-  hasActiveFilters: boolean;
+  filtersOpen?: boolean;
+  onToggleFilters?: () => void;
+  hasActiveFilters?: boolean;
 }) {
+  // Embedded in the Reports Overview, the page already has the period bar, refresh and download.
+  const embedded = !onToggleFilters;
   const [seriesId, setSeriesId] = useState<string>("leads_inbound");
   const [data, setData] = useState<ComparePayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -505,7 +507,7 @@ export function CompareTab({
 
       {rangeIsComplete && !err && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
-          <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={embedded ? "md:col-span-5 grid grid-cols-2 lg:grid-cols-4 gap-4" : "md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4"}>
             {!data ? (
               <AiraLoader inline className="col-span-full min-h-24" />
             ) : (
@@ -514,7 +516,7 @@ export function CompareTab({
               ))
             )}
           </div>
-          <div className="flex flex-col justify-start gap-2 p-1">
+          {!embedded && <div className="flex flex-col justify-start gap-2 p-1">
             <button
               onClick={() => setRefreshKey((k) => k + 1)}
               className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] font-label text-xs font-bold transition-all shadow-sm"
@@ -523,9 +525,9 @@ export function CompareTab({
               <span>Refresh</span>
             </button>
             <FiltersToggleButton
-              open={filtersOpen}
-              active={hasActiveFilters}
-              onClick={onToggleFilters}
+              open={!!filtersOpen}
+              active={!!hasActiveFilters}
+              onClick={onToggleFilters!}
             />
             <button
               onClick={handleExport}
@@ -535,7 +537,7 @@ export function CompareTab({
               <Download size={12} />
               <span>Download CSV</span>
             </button>
-          </div>
+          </div>}
         </div>
       )}
 
@@ -556,8 +558,8 @@ export function CompareTab({
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                    <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#556274" }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#556274" }} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
                     <Area type="monotone" dataKey="count" stroke="var(--primary-800)" fill="url(#leadGrad)" strokeWidth={2} dot={false} />
                   </AreaChart>

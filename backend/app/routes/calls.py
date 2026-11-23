@@ -34,6 +34,7 @@ from app.services.assignment import (
 from app.services.assignment_rules import any_mode, get_channel_rules, resolve_row
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.attendance import mark_activity_today
+from app.services.call_rules import effective_calling_mode, pre_dial_block
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ OutcomeValue = Literal[
 ReasonValue = Literal["price", "already_bought", "no_need", "other", "never_enquired", "not_a_fit", "not_decision_maker"]
 LanguageValue = Literal["tamil", "english", "hindi", "telugu", "malayalam", "kannada", "other"]
 
-_MESSAGE_LEAD_SOURCES = {"whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form"}
+_MESSAGE_LEAD_SOURCES = {"whatsapp", "instagram", "facebook", "telegram", "indiamart", "justdial", "meta_form", "qr"}
 _SEGMENT_RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
 
 
@@ -217,7 +218,16 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
     tenant_id = ctx["tenant_id"]
     role = ctx.get("role")
     cfg = get_telecalling_config(tenant_id)
-    calling_provider = cfg.get("calling_provider", "telecmi")
+    business_provider = cfg.get("calling_provider", "telecmi")
+    # Each person can call by their own SIM or the cloud office number; otherwise the business setting.
+    # A telecaller is always themself here, whatever id the screen sent: their own limit and their own mode.
+    if role == "caller" and ctx.get("caller_id"):
+        mode_caller_id = str(ctx["caller_id"])
+    else:
+        mode_caller_id = str(payload.caller_id) if payload.caller_id else ctx.get("caller_id")
+    calling_provider = effective_calling_mode(
+        get_supabase(), tenant_id, mode_caller_id, business_provider=business_provider,
+    )
 
     if not check_quota(get_supabase(), tenant_id, "call_minute"):
         raise HTTPException(
@@ -234,6 +244,11 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
         raise HTTPException(status_code=400, detail="Provide either lead_id or phone")
 
     db = get_supabase()
+
+    # Calling hours and the daily limit hold telecallers only; the owner and managers may always dial.
+    blocked = pre_dial_block(db, tenant_id, role=role, caller_id=mode_caller_id)
+    if blocked:
+        raise HTTPException(status_code=409, detail=blocked)
 
     matched_lead_id: str | None = None
     matched_lead_name: str | None = None
@@ -363,7 +378,8 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
         raise HTTPException(status_code=424, detail=f"Cloud Telephony call failed: {err_msg}")
 
     db.table("call_logs").update({"call_sid": request_id}).eq("id", call_log_id).execute()
-    return {
+    # Cloud calls are placed by the office line, so a telecaller never needs the full number back.
+    return _mask_lead_phone(ctx, {
         "call_log_id": call_log_id,
         "call_sid": request_id,
         "status": "initiated",
@@ -371,7 +387,7 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
         "lead_id": matched_lead_id,
         "lead_name": matched_lead_name,
         "phone": lead_phone,
-    }
+    })
 
 
 # ── TeleCMI CDR Webhook ──────────────────────────────────────────────
@@ -1127,7 +1143,8 @@ async def recent_calls(
         query = query.eq("caller_id", caller_id)
     rows = query.order("created_at", desc=True).limit(limit).execute()
     is_sim = get_telecalling_config(ctx["tenant_id"], db=db).get("calling_provider", "telecmi") == "sim_basic"
-    return {"data": strip_evaluation(mask_transcripts(rows.data), is_sim)}
+    data = _mask_nested_lead_phones(db, ctx, rows.data or [])
+    return {"data": strip_evaluation(mask_transcripts(data), is_sim)}
 
 
 @router.get("/recent-by-leads")
@@ -1265,6 +1282,37 @@ async def next_lead(
     caller_id: UUID | None = Query(None),
     ctx: dict = Depends(get_tenant_and_role)
 ):
+    lead = await _next_lead_unmasked(caller_id, ctx)
+    return _mask_lead_phone(ctx, lead)
+
+
+def _mask_lead_phone(ctx: dict, payload):
+    """Call IQ (v9.2 #21): when the business hides numbers, a cloud-calling telecaller sees 98•••••210.
+    The call itself is placed by lead id, so it still works. A failed check hides the number (fails closed)."""
+    if not isinstance(payload, dict) or not payload.get("phone"):
+        return payload
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(get_supabase(), ctx["tenant_id"], ctx)
+    if mask:
+        return {**payload, "phone": mask(payload["phone"]), "phone_hidden": True}
+    return payload
+
+
+def _mask_nested_lead_phones(db, ctx: dict, rows: list[dict]) -> list[dict]:
+    """Call rows carry leads(name, phone); hide that number the same way the lead list does."""
+    if ctx.get("role") != "caller" or not rows:
+        return rows
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, ctx["tenant_id"], ctx)
+    if mask:
+        for r in rows:
+            lead = r.get("leads")
+            if isinstance(lead, dict) and lead.get("phone"):
+                r["leads"] = {**lead, "phone": mask(lead["phone"]), "phone_hidden": True}
+    return rows
+
+
+async def _next_lead_unmasked(caller_id: UUID | None, ctx: dict):
     _require_dialer_permission(ctx)
     tenant_id = ctx["tenant_id"]
     resolved_caller_id = str(caller_id) if caller_id else ctx.get("caller_id")
@@ -1495,7 +1543,7 @@ async def get_pending_wrapups(ctx: dict = Depends(get_tenant_and_role)):
         sim_q = sim_q.eq("caller_id", caller_id)
         other_q = other_q.eq("caller_id", caller_id)
 
-    rows = (sim_q.execute().data or []) + (other_q.execute().data or [])
+    rows = _mask_nested_lead_phones(db, ctx, (sim_q.execute().data or []) + (other_q.execute().data or []))
     is_sim = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi") == "sim_basic"
     return strip_evaluation(mask_transcripts(sorted(rows, key=lambda r: r.get("created_at") or "")), is_sim)
 

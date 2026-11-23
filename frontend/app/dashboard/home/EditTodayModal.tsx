@@ -13,13 +13,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, type HomeBoxKey, type HomeLayout, type HomeListKey, type HomeToday } from "@/lib/api";
+import { api, type HomeLayout, type HomeListKey, type HomeToday } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   BOX_KEYS,
   BOX_META,
   COMING_SOON_BOXES,
-  COMING_SOON_LISTS,
   GROUPS,
   LIST_KEYS,
   LIST_LABELS,
@@ -32,6 +31,7 @@ import {
   removeBox,
   resolveBoxes,
   type BoxGroup,
+  type BoxKey,
 } from "./todayLayout";
 
 function Switch({
@@ -76,11 +76,11 @@ function SortableRow({
   onMove,
   onRemove,
 }: {
-  boxKey: HomeBoxKey;
+  boxKey: BoxKey;
   index: number;
   count: number;
-  onMove: (key: HomeBoxKey, delta: -1 | 1) => void;
-  onRemove: (key: HomeBoxKey) => void;
+  onMove: (key: BoxKey, delta: -1 | 1) => void;
+  onRemove: (key: BoxKey) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: boxKey });
   const meta = BOX_META[boxKey];
@@ -147,7 +147,7 @@ export function EditTodayModal({
   /** Called with the layout the server returned, after a save or a reset. */
   onSaved: (layout: HomeLayout) => void;
 }) {
-  const [selected, setSelected] = useState<HomeBoxKey[]>(() => resolveBoxes(layout, today));
+  const [selected, setSelected] = useState<BoxKey[]>(() => resolveBoxes(layout, today));
   const [lists, setLists] = useState<Record<HomeListKey, boolean>>(() => listsFromLayout(layout));
   const [group, setGroup] = useState<"all" | BoxGroup>("all");
   const [query, setQuery] = useState("");
@@ -182,15 +182,15 @@ export function EditTodayModal({
   const matches = (label: string, g: BoxGroup) => (group === "all" || group === g) && (!q || label.toLowerCase().includes(q));
 
   const canAdd = BOX_KEYS.filter(
-    (k) => today.available.includes(k) && !selected.includes(k) && matches(BOX_META[k].label, BOX_META[k].group),
+    (k) => (today.available as readonly string[]).includes(k) && !selected.includes(k) && matches(BOX_META[k].label, BOX_META[k].group),
   );
   const comingSoon = COMING_SOON_BOXES.filter((b) => matches(b.label, b.group));
   const totalBoxes = today.available.length + COMING_SOON_BOXES.length;
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
-    const from = selected.indexOf(e.active.id as HomeBoxKey);
-    const to = selected.indexOf(e.over.id as HomeBoxKey);
+    const from = selected.indexOf(e.active.id as BoxKey);
+    const to = selected.indexOf(e.over.id as BoxKey);
     if (from < 0 || to < 0) return;
     setSelected(arrayMove(selected, from, to));
   }
@@ -227,8 +227,12 @@ export function EditTodayModal({
     }
   }
 
-  const showWaitingToggle = today.waiting !== null;
-  const showStockToggle = today.low_stock !== null;
+  // A list can be switched only when the server sends it to this person.
+  const listAvailable: Record<HomeListKey, boolean> = {
+    waiting: today.waiting !== null,
+    low_stock: today.low_stock !== null,
+    todays_feedback: !!today.todays_feedback,
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -374,17 +378,10 @@ export function EditTodayModal({
               Lists below the boxes
             </h3>
             <ul className="mt-3 space-y-2">
-              {LIST_KEYS.filter((k) => (k === "waiting" ? showWaitingToggle : showStockToggle)).map((k) => (
+              {LIST_KEYS.filter((k) => listAvailable[k]).map((k) => (
                 <li key={k} className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                   <span className="min-w-0 flex-1 font-label text-sm font-semibold text-ink">{LIST_LABELS[k]}</span>
                   <Switch checked={lists[k]} label={`Show ${LIST_LABELS[k]}`} onChange={(v) => setLists((cur) => ({ ...cur, [k]: v }))} />
-                </li>
-              ))}
-              {COMING_SOON_LISTS.map((l) => (
-                <li key={l.key} className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 opacity-70">
-                  <span className="min-w-0 flex-1 font-label text-sm font-semibold text-ink">{l.label}</span>
-                  <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 font-label text-xs font-bold text-slate-700">Coming soon</span>
-                  <Switch checked={false} disabled label={`${l.label} (coming soon)`} />
                 </li>
               ))}
             </ul>

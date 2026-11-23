@@ -100,13 +100,25 @@ class LeadFilters(BaseModel):
     # The clickable KPI cards: "repeat" = 2+ won deals, "quiet" = bought before but not
     # in the last BUYER_QUIET_DAYS days.
     bought: str | None = Field(None, pattern="^(repeat|quiet)$")
+    # "leads" = people who have never bought (no paid mark, no won deal). The mirror of buyer=true.
+    only: str | None = Field(None, pattern="^leads$")
+    # Where the person first came from: qr, google_ads, meta_ad, instant_form, website, inbound,
+    # organic, broadcast, or a plain source (upload, manual, whatsapp, ...). See _CAME_FROM_SOURCES.
+    came_from: str | None = Field(None, max_length=30)
+    # A tag (customers > tags), matched ignoring upper / lower case.
+    tag: str | None = Field(None, max_length=30)
 
 
 class CustomBroadcastRequest(LeadFilters):
     message: str
 
 
-INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form')
+# Plain lead sources a "Came from" choice can name directly (the rest are worked out from ads / QR / broadcasts).
+_CAME_FROM_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'upload', 'csv', 'manual',
+                      'website', 'api', 'store')
+_CAME_FROM_SPECIAL = ('qr', 'google_ads', 'meta_ad', 'instant_form', 'inbound', 'organic', 'broadcast')
+
+INBOUND_SOURCES = ('whatsapp', 'instagram', 'facebook', 'telegram', 'indiamart', 'justdial', 'meta_form', 'qr')
 
 # Reads of whole tables go through PostgREST, which caps one response at 1000 rows.
 _PAGE = 1000
@@ -317,6 +329,54 @@ def _campaign_ids_matching(db, tenant_id: str, term: str) -> list[str]:
 
 
 
+def _google_campaign_ids(db, tenant_id: str) -> list[str]:
+    """ids of this tenant's Google Ads campaigns (the other ad campaigns are Meta's)."""
+    rows = _fetch_all(lambda: db.table("ad_campaigns").select("id").eq("tenant_id", tenant_id).eq("platform", "google"))
+    return [str(r["id"]) for r in rows]
+
+
+def _tag_spellings(db, tenant_id: str, tag: str) -> list[str]:
+    """Every spelling of this tag in use ("VIP", "vip"), so the match ignores case. [] when none
+    (or the tags table is not there yet): then nobody matches."""
+    from app.services.lead_tags import tag_spellings
+
+    return tag_spellings(db, tenant_id, tag)
+
+
+def _apply_came_from(db, tenant_id: str, query, came_from: str, memo: dict):
+    """Narrow `query` to one "Came from" choice, or None when nobody can match. Raises 400 for an unknown choice.
+
+    qr            scanned a QR code (leads.qr_link_id, or source qr)
+    google_ads    arrived through a Google Ads campaign
+    meta_ad       arrived through a Meta (Facebook / Instagram) ad
+    instant_form  filled a Meta instant form
+    inbound / organic   the same two choices the Segments table already has
+    broadcast     was sent at least one broadcast
+    anything else a plain lead source (upload, manual, whatsapp, website, ...)
+    """
+    if came_from == "qr":
+        return query.or_("qr_link_id.not.is.null,source.eq.qr")
+    if came_from in ("google_ads", "meta_ad"):
+        google = _memo_get(memo, ("google-campaigns",), lambda: _google_campaign_ids(db, tenant_id))
+        if came_from == "google_ads":
+            if not google:
+                return None
+            return query.in_("ad_campaign_id", google)
+        query = query.not_.is_("ad_campaign_id", "null")
+        return query.not_.in_("ad_campaign_id", google) if google else query
+    if came_from == "instant_form":
+        return query.eq("source", "meta_form")
+    if came_from == "inbound":
+        return query.in_("source", list(INBOUND_SOURCES))
+    if came_from == "organic":
+        return query.in_("source", list(INBOUND_SOURCES)).is_("ad_campaign_id", "null").neq("source", "meta_form")
+    if came_from == "broadcast":
+        return query  # the broadcast_recipients embed is added by the caller
+    if came_from in _CAME_FROM_SOURCES:
+        return query.eq("source", came_from)
+    raise HTTPException(status_code=400, detail="Pick one of the 'came from' choices on the list")
+
+
 def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None,
                           memo: dict | None = None, opted_out_only: bool = False):
     """Leads matching the Segments filters, or None when nothing can match.
@@ -361,6 +421,17 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     broadcast_id = f.broadcast_id if f.source_filter == "broadcast" and f.broadcast_id else None
     if broadcast_id:
         embeds.append("broadcast_recipients!inner()")
+    if f.came_from and f.came_from not in _CAME_FROM_SPECIAL and f.came_from not in _CAME_FROM_SOURCES:
+        raise HTTPException(status_code=400, detail="Pick one of the 'came from' choices on the list")
+    any_broadcast = f.came_from == "broadcast" and not broadcast_id
+    if any_broadcast:
+        embeds.append("broadcast_recipients!inner()")
+    tag_spellings = None
+    if f.tag and f.tag.strip():
+        tag_spellings = _memo_get(memo, ("tag", f.tag.strip().lower()), lambda: _tag_spellings(db, tenant_id, f.tag))
+        if not tag_spellings:
+            return None
+        embeds.append("lead_tags!inner()")
     select_cols = ",".join([columns, *embeds]) if embeds else columns
     query = (db.table("leads").select(select_cols, count=count)
              .eq("tenant_id", tenant_id)
@@ -372,6 +443,12 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     if broadcast_id:
         query = (query.eq("broadcast_recipients.broadcast_id", broadcast_id)
                  .eq("broadcast_recipients.tenant_id", tenant_id))
+    if any_broadcast:
+        query = query.eq("broadcast_recipients.tenant_id", tenant_id)
+    if tag_spellings:
+        query = query.eq("lead_tags.tenant_id", tenant_id)
+        query = (query.eq("lead_tags.tag", tag_spellings[0]) if len(tag_spellings) == 1
+                 else query.in_("lead_tags.tag", tag_spellings))
     if opted_out_only:
         query = query.eq("opted_out", True)
     else:
@@ -427,6 +504,13 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     elif f.bought == "quiet":
         quiet_since = (datetime.now(timezone.utc) - timedelta(days=BUYER_QUIET_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = query.eq("is_buyer", True).lt("last_purchase_at", quiet_since)
+    if f.only == "leads":
+        # Never bought: not marked paid and no won deal (won_deal_count is the computed field above).
+        query = query.is_("converted_at", "null").eq("won_deal_count", 0)
+    if f.came_from:
+        query = _apply_came_from(db, tenant_id, query, f.came_from, memo)
+        if query is None:
+            return None
 
     # Medium / campaign / broadcast filters
     if f.source_filter == "inbound":
@@ -464,12 +548,16 @@ def _lead_filters(
     buyer: bool | None = Query(None),
     group_id: str | None = Query(None, max_length=64),
     bought: str | None = Query(None, pattern="^(repeat|quiet)$"),
+    only: str | None = Query(None, pattern="^leads$"),
+    came_from: str | None = Query(None, max_length=30),
+    tag: str | None = Query(None, max_length=30),
 ) -> LeadFilters:
     """The Segments filter query parameters, shared by the list, summary and export routes."""
     return LeadFilters(
         segment=segment, assigned_to=assigned_to, source_filter=source_filter, broadcast_id=broadcast_id,
         ad_campaign_id=ad_campaign_id, date_from=date_from, date_to=date_to, search=search,
         reply_window=reply_window, buyer=buyer, group_id=group_id, bought=bought,
+        only=only, came_from=came_from, tag=tag,
     )
 
 
@@ -480,6 +568,9 @@ def _customer_fields(db, tenant_id: str, leads_data: list[dict]) -> None:
     facts = _buyer_facts(db, tenant_id, lead_ids=lead_ids)
     groups = _groups_by_lead(db, tenant_id, lead_ids=lead_ids)
     scores = _open_broadcast_scores(db, tenant_id, lead_ids)
+    from app.services.lead_tags import tags_by_lead
+
+    tags = tags_by_lead(db, tenant_id, lead_ids)
     for lead in leads_data:
         lead_id = lead["id"]
         fact = facts["per_lead"].get(lead_id) or {}
@@ -489,6 +580,7 @@ def _customer_fields(db, tenant_id: str, leads_data: list[dict]) -> None:
         lead["last_activity_at"] = _latest_iso(lead.get("last_inbound_at"), last_purchase) or lead.get("created_at")
         lead["groups"] = groups.get(lead_id, [])
         lead["broadcast_score"] = scores.get(lead_id)
+        lead["tags"] = tags.get(lead_id, [])
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -556,6 +648,8 @@ async def list_leads(
                 lead["broadcast_sent_at"] = br_time_by_lead[lead["id"]]
 
         _customer_fields(db, tenant_id, leads_data)
+        _add_came_from(db, tenant_id, leads_data)
+        _hide_numbers_for_caller(db, tenant_id, ctx, leads_data)
 
     return PaginatedResponse(
         data=leads_data,
@@ -563,6 +657,35 @@ async def list_leads(
         page=page,
         limit=limit,
     )
+
+
+def _hide_numbers_for_caller(db, tenant_id: str, ctx: dict, leads: list[dict]) -> None:
+    """Call IQ (v9.2 #21): a cloud-calling telecaller sees 98•••••210 when the business hides numbers.
+    Calls are placed by lead id, so dialing still works. A failed check hides the numbers (fails closed)."""
+    if ctx.get("role") != "caller" or not leads:
+        return
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, tenant_id, ctx)
+    if not mask:
+        return
+    for lead in leads:
+        if lead.get("phone"):
+            lead["phone"] = mask(lead["phone"])
+            lead["phone_hidden"] = True
+
+
+def _add_came_from(db, tenant_id: str, leads: list[dict]) -> None:
+    """Set came_from ("from Google Ads · summer_sale", "from Meta ad · …", "from QR · …") for the chat header."""
+    try:
+        from app.services.google_ads_report import came_from_labels
+        labels = came_from_labels(db, tenant_id, leads)
+    except Exception as e:  # a label is never worth failing the list
+        logger.warning("came_from lookup failed: %s", e)
+        return
+    for lead in leads:
+        label = labels.get(str(lead.get("id")))
+        if label:
+            lead["came_from"] = label
 
 
 BROADCAST_PAGE = 1000  # PostgREST caps one response at 1000 rows
@@ -800,6 +923,22 @@ async def assign_lead(
     return {"success": True}
 
 
+class SendToCallingPayload(BaseModel):
+    lead_ids: list[UUID] = Field(min_length=1, max_length=1000)
+
+
+@router.post("/send-to-calling")
+async def send_leads_to_calling(payload: SendToCallingPayload, ctx: dict = Depends(require_leads_manage)):
+    """Customers > bulk "Send to calling": give the picked people to callers (Call IQ > Leads to call).
+    Returns {added, already, said_stop, bought, closed, not_found, no_callers, added_ids}."""
+    from app.services import customer_calling
+
+    db = get_supabase()
+    ids = [str(i) for i in payload.lead_ids]
+    return await run_in_threadpool(
+        customer_calling.send_to_calling, db, ctx["tenant_id"], ids, reason="customers_bulk")
+
+
 @router.post("/bulk-assign")
 async def bulk_assign(
     payload: BulkAssignPayload,
@@ -972,6 +1111,7 @@ async def export_leads(
 
     fieldnames = ["Name", "Phone", "Status", "Interest", "Came from", "Ad", "Assigned to",
                   "Spent", "Groups", "Added", "Last message"]
+    _hide_numbers_for_caller(db, tenant_id, ctx, leads)  # the file follows the same rule as the screen
     rows = []
     for l in leads:
         lead_id = l["id"]
@@ -1052,6 +1192,7 @@ async def export_assigned_leads(
         campaign_map = {str(r["id"]): r for r in (campaign_recs.data or [])}
         
     # Generate rows
+    _hide_numbers_for_caller(db, tenant_id, ctx, leads)  # the file follows the same rule as the screen
     rows = []
     for l in leads:
         lead_id = l["id"]
@@ -1100,7 +1241,8 @@ async def get_lead_messages(lead_id: UUID, tenant_id: str = Depends(get_tenant_i
     return result.data or []
 
 @router.get("/{lead_id}", response_model=LeadWithMessages)
-async def get_lead(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+async def get_lead(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
     lead_result = db.table("leads").select("*").eq("id", str(lead_id)).eq("tenant_id", tenant_id).is_("deleted_at", "null").maybe_single().execute()
     if not lead_result or not lead_result.data:
@@ -1139,7 +1281,9 @@ async def get_lead(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
         if campaign and campaign.data:
             lead["ad_campaign_name"] = campaign.data["campaign_name"]
             lead["channel"] = campaign.data["platform"]
-            
+
+    _add_came_from(db, tenant_id, [lead])
+    _hide_numbers_for_caller(db, tenant_id, ctx, [lead])  # a cloud-calling telecaller sees 98•••••210
     return lead
 
 @router.patch("/{lead_id}", response_model=Lead)

@@ -8,8 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware
-from slowapi.util import get_remote_address
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, rate_limit_user_id
 
 import os
 from app.config import settings
@@ -23,6 +22,7 @@ from app.routes import call_review
 from app.routes import call_translate
 from app.routes import call_teams
 from app.routes.marketplace_intake import public_router as marketplace_public_router
+from app.routes.auto_messages import _client_ip, _SlidingWindow
 from app.routes import marketplace_intake
 from app.routes import instant_forms
 from app.routes import whatsapp_form_designs
@@ -37,6 +37,10 @@ from app.routes import brand_icon
 from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
 from app.routes import customer_profile
+from app.routes import reports as reports_routes, lead_tags, customer_feedback
+from app.routes import call_iq_reports, call_iq_settings, ai_setup, automations, password_help, first_setup
+from app.routes import properties as properties_routes
+from app.routes import courses as courses_routes
 from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
@@ -48,6 +52,7 @@ from app.routes import private_send, private_send_keys
 from app.routes import ai_teach as ai_teach_routes
 from app.routes import otp_overview, connections_overview, my_business
 from app.routes import global_search
+from app.routes import bookings as bookings_routes, qr_links, google_ads
 
 # Configure logging
 logging.basicConfig(
@@ -278,7 +283,30 @@ app = FastAPI(
 # Rate limiting. Webhook routes must always answer 200 even when throttled --
 # a 4xx here reads as delivery failure and triggers provider retry storms
 # (see .agents/context/security-checklist.md, hard check #2).
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+# Many logged-in users behind one address (the dashboard's SSR calls from Vercel) each get their
+# own bucket, but one address can't mint unlimited buckets from many accounts (sign-in is Google
+# OAuth, which creates accounts): past this many user-keyed requests a minute from one IP, its
+# users fall back to that IP's shared bucket.
+USER_KEYED_PER_IP_PER_MINUTE = 2000
+_user_keyed_per_ip = _SlidingWindow(USER_KEYED_PER_IP_PER_MINUTE, 60)
+
+
+def _rate_limit_key(request: Request) -> str:
+    """"user:<id>" for a logged-in user with a proven token, else "ip:<Cloudflare client IP>"
+    (_client_ip). Without the user bucket, every dashboard SSR call (lib/serverApi.ts, leaving
+    Vercel from a few addresses) shared one 200/minute. Never slowapi's get_remote_address: it
+    reads request.client.host, which uvicorn on Render fills from the caller-typed X-Forwarded-For.
+    The prefixes keep the two kinds of key from ever colliding."""
+    ip_key = f"ip:{_client_ip(request)}"
+    scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
+    if scheme.lower() == "bearer":
+        user_id = rate_limit_user_id(token.strip())
+        if user_id and _user_keyed_per_ip.allow(ip_key):
+            return f"user:{user_id}"
+    return ip_key
+
+
+limiter = Limiter(key_func=_rate_limit_key, default_limits=["200/minute"])
 app.state.limiter = limiter
 
 
@@ -443,6 +471,11 @@ app.include_router(otp_overview.router, prefix="/api/v1/otp-overview", tags=["ot
 app.include_router(connections_overview.router, prefix="/api/v1/connections", tags=["connections"], dependencies=_auth)
 app.include_router(my_business.router, prefix="/api/v1/my-business", tags=["my-business"], dependencies=_auth)
 app.include_router(global_search.router, prefix="/api/v1/search", tags=["search"], dependencies=_auth)
+app.include_router(bookings_routes.router, prefix="/api/v1/bookings", tags=["bookings"], dependencies=_auth)
+app.include_router(bookings_routes.public_router, prefix="/api/v1/public/bookings", tags=["bookings-public"])
+app.include_router(qr_links.router, prefix="/api/v1/qr-links", tags=["qr-links"], dependencies=_auth)
+app.include_router(qr_links.public_router, prefix="/api/v1/public/qr", tags=["qr-public"])
+app.include_router(google_ads.router, prefix="/api/v1/google-ads", tags=["google-ads"], dependencies=_auth)
 # Legacy prefix. Razorpay's dashboard has /api/v1/expert-handoff/razorpay-webhook
 # registered externally; remove these two lines only after updating it there.
 app.include_router(intake_public_router, prefix="/api/v1/expert-handoff", tags=["intake-webhook-legacy"])
@@ -454,6 +487,18 @@ app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], depende
 app.include_router(customer_groups.router, prefix="/api/v1/customer-groups", tags=["customer-groups"], dependencies=_auth)
 app.include_router(said_stop_routes.router, prefix="/api/v1/said-stop", tags=["said-stop"], dependencies=_auth)
 app.include_router(customer_profile.router, prefix="/api/v1/customer-profile", tags=["customer-profile"], dependencies=_auth)
+app.include_router(lead_tags.router, prefix="/api/v1/lead-tags", tags=["lead-tags"], dependencies=_auth)
+app.include_router(customer_feedback.router, prefix="/api/v1/customer-feedback", tags=["customer-feedback"], dependencies=_auth)
+app.include_router(reports_routes.router, prefix="/api/v1/reports", tags=["reports"], dependencies=_auth)
+app.include_router(call_iq_reports.router, prefix="/api/v1/call-iq", tags=["call-iq"], dependencies=_auth)
+app.include_router(call_iq_settings.router, prefix="/api/v1/call-iq-settings", tags=["call-iq"], dependencies=_auth)
+app.include_router(ai_setup.router, prefix="/api/v1/ai-setup", tags=["ai-setup"], dependencies=_auth)
+app.include_router(automations.router, prefix="/api/v1/automations", tags=["automations"], dependencies=_auth)
+# PUBLIC on purpose (the person cannot sign in): rate-limited inside the route, stores a request for the Anril team.
+app.include_router(password_help.router, prefix="/api/v1/password-help", tags=["password-help"])
+app.include_router(first_setup.router, prefix="/api/v1/first-setup", tags=["first-setup"], dependencies=_auth)
+app.include_router(properties_routes.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
+app.include_router(courses_routes.router, prefix="/api/v1/courses", tags=["courses"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 app.include_router(home.router, prefix="/api/v1/home", tags=["home"], dependencies=_auth)

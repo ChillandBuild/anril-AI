@@ -357,11 +357,16 @@ def _deal_total(tenant_id: str, lines: list[dict], db) -> int:
     added on top here, so the payment link charges the right amount; line
     totals stay pre-tax for the export's taxable-value column."""
     subtotal = sum(li["line_total_paise"] for li in lines)
-    from app.services.business_details import prices_include_gst
-    if prices_include_gst(tenant_id, db):
+    from app.services.business_details import charges_gst, prices_include_gst
+    if prices_include_gst(tenant_id, db) or not charges_gst(tenant_id, db):
         return subtotal
     tax = sum(round(li["line_total_paise"] * li["gst_rate"] / 100) for li in lines if li.get("gst_rate"))
     return subtotal + tax
+
+
+def _charges_gst(tenant_id: str, db) -> bool:
+    from app.services.business_details import charges_gst
+    return charges_gst(tenant_id, db)
 
 
 def _insert_items(tenant_id: str, deal_id: str, lines: list[dict], db) -> list[dict]:
@@ -411,6 +416,8 @@ async def create_deal(
         "created_by": created_by,
         "intake_session_id": intake_session_id,
     }
+    if not _charges_gst(tenant_id, db):
+        row["bill_type"] = "simple"  # composition / unregistered: the order is born a Bill of supply (no tax)
     if stage == "won":
         row["won_at"] = _now_iso()
         row["payment_method"] = payment_method or "cash"
@@ -617,6 +624,9 @@ def mark_won(
             logger.error(f"Deal {deal_id} won but its payment row failed: {e}")
         deal = {**deal, "paid_paise": int(deal.get("total_paise") or 0)}
     warnings = _deduct_for_deal(tenant_id, deal_id, created_by, db, direction=-1)
+    # v9.2 P1: a paid order of a property takes its units off "units left" (once per order; never raises).
+    from app.services import properties
+    properties.on_deal_paid(db, tenant_id, deal_id)
     return {"deal": deal, "stock_warnings": warnings}
 
 
@@ -791,6 +801,7 @@ def upsert_quoted_deal(tenant_id: str, lead_id: str, line: dict, db=None) -> Non
         deal = db.table("deals").insert({
             "tenant_id": tenant_id, "lead_id": lead_id, "deal_number": _next_deal_number(db, tenant_id),
             "stage": "quoted", "source": "whatsapp", "total_paise": total,
+            **({"bill_type": "simple"} if not _charges_gst(tenant_id, db) else {}),
         }).execute().data[0]
         _insert_items(tenant_id, deal["id"], resolved, db)
     except Exception as e:

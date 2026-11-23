@@ -6,6 +6,7 @@ import { Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { balanceRemindersApi, remindersLine } from "@/lib/balanceRemindersApi";
 import { myBusinessApi, type AdvanceRuleBody, type PaymentsOverview } from "@/lib/myBusinessApi";
 import { cn } from "@/lib/utils";
 import {
@@ -19,7 +20,7 @@ import {
   type AdvanceDraft,
   type AdvanceKind,
 } from "./advanceText";
-import { Card, ComingLater, ErrorBox, PageHeader, StatusDot } from "./MyBusinessUi";
+import { Card, ErrorBox, PageHeader, StatusDot } from "./MyBusinessUi";
 
 const KINDS: { kind: AdvanceKind; label: string; hint: string }[] = [
   { kind: "none", label: "No advance", hint: "The customer pays when they collect." },
@@ -27,12 +28,6 @@ const KINDS: { kind: AdvanceKind; label: string; hint: string }[] = [
   { kind: "percent", label: "Part of the bill %", hint: "A share of each order's total." },
 ];
 
-const COMING_LATER = [
-  "AI agent offers Pay full or advance",
-  "Advance rule per item",
-  "Show who changed the advance on an order",
-  "Turn balance reminders on/off",
-];
 
 const INPUT = "min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:bg-surface-subtle disabled:text-ink-muted";
 
@@ -45,6 +40,9 @@ export default function PaymentsPage() {
   const [draft, setDraft] = useState<AdvanceDraft>({ kind: "none", valueText: "", minText: "" });
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
+  // null = could not read it (no Orders access, or the server said no): the card shows the plain text only.
+  const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
+  const [remindersSaving, setRemindersSaving] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -58,6 +56,7 @@ export default function PaymentsPage() {
         ),
       ]);
       setOverview(ov);
+      balanceRemindersApi.get().then((r) => setRemindersOn(r.on), () => setRemindersOn(null));
       if (ruleResult.ok) {
         setRule(ruleResult.r);
         setDraft(draftFromRule(ruleResult.r));
@@ -92,6 +91,21 @@ export default function PaymentsPage() {
       toast.error(e instanceof Error ? e.message : "Could not save the advance rule");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleReminders() {
+    if (remindersOn == null) return;
+    const next = !remindersOn;
+    setRemindersSaving(true);
+    try {
+      const r = await balanceRemindersApi.set(next);
+      setRemindersOn(r.on);
+      toast.success(r.on ? "Balance reminders are on" : "Balance reminders are off");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not change balance reminders");
+    } finally {
+      setRemindersSaving(false);
     }
   }
 
@@ -176,6 +190,11 @@ export default function PaymentsPage() {
               </fieldset>
             )}
 
+            <p className="mt-4 text-sm text-ink-muted">
+              An item can have its own advance:{" "}
+              <Link href="/dashboard/catalog" className="font-semibold text-primary underline">set it on the item&apos;s page</Link>.
+            </p>
+
             {!ruleHidden ? (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-ink-muted">
@@ -192,8 +211,31 @@ export default function PaymentsPage() {
           </Card>
 
           <Card id="reminders-heading" title="Balance reminders" hint="When an order still has money to pay, the customer gets a gentle reminder by WhatsApp.">
-            <p className="text-sm font-semibold text-ink">{overview.balance_reminders}</p>
-            <p className="mt-1 text-sm text-ink-muted">They stop once the balance is paid.</p>
+            {remindersOn == null ? (
+              <p className="text-sm font-semibold text-ink">{overview.balance_reminders}</p>
+            ) : (
+              <div className="flex items-start justify-between gap-4">
+                <p id="reminders-switch-label" className="text-sm font-semibold text-ink">{remindersLine(remindersOn)}</p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={remindersOn}
+                  aria-labelledby="reminders-switch-label"
+                  disabled={!isOwner || remindersSaving}
+                  onClick={() => void toggleReminders()}
+                  className={cn(
+                    "relative inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60",
+                  )}
+                >
+                  <span aria-hidden className={cn("flex h-7 w-12 items-center rounded-full px-1 transition-colors", remindersOn ? "bg-primary" : "bg-slate-400")}>
+                    <span className={cn("h-5 w-5 rounded-full bg-white shadow transition-transform", remindersOn ? "translate-x-5" : "translate-x-0")} />
+                  </span>
+                </button>
+              </div>
+            )}
+            <p className="mt-1 text-sm text-ink-muted">
+              They stop once the balance is paid.{!isOwner && remindersOn != null ? " Only the owner can change this." : ""}
+            </p>
           </Card>
 
           <Card id="refunds-heading" title="Refunds">
@@ -232,7 +274,6 @@ export default function PaymentsPage() {
             </ul>
           </Card>
 
-          <ComingLater items={COMING_LATER} />
         </>
       ) : null}
     </div>

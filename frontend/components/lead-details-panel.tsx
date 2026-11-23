@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { api, API_URL, DealSummary, getAuthHeaders, Lead } from "@/lib/api";
 import { ChevronRight, CheckCircle2, Calendar, TrendingUp, MessageCircle, Plus } from "lucide-react";
 import { SegmentBadge } from "./segment-badge";
@@ -138,6 +139,7 @@ const CHANNEL_BADGE: Record<string, string> = {
   meta_form: "IF",
   indiamart: "IM",
   justdial: "JD",
+  qr: "QR",
 };
 
 // ─── Score event card ─────────────────────────────────────────────────────────
@@ -317,7 +319,9 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
             </div>
             <div className="min-w-0">
               <p className="font-body text-sm font-semibold text-on-surface truncate">
-                {lead.name || "Unnamed lead"}
+                <Link href={`/dashboard/leads/${lead.id}`} title="Open this customer" className="hover:text-primary hover:underline">
+                  {lead.name || "Unnamed lead"}
+                </Link>
               </p>
               {lead.phone && (
                 <p className="font-label text-xs text-on-surface-muted mt-0.5">{lead.phone}</p>

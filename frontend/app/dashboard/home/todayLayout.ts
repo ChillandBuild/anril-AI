@@ -26,6 +26,12 @@ export const MAX_BOXES = 12;
 /** Boxes per row on a laptop; the default set is one row. */
 export const DEFAULT_BOX_COUNT = 6;
 
+/**
+ * Every box key this screen knows. "bookings_today" is added here because the HomeBoxKey type in
+ * lib/api.ts does not list it yet; once it does, this can be a plain alias of HomeBoxKey.
+ */
+export type BoxKey = HomeBoxKey | "bookings_today";
+
 export type BoxGroup = "money" | "leads" | "work";
 
 export const GROUPS: { id: "all" | BoxGroup; label: string }[] = [
@@ -45,8 +51,8 @@ export type BoxMeta = {
   tint: string;
 };
 
-/** The 11 working boxes, in default priority order. */
-export const BOX_KEYS: HomeBoxKey[] = [
+/** The working boxes, in default priority order. A person can turn on at most MAX_BOXES of them. */
+export const BOX_KEYS: BoxKey[] = [
   "money_in_today",
   "new_enquiries_today",
   "hot_waiting",
@@ -58,9 +64,13 @@ export const BOX_KEYS: HomeBoxKey[] = [
   "won_month",
   "target_month",
   "low_stock",
+  "bookings_today",
+  "profit_month",
+  "expenses_today",
+  "feedback_week",
 ];
 
-export const BOX_META: Record<HomeBoxKey, BoxMeta> = {
+export const BOX_META: Record<BoxKey, BoxMeta> = {
   money_in_today: { label: "Money in today", icon: IndianRupee, group: "money", module: "Commerce", tint: "bg-emerald-50 text-emerald-700" },
   new_enquiries_today: { label: "New enquiries today", icon: UserPlus, group: "leads", module: "Leads", tint: "bg-sky-50 text-sky-700" },
   hot_waiting: { label: "Hot leads waiting", icon: Flame, group: "leads", module: "Chats", tint: "bg-rose-50 text-rose-700" },
@@ -72,34 +82,30 @@ export const BOX_META: Record<HomeBoxKey, BoxMeta> = {
   won_month: { label: "Won this month", icon: Trophy, group: "leads", module: "Leads", tint: "bg-yellow-50 text-yellow-700" },
   target_month: { label: "Target this month", icon: Target, group: "money", module: "Settings", tint: "bg-lime-50 text-lime-700" },
   low_stock: { label: "Low stock", icon: Package, group: "work", module: "Catalogue", tint: "bg-stone-100 text-stone-700" },
+  bookings_today: { label: "Bookings today", icon: CalendarCheck, group: "work", module: "Bookings", tint: "bg-sky-50 text-sky-700" },
+  profit_month: { label: "Profit this month", icon: TrendingUp, group: "money", module: "Reports", tint: "bg-green-50 text-green-800" },
+  expenses_today: { label: "Expenses today", icon: HandCoins, group: "money", module: "Commerce", tint: "bg-red-50 text-red-700" },
+  feedback_week: { label: "Feedback this week", icon: Star, group: "work", module: "Customers", tint: "bg-amber-50 text-amber-800" },
 };
 
-export function isBoxKey(key: string): key is HomeBoxKey {
+export function isBoxKey(key: string): key is BoxKey {
   return Object.prototype.hasOwnProperty.call(BOX_META, key);
 }
 
 /** Planned boxes. Shown greyed and locked in Edit Today; never sent to or from the backend. */
 export const COMING_SOON_BOXES: { key: string; label: string; icon: LucideIcon; group: BoxGroup; module: string }[] = [
-  { key: "expenses_today", label: "Expenses today", icon: HandCoins, group: "money", module: "Commerce" },
-  { key: "profit_month", label: "Profit this month (owner)", icon: TrendingUp, group: "money", module: "Reports" },
-  { key: "bookings_today", label: "Bookings today", icon: CalendarCheck, group: "work", module: "Engage" },
-  { key: "feedback_week", label: "Feedback this week", icon: Star, group: "work", module: "Customers" },
   { key: "renewals_due", label: "Renewals due", icon: CalendarClock, group: "work", module: "Customers" },
 ];
 
 export const COMING_SOON_BOX_KEYS: string[] = COMING_SOON_BOXES.map((b) => b.key);
 
-/** The two lists that work today. */
-export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock"];
+/** The lists you can switch on and off. "Today's bookings" shows whenever the server sends it. */
+export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock", "todays_feedback"];
 export const LIST_LABELS: Record<HomeListKey, string> = {
   waiting: "Waiting for your reply",
   low_stock: "Stock running low",
+  todays_feedback: "Today's feedback",
 };
-
-export const COMING_SOON_LISTS: { key: string; label: string }[] = [
-  { key: "bookings", label: "Today's bookings" },
-  { key: "feedback", label: "Today's feedback" },
-];
 
 /**
  * Boxes to draw, in order. A saved layout wins, cut down to what this person may
@@ -109,13 +115,13 @@ export const COMING_SOON_LISTS: { key: string; label: string }[] = [
 export function resolveBoxes(
   layout: Pick<HomeLayout, "boxes"> | null | undefined,
   today: Pick<HomeToday, "available" | "defaults"> | null | undefined,
-): HomeBoxKey[] {
+): BoxKey[] {
   if (!today) return [];
   const available = new Set<string>(today.available);
   const saved = layout?.boxes;
   if (saved && saved.length > 0) {
     const seen = new Set<string>();
-    const kept: HomeBoxKey[] = [];
+    const kept: BoxKey[] = [];
     for (const key of saved) {
       if (!isBoxKey(key) || !available.has(key) || seen.has(key)) continue;
       seen.add(key);
@@ -132,7 +138,11 @@ export function listIsOn(layout: Pick<HomeLayout, "lists"> | null | undefined, k
 }
 
 export function listsFromLayout(layout: Pick<HomeLayout, "lists"> | null | undefined): Record<HomeListKey, boolean> {
-  return { waiting: listIsOn(layout, "waiting"), low_stock: listIsOn(layout, "low_stock") };
+  return {
+    waiting: listIsOn(layout, "waiting"),
+    low_stock: listIsOn(layout, "low_stock"),
+    todays_feedback: listIsOn(layout, "todays_feedback"),
+  };
 }
 
 export function canAddBox(selected: readonly string[]): boolean {
@@ -140,18 +150,18 @@ export function canAddBox(selected: readonly string[]): boolean {
 }
 
 /** Add a box at the end. Refuses a duplicate, a coming-soon or unknown key, or a 13th box. */
-export function addBox(selected: readonly HomeBoxKey[], key: string): HomeBoxKey[] {
+export function addBox(selected: readonly BoxKey[], key: string): BoxKey[] {
   if (!isBoxKey(key) || selected.includes(key) || !canAddBox(selected)) return [...selected];
   return [...selected, key];
 }
 
-export function removeBox(selected: readonly HomeBoxKey[], key: string): HomeBoxKey[] {
+export function removeBox(selected: readonly BoxKey[], key: string): BoxKey[] {
   return selected.filter((k) => k !== key);
 }
 
 /** Move one box up (-1) or down (+1). Stays put at either end. */
-export function moveBox(selected: readonly HomeBoxKey[], key: string, delta: -1 | 1): HomeBoxKey[] {
-  const from = selected.indexOf(key as HomeBoxKey);
+export function moveBox(selected: readonly BoxKey[], key: string, delta: -1 | 1): BoxKey[] {
+  const from = selected.indexOf(key as BoxKey);
   const to = from + delta;
   if (from < 0 || to < 0 || to >= selected.length) return [...selected];
   const next = [...selected];
@@ -160,23 +170,39 @@ export function moveBox(selected: readonly HomeBoxKey[], key: string, delta: -1 
 }
 
 /** Body for PUT /home/layout. */
-export function buildSavePayload(selected: readonly HomeBoxKey[], lists: Record<HomeListKey, boolean>): HomeLayoutSave {
-  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES), lists: { waiting: lists.waiting, low_stock: lists.low_stock } };
+export function buildSavePayload(selected: readonly BoxKey[], lists: Record<HomeListKey, boolean>): HomeLayoutSave {
+  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES) as HomeBoxKey[], lists: { waiting: lists.waiting, low_stock: lists.low_stock, todays_feedback: lists.todays_feedback } };
 }
 
-/** ₹1,86,400 (Indian grouping); paise only when there are some. */
+/** ₹1,86,400 (Indian grouping); paise only when there are some. A negative number shows as -₹12,000. */
 export function formatRupees(paise: number | null | undefined): string {
   if (paise == null || !Number.isFinite(paise)) return "—";
   const whole = paise % 100 === 0;
-  return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
+  const text = "₹" + (Math.abs(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
+  return paise < 0 ? "-" + text : text;
 }
 
 export function formatBoxValue(box: Pick<HomeBox, "value" | "unit">): string {
+  if (box.value == null) return "—";
   if (box.unit === "paise") return formatRupees(box.value);
+  // Feedback this week: the average, one decimal ("4.3★").
+  if (box.unit === "stars") return Number.isFinite(box.value) ? `${box.value.toFixed(1)}★` : "—";
   // The Target box: a percent for the team, and "Set a target" for an owner who has not set one.
   if (box.unit === "percent") return Number.isFinite(box.value) ? `${box.value.toLocaleString("en-IN")}%` : "—";
   if (box.unit === "set_target") return "Set a target";
   return Number.isFinite(box.value) ? box.value.toLocaleString("en-IN") : "—";
+}
+
+/** Profit below zero is a loss: the card says so in words, not only with a minus sign. */
+export function isLoss(key: string, box: Pick<HomeBox, "value">): boolean {
+  return key === "profit_month" && box.value != null && box.value < 0;
+}
+
+/** The small line under a box's number. A loss starts with the word "Loss". */
+export function boxSub(key: string, box: Pick<HomeBox, "value" | "sub">): string {
+  const sub = box.sub ?? "";
+  if (!isLoss(key, box)) return sub;
+  return sub ? `Loss · ${sub}` : "Loss";
 }
 
 /** "5m" · "2h 10m" · "3d". For how long a chat has waited. */
@@ -197,4 +223,22 @@ export function waitingMinutes(iso: string | null | undefined, now: number = Dat
   if (!iso) return 0;
   const t = new Date(iso).getTime();
   return Number.isNaN(t) ? 0 : Math.max(0, Math.floor((now - t) / 60_000));
+}
+
+/** One row of the Today's bookings list on Home (the server sends the next 10 of today). */
+export type TodaysBooking = {
+  id: string;
+  start_at: string;
+  customer_name: string | null;
+  service_name: string;
+  resource_name: string;
+  status: string;
+};
+
+export type TodaysBookings = { total: number; items: TodaysBooking[] };
+
+/** Stars as text for the feedback list: 4 -> "★★★★☆". Out-of-range numbers are held to 0..5. */
+export function starsText(stars: number): string {
+  const n = Math.max(0, Math.min(5, Math.round(Number.isFinite(stars) ? stars : 0)));
+  return "★".repeat(n) + "☆".repeat(5 - n);
 }

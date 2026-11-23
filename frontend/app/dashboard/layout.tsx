@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { serverFetchJson } from "@/lib/serverApi";
 import { ClientLayout } from "./ClientLayout";
+import { MustChangePasswordGate } from "@/components/first-setup/MustChangePasswordGate";
 
 const inter = localFont({
   src: "../fonts/inter-variable.ttf",
@@ -42,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className={inter.variable}>
       <ClientLayout>
+        <MustChangePasswordGate />
         {children}
       </ClientLayout>
     </div>

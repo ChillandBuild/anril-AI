@@ -5,7 +5,7 @@ import asyncio
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_any_permission, require_permission
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, get_tenant_id, require_any_permission, require_permission
 from app.services import stock_counts as sc
 from app.services.actor import actor_name
 from app.services.audit_log import record_audit_event
@@ -24,8 +24,26 @@ async def _run(fn, *args, **kwargs):
 
 @router.get("/counts", dependencies=[Depends(require_any_permission("catalog.view", "catalog.manage", "purchases.manage",
                                                                     "deals.manage"))])
-async def counts(tenant_id: str = Depends(get_tenant_id)):
-    return await _run(sc.view, get_supabase(), tenant_id)
+async def counts(tenant_id: str = Depends(get_tenant_id), ctx: dict = Depends(get_tenant_and_role)):
+    view = await _run(sc.view, get_supabase(), tenant_id)
+    return view if _has_permission(ctx, "deals.view") else without_money(view)
+
+
+_COUNT_MONEY = {"value_paise", "loss_paise", "gain_paise"}
+
+
+def without_money(view: dict) -> dict:
+    """A stock count for someone who can't see money (no deals.view): pieces only, never "₹ at cost"
+    (value / pieces would give the cost price away)."""
+    def strip(row: dict) -> dict:
+        return {k: v for k, v in row.items() if k not in _COUNT_MONEY}
+    out = {**view, "open": [strip(c) for c in view.get("open") or []],
+           "finished": [strip(c) for c in view.get("finished") or []], "costs_hidden": True}
+    count = view.get("count")
+    if count:
+        cards = {k: (strip(v) if isinstance(v, dict) else v) for k, v in (count.get("cards") or {}).items()}
+        out["count"] = {**strip(count), "lines": [strip(r) for r in count.get("lines") or []], "cards": cards}
+    return out
 
 
 @router.get("/corrections", dependencies=[Depends(require_any_permission("catalog.view", "purchases.view"))])

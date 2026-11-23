@@ -1,9 +1,12 @@
 import {
+  BellRing,
+  Clock,
   CreditCard,
   Headset,
   Megaphone,
   RadioTower,
   Receipt,
+  Repeat,
   ShieldCheck,
   Sparkles,
   Target,
@@ -60,9 +63,12 @@ export const SETTINGS_ITEMS: SettingsNavItem[] = [
   { href: "/dashboard/settings/display", icon: Type, label: "Text size", group: "My business", permissionAny: [], openToAll: true, needsSubscription: true },
   settingsPage("/dashboard/settings/connect-channels", RadioTower, "Channels", "Connections"),
   settingsPage("/dashboard/settings/telecalling-behavior", Headset, "Calling", "Connections"),
+  settingsPage("/dashboard/settings/calling-rules", Clock, "Calling rules", "Connections"),
   settingsPage("/dashboard/settings/meta-charges", Receipt, "Limits & Meta charges", "Connections"),
   { href: ROLES_HREF, icon: ShieldCheck, label: "Team & roles", group: "Team & roles", permissionAny: ROLES_PERMS, needsSubscription: true },
-  settingsPage("/dashboard/settings/notifications", Megaphone, "Alerts", "Alerts & automations", "notifications"),
+  settingsPage("/dashboard/settings/alerts", Megaphone, "Alerts", "Alerts & automations", "notifications"),
+  settingsPage("/dashboard/settings/notifications", BellRing, "Push & lead claims", "Alerts & automations", "notifications"),
+  { href: "/dashboard/automations", icon: Repeat, label: "Automations", group: "Alerts & automations", permissionAny: ["settings.view", "settings.manage", "templates.view", "templates.manage"], needsSubscription: true },
   { href: SUBSCRIPTION_HREF, icon: CreditCard, label: "Plans & subscription", group: null, permissionAny: SUBSCRIPTION_PERMS, needsSubscription: false },
 ];
 
@@ -74,7 +80,7 @@ export const SETTINGS_GROUP_INFO: Record<SettingsGroup, { description: string }>
   "My business": { description: "Business details, payments, your target and text size." },
   Connections: { description: "Connect your messaging channels and set how calling works." },
   "Team & roles": { description: "Add your team and choose what each person can see." },
-  "Alerts & automations": { description: "Choose which alerts reach you, and where." },
+  "Alerts & automations": { description: "Choose which alerts reach you and when, and see every automatic message." },
 };
 
 const matchesPath = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);

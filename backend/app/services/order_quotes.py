@@ -176,11 +176,12 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
                        sender: dict | None = None) -> dict:
     """data: lead_id or phone (+ name), items, discount_paise, valid_until (YYYY-MM-DD),
     advance: {"kind": "rule"|"none"|"percent"|"fixed", "value"}, ready_in_days, notes, sold_by."""
-    from app.services.business_details import prices_include_gst
+    from app.services.business_details import charges_gst, prices_include_gst
     lead_id = _lead_for(db, tenant_id, data)
+    bill_type = "gst" if charges_gst(tenant_id, db) else "simple"
     lines = _lines(db, tenant_id, data.get("items") or [])
     bill = orders.compute_bill(lines, discount_paise=int(data.get("discount_paise") or 0),
-                               include_gst=prices_include_gst(tenant_id, db), bill_type="gst")
+                               include_gst=prices_include_gst(tenant_id, db), bill_type=bill_type)
     total = bill["total_paise"]
     if total <= 0:
         raise OrderError("The quote total must be more than zero")
@@ -213,7 +214,7 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     deal = db.table("deals").insert({
         "tenant_id": tenant_id, "lead_id": lead_id, "deal_number": deals_service._next_deal_number(db, tenant_id),
         "stage": "quoted", "source": "manual", "channel": "online", "total_paise": total,
-        "discount_paise": bill["discount_paise"], "gst_paise": bill["gst_paise"], "bill_type": "gst",
+        "discount_paise": bill["discount_paise"], "gst_paise": bill["gst_paise"], "bill_type": bill_type,
         "quote_valid_until": valid.isoformat(), "advance_paise": advance,
         "ready_in_days": int(ready) if ready is not None else None,
         "notes": (data.get("notes") or "").strip()[:2000] or None, "created_by": user_id,
@@ -221,7 +222,8 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
         "advance_note": advance_note,
     }).execute().data[0]
     if advance_note:
-        orders._audit(db, tenant_id, user_id, "order.advance_changed", deal["id"], {"note": advance_note})
+        orders.log_advance_change(db, tenant_id, user_id, deal["id"], advance_note,
+                                  from_paise=shop_advance, to_paise=advance)
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     message = await send_quote(db, tenant_id, deal["id"], user_id=user_id, sender=sender) if send else None
     return {"order": orders.order_detail(db, tenant_id, deal["id"]), "message": message}

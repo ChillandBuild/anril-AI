@@ -98,6 +98,7 @@ async def test_audio_background_transcribes_inserts_and_routes_reply():
          patch("app.services.conversation_state.get_or_create_state", return_value={"message_count": 0}), \
          patch.object(webhook, "_transcribe_whatsapp_audio", new=AsyncMock(return_value=("I need a flat near Andheri", "audio/ogg")), create=True) as transcribe, \
          patch("app.services.notify.notify_assigned_caller_of_reply") as notify, \
+         patch("app.services.purchases.supplier_by_phone", return_value=None), \
          patch("app.services.context_builder.build_scorer_context", return_value="ctx") as build_ctx, \
          patch("app.services.ai_reply.generate_reply", new=AsyncMock()) as generate_reply, \
          patch("app.routes.webhook.meter") as meter:

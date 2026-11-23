@@ -476,6 +476,6 @@ def test_rate_limit_key_ignores_client_supplied_forwarded_for():
 
     def req(headers):
         return StarletteRequest({"type": "http", "headers": [(k.encode(), v.encode()) for k, v in headers.items()], "client": ("10.0.0.1", 1)})
-    assert routes._client_ip(req({"x-forwarded-for": "1.2.3.4, 203.0.113.9"})) == "203.0.113.9"
+    assert routes._client_ip(req({"x-forwarded-for": "1.2.3.4, 203.0.113.9"})) == "10.0.0.1"
     assert routes._client_ip(req({"cf-connecting-ip": "198.51.100.7", "x-forwarded-for": "1.2.3.4"})) == "198.51.100.7"
     assert routes._client_ip(req({})) == "10.0.0.1"

@@ -188,7 +188,12 @@ async def list_pool_items(
 
 @router.get("/config")
 async def get_config(ctx: dict = Depends(require_settings_read)):
-    return get_notification_config(ctx["tenant_id"])
+    cfg = get_notification_config(ctx["tenant_id"])
+    # v9.2 #26: show the quiet time that really applies (9 PM-9 AM when the owner never chose), so saving
+    # this older form keeps it rather than quietly switching quiet time off.
+    from app.services.notification_config import effective_quiet_hours
+    cfg["quiet_hours"] = {**(cfg.get("quiet_hours") or {}), **effective_quiet_hours(cfg)}
+    return cfg
 
 
 @router.put("/config")

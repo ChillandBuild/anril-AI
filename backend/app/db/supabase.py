@@ -109,8 +109,23 @@ def _wrap_postgrest_session(client: Client) -> None:
 # listed below, so a tool cannot change data even by calling code that would.
 read_only: contextvars.ContextVar[bool] = contextvars.ContextVar("read_only", default=False)
 _WRITE_METHODS = frozenset({"insert", "upsert", "update", "delete"})
-# RPCs that only read. Anything else is refused in read-only mode.
-READ_ONLY_RPCS = frozenset({"distinct_token_usage_pairs"})
+# RPCs that only read. Anything else is refused in read-only mode. Each name below was checked
+# against its function body in pg_proc (2026-11-23): a SELECT and nothing else, and every one
+# filters by its p_tenant_id argument. The Reports tools pass the signed-in client's id.
+READ_ONLY_RPCS = frozenset({
+    "distinct_token_usage_pairs",
+    "analytics_daily_leads",
+    "analytics_daily_messages",
+    "analytics_daily_returning_ad_leads",
+    "analytics_lead_arrival_heatmap",
+    "analytics_period_money",
+    "analytics_period_summary",
+    "analytics_reply_sources",
+    "analytics_response_times",
+    "analytics_segment_movement",
+    "get_telecalling_all_time_stats",
+    "template_performance_range",
+})
 
 
 class ReadOnlyViolation(RuntimeError):

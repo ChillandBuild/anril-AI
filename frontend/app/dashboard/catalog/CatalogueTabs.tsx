@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
+import useSWR from "swr";
 import { useWhatsappFormsStatus } from "@/hooks/useApi";
+import { propertiesApi } from "@/lib/propertiesApi";
 
 function useCatalogueTabLinks() {
   const pathname = usePathname();
@@ -13,13 +15,30 @@ function useCatalogueTabLinks() {
   const canViewServices = role === "owner" || permissions.includes("services.view") || permissions.includes("services.manage");
   // Forms shows only for accounts with WhatsApp Forms switched on (Operator Console).
   const { data: formsStatus } = useWhatsappFormsStatus(canViewServices);
+  // Properties (real estate) and Courses (education) show only for the businesses that use them (v9.2 P1/P2).
+  const { data: modules } = useSWR(canViewProducts ? "properties/availability" : null, propertiesApi.availability, {
+    revalidateOnFocus: false,
+  });
+  const onModule = pathname.startsWith("/dashboard/catalog/properties") || pathname.startsWith("/dashboard/catalog/courses");
 
   return [
     {
       href: "/dashboard/catalog",
       label: "Products",
       visible: canViewProducts,
-      active: pathname.startsWith("/dashboard/catalog"),
+      active: pathname.startsWith("/dashboard/catalog") && !onModule,
+    },
+    {
+      href: "/dashboard/catalog/properties",
+      label: "Properties",
+      visible: canViewProducts && Boolean(modules?.enabled),
+      active: pathname.startsWith("/dashboard/catalog/properties"),
+    },
+    {
+      href: "/dashboard/catalog/courses",
+      label: "Courses & batches",
+      visible: canViewProducts && Boolean(modules?.courses_enabled),
+      active: pathname.startsWith("/dashboard/catalog/courses"),
     },
     {
       href: "/dashboard/services",

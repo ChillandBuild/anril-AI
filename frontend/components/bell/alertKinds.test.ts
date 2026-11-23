@@ -31,6 +31,7 @@ const KNOWN = [
   "purchase_order", "supplier_message", "unmarked_bookings", "brain_digest", "scheduled_template_failed",
   "intake_trigger_failed", "system_error", "handover_new", "deal_double_payment", "intake_double_payment",
   "intake_paid", "intake_bridge_auth_failed", "intake_astro_push_failed", "intake_reply_undelivered", "lead_hot",
+  "booking_new", "booking_cancelled", "booking_call_now",
 ];
 
 describe("alertKindFor", () => {
@@ -68,6 +69,31 @@ describe("alertKindFor", () => {
     expect(k.category).toBe("other");
     expect(k.action).toBeNull();
     expect(alertHref(mk("something_new", { url: "/dashboard/x" }))).toBeNull();
+  });
+});
+
+describe("booking alerts", () => {
+  it("new and cancelled bookings need you, with an Open bookings button", () => {
+    for (const t of ["booking_new", "booking_cancelled"]) {
+      expect(alertKindFor(t)).toMatchObject({ category: "needs_you", module: "Bookings", action: { label: "Open bookings" } });
+    }
+  });
+
+  it("call now is a calling alert with a Call now button", () => {
+    expect(alertKindFor("booking_call_now")).toMatchObject({ category: "calls", action: { label: "Call now" } });
+  });
+
+  it("the button goes to the stored link, else the Bookings page", () => {
+    const url = "/dashboard/bookings?date=2026-11-27&booking=B1";
+    for (const t of ["booking_new", "booking_cancelled", "booking_call_now"]) {
+      expect(alertHref(mk(t, { url })), t).toBe(url);
+      expect(alertHref(mk(t)), t).toBe("/dashboard/bookings");
+      expect(alertHref(mk(t, { url: "https://evil.example" })), t).toBe("/dashboard/bookings");
+    }
+  });
+
+  it("counts in the right chips", () => {
+    expect(chipCounts([mk("booking_new"), mk("booking_cancelled"), mk("booking_call_now")])).toMatchObject({ needs_you: 2, calls: 1 });
   });
 });
 

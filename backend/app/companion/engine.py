@@ -10,6 +10,13 @@ pending turn and reply() returns status "tool_call". The app runs the tool and c
 continue_reply(turn_id, results); the load slot is free while it does. At most 3 LLM rounds:
 round 3 goes without tools, so the AI has to answer.
 
+reply_format (optional, per request): the reply comes back as chat bubbles, chips, a button and a tag
+(reply_format.py). It rides in a paused tool turn's state, so the reply after the tools is shaped too.
+
+Chart guard (companions.chart_guard, astrology characters): the reply's chart claims are checked by code
+against the chart the app sent (chart_check.find_wrong). Wrong -> one redo with the wrong facts listed;
+still wrong -> the handoff line (basis "handoff"), never a reply with a made-up chart fact.
+
 Logs carry ids, timings and error types only, never message text.
 """
 import asyncio
@@ -18,7 +25,8 @@ import os
 import time
 import weakref
 
-from app.companion import memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion import chart_check, memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion.birth_guard import strip_app_data
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
@@ -27,6 +35,7 @@ from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
 from app.companion.prompt import (build_messages, label_reply, parse_mood, parse_used, said_talk, split_working,
                                   who_block)
+from app.companion.reply_format import ReplyFormat, finalize, read_format, strip_tags
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -188,7 +197,7 @@ async def reply(
     companion_id: str, tenant_id: str, external_user_id: str, message: str,
     *, display_name: str | None = None, tools: list[AppTool] | None = None, require_live: bool = False,
     model: str | None = None, use_memory: bool = True, timezone_name: str | None = None,
-    app_data: str | None = None, profile_name: str | None = None,
+    app_data: str | None = None, profile_name: str | None = None, reply_format: ReplyFormat | None = None,
 ) -> CompanionReply:
     """model and use_memory are for the dashboard Playground only; the public API never sets them.
     use_memory=False is the "Compare" reply: no remembered facts, no chat history, no tools,
@@ -197,7 +206,8 @@ async def reply(
     app_data: what the app knows about this person, sent with this message (models.app_data_text). It goes
     into this reply's prompt only; it is never saved (a paused tool turn keeps its prompt for 2 minutes).
     profile_name: whose profile this person row is about (e.g. "Karthik" for the chart in app_data); saved on
-    the person like display_name, and both go into the prompt's WHO line (prompt.who_block)."""
+    the person like display_name, and both go into the prompt's WHO line (prompt.who_block).
+    reply_format: the app wants bubbles, chips, a button and a tag (reply_format.py); None = text only, as before."""
     tools = tools or []
     app_tools.validate_tools(tools)
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
@@ -205,9 +215,9 @@ async def reply(
     try:
         if not use_memory:
             return await _reply_without_memory(companion, tenant_id, message, model, app_data,
-                                               who_block(display_name, profile_name))
+                                               who_block(display_name, profile_name), reply_format=reply_format)
         return await _reply(companion, provider, tenant_id, external_user_id, message, display_name, tools,
-                            model, timezone_name, app_data, profile_name)
+                            model, timezone_name, app_data, profile_name, reply_format)
     finally:
         sem.release()
 
@@ -239,6 +249,8 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
             companion, provider, tenant_id, conversation, state["user_message"],
             state["prompt"] + extra, tools, int(turn["round"]) + 1, state.get("tool_log", []) + log,
             time.monotonic(), model=model, kb=KbResult.from_json(state.get("kb")),
+            reply_format=ReplyFormat(**state["reply_format"]) if state.get("reply_format") else None,
+            app_data=state.get("app_data"),
         )
     finally:
         sem.release()
@@ -288,14 +300,15 @@ async def _memory(provider, tenant_id: str, companion: dict, person: dict, messa
 
 async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
                                 model: str | None, app_data: str | None = None,
-                                who: str | None = None) -> CompanionReply:
+                                who: str | None = None, reply_format: ReplyFormat | None = None) -> CompanionReply:
     """One stateless reply: books only, no facts, no history, and no DB write at all (no person,
     no conversation), so it can run beside the normal reply without racing it. The app's data still
     comes along: it is what the app sends, not what the character remembers."""
     started = time.monotonic()
     kb = await _knowledge(tenant_id, companion, message, [])
     mood = companion.get("default_mood") or "calm"
-    prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data, who=who)
+    prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data, who=who,
+                            reply_format=reply_format)
     raw = None
     try:
         raw = await ai_reply._llm_chat(prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id,
@@ -303,17 +316,19 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
         playground.problem(ai_reply.describe_llm_error(exc))
-    text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion)
+    raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb, mood, model, reply_format)
+    text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion, reply_format, chart_failed)
+    text, shape = _shape(text, raw, basis, kb, companion, reply_format)
     logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
                 int((time.monotonic() - started) * 1000))
     return CompanionReply(status="done", text=text, mood=new_mood, basis=_shown_basis(basis, companion),
-                          sources=sources)
+                          sources=sources, **shape)
 
 
 async def _reply(companion: dict, provider: str, tenant_id: str, external_user_id: str, message: str,
                  display_name: str | None, tools: list[AppTool], model: str | None = None,
                  timezone_name: str | None = None, app_data: str | None = None,
-                 profile_name: str | None = None) -> CompanionReply:
+                 profile_name: str | None = None, reply_format: ReplyFormat | None = None) -> CompanionReply:
     started = time.monotonic()
     companion_id = companion["id"]
     person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name,
@@ -346,12 +361,12 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     mood = _mood(conversation, companion)
     if agentic:
         return await _agentic(companion, provider, tenant_id, conversation, person, message, history,
-                              memory_context, mood, tools, started, model, ov, app_data, who)
+                              memory_context, mood, tools, started, model, ov, app_data, who, reply_format)
     prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person),
-                            app_data=app_data, who=who)
+                            app_data=app_data, who=who, reply_format=reply_format)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
-                             model=model, kb=kb)
+                             model=model, kb=kb, reply_format=reply_format, app_data=app_data)
 
 
 async def _no_kb() -> None:
@@ -382,7 +397,8 @@ AGENTIC_NOTE = (
 async def _agentic(companion: dict, provider: str, tenant_id: str, conversation: dict, person: dict,
                    message: str, history: list[dict], memory_context: str, mood: str, tools: list[AppTool],
                    started: float, model: str | None, ov: "playground.Overrides",
-                   app_data: str | None = None, who: str | None = None) -> CompanionReply:
+                   app_data: str | None = None, who: str | None = None,
+                   reply_format: ReplyFormat | None = None) -> CompanionReply:
     offered = [t for t in (SEARCH_MEMORY, SEARCH_KNOWLEDGE)
                if ov.sources == "all" or (ov.sources == "memories") == (t is SEARCH_MEMORY)]
     if not companion.get("knowledge_collection_id"):
@@ -390,15 +406,15 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     if not offered:   # nothing to search (e.g. knowledge only, no collection): the normal reply path
         ov.note("Agentic: no search tool to offer, replied as usual")
         prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
-                                app_data=app_data, who=who)
+                                app_data=app_data, who=who, reply_format=reply_format)
         return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [],
-                                 started, model=model)
+                                 started, model=model, reply_format=reply_format)
     search_names = {t.name for t in offered}
     # The app's own tools are offered too (search tool names win a clash). An app-tool call here is not
     # run in round 1: round 2 offers the app tools again, after any searches, through the normal pause path.
     app_offered = [t for t in tools if t.name not in search_names]
     prompt = build_messages(companion, mood, None, memory_context, history, message, _person_today(companion, person),
-                            app_data=app_data, who=who)
+                            app_data=app_data, who=who, reply_format=reply_format)
     prompt[0] = {**prompt[0], "content": prompt[0]["content"] + AGENTIC_NOTE}
     llm_started = time.monotonic()
     raw, calls, wants_app = None, [], False
@@ -414,7 +430,8 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
     llm_ms = int((time.monotonic() - llm_started) * 1000)
     if not calls and not wants_app:
         ov.note(f"Round 1: answered without searching ({llm_ms} ms)")
-        return await _finish(companion, tenant_id, conversation, message, raw, [], started, llm_ms, None)
+        return await _finish(companion, tenant_id, conversation, message, raw, [], started, llm_ms, None,
+                             reply_format)
     if wants_app:
         ov.note("Round 1: asked for an app tool; it is offered again in round 2")
 
@@ -433,9 +450,9 @@ async def _agentic(companion: dict, provider: str, tenant_id: str, conversation:
         log.append({"name": call["name"], "args": call["args"], "ok": True})
     context = "\n".join(part for part in [memory_context] + found if part)
     prompt = build_messages(companion, mood, kb, context, history, message, _person_today(companion, person),
-                            app_data=app_data, who=who)
+                            app_data=app_data, who=who, reply_format=reply_format)
     reply = await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 2, log, started,
-                              model=model, kb=kb)
+                              model=model, kb=kb, reply_format=reply_format)
     total = int((time.monotonic() - started) * 1000)
     ov.note(f"Round 2: reply written ({total} ms total)" if reply.status == "done"
             else f"Round 2: paused for app tools ({total} ms so far)")
@@ -452,10 +469,12 @@ def _mood(conversation: dict, companion: dict) -> str:
 
 async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversation: dict, user_message: str,
                       prompt: list[dict], tools: list[AppTool], round_no: int, tool_log: list[dict],
-                      started: float, *, model: str | None = None, kb: KbResult | None = None) -> CompanionReply:
+                      started: float, *, model: str | None = None, kb: KbResult | None = None,
+                      reply_format: ReplyFormat | None = None, app_data: str | None = None) -> CompanionReply:
     """One LLM round. Either pauses for app tools (status tool_call) or finishes the reply.
     kb: the passages in the prompt. It rides along (and into a paused turn's state) so the finished
-    reply can be checked against what was really supplied."""
+    reply can be checked against what was really supplied. reply_format rides along the same way, and
+    app_data too (for the chart guard; kept only when the guard is on, birth details already removed)."""
     companion_id = companion["id"]
     use_tools = bool(tools) and round_no < MAX_ROUNDS
     llm_started = time.monotonic()
@@ -483,7 +502,8 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         # and go straight to the next round instead of handing the app nothing to run.
         extra, log = app_tools.round_messages(provider, raw or "", calls, [], known)
         return await _run_rounds(companion, provider, tenant_id, conversation, user_message,
-                                 prompt + extra, tools, round_no + 1, tool_log + log, started, model=model, kb=kb)
+                                 prompt + extra, tools, round_no + 1, tool_log + log, started, model=model, kb=kb,
+                                 reply_format=reply_format, app_data=app_data)
     if calls:
         state = {"prompt": prompt, "calls": calls, "assistant_text": raw or "",
                  "user_message": user_message, "tool_log": tool_log}
@@ -491,6 +511,10 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             state["model"] = model
         if kb is not None:
             state["kb"] = kb.to_json()
+        if reply_format is not None:
+            state["reply_format"] = reply_format.model_dump()
+        if app_data and companion.get("chart_guard"):
+            state["app_data"] = strip_app_data(app_data)
         turn_id = await store.create_pending_turn(
             tenant_id, companion_id, conversation["id"], state, [t.model_dump() for t in tools], round_no)
         logger.info("companion %s: paused for %d tool call(s) on round %d (llm %dms)",
@@ -499,18 +523,70 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             status="tool_call", turn_id=turn_id, conversation_id=conversation["id"],
             tool_calls=[c for c in calls if c["name"] in known],
         )
-    return await _finish(companion, tenant_id, conversation, user_message, raw, tool_log, started, llm_ms, kb)
+    raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb,
+                                           _mood(conversation, companion), model, reply_format)
+    return await _finish(companion, tenant_id, conversation, user_message, raw, tool_log, started, llm_ms, kb,
+                         reply_format, chart_failed)
 
 
-def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
-                companion: dict) -> tuple[str, str, str | None, list[dict]]:
+async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw: str | None,
+                       app_data: str | None, kb: KbResult | None, mood: str, model: str | None,
+                       reply_format: ReplyFormat | None) -> tuple[str | None, bool]:
+    """Chart guard, part 2: (raw reply to use, handed off?). Only for chart_guard characters with a chart
+    in app_data; small talk and an already handed-off reply are not checked.
+    Example: draft "Guru is in your 7th house" (chart: Guru in Simmam, house 8; today house 1 from rasi)
+    -> one redo with that fact listed -> "Guru is in Simmam, your 8th house..." -> sent. A redo that is
+    still wrong (or fails) -> (draft, True): the person gets the handoff line, not the wrong fact."""
+    if not companion.get("chart_guard") or not app_data or is_small_talk(kb) or not _has_text(raw):
+        return raw, False
+    chart = chart_check.parse_app_data(app_data)
+    if chart.empty():
+        return raw, False
+    basis = _read_reply(raw, mood, kb, companion, reply_format)[2]
+    if basis in (None, "chat") or _handed_off(basis, companion):   # a question back, or already the handoff line
+        return raw, False
+    wrong = chart_check.find_wrong(chart, _visible(raw))
+    if not wrong:
+        return raw, False
+    ov = playground.current()
+    if ov is not None:
+        ov.note(f"Chart check: {len(wrong)} wrong fact(s), redo: " + "; ".join(wrong[:3]))
+    redo = None
+    try:
+        redo = await ai_reply._llm_chat(
+            prompt + [{"role": "assistant", "content": raw}, {"role": "user", "content": chart_check.redo_note(wrong)}],
+            max_tokens=_max_tokens(companion), tenant_id=tenant_id, purpose=LLM_PURPOSE,
+            temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
+    except Exception as exc:
+        logger.warning("companion %s: chart redo failed (%s)", companion["id"], type(exc).__name__)
+    still = chart_check.find_wrong(chart, _visible(redo)) if _has_text(redo) else wrong
+    logger.info("companion %s: chart check wrong=%d redo=%s", companion["id"], len(wrong),
+                "handoff" if still else "ok")
+    if ov is not None:
+        ov.note("Chart check: redo passed" if not still else
+                f"Chart check: redo still wrong ({'; '.join(still[:3])}), sent the handoff line")
+    return (redo, False) if not still else (raw, True)
+
+
+def _visible(raw: str | None) -> str:
+    """The reply text the person would see: no working block, no [used]/[mood] or reply_format tags."""
+    text, _ = parse_used(split_working(raw)[0] or "", 0)
+    return strip_tags(parse_mood(text, "calm")[0])
+
+
+def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, companion: dict,
+                reply_format: ReplyFormat | None = None,
+                chart_failed: bool = False) -> tuple[str, str, str | None, list[dict]]:
     """'[mood: calm] [used: 1] Sani 7th house la…' -> (text, mood, basis, sources), both tags removed.
     The label is decided by code from the passages really supplied. An empty reply becomes the
     fallback line with no label: it came from no book and from no reasoning.
     [used: ...] is taken out first, so the mood tag is found even when the model wrote it second.
     [used: talk] (a question back, small talk, a polite decline) is "chat", not a gap. A Strict
     character's "own" answer becomes the handoff line; the label stays "own" so the gap is counted.
-    A <working> block (working_step) is cut off first; the Playground shows it."""
+    A <working> block (working_step) is cut off first; the Playground shows it.
+    reply_format: a reply the model tagged as anything but an answer ([tag: need_details], a button id, ...)
+    is "chat" too, so a Strict character's helpline or "use this button" reply is not swapped for the handoff line.
+    chart_failed: the chart guard found wrong chart facts twice -> the handoff line, basis "handoff"."""
     raw, working = split_working(raw)
     ov = playground.current()
     if ov is not None:
@@ -521,36 +597,79 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None,
     if not text:
         return fallback_line(companion.get("language")), previous_mood, None, []
     basis, sources = label_reply(kb, used)
-    if basis == "own" and said_talk(raw):
+    if basis == "own" and (said_talk(raw) or _not_an_answer(text, reply_format)):
         basis = "chat"
-    if basis == "own" and companion.get("own_reasoning") is False:
+    if chart_failed:
+        basis, sources = "handoff", []
+    if _handed_off(basis, companion):
         text = handoff_line(companion)
     return text, mood, basis, sources
 
 
-def _has_text(raw: str | None) -> bool:
+def _not_an_answer(text: str, fmt: ReplyFormat | None) -> bool:
+    """True when the app asked for a reply_format and the model tagged this reply as something other than an
+    answer: '[tag: helpline] ...' -> True; '[tag: counted] ...', no tag, or no format -> False."""
+    return fmt is not None and read_format(text, fmt).tag not in (None, "counted")
+
+
+def _handed_off(basis: str | None, companion: dict) -> bool:
+    """A Strict character's own-reasoning answer, or a reply the chart guard stopped: _read_reply swapped it
+    for the handoff line."""
+    return basis == "handoff" or (basis == "own" and companion.get("own_reasoning") is False)
+
+
+def _has_text(raw: str | None, with_format: bool = False) -> bool:
     """False when the model gave nothing to show (the call failed or only tags came back), i.e. when
-    _read_reply answers with the fallback line."""
+    _read_reply answers with the fallback line. with_format: the [tag:] [button:] [chips:] tags of a
+    reply_format count as tags too, so '[mood: calm] [tag: counted] [chips: none]' is nothing to show."""
     text, _ = parse_used(split_working(raw)[0] or "", 0)
-    return bool(parse_mood(text, "calm")[0].strip())
+    text = parse_mood(text, "calm")[0]
+    return bool((strip_tags(text) if with_format else text).strip())
+
+
+def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, companion: dict,
+           fmt: ReplyFormat | None) -> tuple[str, dict]:
+    """(text for CompanionReply.text and the saved chat, the four reply_format fields). No format: text as is,
+    all four None. With one: text = the bubbles joined by a blank line, never a tag, separator or chip.
+    Example: '[tag: counted] Guru 7th la.\n---\nNalla time.\n[chips: Eppo? | Velai?]' ->
+    ('Guru 7th la.\n\nNalla time.', {"bubbles": [...2], "chips": ["Eppo?", "Velai?"], "button": None, "tag": "counted"})"""
+    if fmt is None:
+        return text, {"bubbles": None, "chips": None, "button": None, "tag": None}
+    handed = _handed_off(basis, companion)
+    shaped = finalize(read_format(text, fmt), fmt, small_talk=is_small_talk(kb), handed_off=handed,
+                      failed=not _has_text(raw, with_format=True), text=text, own=basis == "own",
+                      fallback_text=handoff_line(companion) if handed else fallback_line(companion.get("language")))
+    return "\n\n".join(shaped.bubbles), shaped._asdict()
+
+
+def _logged_basis(basis: str | None, shape: dict, fmt: ReplyFormat | None) -> str | None:
+    """The question log's label. The model choosing the handoff button (e.g. "astrologer") is a question
+    the files did not answer, so it is "handoff" (on the Missing answers list), not "chat"."""
+    if basis == "chat" and fmt is not None and shape.get("button") and any(
+            b.handoff and b.id == shape["button"] for b in fmt.buttons):
+        return "handoff"
+    return basis
 
 
 def _shown_basis(basis: str | None, companion: dict) -> str | None:
     """The label the person sees. A Strict character (own_reasoning off) answers "own" with the
     handoff line; showing "own reading" on that would be wrong. The
     question log still gets "own", so the owner's missing-answers list keeps counting it."""
-    return None if basis == "own" and companion.get("own_reasoning") is False else basis
+    return None if _handed_off(basis, companion) else basis
 
 
 async def _finish(companion: dict, tenant_id: str, conversation: dict, user_message: str, raw: str | None,
-                  tool_log: list[dict], started: float, llm_ms: int, kb: KbResult | None = None) -> CompanionReply:
+                  tool_log: list[dict], started: float, llm_ms: int, kb: KbResult | None = None,
+                  reply_format: ReplyFormat | None = None, chart_failed: bool = False) -> CompanionReply:
     companion_id = companion["id"]
-    text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion)
-    if not _has_text(raw):
+    text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion,
+                                             reply_format, chart_failed)
+    text, shape = _shape(text, raw, basis, kb, companion, reply_format)
+    if not _has_text(raw, with_format=reply_format is not None):
         # The AI call failed (or came back empty): the person gets the sorry line, and nothing is saved,
         # so it isn't counted toward the memory step and isn't read back as something the character said.
         logger.info("companion %s: reply failed, turn not saved", companion_id)
-        return CompanionReply(status="done", text=text, mood=mood, conversation_id=conversation["id"])
+        return CompanionReply(status="done", text=text, mood=mood, conversation_id=conversation["id"], **shape)
 
     # Saved with secrets hidden ("my OTP is [hidden]"); the prompt got the message as typed.
     await store.save_message(tenant_id, conversation, "user", memory_card.mask_secrets(user_message))
@@ -573,13 +692,13 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
         # Background, never raises: the question log keeps only the topic, never the person or the message.
         # A Playground reply with changed search settings is left out: a stricter judge would log
         # "missing answers" and shortcut misses that live chat never had.
-        kb_learning.schedule_log(tenant_id, companion_id, kb, basis, sources)
+        kb_learning.schedule_log(tenant_id, companion_id, kb, _logged_basis(basis, shape, reply_format), sources)
 
     logger.info("companion %s: reply done (llm %dms, total %dms, basis %s)", companion_id, llm_ms,
                 int((time.monotonic() - started) * 1000), basis)
     return CompanionReply(
         status="done", text=text, mood=mood, conversation_id=conversation["id"], message_id=saved["id"],
-        basis=shown, sources=[{k: s[k] for k in ("document", "page_from", "page_to")} for s in sources],
+        basis=shown, sources=[{k: s[k] for k in ("document", "page_from", "page_to")} for s in sources], **shape,
     )
 
 

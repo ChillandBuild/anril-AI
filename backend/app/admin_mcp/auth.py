@@ -51,6 +51,7 @@ def _verified_claims(token: str) -> dict | None:
     try:
         alg = jwt.get_unverified_header(token).get("alg")
     except jwt.PyJWTError:
+        logger.info("MCP token refused: not a readable JWT")
         return None
     try:
         if alg == "HS256" and settings.supabase_jwt_secret:
@@ -66,6 +67,8 @@ def _verified_claims(token: str) -> dict | None:
         return None
     except Exception as exc:  # JWKS fetch failed: fall through to asking Supabase
         logger.warning("MCP token: JWKS check unavailable: %s", exc)
+    if alg != "HS256" and alg not in _ASYMMETRIC:
+        logger.info("MCP token has an unsupported algorithm (%s); asking Supabase", alg)
     # No local way to check (no shared secret configured, or JWKS down): ask Supabase.
     try:
         user = get_supabase().auth.get_user(token).user
@@ -74,6 +77,7 @@ def _verified_claims(token: str) -> dict | None:
         return None
     claims = peek_claims(token)
     if not user or not claims.get("sub") or str(user.id) != str(claims["sub"]):
+        logger.info("MCP token refused by Supabase: no matching user")
         return None
     return claims
 
@@ -84,6 +88,7 @@ def verify(token: str) -> AccessToken | None:
         return None
     user_id, client_id = claims.get("sub"), claims.get("client_id")
     if not user_id or not client_id:
+        logger.info("MCP token refused: no client_id, so not issued to a connector")
         return None  # a normal dashboard login, not Claude
     # No registered client configured = nobody gets in (main.py also refuses to start the MCP).
     if not settings.mcp_oauth_client_id or client_id != settings.mcp_oauth_client_id:
@@ -96,6 +101,7 @@ def verify(token: str) -> AccessToken | None:
         return None
     connection = mcp_connections.find_active(db, user_id, client_id)
     if not connection:
+        logger.warning("MCP token refused: user %s has no active connection (switched off or replaced by a newer one)", str(user_id)[:8])
         return None
     return AccessToken(
         token=token,

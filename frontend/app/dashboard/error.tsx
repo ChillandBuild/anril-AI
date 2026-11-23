@@ -27,15 +27,18 @@ export default function DashboardError({
       <p className="font-body text-sm text-[#475569] max-w-md mt-2 leading-relaxed">
         {isNetwork
           ? "The backend may be waking up or briefly unavailable. Your data is safe — give it a few seconds and retry."
-          : "This view hit an unexpected error and couldn't render. You can retry without losing your session."}
+          : "This page hit a problem. Nothing you saved is lost. Try again, and if it keeps happening tell the Anril team the code below."}
       </p>
       <button
         onClick={reset}
         className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl font-label text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
       >
         <RefreshCw size={15} />
-        Retry
+        Try again
       </button>
+      {error?.digest ? (
+        <p className="font-body text-xs text-[#475569] mt-4">Code: {error.digest}</p>
+      ) : null}
     </div>
   );
 }

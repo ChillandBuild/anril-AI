@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # accepted here, and these ids are never accepted at /mcp.
     mcp_client_enabled: bool = False
     mcp_client_oauth_client_ids: str = ""
+    # Per-IP rate limits (OTP, booking link, QR, website form) key on CF-Connecting-IP.
+    # Unset = believe it from any peer (on Render every request comes through Cloudflare, which
+    # overwrites it). Comma-separated CIDRs = only believe it from those peers; "" = never.
+    # See routes/auto_messages._client_ip.
+    trusted_proxy_cidrs: str | None = None
 
     model_config = {"env_file": ".env", "case_sensitive": False, "extra": "ignore"}
 

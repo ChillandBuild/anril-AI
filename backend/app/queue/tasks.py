@@ -27,6 +27,7 @@ RETRY_CLASS: dict[str, str] = {
     "otp-sweep": "A",
     "numbers-pool-sync": "B",
     "send-log-prune": "B",
+    "password-help-prune": "B",
     "scheduler-runs-prune": "B",
     "private-send-meta-reconcile": "B",
     "auto-archive-idle": "B",
@@ -44,6 +45,15 @@ RETRY_CLASS: dict[str, str] = {
     "expense-repeats": "A",
     "order-payment-reminders": "C",
     "meta-catalogue-sync": "A",
+    "booking-release-holds": "C",
+    "booking-reminders": "C",
+    "booking-call-now": "C",
+    "feedback-ask": "C",
+    "reports-monthly-bells": "C",
+    "call-break-limits": "C",
+    "evening-summary": "C",
+    "fee-reminders": "C",
+    "comeback-offers": "C",
 }
 
 
@@ -101,7 +111,7 @@ def assignment_sweep(timestamp: int) -> None:
 
 # Class A: each lead's template is claimed pending -> sending, so a re-run or an
 # overlap with the live webhook never sends twice.
-@queue_app.periodic(cron="*/30 * * * *", periodic_id="instant-forms-catch-up")
+@queue_app.periodic(cron="*/10 * * * *", periodic_id="instant-forms-catch-up")
 @queue_app.task(name="instant-forms-catch-up", queue="messages")
 async def instant_forms_catch_up(timestamp: int) -> None:
     from app.services.meta_lead_forms import catch_up_all
@@ -225,6 +235,15 @@ async def numbers_pool_sync(timestamp: int) -> None:
 async def send_log_prune(timestamp: int) -> None:
     from app.services.outbound_router import prune_send_log
     await prune_send_log()
+
+
+@queue_app.periodic(cron="15 22 * * *", periodic_id="password-help-prune")  # 03:45 IST
+@queue_app.task(name="password-help-prune", queue="maintenance")
+def password_help_prune(timestamp: int) -> None:
+    """Forgot-password requests hold an email or phone: keep them 90 days, then delete."""
+    from app.db.supabase import get_supabase
+    from app.services.password_help import prune_old
+    prune_old(get_supabase())
 
 
 @queue_app.periodic(cron="45 21 * * *", periodic_id="scheduler-runs-prune")  # 03:15 IST
@@ -380,3 +399,90 @@ async def meta_catalogue_sync(timestamp: int) -> None:
     """Catalogue changes (a sale, a price, a photo) to each shop's Meta catalogue, within a minute."""
     from app.services.meta_catalog import sync_all_tenants
     await sync_all_tenants()
+
+
+# Bookings (v9.2 #19). Class C: they message customers, so never two copies at once and never re-run.
+@queue_app.periodic(cron="* * * * *", periodic_id="booking-release-holds")
+@queue_app.task(name="booking-release-holds", **_one_at_a_time("booking-release-holds"), queue="messages")
+async def booking_release_holds(timestamp: int) -> None:
+    """A held slot whose advance is not paid within 15 minutes is released; one that was paid is booked."""
+    from app.services.booking_messages import release_holds
+    await release_holds()
+
+
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="booking-reminders")
+@queue_app.task(name="booking-reminders", **_one_at_a_time("booking-reminders"), queue="messages")
+async def booking_reminders(timestamp: int) -> None:
+    """Day-before (9 AM-8 PM IST) and 2-hour reminders with Yes, coming / Cancel buttons."""
+    from app.services.booking_messages import send_reminders
+    await send_reminders()
+
+
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="booking-call-now")
+@queue_app.task(name="booking-call-now", **_one_at_a_time("booking-call-now"), queue="messages")
+def booking_call_now(timestamp: int) -> None:
+    """No 'Yes, coming' an hour after the 2-hour reminder: flag the booking Call now, one bell."""
+    from app.services.booking_messages import flag_call_now
+    flag_call_now()
+
+
+# Customers › Feedback (v9.2 #17). Class C: it messages customers; the row is written before the send and
+# a unique index per order/booking means a re-run never asks twice. Only 10 AM-8 PM IST (checked inside).
+@queue_app.periodic(cron="*/15 * * * *", periodic_id="feedback-ask")
+@queue_app.task(name="feedback-ask", **_one_at_a_time("feedback-ask"), queue="messages")
+async def feedback_ask(timestamp: int) -> None:
+    """1 day after a delivered order or a booking marked Came: the 5-star message (only where Feedback is on)."""
+    from app.services.customer_feedback import ask_due_feedback
+    await ask_due_feedback()
+
+
+# Reports (v9.2 #16). Class C: one bell per owner per month (each function checks the date and its own
+# per-month marker), never two at once. 9 AM IST daily; only the 1st and the 5th do anything.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(9, 0), periodic_id="reports-monthly-bells")
+@queue_app.task(name="reports-monthly-bells", **_one_at_a_time("reports-monthly-bells"), queue="messages")
+def reports_monthly_bells(timestamp: int) -> None:
+    """1st: "Your report for last month". 5th: "Last month's accountant file is ready"."""
+    from app.services.reports_monthly import send_due_bells
+    send_due_bells()
+
+
+# Call IQ (v9.2 #21). Class C: one bell per break (callers.break_alert_sent_at is stamped first), never two at
+# once. The same run starts any leave whose first day has arrived (moves that person's open leads).
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="call-break-limits")
+@queue_app.task(name="call-break-limits", **_one_at_a_time("call-break-limits"), queue="calls")
+def call_break_limits(timestamp: int) -> None:
+    """Bell the owner when a telecaller stays on break past the business's limit; start due leaves."""
+    from app.db.supabase import get_supabase
+    from app.services.call_rules import check_break_limits
+    check_break_limits(get_supabase())
+
+
+# Alerts & automations (v9.2 #26). Class C: each sends WhatsApp messages. The evening summary records the day
+# it was sent per business before it sends; the come-back offer claims a row per customer first (30-day rule).
+# Both are OFF until the owner switches them on.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(20, 0), periodic_id="evening-summary")
+@queue_app.task(name="evening-summary", **_one_at_a_time("evening-summary"), queue="messages")
+def evening_summary(timestamp: int) -> None:
+    """8 PM IST: today's chats, new customers, orders and money to the owner on WhatsApp."""
+    from app.db.supabase import get_supabase
+    from app.services.evening_summary import send_evening_summaries
+    send_evening_summaries(get_supabase())
+
+
+# Courses (v9.2 P2). Class C: WhatsApp fee reminders 3 days before, on, and 3 days after each part's due date.
+# Each send is claimed first, so a re-run never double-sends. Off until the template is approved and switched on.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(10, 0), periodic_id="fee-reminders")
+@queue_app.task(name="fee-reminders", **_one_at_a_time("fee-reminders"), queue="messages")
+async def fee_reminders(timestamp: int) -> None:
+    """10 AM IST: fee instalment reminders to students (or their parent)."""
+    from app.services.fee_plans import send_fee_reminders
+    await send_fee_reminders()
+
+
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(11, 0), periodic_id="comeback-offers")
+@queue_app.task(name="comeback-offers", **_one_at_a_time("comeback-offers"), queue="messages")
+def comeback_offers(timestamp: int) -> None:
+    """11 AM IST: the come-back offer to customers who bought before but not in 60 days (at most once a month)."""
+    from app.db.supabase import get_supabase
+    from app.services.comeback_offer import send_comeback_offers
+    send_comeback_offers(get_supabase())

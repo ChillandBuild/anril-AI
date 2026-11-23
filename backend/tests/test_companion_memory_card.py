@@ -122,14 +122,15 @@ def test_day1_example_saves_four_facts(db, llm):
       {"op":"add","section":"life","text":"lost job","valid_from":"2026-10","quote":"Job poiduchu"},
       {"op":"add","section":"people","text":"son, in 10th standard","quote":"En paiyan ku 10th exam"},
       {"op":"add","section":"threads","text":"son's 10th exam","valid_from":"2027-03","quote":"10th exam March la"},
-      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2026-11-20","quote":"Zoho la interview 20th"}]''')
+      {"op":"add","section":"threads","text":"Zoho interview","valid_from":"2099-11-20","quote":"Zoho la interview 20th"}]''')
+    # 2099: the thread stays open (not due) whatever day the suite runs
     done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", DAY1))
     assert done["add"] == 4
     call = llm["calls"][0]
     assert call["purpose"] == "companion_memory" and call["tenant_id"] == "t1"
     rendered = run(card.MemoryCard().context_for("t1", "jothidar", "karthik", "Hi"))
     assert rendered.splitlines()[0].startswith("Open threads: ")
-    assert "Zoho interview (20 Nov 2026)" in rendered and "son's 10th exam (Mar 2027)" in rendered
+    assert "Zoho interview (20 Nov 2099)" in rendered and "son's 10th exam (Mar 2027)" in rendered
     assert "People: son, in 10th standard" in rendered and "Life: lost job (since Oct 2026)" in rendered
     job = next(f for f in db.rows("companion_memory_facts") if f["text"] == "lost job")
     assert job["quote"] == "Job poiduchu" and job["source_message_id"] is None  # DAY1 rows carry no id
@@ -335,3 +336,30 @@ def test_a_full_card_logs_the_fact_it_could_not_save(db, llm, guru_chat, caplog)
     caplog.set_level(logging.WARNING)
     assert run(card.extract_and_apply("t1", JOTHIDAR, "priya", GURU_CHAT))["add"] == 0
     assert "memory card full" in caplog.text and "brother" not in caplog.text
+
+
+# --- chart guard: the app re-sends the chart, so memory never keeps chart facts or birth details -------
+
+GUARDED = {**JOTHIDAR, "chart_guard": True}
+CHART_TALK = [{"role": "user", "content": "En rasi Simmam, Guru Simmathil irukku. Born 19 Nov 2003 Madurai. "
+                                          "Kalyanam late aagudhu nu worry."}]
+CHART_OPS = '''[
+  {"op":"add","section":"profile","text":"rasi Simmam","quote":"En rasi Simmam"},
+  {"op":"add","section":"profile","text":"Guru in Simmam","quote":"Guru Simmathil irukku"},
+  {"op":"add","section":"profile","text":"born in Madurai","slot":"birth_place","quote":"Madurai"},
+  {"op":"add","section":"threads","text":"worried about a delayed marriage","quote":"Kalyanam late aagudhu nu worry"}]'''
+
+
+def test_chart_guard_saves_the_worry_not_the_chart_or_birth_details(db, llm):
+    llm["answers"].append(CHART_OPS)
+    done = run(card.extract_and_apply("t1", GUARDED, "karthik", CHART_TALK))
+    assert done["add"] == 1
+    assert [f["text"] for f in db.rows("companion_memory_facts")] == ["worried about a delayed marriage"]
+    sent = llm["calls"][0]["messages"][0]["content"]
+    assert "NEVER save, recap or note horoscope facts" in sent and "birth_date" not in sent
+
+
+def test_without_the_guard_chart_facts_are_saved_as_before(db, llm):
+    llm["answers"].append(CHART_OPS)
+    done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", CHART_TALK))
+    assert done["add"] == 4

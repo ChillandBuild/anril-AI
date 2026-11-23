@@ -75,7 +75,7 @@ def test_without_app_data_the_prompt_has_no_section(env, monkeypatch):  # noqa: 
 
 def test_too_much_app_data_is_a_422(env):  # noqa: F811
     r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
-        "companion_id": env.live["id"], "user_id": "48213", "message": "hi", "app_data": "x" * 4001})
+        "companion_id": env.live["id"], "user_id": "48213", "message": "hi", "app_data": "x" * (MAX_APP_DATA_CHARS + 1)})
     assert r.status_code == 422
 
 

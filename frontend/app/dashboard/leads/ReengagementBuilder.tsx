@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { api, ReengagementLog, ReengagementStep, WabaTemplate } from "@/lib/api";
+import { api, CustomerGroup, ReengagementLog, ReengagementStep, WabaTemplate } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import {
   DelayUnit,
@@ -103,18 +103,26 @@ function placeholderCount(body?: string | null): number {
   return matches ? new Set(matches).size : 0;
 }
 
+/** A step may be limited to one Customers group (target_group_id). Older backends leave it out. */
+type StepRow = ReengagementStep & { target_group_id?: string | null };
+
 interface ReengagementBuilderProps {
   type: "broadcast" | "inbound";
   broadcastId?: string;
   templates: WabaTemplate[];
   canManage?: boolean;
+  /** Opens the add form with this group picked (the Groups page "Start an auto-message" button). */
+  initialGroupId?: string;
 }
 
-export default function ReengagementBuilder({ type, broadcastId, templates, canManage = false }: ReengagementBuilderProps) {
-  const [steps, setSteps] = useState<ReengagementStep[]>([]);
+export default function ReengagementBuilder({ type, broadcastId, templates, canManage = false, initialGroupId }: ReengagementBuilderProps) {
+  const [steps, setSteps] = useState<StepRow[]>([]);
+  const [groups, setGroups] = useState<CustomerGroup[]>([]);
+  // "" = everyone who fits the other choices; otherwise only people in this group.
+  const [groupId, setGroupId] = useState(canManage && initialGroupId ? initialGroupId : "");
   // Starts true: the first fetch runs on mount, so "No messages yet" mustn't flash first.
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
+  const [showAdd, setShowAdd] = useState(Boolean(canManage && initialGroupId));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
@@ -172,6 +180,12 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
     fetchSteps();
   }, [fetchSteps]);
 
+  useEffect(() => {
+    api.customerGroups.list().then(setGroups).catch(() => {});
+  }, []);
+
+  const groupNameOf = (id: string | null | undefined) => (id ? groups.find((g) => g.id === id)?.name ?? "a group" : null);
+
   function toggleSegment(s: string) {
     setSegments((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
@@ -189,6 +203,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
     setContent("");
     setTemplateName("");
     setFallbackTemplate("");
+    setGroupId("");
   }
 
   function startEdit(step: ReengagementStep) {
@@ -203,6 +218,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
     setContent(step.message_content ?? "");
     setTemplateName(step.template_name ?? "");
     setFallbackTemplate(step.fallback_template_name ?? "");
+    setGroupId((step as StepRow).target_group_id ?? "");
     setShowAdd(true);
   }
 
@@ -252,6 +268,8 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
       template_variables: messageType === "template" ? varsFor(templateName) : null,
       fallback_template_name: messageType === "freeform" && fallbackTemplate ? fallbackTemplate : null,
       fallback_template_variables: messageType === "freeform" && fallbackTemplate ? varsFor(fallbackTemplate) : null,
+      // Always sent, so clearing the picker on an edit takes the limit off.
+      target_group_id: groupId || null,
     };
     try {
       if (editingId) {
@@ -361,6 +379,14 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                     <span>{formatDelay(s.delay_hours)} {anchorLabel}</span>
                     <span className="text-on-surface-muted">·</span>
                     <span>{s.target_segments.map((x) => SEGMENT_LABELS[x] || x).join(", ")}</span>
+                    {s.target_group_id && (
+                      <>
+                        <span className="text-on-surface-muted">·</span>
+                        <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                          Only {groupNameOf(s.target_group_id)}
+                        </span>
+                      </>
+                    )}
                     {s.target_sources && s.target_sources.length > 0 && (
                       <>
                         <span className="text-on-surface-muted">·</span>
@@ -476,6 +502,23 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
               ))}
             </div>
           </div>
+
+          <label className="block">
+            <span className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Only people in group</span>
+            <p className="mb-1 mt-0.5 text-xs text-on-surface-muted">
+              Optional. Leave it on &quot;Everyone&quot; to follow up with anyone who fits the choices above.
+            </p>
+            <Select
+              value={groupId}
+              onChange={setGroupId}
+              aria-label="Only people in group"
+              className="max-w-md"
+              options={[
+                { value: "", label: "Everyone" },
+                ...groups.map((g) => ({ value: g.id, label: `${g.name} (${g.member_count})` })),
+              ]}
+            />
+          </label>
 
           <div className="flex gap-2">
             <button

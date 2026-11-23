@@ -61,11 +61,18 @@ def test_build_link_strips_plus_and_encodes_text():
 
 def test_build_link_round_trips_through_parser():
     # The generator and parser must agree on the tag format — prove it.
-    link = build_tracked_wa_link("919876543210", "diwali_2026", gclid="Cj0abc_XY")
+    link = build_tracked_wa_link("919876543210", "diwali_2026")
     from urllib.parse import unquote
     prefilled = unquote(link.split("text=", 1)[1])
     ref = parse_google_ref(prefilled)
-    assert ref == GoogleAdRef(campaign="diwali_2026", gclid="Cj0abc_XY")
+    assert ref == GoogleAdRef(campaign="diwali_2026", gclid=None)
+
+
+def test_build_link_never_carries_a_gclid_even_when_one_is_passed():
+    link = build_tracked_wa_link("919876543210", "diwali_2026", gclid="Cj0abc_XY")
+    assert "gclid" not in link.lower()
+    assert "Cj0abc_XY" not in link
+    assert "%5BGADS%3Adiwali_2026%5D" in link
 
 
 def test_build_link_rejects_invalid_slug():

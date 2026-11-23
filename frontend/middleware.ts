@@ -1,14 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { OPERATOR_AUTH_COOKIE, isDashboardAuthCookie, isOperatorPath } from "@/lib/supabase/operator";
 
 export async function middleware(request: NextRequest) {
   const isDashboardRoute = request.nextUrl.pathname.startsWith("/dashboard");
+  // The Operator Console has its own login cookie, so it is refreshed (below) under that name.
+  const isOperatorRoute = isOperatorPath(request.nextUrl.pathname);
 
   // Fast path: a protected route with no auth cookie at all goes straight to
   // /login without asking Supabase. (A cookie is never trusted without a check.)
-  const hasAuthCookies = request.cookies
-    .getAll()
-    .some((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"));
+  const hasAuthCookies = request.cookies.getAll().some((c) => isDashboardAuthCookie(c.name));
 
   if (!hasAuthCookies && isDashboardRoute) {
     const url = request.nextUrl.clone();
@@ -27,6 +28,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      ...(isOperatorRoute ? { cookieOptions: { name: OPERATOR_AUTH_COOKIE } } : {}),
       cookies: {
         getAll() {
           return request.cookies.getAll();

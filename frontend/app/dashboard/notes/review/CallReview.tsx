@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Phone, Pin, Search, StickyNote, Users, X } from "lucide-react";
 import { api, type Caller, type CallLog, type ReviewLead, type ReviewRange } from "@/lib/api";
@@ -14,6 +15,7 @@ import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
 import { AiraLoader } from "@/components/AiraLoader";
+import { callIdFromParam, fetchCallToReview, localDayOf } from "@/lib/callReviewLink";
 import { Select } from "@/components/ui/Select";
 
 type Preset = "today" | "7" | "30" | "custom";
@@ -170,6 +172,37 @@ export default function CallReview() {
   const [segment, setSegment] = useState<"A" | "B" | "C" | "D" | "">("");
   const [tab, setTab] = useState<Tab>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // "Review call" links arrive as ?call=<id>: open that customer on the day of that call, with that call showing.
+  const linkedCallId = callIdFromParam(useSearchParams()?.get("call"));
+  const [focusCallId, setFocusCallId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!linkedCallId) return;
+    let cancelled = false;
+    fetchCallToReview(linkedCallId)
+      .then((call) => {
+        if (cancelled) return;
+        const day = localDayOf(call.created_at);
+        if (!call.lead_id || !day) {
+          toast.error("That call has no customer attached, so it can't be opened here.");
+          return;
+        }
+        setPreset("custom");
+        setFrom(day);
+        setTo(day);
+        setCallerId("");
+        setSearch("");
+        setScoreBand("");
+        setSegment("");
+        setTab("all");
+        setSelectedId(call.lead_id);
+        setFocusCallId(call.id);
+      })
+      .catch(() => !cancelled && toast.error("Couldn't open that call. It may have been deleted."));
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedCallId]);
 
   const window_ = useMemo(() => rangeFor(preset, from, to), [preset, from, to]);
   const range: ReviewRange = useMemo(
@@ -457,7 +490,7 @@ export default function CallReview() {
 
         <section className={cn(CARD, "min-w-0 lg:h-full lg:min-h-0 lg:flex lg:flex-col lg:overflow-hidden")}>
           {selected ? (
-            <LeadWorkspace key={`${selected.id}-${range.start}-${range.end}-${callerId}`} lead={selected} range={range} callerName={callerName} />
+            <LeadWorkspace key={`${selected.id}-${range.start}-${range.end}-${callerId}`} lead={selected} range={range} callerName={callerName} focusCallId={focusCallId} />
           ) : (
             <div className="py-24 px-6 flex flex-col items-center text-center">
               <div className="w-14 h-14 rounded-2xl bg-[var(--primary-50)] text-primary grid place-items-center mb-3">
@@ -479,14 +512,17 @@ function LeadWorkspace({
   lead,
   range,
   callerName,
+  focusCallId = null,
 }: {
   lead: ReviewLead;
   range: ReviewRange;
   callerName: (id: string | null | undefined) => string;
+  /** The call a "Review call" link pointed at; it starts as the open call (the newest otherwise). */
+  focusCallId?: string | null;
 }) {
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(focusCallId);
 
   const load = useCallback(
     async (quiet = false) => {

@@ -45,6 +45,7 @@ describe("canSearch and canUseSearch", () => {
     expect(canUseSearch("staff", ["deals.manage"])).toBe(true);
     expect(canUseSearch("staff", ["conversations.reply"])).toBe(true);
     expect(canUseSearch("staff", ["settings.view"])).toBe(false);
+    expect(canUseSearch("staff", ["bookings.view"])).toBe(true);
   });
 });
 
@@ -59,6 +60,20 @@ describe("buildSections", () => {
 
   it("orders the groups Customers, Orders & Bills, Items, Chats whatever order they arrive in", () => {
     expect(buildSections(groups).map((s) => s.heading)).toEqual(["CUSTOMERS", "ORDERS & BILLS", "ITEMS", "CHATS"]);
+  });
+  it("puts BOOKINGS right after orders and links to the booking", () => {
+    const withBookings = [
+      ...groups,
+      { key: "bookings", title: "Bookings", items: [{ id: "B1", label: "BK-0012 · Priya", detail: "Thu 4:00 PM · Reading · Ravi", href: "/dashboard/bookings?date=2026-11-27&booking=B1" }, { id: "B2", label: "BK-0013 · Asha" }] },
+    ];
+    const sections = buildSections(withBookings);
+    expect(sections.map((x) => x.heading)).toEqual(["CUSTOMERS", "ORDERS & BILLS", "BOOKINGS", "ITEMS", "CHATS"]);
+    const rows = sections[2].rows;
+    expect(rows[0]).toMatchObject({ id: "bookings:B1", title: "BK-0012 · Priya", subtitle: "Thu 4:00 PM · Reading · Ravi", href: "/dashboard/bookings?date=2026-11-27&booking=B1" });
+    expect(rows[1].href).toBe("/dashboard/bookings?booking=B2");
+    // 2026-11-27T22:00:00Z is 28 Nov 03:30 in IST, so the fallback opens the 28th.
+    const dated = buildSections([{ key: "bookings", title: "Bookings", items: [{ id: "B3", label: "BK-0014", start_at: "2026-11-27T22:00:00Z" }] }]);
+    expect(dated[0].rows[0].href).toBe("/dashboard/bookings?date=2026-11-28&booking=B3");
   });
   it("drops empty and unknown groups", () => {
     const only = buildSections([{ key: "items", title: "", items: [] }, { key: "x", title: "", items: [{ id: "1" }] }]);

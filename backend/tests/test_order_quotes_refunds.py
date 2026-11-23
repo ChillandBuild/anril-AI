@@ -240,6 +240,7 @@ def test_the_accept_button_confirms_the_quote_instead_of_an_ai_reply():
          patch("app.services.automation_guards.ai_replies_allowed_for_lead", return_value=False), \
          patch("app.services.ai_reply.record_tamil_lock_request"), \
          patch("app.services.order_quotes.accept_from_chat", accepted), \
+         patch("app.services.purchases.supplier_by_phone", return_value=None), \
          patch("app.services.ai_reply.generate_reply", reply):
         run(webhook._process_inbound_message_background(
             lead_id="L1", tenant_id=T, phone="+919840277889", body="Accept quote", msg_type="button",

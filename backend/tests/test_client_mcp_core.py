@@ -300,3 +300,21 @@ def test_one_client_is_slowed_down_after_60_calls_a_minute_and_others_are_not():
 def test_outside_a_call_there_is_no_client():
     with pytest.raises(ToolError, match="Not signed in"):
         wrapper.tenant_id()
+
+
+# ── every refusal says why in the logs ────────────────────────────────────────
+
+def test_a_token_without_client_id_logs_why(caplog):
+    with caplog.at_level("INFO", logger="app.client_mcp.auth"):
+        assert _verify(two_clients(), client_id=None) is None
+    assert "no client_id" in caplog.text
+
+
+def test_no_active_connection_logs_why_and_never_the_token(caplog):
+    db = two_clients()
+    db.rows("tenant_mcp_connections")[0]["status"] = "revoked"
+    token = make_token()
+    with patch.object(auth, "get_supabase", return_value=db), caplog.at_level("INFO", logger="app.client_mcp.auth"):
+        assert auth.verify(token) is None
+    assert "no active connection" in caplog.text
+    assert token not in caplog.text

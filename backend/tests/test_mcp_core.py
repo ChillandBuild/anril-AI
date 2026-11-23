@@ -537,3 +537,42 @@ class ClaudeAccessEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefusalReasonLogTests(unittest.TestCase):
+    """Every 401 leaves one log line saying why (so a "Sign-in expired" can be traced from the logs)."""
+
+    def setUp(self):
+        self.patches = [
+            patch.object(settings, "supabase_jwt_secret", SECRET),
+            patch.object(settings, "supabase_url", "https://proj.supabase.co"),
+            patch.object(settings, "mcp_oauth_client_id", "claude-client"),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def _logs(self, token, *, connection={"id": "conn-1"}):
+        with patch.object(auth, "get_supabase", return_value=admin_db()), \
+             patch.object(mcp_connections, "find_active", return_value=connection), \
+             self.assertLogs("app.admin_mcp.auth", level="INFO") as captured:
+            auth.verify(token)
+        return "\n".join(captured.output)
+
+    def test_expired_token_says_so(self):
+        self.assertIn("ExpiredSignatureError", self._logs(make_token(exp=int(time.time()) - 5)))
+
+    def test_not_a_jwt_says_so(self):
+        self.assertIn("not a readable JWT", self._logs("not-a-token"))
+
+    def test_token_without_client_id_says_so(self):
+        self.assertIn("no client_id", self._logs(make_token(client_id=None)))
+
+    def test_no_active_connection_says_so_and_never_prints_the_token(self):
+        token = make_token()
+        text = self._logs(token, connection=None)
+        self.assertIn("no active connection", text)
+        self.assertNotIn(token, text)

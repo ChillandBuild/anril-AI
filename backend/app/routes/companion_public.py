@@ -26,6 +26,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.companion import engine, keys, store
 from app.companion.models import AppData, AppTool, ToolResult
+from app.companion.reply_format import ReplyFormat
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.routes.auto_messages import _SlidingWindow, _client_ip
 
@@ -113,7 +114,8 @@ class ServerChatIn(_Body):
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
-    app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 4,000 chars)
+    app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 12,000 chars)
+    reply_format: ReplyFormat | None = None   # opt in to bubbles, chips, a button and a tag (reply_format.py)
 
 
 class ServerContinueIn(_Body):
@@ -138,6 +140,7 @@ class WidgetChatIn(WidgetAuthIn):
     timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
     app_data: AppData = None
+    reply_format: ReplyFormat | None = None
 
 
 class WidgetContinueIn(WidgetAuthIn):
@@ -242,9 +245,14 @@ async def _run(call, kind: str, log: dict) -> JSONResponse:
 @public_router.post("/chat")
 async def server_chat(body: ServerChatIn, request: Request):
     """{"companion_id", "user_id", "message", "display_name"?, "profile_id"?, "profile_name"?, "timezone"?,
-    "tools"?, "app_data"?} → the reply,
+    "tools"?, "app_data"?, "reply_format"?} → the reply,
     or status "tool_call" with a turn_id: run the tools and POST /chat/continue. app_data rides with every
-    message (e.g. AstroTamil's chart for this user) and is never stored."""
+    message (e.g. AstroTamil's chart for this user) and is never stored.
+    reply_format {"buttons"?: [{"id", "when", "handoff"?}] (0-6), "questions_left"?}: the reply also carries
+    "bubbles" (1-3 short texts), "chips" (0 or 2 follow-up questions), "button" (one of your ids or null) and
+    "tag" ("counted" = count this question; "ask_back", "greeting", "off_topic", "need_details", a button id,
+    "handoff" or "failed" = don't). "text" is then the bubbles joined by a blank line. Without reply_format
+    those four are null. The format carries over to /chat/continue on its own."""
     log = {"companion_id": str(body.companion_id), "user_id": body.user_id}
 
     async def call():
@@ -254,7 +262,7 @@ async def server_chat(body: ServerChatIn, request: Request):
         result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
                                     timezone_name=body.timezone, app_data=body.app_data,
-                                    profile_name=body.profile_name)
+                                    profile_name=body.profile_name, reply_format=body.reply_format)
         return result.model_dump()
     return await _run(call, "chat", log)
 
@@ -309,7 +317,7 @@ async def widget_chat(body: WidgetChatIn, request: Request):
         result = await engine.reply(str(body.companion_id), tenant_id, person_key, body.message.strip(),
                                     display_name=body.display_name, tools=body.tools, require_live=True,
                                     timezone_name=body.timezone, app_data=body.app_data,
-                                    profile_name=body.profile_name)
+                                    profile_name=body.profile_name, reply_format=body.reply_format)
         return result.model_dump()
     return await _run(call, "widget_chat", log)
 

@@ -101,9 +101,12 @@ describe("the Settings list", () => {
       ["My business", "Text size", "/dashboard/settings/display"],
       ["Connections", "Channels", "/dashboard/settings/connect-channels"],
       ["Connections", "Calling", "/dashboard/settings/telecalling-behavior"],
+      ["Connections", "Calling rules", "/dashboard/settings/calling-rules"],
       ["Connections", "Limits & Meta charges", "/dashboard/settings/meta-charges"],
       ["Team & roles", "Team & roles", "/dashboard/roles"],
-      ["Alerts & automations", "Alerts", "/dashboard/settings/notifications"],
+      ["Alerts & automations", "Alerts", "/dashboard/settings/alerts"],
+      ["Alerts & automations", "Push & lead claims", "/dashboard/settings/notifications"],
+      ["Alerts & automations", "Automations", "/dashboard/automations"],
       [null, "Plans & subscription", "/dashboard/subscription"],
     ]);
   });
@@ -112,9 +115,9 @@ describe("the Settings list", () => {
     const { groups, loose } = groupSettingsItems(getVisibleSettingsItems([], false));
     expect(groups.map((g) => [g.group, g.items.map((i) => i.label)])).toEqual([
       ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
-      ["Connections", ["Channels", "Calling", "Limits & Meta charges"]],
+      ["Connections", ["Channels", "Calling", "Calling rules", "Limits & Meta charges"]],
       ["Team & roles", ["Team & roles"]],
-      ["Alerts & automations", ["Alerts"]],
+      ["Alerts & automations", ["Alerts", "Push & lead claims", "Automations"]],
     ]);
     expect(loose.map((i) => i.label)).toEqual(["Plans & subscription"]);
   });
@@ -135,7 +138,7 @@ describe("per-item gates (desktop)", () => {
   it("an active owner sees everything (with Claude switched on)", () => {
     expect(labels(access("owner", []))).toEqual([
       "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
-      "Channels", "Calling", "Limits & Meta charges", "Team & roles", "Alerts", "Plans & subscription",
+      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
     ]);
   });
 
@@ -147,7 +150,7 @@ describe("per-item gates (desktop)", () => {
   it("a settings-only member sees the settings pages but not Team & roles or Plans", () => {
     expect(labels(access("caller", ["settings.view"]))).toEqual([
       "Business details", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
-      "Channels", "Calling", "Limits & Meta charges", "Alerts",
+      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
     ]);
   });
 
@@ -197,13 +200,13 @@ describe("per-item gates (phone drawer: permissions only, no subscription check,
   it("owner sees every row", () => {
     expect(labels("owner", [])).toEqual([
       "Business details", "Payments & advance", "Target & profit", "Text size",
-      "Channels", "Calling", "Limits & Meta charges", "Team & roles", "Alerts", "Plans & subscription",
+      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
     ]);
   });
 
   it("each row keeps its own permission", () => {
     expect(labels("agent", ["settings.manage"])).toEqual([
-      "Business details", "Payments & advance", "Target & profit", "Text size", "Channels", "Calling", "Limits & Meta charges", "Alerts",
+      "Business details", "Payments & advance", "Target & profit", "Text size", "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
     ]);
     expect(labels("agent", ["roles.view"])).toEqual(["Text size", "Team & roles"]);
     expect(labels("agent", ["subscription.manage"])).toEqual(["Text size", "Plans & subscription"]);

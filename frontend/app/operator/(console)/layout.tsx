@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createOperatorClient } from "@/lib/supabase/server";
 import { OperatorSidebar } from "./components/operator-sidebar";
 import { BackendUnreachable } from "./components/backend-unreachable";
 import { CommandPalette } from "./components/command-palette";
@@ -7,7 +7,7 @@ import { CommandPalette } from "./components/command-palette";
 const ME_FETCH_TIMEOUT_MS = 8000;
 
 export default async function OperatorLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
+  const supabase = await createOperatorClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/operator/login");
 

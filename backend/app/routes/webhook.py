@@ -334,6 +334,56 @@ async def _transcribe_whatsapp_audio(media_id: str, tenant_id: str) -> tuple[str
     return transcript, mime_type
 
 
+async def _handle_booking_message(db, tenant_id: str, lead_id: str, phone: str, msg_type: str, msg: dict, body: str) -> bool:
+    """v9.2 Bookings: a reminder's "Yes, coming" / "Cancel" button (payload bk_yes:/bk_cancel:) or a
+    booking code ("BK-0012", sent from the booking page's WhatsApp button). True = handled: the
+    message is already saved in the chat, and it is NOT passed on to the AI. Never raises."""
+    try:
+        from app.services import booking_messages
+        # Outside the 24h window the reminder is a template: a tap arrives as type "button" with
+        # the payload. Inside it the reminder is sent as reply buttons: a tap arrives as type
+        # "interactive" with button_reply.id. Both carry "bk_yes:<id>" / "bk_cancel:<id>".
+        if msg_type == "button":
+            payload = ((msg.get("button") or {}).get("payload") or "").strip()
+        elif msg_type == "interactive":
+            payload = str(((msg.get("interactive") or {}).get("button_reply") or {}).get("id") or "").strip()
+        else:
+            payload = ""
+        if payload.startswith("bk_"):
+            return bool(await booking_messages.handle_booking_button(db, tenant_id, phone, payload))
+        if msg_type in ("button", "interactive"):
+            return False
+        if msg_type == "text" and body and "bk" in body.lower():
+            return bool(await booking_messages.handle_booking_code(db, tenant_id, lead_id, phone, body))
+    except Exception as e:
+        logger.error(f"booking message handling failed tenant={tenant_id}: {type(e).__name__}: {e}")
+    return False
+
+
+def _button_payload(msg_type: str, msg: dict) -> str:
+    """A template quick-reply tap ("button" .payload) or an in-window reply button ("interactive" .button_reply.id)."""
+    if msg_type == "button":
+        return ((msg.get("button") or {}).get("payload") or "").strip()
+    if msg_type == "interactive":
+        return str(((msg.get("interactive") or {}).get("button_reply") or {}).get("id") or "").strip()
+    return ""
+
+
+async def _handle_feedback_message(db, tenant_id: str, lead_id: str, phone: str, msg_type: str, msg: dict, body: str) -> bool:
+    """v9.2 Customers › Feedback: a star tap (payload fb:<n>:<id>) or the "what went wrong" answer after 1–3 stars.
+    True = handled (already saved in the chat; NOT passed to the AI). Never raises."""
+    try:
+        from app.services import customer_feedback
+        payload = _button_payload(msg_type, msg)
+        if payload.startswith("fb:"):
+            return bool(await customer_feedback.handle_feedback_button(db, tenant_id, lead_id, phone, payload))
+        if msg_type == "text" and body:
+            return bool(await customer_feedback.handle_feedback_text(db, tenant_id, lead_id, phone, body))
+    except Exception as e:
+        logger.error(f"feedback message handling failed tenant={tenant_id}: {type(e).__name__}: {e}")
+    return False
+
+
 async def _process_inbound_message_background(
     lead_id: str,
     tenant_id: str,
@@ -569,6 +619,21 @@ async def _process_inbound_message_background(
         logger.error(f"Background inbound message processing failed for lead {lead_id}: {err}")
 
 
+def _pause_or_resume_automations(tenant_id: str | None, value: dict) -> None:
+    """Alerts & automations (v9.2 #26): a template that is rejected, paused or switched off pauses every
+    automation using it (red banner + bell); when it is approved again, only what this paused comes back.
+    Never breaks the webhook."""
+    try:
+        name = str((value or {}).get("message_template_name") or "").strip()
+        status = str((value or {}).get("event") or "").strip().upper()
+        if not tenant_id or not name or not status:
+            return
+        from app.services.template_pauses import on_template_status_change
+        on_template_status_change(get_supabase(), tenant_id, name, status)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"template status: could not update automations for {tenant_id}: {e}")
+
+
 def _apply_status_updates(db, tenant_id: str, statuses: list) -> None:
     """Meta delivery receipts (delivered, read, failed). Sync Supabase calls, run in
     a worker thread: every campaign send comes back as several of these, and one
@@ -683,6 +748,16 @@ def _apply_status_updates(db, tenant_id: str, statuses: list) -> None:
                             logger.warning(f"Failed to bump delivered_count for step {step_id}: {e}")
             except Exception as e:
                 logger.error(f"Failed to update message {message_id} status to {status}: {e}")
+            # v9.2 #18: a Meta Instant-form lead's welcome template. Delivered / read show on the form's
+            # leads table; 131026 (no WhatsApp on that number) hands the lead to Call IQ. Never raises.
+            try:
+                from app.services.meta_lead_forms import apply_delivery_status
+                first_err = (status_update.get("errors") or [{}])[0] or {}
+                code = first_err.get("code")
+                apply_delivery_status(db, tenant_id, message_id, status,
+                                      int(code) if str(code or "").isdigit() else None)
+            except Exception as e:
+                logger.warning(f"form lead delivery status skipped for {message_id}: {type(e).__name__}: {e}")
 
 
 @router.post("")
@@ -744,6 +819,8 @@ async def whatsapp_webhook(
                 # tenant's own copy is written.
                 from app.routes.templates import apply_template_change
                 apply_template_change(get_supabase(), field, value, tenant_id=tenant_for_sig)
+                if field == "message_template_status_update":
+                    _pause_or_resume_automations(tenant_for_sig, value)
 
             elif field == "business_capability_update":
                 # Meta raised (or set) the business's messaging limit. entry.id is
@@ -939,6 +1016,20 @@ async def whatsapp_webhook(
                     # transcribed voice note, so it flows through unchanged --
                     # including mid-intake, where it can answer a field like
                     # "which area" with no field-name special-casing needed.
+                    # v9.2 Bookings: a 👍 on a booking reminder counts as "Yes, coming". Every other
+                    # reaction is still ignored, as before.
+                    if msg_type == "reaction":
+                        try:
+                            from app.services import booking_messages
+                            reaction = msg.get("reaction") or {}
+                            wa_from = msg.get("from", "")
+                            await booking_messages.handle_booking_reaction(
+                                db, tenant_id, f"+{wa_from}" if wa_from and not wa_from.startswith("+") else wa_from,
+                                str(reaction.get("message_id") or ""), str(reaction.get("emoji") or ""),
+                            )
+                        except Exception as e:
+                            logger.error(f"booking reaction handling failed tenant={tenant_id}: {type(e).__name__}")
+                        continue
                     if msg_type not in (
                         "text", "button", "interactive", "audio",
                         "image", "document", "video", "sticker", "location",
@@ -1188,8 +1279,7 @@ async def whatsapp_webhook(
                                         ).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
                                         logger.info(
                                             f"Google Ads referral: lead {lead_id} linked to "
-                                            f"campaign {campaign['id']} (tag={google_ref.campaign}, "
-                                            f"gclid={google_ref.gclid})"
+                                            f"campaign {campaign['id']} (tag={google_ref.campaign})"
                                         )
                             except Exception as gads_err:
                                 logger.warning(f"Google Ads attribution failed for lead {lead_id}: {gads_err}")
@@ -1197,6 +1287,15 @@ async def whatsapp_webhook(
                     already = db.table("messages").select("id").eq("meta_message_id", msg_id).eq("tenant_id", tenant_id).limit(1).execute()
                     if already.data:
                         continue
+
+                    # v9.2 QR & links: "(Q-7K2P)" at the end of a QR's first message. After the duplicate check, so a Meta retry is not a second chat. Counts the chat
+                    # for that QR; "Came from" is set on first contact only (never over an ad).
+                    if body and not ad_attributed and "(q-" in body.lower():
+                        try:
+                            from app.services.qr_links import handle_inbound_qr
+                            await asyncio.to_thread(handle_inbound_qr, db, tenant_id, lead_id, body, is_new_lead=not existing.data)
+                        except Exception as qr_err:
+                            logger.warning(f"QR attribution failed for lead {lead_id}: {qr_err}")
 
                     _is_first = (
                         db.table("messages")
@@ -1280,6 +1379,11 @@ async def whatsapp_webhook(
                                 db.table("leads").update({"outbound_no_reply_count": 0}).eq("id", lead_id).eq("tenant_id", tenant_id).execute()
                             except Exception:
                                 pass
+
+                    if lead_id and await _handle_booking_message(db, tenant_id, lead_id, phone, msg_type, msg, body):
+                        continue
+                    if lead_id and await _handle_feedback_message(db, tenant_id, lead_id, phone, msg_type, msg, body):
+                        continue
 
                     # Delegate state tracking, compaction, and reply to background task to avoid Meta timeout
                     background_tasks.add_task(

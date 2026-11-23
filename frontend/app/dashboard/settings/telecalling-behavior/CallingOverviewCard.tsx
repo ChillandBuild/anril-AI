@@ -9,13 +9,13 @@ import { connectionsApi, type CallingProvider } from "@/lib/connectionsApi";
 import { cn } from "@/lib/utils";
 
 const TEAM_LINK = "/dashboard/team";
+const DO_NOT_CALL_LINK = "/dashboard/leads?tab=said-stop";
 const COMING_LATER = [
   "Call recording settings",
   "Hide customer numbers",
   "Welcome menu (IVR)",
   "Missed call to WhatsApp",
   "Break limit",
-  "Do-not-call list",
 ];
 
 const peopleText = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
@@ -116,6 +116,15 @@ export function CallingOverviewCard() {
             <dd className="text-sm font-semibold text-ink">{data.rules.calling_hours}</dd>
           </div>
           <EditLink />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+          <div>
+            <dt className="text-sm text-ink-secondary">Do-not-call list</dt>
+            <dd className="text-sm font-semibold text-ink">People a caller marked Don&apos;t call, in Customers › Said stop</dd>
+          </div>
+          <Link href={DO_NOT_CALL_LINK} className="text-sm font-semibold text-primary hover:underline">
+            Open the list
+          </Link>
         </div>
       </dl>
 

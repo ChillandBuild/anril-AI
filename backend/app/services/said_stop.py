@@ -12,6 +12,8 @@ How people get on it is recorded in opted_out_source (migration 281):
   chat_ai     the AI read a clear no in chat               (services/scoring_engine.py)
   call        a telecaller ticked "stop messages"          (services/wrapup_apply.py)
   staff       a team member added them by hand             (add_by_hand below)
+Customers > Said stop also lists people a caller marked "Don't call" (leads.do_not_call) even though
+they still get messages; their source reads "do_not_call" (DO_NOT_CALL_SOURCE) and removing them clears it.
 Only a team member removes someone (remove_by_hand); nothing automatic ever does.
 """
 import logging
@@ -20,6 +22,9 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 SOURCES = ("stop_reply", "chat_ai", "call", "staff")
+# Not stored in opted_out_source: the list's own label for a person who is only "Don't call".
+DO_NOT_CALL_SOURCE = "do_not_call"
+DO_NOT_CALL_LABEL = "Don't call (from a call)"
 _DETAIL_MAX = 200
 
 
@@ -73,7 +78,11 @@ def add_by_hand(db, tenant_id: str, lead_ids: list[str], user_id: str | None, st
 
 def remove_by_hand(db, tenant_id: str, lead_ids: list[str]) -> int:
     """Take people off Said stop (only when the customer asked). Clears the per-product
-    stops too, so broadcasts of every tag can reach them again. Returns how many."""
+    stops too, so broadcasts of every tag can reach them again. A person on the list only
+    because a caller marked "Don't call" (leads.do_not_call) comes off it too, and can be
+    called again. Someone who said stop AND has "Don't call" keeps the "Don't call" mark (the two
+    flags are separate): they stay listed as "Don't call" until removed again. Returns how many
+    people came off the list."""
     if not lead_ids:
         return 0
     rows = (db.table("leads").update({"opted_out": False, "opted_out_at": None})
@@ -89,4 +98,9 @@ def remove_by_hand(db, tenant_id: str, lead_ids: list[str]) -> int:
             db.table("lead_tag_opt_outs").delete().eq("tenant_id", tenant_id).in_("lead_id", removed).execute()
         except Exception as e:
             logger.warning(f"Said stop: could not clear per-product stops: {e}")
-    return len(removed)
+    # Only the people listed purely as "Don't call" (not said stop) lose that mark.
+    dnc_only = [i for i in lead_ids if str(i) not in set(removed)]
+    dnc_rows = (db.table("leads").update({"do_not_call": False})
+                .eq("tenant_id", tenant_id).in_("id", dnc_only).eq("do_not_call", True)
+                .execute()).data or [] if dnc_only else []
+    return len(set(removed) | {str(r["id"]) for r in dnc_rows})

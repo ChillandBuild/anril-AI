@@ -1,7 +1,7 @@
 import s from "./HomeHero.module.css";
 
 const CHANNELS = [
-  { name: "WhatsApp", color: "#25D366" },
+  { name: "WhatsApp", color: "var(--primary)" },
   { name: "Instagram", color: "#E1306C" },
   { name: "Facebook", color: "#1877F2" },
   { name: "Telegram", color: "#29A9EB" },

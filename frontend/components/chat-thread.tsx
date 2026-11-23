@@ -25,6 +25,7 @@ import {
   PanelRightOpen, PanelRightClose, UserRound, Loader2,
 } from "lucide-react";
 import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
+import { ReplyFeedback } from "@/components/ai-setup/ReplyFeedback";
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -181,6 +182,7 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
           <span>{new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
           {isOutbound && <DeliveryTicks msg={msg} onDark={!isAi} />}
         </p>
+        {isAi && <ReplyFeedback messageId={msg.id} />}
       </div>
     </div>
   );
@@ -234,6 +236,14 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
 }
 
 // ─── Main ChatThread component ────────────────────────────────────────────────
+/** "from Google Ads · summer_sale" / "from Meta ad · …" / "from QR · …": the server sends came_from. */
+function cameFromLabel(lead: Lead): string | null {
+  const sent = lead.came_from;
+  if (sent) return sent;
+  if (lead.ad_campaign_name) return `from ${lead.ad_campaign_name}`;
+  return lead.ad_campaign_id ? "from an ad" : null;
+}
+
 export function ChatThread({
   lead,
   team = [],
@@ -665,10 +675,10 @@ export function ChatThread({
             {current.phone && current.name && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
             {current.phone && current.name && <span className="text-[#cbd5e1]">·</span>}
             <span className="whitespace-nowrap">{CHANNEL_LABEL[getChannel(current.source)]}</span>
-            {current.ad_campaign_id || current.ad_campaign_name ? (
+            {cameFromLabel(current) ? (
               <>
                 <span className="text-[#cbd5e1]">·</span>
-                <span className="truncate">from {current.ad_campaign_name || "a Meta ad"}</span>
+                <span className="truncate">{cameFromLabel(current)}</span>
               </>
             ) : null}
           </p>

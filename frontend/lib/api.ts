@@ -172,6 +172,8 @@ export interface Lead {
   template_name?: string | null;
   tag_name?: string | null;
   ad_campaign_name?: string | null;
+  /** "from Google Ads · Diwali offer" / "from Meta ad · …" / "from QR · …" (v9.2). */
+  came_from?: string | null;
   channel?: string | null;
   call_status?: LeadCallStatus | null;
   do_not_call?: boolean;
@@ -2408,11 +2410,15 @@ export type HomeBoxKey =
   | "quotes_open"
   | "won_month"
   | "target_month"
-  | "low_stock";
+  | "low_stock"
+  | "profit_month"
+  | "expenses_today"
+  | "feedback_week";
 export type HomeBox = {
-  /** Paise when unit is "paise"; a plain number when "count". */
-  value: number;
-  unit: "paise" | "count" | string;
+  /** Paise when unit is "paise" (negative = a loss); a plain number when "count"; average stars when "stars"
+   *  (null when nobody has answered yet). */
+  value: number | null;
+  unit: "paise" | "count" | "stars" | string;
   sub?: string | null;
   href: string;
 };
@@ -2431,6 +2437,8 @@ export type HomeWaitingItem = {
   waiting_since: string;
 };
 export type HomeLowStockItem = { item_id: string; name: string; stock: number; low_stock_at: number | null };
+/** One answered feedback row on the Today's feedback list. */
+export type HomeFeedbackItem = { id: string; lead_id: string; name: string | null; stars: number; reason: string | null };
 export type HomeToday = {
   /** Boxes this person may see and this client uses, in priority order. */
   available: HomeBoxKey[];
@@ -2440,8 +2448,10 @@ export type HomeToday = {
   hot_bar: HomeHotBar | null;
   waiting: { total: number; items: HomeWaitingItem[] } | null;
   low_stock: { total: number; items: HomeLowStockItem[] } | null;
+  /** Sent only to people who may see Feedback while it is switched on for the client. */
+  todays_feedback?: { total: number; items: HomeFeedbackItem[] } | null;
 };
-export type HomeListKey = "waiting" | "low_stock";
+export type HomeListKey = "waiting" | "low_stock" | "todays_feedback";
 export type HomeLayout = {
   boxes: HomeBoxKey[] | null;
   lists: Record<HomeListKey, boolean> | null;
@@ -3924,9 +3934,8 @@ export const api = {
       );
       return res.data || [];
     },
-    googleLink: async (campaign: string, gclid?: string) => {
+    googleLink: async (campaign: string) => {
       const qs = new URLSearchParams({ campaign });
-      if (gclid) qs.set("gclid", gclid);
       return apiFetch<{ link: string; campaign_slug: string; whatsapp_number: string }>(
         `/api/v1/inbound-leads/google-link?${qs}`
       );
@@ -4207,6 +4216,15 @@ export const api = {
         `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/leads${instantFormsQuery(params)}`,
       ),
     templates: () => apiFetch<{ data: InstantFormTemplateOption[] }>("/api/v1/instant-forms/templates"),
+    /** Send the ready-made hello message to WhatsApp for approval (does nothing if it is already there). */
+    setupHello: () =>
+      apiFetch<{ hello_template: InstantFormHello }>("/api/v1/instant-forms/hello-template", { method: "POST" }),
+    /** Turn the ready-made hello on or off for one form (it only goes to forms with no template of their own). */
+    setAutoHello: (formId: string, autoHello: boolean) =>
+      apiFetch<{ form_id: string; auto_hello: boolean }>(
+        `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}`,
+        { method: "PATCH", body: JSON.stringify({ auto_hello: autoHello }) },
+      ),
     setTemplate: (
       formId: string, templateId: string | null, variables: InstantFormVariable[], audience: InstantFormAudience,
     ) =>
@@ -4769,13 +4787,26 @@ export interface InstantFormSummary extends InstantFormStats {
   past_ad_names?: string[];
   template_id: string | null;
   template_name: string | null;
+  /** The ready-made hello is allowed for this form (the per-form switch). */
+  auto_hello?: boolean;
+  /** New leads of this form get the ready-made hello right now (no template chosen, hello on and approved). */
+  uses_hello?: boolean;
   last_lead_at: string | null;
+}
+
+/** none = not set up, waiting = Meta is checking it, approved, rejected = Meta said no (send again). */
+export type InstantFormHelloStatus = "none" | "waiting" | "approved" | "rejected";
+
+export interface InstantFormHello {
+  status: InstantFormHelloStatus;
+  name: string;
 }
 
 export interface InstantFormsOverview {
   date_from: string;
   date_to: string;
   spend_available: boolean;
+  hello_template?: InstantFormHello;
   totals: InstantFormStats;
   forms: InstantFormSummary[];
 }
@@ -4802,6 +4833,8 @@ export interface InstantFormDetail {
   template_variables: InstantFormVariable[];
   /** Who gets the template: everyone who fills the form, or only those who agreed to WhatsApp. */
   template_audience: InstantFormAudience;
+  auto_hello?: boolean;
+  hello_template?: InstantFormHello;
   date_from: string;
   date_to: string;
   spend_available: boolean;
@@ -4812,6 +4845,8 @@ export type InstantFormTemplateStatus =
   | "pending" | "sending" | "sent" | "failed" | "no_template" | "no_phone" | "skipped_old" | "no_consent";
 
 export type InstantFormAudience = "everyone" | "consented";
+
+export type InstantFormDelivery = "delivered" | "read" | "failed" | "no_whatsapp";
 
 export interface InstantFormLead {
   id: string;
@@ -4834,6 +4869,10 @@ export interface InstantFormLead {
   template_status: InstantFormTemplateStatus;
   template_error: string | null;
   template_sent_at: string | null;
+  /** What WhatsApp said about the message we sent; null until a receipt arrives. */
+  delivery_status?: InstantFormDelivery | null;
+  /** When the person was put in Call IQ because they have no WhatsApp. */
+  sent_to_calling_at?: string | null;
   /** Ticked the form's consent checkbox (or said yes to a WhatsApp question); null = the form doesn't ask. */
   whatsapp_consent: boolean | null;
   replied: boolean;
@@ -5113,6 +5152,7 @@ export interface Companion {
   full_main_resource?: boolean;
   /** Think in a hidden working block before replying; visitors never see it, the Playground does. Missing = off. */
   working_step?: boolean;
+  chart_guard?: boolean;   // astrology: no birth details to the model, replies checked against the chart
   /** Knowledge tab Mixed (true): when no file covers the question, the character answers anyway and says it is its own reading. Strict (false): that answer is replaced by handoff_line. */
   own_reasoning?: boolean;
   /** What a Strict character says instead of an answer from no file, e.g. "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.". Null = the generic line in its language. */
@@ -5477,7 +5517,7 @@ export const companionsApi = {
     apiFetch<{ app_data: string | null; profile_name: string | null }>(
       `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,
     ),
-  /** Save a test person's sample app data and whose profile it is; every Playground message as them sends both. Blank clears. 422 over 4,000 characters. */
+  /** Save a test person's sample app data and whose profile it is; every Playground message as them sends both. Blank clears. 422 over 12,000 characters. */
   saveTestPersonAppData: (externalUserId: string, appData: string, profileName: string) =>
     apiFetch<{ app_data: string | null; profile_name: string | null }>(
       `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,

@@ -3,7 +3,7 @@ import {
   Layers, Megaphone, MessageSquare, MessageSquareText, Phone, PhoneCall, RadioTower, Send, Settings,
   ShoppingBag, Sparkles, StickyNote, Trophy, Upload, Users, Zap, type LucideIcon,
   BookUser, Code2, History, KeyRound, LayoutDashboard, ListChecks, ReceiptText, SlidersHorizontal,
-  Truck,
+  Truck, CalendarClock, QrCode, MousePointerClick,
   Wallet,
 } from "lucide-react";
 import {
@@ -29,6 +29,8 @@ export interface NavAccess {
   telecallingPages: readonly string[];
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
+  /** True for the telecaller role. Optional so existing callers and fixtures need no change. */
+  isCaller?: boolean;
 }
 
 export type SectionKey =
@@ -196,6 +198,26 @@ const META_ADS: NavLeaf = {
   icon: Megaphone,
   visible: (a) => a.isSubscribed && a.canAny(["meta_ads.view", "meta_ads.manage"]) && a.inboundOn,
   isActive: (p) => p.startsWith("/dashboard/meta-ads"),
+};
+
+const GOOGLE_ADS: NavLeaf = {
+  kind: "link",
+  key: "google-ads",
+  href: "/dashboard/google-ads",
+  label: "Google Ads",
+  icon: MousePointerClick,
+  visible: (a) => a.isSubscribed && a.canAny(["meta_ads.view", "meta_ads.manage"]) && a.inboundOn,
+  isActive: (p) => p.startsWith("/dashboard/google-ads"),
+};
+
+const BOOKINGS: NavLeaf = {
+  kind: "link",
+  key: "bookings",
+  href: "/dashboard/bookings",
+  label: "Bookings",
+  icon: CalendarClock,
+  visible: (a) => a.isSubscribed && a.canAny(["bookings.view", "bookings.manage"]),
+  isActive: (p) => p.startsWith("/dashboard/bookings"),
 };
 
 const prefixPage = (key: string, label: string, href: string, visible: NavPage["visible"]): NavPage => ({
@@ -423,6 +445,71 @@ const TEAM_ROW: NavLeaf = {
   isActive: (p, tab = "") => p.startsWith(TEAM) && tab !== "log",
 };
 
+/** Call IQ (v9.2 #21): who is calling now, AI call scores, and calls -> orders -> money. */
+const CALL_IQ_LIVE: NavLeaf = {
+  kind: "link",
+  key: "call-iq-live",
+  href: "/dashboard/call-iq/live",
+  label: "Live",
+  icon: RadioTower,
+  visible: (a) => a.isSubscribed && a.canAny(["team.view", "telecalling.view"]),
+  isActive: (p) => p.startsWith("/dashboard/call-iq/live"),
+};
+
+const CALL_IQ_EVALUATION: NavLeaf = {
+  kind: "link",
+  key: "call-iq-evaluation",
+  href: "/dashboard/call-iq/evaluation",
+  label: "Evaluation",
+  icon: ListChecks,
+  visible: teamVisible,
+  isActive: (p) => p.startsWith("/dashboard/call-iq/evaluation"),
+};
+
+const CALL_IQ_RESULTS: NavLeaf = {
+  kind: "link",
+  key: "call-iq-results",
+  href: "/dashboard/call-iq/results",
+  label: "Results",
+  icon: BarChart2,
+  visible: teamVisible,
+  isActive: (p) => p.startsWith("/dashboard/call-iq/results"),
+};
+
+/** Anril Setup (v9.2 #23): questions the AI could not answer, its report card, and the scoring rules (read-only). */
+const knowledgeVisible = (a: NavAccess) => a.isSubscribed && a.canAny(["knowledge.view", "knowledge.manage"]) && a.messagingOn;
+
+const COULDNT_ANSWER: NavLeaf = {
+  kind: "link",
+  key: "couldnt-answer",
+  href: "/dashboard/brain/couldnt-answer",
+  label: "Couldn't answer",
+  icon: MessageSquare,
+  visible: knowledgeVisible,
+  isActive: (p) => p.startsWith("/dashboard/brain/couldnt-answer"),
+};
+
+const AI_REPORT_CARD: NavLeaf = {
+  kind: "link",
+  key: "ai-report-card",
+  href: "/dashboard/brain/report-card",
+  label: "AI report card",
+  icon: ReceiptText,
+  // The report card endpoint answers 403 for the caller role, so telecallers do not see the entry.
+  visible: (a) => knowledgeVisible(a) && !a.isCaller,
+  isActive: (p) => p.startsWith("/dashboard/brain/report-card"),
+};
+
+const QUESTIONS_SCORING: NavLeaf = {
+  kind: "link",
+  key: "questions-scoring",
+  href: "/dashboard/brain/scoring",
+  label: "Questions & scoring",
+  icon: SlidersHorizontal,
+  visible: knowledgeVisible,
+  isActive: (p) => p.startsWith("/dashboard/brain/scoring"),
+};
+
 const ANRIL_BRAIN: NavLeaf = {
   kind: "link",
   key: "anril-brain",
@@ -431,7 +518,7 @@ const ANRIL_BRAIN: NavLeaf = {
   icon: Brain,
   badge: "brain",
   visible: (a) => a.brainGate,
-  isActive: (p) => p.startsWith("/dashboard/brain"),
+  isActive: (p) => p.startsWith("/dashboard/brain") && !["/couldnt-answer", "/report-card", "/scoring"].some((sub) => p.startsWith(`/dashboard/brain${sub}`)),
 };
 
 const KNOWLEDGE_BASE: NavLeaf = {
@@ -475,6 +562,16 @@ const NUMBERS_POOL: NavLeaf = {
   isActive: (p) => p.startsWith("/dashboard/numbers"),
 };
 
+const QR_LINKS: NavLeaf = {
+  kind: "link",
+  key: "qr-links",
+  href: "/dashboard/qr-links",
+  label: "QR & links",
+  icon: QrCode,
+  visible: (a) => a.isSubscribed && a.canAny(["numbers.view", "numbers.manage"]) && a.messagingOn,
+  isActive: (p) => p.startsWith("/dashboard/qr-links"),
+};
+
 /**
  * The last row of the menu. It stands for every page in the Settings list (see
  * SETTINGS_ITEMS) and keeps each page's own gate: it shows if the user may open
@@ -503,13 +600,13 @@ const SETTINGS_PAGES: readonly NavPage[] = [
 
 const SETTINGS = pagesLeaf({ key: "settings", label: "Settings", icon: Settings, pages: SETTINGS_PAGES });
 
-const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, META_ADS, AUTO_MESSAGES] };
+const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, entries: [INBOUND_LEADS, BOOKINGS, META_ADS, GOOGLE_ADS, AUTO_MESSAGES] };
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES, EXPENSES] };
-const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
-const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
-const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL] };
+const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW, CALL_IQ_LIVE, CALL_IQ_EVALUATION, CALL_IQ_RESULTS] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, COULDNT_ANSWER, AI_REPORT_CARD, QUESTIONS_SCORING, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
+const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL, QR_LINKS] };
 
 /** The main menu below Home, top to bottom. */
 export const NAV_MENU: readonly NavMenuItem[] = [

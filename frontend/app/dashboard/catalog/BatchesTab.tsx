@@ -40,12 +40,14 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
     && (!supplier || b.supplier === supplier)), [data, filter, supplier]);
 
   const cards = data?.cards;
-  const card = (key: Filter, icon: string, label: string, tone: "red" | "amber" | "plain", sub: (v: number) => string) => {
+  // No Orders access: the API sends no cost or value, so the cards and the Value column are left out.
+  const noMoney = !!(data as { costs_hidden?: boolean } | null)?.costs_hidden;
+  const card = (key: Filter, icon: string, label: string, tone: "red" | "amber" | "plain", sub: (v: number | null) => string) => {
     const c = cards?.[key as keyof typeof cards];
     return (
       <StatCard icon={icon} label={label} tone={c?.batches ? tone : "plain"} active={filter === key}
         onClick={() => setFilter(filter === key ? "all" : key)}
-        value={c ? `${c.batches} ${c.batches === 1 ? "batch" : "batches"}` : "…"} sub={c ? sub(c.value_paise) : ""} />
+        value={c ? `${c.batches} ${c.batches === 1 ? "batch" : "batches"}` : "…"} sub={c ? (noMoney ? sub(null) : sub(c.value_paise)) : ""} />
     );
   };
 
@@ -85,11 +87,11 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
       {data && data.tracked_items > 0 && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {card("expired", "🔴", "Expired", "red", (v) => `${formatPaise(v)} · remove from shelf`)}
-            {card("soon", "🟠", "Expiring in 30 days", "amber", (v) => `${formatPaise(v)} at cost`)}
-            {card("later", "🟡", "In 31–90 days", "plain", (v) => formatPaise(v))}
-            {card("fine", "✅", "Fine", "plain", (v) => formatPaise(v))}
-            {card("returnable", "↩️", "Can return to supplier", "plain", (v) => `${formatPaise(v)} before expiry`)}
+            {card("expired", "🔴", "Expired", "red", (v) => v == null ? "remove from shelf" : `${formatPaise(v)} · remove from shelf`)}
+            {card("soon", "🟠", "Expiring in 30 days", "amber", (v) => v == null ? "" : `${formatPaise(v)} at cost`)}
+            {card("later", "🟡", "In 31–90 days", "plain", (v) => v == null ? "" : formatPaise(v))}
+            {card("fine", "✅", "Fine", "plain", (v) => v == null ? "" : formatPaise(v))}
+            {card("returnable", "↩️", "Can return to supplier", "plain", (v) => v == null ? "before expiry" : `${formatPaise(v)} before expiry`)}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -117,7 +119,7 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
                   <th className="px-3 py-3">Batch</th>
                   <th className="px-3 py-3">Expiry</th>
                   <th className="px-3 py-3">Stock</th>
-                  <th className="px-3 py-3">Value</th>
+                  {!noMoney && <th className="px-3 py-3">Value</th>}
                   <th className="px-3 py-3">Supplier</th>
                   <th className="px-3 py-3">What to do</th>
                 </tr>
@@ -128,7 +130,7 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
                     {data.batches.length ? "No batch matches this filter." : "No batch has stock right now."}
                   </td></tr>
                 )}
-                {shown.map((b) => <BatchRow key={b.id} batch={b} canManage={canManage} onChanged={() => mutate()} />)}
+                {shown.map((b) => <BatchRow key={b.id} batch={b} canManage={canManage} noMoney={noMoney} onChanged={() => mutate()} />)}
               </tbody>
             </table>
           </div>
@@ -151,7 +153,7 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
   );
 }
 
-function BatchRow({ batch: b, canManage, onChanged }: { batch: StockBatch; canManage: boolean; onChanged: () => void }) {
+function BatchRow({ batch: b, canManage, noMoney, onChanged }: { batch: StockBatch; canManage: boolean; noMoney: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"return" | "remove" | null>(null);
   const [editingDiscount, setEditingDiscount] = useState(false);
@@ -192,9 +194,11 @@ function BatchRow({ batch: b, canManage, onChanged }: { batch: StockBatch; canMa
         </div>
       </td>
       <td className="px-3 py-3 font-bold tabular-nums text-ink">{b.quantity}</td>
-      <td className="px-3 py-3 tabular-nums text-ink" title={b.value_at === "cost" ? "At cost" : "At selling price (no cost on this batch)"}>
-        {formatPaise(b.value_paise)}
-      </td>
+      {!noMoney && (
+        <td className="px-3 py-3 tabular-nums text-ink" title={b.value_at === "cost" ? "At cost" : "At selling price (no cost on this batch)"}>
+          {formatPaise(b.value_paise)}
+        </td>
+      )}
       <td className="px-3 py-3 text-ink">{b.supplier ?? <span className="text-ink-muted">—</span>}</td>
       <td className="px-3 py-3">
         {!canManage ? <span className="text-ink-muted">—</span> : confirm ? (

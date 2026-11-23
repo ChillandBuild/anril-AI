@@ -1,9 +1,10 @@
-"""Global search (the box in the top bar): one question, up to four short groups of answers.
+"""Global search (the box in the top bar): one question, up to five short groups of answers.
 
 Every group follows the same rule as the module's own list, so a result never shows something the
 person could not open today:
   customers  leads.view         callers only see the leads assigned to them (as the Customers list)
   orders     deals.view         no caller scoping (as Orders today)
+  bookings   bookings.view      a person linked to one column (view only) sees just that column's bookings
   items      catalog.view
   chats      conversations.view callers only see leads assigned to them or needing a person (as Chats)
 A group is left out when the person lacks its permission, when it has no hits, or when its own query
@@ -43,6 +44,8 @@ _KEEP_CATEGORIES = {"L", "N", "M"}
 # The same regex Orders uses for "D-0012" / "12", plus a leading "#".
 _ORDER_NO_RE = re.compile(r"^(?:d-?)?0*(\d+)$", re.IGNORECASE | re.ASCII)
 _PHONE_LIKE_RE = re.compile(r"^[\d\s+\-]+$", re.ASCII)
+# "BK-0012", "bk12", "#12" or "12" -> a booking number.
+_BOOKING_NO_RE = re.compile(r"^(?:bk-?)?0*(\d+)$", re.IGNORECASE | re.ASCII)
 
 _SEGMENT_LABELS = {"A": "Hot", "B": "Warm", "C": "Cold", "D": "Not interested"}
 _STAGE_WORDS = {"won": "paid", "awaiting_payment": "unpaid", "quoted": "quote", "lost": "lost"}
@@ -82,6 +85,14 @@ def order_number(q: str) -> int | None:
         return None
     digits = match.group(1)
     return int(digits) if len(digits) <= 7 else None
+
+
+def booking_number(q: str) -> int | None:
+    """12 for "BK-0012", "bk12", "#12" or "12"; None otherwise (long digit runs are phone numbers)."""
+    match = _BOOKING_NO_RE.match(q.strip().lstrip("#").strip())
+    if not match or len(match.group(1)) > 7:
+        return None
+    return int(match.group(1))
 
 
 def format_rupees(paise: int | None) -> str:
@@ -226,6 +237,55 @@ def _orders(db, ctx: dict, q: str, term: str, value: str, digits: str | None) ->
     return out
 
 
+def _bookings(db, ctx: dict, q: str, term: str, digits: str | None) -> list[dict]:
+    from app.services import booking_setup as bsetup
+    from app.services import bookings as bk
+    tenant_id = ctx["tenant_id"]
+    clauses = []
+    if term:
+        clauses.append(f"customer_name.ilike.*{term}*")
+    if digits:
+        clauses.append(f"phone.ilike.*{digits}*")
+    number = booking_number(q)
+    if number is not None:
+        clauses.append(f"number.eq.{number}")
+    if not clauses:
+        return []
+    resources = bsetup.list_resources(db, tenant_id)
+    own = bk.only_own_column(ctx, resources)
+    if own and not next((r for r in resources if r["id"] == own), {}).get("active", True):
+        return []                                       # linked to a column that is switched off: nothing
+
+    def base():
+        query = (
+            db.table("bookings").select("id, number, customer_name, phone, service_id, resource_id, start_at, status")
+            .eq("tenant_id", tenant_id).neq("status", "cancelled").or_(",".join(clauses))
+        )
+        return query.eq("resource_id", own) if own else query
+
+    now = bk.iso(bk._now())
+    # upcoming first (soonest first), then past ones (most recent first)
+    rows = base().gte("start_at", now).order("start_at").limit(GROUP_LIMIT).execute().data or []
+    if len(rows) < GROUP_LIMIT:
+        rows += base().lt("start_at", now).order("start_at", desc=True).limit(GROUP_LIMIT - len(rows)).execute().data or []
+    if not rows:
+        return []
+    services = {s["id"]: s["name"] for s in bsetup.list_services(db, tenant_id)}
+    columns = {r["id"]: r["name"] for r in resources}
+    out = []
+    for row in rows:
+        start = bk.parse_ts(row["start_at"]).astimezone(bk.IST)
+        who = row.get("customer_name") or row.get("phone") or ""
+        label = bk.code_for(row["number"])
+        when = f"{start.strftime('%a')} {start.hour % 12 or 12}:{start:%M} {'AM' if start.hour < 12 else 'PM'}"
+        detail = " · ".join(b for b in (when, services.get(row["service_id"]), columns.get(row["resource_id"])) if b)
+        out.append({
+            "id": row["id"], "label": f"{label} · {who}" if who else label, "detail": detail,
+            "href": f"/dashboard/bookings?date={start.date().isoformat()}&booking={row['id']}",
+        })
+    return out
+
+
 def _items(db, ctx: dict, value: str) -> list[dict]:
     if not value:
         return []
@@ -317,6 +377,7 @@ def _chats(db, ctx: dict, term: str) -> list[dict]:
 GROUP_TITLES = (
     ("customers", "Customers"),
     ("orders", "Orders & bills"),
+    ("bookings", "Bookings"),
     ("items", "Items"),
     ("chats", "Chats"),
 )
@@ -354,6 +415,8 @@ def search(db, ctx: dict, q: str, *, budget: float = BUDGET_SECONDS) -> dict:
         jobs["customers"] = lambda: _customers(db, ctx, term, digits)
     if _has_permission(ctx, "deals.view") and (term or value):
         jobs["orders"] = lambda: _orders(db, ctx, q, term, value, digits)
+    if _has_permission(ctx, "bookings.view") and (term or booking_number(q) is not None):
+        jobs["bookings"] = lambda: _bookings(db, ctx, q, term, digits)
     if _has_permission(ctx, "catalog.view") and value:
         jobs["items"] = lambda: _items(db, ctx, value)
     if _has_permission(ctx, "conversations.view") and value:

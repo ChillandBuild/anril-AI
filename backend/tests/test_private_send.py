@@ -898,11 +898,11 @@ def test_per_ip_limit_also_guards_usage_and_uses_the_edge_client_ip(env, signing
     assert [post(one), post(one), post(two)] == [401, 429, 401]
 
 
-def test_ip_key_is_the_rightmost_forwarded_for_entry(env, signing, monkeypatch):
+def test_typed_forwarded_for_never_dodges_the_ip_limit(env, signing, monkeypatch):
     monkeypatch.setattr(ps_routes, "_ip_limiter", ps_routes._SlidingWindow(1, 60))
     get = lambda xff: env.client.get(f"{PUBLIC_BASE}/bundle", headers={"Authorization": "Bearer nope", "X-Forwarded-For": xff}).status_code
-    # a spoofed leftmost entry must not dodge the limit
-    assert [get("9.9.9.1, 5.5.5.5"), get("9.9.9.2, 5.5.5.5"), get("9.9.9.3, 6.6.6.6")] == [401, 429, 401]
+    # X-Forwarded-For is caller-controlled (uvicorn on Render even trusts its leftmost entry); the app never reads it
+    assert [get("9.9.9.1, 5.5.5.5"), get("9.9.9.2, 5.5.5.5"), get("9.9.9.3, 6.6.6.6")] == [401, 429, 429]
 
 
 def test_per_ip_limit_applies_before_the_key_is_known_to_be_valid(env, signing, monkeypatch):

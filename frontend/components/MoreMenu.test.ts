@@ -27,14 +27,14 @@ describe("More drawer layout", () => {
     const byTitle = MORE_SECTIONS.map((s) => [s.title, rows.filter((r) => r.section === s.key).map((r) => r.label)]);
     expect(byTitle).toEqual([
       [null, ["Customers"]],
-      ["WhatsApp", ["Templates", "Numbers"]],
-      ["Anril Setup", ["Anril Brain", "Knowledge Base", "Teach & offers", "Replies & handover"]],
-      ["Engage", ["Inbound Leads", "Meta Ads", "Auto-Messages"]],
+      ["WhatsApp", ["Templates", "Numbers", "QR & links"]],
+      ["Anril Setup", ["Anril Brain", "Couldn't answer", "AI report card", "Questions & scoring", "Knowledge Base", "Teach & offers", "Replies & handover"]],
+      ["Engage", ["Inbound Leads", "Bookings", "Meta Ads", "Google Ads", "Auto-Messages"]],
       [null, ["Reach"]],
       ["Anril OTP", ["Send & check", "History", "Setup"]],
       ["Anril SMS", ["Dashboard", "DLT Setup", "Send SMS", "Address Book", "Delivery Reports", "Transactions", "Dev API"]],
       ["Commerce", ["Orders & payments", "Catalogue", "Purchases", "Expenses"]],
-      ["Call IQ", ["Leads to call", "Call reviews", "Team"]],
+      ["Call IQ", ["Leads to call", "Call reviews", "Team", "Live", "Evaluation", "Results"]],
       [null, ["Reports"]],
       [null, []],
     ]);
@@ -202,9 +202,9 @@ describe("Settings box in the drawer", () => {
     expect(box("owner", [])).toEqual({
       groups: [
         ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
-        ["Connections", ["Channels", "Calling", "Limits & Meta charges"]],
+        ["Connections", ["Channels", "Calling", "Calling rules", "Limits & Meta charges"]],
         ["Team & roles", ["Team & roles"]],
-        ["Alerts & automations", ["Alerts"]],
+        ["Alerts & automations", ["Alerts", "Push & lead claims", "Automations"]],
       ],
       loose: ["Plans & subscription"],
     });
@@ -223,5 +223,13 @@ describe("Settings box in the drawer", () => {
       expect(isSettingsPath(path), path).toBe(true);
     }
     expect(isSettingsPath("/dashboard/settings/inbox")).toBe(false);
+  });
+});
+
+describe("AI report card is hidden from telecallers", () => {
+  const labels = (role: string) => getVisibleMoreItems(role, ALL_FEATURES, ["knowledge.view"]).map((r) => r.label);
+  it("shows for a manager and hides for the caller role", () => {
+    expect(labels("agent")).toContain("AI report card");
+    expect(labels("caller")).not.toContain("AI report card");
   });
 });

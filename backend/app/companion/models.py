@@ -20,14 +20,14 @@ MAX_RULES = 40      # = companions_rules_check (migration 275)
 
 DEFAULT_MODEL = "google/gemini-3.1-flash-lite"   # = ai_reply.DEFAULT_REPLY_MODEL (a test keeps them equal)
 
-MAX_APP_DATA_CHARS = 4000   # = companion_end_users_test_app_data_check (migration 277)
+MAX_APP_DATA_CHARS = 12000   # = companion_end_users_test_app_data_check (migration 316)
 
 
 def app_data_text(value: str | dict | None) -> str | None:
     """What the client's app knows about this person, as one block of text for the prompt.
 
     Example: {"lagna": "மீனம்", "dasa": "ராகு"} -> '{"lagna": "மீனம்", "dasa": "ராகு"}' (Tamil kept as is);
-    "plan: Gold, ends 30 Nov" stays as typed. None or blank -> None. Over 4,000 characters -> ValueError."""
+    "plan: Gold, ends 30 Nov" stays as typed. None or blank -> None. Over 12,000 characters -> ValueError."""
     if value is None:
         return None
     text = (value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)).strip()
@@ -85,6 +85,7 @@ class CompanionSettings(_CardFields):
     handoff_line: str | None = Field(None, max_length=300)   # Strict's line; None = the generic one
     full_main_resource: bool = False         # send the main resource whole with every real question (≤40,000 chars)
     working_step: bool = False               # think in a hidden <working> block before replying (not small talk)
+    chart_guard: bool = False                # astrology: no birth details to the model, replies checked against the chart
     memory_level: Literal[1, 2] = 1          # 3 (graph memory) is not built
     memory_engine: Literal["card", "mem0"] = "card"   # which Level 2 engine; ignored at Level 1
     history_messages: int = Field(10, ge=2, le=50)   # recent messages every reply reads
@@ -113,6 +114,7 @@ class CompanionUpdate(_CardFields):
     handoff_line: str | None = Field(None, max_length=300)
     full_main_resource: bool | None = None
     working_step: bool | None = None
+    chart_guard: bool | None = None
     memory_level: Literal[1, 2] | None = None
     memory_engine: Literal["card", "mem0"] | None = None
     history_messages: int | None = Field(None, ge=2, le=50)
@@ -170,6 +172,13 @@ class CompanionReply(BaseModel):
     message_id: str | None = None
     basis: Literal["primary", "book", "own", "chat"] | None = None
     sources: list[ReplySource] = Field(default_factory=list)
+    # Only when the request sent a reply_format (reply_format.py); all None otherwise. text is then the
+    # bubbles joined by a blank line. tag tells the app whether to count the question: "counted", "ask_back",
+    # "greeting", "off_topic", "need_details", a button id, "handoff" or "failed".
+    bubbles: list[str] | None = None
+    chips: list[str] | None = None
+    button: str | None = None
+    tag: str | None = None
 
 
 class MemoryFact(BaseModel):

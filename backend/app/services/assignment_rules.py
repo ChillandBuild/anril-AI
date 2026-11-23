@@ -32,6 +32,7 @@ SOURCE_TO_ROW: dict[str, str] = {
     "facebook": "facebook",
     "telegram": "telegram",
     "meta_form": "meta_form",
+    "qr": "whatsapp",  # v9.2 QR & links: a scanned QR opens a WhatsApp chat
     "indiamart": "other",
     "justdial": "other",
     "website": "other",

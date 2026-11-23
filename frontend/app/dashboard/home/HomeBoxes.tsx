@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import type { HomeBox, HomeBoxKey } from "@/lib/api";
-import { BOX_META, formatBoxValue } from "./todayLayout";
+import type { HomeBox } from "@/lib/api";
+import { BOX_META, boxSub, formatBoxValue, isLoss, type BoxKey } from "./todayLayout";
 
 /** The number boxes: 6 per row on a laptop, 3 on a tablet, 2 on a phone. Each one is a link. */
-export function HomeBoxes({ keys, boxes }: { keys: HomeBoxKey[]; boxes: Partial<Record<HomeBoxKey, HomeBox>> }) {
+export function HomeBoxes({ keys, boxes }: { keys: BoxKey[]; boxes: Partial<Record<BoxKey, HomeBox>> }) {
   const shown = keys.filter((k) => boxes[k]);
   if (shown.length === 0) return null;
   return (
@@ -19,9 +19,10 @@ export function HomeBoxes({ keys, boxes }: { keys: HomeBoxKey[]; boxes: Partial<
   );
 }
 
-function HomeBoxCard({ boxKey, box }: { boxKey: HomeBoxKey; box: HomeBox }) {
+function HomeBoxCard({ boxKey, box }: { boxKey: BoxKey; box: HomeBox }) {
   const meta = BOX_META[boxKey];
   const Icon = meta.icon;
+  const sub = boxSub(boxKey, box);
   return (
     <Link
       href={box.href}
@@ -36,10 +37,15 @@ function HomeBoxCard({ boxKey, box }: { boxKey: HomeBoxKey; box: HomeBox }) {
         </span>
         <span className="min-w-0 font-label text-[13px] font-bold leading-tight text-ink">{meta.label}</span>
       </span>
-      <span className="mt-1 truncate font-display text-2xl font-extrabold leading-none tracking-tight text-ink tabular-nums">
+      <span
+        className={cn(
+          "mt-1 truncate font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums",
+          isLoss(boxKey, box) ? "text-rose-700" : "text-ink",
+        )}
+      >
         {formatBoxValue(box)}
       </span>
-      {box.sub ? <span className="font-label text-xs font-semibold leading-snug text-ink-muted">{box.sub}</span> : null}
+      {sub ? <span className="font-label text-xs font-semibold leading-snug text-ink-muted">{sub}</span> : null}
     </Link>
   );
 }

@@ -144,3 +144,31 @@ def test_these_routes_need_a_login():
     for method, path in (("get", "/api/v1/claude"), ("get", "/api/v1/claude/consent?client_id=x"),
                          ("post", "/api/v1/claude/allow"), ("post", "/api/v1/claude/revoke"), ("put", "/api/v1/claude/cap")):
         assert getattr(client, method)(path).status_code in (401, 403), path
+
+
+# ── which connector is a consent request for (asked before anyone signs in) ───
+
+def _consent_app(app_id, *, boom=False):
+    db = two_clients()
+
+    def lookup(params):
+        if boom:
+            raise RuntimeError("db down")
+        return app_id if params["p_authorization_id"] == "auth-1" else None
+
+    db.rpc_handlers["claude_authorization_client"] = lookup
+    return db
+
+
+def test_consent_app_names_the_connector_without_a_login_and_never_the_app_id():
+    for app_id, kind in ((ADMIN_APP, "admin"), (APP, "client"), ("look-alike", "unknown")):
+        with patch.object(claude_connector, "get_supabase", return_value=_consent_app(app_id)):
+            r = TestClient(app).get("/api/v1/claude/consent-app", params={"authorization_id": "auth-1"})
+        assert r.status_code == 200 and r.json() == {"kind": kind}
+
+
+def test_consent_app_says_unknown_for_a_missing_request_and_503_when_the_lookup_breaks():
+    with patch.object(claude_connector, "get_supabase", return_value=_consent_app(APP)):
+        assert TestClient(app).get("/api/v1/claude/consent-app", params={"authorization_id": "nope"}).json() == {"kind": "unknown"}
+    with patch.object(claude_connector, "get_supabase", return_value=_consent_app(APP, boom=True)):
+        assert TestClient(app).get("/api/v1/claude/consent-app", params={"authorization_id": "auth-1"}).status_code == 503

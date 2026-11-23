@@ -1,9 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Crown, Lock, MapPin, Receipt, UserCircle } from "lucide-react";
+import { Building2, Crown, Eye, Lock, MapPin, Receipt, UserCircle } from "lucide-react";
 import { toast } from "sonner";
-import { api, BusinessProfile } from "@/lib/api";
+import {
+  fetchBusinessDetails,
+  imageProblem,
+  removeBrandImage,
+  saveBusinessDetails,
+  uploadBrandImage,
+  withDefaults,
+  EMPTY_BUSINESS_DETAILS,
+  type BrandImageKind,
+  type BusinessDetails,
+} from "@/lib/businessDetailsApi";
+import { BusinessDetailsFields } from "@/components/business-details/BusinessDetailsFields";
+import { InvoicePreview } from "@/components/business-details/InvoicePreview";
+import { businessDetailErrors } from "@/components/business-details/validate";
 import { PasskeySettings } from "@/app/dashboard/profile/PasskeySettings";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import {
@@ -15,91 +28,94 @@ import {
   SettingsAccordion,
   SettingsSection,
   SummaryHint,
-  SwitchPill,
 } from "../SettingsSection";
 import { useSettingsForm } from "../SettingsFormContext";
 import ChangePasswordCard from "../ChangePasswordCard";
 import { AiraLoader } from "@/components/AiraLoader";
 
-const EMPTY: BusinessProfile = {
-  legal_name: "",
-  address: "",
-  city: "",
-  state: "",
-  pincode: "",
-  gstin: "",
-  email: "",
-  phone: "",
-  prices_include_gst: true,
-};
-
-const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-
-type FieldKey = "legal_name" | "address" | "city" | "state" | "pincode" | "email" | "phone";
-
-const TEXT_FIELDS: { key: FieldKey; label: string; placeholder: string; span?: string }[] = [
-  { key: "legal_name", label: "Legal business name", placeholder: "e.g. Anril Bakes Pvt Ltd", span: "sm:col-span-2" },
-  { key: "address", label: "Address", placeholder: "Street, area", span: "sm:col-span-2" },
-  { key: "city", label: "City", placeholder: "e.g. Coimbatore" },
-  { key: "state", label: "State", placeholder: "e.g. Tamil Nadu" },
-  { key: "pincode", label: "Pincode", placeholder: "e.g. 641001" },
-  { key: "email", label: "Email", placeholder: "billing@yourbusiness.com" },
-  { key: "phone", label: "Phone", placeholder: "e.g. 9876543210" },
-];
+/** The part of the details the form edits: pictures and their links are handled on their own. */
+function typedFields(d: BusinessDetails) {
+  const { has_logo, has_signature, logo_url, signature_url, ...rest } = d;
+  void has_logo; void has_signature; void logo_url; void signature_url;
+  return rest;
+}
 
 export default function AccountSettingsPage() {
   const { fullName, initials, email, memberSince, canManageSettings } = useSettingsForm();
   const { tenantName } = useAuthRole();
 
-  const [profile, setProfile] = useState<BusinessProfile>(EMPTY);
-  const [draft, setDraft] = useState<BusinessProfile>(EMPTY);
+  const [profile, setProfile] = useState<BusinessDetails>(EMPTY_BUSINESS_DETAILS);
+  const [draft, setDraft] = useState<BusinessDetails>(EMPTY_BUSINESS_DETAILS);
+  const [pictures, setPictures] = useState<{ logo: string | null; signature: string | null }>({ logo: null, signature: null });
+  const [busyImage, setBusyImage] = useState<BrandImageKind | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const [gstinError, setGstinError] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
+
+  function adopt(data: BusinessDetails, keepDraft = false) {
+    setProfile(data);
+    if (!keepDraft) setDraft(data);
+    setPictures({ logo: data.logo_url ?? null, signature: data.signature_url ?? null });
+  }
 
   useEffect(() => {
-    api.businessProfile
-      .get()
-      .then((data) => {
-        setProfile(data);
-        setDraft(data);
-      })
+    fetchBusinessDetails()
+      .then((data) => adopt(data))
       .catch((err) => {
         toast.error(err instanceof Error ? err.message : "Failed to load business details");
       })
       .finally(() => setIsLoading(false));
   }, []);
 
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(profile);
-
-  function setField(key: FieldKey, value: string) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleGstinChange(value: string) {
-    const upper = value.toUpperCase();
-    setDraft((prev) => ({ ...prev, gstin: upper }));
-    setGstinError(upper.trim() && !GSTIN_PATTERN.test(upper.trim()) ? "Doesn't look like a valid GSTIN" : null);
-  }
+  const isDirty = JSON.stringify(typedFields(draft)) !== JSON.stringify(typedFields(profile));
+  const errors = businessDetailErrors(draft);
+  const hasErrors = Object.keys(errors).length > 0;
 
   async function handleSave() {
     if (!canManageSettings) return;
-    const gstin = draft.gstin.trim();
-    if (gstin && !GSTIN_PATTERN.test(gstin)) {
-      setGstinError("Doesn't look like a valid GSTIN");
+    if (hasErrors) {
+      setShowErrors(true);
       return;
     }
     setSaveState("saving");
     try {
-      const saved = await api.businessProfile.save({ ...draft, gstin });
-      setProfile(saved);
-      setDraft(saved);
+      const saved = await saveBusinessDetails(typedFields(draft));
+      adopt(saved);
       setSaveState("saved");
       toast.success("Business details saved");
       setTimeout(() => setSaveState("idle"), 2000);
     } catch (err) {
       setSaveState("idle");
       toast.error(err instanceof Error ? err.message : "Failed to save business details");
+    }
+  }
+
+  async function handlePickImage(kind: BrandImageKind, file: File) {
+    const problem = imageProblem(file);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
+    setBusyImage(kind);
+    try {
+      // The picture saves on its own; whatever is typed but not saved yet stays as it is.
+      adopt(withDefaults(await uploadBrandImage(kind, file)), true);
+      toast.success(kind === "logo" ? "Logo saved" : "Signature saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save the picture");
+    } finally {
+      setBusyImage(null);
+    }
+  }
+
+  async function handleRemoveImage(kind: BrandImageKind) {
+    setBusyImage(kind);
+    try {
+      adopt(await removeBrandImage(kind), true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't remove the picture");
+    } finally {
+      setBusyImage(null);
     }
   }
 
@@ -172,16 +188,23 @@ export default function AccountSettingsPage() {
           icon={Building2}
           accent="violet"
           title="Business details"
-          description="Your legal name, address and GSTIN, used on the monthly export for your auditor."
+          description="What your bills say: name, address, GST, UPI and bank, terms, logo and signature. Also used on the monthly export for your auditor."
           dirty={isDirty}
           summary={
             isLoading ? undefined : profile.legal_name.trim() ? (
               <Facts>
                 <Fact icon={Building2}>{profile.legal_name}</Fact>
                 {profile.city.trim() && <Fact icon={MapPin}>{profile.city}</Fact>}
-                <Fact icon={Receipt} mono={!!profile.gstin}>
-                  {profile.gstin ? `GSTIN ${profile.gstin}` : "No GSTIN"}
+                <Fact icon={Receipt} mono={profile.gst_type === "regular" && !!profile.gstin}>
+                  {profile.gst_type === "composition"
+                    ? "Composition (bill of supply)"
+                    : profile.gst_type === "none"
+                      ? "Not GST registered"
+                      : profile.gstin
+                        ? `GSTIN ${profile.gstin}`
+                        : "No GSTIN"}
                 </Fact>
+                {profile.bill_prefix && <Fact mono>Bills {profile.bill_prefix}/…</Fact>}
                 <Fact>{profile.prices_include_gst ? "Prices include GST" : "GST added at checkout"}</Fact>
               </Facts>
             ) : (
@@ -192,62 +215,29 @@ export default function AccountSettingsPage() {
           {isLoading ? (
             <AiraLoader inline className="min-h-[120px]" />
           ) : (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {TEXT_FIELDS.map((field) => (
-                  <div key={field.key} className={field.span}>
-                    <label className="mb-1.5 block font-label text-[11px] font-bold uppercase tracking-wider text-ink-muted">
-                      {field.label}
-                    </label>
-                    <input
-                      value={draft[field.key]}
-                      disabled={!canManageSettings}
-                      onChange={(e) => setField(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full rounded-xl border border-border bg-white px-3 py-2.5 font-body text-sm text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label className="mb-1.5 block font-label text-[11px] font-bold uppercase tracking-wider text-ink-muted">
-                    GSTIN
-                  </label>
-                  <input
-                    value={draft.gstin}
-                    disabled={!canManageSettings}
-                    onChange={(e) => handleGstinChange(e.target.value)}
-                    placeholder="e.g. 33AAAAA0000A1Z5"
-                    maxLength={15}
-                    className="w-full rounded-xl border border-border bg-white px-3 py-2.5 font-mono text-sm uppercase tracking-wide text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                  {gstinError && <p className="mt-1 text-xs text-danger">{gstinError}</p>}
-                  {!gstinError && (
-                    <p className="mt-1 text-xs text-ink-muted">Leave blank if you&apos;re not GST-registered.</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-surface-low p-4">
-                <div>
-                  <p className="font-label text-sm font-semibold text-ink">My prices include GST</p>
-                  <p className="mt-1 max-w-md font-body text-xs leading-relaxed text-ink-muted">
-                    {draft.prices_include_gst
-                      ? "On: a ₹499 price is what the customer pays (tax is inside)."
-                      : "Off: GST is added on top at checkout."}
-                  </p>
-                </div>
-                <SwitchPill
-                  on={draft.prices_include_gst}
-                  disabled={!canManageSettings}
-                  onChange={(next) => setDraft((prev) => ({ ...prev, prices_include_gst: next }))}
-                  aria-label="Prices include GST"
-                />
-              </div>
+            <div className="space-y-7">
+              <BusinessDetailsFields
+                draft={draft}
+                onChange={(patch) => setDraft((prev) => ({ ...prev, ...patch }))}
+                errors={showErrors ? errors : {}}
+                canManage={canManageSettings}
+                logoUrl={pictures.logo}
+                signatureUrl={pictures.signature}
+                busyImage={busyImage}
+                onPickImage={handlePickImage}
+                onRemoveImage={handleRemoveImage}
+              />
+              <section>
+                <h3 className="mb-3 inline-flex items-center gap-1.5 font-display text-sm font-bold text-ink">
+                  <Eye size={15} aria-hidden /> Bill preview
+                </h3>
+                <InvoicePreview details={draft} logoUrl={pictures.logo} signatureUrl={pictures.signature} />
+              </section>
             </div>
           )}
 
           <SectionFooter status={<SaveStatus state={saveState} dirty={isDirty} />}>
-            <SaveButton state={saveState} dirty={isDirty} disabled={!canManageSettings || isLoading || !!gstinError} onClick={handleSave} />
+            <SaveButton state={saveState} dirty={isDirty} disabled={!canManageSettings || isLoading} onClick={handleSave} />
           </SectionFooter>
         </SettingsSection>
       </div>

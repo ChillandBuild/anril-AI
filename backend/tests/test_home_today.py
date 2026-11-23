@@ -61,6 +61,8 @@ class FakeDB:
 ALL_BOXES_DB = {
     "deals": [{"id": "d1"}],
     "catalog_items": [{"id": "c1"}],
+    "booking_services": [{"id": "s1"}],
+    "cash_expenses": [{"id": "e1"}],
     "tenants": [{"enabled_features": ["inbound_messaging", "telecalling.scheduled"]}],
 }
 
@@ -84,6 +86,12 @@ def stub_sources(monkeypatch):
     monkeypatch.setattr(h, "_box_won_month", lambda db, tid, t: box(5))
     monkeypatch.setattr(h, "_box_callbacks", lambda db, tid, t: box(7))
     monkeypatch.setattr(h, "_box_ads", lambda db, tid: box(9))
+    monkeypatch.setattr(h, "_box_profit", lambda db, ctx, t: {"value": 4800000, "unit": "paise", "sub": "Nov so far"})
+    monkeypatch.setattr(h, "_box_expenses_today", lambda db, tid, t: {"value": 120000, "unit": "paise", "sub": "3 expenses"})
+    monkeypatch.setattr(h, "_feedback", lambda db, ctx, t: {
+        "box": {"value": 4.3, "unit": "stars", "sub": "12 answered \u00b7 2 unhappy open"},
+        "list": {"total": 1, "items": [{"id": "f1", "lead_id": "l1", "name": "Arun", "stars": 5, "reason": None}]}})
+    monkeypatch.setattr("app.services.customer_feedback.is_on", lambda tid: True)
     monkeypatch.setattr(h, "_waiting_list", lambda db, ctx: {"total": 7, "items": [{"lead_id": "l1"}]})
     bar = {"lead_id": "l1", "name": "Arun", "waiting_since": "2026-11-21T04:00:00+00:00",
            "last_message": "price?", "phone": "+9199"}
@@ -205,7 +213,8 @@ def test_today_route_needs_dashboard_view(monkeypatch):
 def test_today_route_returns_the_contract_shape(client, monkeypatch, stub_sources):
     _use_db(monkeypatch, FakeDB(ALL_BOXES_DB))
     body = client.get("/api/v1/home/today").json()
-    assert set(body) == {"available", "defaults", "boxes", "hot_bar", "waiting", "low_stock"}
+    assert set(body) == {"available", "defaults", "boxes", "hot_bar", "waiting", "low_stock", "todays_bookings",
+                         "todays_feedback"}
 
 
 def test_layout_get_without_row_is_the_no_row_shape(client, monkeypatch):
@@ -247,8 +256,22 @@ def test_put_validation_is_422_and_writes_nothing(client, monkeypatch, body):
 
 def test_put_more_than_twelve_is_422(client, monkeypatch):
     _use_db(monkeypatch, FakeDB())
-    # 10 real keys is the most a person can pick today, so 13 can only mean repeats or unknowns: still 422.
+    # 13 unknown keys: still 422 (too many, and unknown).
     assert client.put("/api/v1/home/layout", json={"boxes": [f"k{i}" for i in range(13)], "lists": {}}).status_code == 422
+
+
+def test_more_boxes_exist_than_one_person_can_turn_on(client, monkeypatch):
+    """BOX_KEYS is now 15; MAX_BOXES (12) is how many a person turns on. 12 real keys save, 13 do not."""
+    assert len(h.BOX_KEYS) > h.MAX_BOXES == 12
+    db = FakeDB()
+    _use_db(monkeypatch, db)
+    ok = client.put("/api/v1/home/layout", json={"boxes": list(h.BOX_KEYS[:12]), "lists": {}})
+    assert ok.status_code == 200 and len(ok.json()["boxes"]) == 12
+    too_many = client.put("/api/v1/home/layout", json={"boxes": list(h.BOX_KEYS[:13]), "lists": {}})
+    assert too_many.status_code == 422
+    new = client.put("/api/v1/home/layout", json={"boxes": ["profit_month", "expenses_today", "feedback_week"],
+                                                 "lists": {"todays_feedback": False}})
+    assert new.status_code == 200 and new.json()["lists"]["todays_feedback"] is False
 
 
 def test_put_saves_and_returns_the_get_shape(client, monkeypatch):
@@ -257,7 +280,8 @@ def test_put_saves_and_returns_the_get_shape(client, monkeypatch):
     res = client.put("/api/v1/home/layout", json={"boxes": ["to_collect", "money_in_today"], "lists": {"waiting": False}})
     assert res.status_code == 200
     assert res.json() == {"boxes": ["to_collect", "money_in_today"],
-                          "lists": {"waiting": False, "low_stock": True}, "is_custom": True}
+                          "lists": {"waiting": False, "low_stock": True, "todays_bookings": True, "todays_feedback": True},
+                          "is_custom": True}
     table, (op, args, kwargs) = db.writes[0]
     assert table == "home_layouts" and op == "upsert"
     assert args[0]["tenant_id"] == "t1" and args[0]["user_id"] == "u1"
@@ -316,3 +340,255 @@ def test_needs_you_rows_keep_only_the_needs_you_group(monkeypatch):
     name, params = db.rpc_calls[0]
     assert name == "get_inbox_chats" and params["p_view"] == "needs_you" and params["p_segments"] == ["A"]
     assert params["p_tenant_id"] == "t1"
+
+
+# ───────────────────────────────────────────────────────────── profit, expenses, feedback (gates)
+
+def _db(**tables):
+    base = {"deals": [{"id": "d1"}], "cash_expenses": [{"id": "e1"}], "tenants": [{"enabled_features": []}]}
+    base.update(tables)
+    return FakeDB(base)
+
+
+@pytest.mark.parametrize("role,perms,shown", [
+    ("owner", [], True),
+    ("staff", ["deals.view", "purchases.view"], True),
+    ("staff", ["deals.manage", "purchases.manage"], True),
+    ("staff", ["deals.view"], False),
+    ("staff", ["purchases.view"], False),
+    ("staff", ["analytics.view"], False),
+])
+def test_profit_gate_is_orders_and_purchases(stub_sources, role, perms, shown):
+    out = h.compute_today(_db(), _ctx(role, perms))
+    assert ("profit_month" in out["available"]) is shown
+    assert ("profit_month" in out["boxes"]) is shown
+    if shown:
+        assert out["boxes"]["profit_month"]["href"] == "/dashboard/analytics?tab=money"
+
+
+def test_profit_hidden_when_the_shop_has_no_deals(stub_sources):
+    out = h.compute_today(_db(deals=[]), _ctx())
+    assert "profit_month" not in out["available"]
+
+
+@pytest.mark.parametrize("role,perms,shown", [
+    ("owner", [], True),
+    ("staff", ["purchases.view"], True),
+    ("staff", ["deals.view"], False),
+])
+def test_expenses_gate_is_purchases_view(stub_sources, role, perms, shown):
+    out = h.compute_today(_db(), _ctx(role, perms))
+    assert ("expenses_today" in out["boxes"]) is shown
+    if shown:
+        assert out["boxes"]["expenses_today"]["href"] == "/dashboard/expenses"
+
+
+def test_expenses_hidden_until_the_shop_has_written_an_expense(stub_sources):
+    assert "expenses_today" not in h.compute_today(_db(cash_expenses=[]), _ctx())["boxes"]
+
+
+def test_missing_expenses_table_gives_no_box_and_nothing_else_breaks(stub_sources):
+    db = FakeDB({"deals": [{"id": "d1"}], "tenants": [{"enabled_features": []}]},
+                errors={"cash_expenses": Exception("Could not find the table 'public.cash_expenses' (PGRST205)")})
+    out = h.compute_today(db, _ctx())
+    assert "expenses_today" not in out["available"]
+    assert "profit_month" in out["available"] and "money_in_today" in out["available"]
+
+
+@pytest.mark.parametrize("role,perms,on,shown", [
+    ("owner", [], True, True),
+    ("staff", ["leads.view"], True, True),
+    ("staff", ["leads.manage"], True, True),
+    ("staff", ["leads.view"], False, False),
+    ("staff", ["deals.view"], True, False),
+])
+def test_feedback_gate_is_leads_view_and_switch_on(stub_sources, monkeypatch, role, perms, on, shown):
+    monkeypatch.setattr("app.services.customer_feedback.is_on", lambda tid: on)
+    out = h.compute_today(_db(), _ctx(role, perms))
+    assert ("feedback_week" in out["boxes"]) is shown
+    assert (out["todays_feedback"] is not None) is shown
+    if shown:
+        assert out["boxes"]["feedback_week"]["href"] == "/dashboard/leads?tab=feedback"
+
+
+def test_feedback_switch_unreadable_means_no_box_not_a_500(stub_sources, monkeypatch):
+    def boom(tid):
+        raise RuntimeError("settings down")
+    monkeypatch.setattr("app.services.customer_feedback.is_on", boom)
+    out = h.compute_today(_db(), _ctx())
+    assert "feedback_week" not in out["available"] and out["todays_feedback"] is None
+    assert "money_in_today" in out["available"]
+
+
+def test_failing_new_sources_leave_only_themselves_out(stub_sources, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("db hiccup")
+    for name in ("_box_profit", "_box_expenses_today", "_feedback"):
+        monkeypatch.setattr(h, name, boom)
+    out = h.compute_today(_db(), _ctx())
+    for k in ("profit_month", "expenses_today", "feedback_week"):
+        assert k not in out["available"]
+    assert out["todays_feedback"] is None
+    assert "money_in_today" in out["available"] and out["defaults"] == out["available"][:6]
+
+
+# ───────────────────────────────────────────────────────────── profit, expenses, feedback (values)
+
+from datetime import datetime, timezone  # noqa: E402
+
+from fake_supabase import FakeSupabase  # noqa: E402
+from reports_seed import T1, seed, seed_money  # noqa: E402
+from app.services import reports_money  # noqa: E402
+from app.services.reports_common import Flags, Period  # noqa: E402
+from datetime import date  # noqa: E402
+
+UTC = timezone.utc
+_REAL_FEEDBACK = h._feedback
+
+
+def test_profit_box_equals_reports_money_for_this_month_so_far():
+    """16 Oct 2026 afternoon IST: the box is the Reports > Money profit for 1 Oct to 16 Oct, same code."""
+    db = seed_money(seed(FakeSupabase()))
+    now = datetime(2026, 10, 16, 10, 0, tzinfo=UTC)
+    box = h._box_profit(db, _ctx(), h._times(now))
+    report = reports_money.report(db, T1, Period(date(2026, 10, 1), date(2026, 10, 16)), False, Flags(True, True))
+    assert box["value"] == report["period"]["profit_paise"] == 170_000 - 5_000 - 40_000 - 57_000  # 3 paid orders so far this month
+    assert box["unit"] == "paise" and box["sub"] == "Oct so far"
+
+
+def test_profit_box_uses_the_ist_day_to_pick_the_month(monkeypatch):
+    seen = []
+
+    def fake_compute(db, tenant_id, period, flags):
+        seen.append((tenant_id, period.start, period.end, flags.sees_profit))
+        return {"profit_paise": -250_000}, {}
+    monkeypatch.setattr(reports_money, "compute", fake_compute)
+    # 30 Nov 19:00 UTC is already 1 Dec 00:30 in India: a new month, and one day of it.
+    box = h._box_profit(FakeDB(), _ctx(), h._times(datetime(2026, 11, 30, 19, 0, tzinfo=UTC)))
+    assert seen == [("t1", date(2026, 12, 1), date(2026, 12, 1), True)]
+    assert box == {"value": -250_000, "unit": "paise", "sub": "Dec so far"}
+    # 30 Nov 18:00 UTC is 23:30 on 30 Nov in India: still November.
+    seen.clear()
+    box = h._box_profit(FakeDB(), _ctx(), h._times(datetime(2026, 11, 30, 18, 0, tzinfo=UTC)))
+    assert seen[0][1:3] == (date(2026, 11, 1), date(2026, 11, 30)) and box["sub"] == "Nov so far"
+
+
+def test_expenses_today_adds_up_todays_rows_in_this_client_only():
+    db = FakeSupabase()
+    db.add("cash_expenses", tenant_id="t1", day="2026-11-23", amount_paise=15_000, label="Tea")
+    db.add("cash_expenses", tenant_id="t1", day="2026-11-23", amount_paise=35_000, label="Auto")
+    db.add("cash_expenses", tenant_id="t1", day="2026-11-22", amount_paise=99_000, label="Yesterday")
+    db.add("cash_expenses", tenant_id="t2", day="2026-11-23", amount_paise=77_000, label="Other shop")
+    now = datetime(2026, 11, 23, 5, 0, tzinfo=UTC)
+    assert h._box_expenses_today(db, "t1", h._times(now)) == {"value": 50_000, "unit": "paise", "sub": "2 expenses"}
+    assert h._box_expenses_today(FakeSupabase(), "t1", h._times(now)) == {"value": 0, "unit": "paise", "sub": "0 expenses"}
+    db.tables["cash_expenses"] = [r for r in db.rows("cash_expenses") if r["label"] == "Tea"]
+    assert h._box_expenses_today(db, "t1", h._times(now))["sub"] == "1 expense"
+
+
+def test_expenses_today_follows_the_ist_day_not_utc():
+    db = FakeSupabase()
+    db.add("cash_expenses", tenant_id="t1", day="2026-11-22", amount_paise=10_000, label="Late night")
+    db.add("cash_expenses", tenant_id="t1", day="2026-11-23", amount_paise=20_000, label="Early")
+    # 22 Nov 18:40 UTC is 23 Nov 00:10 in India.
+    assert h._box_expenses_today(db, "t1", h._times(datetime(2026, 11, 22, 18, 40, tzinfo=UTC)))["value"] == 20_000
+    # 22 Nov 18:20 UTC is 22 Nov 23:50 in India.
+    assert h._box_expenses_today(db, "t1", h._times(datetime(2026, 11, 22, 18, 20, tzinfo=UTC)))["value"] == 10_000
+
+
+def _fb(db, tenant, lead, stars, answered_at, status="answered", reason=None):
+    db.add("customer_feedback", tenant_id=tenant, lead_id=lead, stars=stars, status=status,
+           answered_at=answered_at, reason=reason, asked_at=answered_at)
+
+
+def _feedback_db():
+    db = FakeSupabase()
+    for lead, name, caller in (("L1", "Asha", "c1"), ("L2", "Bala", "c2"), ("L3", "Chitra", "c1"), ("L4", "Devi", None)):
+        db.add("leads", id=lead, tenant_id="t1", name=name, assigned_to=caller)
+    db.add("leads", id="LX", tenant_id="t2", name="Other shop", assigned_to=None)
+    # now = 23 Nov 2026, 10:00 IST (04:30 UTC)
+    _fb(db, "t1", "L1", 5, "2026-11-23T03:00:00+00:00", reason="Great")          # today
+    _fb(db, "t1", "L2", 2, "2026-11-23T02:00:00+00:00", reason="Late delivery")  # today, unhappy
+    _fb(db, "t1", "L3", 4, "2026-11-20T06:00:00+00:00")                          # this week
+    _fb(db, "t1", "L4", 3, "2026-11-01T06:00:00+00:00", reason="Old complaint")  # old, unhappy, still open
+    _fb(db, "t1", "L1", 1, "2026-11-23T01:00:00+00:00", status="failed")        # not answered
+    _fb(db, "t1", "L1", None, None, status="asked")                              # not answered
+    _fb(db, "t2", "LX", 1, "2026-11-23T03:30:00+00:00")                          # another client
+    return db
+
+
+NOW = datetime(2026, 11, 23, 4, 30, tzinfo=UTC)
+
+
+def test_feedback_box_and_list_for_the_owner():
+    out = h._feedback(_feedback_db(), _ctx(), h._times(NOW))
+    # stars in the week: 5, 2, 4 -> 3.7; unhappy open (answered, <= 3 stars, any date): L2 and L4
+    assert out["box"] == {"value": 3.7, "unit": "stars", "sub": "3 answered · 2 unhappy open"}
+    assert out["list"]["total"] == 2
+    assert out["list"]["items"] == [
+        {"id": out["list"]["items"][0]["id"], "lead_id": "L1", "name": "Asha", "stars": 5, "reason": "Great"},
+        {"id": out["list"]["items"][1]["id"], "lead_id": "L2", "name": "Bala", "stars": 2, "reason": "Late delivery"},
+    ]
+
+
+def test_feedback_for_a_telecaller_counts_only_their_own_people():
+    ctx = {**_ctx("caller", ["leads.view"]), "caller_id": "c1"}
+    out = h._feedback(_feedback_db(), ctx, h._times(NOW))
+    # c1 has L1 (5 stars today), L3 (4 stars this week) and L4 is nobody's; L4's old 3-star is not c1's
+    assert out["box"] == {"value": 4.5, "unit": "stars", "sub": "2 answered · 0 unhappy open"}
+    assert [i["lead_id"] for i in out["list"]["items"]] == ["L1"]
+    other = {**_ctx("caller", ["leads.view"]), "caller_id": "c2"}
+    got = h._feedback(_feedback_db(), other, h._times(NOW))
+    assert got["box"]["sub"] == "1 answered · 1 unhappy open" and got["box"]["value"] == 2.0
+    assert [i["name"] for i in got["list"]["items"]] == ["Bala"]
+
+
+def test_feedback_telecaller_with_no_caller_id_sees_nothing():
+    ctx = {**_ctx("caller", ["leads.view"]), "caller_id": None}
+    out = h._feedback(_feedback_db(), ctx, h._times(NOW))
+    assert out["box"] == {"value": None, "unit": "stars", "sub": "0 answered · 0 unhappy open"}
+    assert out["list"] == {"total": 0, "items": []}
+
+
+def test_feedback_never_reads_another_client():
+    db = _feedback_db()
+    out = h._feedback(db, _ctx(), h._times(NOW))
+    assert all(i["lead_id"] != "LX" for i in out["list"]["items"])
+    assert out["box"]["sub"].startswith("3 answered")
+
+
+def test_feedback_list_is_newest_first_and_capped_at_five():
+    db = FakeSupabase()
+    for n in range(7):
+        db.add("leads", id=f"L{n}", tenant_id="t1", name=f"P{n}", assigned_to=None)
+        _fb(db, "t1", f"L{n}", 4, f"2026-11-23T0{n}:00:00+00:00")
+    out = h._feedback(db, _ctx(), h._times(NOW))
+    assert out["list"]["total"] == 7
+    assert [i["lead_id"] for i in out["list"]["items"]] == ["L6", "L5", "L4", "L3", "L2"]
+
+
+def test_feedback_day_and_week_edges_follow_ist():
+    db = FakeSupabase()
+    db.add("leads", id="L1", tenant_id="t1", name="Asha", assigned_to=None)
+    # now: 23 Nov 00:10 IST (22 Nov 18:40 UTC). Today starts at 22 Nov 18:30 UTC.
+    _fb(db, "t1", "L1", 5, "2026-11-22T18:35:00+00:00")   # 00:05 IST on the 23rd: today
+    _fb(db, "t1", "L1", 1, "2026-11-22T18:20:00+00:00")   # 23:50 IST on the 22nd: yesterday
+    # The week is 7 IST days, today included: it starts 17 Nov 00:00 IST = 16 Nov 18:30 UTC.
+    _fb(db, "t1", "L1", 3, "2026-11-16T18:31:00+00:00")   # inside
+    _fb(db, "t1", "L1", 3, "2026-11-16T18:29:00+00:00")   # one day too old
+    out = h._feedback(db, _ctx(), h._times(datetime(2026, 11, 22, 18, 40, tzinfo=UTC)))
+    assert [i["stars"] for i in out["list"]["items"]] == [5]
+    # answered in the week: 5, 1, 3 -> 3.0. Unhappy open ignores dates: the 1 and both 3s.
+    assert out["box"] == {"value": 3.0, "unit": "stars", "sub": "3 answered \u00b7 3 unhappy open"}
+
+
+def test_feedback_with_no_answers_has_no_average_not_a_zero():
+    out = h._feedback(FakeSupabase(), _ctx(), h._times(NOW))
+    assert out["box"]["value"] is None and out["box"]["sub"] == "0 answered · 0 unhappy open"
+
+
+def test_feedback_missing_table_gives_no_box_and_no_list(stub_sources, monkeypatch):
+    monkeypatch.setattr(h, "_feedback", _REAL_FEEDBACK)
+    db = FakeDB({"deals": []}, errors={"customer_feedback": Exception("PGRST205 could not find the table")})
+    out = h.compute_today(db, _ctx())
+    assert "feedback_week" not in out["boxes"] and out["todays_feedback"] is None

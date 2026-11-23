@@ -9,6 +9,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { MobileRecordCard, MobileRecordHeader, MobileRecordGrid } from "@/components/MobileRecord";
 import { cn } from "@/lib/utils";
 import { FilterMenu, type FilterMenuOption } from "./FilterMenu";
+import { DONT_CALL_LABEL, isDontCallRow } from "@/lib/customersApi";
 
 const TZ = "Asia/Kolkata";
 
@@ -18,6 +19,7 @@ const HOW_OPTIONS: FilterMenuOption[] = [
   { value: "chat_ai", label: "Said no in chat" },
   { value: "call", label: "Asked on a call" },
   { value: "staff", label: "Added by staff" },
+  { value: "dont_call", label: DONT_CALL_LABEL },
   { value: "unknown", label: "Before we tracked how" },
 ];
 
@@ -79,11 +81,21 @@ function truncate(text: string, max = 60): string {
 
 function matchesHow(p: SaidStopPerson, how: string | undefined): boolean {
   if (how === undefined || how === "all") return true;
-  if (how === "unknown") return p.source === null;
+  if (how === "dont_call") return isDontCallRow(p);
+  if (how === "unknown") return p.source === null && !isDontCallRow(p);
   return p.source === how;
 }
 
 function howContent(p: SaidStopPerson): ReactNode {
+  // Marked Don't call on a call: messages still go, calls do not.
+  if (isDontCallRow(p)) {
+    return (
+      <>
+        {DONT_CALL_LABEL}
+        <span className="mt-1 block text-xs text-[#64748b]">Messages still go. Calls do not.</span>
+      </>
+    );
+  }
   switch (p.source) {
     case "stop_reply":
       return <>Replied &quot;STOP&quot;</>;
@@ -106,6 +118,9 @@ function howContent(p: SaidStopPerson): ReactNode {
 }
 
 function wherePill(p: SaidStopPerson): Pill | null {
+  if (isDontCallRow(p)) {
+    return { label: p.detail ? `Call IQ · ${p.detail}` : "Call IQ", className: "bg-[#fef6ee] text-[#b93815]" };
+  }
   switch (p.source) {
     case "stop_reply":
       return { label: p.detail ? `Broadcast · ${p.detail}` : "WhatsApp", className: "bg-slate-100 text-slate-700" };
@@ -619,7 +634,11 @@ export function SaidStopPanel() {
         onClose={() => setRemoving(null)}
         onConfirm={removePerson}
         title={`Remove ${labelFor(removing?.name ?? null, removing?.phone ?? null, "this person")} from Said stop?`}
-        description="Only do this if the customer asked to hear from you again. Offers, follow-ups and calls can reach them after this."
+        description={
+          removing && isDontCallRow(removing)
+            ? "Only do this if the customer said calling them is fine now. Calls can reach them after this."
+            : "Only do this if the customer asked to hear from you again. Offers, follow-ups and calls can reach them after this."
+        }
         tone="danger"
         confirmLabel="Remove"
         loading={removeBusy}

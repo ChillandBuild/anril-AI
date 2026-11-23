@@ -1428,6 +1428,11 @@ _SEND_QUOTE_TOOL = {
                     "description": ("Only when the customer asked for a lower price AND the item says you MAY offer a "
                                     "discount: the % off you agreed (never above that item's limit). Omit otherwise."),
                 },
+                "pay_full": {
+                    "type": "boolean",
+                    "description": ("true only when the customer says they want to pay the full amount now instead of "
+                                    "the advance. Omit otherwise: the link then asks only the advance."),
+                },
             },
             "required": ["item_ids"],
         },
@@ -1944,6 +1949,25 @@ def build_reply_system_prompt(
     # services/ai_teach.py; never raises, adds only the date line if its tables can't be read.
     from app.services import ai_teach
     system_prompt += ai_teach.prompt_block(db, tenant_id)
+    # Bookings set up (link on + a service): the booking link, the AI's one booking ability.
+    # services/booking_ai.py; never raises, adds nothing when Bookings isn't set up.
+    from app.services import booking_ai
+    system_prompt += booking_ai.prompt_block(db, tenant_id)
+    # v9.2 P1: the business's properties and how to talk about them (budget, BHK, area, loan; offer a site visit).
+    # services/properties.py; never raises, adds nothing for a business with no properties.
+    from app.services import properties as _properties
+    system_prompt += _properties.prompt_block(db, tenant_id)
+    # v9.2 P2: courses and their batches (dates, seats left, fee unless hidden); waitlist when full.
+    # services/courses.py; never raises, adds nothing for a business with no courses.
+    from app.services import courses as _courses
+    system_prompt += _courses.prompt_block(db, tenant_id)
+    # v9.2 #18: what this person already told us in a Meta Instant form, so the AI never asks it again.
+    # services/form_answers_ai.py; never raises, adds nothing for people who filled no form.
+    try:
+        from app.services import form_answers_ai
+        system_prompt += form_answers_ai.prompt_block(db, tenant_id, lead_id)
+    except Exception as e:  # the module is optional; a missing one must never stop a reply
+        logger.info("form answers block skipped for lead %s: %s", lead_id, type(e).__name__)
 
     # Last, so it is the freshest instruction when the model decides how to ask a question.
     from app.services.choices import PROMPT_BLOCK as _CHOICES_BLOCK

@@ -9,10 +9,11 @@ import { toast } from "sonner";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useInstantFormsOverview, useInstantFormsStatus } from "@/hooks/useApi";
 import { api } from "@/lib/api";
-import type { InstantFormRange, InstantFormSummary } from "@/lib/api";
+import type { InstantFormHelloStatus, InstantFormRange, InstantFormSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { LeadsDownloadButton } from "./LeadsDownloadButton";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
+import { formTemplateText, helloLook } from "./instantFormsDelivery";
 import {
   FormStatusBadge,
   InstantFormStatCards,
@@ -62,7 +63,92 @@ function SetupCard({
   );
 }
 
-function FormRow({ form, onOpen }: { form: InstantFormSummary; onOpen: () => void }) {
+/** The small on/off switch for a form's ready-made hello. It never opens the form row. */
+function HelloSwitch({ on, busy, onChange }: { on: boolean; busy: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={on ? "Turn the ready-made hello off for this form" : "Turn the ready-made hello on for this form"}
+      title={on ? "Turn the ready-made hello off for this form" : "Turn the ready-made hello on for this form"}
+      disabled={busy}
+      onClick={(event) => {
+        event.stopPropagation();
+        onChange(!on);
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-40",
+        on ? "bg-primary" : "bg-[#cbd5e1]",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+          on ? "translate-x-[18px]" : "translate-x-0.5",
+        )}
+      />
+    </button>
+  );
+}
+
+function TemplateCell({
+  form,
+  hello,
+  canManage,
+  busy,
+  onToggle,
+}: {
+  form: InstantFormSummary;
+  hello: InstantFormHelloStatus | undefined;
+  canManage: boolean;
+  busy: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  const look = formTemplateText(form, hello);
+  if (look.kind === "own") {
+    return <span className="block truncate font-label font-semibold text-[#0A1528]" title={look.text}>{look.text}</span>;
+  }
+  const on = form.auto_hello !== false;
+  const badge =
+    look.kind === "auto" ? (
+      <span
+        className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 font-label text-xs font-bold text-emerald-700"
+        title="New leads of this form get the ready-made hello"
+      >
+        auto
+      </span>
+    ) : look.kind === "auto_waiting" ? (
+      <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 font-label text-xs font-bold text-blue-800">{look.text}</span>
+    ) : look.kind === "off" ? (
+      <span className="inline-flex rounded-full bg-[#f1f5f9] px-2 py-0.5 font-label text-xs font-bold text-[#475569]">Off</span>
+    ) : (
+      <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 font-label text-xs font-bold text-amber-800">Not set</span>
+    );
+  return (
+    <span className="flex items-center gap-2">
+      {badge}
+      {canManage && <HelloSwitch on={on} busy={busy} onChange={onToggle} />}
+    </span>
+  );
+}
+
+function FormRow({
+  form,
+  hello,
+  canManage,
+  busy,
+  onToggleHello,
+  onOpen,
+}: {
+  form: InstantFormSummary;
+  hello: InstantFormHelloStatus | undefined;
+  canManage: boolean;
+  busy: boolean;
+  onToggleHello: (next: boolean) => void;
+  onOpen: () => void;
+}) {
   return (
     <tr
       tabIndex={0}
@@ -106,12 +192,8 @@ function FormRow({ form, onOpen }: { form: InstantFormSummary; onOpen: () => voi
         />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">{inrText(form.cost_per_lead)}</td>
-      <td className="max-w-[220px] px-4 py-3 text-xs">
-        {form.template_name ? (
-          <span className="block truncate font-label font-semibold text-[#0A1528]" title={form.template_name}>{form.template_name}</span>
-        ) : (
-          <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 font-label text-[11px] font-bold text-amber-800">Not set</span>
-        )}
+      <td className="max-w-[260px] px-4 py-3 text-xs">
+        <TemplateCell form={form} hello={hello} canManage={canManage} busy={busy} onToggle={onToggleHello} />
       </td>
       <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">{countText(form.template_sent)}</td>
       <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">{countText(form.replied)}</td>
@@ -128,6 +210,8 @@ export function InstantFormsTab() {
   const [dateTo, setDateTo] = useState(() => localDate());
   const [turningOn, setTurningOn] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [settingUpHello, setSettingUpHello] = useState(false);
+  const [helloBusy, setHelloBusy] = useState<string | null>(null);
 
   const { data: status, error: statusError, mutate: mutateStatus } = useInstantFormsStatus();
   const showOverview = status?.state === "ready" && status.subscribed && status.forms > 0;
@@ -159,6 +243,31 @@ export function InstantFormsTab() {
       toast.error(errorMessage(error));
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleSetupHello() {
+    setSettingUpHello(true);
+    try {
+      await api.instantForms.setupHello();
+      toast.success("Sent to WhatsApp for approval. This usually takes a few minutes.");
+      await mutateOverview();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSettingUpHello(false);
+    }
+  }
+
+  async function handleToggleHello(formId: string, next: boolean) {
+    setHelloBusy(formId);
+    try {
+      await api.instantForms.setAutoHello(formId, next);
+      await mutateOverview();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setHelloBusy(null);
     }
   }
 
@@ -277,6 +386,30 @@ export function InstantFormsTab() {
           )}
         </div>
 
+        {overview?.hello_template && (
+          <section
+            aria-label="Ready-made hello"
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-[#e2e8f0] bg-white px-4 py-3 shadow-sm"
+          >
+            <div className="min-w-0 flex-1 basis-64">
+              <p className="font-label text-sm font-bold text-[#0A1528]">
+                Ready-made hello:{" "}
+                <span className={cn("ml-1 inline-flex rounded-full px-2 py-0.5 align-middle text-xs", helloLook(overview.hello_template.status).className)}>
+                  {helloLook(overview.hello_template.status).label}
+                </span>
+              </p>
+              <p className="mt-0.5 font-body text-xs leading-relaxed text-[#556274]">
+                A short thank-you that goes to people who fill a form that has no WhatsApp message of its own. It needs Meta&apos;s approval once.
+              </p>
+            </div>
+            {canManage && helloLook(overview.hello_template.status).button && (
+              <button type="button" onClick={handleSetupHello} disabled={settingUpHello} className={PRIMARY_BUTTON}>
+                {settingUpHello ? "Sending…" : helloLook(overview.hello_template.status).button}
+              </button>
+            )}
+          </section>
+        )}
+
         {overviewError && !overview ? (
           <LoadErrorCard title="Could not load your forms" message={errorMessage(overviewError)} onRetry={() => mutateOverview()} />
         ) : (
@@ -310,7 +443,15 @@ export function InstantFormsTab() {
                     <tbody className="divide-y divide-[#f1f5f9]">
                       {overview
                         ? overview.forms.map((form) => (
-                            <FormRow key={form.form_id} form={form} onOpen={() => openForm(form.form_id)} />
+                            <FormRow
+                              key={form.form_id}
+                              form={form}
+                              hello={overview.hello_template?.status}
+                              canManage={canManage}
+                              busy={helloBusy === form.form_id}
+                              onToggleHello={(next) => handleToggleHello(form.form_id, next)}
+                              onOpen={() => openForm(form.form_id)}
+                            />
                           ))
                         : Array.from({ length: 4 }, (_, index) => (
                             <tr key={index}>

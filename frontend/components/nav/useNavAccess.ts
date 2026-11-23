@@ -68,6 +68,7 @@ export function buildNavAccess({ role, permissions, enabledFeatures, subStatus }
     telecallingPages: tcGroupItems.map((item) => item.href),
     can,
     canAny,
+    isCaller: role === "caller",
   };
 
   return { access, tcGroupItems, waEnabled, telecallingOn, canManageTeam };

@@ -13,6 +13,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { DeliveryBadge, PaymentBadge, Ticks, dateTime, reportSend, rupees } from "../orderUi";
 import { RefundDialog } from "../RefundDialog";
+import { advanceChangeText, type AdvanceChange } from "@/lib/billBrand";
 
 type Step = { key: string; label: string; at: string | null; done: boolean };
 
@@ -415,7 +416,10 @@ export default function OrderPage() {
               </div>
             )}
             {o.payment === "paid" && <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Check size={13} /> Paid in full</p>}
-            {o.advance_note && <p className="mt-2 text-[11px] text-on-surface-muted">{o.advance_note}</p>}
+            {o.advance_note && <p className="mt-2 text-xs text-on-surface-muted">{o.advance_note}</p>}
+            {((o as { advance_changes?: AdvanceChange[] }).advance_changes ?? []).map((c, i) => (
+              <p key={i} className="mt-1 text-xs text-on-surface-muted">{advanceChangeText(c)}</p>
+            ))}
           </Panel>
 
           {(o.stage !== "lost" || o.refundable_paise > 0) && (

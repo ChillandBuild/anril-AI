@@ -365,3 +365,57 @@ def test_logs_hold_no_message_text_or_keys(env, caplog):
     env.client.post(f"{PUB}/widget/chat", json={**signed(env), "message": SECRET_TEXT})
     created = env.client.post(f"{DASH}/keys").json()["key"]
     assert SECRET_TEXT not in caplog.text and env.key not in caplog.text and created not in caplog.text
+
+
+# --- reply_format ------------------------------------------------------------------------------
+
+FORMAT = {"buttons": [{"id": "porutham", "when": "they ask to match two charts", "handoff": False},
+                      {"id": "astrologer", "when": "very personal questions", "handoff": True}],
+          "questions_left": 4}
+
+
+def test_server_chat_without_reply_format_has_the_four_fields_null(env):
+    body = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "Vanakkam"}).json()
+    assert body["text"] == "Vanakkam Karthik!"
+    assert {k: body[k] for k in ("bubbles", "chips", "button", "tag")} == dict.fromkeys(
+        ("bubbles", "chips", "button", "tag"))
+
+
+def test_server_chat_with_reply_format_returns_bubbles(env):
+    body = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "Vanakkam", "reply_format": FORMAT}).json()
+    assert (body["text"], body["bubbles"], body["chips"], body["button"], body["tag"]) == \
+        ("Vanakkam Karthik!", ["Vanakkam Karthik!"], [], None, "counted")
+
+
+@pytest.mark.parametrize("bad", [
+    {"buttons": [{"id": "counted", "when": "x"}]},
+    {"buttons": [{"id": "a", "when": "x", "handoff": True}, {"id": "b", "when": "y", "handoff": True}]},
+    {"buttons": [{"id": f"b{i}", "when": "x"} for i in range(7)]},
+    {"questions_left": -1}, {"style": "short"},
+])
+def test_server_chat_refuses_a_bad_reply_format(env, bad):
+    r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "Vanakkam", "reply_format": bad})
+    assert r.status_code == 422
+
+
+def test_widget_chat_takes_reply_format_too(env):
+    body = env.client.post(f"{PUB}/widget/chat", json={**signed(env), "message": "hi", "reply_format": FORMAT}).json()
+    assert body["tag"] == "counted" and body["bubbles"] == ["Vanakkam Karthik!"]
+
+
+def test_reply_format_rides_through_a_tool_turn(env):
+    env.state["script"] = [("", [call()]), ("[mood: warm] [tag: counted]\nUngal lagnam Kumbham.\n---\nNalla lagnam."
+                                            "\n[chips: Dasa eppadi? | Kalyanam eppo?]", [])]
+    first = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "En jathagam",
+        "tools": [GET_CHART.model_dump()], "reply_format": FORMAT}).json()
+    assert first["status"] == "tool_call" and first["tag"] is None
+    done = env.client.post(f"{PUB}/chat/continue", headers=bearer(env.key), json={
+        "user_id": "48213", "turn_id": first["turn_id"], "results": [{"id": "call_1", "output": CHART}]}).json()
+    assert (done["bubbles"], done["chips"], done["tag"]) == (
+        ["Ungal lagnam Kumbham.", "Nalla lagnam."], ["Dasa eppadi?", "Kalyanam eppo?"], "counted")
+    assert done["text"] == "Ungal lagnam Kumbham.\n\nNalla lagnam."
+    assert env.db.rows("companion_messages")[-1]["content"] == done["text"]

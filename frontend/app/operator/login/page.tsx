@@ -37,7 +37,7 @@ export default function OperatorLoginPage() {
       });
 
       if (!res.ok) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
         setError("Access denied. This console is for Anril AI operators only.");
         return;
       }
@@ -45,7 +45,7 @@ export default function OperatorLoginPage() {
       const me = await res.json();
 
       if (!me.is_system_admin) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
         setError("Access denied. This console is for Anril AI operators only.");
         return;
       }

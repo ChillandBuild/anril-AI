@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/operator/ai-spend", label: "AI Spend" },
   { href: "/operator/subscription", label: "Subscription" },
   { href: "/operator/subscription-requests", label: "Requests" },
+  { href: "/operator/password-help", label: "Password help" },
   { href: "/operator/scheduler", label: "Schedulers" },
   { href: "/operator/prompt-template", label: "Master Prompt" },
   { href: "/operator/audit-log", label: "Audit Log" },
@@ -37,7 +38,7 @@ export function OperatorSidebar({ userEmail }: { userEmail: string }) {
 
   async function handleSignOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     router.push("/operator/login");
   }
 

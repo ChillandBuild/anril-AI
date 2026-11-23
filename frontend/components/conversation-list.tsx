@@ -63,7 +63,7 @@ interface Props {
 
 const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
   { value: "all", label: "All" },
-  { value: "whatsapp", label: "WA", dot: "bg-[#25D366]" },
+  { value: "whatsapp", label: "WA", dot: "bg-primary" },
   { value: "instagram", label: "IG", dot: "bg-[#E1306C]" },
   { value: "facebook", label: "FB", dot: "bg-[#1877F2]" },
   { value: "telegram", label: "TG", dot: "bg-[#229ED9]" },

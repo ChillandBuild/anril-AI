@@ -8,8 +8,10 @@ pre-filled message text: a client points a Google ad at a wa.me link whose
     https://wa.me/9198XXXXXXXX?text=Hi%2C%20I'm%20interested%20%5BGADS:summer_sale%5D
 
 When the user taps send, that tag arrives as the first inbound message body and we
-attribute the lead to a Google campaign. An optional [GCLID:...] tag lets a later
-phase reconcile exact spend via the Google Ads API.
+attribute the lead to a Google campaign. The link generator no longer writes a
+[GCLID:...] tag (Google's {gclid} macro gets URL-encoded inside a wa.me link, so it never
+carried a real click id, and nothing reads it without the Google API). The parser still
+reads one if an old link carries it.
 
 This module is pure text parsing — no DB, no network — so it is cheap to unit test.
 """
@@ -79,7 +81,7 @@ def build_tracked_wa_link(
     phone: str,
     campaign: str,
     *,
-    gclid: str | None = None,
+    gclid: str | None = None,  # ignored: kept so older callers still work; never written into the link
     greeting: str = _DEFAULT_GREETING,
 ) -> str:
     """Build a wa.me click-to-chat link whose pre-filled text carries the tag.
@@ -97,8 +99,5 @@ def build_tracked_wa_link(
         )
 
     number = phone.lstrip("+").replace(" ", "")
-    tag = f"[GADS:{campaign}]"
-    if gclid:
-        tag += f" [GCLID:{gclid}]"
-    text = f"{greeting} {tag}"
+    text = f"{greeting} [GADS:{campaign}]"
     return f"https://wa.me/{number}?text={quote(text)}"

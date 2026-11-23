@@ -20,6 +20,23 @@ host=github.com
 
 ## Active Backlog
 
+### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329 live; 330 NOT applied)
+- **Migration 330 (Courses tables) is not applied**: Prem declined it on 2026-11-23. The Courses tab stays hidden
+  until `course_batches` exists (properties.availability checks it). Apply 330, then education businesses see it.
+  The fee-reminders job (10:00 IST) does nothing until then.
+- Courses: waitlist is not told when a seat frees; no pay link / UPI QR in fee reminders; AI cannot call
+  join_waitlist / next_open_batch yet; turning AI Replies off also pauses fee reminders (master switch).
+- Properties: "liked, thinking → loan help after 2 days" not built; a cancelled order does not give units back;
+  units_left set after an order was paid never counts that order.
+- Bills: UPI prints as text (no QR helper); app-level types for brand/advance_changes live as casts, not in lib/api.ts.
+- Alerts: WhatsApp owner alerts don't obey the off switch (only "AI needs a person", which is always on); the
+  60 s alert-policy cache is per process (the queue worker can send a just-disabled alert for up to a minute).
+- Purchases routes still show cost to purchases.view without deals.view (confirm the policy).
+- Single-lead page: a telecaller can still open another telecaller's customer by URL (unchanged).
+- Call reviews `?call=` deep link opens only for team.manage (telecallers see another page).
+- Not visually checked: any of the new pages (Properties, Courses, Password help, Alerts locks, bill brand,
+  Payments switch, Finish setup card). (The tab-bar height fix was undone with the tab bars on 2026-11-23.)
+
 - **Inbound leads v2 — later parts (Prem, 2026-11-18).** Built now: the list (Interest/Result chips, top cards, reply status, set result, came/paid from orders). **Still to build, in this order of ask:** (Q2, Prem: "later we need to build") **AI details per lead**: the AI agent picks budget / area / loan / visit date / what they want (mapped to the Catalogue) out of the chat and saves it on the customer, each marked "from chat" and editable; this also feeds the "What they want / Why lost / Customers" sub-tabs and business/city for chat leads (today only Instant forms and IndiaMART/JustDial fill business/city, via `leads.collected_data`). B, C, D were built 2026-11-18 (decisions/log.md). Left: a WhatsApp version of the 8 PM unmarked-bookings check (needs an approved day-closing template and an open-hours setting), a follow-up for exactly the people selected (today follow-ups are rules only), and per-lead tags (Prem said build tags later).
 
 - **Meta Ads reporting-column parity — built locally, awaiting deploy and sync (2026-11-10).** All Ads now has Result rate, Results value, Results ROAS, Schedule and Last significant edit; Messaging Ads now has cost per messaging contact/new contact, reply rate, block rate and Meta-to-Anril contact match rate. Both Customize Columns pickers provide hover descriptions for every option. Migration `254_meta_ads_schedule_and_edit_metadata.sql` was applied to live Supabase and verified: `ad_campaigns.meta_updated_at` and `ad_sets.start_time`, `end_time`, `meta_updated_at` now exist. Before rollout: deploy the backend and frontend, then run a Meta Ads sync to populate schedule/edit metadata. Frontend typecheck and production build pass. Focused backend tests cannot collect in this Windows environment because installed Python is missing the declared `phonenumbers` dependency; restore dependencies before the next backend test run.
@@ -588,7 +605,7 @@ Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2
 
 ## Jothidar AI quality — open after the 20 Nov eval
 - **Style:** half the replies are written Tamil ("இருக்கிறார்") in long blocks despite rule 3 + persona. Next try: 1–2 sample lines rewritten as short spoken 3-paragraph answers (the model copies samples more than rules).
-- **Recurring wrong fact:** "புதன் ஆட்சி in ரிஷபம்" (19 Nov and 20 Nov). Proposal for the last free rule slot (39/40): say ஆட்சி/உச்சம் only when APP DATA marks it ("சொந்த வீடு").
+- ~~Recurring wrong fact "புதன் ஆட்சி in ரிஷபம்"~~ — covered by code since 23 Nov: the chart guard checks ஆட்சி/உச்சம்/நீசம் claims and redoes the reply (rule slot 39/40 still free).
 - **Rule 18 vs AstroTamil's 17 Nov key:** rule 18 lets the 2nd house count for jobs, so a Mercury (2nd lord) bhukti job window passes the rule; AstroTamil's review says Mercury alone is not a job reason. Prem to decide; recommended: AstroTamil's review wins.
 - **Timing picks:** property chose Venus bhukti over Sun (4th lord) bhukti; govt job didn't name the Sun bhukti; "wait till 2029" didn't name the Rahu dasa.
 - **Eval gaps not built:** rule 27 (no disease names) check; transit-vs-natal method check.
@@ -596,8 +613,36 @@ Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2
 
 ## v9.2 dashboard redesign — menu, left for last (2026-11-21)
 Shipped: Phase 1 (`3bec953a`), Phase 2 (`c9551e3c`), Phase 3 titles + Settings home (`f74a0aa7`), Call IQ reorganised (`c5d93dff`). Dropped by Prem: merging Anril OTP + Anril SMS, and the phone bar Today · Chats · Orders · More — do not re-propose.
-- **Step 6 — tab bars on every module (deferred by Prem, do LAST).** Approved-direction mockup: `docs/research/v92-tabbars-menu-mockup.html`. Sidebar becomes 13 flat rows (no fold-out groups); WhatsApp, Anril Setup, Engage, Anril OTP, Anril SMS, Commerce, Call IQ get a module tab bar (bold, teal underline) under the header; second-level chips under it (brief style: teal filled = on) take today's chips plus the header view switchers (Meta Ads views, Numbers, Knowledge, Orders, Catalogue). Titles "Module / Tab". Customers, Reach, Reports keep their header pills; Settings keeps its list; addresses unchanged; phone bar unchanged; drawer = flat module rows. Badges move to module rows (Chats, Anril Setup = Brain count, Call IQ = call alerts). Screens only.
+- **Step 6 — tab bars on every module: TRIED AND DROPPED by Prem (2026-11-23). Do NOT propose again.** Built as a flat 13-row menu + one tab bar per module under the header (96991d79); after seeing it Prem said "revert this, that would be better", reverted in e4595f58. The fold-out menu stays. Mockup kept only as a record: `docs/research/v92-tabbars-menu-mockup.html`.
 - None of the menu phases has been looked at logged in yet (tests/tsc/lint only). Check: Engage › Auto-Messages chips, Settings home cards, Call IQ › Calling › Dial a number (`/dashboard/telecalling/dial`).
 - `lib/brand-guard.test.ts` fails: WhatsApp green `#25D366` in `deals/new-bill/page.tsx` (Keerthi), `conversation-list.tsx`, `site/HeroInbox.tsx`.
 - Roles page still says "Audit Log" in its own heading (`app/dashboard/roles/page.tsx`); the tab is now "Activity log".
 - Call-alerts badge moved to the Team row: a user with `team.manage` but not `team.view` no longer sees it.
+
+## Jothidar AI — books on every answer, a paid quality option (backlog, 2026-11-23)
+Today the 15 books (tier 2) are searched only when the main resource keeps nothing (kb/search.py step B), so a
+personal question the Rule Book covers in general ("Sani 7th la irundha kalyanam late aaguma?") never gets a
+book's detail. Kept that way on purpose: searching the books every time costs about +$0.0035 (≈ ₹0.30) and
++3 s per reply, almost all of it the book judge (measured on 20 live-path eval replies: $0.0075 / 9.0 s with
+books vs $0.0040 / 5.7 s main only) — about ₹300 more per 1,000 messages.
+If a client asks for higher quality, offer it as a per-character switch, cheapest first:
+- judge only the top 8 book candidates instead of 20 (about half the extra cost)
+- search the books too only for chart questions (marriage, job, dasa), not general ones
+- always search both, main resource ranked first
+Measure first: ~10 questions where the Rule Book has the rule and a book has the detail (≈ ₹5), before/after.
+
+## Jothidar AI — open after the 23 Nov live test
+- **Per-profile memory not live:** AstroTamil's app sends no `profile_id` on /chat, so one user's profiles share one memory. Their side: send `profile_id` (and `profile_name`) per chart. Ours is built and tested (`tests/test_companion_profiles.py`).
+- **Search failure = silent own answer:** a knowledge search that fails (RemoteProtocolError, 1 in 7 days) answers with no files and logs no gap. Low priority; a single retry in `kb/search.py` would cover it.
+- **Test data left on purpose:** the car-colour answer typed in Missing answers during the test is live in "Owner answers" (Prem: keep).
+
+## v9.2 Batches I–M — shipped 2026-11-23 (723d0be2; migrations 321–325 applied). Tab bars (96991d79) were reverted in e4595f58.
+Not checked logged in yet (tests/tsc/lint only). Leftovers:
+- Call reviews page does not read `?call=<call_log_id>` yet (Call IQ Evaluation "Review call" links just open the page).
+- Hidden numbers: applied to next-lead, /initiate (cloud) and the lead list; NOT to lead detail (`GET /leads/{id}` has no ctx) or customer_profile. SIM callers always see numbers (the phone dialer needs them).
+- Per-person SIM/cloud: picker HIDDEN (PER_PERSON_MODE=false in components/call-iq-settings/PeopleCard.tsx, Prem 2026-11-23); do it with the telecaller phone app (#22). Then wire effective_calling_mode into callers.py (167, 281, 616, 641), call_review.py, leads.py:1868, analytics.py (only /initiate uses it today).
+- Assignment Log needs a label for reason "moved_for_leave".
+- Nothing emits a "number_disconnected" alert yet (key reserved in quiet-time allow list).
+- Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
+- Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
+- services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).

@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -24,6 +25,8 @@ class ReengagementStepCreate(BaseModel):
     template_variables: list[str] | None = None
     fallback_template_name: str | None = None
     fallback_template_variables: list[str] | None = None
+    # Only people in this Customers group (customer_groups.id). None = everybody the other rules pick.
+    target_group_id: str | None = None
 
 
 class ReengagementStepUpdate(BaseModel):
@@ -36,6 +39,8 @@ class ReengagementStepUpdate(BaseModel):
     template_variables: list[str] | None = None
     fallback_template_name: str | None = None
     fallback_template_variables: list[str] | None = None
+    # Left out = keep what is saved; null = back to everybody; an id = only that group.
+    target_group_id: str | None = None
 
 
 @router.get("/steps")
@@ -88,6 +93,25 @@ def _validate_step_fields(
             raise HTTPException(status_code=400, detail=DAY_STEP_MESSAGE)
 
 
+GROUP_NOT_YOURS = "Pick one of your own groups"
+GROUP_COLUMN_MISSING = "Sending a follow-up to one group is not switched on yet"
+
+
+def _check_group(db, tenant_id: str, group_id: str | None) -> str | None:
+    """The group id when it is one of this tenant's groups, else a 400. None stays None."""
+    if not group_id:
+        return None
+    try:
+        gid = str(UUID(str(group_id)))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=GROUP_NOT_YOURS)
+    rows = (db.table("customer_groups").select("id").eq("id", gid).eq("tenant_id", tenant_id)
+            .limit(1).execute()).data or []
+    if not rows:
+        raise HTTPException(status_code=400, detail=GROUP_NOT_YOURS)
+    return gid
+
+
 @router.post("/steps")
 def create_step(
     payload: ReengagementStepCreate,
@@ -116,7 +140,15 @@ def create_step(
         "fallback_template_name": payload.fallback_template_name,
         "fallback_template_variables": payload.fallback_template_variables,
     }
-    res = db.table("reengagement_steps").insert(row).execute()
+    group_id = _check_group(db, ctx["tenant_id"], payload.target_group_id)
+    if group_id:
+        row["target_group_id"] = group_id  # only sent when set, so a database without the column behaves as before
+    try:
+        res = db.table("reengagement_steps").insert(row).execute()
+    except Exception as e:
+        if group_id and "target_group_id" in str(e):
+            raise HTTPException(status_code=400, detail=GROUP_COLUMN_MISSING)
+        raise
     return res.data[0] if res.data else {}
 
 
@@ -142,13 +174,27 @@ def update_step(
         "fallback_template_name": payload.fallback_template_name,
         "fallback_template_variables": payload.fallback_template_variables,
     }
-    result = (
-        db.table("reengagement_steps")
-        .update(row)
-        .eq("id", step_id)
-        .eq("tenant_id", ctx["tenant_id"])
-        .execute()
-    )
+    sets_group = "target_group_id" in payload.model_fields_set
+    group_id = _check_group(db, ctx["tenant_id"], payload.target_group_id) if sets_group else None
+    if sets_group and (group_id or payload.target_group_id is None):
+        row["target_group_id"] = group_id
+    try:
+        result = (
+            db.table("reengagement_steps")
+            .update(row)
+            .eq("id", step_id)
+            .eq("tenant_id", ctx["tenant_id"])
+            .execute()
+        )
+    except Exception as e:
+        if "target_group_id" not in row or "target_group_id" not in str(e):
+            raise
+        if group_id:
+            raise HTTPException(status_code=400, detail=GROUP_COLUMN_MISSING)
+        # "Everybody" asked on a database without the column: nothing to clear, save the rest.
+        row.pop("target_group_id")
+        result = (db.table("reengagement_steps").update(row).eq("id", step_id)
+                  .eq("tenant_id", ctx["tenant_id"]).execute())
     if not result.data:
         raise HTTPException(status_code=404, detail="Step not found")
     return result.data[0]

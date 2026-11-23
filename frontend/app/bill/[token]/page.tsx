@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Check, Download, Loader2 } from "lucide-react";
-import { acceptPublicQuote, fetchPublicBill, type PublicBill } from "@/lib/api";
+import { acceptPublicQuote, fetchPublicBill, type PublicBill as ApiBill } from "@/lib/api";
+import { bankLines, billTitle, hasPayBlock, idsLine, showsTax, type BillExtras } from "@/lib/billBrand";
+
+// The API adds logo, signature, UPI, bank, terms and the Bill of supply title (lib/billBrand.ts).
+type PublicBill = ApiBill & BillExtras;
 
 // The customer's bill, opened from the WhatsApp link. No sign-in: the link's secret token is
 // the key. "Download PDF" prints this page (Save as PDF), so the PDF is exactly what they see.
@@ -39,7 +43,7 @@ export default function BillPage() {
   }, [token]);
 
   useEffect(() => {
-    if (bill) document.title = `${bill.quote ? "Quotation" : bill.bill_type === "gst" ? "Tax invoice" : "Bill"} ${bill.invoice_number ?? bill.order_label} · ${bill.business.legal_name}`;
+    if (bill) document.title = `${billTitle(bill)} ${bill.invoice_number ?? bill.order_label} · ${bill.business.legal_name}`;
   }, [bill]);
 
   if (failed) return <Shell><p className="py-24 text-center text-sm text-slate-500">This bill couldn&apos;t be loaded. Check your connection and open the link again.</p></Shell>;
@@ -48,7 +52,10 @@ export default function BillPage() {
 
   const b = bill.business;
   const q = bill.quote;
-  const isGst = bill.bill_type === "gst";
+  const isGst = showsTax(bill);
+  const brand = bill.brand ?? null;
+  const ids = idsLine(brand);
+  const title = billTitle(bill);
   const place = [b.address, b.city, b.state, b.pincode].filter(Boolean).join(", ");
   return (
     <Shell>
@@ -95,13 +102,18 @@ export default function BillPage() {
       <article className="mx-auto max-w-[760px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10 print:rounded-none print:border-0 print:p-0 print:shadow-none">
         <header className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-6">
           <div className="min-w-0">
+            {brand?.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brand.logo_url} alt="" className="mb-2 max-h-16 w-auto max-w-[180px] object-contain" />
+            )}
             <h1 className="text-xl font-bold text-slate-900">{b.legal_name || "Bill"}</h1>
             {place && <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{place}</p>}
             {(b.phone || b.email) && <p className="text-xs text-slate-500">{[b.phone, b.email].filter(Boolean).join(" · ")}</p>}
-            {isGst && b.gstin && <p className="mt-1 text-xs font-semibold text-slate-700">GSTIN {b.gstin}</p>}
+            {(isGst || bill.composition) && b.gstin && <p className="mt-1 text-xs font-semibold text-slate-700">GSTIN {b.gstin}</p>}
+            {ids && <p className="text-xs text-slate-600">{ids}</p>}
           </div>
           <div className="text-right">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{q ? "Quotation" : isGst ? "Tax invoice" : "Bill"}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600">{title}</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{q ? bill.order_label : bill.invoice_number ?? bill.order_label}</p>
             <p className="text-xs text-slate-500">{dateText(bill.invoice_date)}{q ? "" : ` · Order ${bill.order_label}`}</p>
             {q?.valid_until && <p className="text-xs font-semibold text-slate-600">Valid till {dateText(q.valid_until)}</p>}
@@ -166,6 +178,37 @@ export default function BillPage() {
           )}
           {bill.balance_paise === 0 && bill.paid_paise > 0 && <p className="pt-1 text-right text-xs font-bold text-emerald-700">Paid in full · thank you</p>}
         </dl>
+
+        {bill.composition && !q && (
+          <p className="mt-6 text-xs text-slate-600">Composition taxable person, not eligible to collect tax on supplies.</p>
+        )}
+
+        {(hasPayBlock(brand) || brand?.terms || brand?.signature_url) && (
+          <section className="mt-8 grid gap-6 border-t border-slate-200 pt-5 sm:grid-cols-2">
+            <div className="min-w-0 space-y-3">
+              {hasPayBlock(brand) && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-600">How to pay</p>
+                  {brand?.upi_id && <p className="mt-1 break-all text-sm text-slate-800">UPI: {brand.upi_id}</p>}
+                  {bankLines(brand).map((line) => <p key={line} className="text-sm text-slate-800">{line}</p>)}
+                </div>
+              )}
+              {brand?.terms && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Terms</p>
+                  <p className="mt-1 whitespace-pre-line text-xs leading-5 text-slate-600">{brand.terms}</p>
+                </div>
+              )}
+            </div>
+            {brand?.signature_url && (
+              <div className="flex flex-col items-end justify-end">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={brand.signature_url} alt="Signature" className="max-h-16 w-auto max-w-[200px] object-contain" />
+                <p className="mt-1 text-xs text-slate-600">Authorised signatory</p>
+              </div>
+            )}
+          </section>
+        )}
 
         <footer className="mt-10 border-t border-slate-100 pt-4 text-center text-[11px] text-slate-400">
           {q ? "This is a quotation, not a bill." : isGst ? "This is a computer-made tax invoice." : "Thank you for shopping with us."} Made with Anril.

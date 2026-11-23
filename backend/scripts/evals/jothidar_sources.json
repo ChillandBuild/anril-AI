@@ -1,0 +1,184 @@
+{
+ "name": "Jothidar: does it answer from the main resource and the 15 books?",
+ "tenant_id": "f3592ae0-340c-4ec6-a499-e1bf3492a1e4",
+ "companion_id": "98d40530-8edc-4bd2-b026-c2d196ccd226",
+ "user_name": "Prem",
+ "profile_name": "K Prem",
+ "app_data": "{\"source\":\"AstroTamil app\",\"profile_name\":\"K Prem\",\"gender\":\"Male\",\"overview\":{\"rasi\":\"Simmam (Leo)\",\"rasi_lord\":\"Suriyan (Sun)\",\"nakshatram\":\"Uthiram\",\"padam\":1,\"lagnam\":\"Magaram (Capricorn)\",\"lagnam_degree\":\"0.23°\",\"lagna_lord\":\"Sani (Saturn)\",\"dosham\":\"None\"},\"panchangam\":{\"thithi\":\"Dashami (Waning Moon), Theipirai (waning)\",\"vaaram\":\"Wednesday\",\"yogam\":\"Vishkambha\",\"karanam\":\"Bhattarai\"},\"planets\":[{\"planet\":\"Sun\",\"rasi\":\"Viruchigam\",\"house_from_lagnam\":11},{\"planet\":\"Moon\",\"rasi\":\"Simmam\",\"house_from_lagnam\":8},{\"planet\":\"Mars\",\"rasi\":\"Kumbam\",\"house_from_lagnam\":2},{\"planet\":\"Mercury\",\"rasi\":\"Viruchigam\",\"house_from_lagnam\":11},{\"planet\":\"Jupiter\",\"rasi\":\"Simmam\",\"house_from_lagnam\":8},{\"planet\":\"Venus\",\"rasi\":\"Viruchigam\",\"house_from_lagnam\":11},{\"planet\":\"Saturn\",\"rasi\":\"Mithunam\",\"house_from_lagnam\":6},{\"planet\":\"Rahu\",\"rasi\":\"Mesham\",\"house_from_lagnam\":4},{\"planet\":\"Ketu\",\"rasi\":\"Thulam\",\"house_from_lagnam\":10}],\"navamsa\":{\"lagnam\":\"Magaram (Capricorn)\",\"lagna_lord\":\"Sani (Saturn)\",\"Rahu\":\"Viruchigam\",\"Ketu\":\"Rishabam\"},\"dasa\":{\"now\":{\"dasa\":\"Rahu\",\"from\":\"23 Jun 2026\",\"to\":\"Jun 2044\",\"years\":18,\"bhukti\":\"Rahu\",\"bhukti_from\":\"Jun 2026\",\"bhukti_to\":\"Mar 2029\"},\"all\":[[\"Sun\",\"Nov 2003\",\"Jun 2009\"],[\"Moon\",\"2009\",\"2019\"],[\"Mars\",\"2019\",\"2026\"],[\"Rahu\",\"2026\",\"2044\"],[\"Jupiter\",\"2044\",\"2060\"],[\"Saturn\",\"2060\",\"2079\"],[\"Mercury\",\"2079\",\"2096\"],[\"Ketu\",\"2096\",\"2103\"],[\"Venus\",\"2103\",\"2123\"]]},\"dosham\":{\"sevvai\":{\"present\":false,\"mars_from_moon\":7,\"mars_from_venus\":4,\"why_none\":[\"Mars in Aquarius - Dosham cancelled\"]},\"rahu_kethu\":{\"present\":false,\"why_none\":[\"Ketu in 3rd house from Chandra Lagna - No Dosham\",\"Rahu in 6th house from Shukra Lagna - No Dosham\"]},\"summary\":\"No dosham here. Nothing more to do.\"},\"gocharam\":{\"as_of\":\"23 Nov 2026, 12:15 AM\",\"for_rasi\":\"Simmam\",\"highlight\":\"Ashtama Sani: Sani is in the 8th house from your rasi. Take care of your health and avoid hasty decisions.\",\"planets_today\":[{\"planet\":\"Sun\",\"rasi\":\"Viruchigam\",\"degree\":\"6°14'\",\"house_from_rasi\":4},{\"planet\":\"Moon\",\"rasi\":\"Mesham\",\"degree\":\"10°55'\",\"house_from_rasi\":9},{\"planet\":\"Mars\",\"rasi\":\"Simmam\",\"degree\":\"4°28'\",\"house_from_rasi\":1},{\"planet\":\"Mercury\",\"rasi\":\"Thulam\",\"degree\":\"16°53'\",\"house_from_rasi\":3},{\"planet\":\"Jupiter\",\"rasi\":\"Simmam\",\"degree\":\"2°08'\",\"house_from_rasi\":1},{\"planet\":\"Venus\",\"rasi\":\"Thulam\",\"degree\":\"0°05'\",\"house_from_rasi\":3},{\"planet\":\"Saturn\",\"rasi\":\"Meenam\",\"degree\":\"13°59'\",\"house_from_rasi\":8,\"retrograde\":true},{\"planet\":\"Rahu\",\"rasi\":\"Kumbam\",\"degree\":\"0°41'\",\"house_from_rasi\":7},{\"planet\":\"Ketu\",\"rasi\":\"Simmam\",\"degree\":\"0°41'\",\"house_from_rasi\":1}],\"month_readings\":{\"month\":\"November 2026\",\"readings\":[{\"planet\":\"Jupiter\",\"tag\":\"Jenma Guru\",\"label\":\"Be careful\",\"what_it_brings\":\"Self-profit, new endeavors succeed: Economic progress, starting new business, profits in investments, government assistance, success in new opportunities and challenges.\",\"general\":\"Self-confidence will increase. New endeavors will succeed: With increased self-confidence, you will get motivation to start new activities. Efforts will yield good results. Mental courage will grow.\",\"career\":\"Career advancement. New opportunities: Good growth will occur in your current profession. New job opportunities or business startup opportunities will arise. Support from superiors and colleagues will be available.\",\"wealth\":\"Financial status will improve. New income sources: Financial condition will enhance. Income may increase through new job opportunities or self-employment. Good profits will be gained from investments. Government assistance and benefits may be available.\",\"family\":\"Family happiness. New relationships: Happiness in the family will increase. New relationships and friendships will form. Relationships with family members will improve. Auspicious events and celebrations will take place.\",\"health\":\"Health will improve. Physical strength will increase: Physical health will improve. Chronic diseases will be cured. Physical strength will increase. New vigor will arise. Mental stress will reduce. Self-confidence will increase.\",\"moves_this_year\":[\"Mithunam -> Kadagam, Jan 2026 - Jun 2026\",\"Kadagam -> Simmam, Jun 2026 - Nov 2026\",\"Simmam -> Simmam, Nov 2026 - Dec 2026\"]},{\"planet\":\"Saturn\",\"tag\":\"Ashtama Sani\",\"label\":\"Be careful\",\"what_it_brings\":\"Caution needed in matters related to life, mysteries and obstacles. Unexpected expenses may occur: Care should be taken in matters related to life and health. Interest in mysteries and spiritual matters will increase. Unexpected expenses may occur.\",\"general\":\"Job change, travel interruptions: Circumstances requiring job change may arise. Obstacles and interruptions in travels will occur. Time delay may happen in getting new job.\",\"career\":\"Job loss, sudden problems: Job may be lost. Sudden problems and obstacles will arise. Instability in job will prevail. Mental worry will increase.\",\"moves_this_year\":[\"Meenam -> Meenam, Jan 2026 - Dec 2026\"]},{\"planet\":\"Rahu\",\"label\":\"Be careful\",\"what_it_brings\":\"Problems in relationships, joint venture obstacles: Problems and complications may occur in relationships. Problems in married life may occur. Obstacles in joint business and trade will occur. Rifts in relationships will develop. Complications in foreign connections may occur.\",\"general\":\"Problems in relationships, joint venture obstacles: Problems and complications may occur in relationships. Obstacles in joint business and trade will occur. Rifts in relationships will develop.\",\"moves_this_year\":[\"Kumbam -> Magaram, Jan 2026 - Dec 2026\",\"Magaram -> Magaram, Dec 2026 - Dec 2026\"]},{\"planet\":\"Ketu\",\"label\":\"Be careful\",\"what_it_brings\":\"Spiritual involvement, preference for solitude: Interest in spirituality will increase. Preference for solitude will arise. Attraction to silence will increase. Inward journey and self-analysis will be undertaken. Attention needed to health.\",\"general\":\"Tendency to prefer solitude will increase. Interest in self-analysis will arise. Physical fatigue and headaches may occur. Decision-making ability will decrease. Obstacles in new endeavors may occur. Enthusiasm will decrease due to low self-confidence. Desire for silent meditation will arise.\",\"moves_this_year\":[\"Simmam -> Kadagam, Jan 2026 - Dec 2026\",\"Kadagam -> Kadagam, Dec 2026 - Dec 2026\"]}]}},\"not_given\":[\"navamsa positions of planets other than Rahu and Ketu\",\"bhukti list beyond the current Rahu bhukti\",\"month readings for Sun, Moon, Mars, Mercury, Venus\"]}",
+ "promise_words": [
+  "கண்டிப்பா",
+  "கண்டிப்பாக",
+  "நிச்சயம்",
+  "நிச்சயமாக",
+  "உறுதியா",
+  "உறுதியாக",
+  "kandippa",
+  "nichayam",
+  "uruthiya",
+  "100%",
+  "guarantee",
+  "sure-a nadakkum",
+  "kandippaa"
+ ],
+ "order_words": [
+  "venaam",
+  "vendaam",
+  "vendam",
+  "koodaadhu",
+  "koodadhu",
+  "koodathu",
+  "thavirunga",
+  "thavirkavum",
+  "வேண்டாம்",
+  "கூடாது",
+  "தவிருங்க",
+  "தவிர்க்க",
+  "don't",
+  "do not"
+ ],
+ "configs": {
+  "today": {}
+ },
+ "questions": [
+  {
+   "id": "m_marriage_when",
+   "text": "enaku kalyanam eppo nadakkum?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 1.1: look at the 7th house, 7th lord, Venus and the navamsa 7th; timing from the dasa/bhukti of those planets. Must not promise a date without a named period."
+  },
+  {
+   "id": "m_govt_job",
+   "text": "எனக்கு அரசு வேலை கிடைக்குமா?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 2.5: Sun, 10th house, 10th lord and 6th house decide it; Sun exalted/own or in the 10th, or a Sun–10th-lord link, supports it; Sun debilitated or in 6/8/12 is a challenge."
+  },
+  {
+   "id": "m_exam",
+   "text": "Will I pass my exams this year?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 4.2: 4th and 5th houses, Mercury, the current dasa and transits; remedy Hayagrivar / Saraswathi worship."
+  },
+  {
+   "id": "m_own_house",
+   "text": "sontha veedu eppo vaanguven?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 8.1: 4th house, 4th lord, Mars (land), 11th house; 4th lord in 6/8/12 or Saturn/Rahu in the 4th means delay; timing from the 4th lord or Mars dasa/bhukti."
+  },
+  {
+   "id": "m_court_case",
+   "text": "என் வழக்கு எனக்கு சாதகமாக முடியுமா?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 11.1: 6th house, 6th lord, lagna lord and the current dasa; lagna lord stronger than the 6th lord, or a malefic in the 6th, favours winning."
+  },
+  {
+   "id": "m_job_stable",
+   "text": "Ashtama Sani nadakkudhu, en velai nilaikkuma?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 12.3: 10th house, 6th house, Saturn, Ashtama/Ezharai Sani; Ashtama Sani with a hard bhukti means caution only, not job loss; say when the hard period ends."
+  },
+  {
+   "id": "m_naga_dosham",
+   "text": "எனக்கு நாக தோஷம் இருக்கா?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 15.2: naga dosham = Rahu or Ketu in 1/7 or 2/8 from lagnam. Here Rahu is in the 4th and Ketu in the 10th, so no naga dosham."
+  },
+  {
+   "id": "m_foreign_job",
+   "text": "Can I get a job abroad?",
+   "expect_tier": 1,
+   "expect_doc": "00 AstroTamil AI Rule Book v2.6 (main resource)",
+   "key": "Rule Book 9.2: a 10th–12th house link (10th lord in 12th or 12th lord in 10th) shows foreign work; never guarantee a visa, say it is a good time to apply; Vinayagar worship before applying."
+  },
+  {
+   "id": "b_sun_transit_11",
+   "text": "சந்திர லக்னத்திலிருந்து 11ம் இடத்தில் சூரியன் கோசாரம் வந்தால் என்ன பலன்?",
+   "expect_tier": 2,
+   "expect_doc": "12 சர்வ முகூர்த்த நிர்ணயம்",
+   "key": "கோசார பலன் (576): Sun in the 11th from the Moon sign gives money gain (தனலாபம்)."
+  },
+  {
+   "id": "b_saturn_exalted",
+   "text": "If Saturn is exalted in a birth chart, what kind of person does that make?",
+   "expect_tier": 2,
+   "expect_doc": "12 சர்வ முகூர்த்த நிர்ணயம்",
+   "key": "கிரக உச்ச பலன் (535): an exalted Saturn makes a famous army chief/commander, well known, but miserly (லோபி)."
+  },
+  {
+   "id": "b_saturn_3rd",
+   "text": "லக்னத்திற்கு 3ம் இடத்தில் சனி இருந்தால் பலன் என்ன?",
+   "expect_tier": 2,
+   "expect_doc": "03 சாதக சிந்தாமணி (கால, காரக நிகண்டு)",
+   "key": "Verse 356: Saturn in the 3rd gives a high position, helps those below him and his own people, brave, may have hearing trouble, elder siblings suffer, works slowly."
+  },
+  {
+   "id": "b_eye_12th",
+   "text": "sani sevvai rendu perum 2 or 12la sendhu irundha kannukku enna aagum?",
+   "expect_tier": 2,
+   "expect_doc": "05 சாதக அலங்காரம்",
+   "key": "Saturn and Mars together in the 2nd/12th bring an eye defect (கண் ஊனம்); Sun and Moon together in the 12th bring eye disease."
+  },
+  {
+   "id": "b_weak_sun_dasa",
+   "text": "சூரியன் நீசம் பெற்று பாப ஸ்தானத்தில் இருந்தால் சூரிய தசையில் என்ன நடக்கும்?",
+   "expect_tier": 2,
+   "expect_doc": "14 ஜாதகப்பலன் விளக்கம்",
+   "key": "A debilitated Sun in a bad house brings, in its dasa/bhukti: trouble to the father (பிதுர் அரிஷ்டம்), job loss (உத்தியோக ஹானி), less effort, illness (fever, pitta), family loss."
+  },
+  {
+   "id": "b_guru_sun_bhukti",
+   "text": "வியாழ திசையில் சூரிய புத்தி எத்தனை மாதம் நடக்கும்?",
+   "expect_tier": 2,
+   "expect_doc": "07 புலிப்பாணி சோதிடம் 300",
+   "key": "Pulippani verse 238: Guru dasa Sun bhukti lasts 9 months 18 days; the person turns to renunciation/spiritual life."
+  },
+  {
+   "id": "b_moon_ashtavarga",
+   "text": "சந்திர அஷ்டவர்க்கத்தில் மொத்த பரல் எத்தனை?",
+   "expect_tier": 2,
+   "expect_doc": "10 சோதிட அட்டவர்க்கம்",
+   "key": "The Moon's ashtavarga has 49 bindus (பரல்) in all."
+  },
+  {
+   "id": "b_vikrama_sthanam",
+   "text": "சோதிடத்தில் விக்கிரமஸ்தானம் என்றால் எந்த இடம்?",
+   "expect_tier": 2,
+   "expect_doc": "15 சோதிட அகராதி",
+   "key": "விக்கிரமஸ்தானம் is the 3rd house (மூன்றாமிடம்)."
+  },
+  {
+   "id": "n_lucky_colour",
+   "text": "enaku lucky colour edhu?",
+   "expect_tier": 0,
+   "expect_doc": null,
+   "key": "Not in the client's files: a friendly answer from general Tamil astrology, clearly its own reading, or a kind pointer to AstroTamil's astrologer; never a made-up chart fact."
+  },
+  {
+   "id": "n_rudraksha",
+   "text": "நான் ருத்ராட்சம் அணியலாமா?",
+   "expect_tier": 0,
+   "expect_doc": null,
+   "key": "Not in the client's files: friendly general answer or the astrologer; no invented chart facts."
+  },
+  {
+   "id": "n_palmistry",
+   "text": "Can you read my palm lines?",
+   "expect_tier": 0,
+   "expect_doc": null,
+   "key": "Palmistry is not astrology from the chart: kindly say it cannot read palms here and offer what it can do or the astrologer."
+  },
+  {
+   "id": "n_lucky_number",
+   "text": "என் அதிர்ஷ்ட எண் என்ன?",
+   "expect_tier": 0,
+   "expect_doc": null,
+   "key": "Not in the client's files: friendly general answer clearly its own, or the astrologer; no invented chart facts."
+  }
+ ]
+}

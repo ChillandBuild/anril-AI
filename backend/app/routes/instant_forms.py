@@ -55,6 +55,23 @@ def _form_or_404(db, tenant_id: str, form_id: str) -> dict:
     return rows[0]
 
 
+def _hello_summary(db, tenant_id: str) -> dict:
+    """The ready-made hello for the Instant forms tab: none (not set up) / waiting (Meta is checking) /
+    approved / rejected."""
+    status = forms_service.hello_status(db, tenant_id)
+    word = {None: "none", "APPROVED": "approved", "REJECTED": "rejected"}.get(status, "waiting")
+    return {"status": word, "name": forms_service.HELLO_TEMPLATE["name"]}
+
+
+def _auto_hello_by_form(db, tenant_id: str) -> dict[str, bool]:
+    """{form_id: auto_hello}. Empty when the column isn't there yet (every form then counts as on)."""
+    try:
+        rows = db.table("meta_lead_forms").select("form_id,auto_hello").eq("tenant_id", tenant_id).execute().data or []
+    except Exception:
+        return {}
+    return {r["form_id"]: r.get("auto_hello") is not False for r in rows}
+
+
 def _spend_by_ad(db, tenant_id: str, ad_ids: set[str], date_from: str, date_to: str) -> dict[str, float] | None:
     """Live spend per ad from the connected ad account, or None if Meta can't say."""
     ad_ids = {a for a in ad_ids if a and a.isdigit()}
@@ -199,10 +216,13 @@ async def overview(
         by_form.setdefault(row["form_id"], []).append(row)
     last_lead, lead_ads = _lead_history_by_form(db, tenant_id)
     ad_names = await asyncio.to_thread(forms_service.ads_by_form, db, tenant_id)
+    hello = await asyncio.to_thread(_hello_summary, db, tenant_id)
+    auto_hello = await asyncio.to_thread(_auto_hello_by_form, db, tenant_id)
     return {
         "date_from": start,
         "date_to": end,
         "spend_available": spend is not None,
+        "hello_template": hello,
         "totals": _stats(rows, replied, spend),
         "forms": [
             {
@@ -216,6 +236,10 @@ async def overview(
                 "past_ad_names": [] if ad_names.get(form["form_id"]) else lead_ads.get(form["form_id"], []),
                 "template_id": form.get("template_id"),
                 "template_name": template_names.get(form.get("template_id") or ""),
+                "auto_hello": auto_hello.get(form["form_id"], True),
+                # True when a lead of this form gets the ready-made hello (no template chosen, hello on).
+                "uses_hello": not form.get("template_id") and auto_hello.get(form["form_id"], True)
+                and hello["status"] == "approved",
                 "last_lead_at": last_lead.get(form["form_id"]),
                 **_stats(by_form.get(form["form_id"], []), replied, spend),
             }
@@ -278,6 +302,8 @@ async def get_form(
         "template_id": form.get("template_id"),
         "template_variables": form.get("template_variables") or [],
         "template_audience": form.get("template_audience") or "everyone",
+        "auto_hello": form.get("auto_hello") is not False,
+        "hello_template": _hello_summary(db, tenant_id),
         "date_from": start,
         "date_to": end,
         "spend_available": spend is not None,
@@ -299,25 +325,29 @@ async def form_leads(
         raise HTTPException(status_code=404, detail="Form not found.")
     _, _, lo, hi = _range(date_from, date_to)
     db = get_supabase()
-    query = (
-        db.table("meta_form_leads")
-        .select(
-            "id,leadgen_id,meta_created_at,name,phone,email,answers,ad_id,ad_name,adset_name,campaign_name,"
-            "platform,is_organic,lead_id,received_via,template_status,template_error,template_sent_at,"
-            "whatsapp_consent",
-            count="exact",
-        )
-        .eq("tenant_id", tenant_id).eq("form_id", form_id)
-        .gte("meta_created_at", lo).lt("meta_created_at", hi)
+    columns = (
+        "id,leadgen_id,meta_created_at,name,phone,email,answers,ad_id,ad_name,adset_name,campaign_name,"
+        "platform,is_organic,lead_id,received_via,template_status,template_error,template_sent_at,"
+        "whatsapp_consent"
     )
     term = (search or "").strip()
-    if term:
-        # PostgREST or-filter: strip characters that would break its syntax.
-        safe = "".join(ch for ch in term if ch.isalnum() or ch in " @.+-_")[:100]
+    safe = "".join(ch for ch in term if ch.isalnum() or ch in " @.+-_")[:100] if term else ""  # PostgREST or-filter syntax
+
+    def run(select: str):
+        query = (
+            db.table("meta_form_leads").select(select, count="exact")
+            .eq("tenant_id", tenant_id).eq("form_id", form_id)
+            .gte("meta_created_at", lo).lt("meta_created_at", hi)
+        )
         if safe:
             query = query.or_(f"name.ilike.*{safe}*,phone.ilike.*{safe}*,email.ilike.*{safe}*")
-    start = (page - 1) * limit
-    result = query.order("meta_created_at", desc=True).range(start, start + limit - 1).execute()
+        start = (page - 1) * limit
+        return query.order("meta_created_at", desc=True).range(start, start + limit - 1).execute()
+
+    try:
+        result = run(columns + ",delivery_status,sent_to_calling_at")
+    except Exception:  # migration 320 not applied yet: the list still works, without delivery status
+        result = run(columns)
     rows = result.data or []
     replied = _replied_lead_ids(db, tenant_id, rows)
     for row in rows:
@@ -450,6 +480,37 @@ async def set_template(form_id: str, payload: TemplateSettings, tenant_id: str =
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", form["id"]).eq("tenant_id", tenant_id).execute()
     return {"template_id": payload.template_id, "template_variables": cleaned, "template_audience": audience}
+
+
+class FormPatch(BaseModel):
+    auto_hello: bool
+
+
+@router.patch("/forms/{form_id}", dependencies=[Depends(require_manage)])
+async def patch_form(form_id: str, payload: FormPatch, tenant_id: str = Depends(get_tenant_id)):
+    """The per-form switch for the ready-made hello (used when the form has no template of its own)."""
+    if not form_id.isdigit():
+        raise HTTPException(status_code=404, detail="Form not found.")
+    db = get_supabase()
+    form = _form_or_404(db, tenant_id, form_id)
+    try:
+        db.table("meta_lead_forms").update({
+            "auto_hello": payload.auto_hello, "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", form["id"]).eq("tenant_id", tenant_id).execute()
+    except Exception as exc:
+        logger.warning("instant forms: auto_hello not saved tenant=%s: %s", tenant_id, exc)
+        raise HTTPException(status_code=400, detail="This isn't available yet. Try again after the next update.") from exc
+    return {"form_id": form_id, "auto_hello": payload.auto_hello}
+
+
+@router.post("/hello-template", dependencies=[Depends(require_manage)])
+async def set_up_hello_template(tenant_id: str = Depends(get_tenant_id)):
+    """Send the ready-made hello message to WhatsApp for approval (a no-op when it is already there)."""
+    db = get_supabase()
+    result = await forms_service.submit_hello_template(db, tenant_id)
+    if result["problem"]:
+        raise HTTPException(status_code=400, detail=result["problem"])
+    return {"hello_template": await asyncio.to_thread(_hello_summary, db, tenant_id)}
 
 
 @router.post("/leads/{row_id}/send-template", dependencies=[Depends(require_manage)])
