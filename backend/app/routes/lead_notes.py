@@ -94,10 +94,24 @@ async def get_lead_notes(lead_id: UUID, tenant_id: str = Depends(get_tenant_id))
     return {"pinned": pinned, "notes": notes}
 
 
+def _require_own_row(db, table: str, row_id: str, tenant_id: str, not_found: str) -> None:
+    try:
+        rows = db.table(table).select("id").eq("id", row_id).eq("tenant_id", tenant_id).limit(1).execute().data
+    except Exception:  # a malformed id makes PostgREST 400
+        rows = None
+    if not rows:
+        raise HTTPException(status_code=404, detail=not_found)
+
+
 @router.post("/{lead_id}")
 async def create_lead_note(lead_id: UUID, payload: CreateNote, ctx: dict = Depends(get_tenant_and_role)):
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
+    # The lead and call come from the request: both must be this tenant's, or the note
+    # would sit on another business's lead (and reach its call scoring prompt).
+    _require_own_row(db, "leads", str(lead_id), tenant_id, "Lead not found")
+    if payload.call_log_id is not None:
+        _require_own_row(db, "call_logs", str(payload.call_log_id), tenant_id, "Call not found")
     insert_data = {
         "lead_id": str(lead_id),
         "tenant_id": tenant_id,

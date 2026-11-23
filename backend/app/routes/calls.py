@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, require_permission
+from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, require_owner, require_permission
 from app.services.call_scorer import finalize_call_score
 from app.services.call_ai_pipeline import queue_call_ai, retry_call_ai, run_call_ai
 from app.services.call_marking import mark_crm_update
@@ -408,6 +408,13 @@ def _verify_telecmi_webhook_secret(request: Request, tenant_id: str | None = Non
     return True
 
 
+def _verified_telecmi_tenant(tenant_id: str | None) -> str:
+    """The tenant whose telecmi_webhook_secret _verify_telecmi_webhook_secret checked:
+    get_setting reads the bootstrapping default tenant when no tenant_id is given."""
+    from app.config_dynamic import _DEFAULT_TENANT_ID
+    return tenant_id or _DEFAULT_TENANT_ID
+
+
 def _extract_call_log_id(cdr: dict) -> str | None:
     """Pull a usable call_log_id out of a TeleCMI CDR.
 
@@ -511,6 +518,11 @@ async def telecmi_cdr(request: Request, background_tasks: BackgroundTasks, path_
     )
     if not log_row or not log_row.data:
         logger.warning(f"TeleCMI CDR: no call_log found for id={call_log_id}")
+        return {"ok": True}
+    # The secret proved who sent this for ONE tenant; the call_log_id / request_id in the
+    # body is the caller's word. Another tenant's call log is never touched.
+    if str(log_row.data.get("tenant_id")) != str(_verified_telecmi_tenant(tenant_id)):
+        logger.warning(f"TeleCMI CDR: call_log {call_log_id} is not tenant {tenant_id}'s -- ignoring")
         return {"ok": True}
 
     call_log_id = log_row.data["id"]
@@ -1016,6 +1028,7 @@ async def telecmi_live_events(request: Request):
                 db.table("call_logs")
                 .update({"status": log_status})
                 .eq("call_sid", request_id)
+                .eq("tenant_id", _verified_telecmi_tenant(tenant_id))
                 .in_("status", ["initiated", "in_progress"])
                 .execute()
             )
@@ -1671,7 +1684,8 @@ async def get_call_log(call_log_id: UUID, ctx: dict = Depends(get_tenant_and_rol
 
 
 @router.delete("/{call_log_id}")
-async def delete_call_log(call_log_id: str, ctx: dict = Depends(get_tenant_and_role)):
+async def delete_call_log(call_log_id: str, ctx: dict = Depends(require_owner)):
+    # Owner only: a call log is the record the manager reviews, so a telecaller must not be able to erase theirs.
     db = get_supabase()
     result = db.table("call_logs").delete().eq("id", call_log_id).eq("tenant_id", ctx["tenant_id"]).execute()
     if not result.data:

@@ -146,6 +146,13 @@ async def run_due_follow_ups(limit: int = Query(20, ge=1, le=100), ctx: dict = D
 @router.post("/callback")
 async def create_callback(payload: CallbackCreate, ctx: dict = Depends(get_tenant_and_role)):
     db = get_supabase()
+    try:
+        own = (db.table("leads").select("id").eq("id", payload.lead_id)
+               .eq("tenant_id", ctx["tenant_id"]).limit(1).execute().data)
+    except Exception:  # a malformed id makes PostgREST 400
+        own = None
+    if not own:
+        raise HTTPException(status_code=404, detail="Lead not found")
     row = db.table("follow_up_jobs").insert({
         "lead_id": payload.lead_id,
         "channel": "phone",

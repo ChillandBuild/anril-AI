@@ -179,11 +179,11 @@ def _company_name(db, tenant_id: str | None) -> str | None:
     return name if isinstance(name, str) else None
 
 
-def _previous_notes(db, lead_id: str | None, call_log_id: str) -> str:
-    if not lead_id:
+def _previous_notes(db, lead_id: str | None, call_log_id: str, tenant_id: str | None) -> str:
+    if not lead_id or not tenant_id:
         return ""
     rows = (
-        db.table("lead_notes").select("content,created_at").eq("lead_id", lead_id)
+        db.table("lead_notes").select("content,created_at").eq("lead_id", lead_id).eq("tenant_id", tenant_id)
         .neq("call_log_id", call_log_id).order("created_at", desc=True).limit(5).execute()
     ).data or []
     return "\n".join(f"- {r['content']}" for r in rows if r.get("content"))
@@ -242,7 +242,7 @@ async def _process(db, row: dict, appid_override: str | None) -> None:
     report = _speech_report(tracks) if tracks.stereo else {}
     if sorting.group == "real_conversation":
         marking = await mark_call(
-            tracks.lines, kb_context=kb_context, previous_notes=_previous_notes(db, row.get("lead_id"), call_log_id),
+            tracks.lines, kb_context=kb_context, previous_notes=_previous_notes(db, row.get("lead_id"), call_log_id, tenant_id),
             talk_share=share, interruptions_per_5min=ipm, interruption_count=count,
             duration_seconds=duration, tenant_id=tenant_id,
         )
