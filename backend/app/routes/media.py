@@ -119,6 +119,7 @@ async def send_media_to_lead(
             file_bytes=file_bytes,
             mime_type=mime_type,
             filename=filename,
+            tenant_id=tenant_id,
         )
     except HTTPException:
         raise
@@ -134,6 +135,7 @@ async def send_media_to_lead(
             wa_type=wa_type,
             filename=filename if wa_type == "document" else None,
             caption=caption.strip() if caption else None,
+            tenant_id=tenant_id,
         )
     except HTTPException:
         raise

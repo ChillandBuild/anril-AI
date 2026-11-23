@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.config_dynamic import get_setting, save_setting
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user
-from app.dependencies.tenant import get_tenant_id
+from app.dependencies.tenant import get_owner_tenant_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -160,7 +160,8 @@ def _apply_description(db, tenant_id: str, business_description: str) -> None:
 
 
 @router.post("/apply-starter")
-def apply_starter(payload: ApplyStarterPayload, user: dict = Depends(get_current_user), tenant_id: str = Depends(get_tenant_id)):
+def apply_starter(payload: ApplyStarterPayload, user: dict = Depends(get_current_user), tenant_id: str = Depends(get_owner_tenant_id)):
+    # Owner only, like PUT /ai-tune/description: this rewrites what the AI tells every customer.
     db = get_supabase()
 
     starter = (
@@ -217,7 +218,7 @@ do not invent products, promises, or policies they did not mention."""
 
 
 @router.post("/interview/draft")
-async def interview_draft(payload: InterviewDraftPayload, tenant_id: str = Depends(get_tenant_id)):
+async def interview_draft(payload: InterviewDraftPayload, tenant_id: str = Depends(get_owner_tenant_id)):
     """Runs on the tenant's OWN Gemini key -- never a shared platform key (see
     _resolve_provider's docstring). A tenant with no key yet gets a clear 400, not a 500."""
     if not payload.answers:
@@ -270,7 +271,8 @@ class ApplyDraftPayload(BaseModel):
 
 
 @router.post("/interview/apply")
-def interview_apply(payload: ApplyDraftPayload, tenant_id: str = Depends(get_tenant_id)):
+def interview_apply(payload: ApplyDraftPayload, tenant_id: str = Depends(get_owner_tenant_id)):
+    # Owner only, like PUT /ai-tune/description: this rewrites what the AI tells every customer.
     """Applies a draft the client has already seen and (possibly edited) --
     the interview never writes anything before this explicit step."""
     business_description = payload.business_description.strip()

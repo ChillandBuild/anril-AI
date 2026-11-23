@@ -834,7 +834,9 @@ async def template_status_webhook(request: Request):
     for e in payload.get("entry", []):
         for change in e.get("changes", []):
             if change.get("field") in TEMPLATE_WEBHOOK_FIELDS:
-                apply_template_change(db, change["field"], change.get("value") or {})
+                # Only the signed tenant's copy: the signature proves who sent it for
+                # tenant_id, not for templates that belong to other tenants.
+                apply_template_change(db, change["field"], change.get("value") or {}, tenant_id=tenant_id)
     return {"status": "ok"}
 
 

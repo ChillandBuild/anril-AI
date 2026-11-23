@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id
+from app.dependencies.tenant import get_owner_tenant_id, get_tenant_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,7 +34,7 @@ async def list_voice_numbers(show_archived: bool = Query(False), tenant_id: str 
 
 
 @router.post("/")
-async def create_voice_number(payload: CreateVoiceNumber, tenant_id: str = Depends(get_tenant_id)):
+async def create_voice_number(payload: CreateVoiceNumber, tenant_id: str = Depends(get_owner_tenant_id)):
     db = get_supabase()
     result = db.table("voice_numbers").insert({
         "number": payload.number.strip(),
@@ -47,7 +47,7 @@ async def create_voice_number(payload: CreateVoiceNumber, tenant_id: str = Depen
 
 
 @router.patch("/{number_id}")
-async def update_voice_number(number_id: UUID, payload: UpdateVoiceNumber, tenant_id: str = Depends(get_tenant_id)):
+async def update_voice_number(number_id: UUID, payload: UpdateVoiceNumber, tenant_id: str = Depends(get_owner_tenant_id)):
     db = get_supabase()
     updates = {}
     if payload.display_name is not None:
@@ -67,7 +67,7 @@ async def update_voice_number(number_id: UUID, payload: UpdateVoiceNumber, tenan
 
 
 @router.delete("/{number_id}")
-async def delete_voice_number(number_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+async def delete_voice_number(number_id: UUID, tenant_id: str = Depends(get_owner_tenant_id)):
     db = get_supabase()
     active_result = (
         db.table("voice_numbers")
