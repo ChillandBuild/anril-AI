@@ -394,7 +394,8 @@ function GlowScroll({
         aria-label={label}
         onScroll={() => { measure(); flashLive(); }}
         className={cn(
-          "relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          // overscroll-contain: scrolling the menu to its end must not carry on into the page behind it.
+          "relative min-h-0 flex-grow overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           className,
         )}
       >
