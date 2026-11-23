@@ -528,3 +528,85 @@ def test_the_prompt_carries_the_persons_own_today(env):
     reply(env.jothidar["id"], "Vanakkam", timezone_name="Pacific/Kiritimati")
     there = datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
     assert f"Today is {there:%A}, {there.day} {there:%B %Y}." in system_prompt(env.state["llm"][-1])
+
+
+# --- reply_format: bubbles, chips, a button and a tag (opt-in) ---------------------------------
+
+from app.companion.reply_format import ReplyFormat  # noqa: E402
+
+FMT = ReplyFormat(buttons=[{"id": "porutham", "when": "they ask to match two charts"},
+                           {"id": "astrologer", "when": "very personal questions", "handoff": True}],
+                  questions_left=3)
+SHAPED = ("[mood: warm] [used: 1] [tag: counted] [button: porutham]\nGuru 7th house la irukku.\n---\n"
+          "Kalyanam yogam varum.\n[chips: Eppo kalyanam? | Velai eppadi?]")
+
+
+def test_without_reply_format_the_four_fields_are_none_and_text_is_unchanged(env):
+    r = reply(env.jothidar["id"], "En velai eppo kidaikkum?")
+    assert (r.bubbles, r.chips, r.button, r.tag) == (None, None, None, None) and r.text == "Vanakkam Karthik!"
+    assert "[REPLY FORMAT]" not in system_prompt(env.state["llm"][0])
+
+
+def test_reply_format_shapes_the_reply_and_saves_only_clean_text(env):
+    env.state["replies"] = [SHAPED]
+    r = reply(env.jothidar["id"], "Guru 7th house?", reply_format=FMT)
+    assert r.bubbles == ["Guru 7th house la irukku.", "Kalyanam yogam varum."]
+    assert (r.chips, r.button, r.tag, r.basis, r.mood) == (["Eppo kalyanam?", "Velai eppadi?"], "porutham",
+                                                            "counted", "primary", "warm")
+    assert r.text == "Guru 7th house la irukku.\n\nKalyanam yogam varum."
+    saved = env.db.rows("companion_messages")[-1]
+    assert saved["content"] == r.text
+    for leak in ("[", "---", "Eppo kalyanam", "porutham"):
+        assert leak not in saved["content"]
+    prompt = system_prompt(env.state["llm"][0])
+    assert prompt.index("[OUTPUT]") < prompt.index("[REPLY FORMAT]") < prompt.index("[OWN REASONING")
+    assert "- porutham: they ask to match two charts" in prompt
+
+
+def test_reply_format_llm_failure_is_tag_failed_and_saves_nothing(env):
+    env.state["replies"] = [RuntimeError("groq 500")]
+    r = reply(env.jothidar["id"], "Guru?", reply_format=FMT)
+    assert (r.bubbles, r.chips, r.button, r.tag) == ([engine.FALLBACK_LINES["ta-en"]], [], None, "failed")
+    assert r.text == engine.FALLBACK_LINES["ta-en"] and env.db.rows("companion_messages") == []
+
+
+def test_reply_format_only_tags_counts_as_nothing_to_show(env):
+    env.state["replies"] = ["[mood: calm] [used: none] [tag: counted] [button: none] [chips: none]"]
+    r = reply(env.jothidar["id"], "Guru?", reply_format=FMT)
+    assert r.tag == "failed" and r.message_id is None and env.db.rows("companion_messages") == []
+    assert not engine._has_text("[mood: calm] [tag: counted]", with_format=True)
+    assert engine._has_text("[mood: calm] [tag: counted]")   # no format: unchanged
+
+
+def test_reply_format_strict_handoff_points_to_the_handoff_button(env):
+    _strict(env, env.jothidar)
+    env.state["replies"] = ["[mood: calm] [used: none] [tag: counted] En karuthu idhu. [chips: a? | b?]"]
+    r = reply(env.jothidar["id"], "Innum sollunga", reply_format=FMT)
+    line = "Idharku engal team-idam ketpadhu nalladhu."
+    assert (r.text, r.bubbles, r.chips, r.button, r.tag) == (line, [line], [], "astrologer", "astrologer")
+
+
+def test_reply_format_strict_keeps_a_reply_the_model_tagged_as_not_an_answer(env):
+    """Strict swaps an own-reasoning ANSWER for the handoff line. A reply the model tagged as a pointer or a
+    decline (a button id, need_details, off_topic, ...) is not an answer, so it reaches the person as written:
+    a helpline reply must never be replaced by "ask our team"."""
+    _strict(env, env.jothidar)
+    env.state["replies"] = ["[mood: concerned] [used: none] [tag: porutham] [button: porutham]\n"
+                            "Rendu jathagamum venum.\n[chips: none]"]
+    r = reply(env.jothidar["id"], "Porutham paarunga", reply_format=FMT)
+    assert (r.bubbles, r.chips, r.button, r.tag, r.basis) == (["Rendu jathagamum venum."], [], "porutham",
+                                                              "porutham", "chat")
+
+
+def test_reply_format_small_talk_without_a_tag_is_greeting_with_no_chips(env):
+    env.state["kb_result"] = KbResult(needs_docs=False)
+    env.state["replies"] = ["[mood: warm] [used: talk] Vanakkam! [chips: Eppo? | Ean?]"]
+    r = reply(env.jothidar["id"], "hi", reply_format=FMT)
+    assert (r.bubbles, r.chips, r.tag) == (["Vanakkam!"], [], "greeting")
+
+
+def test_reply_format_works_on_the_compare_reply_without_memory(env):
+    companion = next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])
+    env.state["replies"] = [SHAPED]
+    r = asyncio.run(engine._reply_without_memory(companion, "t1", "Guru?", None, None, None, reply_format=FMT))
+    assert r.tag == "counted" and r.text == "Guru 7th house la irukku.\n\nKalyanam yogam varum."

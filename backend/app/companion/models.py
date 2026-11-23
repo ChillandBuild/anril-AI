@@ -170,6 +170,13 @@ class CompanionReply(BaseModel):
     message_id: str | None = None
     basis: Literal["primary", "book", "own", "chat"] | None = None
     sources: list[ReplySource] = Field(default_factory=list)
+    # Only when the request sent a reply_format (reply_format.py); all None otherwise. text is then the
+    # bubbles joined by a blank line. tag tells the app whether to count the question: "counted", "ask_back",
+    # "greeting", "off_topic", "need_details", a button id, "handoff" or "failed".
+    bubbles: list[str] | None = None
+    chips: list[str] | None = None
+    button: str | None = None
+    tag: str | None = None
 
 
 class MemoryFact(BaseModel):

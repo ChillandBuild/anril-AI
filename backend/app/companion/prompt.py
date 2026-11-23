@@ -1,7 +1,7 @@
 """Builds the LLM messages for one companion reply, and reads the mood tag back out.
 
-Pure functions, no I/O. Section order is fixed: PLATFORM, CHARACTER, MOOD, TODAY, OUTPUT,
-OWN REASONING, KNOWLEDGE, ABOUT THIS USER, APP DATA (only when the app sent some), then history, then the
+Pure functions, no I/O. Section order is fixed: PLATFORM, CHARACTER, MOOD, TODAY, WORKING (only when
+switched on), OUTPUT, REPLY FORMAT (only when the request asked for one, reply_format.py), OWN REASONING, KNOWLEDGE, ABOUT THIS USER, APP DATA (only when the app sent some), then history, then the
 user's message. Business-written text is
 fenced inside its own section, and square brackets in it are turned into round ones, so a
 backstory can't open a fake "[PLATFORM RULES]" header of its own.
@@ -9,12 +9,16 @@ backstory can't open a fake "[PLATFORM RULES]" header of its own.
 import re
 from collections.abc import Mapping
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.companion.kb.types import KbResult, Passage
 from app.companion.platform_rules import (
     MOODS, OUTPUT_RULE, OWN_REASONING_ALLOWED, OWN_REASONING_OFF, PLATFORM_RULES, WORKING_RULE,
 )
+
+if TYPE_CHECKING:   # reply_format imports fence from here, so the real import is inside build_messages
+    from app.companion.reply_format import ReplyFormat
 
 LANGUAGES = {
     "ta-en": "Tanglish (Tamil written in English letters, mixed with English)",
@@ -135,11 +139,13 @@ def today_block(today: date) -> str:
 
 def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_context: str,
                    history: list[dict], user_message: str, today: date | None = None,
-                   app_data: str | None = None, who: str | None = None) -> list[dict]:
+                   app_data: str | None = None, who: str | None = None,
+                   reply_format: "ReplyFormat | None" = None) -> list[dict]:
     """settings is a companions row (or any mapping with the character-card keys). today: the person's
     own date (their app's zone); None = the character's zone, else India. app_data: what the client's
     app sent about this person with this message (models.app_data_text); None = no APP DATA section.
-    who: who_block(...), placed just before APP DATA; None = no WHO section."""
+    who: who_block(...), placed just before APP DATA; None = no WHO section. reply_format: the request's
+    chat-bubble format; its [REPLY FORMAT] section goes right after OUTPUT. None = no section."""
     sections = [PLATFORM_RULES]
     sections.append(_character_block(settings))
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")
@@ -148,6 +154,9 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     if settings.get("working_step") and not (kb is not None and not kb.needs_docs):   # not for small talk
         sections.append(WORKING_RULE)
     sections.append(OUTPUT_RULE)
+    if reply_format is not None:
+        from app.companion.reply_format import format_block
+        sections.append(format_block(reply_format))
     sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else OWN_REASONING_ALLOWED)
     sections.append(knowledge_block(kb))
     sections.append(MEMORY_LABEL + "\n" + (fence(memory_context or "") or "none"))
