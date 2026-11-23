@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/Select";
 import { Download, RefreshCw, ArrowRight, ClipboardList } from "lucide-react";
 import { api, Caller, AssignmentLogEntry, AssignmentLogSummary } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
+import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { assignmentReasonLabel } from "../lib/assignmentReason";
 
 const SEGMENT_LABEL: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not Interested" };
@@ -27,6 +28,16 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
 
   const [callerFilter, setCallerFilter] = useState("");
   const [segmentFilter, setSegmentFilter] = useState("");
+  const [fromDay, setFromDay] = useState("");
+  const [toDay, setToDay] = useState("");
+  const [byHand, setByHand] = useState(false);
+  const { role, permissions } = useAuthRole();
+  const canDownload = role === "owner" || permissions.includes("leads.download");
+  // A day is an Indian day: 12 am to 11:59 pm IST.
+  const dateParams = {
+    from_date: fromDay ? `${fromDay}T00:00:00+05:30` : undefined,
+    to_date: toDay ? `${toDay}T23:59:59.999+05:30` : undefined,
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,6 +47,9 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
         limit: PAGE_SIZE,
         caller_id: callerFilter || undefined,
         segment: segmentFilter || undefined,
+        by_hand: byHand || undefined,
+        from_date: fromDay ? `${fromDay}T00:00:00+05:30` : undefined,
+        to_date: toDay ? `${toDay}T23:59:59.999+05:30` : undefined,
       });
       setEntries(Array.isArray(res.data) ? res.data : []);
       setTotal(res.meta?.total || 0);
@@ -44,7 +58,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
     } finally {
       setLoading(false);
     }
-  }, [page, callerFilter, segmentFilter]);
+  }, [page, callerFilter, segmentFilter, byHand, fromDay, toDay]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.assignmentLog.summary().then(setSummary).catch(() => {}); }, []);
@@ -52,9 +66,9 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
   async function handleExport() {
     setExporting(true);
     try {
-      await api.assignmentLog.exportCsv({ caller_id: callerFilter || undefined, segment: segmentFilter || undefined });
+      await api.assignmentLog.exportCsv({ caller_id: callerFilter || undefined, segment: segmentFilter || undefined, by_hand: byHand || undefined, ...dateParams });
     } catch {
-      toast.error("Export failed");
+      toast.error("Could not prepare the download. Try again.");
     } finally {
       setExporting(false);
     }
@@ -134,15 +148,33 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
             ]}
           />
         </div>
+        <div className="w-[calc(50%-5px)] sm:w-[140px]">
+          <label htmlFor="al-from" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">From</label>
+          <input id="al-from" type="date" value={fromDay} max={toDay || undefined}
+            onChange={(e) => { setPage(1); setFromDay(e.target.value); }}
+            className="h-9 w-full rounded-xl border border-surface-mid bg-white px-2 font-body text-sm text-on-surface" />
+        </div>
+        <div className="w-[calc(50%-5px)] sm:w-[140px]">
+          <label htmlFor="al-to" className="mb-1 block font-label text-[9px] font-bold uppercase tracking-wider text-on-surface-muted">To</label>
+          <input id="al-to" type="date" value={toDay} min={fromDay || undefined}
+            onChange={(e) => { setPage(1); setToDay(e.target.value); }}
+            className="h-9 w-full rounded-xl border border-surface-mid bg-white px-2 font-body text-sm text-on-surface" />
+        </div>
+        <label className="flex h-9 cursor-pointer items-center gap-2 font-label text-xs font-bold text-on-surface">
+          <input type="checkbox" checked={byHand} onChange={(e) => { setPage(1); setByHand(e.target.checked); }} className="h-4 w-4 accent-primary" />
+          Only ones I gave by hand
+        </label>
         <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           <button onClick={load} disabled={loading}
             className="flex h-9 items-center gap-1.5 rounded-full border border-surface-mid bg-white px-3 font-label text-xs font-bold text-on-surface shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary disabled:opacity-50">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
-          <button onClick={handleExport} disabled={exporting}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3.5 font-label text-xs font-bold text-primary shadow-sm transition-colors hover:bg-primary-100 disabled:opacity-50">
-            <Download size={13} /> {exporting ? "Exporting…" : "Export CSV"}
-          </button>
+          {canDownload && (
+            <button onClick={handleExport} disabled={exporting}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3.5 font-label text-xs font-bold text-primary shadow-sm transition-colors hover:bg-primary-100 disabled:opacity-50">
+              <Download size={13} /> {exporting ? "Preparing…" : "Download the list"}
+            </button>
+          )}
         </div>
       </div>
 

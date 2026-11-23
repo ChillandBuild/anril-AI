@@ -134,6 +134,19 @@ class InboundLeadsListTests(unittest.TestCase):
         # Meta ad ids are digits only; anything else is refused before it reaches a query.
         self.assertEqual(self.client.get("/api/v1/inbound-leads/", params={"meta_ad_id": "1,2"}).status_code, 422)
 
+    def test_tag_filter_matches_ignoring_case_and_stays_in_the_tenant(self):
+        for lid, tag, tenant in (("priya", "VIP", "tenant-1"), ("meena", "VIP", "tenant-1"), ("suresh", "Wedding", "tenant-1"),
+                                 ("other", "VIP", "tenant-2")):
+            self.db.rows("lead_tags").append({"tenant_id": tenant, "lead_id": lid, "tag": tag})
+        ids = lambda **p: sorted(r["id"] for r in self._list(**p)["data"])
+        self.assertEqual(ids(tag="vip"), ["meena", "priya"])
+        self.assertEqual(ids(tag="  Wedding "), ["suresh"])
+        self.assertEqual(ids(tag="nobody-has-this"), [])  # an unused tag matches nobody, not everybody
+        self.assertEqual(self._list(tag="VIP")["total"], 2)
+        summary = self.client.get("/api/v1/inbound-leads/summary", params={"tag": "VIP"}).json()
+        self.assertEqual(summary["segments"], {"A": 1, "B": 1, "C": 0, "D": 0})
+        self.assertEqual(self.client.get("/api/v1/inbound-leads/", params={"tag": "x" * 31}).status_code, 422)
+
     def test_ads_list_is_one_per_meta_ad_and_names_campaigns_only_for_twins(self):
         self.db.rows("ad_campaigns").extend([
             {"id": "c1", "tenant_id": "tenant-1", "campaign_name": "Diwali"},

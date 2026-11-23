@@ -9,7 +9,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { MobileRecordCard, MobileRecordHeader, MobileRecordGrid } from "@/components/MobileRecord";
 import { cn } from "@/lib/utils";
 import { FilterMenu, type FilterMenuOption } from "./FilterMenu";
-import { DONT_CALL_LABEL, isDontCallRow } from "@/lib/customersApi";
+import { DONT_CALL_LABEL, isDontCallRow, looksLikePhone, saidStopApi } from "@/lib/customersApi";
 
 const TZ = "Asia/Kolkata";
 
@@ -20,6 +20,7 @@ const HOW_OPTIONS: FilterMenuOption[] = [
   { value: "call", label: "Asked on a call" },
   { value: "staff", label: "Added by staff" },
   { value: "dont_call", label: DONT_CALL_LABEL },
+  { value: "blocked", label: "Blocked by you" },
   { value: "unknown", label: "Before we tracked how" },
 ];
 
@@ -28,10 +29,11 @@ const SOURCE_WORDS: Record<string, string> = {
   chat_ai: "said no in chat",
   call: "on a call",
   staff: "added by staff",
+  blocked: "blocked",
   unknown: "other",
 };
 
-const SOURCE_ORDER = ["stop_reply", "chat_ai", "call", "staff", "unknown"];
+const SOURCE_ORDER = ["stop_reply", "chat_ai", "call", "staff", "blocked", "unknown"];
 
 const STOPS_FOR = [
   "Broadcasts and SMS campaigns",
@@ -112,6 +114,13 @@ function howContent(p: SaidStopPerson): ReactNode {
       return <>Asked on a call</>;
     case "staff":
       return <>Asked a team member</>;
+    case "blocked":
+      return (
+        <>
+          Blocked by you
+          <span className="mt-1 block text-xs text-[#64748b]">Nothing is sent to them on any channel.</span>
+        </>
+      );
     default:
       return <span className="text-[#64748b]">Before we tracked how</span>;
   }
@@ -130,6 +139,8 @@ function wherePill(p: SaidStopPerson): Pill | null {
       return { label: p.detail ? `Call IQ · ${p.detail}` : "Call IQ", className: "bg-[#fef6ee] text-[#b93815]" };
     case "staff":
       return { label: p.detail ? `Added by ${p.detail}` : "Added by staff", className: "bg-slate-100 text-slate-700" };
+    case "blocked":
+      return { label: "Blocked", className: "bg-[#fef3f2] text-[#b42318]" };
     default:
       return null;
   }
@@ -192,6 +203,8 @@ export function SaidStopPanel() {
   const [addTerm, setAddTerm] = useState("");
   const [addResults, setAddResults] = useState<{ term: string; leads: Lead[] } | null>(null);
   const [addBusyId, setAddBusyId] = useState<string | null>(null);
+  const [numberName, setNumberName] = useState("");
+  const [numberBusy, setNumberBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -241,6 +254,7 @@ export function SaidStopPanel() {
   function openAdd() {
     setAddTerm("");
     setAddResults(null);
+    setNumberName("");
     setAddOpen(true);
   }
 
@@ -275,6 +289,21 @@ export function SaidStopPanel() {
     }
   }
 
+  /** A number nobody has messaged from yet: added by number, no customer record to message. */
+  async function addNumber() {
+    setNumberBusy(true);
+    try {
+      const res = await saidStopApi.addNumber(addTerm, numberName);
+      toast.success(res.already_on_list ? "That number is already on Said stop" : "Added the number to Said stop");
+      setAddOpen(false);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add the number");
+    } finally {
+      setNumberBusy(false);
+    }
+  }
+
   const term = search.trim().toLowerCase();
   const people = data?.people ?? [];
   const summary = data?.summary;
@@ -293,6 +322,7 @@ export function SaidStopPanel() {
 
   const addQuery = addTerm.trim();
   const addReady = addResults !== null && addResults.term === addQuery;
+  const addIsNumber = looksLikePhone(addQuery);
 
   return (
     <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
@@ -439,7 +469,7 @@ export function SaidStopPanel() {
                               </td>
                               <td className="px-4 py-3 text-xs text-[#64748b]">{formatWhen(p.opted_out_at)}</td>
                               <td className="px-4 py-3">
-                                {canManage && (
+                                {canManage && p.source !== "blocked" && (
                                   <div className="flex justify-end">
                                     <button
                                       type="button"
@@ -449,6 +479,9 @@ export function SaidStopPanel() {
                                       Remove
                                     </button>
                                   </div>
+                                )}
+                                {p.source === "blocked" && (
+                                  <p className="text-right text-xs text-[#64748b]">Unblock them from their chat</p>
                                 )}
                               </td>
                             </tr>
@@ -481,7 +514,7 @@ export function SaidStopPanel() {
                             </RecordField>
                             <RecordField label="When">{formatWhen(p.opted_out_at)}</RecordField>
                           </MobileRecordGrid>
-                          {canManage && (
+                          {canManage && p.source !== "blocked" && (
                             <div className="mt-4 flex justify-end">
                               <button
                                 type="button"
@@ -491,6 +524,9 @@ export function SaidStopPanel() {
                                 Remove
                               </button>
                             </div>
+                          )}
+                          {p.source === "blocked" && (
+                            <p className="mt-4 text-right text-xs text-[#64748b]">Unblock them from their chat</p>
                           )}
                         </MobileRecordCard>
                       );
@@ -625,6 +661,34 @@ export function SaidStopPanel() {
                 </ul>
               )}
             </div>
+
+            {addIsNumber && (
+              <div className="mt-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-3">
+                <p className="text-xs font-semibold text-[#0A1528]">Not one of your customers yet?</p>
+                <p className="mt-0.5 text-xs text-[#64748b]">
+                  Add {addQuery} by number. They stay on Said stop, nobody can message them, and they do not become a lead.
+                </p>
+                <label htmlFor="said-stop-add-name" className="sr-only">
+                  Name (optional)
+                </label>
+                <input
+                  id="said-stop-add-name"
+                  value={numberName}
+                  onChange={(e) => setNumberName(e.target.value)}
+                  maxLength={80}
+                  placeholder="Name (optional)"
+                  className="mt-2 h-9 w-full rounded-xl border border-[#e2e8f0] bg-white px-3 text-sm text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  type="button"
+                  onClick={addNumber}
+                  disabled={numberBusy || addBusyId !== null}
+                  className="mt-2 w-full rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark disabled:opacity-40"
+                >
+                  {numberBusy ? "Adding…" : "Add this number"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

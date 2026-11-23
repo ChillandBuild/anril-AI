@@ -18,7 +18,7 @@ from app.services.gemini_client import gemini_extract_contacts_csv
 from app.services.growth import get_or_create_campaign, record_stage_event, sync_follow_up_jobs
 from app.services.meta_cloud import send_template_message
 from app.services.broadcast_executor import next_send_time
-from app.services import reach_audience, reach_results
+from app.services import reach_audience, reach_results, reports_campaigns
 from app.services.outbound_router import SenderPicker, get_best_number
 from app.services.template_params import HEADER_COLS, body_parameters, header_components, template_status
 from app.services.segmentation import new_lead_score_and_segment
@@ -416,6 +416,18 @@ def _create_csv_signed_url(db, path: str, expires_in: int = 300) -> str | None:
 
 def _ist_day(moment: datetime) -> str:
     return (moment.astimezone(timezone.utc) + timedelta(hours=5, minutes=30)).date().isoformat()
+
+
+# A campaign can only be SCHEDULED for 9 AM to 9 PM India time (the same hours the Claude connector
+# already keeps to). Sending now is not held to this; a capped send's carry-over has its own 10-9 rule.
+SCHEDULE_FROM_HOUR_IST = 9
+SCHEDULE_UNTIL_HOUR_IST = 21
+SCHEDULE_HOURS_MESSAGE = "Campaigns can only be scheduled between 9 AM and 9 PM India time. Pick a time in the day."
+
+
+def _check_schedule_hour_or_http(hour_ist: int) -> None:
+    if not SCHEDULE_FROM_HOUR_IST <= hour_ist < SCHEDULE_UNTIL_HOUR_IST:
+        raise HTTPException(status_code=400, detail=SCHEDULE_HOURS_MESSAGE)
 
 
 def _check_reach_offer_or_http(ctx: dict, body: "BulkSendRequest", starts_on: str | None = None) -> None:
@@ -1307,6 +1319,9 @@ async def bulk_send(
                 fire_at = datetime.fromisoformat(body.schedule_at.replace("Z", "+00:00"))
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid schedule_at format")
+            _check_schedule_hour_or_http(
+                ((fire_at if fire_at.tzinfo else fire_at.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+                 + timedelta(hours=5, minutes=30)).hour)
             # The offer starts the day the campaign goes out; it must not end before that.
             offer_start = _ist_day(fire_at if fire_at.tzinfo else fire_at.replace(tzinfo=timezone.utc))
             _check_reach_offer_or_http(_ctx, body, offer_start)
@@ -1331,6 +1346,11 @@ async def bulk_send(
 
         if body.schedule_type == "drip" and body.drip_days and body.drip_days > 0:
             days = body.drip_days
+            if body.drip_send_time:  # blank = "at upload time", which is the sender's own choice of now
+                try:
+                    _check_schedule_hour_or_http(int(body.drip_send_time.split(":")[0]))
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid drip_send_time format")
             batch_size = max(1, -(-len(eligible) // days))  # ceiling division
             now = datetime.now(timezone.utc)
             ist_offset = timedelta(hours=5, minutes=30)
@@ -2458,6 +2478,16 @@ async def get_broadcast_history(tenant_id: str = Depends(get_tenant_id), ctx: di
         except Exception:
             pass
 
+    # How many people said stop after each campaign (their recipient row has opted_out_at). Batched.
+    if broadcast_ids:
+        try:
+            stops = await asyncio.to_thread(reach_results.said_stop_counts, db, tenant_id, broadcast_ids)
+            for h in history:
+                if h.get("broadcast_id") in stops:
+                    h["said_stop"] = stops[h["broadcast_id"]]
+        except Exception as stop_err:
+            logger.warning("Reach: said-stop counts failed: %s", stop_err)
+
     # A group send carries its group's name in the file-name slot (see bulk_send).
     for h in history:
         name = h.get("csv_file_name") or ""
@@ -2479,8 +2509,33 @@ async def get_broadcast_history(tenant_id: str = Depends(get_tenant_id), ctx: di
                 h["paid_window_open"] = p["paid_window_open"]
                 if include_amount:
                     h["paid_amount_inr"] = p["paid_amount_inr"]
+                    # An estimate: messages sent x the one rate setting. No cost, no ratio.
+                    cost = reach_audience.cost_for(int(h.get("sent") or 0))["cost_inr"]
+                    h["back_per_rupee"] = reach_results.back_per_rupee(p["paid_amount_inr"], cost)
 
     return {"data": history}
+
+
+@router.get("/broadcast/{broadcast_id}/results")
+async def get_campaign_results(broadcast_id: str, tenant_id: str = Depends(get_tenant_id),
+                               ctx: dict = Depends(get_tenant_and_role)):
+    """One campaign's results for its drawer: paid within 7 days, who paid, said-stop, and (deals.view
+    only) the money: paid rupees, estimated cost and rupees back per rupee spent."""
+    db = get_supabase()
+    item = next((h for h in await asyncio.to_thread(reports_campaigns.read_history, db, tenant_id)
+                 if str(h.get("broadcast_id")) == broadcast_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    out = await asyncio.to_thread(
+        reach_results.campaign_results, db, tenant_id, item, include_amount=_has_permission(ctx, "deals.view"))
+    # Gated on Reach access by the router; a telecaller who has it still sees numbers the way Calling shows them.
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, tenant_id, ctx)
+    if mask:
+        for person in out.get("paid_people") or []:
+            if person.get("phone"):
+                person["phone"] = mask(person["phone"])
+    return out
 
 
 @router.patch("/clear-negative-reply")

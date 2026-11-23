@@ -5,10 +5,20 @@ import { cn } from "@/lib/utils";
 import { bookingsApi } from "@/lib/bookingsApi";
 import { summariseDay } from "./bookingsLogic";
 import { addDays, formatDay, mondayOf, todayIst } from "./bookingsTime";
-import { BTN_SECONDARY, Notice } from "./bookingsUi";
+import { BTN_SECONDARY, DownloadListButton, Notice } from "./bookingsUi";
 
 /** Seven days, each with how many live bookings every column has. Tap a day to open it on the Day tab. */
-export function WeekTab({ weekStart, onWeek, onPickDay }: { weekStart: string; onWeek: (monday: string) => void; onPickDay: (date: string) => void }) {
+export function WeekTab({
+  weekStart,
+  onWeek,
+  onPickDay,
+  canDownload,
+}: {
+  weekStart: string;
+  onWeek: (monday: string) => void;
+  onPickDay: (date: string) => void;
+  canDownload: boolean;
+}) {
   const monday = mondayOf(weekStart);
   const { data, error } = useSWR(["bookings/week", monday], () => bookingsApi.week(monday), { revalidateOnFocus: true, keepPreviousData: true });
   // keepPreviousData would show last week under this week's title. Only draw data for this Monday.
@@ -31,6 +41,11 @@ export function WeekTab({ weekStart, onWeek, onPickDay }: { weekStart: string; o
         <h2 className="ml-2 font-display text-lg font-bold text-ink">
           {formatDay(monday)} – {formatDay(addDays(monday, 6))}
         </h2>
+        {canDownload && (
+          <span className="ml-auto">
+            <DownloadListButton start={monday} end={addDays(monday, 6)} disabled={!view || view.days.every((d) => d.bookings.length === 0)} />
+          </span>
+        )}
       </div>
 
       {error && !view && <Notice tone="red">Could not load this week. Try again in a moment.</Notice>}
@@ -64,9 +79,9 @@ export function WeekTab({ weekStart, onWeek, onPickDay }: { weekStart: string; o
                         </li>
                       ))}
                   </ul>
-                  {(s.came > 0 || s.noShow > 0) && (
+                  {(s.came > 0 || s.noShow > 0 || s.toCome > 0) && (
                     <span className="mt-auto pt-1 text-xs text-ink-muted">
-                      {s.came} came · {s.noShow} didn&apos;t come
+                      {s.came} came · {s.toCome} to come · {s.noShow} didn&apos;t come
                     </span>
                   )}
                 </button>

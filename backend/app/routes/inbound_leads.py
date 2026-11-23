@@ -84,7 +84,8 @@ class InboundFilters:
 
     def __init__(self, *, origin: str = "all", segment: str | None = None, result: str | None = None,
                  waiting: bool = False, search: str | None = None, meta_ad_id: str | None = None,
-                 source: str | None = None, date_from: str | None = None, date_to: str | None = None):
+                 source: str | None = None, date_from: str | None = None, date_to: str | None = None,
+                 tag: str | None = None):
         self.origin = origin
         self.segment = segment
         self.result = result
@@ -94,6 +95,7 @@ class InboundFilters:
         self.source = source
         self.date_from = date_from
         self.date_to = date_to
+        self.tag = " ".join((tag or "").split()) or None
 
     def but(self, **changes) -> "InboundFilters":
         copy = InboundFilters()
@@ -112,9 +114,10 @@ def _inbound_filters(
     source: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    tag: str | None = Query(None, max_length=30),
 ) -> InboundFilters:
     return InboundFilters(origin=origin, segment=segment, result=result, waiting=waiting, search=search,
-                          meta_ad_id=meta_ad_id, source=source, date_from=date_from, date_to=date_to)
+                          meta_ad_id=meta_ad_id, source=source, date_from=date_from, date_to=date_to, tag=tag)
 
 
 # Result of a lead, the same order as Chats' inbox (migration 272 inbox_chat_rows):
@@ -179,11 +182,27 @@ _ROW_COLUMNS = (
 )
 
 
+_NO_LEAD = "00000000-0000-0000-0000-000000000000"  # an id no lead has: "the tag matches nobody"
+
+
 def _leads_query(db, columns: str, tenant_id: str, f: InboundFilters, count: str | None = None):
-    """leads filtered by f. The one-ad filter needs the attribution rows joined in."""
+    """leads filtered by f. The one-ad filter needs the attribution rows joined in; so does the tag filter
+    (lead_tags, Customers > tags). A tag is matched ignoring upper / lower case; one nobody has matches nobody."""
+    spellings: list[str] = []
+    if f.tag:
+        from app.services.lead_tags import tag_spellings
+        spellings = tag_spellings(db, tenant_id, f.tag)
+        if spellings:
+            columns += ",lead_tags!inner()"
     if f.meta_ad_id:
         columns += ",lead_meta_ad_attributions!inner(meta_ad_id)"
-    return _apply_inbound(db.table("leads").select(columns, count=count), tenant_id, f)
+    q = _apply_inbound(db.table("leads").select(columns, count=count), tenant_id, f)
+    if f.tag:
+        if not spellings:
+            return q.eq("id", _NO_LEAD)
+        q = q.eq("lead_tags.tenant_id", tenant_id)
+        q = q.eq("lead_tags.tag", spellings[0]) if len(spellings) == 1 else q.in_("lead_tags.tag", spellings)
+    return q
 
 
 def _fetch_inbound_leads(db, tenant_id: str, f: InboundFilters, *, sort: str = "newest",
@@ -647,7 +666,7 @@ async def export_inbound_leads(
     log_download(db, ctx, list_name="Inbound leads", row_count=len(enriched), filters={
         "origin": None if f.origin == "all" else f.origin, "interest": f.segment, "result": f.result,
         "waiting": f.waiting, "search": f.search, "ad": f.meta_ad_id, "source": f.source,
-        "date_from": f.date_from, "date_to": f.date_to,
+        "date_from": f.date_from, "date_to": f.date_to, "tag": f.tag,
     })
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -980,6 +999,8 @@ def _sync_start_payload(db, tenant_id: str) -> dict:
         "backfilled_from": get_ads_setting(db, tenant_id, "meta_ads_backfilled_from"),
         "earliest_ad_start": earliest,
         "last_synced_at": get_ads_setting(db, tenant_id, "meta_ads_last_sync_at"),
+        # Meta said the token is expired or invalid (code 190); cleared by the next good sync or reconnect.
+        "token_expired": bool(get_ads_setting(db, tenant_id, "meta_ads_token_expired")),
         "max_history_days": _MAX_HISTORY_DAYS,
     }
 

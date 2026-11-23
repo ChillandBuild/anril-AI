@@ -7,11 +7,12 @@ import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { balanceRemindersApi, remindersLine } from "@/lib/balanceRemindersApi";
-import { myBusinessApi, type AdvanceRuleBody, type PaymentsOverview } from "@/lib/myBusinessApi";
+import { myBusinessApi, type AdvanceOptions, type AdvanceRuleBody, type PaymentsOverview } from "@/lib/myBusinessApi";
 import { cn } from "@/lib/utils";
 import {
   belowMinLine,
   cleanNumberText,
+  customerPreview,
   draftError,
   draftFromRule,
   exampleLine,
@@ -43,6 +44,8 @@ export default function PaymentsPage() {
   // null = could not read it (no Orders access, or the server said no): the card shows the plain text only.
   const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
   const [remindersSaving, setRemindersSaving] = useState(false);
+  const [options, setOptions] = useState<AdvanceOptions | null>(null);
+  const [optionSaving, setOptionSaving] = useState<keyof AdvanceOptions | null>(null);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -57,6 +60,7 @@ export default function PaymentsPage() {
       ]);
       setOverview(ov);
       balanceRemindersApi.get().then((r) => setRemindersOn(r.on), () => setRemindersOn(null));
+      myBusinessApi.advanceOptions().then(setOptions, () => setOptions(null));
       if (ruleResult.ok) {
         setRule(ruleResult.r);
         setDraft(draftFromRule(ruleResult.r));
@@ -94,6 +98,20 @@ export default function PaymentsPage() {
     }
   }
 
+  async function toggleOption(key: keyof AdvanceOptions) {
+    if (!options) return;
+    const next = { ...options, [key]: !options[key] };
+    setOptionSaving(key);
+    try {
+      setOptions(await myBusinessApi.saveAdvanceOptions(next));
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setOptionSaving(null);
+    }
+  }
+
   async function toggleReminders() {
     if (remindersOn == null) return;
     const next = !remindersOn;
@@ -118,7 +136,7 @@ export default function PaymentsPage() {
 
       {state === "ready" && overview ? (
         <>
-          <Card id="advance-heading" title="Ask for an advance on orders?" hint="This is the advance a new order starts with. Staff can change it on one order.">
+          <Card id="advance-heading" title="Ask for an advance on orders?" hint="This is the advance a new order starts with.">
             {ruleHidden === "forbidden" ? (
               <p className="text-sm text-ink-muted">The advance rule is shown to people who can see Orders. Ask the owner to change it.</p>
             ) : ruleHidden === "failed" ? (
@@ -210,6 +228,31 @@ export default function PaymentsPage() {
             ) : null}
           </Card>
 
+          {!ruleHidden && rule ? (
+            <Card id="advance-options-heading" title="Who can change it, and what the customer sees">
+              {options ? (
+                <div className="divide-y divide-border/70">
+                  <OptionSwitch id="opt-staff" on={options.staff_can_change} busy={optionSaving === "staff_can_change"} disabled={!isOwner}
+                    onToggle={() => void toggleOption("staff_can_change")}
+                    title="Staff can change the advance on one order"
+                    text={options.staff_can_change ? "On New bill and New quote, staff can type a different advance. Each change is logged." : "Only you can change an order's advance. Staff get the rule above."} />
+                  <OptionSwitch id="opt-payfull" on={options.ai_pay_full} busy={optionSaving === "ai_pay_full"} disabled={!isOwner}
+                    onToggle={() => void toggleOption("ai_pay_full")}
+                    title="AI agent lets a customer pay the full amount"
+                    text={options.ai_pay_full ? "When a customer asks to pay it all now, the AI sends one link for the whole amount." : "The AI always sends the advance link first."} />
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">Couldn&apos;t load these switches.</p>
+              )}
+              {!isOwner ? <p className="mt-1 text-sm text-ink-muted">Only the owner can change these.</p> : null}
+              <p className="mt-4 text-sm font-semibold text-ink">What the customer gets on WhatsApp</p>
+              <div className="mt-2 max-w-sm rounded-2xl rounded-tl-sm bg-primary-50 px-3.5 py-2.5 shadow-sm ring-1 ring-primary-100">
+                <p className="whitespace-pre-line font-body text-sm leading-5 text-[#0A1528]">{customerPreview(error ? rule : draftRule)}</p>
+              </div>
+              <p className="mt-1.5 text-xs text-ink-muted">An example order. The real message has their items and a working pay link.</p>
+            </Card>
+          ) : null}
+
           <Card id="reminders-heading" title="Balance reminders" hint="When an order still has money to pay, the customer gets a gentle reminder by WhatsApp.">
             {remindersOn == null ? (
               <p className="text-sm font-semibold text-ink">{overview.balance_reminders}</p>
@@ -276,6 +319,25 @@ export default function PaymentsPage() {
 
         </>
       ) : null}
+    </div>
+  );
+}
+
+function OptionSwitch({ id, on, busy, disabled, onToggle, title, text }: {
+  id: string; on: boolean; busy: boolean; disabled: boolean; onToggle: () => void; title: string; text: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3 first:pt-0">
+      <div className="min-w-0">
+        <p id={`${id}-label`} className="text-sm font-semibold text-ink">{title}</p>
+        <p className="text-sm text-ink-muted">{text}</p>
+      </div>
+      <button type="button" role="switch" aria-checked={on} aria-labelledby={`${id}-label`} disabled={disabled || busy} onClick={onToggle}
+        className="relative inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60">
+        <span aria-hidden className={cn("flex h-7 w-12 items-center rounded-full px-1 transition-colors", on ? "bg-primary" : "bg-slate-400")}>
+          <span className={cn("h-5 w-5 rounded-full bg-white shadow transition-transform", on ? "translate-x-5" : "translate-x-0")} />
+        </span>
+      </button>
     </div>
   );
 }

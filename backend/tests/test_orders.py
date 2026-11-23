@@ -417,3 +417,50 @@ def test_the_grid_makes_each_size_and_the_item_total_follows(db):
             assert kurti["stock_quantity"] == 5
     finally:
         app.dependency_overrides.clear()
+
+
+# ── v9.2 screen 127: Remind all on Still to collect ─────────────────────────────
+
+def _open(db, i, **extra):
+    lead = {"phone": f"+9198400{i:05d}", "opted_out": False, "blocked_at": None}
+    lead.update(extra.pop("lead", {}))
+    return _deal(db, id=f"d{i}", deal_number=i, leads=lead, **extra)
+
+
+def test_remind_all_skips_recent_said_stop_and_paid_then_sends_at_most_20(db):
+    recent = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+    for i in range(1, 26):
+        _open(db, i, last_reminder_at=old if i == 1 else None)            # 25 due
+    _open(db, 90, last_reminder_at=recent)                                 # reminded 3 h ago
+    _open(db, 91, lead={"opted_out": True})                                # said stop
+    _open(db, 92, lead={"blocked_at": recent})                             # blocked
+    _open(db, 93, stage="won", paid_paise=240000)                          # paid
+    _open(db, 94, paid_paise=240000)                                       # nothing left
+    _open(db, 95, stage="quoted")                                          # just a quote
+    preview = run(orders.remind_all(db, T, dry_run=True))
+    assert (preview["ready"], preview["will_send"], preview["skipped_recent"], preview["skipped_cant"]) == (25, 20, 1, 2)
+    with patch.object(orders, "notify", AsyncMock(return_value={"sent": True})) as sent, \
+         patch.object(orders, "_balance_link", AsyncMock(return_value="https://rzp.io/l/x")):
+        out = run(orders.remind_all(db, T, dry_run=False))
+        assert (out["sent"], out["left"]) == (20, 5)
+        assert sent.await_count == 20
+        again = run(orders.remind_all(db, T, dry_run=False))              # next tap: only the 5 left
+    assert again["sent"] == 5 and again["skipped_recent"] == 21
+
+
+def test_remind_all_follows_the_channel_filter_and_counts_share_only(db):
+    _open(db, 1, channel="store")
+    _open(db, 2, channel="online", paid_paise=100000)                      # advance paid, balance left
+    with patch.object(orders, "notify", AsyncMock(return_value={"sent": False, "reason": "whatsapp_not_connected"})), \
+         patch.object(orders, "_balance_link", AsyncMock(return_value="https://rzp.io/l/x")):
+        out = run(orders.remind_all(db, T, channel="online", dry_run=False))
+    assert (out["ready"], out["sent"], out["share_only"]) == (1, 0, 1)
+
+
+def test_remind_all_reminds_only_the_chip_on_screen(db):
+    _open(db, 1)                                   # waiting for payment
+    _open(db, 2, paid_paise=100000)                # advance paid
+    assert run(orders.remind_all(db, T, state="waiting", dry_run=True))["ready"] == 1
+    assert run(orders.remind_all(db, T, state="advance", dry_run=True))["ready"] == 1
+    assert run(orders.remind_all(db, T, dry_run=True))["ready"] == 2

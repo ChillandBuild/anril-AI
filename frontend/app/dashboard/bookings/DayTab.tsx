@@ -5,12 +5,12 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bookingsApi, type Booking, type BookingResource, type BookingSetup } from "@/lib/bookingsApi";
-import { FLAG_CLASS, HELD_HATCH_STYLE, STATUS_CLASS, STATUS_LABEL, bookingFlags, customerLabel, isOpen, sortByStart } from "./bookingsLogic";
-import { addDays, dayLabel, formatDay, formatTime, todayIst } from "./bookingsTime";
+import { FLAG_CLASS, HELD_HATCH_STYLE, STATUS_CLASS, STATUS_LABEL, bookingFlags, customerLabel, isOpen, sortByStart, summariseDay } from "./bookingsLogic";
+import { addDays, dayLabel, formatDay, formatTime, istOf, todayIst } from "./bookingsTime";
 import { BookingSheet } from "./BookingSheet";
 import { DayTimeline, type MoveRequest } from "./DayTimeline";
 import { NewBookingDialog, type NewBookingPrefill } from "./NewBookingDialog";
-import { BTN_PRIMARY, BTN_SECONDARY, ConfirmSheet, Notice, errorText } from "./bookingsUi";
+import { BTN_PRIMARY, BTN_SECONDARY, ConfirmSheet, DownloadListButton, Notice, errorText } from "./bookingsUi";
 
 export function DayTab({
   setup,
@@ -20,6 +20,7 @@ export function DayTab({
   onOpenId,
   canManage,
   canSeeMoney,
+  canDownload,
 }: {
   setup: BookingSetup;
   date: string;
@@ -28,6 +29,7 @@ export function DayTab({
   onOpenId: (id: string | null) => void;
   canManage: boolean;
   canSeeMoney: boolean;
+  canDownload: boolean;
 }) {
   const { data, error, mutate } = useSWR(["bookings/day", date], () => bookingsApi.day(date), {
     refreshInterval: 60_000,
@@ -44,6 +46,8 @@ export function DayTab({
   const view = data && data.date === date ? data : undefined;
   const resources: BookingResource[] = view?.resources ?? [];
   const bookings = useMemo(() => sortByStart(view?.bookings ?? []), [view]);
+  // A late booking from the night before can spill into this day's board; count only bookings that start today.
+  const counts = useMemo(() => summariseDay(bookings.filter((b) => istOf(b.start_at)?.date === date)), [bookings, date]);
   const opened = openId ? bookings.find((b) => b.id === openId) ?? null : null;
   const hasServices = setup.services.some((s) => s.active);
 
@@ -85,12 +89,23 @@ export function DayTab({
             {dayLabel(date, today) !== formatDay(date) && <span className="ml-2 text-sm font-semibold text-ink-muted">{formatDay(date)}</span>}
           </h2>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canDownload && <DownloadListButton start={date} disabled={!view || bookings.length === 0} />}
         {canManage && (
           <button type="button" className={BTN_PRIMARY} onClick={() => setCreating({})} disabled={!hasServices} title={hasServices ? undefined : "Add a service first"}>
             <Plus size={16} aria-hidden /> New booking
           </button>
         )}
+        </div>
       </div>
+
+      {view && (counts.came > 0 || counts.toCome > 0 || counts.noShow > 0) && (
+        <p className="text-sm text-ink-secondary">
+          <span className="font-bold tabular-nums text-ink">{counts.came}</span> came ·{" "}
+          <span className="font-bold tabular-nums text-ink">{counts.toCome}</span> to come ·{" "}
+          <span className="font-bold tabular-nums text-ink">{counts.noShow}</span> didn&apos;t come
+        </p>
+      )}
 
       {canManage && !hasServices && <Notice tone="amber">Add a service in the Services &amp; timings tab before taking bookings.</Notice>}
       {error && !view && <Notice tone="red">Could not load this day. Try again in a moment.</Notice>}

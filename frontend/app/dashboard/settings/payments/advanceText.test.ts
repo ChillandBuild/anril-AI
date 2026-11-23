@@ -107,3 +107,18 @@ describe("draft", () => {
     expect(sameRule(pct(30), pct(31))).toBe(false);
   });
 });
+
+describe("customerPreview (the WhatsApp message, same as the AI's quote)", () => {
+  it("shows the advance line and the advance link when an advance is asked", async () => {
+    const { customerPreview } = await import("./advanceText");
+    const text = customerPreview({ kind: "percent", value: 40, min_total_paise: 0 });
+    expect(text).toContain("Advance to book: ₹4,200 (the rest, ₹6,300, later)");
+    expect(text).toContain("Pay the advance here:");
+  });
+  it("asks the full amount when there is no advance", async () => {
+    const { customerPreview } = await import("./advanceText");
+    const text = customerPreview({ kind: "none", value: 0, min_total_paise: 0 });
+    expect(text).not.toContain("Advance");
+    expect(text).toContain("Pay here:");
+  });
+});

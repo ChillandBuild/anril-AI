@@ -69,6 +69,15 @@ class LeadActionTests(_Base):
         self.assertEqual(self.lead()["lost_reason"], "Bought elsewhere")
         self.assertIsNone(self.lead()["booked_at"])
 
+    def test_not_buying_reason_in_own_words_is_trimmed_and_capped(self):
+        res = self.client.put(f"/api/v1/chats/{self.LEAD}/not-buying", json={"reason": "  Wants   a   cheaper\n option  "})
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(self.lead()["lost_reason"], "Wants a cheaper option")
+        self.client.put(f"/api/v1/chats/{self.LEAD}/not-buying", json={"reason": "x" * 500})
+        self.assertEqual(self.lead()["lost_reason"], "x" * 120)
+        self.assertEqual(self.client.put(f"/api/v1/chats/{self.LEAD}/not-buying", json={"reason": "   "}).status_code, 422)
+        self.assertEqual(self.lead()["lost_reason"], "x" * 120)  # a blank one saved nothing
+
     def test_another_business_chat_is_not_found(self):
         res = self.client.put(f"/api/v1/chats/{self.OTHER_TENANT_LEAD}/not-buying", json={"reason": "x"})
         self.assertEqual(res.status_code, 404)

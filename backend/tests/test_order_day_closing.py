@@ -170,3 +170,15 @@ def test_new_bill_notes_when_staff_change_the_shop_advance(db):
     assert out["order"]["advance_note"] == "Advance rule 30% (₹1,950). Staff changed it to ₹1,000 for this order."
     assert same["order"]["advance_note"] is None
     assert any(a.get("action") == "order.advance_changed" for a in db.rows("app_audit_logs"))
+
+
+def test_new_bill_refuses_a_changed_advance_when_the_owner_locked_it(db):
+    rule = {"kind": "percent", "value": 30, "min_total_paise": 0}
+    bill = {"mode": "later", "phone": "9840011111", "items": [{"catalog_item_id": "kurti", "qty": 10}], "method": "cash"}
+    with patch("app.services.order_quotes.advance_rule", return_value=rule), \
+         patch.object(orders, "notify", AsyncMock(return_value={"sent": False})), \
+         patch("app.services.inbound_lead.create_inbound_lead", return_value="L1"):
+        with pytest.raises(orders.OrderError, match="owner set one advance rule"):
+            run(orders.create_bill(db, T, {**bill, "advance_paise": 100000}, user_id="u1", may_change_advance=False))
+        ok = run(orders.create_bill(db, T, {**bill, "advance_paise": 195000}, user_id="u1", may_change_advance=False))
+    assert ok["order"]["advance_note"] is None

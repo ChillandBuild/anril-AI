@@ -1,4 +1,5 @@
 "use client";
+import DialMatches from "./DialMatches";
 import NumpadDialer from "./NumpadDialer";
 import type { CallingCockpit } from "../lib/useCallingCockpit";
 
@@ -16,6 +17,7 @@ export default function ManualDialPanel({ cockpit, readOnly }: { cockpit: Callin
         dialing={cockpit.manualDialing}
         disabled={readOnly}
       />
+      <DialMatches cockpit={cockpit} readOnly={readOnly} />
     </div>
   );
 }

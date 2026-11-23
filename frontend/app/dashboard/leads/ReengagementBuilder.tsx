@@ -123,6 +123,13 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   // Starts true: the first fetch runs on mount, so "No messages yet" mustn't flash first.
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(Boolean(canManage && initialGroupId));
+  // Permissions load after the first render: apply the group from the link (?group=) once they arrive.
+  useEffect(() => {
+    if (canManage && initialGroupId) {
+      setGroupId(initialGroupId);
+      setShowAdd(true);
+    }
+  }, [canManage, initialGroupId]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
 

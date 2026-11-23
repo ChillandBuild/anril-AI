@@ -13,6 +13,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { formatRupees } from "@/components/deals/money";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import type { Option } from "./inboxFilters";
+import { cleanOtherReason, OTHER_REASON_MAX } from "./notBuyingReason";
 
 const NOT_BUYING_REASONS = ["Price too high", "Bought somewhere else", "Just looking", "Not reachable", "Wrong number"];
 
@@ -78,6 +79,8 @@ export function CustomerActions({
   const [bookFor, setBookFor] = useState("");
   const [bookNote, setBookNote] = useState("");
   const [lostOpen, setLostOpen] = useState(false);
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherText, setOtherText] = useState("");
   const [busy, setBusy] = useState<null | "book" | "lost" | "undo">(null);
   const [payOpen, setPayOpen] = useState(false);
   const lostRef = useRef<HTMLDivElement>(null);
@@ -88,6 +91,13 @@ export function CustomerActions({
     setPickerOpen(false);
     setLostOpen(false);
   }, [lead.id]);
+
+  useEffect(() => {
+    if (!lostOpen) {
+      setOtherOpen(false);
+      setOtherText("");
+    }
+  }, [lostOpen]);
 
   useEffect(() => {
     if (!lostOpen) return;
@@ -253,6 +263,44 @@ export function CustomerActions({
                     {reason}
                   </button>
                 ))}
+                {otherOpen ? (
+                  <form
+                    className="border-t border-[#f1f5f9] px-3 pb-2 pt-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const reason = cleanOtherReason(otherText);
+                      if (!reason) return;
+                      setLostOpen(false);
+                      void run("lost", () => api.chats.notBuying(lead.id, reason), "Marked as not buying");
+                    }}
+                  >
+                    <label htmlFor="not-buying-other" className="sr-only">Reason in your own words</label>
+                    <input
+                      id="not-buying-other"
+                      autoFocus
+                      value={otherText}
+                      onChange={(e) => setOtherText(e.target.value)}
+                      maxLength={OTHER_REASON_MAX}
+                      placeholder="Write the reason"
+                      className="h-9 w-full rounded-lg border border-[#e2e8f0] px-2.5 text-[12.5px] text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!cleanOtherReason(otherText)}
+                      className="mt-2 h-8 w-full rounded-lg bg-primary text-[12px] font-bold text-white hover:bg-primary-dark disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setOtherOpen(true)}
+                    className="w-full border-t border-[#f1f5f9] px-3 py-2 text-left text-[12.5px] text-[#334155] hover:bg-slate-50"
+                  >
+                    Other…
+                  </button>
+                )}
               </div>
             )}
           </div>

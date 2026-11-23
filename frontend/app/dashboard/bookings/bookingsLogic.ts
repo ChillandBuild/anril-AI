@@ -328,17 +328,20 @@ export interface DaySummary {
   total: number;
   came: number;
   noShow: number;
+  /** Booked or waiting for the advance, and the visit has not been marked yet. */
+  toCome: number;
   byResource: Record<string, number>;
 }
 
-/** Counts for the Week tab: live bookings per column, plus came / didn't come. */
+/** Counts for the Day and Week tabs: live bookings per column, plus came / to come / didn't come. */
 export function summariseDay(bookings: Pick<Booking, "status" | "resource_id">[]): DaySummary {
-  const s: DaySummary = { total: 0, came: 0, noShow: 0, byResource: {} };
+  const s: DaySummary = { total: 0, came: 0, noShow: 0, toCome: 0, byResource: {} };
   for (const b of bookings) {
     if (b.status === "no_show") s.noShow += 1;
     if (!isLive(b.status)) continue;
     s.total += 1;
     if (b.status === "came") s.came += 1;
+    else s.toCome += 1;
     s.byResource[b.resource_id] = (s.byResource[b.resource_id] ?? 0) + 1;
   }
   return s;

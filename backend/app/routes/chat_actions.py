@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
@@ -64,8 +64,21 @@ def cancel_booking(lead_id: UUID, ctx: dict = Depends(require_conversations_repl
     return _update_lead(lead_id, ctx["tenant_id"], {"booked_at": None, "booked_for": None, "booking_note": None})
 
 
+NOT_BUYING_REASON_MAX = 120
+
+
 class NotBuyingIn(BaseModel):
-    reason: str = Field(..., min_length=1, max_length=120)
+    """A reason from the list, or the team's own words ("Other..."): trimmed, extra spaces
+    collapsed, cut at 120 characters. Blank is refused."""
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator("reason", mode="after")
+    @classmethod
+    def _tidy(cls, v: str) -> str:
+        v = " ".join(v.split())[:NOT_BUYING_REASON_MAX].strip()
+        if not v:
+            raise ValueError("Write a reason")
+        return v
 
 
 @router.put("/{lead_id}/not-buying")
@@ -73,7 +86,7 @@ def mark_not_buying(lead_id: UUID, payload: NotBuyingIn, ctx: dict = Depends(req
     """Marks the chat Lost with a reason. A later payment still shows it as Came / Paid."""
     return _update_lead(lead_id, ctx["tenant_id"], {
         "lost_at": _now(),
-        "lost_reason": payload.reason.strip(),
+        "lost_reason": payload.reason,
         "lost_auto": False,
         "booked_at": None,
         "booked_for": None,

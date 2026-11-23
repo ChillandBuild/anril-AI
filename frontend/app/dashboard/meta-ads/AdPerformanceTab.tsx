@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -677,7 +678,7 @@ export function AdPerformanceTab() {
 
 
   const { data: filters, mutate: mutateFilters } = useAdFilters();
-  const { data: syncStart } = useSyncStart();
+  const { data: syncStart, mutate: mutateSyncStart } = useSyncStart();
   const { data: trackedData, mutate: mutateTracked } = useTrackedAds(showManage);
   const params = {
     campaign_id: campaignId || undefined,
@@ -854,8 +855,10 @@ export function AdPerformanceTab() {
       const result = await api.inboundLeads.adSyncNow();
       if (!result.ok) {
         toast.error(result.error ?? "Sync failed — no details returned");
+        void mutateSyncStart();
         return;
       }
+      void mutateSyncStart();
       // Refresh first so the message below can say whether the table still has saved rows.
       const [fresh] = await Promise.all([mutate(), mutateFilters()]);
       const tableHasRows = (fresh?.data ?? []).length > 0;
@@ -938,6 +941,19 @@ export function AdPerformanceTab() {
 
   return (
     <div className="space-y-[18px]">
+      {syncStart?.token_expired && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <p className="flex min-w-0 items-center gap-2 font-body text-sm text-rose-900">
+            <AlertTriangle size={16} className="shrink-0 text-rose-600" aria-hidden />
+            <span className="min-w-0">
+              <span className="font-bold">Your Meta Ads connection expired.</span> New ad numbers are not coming in. Reconnect to fix it.
+            </span>
+          </p>
+          <Link href="/dashboard/settings/connect-channels" className="btn-primary shrink-0 justify-center">
+            Reconnect
+          </Link>
+        </div>
+      )}
       <div
         role="group"
         aria-label="Filter ads by delivery"

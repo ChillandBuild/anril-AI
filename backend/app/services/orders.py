@@ -1051,6 +1051,61 @@ async def send_pay_link(db, tenant_id: str, deal_id: str, *, user_id: str | None
     return {**sent, "payment_link": link}
 
 
+REMIND_ALL_CAP = 20          # one tap sends at most this many (each may make a Razorpay link)
+REMIND_ALL_GAP = timedelta(hours=24)
+
+
+async def remind_all(db, tenant_id: str, *, channel: str | None = None, days: int | None = 30, state: str = "all",
+                     user_id: str | None = None, sender: dict | None = None, dry_run: bool = False) -> dict:
+    """v9.2 screen 127: "Remind all" on Still to collect. Same channel + period as the table.
+    Skips anyone reminded in the last 24 hours, said stop, blocked or without a phone; at most 20 a tap
+    (tap again for the next 20, the ones just sent are then skipped as reminded)."""
+    since = _since(days)
+
+    def query():
+        q = (db.table("deals").select("id, stage, total_paise, paid_paise, refunded_paise, last_reminder_at, "
+                                      "leads(phone, opted_out, blocked_at)")
+             .eq("tenant_id", tenant_id).not_.in_("stage", ["won", "lost"]))
+        if channel in ("online", "store"):
+            q = q.eq("channel", channel)
+        if since:
+            q = q.gte("created_at", since.isoformat())
+        return q
+
+    from app.services.reports_common import paged
+    deals = paged(query, order_by="id")
+    now = _now()
+    ready, recent, cant = [], 0, 0
+    for d in deals:
+        wanted = (state,) if state in ("waiting", "advance") else ("waiting", "advance")  # the chip on screen
+        if payment_state(d) not in wanted or balance_paise(d) <= 0:
+            continue
+        lead = d.get("leads") or {}
+        if not lead.get("phone") or lead.get("opted_out") or lead.get("blocked_at"):
+            cant += 1
+            continue
+        last = d.get("last_reminder_at")
+        if last and now - datetime.fromisoformat(str(last).replace("Z", "+00:00")) < REMIND_ALL_GAP:
+            recent += 1
+            continue
+        ready.append(d["id"])
+    out = {"ready": len(ready), "will_send": min(len(ready), REMIND_ALL_CAP), "skipped_recent": recent,
+           "skipped_cant": cant, "sent": 0, "share_only": 0, "failed": 0, "left": max(0, len(ready) - REMIND_ALL_CAP)}
+    if dry_run:
+        return out
+    for deal_id in ready[:REMIND_ALL_CAP]:
+        try:
+            res = await send_pay_link(db, tenant_id, deal_id, user_id=user_id, kind="reminder", sender=sender)
+        except OrderError:
+            out["failed"] += 1
+            continue
+        if res.get("sent"):
+            out["sent"] += 1
+        else:
+            out["share_only"] += 1
+    return out
+
+
 def _mark_reminded(db, tenant_id: str, deal: dict) -> None:
     db.table("deals").update({
         "reminders_sent": int(deal.get("reminders_sent") or 0) + 1, "last_reminder_at": _now().isoformat(),
@@ -1150,7 +1205,8 @@ def _staff_place(db, tenant_id: str, user_id: str | None) -> str | None:
     return place if isinstance(place, str) else None
 
 
-async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = None, sender: dict | None = None) -> dict:
+async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = None, sender: dict | None = None,
+                      may_change_advance: bool = True) -> dict:
     """The shop counter. data:
        mode "now" (customer takes it) | "later" (pickup or courier, maybe an advance)
        phone, name                   -- optional; no phone = walk-in, nothing is sent
@@ -1199,6 +1255,9 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         rule = advance_rule(tenant_id)
         asked = order_advance(db, tenant_id, lines, total)  # each item's own rule, else the shop's (315)
         if (rule["kind"] != "none" or asked) and advance != asked:
+            if not may_change_advance:
+                from app.services.order_quotes import LOCKED_ADVANCE
+                raise OrderError(LOCKED_ADVANCE)
             advance_note = (f"Advance rule {rule_text(rule)} ({_rupees(asked)}). "
                             f"Staff changed it to {_rupees(advance)} for this order.")
     ready_by = None

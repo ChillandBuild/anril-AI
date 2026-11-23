@@ -16,6 +16,8 @@ import { TickMark } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, type ReachOfferDraft } from "./ReachOfferBox";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { CampaignResultsDrawer } from "./CampaignResultsDrawer";
+import { SCHEDULE_HOURS_NOTE, dripTimeProblem, scheduleProblem } from "./reachSchedule";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,6 +112,9 @@ type BroadcastHistoryItem = {
   paid_count?: number | null;
   paid_amount_inr?: number | null;
   paid_window_open?: boolean;
+  // People who said stop after it. back_per_rupee (estimated, deals.view only): rupees paid per rupee of message cost.
+  said_stop?: number;
+  back_per_rupee?: number | null;
 };
 
 type BroadcastTag = {
@@ -700,6 +705,7 @@ export default function OutboundLeadsPage() {
   const [scheduleAt, setScheduleAt] = useState("");
   const [dripDays, setDripDays] = useState("");
   const [dripSendTime, setDripSendTime] = useState("");
+  const [resultsFor, setResultsFor] = useState<{ id: string; title: string } | null>(null);
   const [variableMapping, setVariableMapping] = useState<string[]>([]); // column name per {{N}}
 
   const [sendLoading, setSendLoading] = useState(false);
@@ -2164,6 +2170,9 @@ export default function OutboundLeadsPage() {
                       onChange={(e) => setScheduleAt(e.target.value)}
                       className={inputCls}
                     />
+                    <p className={cn("mt-1.5 font-body text-xs", scheduleProblem(scheduleAt) ? "text-red-600" : "text-on-surface-muted")}>
+                      {scheduleProblem(scheduleAt) ?? SCHEDULE_HOURS_NOTE}
+                    </p>
                   </div>
                 )}
 
@@ -2192,6 +2201,9 @@ export default function OutboundLeadsPage() {
                         onChange={(e) => setDripSendTime(e.target.value)}
                         className={inputCls}
                       />
+                      <p className={cn("mt-1.5 font-body text-xs", dripTimeProblem(dripSendTime) ? "text-red-600" : "text-on-surface-muted")}>
+                        {dripTimeProblem(dripSendTime) ?? SCHEDULE_HOURS_NOTE}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -2205,7 +2217,7 @@ export default function OutboundLeadsPage() {
                   </button>
                   <button
                     onClick={async () => { setReachPreview(null); setCurrentStep(5); if (!isGroup) await fetchRiskAudit(); }}
-                    disabled={!templateName.trim() || !sender}
+                    disabled={!templateName.trim() || !sender || (scheduleType === "scheduled" && !!scheduleProblem(scheduleAt)) || (scheduleType === "drip" && !!dripTimeProblem(dripSendTime))}
                     title={!sender ? "No number can send broadcasts right now" : undefined}
                     className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
@@ -3480,6 +3492,16 @@ export default function OutboundLeadsPage() {
                     </div>
                   )}
 
+                  {/* One campaign's results: paid, said stop, who paid */}
+                  {item.broadcast_id && item.sent > 0 && (
+                    <button
+                      onClick={() => setResultsFor({ id: item.broadcast_id!, title: item.template_name })}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 text-gray-700 rounded-md font-label text-[10px] font-semibold transition-colors border border-gray-200 shrink-0 whitespace-nowrap"
+                    >
+                      Results
+                    </button>
+                  )}
+
                   {/* Delete history entry */}
                   {item.broadcast_id && canManageOutbound && (
                     <button
@@ -3494,13 +3516,23 @@ export default function OutboundLeadsPage() {
                 </div>
                 
                 {/* People left out when it went out, and what the campaign earned */}
-                {((item.skipped_monthly_limit ?? 0) > 0 || (item.skipped_blocked ?? 0) > 0 || (item.paid_count !== undefined && item.paid_count !== null)) && (
+                {((item.skipped_monthly_limit ?? 0) > 0 || (item.skipped_blocked ?? 0) > 0 || (item.said_stop ?? 0) > 0 || (item.paid_count !== undefined && item.paid_count !== null)) && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {item.paid_count !== undefined && item.paid_count !== null && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-800" title="People who bought within 7 days of getting this message. Each person counts once, for their first order.">
                         Paid within 7 days: {item.paid_count.toLocaleString()}
                         {item.paid_amount_inr !== undefined && item.paid_amount_inr !== null && ` · ₹${item.paid_amount_inr.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
                         {item.paid_window_open && <span className="font-normal text-green-700">(still counting)</span>}
+                      </span>
+                    )}
+                    {item.back_per_rupee !== undefined && item.back_per_rupee !== null && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-800" title="Rupees paid by these people, divided by the cost of the messages sent (an estimate at the standard rate).">
+                        ₹{item.back_per_rupee.toLocaleString("en-IN", { maximumFractionDigits: 2 })} back per ₹1 (estimated)
+                      </span>
+                    )}
+                    {(item.said_stop ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
+                        {item.said_stop!.toLocaleString()} said stop
                       </span>
                     )}
                     {(item.skipped_monthly_limit ?? 0) > 0 && (
@@ -3647,6 +3679,7 @@ export default function OutboundLeadsPage() {
         )}
       </div>
       )}
+      {resultsFor && <CampaignResultsDrawer broadcastId={resultsFor.id} title={resultsFor.title} onClose={() => setResultsFor(null)} />}
     </div>
   );
 }

@@ -115,6 +115,41 @@ def set_ads_setting(db, tenant_id: str, key: str, value: str) -> None:
     }, on_conflict="tenant_id,key").execute()
 
 
+# Meta's Graph error code for an expired or invalid access token.
+_TOKEN_EXPIRED_CODE = 190
+_TOKEN_EXPIRED_KEY = "meta_ads_token_expired"
+
+
+def is_token_expired_error(exc: Exception) -> bool:
+    """True when a failed Graph call says the token is expired or invalid (error code 190)."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return False
+    try:
+        err = (resp.json() or {}).get("error")
+    except Exception:
+        return False
+    return isinstance(err, dict) and err.get("code") == _TOKEN_EXPIRED_CODE
+
+
+def flag_token_expired(db, tenant_id: str) -> None:
+    """Remember the token has expired, so the Meta Ads page can ask for a reconnect.
+    Best-effort: a failed write must never break the sync."""
+    try:
+        set_ads_setting(db, tenant_id, _TOKEN_EXPIRED_KEY, "1")
+    except Exception as e:
+        logger.warning(f"token-expired flag write failed (tenant {tenant_id}): {e}")
+
+
+def clear_token_expired(db, tenant_id: str) -> None:
+    """Drop the expired-token flag after a good sync or a reconnect. Writes only when set."""
+    try:
+        if get_ads_setting(db, tenant_id, _TOKEN_EXPIRED_KEY):
+            set_ads_setting(db, tenant_id, _TOKEN_EXPIRED_KEY, "")
+    except Exception as e:
+        logger.warning(f"token-expired flag clear failed (tenant {tenant_id}): {e}")
+
+
 def messaging_channels_for(destination_type: str | None) -> list[str]:
     """The chat apps an ad set's destination opens, in a fixed order:
     WhatsApp, Instagram Direct, Messenger. Empty for non-messaging destinations
@@ -904,6 +939,7 @@ def _record_sync_metadata(db, tenant_id: str, account: str, written: int) -> Non
     set_ads_setting(db, tenant_id, "meta_ads_last_sync_at", datetime.now(timezone.utc).isoformat())
     set_ads_setting(db, tenant_id, "meta_ads_last_sync_count", str(written))
     set_ads_setting(db, tenant_id, "meta_ads_last_synced_account_id", account)
+    clear_token_expired(db, tenant_id)
 
 
 def sync_tenant_ad_insights(db, tenant_id: str, *, date_preset: str = "last_30d") -> int:
@@ -925,6 +961,8 @@ def sync_tenant_ad_insights(db, tenant_id: str, *, date_preset: str = "last_30d"
         adsets = _fetch_adsets(token, account)
     except Exception as e:
         logger.warning(f"Ads insights fetch failed for tenant {tenant_id}: {e}")
+        if is_token_expired_error(e):
+            flag_token_expired(db, tenant_id)
         return 0
     ads = _fetch_ads_best_effort(token, account, tenant_id)
     try:
@@ -1001,8 +1039,12 @@ def sync_tenant_ad_insights_verbose(db, tenant_id: str, *, date_preset: str = "l
         rows = _fetch_sync_insights(token, account, date_preset, backfill_from=backfill_from)
         adsets = _fetch_adsets(token, account)
     except Exception as e:
+        expired = is_token_expired_error(e)
+        if expired:
+            flag_token_expired(db, tenant_id)
         return {
             "ok": False,
+            "token_expired": expired,
             "error": f"Meta API request failed: {e}",
             "rows_fetched": 0,
             "whatsapp_rows": 0,

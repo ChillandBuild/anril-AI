@@ -74,7 +74,9 @@ def find_customer(phone: str = Query(..., min_length=6, max_length=20), ctx: dic
     orders = (
         db.table("deals").select("id").eq("tenant_id", ctx["tenant_id"]).eq("lead_id", rows[0]["id"]).neq("stage", "lost").execute()
     ).data or []
-    return {"found": True, "lead_id": rows[0]["id"], "name": rows[0].get("name"), "orders": len(orders)}
+    from app.services.order_unpaid import unpaid_for_lead  # the "1 unpaid order · Open it" hint
+    return {"found": True, "lead_id": rows[0]["id"], "name": rows[0].get("name"), "orders": len(orders),
+            **unpaid_for_lead(db, ctx["tenant_id"], rows[0]["id"])}
 
 
 class BillLine(BaseModel):
@@ -107,8 +109,10 @@ class NewBillIn(BaseModel):
 async def create_bill(payload: NewBillIn, ctx: dict = Depends(require_deals_manage)):
     db = get_supabase()
     try:
+        from app.services.order_quotes import staff_may_change_advance
         return await orders_service.create_bill(db, ctx["tenant_id"], payload.model_dump(),
-                                                user_id=ctx.get("user_id"), sender=_sender(ctx))
+                                                user_id=ctx.get("user_id"), sender=_sender(ctx),
+                                                may_change_advance=staff_may_change_advance(ctx["tenant_id"], ctx.get("role")))
     except OrderError as e:
         raise _bad(e)
 
@@ -154,6 +158,24 @@ def put_advance_rule(payload: AdvanceRuleIn, ctx: dict = Depends(require_owner))
         raise _bad(e)
 
 
+class AdvanceOptionsIn(BaseModel):
+    staff_can_change: bool
+    ai_pay_full: bool
+
+
+@router.get("/advance-options")
+def get_advance_options(ctx: dict = Depends(require_deals_view)):
+    from app.services.order_quotes import advance_options
+    return advance_options(ctx["tenant_id"])
+
+
+@router.put("/advance-options")
+def put_advance_options(payload: AdvanceOptionsIn, ctx: dict = Depends(require_owner)):
+    """Owner only (v9.2 screen 155): may staff change one order's advance; may the AI send a pay-full link."""
+    from app.services.order_quotes import save_advance_options
+    return save_advance_options(get_supabase(), ctx["tenant_id"], payload.model_dump())
+
+
 class QuoteLine(BaseModel):
     catalog_item_id: str | None = Field(None, max_length=64)
     variant_id: str | None = Field(None, max_length=64)
@@ -183,10 +205,11 @@ class NewQuoteIn(BaseModel):
 
 @router.post("/quotes")
 async def create_quote(payload: NewQuoteIn, ctx: dict = Depends(require_deals_manage)):
-    from app.services.order_quotes import create_quote as make
+    from app.services.order_quotes import create_quote as make, staff_may_change_advance
     try:
         return await make(get_supabase(), ctx["tenant_id"], payload.model_dump(), user_id=ctx.get("user_id"),
-                          send=payload.send, sender=_sender(ctx))
+                          send=payload.send, sender=_sender(ctx),
+                          may_change_advance=staff_may_change_advance(ctx["tenant_id"], ctx.get("role")))
     except OrderError as e:
         raise _bad(e)
 
@@ -412,6 +435,23 @@ async def pay_link(deal_id: str, ctx: dict = Depends(require_deals_manage)):
     except OrderError as e:
         raise _bad(e)
     return {**out, "order": orders_service.order_detail(db, ctx["tenant_id"], deal_id)}
+
+
+class RemindAllIn(BaseModel):
+    channel: Literal["all", "online", "store"] = "all"
+    days: int = Field(30, ge=0, le=3660)
+    state: Literal["all", "waiting", "advance"] = "all"   # the chip on screen: only the people it lists
+    dry_run: bool = True
+
+
+@router.post("/remind-all")
+async def remind_all(payload: RemindAllIn, ctx: dict = Depends(require_deals_manage)):
+    """Screen 127: dry_run gives the counts for the confirm box; dry_run false sends (at most 20 a tap)."""
+    return await orders_service.remind_all(
+        get_supabase(), ctx["tenant_id"], channel=None if payload.channel == "all" else payload.channel,
+        days=payload.days or None, state=payload.state, user_id=ctx.get("user_id"), sender=_sender(ctx),
+        dry_run=payload.dry_run,
+    )
 
 
 @router.post("/{deal_id}/remind")

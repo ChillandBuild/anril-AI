@@ -679,3 +679,116 @@ def test_other_tenants_creatives_are_untouched():
     assert by_id["cr-1"]["ad_effective_status"] == "PAUSED"
     assert by_id["cr-2"]["ad_effective_status"] == "ACTIVE"
     assert by_id["cr-2"].get("last_seen_at") is None
+
+
+# ─── "Connection expired" flag (Graph error code 190) ──────────────────────────
+
+def _graph_error(code, message="Error validating access token"):
+    import httpx
+    req = httpx.Request("GET", "https://graph.facebook.com/v21.0/act_1/insights")
+    resp = httpx.Response(400, json={"error": {"message": message, "type": "OAuthException", "code": code}}, request=req)
+    return httpx.HTTPStatusError("400 Bad Request", request=req, response=resp)
+
+
+def _creds_db():
+    db = FakeDB()
+    db.store["app_settings"] = [
+        {"tenant_id": "t1", "key": "meta_ads_access_token", "value": "tok"},
+        {"tenant_id": "t1", "key": "meta_ads_account_id", "value": "act_1"},
+    ]
+    return db
+
+
+def _flag(db):
+    return next((r["value"] for r in db.store["app_settings"]
+                 if r["tenant_id"] == "t1" and r["key"] == "meta_ads_token_expired"), None)
+
+
+def test_is_token_expired_error_reads_graph_code_190():
+    from app.services.meta_ads_insights_sync import is_token_expired_error
+    assert is_token_expired_error(_graph_error(190)) is True
+    assert is_token_expired_error(_graph_error(100, "Invalid parameter")) is False
+    assert is_token_expired_error(RuntimeError("boom")) is False
+
+
+def test_verbose_sync_flags_an_expired_token(monkeypatch):
+    import app.services.meta_ads_insights_sync as mod
+    db = _creds_db()
+    def expired(*a, **k):
+        raise _graph_error(190)
+    monkeypatch.setattr(mod, "_fetch_insights", expired)
+    result = sync_tenant_ad_insights_verbose(db, "t1")
+    assert result["ok"] is False and result["token_expired"] is True
+    assert _flag(db) == "1"
+
+
+def test_verbose_sync_does_not_flag_other_meta_errors(monkeypatch):
+    import app.services.meta_ads_insights_sync as mod
+    db = _creds_db()
+    def other(*a, **k):
+        raise _graph_error(100, "Invalid parameter")
+    monkeypatch.setattr(mod, "_fetch_insights", other)
+    result = sync_tenant_ad_insights_verbose(db, "t1")
+    assert result["ok"] is False and result["token_expired"] is False
+    assert _flag(db) is None
+
+
+def test_background_sync_flags_an_expired_token_and_returns_zero(monkeypatch):
+    import app.services.meta_ads_insights_sync as mod
+    db = _creds_db()
+    def expired(*a, **k):
+        raise _graph_error(190)
+    monkeypatch.setattr(mod, "_fetch_insights", expired)
+    assert mod.sync_tenant_ad_insights(db, "t1") == 0
+    assert _flag(db) == "1"
+
+
+def test_a_good_sync_clears_the_expired_flag(monkeypatch):
+    import app.services.meta_ads_insights_sync as mod
+    monkeypatch.setattr(mod, "get_or_create_campaign", lambda **k: {"id": "camp-1"})
+    db = _creds_db()
+    db.store["app_settings"].append({"tenant_id": "t1", "key": "meta_ads_token_expired", "value": "1"})
+    monkeypatch.setattr(mod, "_fetch_insights", lambda *a, **k: [])
+    monkeypatch.setattr(mod, "_fetch_ads", lambda *a, **k: [])
+    monkeypatch.setattr(mod, "_fetch_adsets", lambda *a, **k: [])
+    monkeypatch.setattr(mod, "_fetch_campaigns", lambda *a, **k: [])
+    result = sync_tenant_ad_insights_verbose(db, "t1")
+    assert result["ok"] is True
+    assert _flag(db) == ""
+    assert mod.get_ads_setting(db, "t1", "meta_ads_token_expired") is None
+
+
+def test_sync_start_payload_carries_the_flag():
+    from app.routes.inbound_leads import _sync_start_payload
+    db = _creds_db()
+    assert _sync_start_payload(db, "t1")["token_expired"] is False
+    db.store["app_settings"].append({"tenant_id": "t1", "key": "meta_ads_token_expired", "value": "1"})
+    assert _sync_start_payload(db, "t1")["token_expired"] is True
+
+
+@pytest.mark.asyncio
+async def test_reconnecting_meta_ads_clears_the_expired_flag():
+    from unittest.mock import MagicMock, patch
+    from app.routes.app_settings import activate_channel, ActivateChannelRequest
+
+    class _Resp:
+        def json(self):
+            return {"id": "act_1", "name": "Shop ads", "currency": "INR", "timezone_name": "Asia/Kolkata", "account_status": 1}
+
+    class _Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): return _Resp()
+
+    db = MagicMock()
+    with patch("app.routes.app_settings.get_supabase", return_value=db), \
+         patch("app.routes.app_settings._get_setting_value", return_value="act_1"), \
+         patch("app.routes.app_settings.httpx.AsyncClient", lambda *a, **k: _Client()), \
+         patch("app.routes.app_settings.record_audit_event"):
+        await activate_channel(
+            ActivateChannelRequest(channel="meta_ads"),
+            ctx={"tenant_id": "t1"}, user={"user_id": "u1"},
+        )
+    rows = {c.args[0]["key"]: c.args[0] for c in db.table.return_value.upsert.call_args_list}
+    assert rows["meta_ads_token_expired"]["value"] == ""
+    assert rows["meta_ads_token_expired"]["tenant_id"] == "t1"

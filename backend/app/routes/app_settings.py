@@ -704,6 +704,7 @@ async def activate_channel(
             "meta_ads_currency": data.get("currency"),
             "meta_ads_timezone": data.get("timezone_name"),
             "meta_ads_status": "live",
+            "meta_ads_token_expired": "",  # a fresh connect clears the "connection expired" banner
         }
         for key, value in saved_values.items():
             if value is None:

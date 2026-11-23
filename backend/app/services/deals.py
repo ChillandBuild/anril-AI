@@ -434,6 +434,17 @@ async def create_deal(
 
     result = {"deal": deal, "items": items, "payment_link": None, "message_sent": False, "stock_warnings": []}
     if stage == "won":
+        # Paid when made (Record payment "paid now", New order "won", a won call wrap-up): the payment row is
+        # what Money in, the bill's "paid" and paid_paise (by trigger) read, so it is written here once.
+        if int(deal.get("total_paise") or 0) > 0:
+            # The sale stands even if this row fails (the money is real); logged loudly, like mark_won.
+            try:
+                _insert_payment(db, tenant_id, deal["id"], int(deal["total_paise"]), row["payment_method"],
+                                kind="full", received_by=created_by)
+            except Exception as e:
+                logger.error(f"Deal {deal['id']} created paid but its payment row failed: {e}")
+            deal = {**deal, "paid_paise": int(deal["total_paise"])}
+            result["deal"] = deal
         result["stock_warnings"] = _deduct_for_deal(tenant_id, deal["id"], created_by, db, direction=-1)
         # An order created already paid (Record payment "paid now", a won wrap-up) sold its property units too.
         from app.services import properties

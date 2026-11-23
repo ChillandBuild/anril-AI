@@ -88,7 +88,7 @@ export interface CustomerGroup {
 }
 
 /** How a person got on Said stop. null = before Anril recorded it. */
-export type SaidStopSource = "stop_reply" | "chat_ai" | "call" | "staff" | null;
+export type SaidStopSource = "stop_reply" | "chat_ai" | "call" | "staff" | "blocked" | null;
 
 export interface SaidStopPerson {
   id: string;
@@ -98,6 +98,8 @@ export interface SaidStopPerson {
   source: SaidStopSource;
   /** Broadcast name, what they wrote, the caller's or staff member's name. */
   detail: string | null;
+  /** Staff blocked this person (they may also have said stop). */
+  blocked?: boolean;
 }
 
 export interface SaidStopList {
@@ -1369,6 +1371,12 @@ export interface RbacUser {
   team_id?: string | null;
   team_name?: string | null;
   leads_teams?: string[];
+  /** v9.2 #48: one line from their role, e.g. "Can make calls and see leads". */
+  can_do?: string;
+  on_leave_today?: boolean;
+  leave_until?: string | null;
+  /** This month's sales before GST, in paise. Only sent when you can view deals. */
+  sales_paise?: number;
 }
 
 export interface AuditLogEntry {
@@ -1945,8 +1953,8 @@ export interface DealMutationResult {
   payment_link?: string | null;
   message_sent?: boolean;
   stock_warnings: StockWarning[];
-  /** Record payment only: whether the GST invoice went on WhatsApp (null when not asked for). */
-  bill_sent?: boolean | null;
+  /** Only on Record payment with the GST invoice switch on. */
+  invoice?: { sent: boolean; reason: string | null } | null;
 }
 
 export interface DealStats {
@@ -2453,7 +2461,7 @@ export type HomeToday = {
   /** Sent only to people who may see Feedback while it is switched on for the client. */
   todays_feedback?: { total: number; items: HomeFeedbackItem[] } | null;
 };
-export type HomeListKey = "waiting" | "low_stock" | "todays_feedback";
+export type HomeListKey = "waiting" | "low_stock" | "todays_bookings" | "todays_feedback";
 export type HomeLayout = {
   boxes: HomeBoxKey[] | null;
   lists: Record<HomeListKey, boolean> | null;
@@ -2982,8 +2990,9 @@ export const api = {
       }),
   },
   assignmentLog: {
-    list: async (params?: { page?: number; limit?: number; caller_id?: string; segment?: string; from_date?: string; to_date?: string }) => {
+    list: async (params?: { page?: number; limit?: number; caller_id?: string; segment?: string; from_date?: string; to_date?: string; by_hand?: boolean }) => {
       const qs = new URLSearchParams();
+      if (params?.by_hand) qs.set("by_hand", "true");
       if (params?.page) qs.set("page", String(params.page));
       if (params?.limit) qs.set("limit", String(params.limit));
       if (params?.caller_id) qs.set("caller_id", params.caller_id);
@@ -2994,9 +3003,10 @@ export const api = {
     },
     summary: () =>
       apiFetch<AssignmentLogSummary>(`/api/v1/assignment-log/summary`),
-    exportCsv: async (params?: { caller_id?: string; segment?: string; from_date?: string; to_date?: string }) => {
+    exportCsv: async (params?: { caller_id?: string; segment?: string; from_date?: string; to_date?: string; by_hand?: boolean }) => {
       const headers = await getAuthHeaders();
       const qs = new URLSearchParams({ format: "csv" });
+      if (params?.by_hand) qs.set("by_hand", "true");
       if (params?.caller_id) qs.set("caller_id", params.caller_id);
       if (params?.segment) qs.set("segment", params.segment);
       if (params?.from_date) qs.set("from_date", params.from_date);
@@ -4370,7 +4380,7 @@ export const api = {
     get: (id: string) => apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}`),
     billOptions: () => apiFetch<NewBillOptions>("/api/v1/orders/new-bill/options"),
     findCustomer: (phone: string) =>
-      apiFetch<{ found: boolean; lead_id?: string; name?: string | null; orders?: number }>(
+      apiFetch<{ found: boolean; lead_id?: string; name?: string | null; orders?: number; unpaid_orders?: number; unpaid_order_id?: string | null }>(
         `/api/v1/orders/customer?phone=${encodeURIComponent(phone)}`,
       ),
     createBill: (body: NewBillInput) =>
@@ -4385,6 +4395,8 @@ export const api = {
       apiFetch<OrderSendResult & { payment_link: string }>(`/api/v1/orders/${encodeURIComponent(id)}/pay-link`, { method: "POST" }),
     remind: (id: string) =>
       apiFetch<OrderSendResult & { payment_link: string }>(`/api/v1/orders/${encodeURIComponent(id)}/remind`, { method: "POST" }),
+    remindAll: (body: { channel: "all" | "online" | "store"; days: number; state: "waiting" | "advance"; dry_run: boolean }) =>
+      apiFetch<RemindAllResult>("/api/v1/orders/remind-all", { method: "POST", body: JSON.stringify(body) }),
     delivery: (id: string, body: { action: "working" | "ready" | "shipped" | "delivered"; handover?: "pickup" | "courier"; courier?: string; tracking_id?: string; tell_customer?: boolean }) =>
       apiFetch<{ message: OrderMessageResult | null; order: OrderDetail }>(
         `/api/v1/orders/${encodeURIComponent(id)}/delivery`, { method: "POST", body: JSON.stringify(body) },
@@ -4397,6 +4409,7 @@ export const api = {
       apiFetch<OrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}/shared`, { method: "POST", body: JSON.stringify({ kind, text }) }),
     whatsappSetup: () => apiFetch<OrderTemplatesSetup>("/api/v1/orders/whatsapp-setup"),
     advanceRule: () => apiFetch<AdvanceRule>("/api/v1/orders/advance-rule"),
+    advanceOptions: () => apiFetch<{ staff_can_change: boolean; ai_pay_full: boolean }>("/api/v1/orders/advance-options"),
     saveAdvanceRule: (rule: AdvanceRule) =>
       apiFetch<AdvanceRule>("/api/v1/orders/advance-rule", { method: "PUT", body: JSON.stringify(rule) }),
     createQuote: (body: NewQuoteInput) =>
@@ -4438,7 +4451,7 @@ export const api = {
       apiFetch<DealSummaryStats>(`/api/v1/deals/summary?${dealFilterParams(filters)}`),
     get: (dealId: string) => apiFetch<Deal>(`/api/v1/deals/${dealId}`),
     recordPaymentOptions: (leadId: string) =>
-      apiFetch<{ prices_include_gst: boolean; gstin_set: boolean; suggested_item_ids: string[] }>(
+      apiFetch<{ prices_include_gst: boolean; gstin_set: boolean; gst_registered?: boolean; suggested_item_ids: string[] }>(
         `/api/v1/deals/record-payment/options?lead_id=${encodeURIComponent(leadId)}`
       ),
     recordPayment: (payload: {
@@ -4447,7 +4460,8 @@ export const api = {
       amount_paise: number;
       item_ids: string[];
       sold_by: string | null;
-      send_bill?: boolean;
+      /** After a paid-now record, send the order's bill on WhatsApp. Registered-GST shops only. */
+      send_gst_invoice?: boolean;
     }) =>
       apiFetch<DealMutationResult>("/api/v1/deals/record-payment", {
         method: "POST",
@@ -4581,6 +4595,8 @@ export interface InboundLeadFilters {
   source?: string;
   date_from?: string;
   date_to?: string;
+  /** A customer tag (Customers > tags). */
+  tag?: string;
 }
 
 /** The owner's names for the result steps (defaults: Booked / Came / Paid / Lost). */
@@ -4610,6 +4626,7 @@ function inboundQuery(f?: InboundLeadFilters): URLSearchParams {
   if (f.source) qs.set("source", f.source);
   if (f.date_from) qs.set("date_from", f.date_from);
   if (f.date_to) qs.set("date_to", f.date_to);
+  if (f.tag) qs.set("tag", f.tag);
   return qs;
 }
 
@@ -5104,6 +5121,8 @@ export interface SyncStartInfo {
   earliest_ad_start: string | null;
   /** When the account last synced with Meta (ISO), for the "Last synced" note. */
   last_synced_at?: string | null;
+  /** Meta said the token is expired (Graph code 190); goes away after the next good sync or a reconnect. */
+  token_expired?: boolean;
   max_history_days: number;
   /** Only present on the response to PUT. */
   syncing?: boolean;
@@ -5761,6 +5780,12 @@ async function apiFetchNoContent(path: string, opts: RequestInit): Promise<void>
 export type OrderChip = "all" | "waiting" | "advance" | "paid" | "pack" | "quote" | "cancelled";
 export type OrderPaymentState = "paid" | "advance" | "waiting" | "quote" | "cancelled";
 export type OrderDeliveryState = "taken" | "none" | "working" | "ready" | "shipped" | "delivered";
+/** v9.2 screen 127: "Remind all" counts (dry run) or results (sent). */
+export type RemindAllResult = {
+  ready: number; will_send: number; skipped_recent: number; skipped_cant: number;
+  sent: number; share_only: number; failed: number; left: number;
+};
+
 export type OrderMessageKind = "bill" | "confirmed" | "ready" | "shipped" | "delivered" | "reminder" | "pay_link" | "quote" | "quote_reminder" | "refund";
 export type RefundMethod = "razorpay" | "cash" | "upi" | "bank_transfer";
 

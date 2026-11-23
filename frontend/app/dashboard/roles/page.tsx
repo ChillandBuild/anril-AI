@@ -31,6 +31,7 @@ import {
 import { api, API_URL, AuditLogEntry, ClientRole, PermissionDef, RbacUser } from "@/lib/api";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
+import { formatRupees } from "@/lib/reportsApi";
 import { KpiCard } from "@/components/kpi-card";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
@@ -155,6 +156,12 @@ function ownerCallingReady(user: RbacUser, provider: CallingProvider) {
   const profile = user.caller_profile;
   if (!profile?.phone) return false;
   return provider !== "telecmi" || !!profile.telecmi_agent_id;
+}
+
+/** "2026-11-25" -> "25 Nov". */
+function formatLeaveDay(day: string): string {
+  const d = new Date(`${day}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 function initials(name: string) {
@@ -1019,7 +1026,18 @@ export default function RolesPage() {
                               ].filter(Boolean).join(", ")}
                             </span>
                           )}
+                          {user.on_leave_today && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-label text-[10px] font-bold text-amber-700">
+                              On leave{user.leave_until ? ` until ${formatLeaveDay(user.leave_until)}` : ""}
+                            </span>
+                          )}
                         </div>
+                        {user.can_do && <p className="mt-1 font-body text-xs text-ink-muted">{user.can_do}</p>}
+                        {typeof user.sales_paise === "number" && (
+                          <p className="mt-0.5 font-body text-xs font-bold text-ink">
+                            Sales this month: {formatRupees(user.sales_paise)}
+                          </p>
+                        )}
                         {(user.caller_profile?.phone || (callingProvider === "telecmi" && user.caller_profile?.telecmi_agent_id)) && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-ink-muted">
                             {user.caller_profile?.phone && (

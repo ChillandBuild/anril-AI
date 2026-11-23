@@ -116,3 +116,14 @@ export function sameRule(a: AdvanceRule, b: AdvanceRule): boolean {
   if (a.kind === "none") return true;
   return Number(a.value) === Number(b.value) && a.min_total_paise === b.min_total_paise;
 }
+
+/** Screen 155: the WhatsApp message a customer gets with the example order (mirrors deal_actions._quote_text). */
+export function customerPreview(rule: AdvanceRule): string {
+  const total = rule.min_total_paise > EXAMPLE_TOTAL_PAISE ? rule.min_total_paise : EXAMPLE_TOTAL_PAISE;
+  const advance = advanceFor(total, rule);
+  const head = `• Silk saree x1 — ${formatRupees(total)}\nTotal: ${formatRupees(total)}`;
+  if (advance > 0 && advance < total) {
+    return `${head}\nAdvance to book: ${formatRupees(advance)} (the rest, ${formatRupees(total - advance)}, later)\n\nPay the advance here: rzp.io/l/…`;
+  }
+  return `${head}\n\nPay here: rzp.io/l/…`;
+}

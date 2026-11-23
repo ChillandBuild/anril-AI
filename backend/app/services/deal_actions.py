@@ -799,6 +799,9 @@ async def _old_link_still_payable(ctx: DealContext, before: dict, new_id: str | 
 async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     # pay_full: the customer asked to pay the whole amount now, not just the advance.
     pay_full = args.get("pay_full") is True or str(args.get("pay_full")).lower() == "true"
+    if pay_full:
+        from app.services.order_quotes import advance_options
+        pay_full = advance_options(ctx.tenant_id)["ai_pay_full"]   # owner switch (v9.2 screen 155)
     if ctx.payment_concern:
         return "send_quote " + _PAYMENT_CONCERN_REFUSAL
     if turn.quote_text:

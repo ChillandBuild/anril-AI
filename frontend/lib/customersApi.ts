@@ -1,5 +1,5 @@
 import useSWR from "swr";
-import { API_URL, apiFetch, getAuthHeaders, type Lead, type LeadFilters, type LeadsSummary } from "@/lib/api";
+import { API_URL, api, apiFetch, getAuthHeaders, type CustomerGroup, type Lead, type LeadFilters, type LeadsSummary } from "@/lib/api";
 
 /**
  * Customers screens (Batch H, #17): tags, "Came from" / "Leads only" filters, Send to calling, Feedback.
@@ -229,6 +229,78 @@ export function campaignHrefForGroup(groupId: string): string {
 /** Follow-ups tab with a group already picked in the builder. */
 export function followUpHrefForGroup(groupId: string): string {
   return `/dashboard/leads?tab=follow-ups&group=${encodeURIComponent(groupId)}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Picked people -> a fixed "Picked" group (Follow-ups, Send campaign)
+ * ------------------------------------------------------------------ */
+
+const MEMBERS_PER_CALL = 1000;
+
+/** "Picked · 23 Nov, 3:45 pm" (India time). Group names are unique, so a retry adds the seconds, then a few letters. */
+export function pickedGroupName(at: Date = new Date(), attempt = 0): string {
+  const day = at.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const clock = at
+    .toLocaleTimeString("en-IN", {
+      hour: "numeric", minute: "2-digit", ...(attempt >= 1 ? { second: "2-digit" } : {}), hour12: true, timeZone: "Asia/Kolkata",
+    })
+    .toLowerCase();
+  const tail = attempt >= 2 ? ` ${Math.random().toString(36).slice(2, 5)}` : "";
+  return `Picked · ${day}, ${clock}${tail}`;
+}
+
+/** The people ticked on a list become a fixed group, the same kind Chats > Save as a group makes
+ *  (POST customer-groups, then members). Returns the group so the caller can open Follow-ups or Reach with it. */
+export async function savePickedPeopleAsGroup(leadIds: string[], now: Date = new Date()): Promise<CustomerGroup> {
+  const ids = Array.from(new Set(leadIds));
+  if (ids.length === 0) throw new Error("Pick at least one person first");
+  let group: CustomerGroup | null = null;
+  for (let attempt = 0; attempt < 3 && !group; attempt++) {
+    try {
+      group = await api.customerGroups.create(pickedGroupName(now, attempt));
+    } catch (err) {
+      const taken = err instanceof Error && /already exists/i.test(err.message);
+      if (!taken || attempt === 2) throw err;
+    }
+  }
+  if (!group) throw new Error("Could not save the group. Try again.");
+  try {
+    for (let i = 0; i < ids.length; i += MEMBERS_PER_CALL) {
+      await api.customerGroups.addMembers(group.id, ids.slice(i, i + MEMBERS_PER_CALL));
+    }
+  } catch (err) {
+    // No half-filled group left behind.
+    try { await api.customerGroups.remove(group.id); } catch { /* the group stays; the owner can delete it in Groups */ }
+    throw err;
+  }
+  return group;
+}
+
+/* ------------------------------------------------------------------ *
+ * Said stop: add a number that may never have messaged you
+ * ------------------------------------------------------------------ */
+
+export interface AddNumberResult {
+  added: number;
+  /** True when the number was new and a bare Said-stop record was made for it. */
+  created: boolean;
+  already_on_list: boolean;
+}
+
+export const saidStopApi = {
+  addNumber: (phone: string, name?: string) =>
+    apiFetch<AddNumberResult>("/api/v1/said-stop/add-number", {
+      method: "POST",
+      body: JSON.stringify(name?.trim() ? { phone: phone.trim(), name: name.trim() } : { phone: phone.trim() }),
+    }),
+};
+
+/** True when the text looks like a phone number: 8 to 15 digits once spaces, dashes and a leading + are ignored. */
+export function looksLikePhone(text: string): boolean {
+  const t = text.trim();
+  if (!/^\+?[\d\s\-().]+$/.test(t)) return false;
+  const digits = t.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15;
 }
 
 /* ------------------------------------------------------------------ *

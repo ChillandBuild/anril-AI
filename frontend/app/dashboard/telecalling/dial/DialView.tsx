@@ -24,7 +24,7 @@ function DialCockpit({ callerId, blockingWrapups, readOnly }: { callerId: string
       <div className="rounded-3xl border border-[#e2e8f0] bg-[#f8fafc] p-4 shadow-sm sm:p-5">
         <h2 className="font-display text-xl font-extrabold tracking-tight text-[#0A1528]">Dial a number</h2>
         <p className="mt-0.5 font-label text-xs text-[#475569]">
-          Call any number, even one that is not a lead yet.
+          Call any number, even one that is not a lead yet. Type a name to find a customer.
         </p>
         {readOnly && (
           <p className="mt-3 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-body text-xs text-[#475569]">

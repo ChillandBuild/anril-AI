@@ -263,3 +263,23 @@ def test_staff_changing_an_item_rule_advance_is_logged_even_when_the_shop_has_no
         run(quotes.create_quote(db, T, {"lead_id": "L1", "items": [{"catalog_item_id": "saree", "qty": 100}],
                                         "advance": {"kind": "fixed", "value": 5000}}, send=False))
     assert logged and logged[0]["from_paise"] == 1000000 and logged[0]["to_paise"] == 500000
+
+
+def test_staff_cannot_change_the_advance_when_the_owner_locked_it(db):
+    with patch.object(quotes, "advance_rule", return_value={"kind": "percent", "value": 30, "min_total_paise": 0}), \
+         patch.object(orders, "notify", AsyncMock(return_value={"sent": True})):
+        with pytest.raises(quotes.OrderError, match="owner set one advance rule"):
+            run(quotes.create_quote(db, T, {"lead_id": "L1", "items": [{"catalog_item_id": "saree", "qty": 1}],
+                                            "advance": {"kind": "fixed", "value": 1}}, send=False, may_change_advance=False))
+        out = run(quotes.create_quote(db, T, {"lead_id": "L1", "items": [{"catalog_item_id": "saree", "qty": 1}]},
+                                      send=False, may_change_advance=False))   # the rule itself is fine
+    assert out["order"]
+
+
+def test_advance_options_default_on_and_owner_always_may_change():
+    with patch("app.config_dynamic.get_setting", return_value=None):
+        assert quotes.advance_options(T) == {"staff_can_change": True, "ai_pay_full": True}
+    with patch("app.config_dynamic.get_setting", return_value='{"staff_can_change": false}'):
+        assert quotes.advance_options(T)["staff_can_change"] is False
+        assert quotes.staff_may_change_advance(T, "owner") is True
+        assert quotes.staff_may_change_advance(T, "staff") is False

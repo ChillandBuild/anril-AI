@@ -231,6 +231,7 @@ export function EditTodayModal({
   const listAvailable: Record<HomeListKey, boolean> = {
     waiting: today.waiting !== null,
     low_stock: today.low_stock !== null,
+    todays_bookings: !!(today as HomeToday & { todays_bookings?: unknown }).todays_bookings,
     todays_feedback: !!today.todays_feedback,
   };
 

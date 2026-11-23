@@ -130,6 +130,40 @@ def advance_for(total_paise: int, rule: dict) -> int:
     return max(0, min(amount, total_paise))
 
 
+# ── v9.2 screen 155: two owner switches next to the rule ──────────────────────
+
+ADVANCE_OPTIONS_KEY = "orders_advance_options"
+DEFAULT_OPTIONS = {"staff_can_change": True, "ai_pay_full": True}
+LOCKED_ADVANCE = "The owner set one advance rule for every order. Ask the owner to change this order's advance."
+
+
+def advance_options(tenant_id: str) -> dict:
+    """staff_can_change: staff may type a different advance for one order (the owner always may).
+    ai_pay_full: the AI agent sends a full-amount link when a customer asks to pay it all now."""
+    from app.config_dynamic import get_setting
+    raw = get_setting(ADVANCE_OPTIONS_KEY, fallback=None, tenant_id=tenant_id)
+    try:
+        saved = json.loads(raw) if raw else {}
+    except ValueError:
+        saved = {}
+    return {k: bool(saved[k]) if isinstance(saved, dict) and k in saved else v for k, v in DEFAULT_OPTIONS.items()}
+
+
+def save_advance_options(db, tenant_id: str, options: dict) -> dict:
+    from app.config_dynamic import invalidate_cache
+    clean = {k: bool(options.get(k, v)) for k, v in DEFAULT_OPTIONS.items()}
+    db.table("app_settings").upsert({
+        "tenant_id": tenant_id, "key": ADVANCE_OPTIONS_KEY, "value": json.dumps(clean), "is_secret": False,
+        "updated_at": "now()",
+    }, on_conflict="tenant_id,key").execute()
+    invalidate_cache(ADVANCE_OPTIONS_KEY)
+    return clean
+
+
+def staff_may_change_advance(tenant_id: str, role: str | None) -> bool:
+    return role == "owner" or advance_options(tenant_id)["staff_can_change"]
+
+
 # ── make and send ─────────────────────────────────────────────────────────────
 
 def _lead_for(db, tenant_id: str, data: dict) -> str:
@@ -173,6 +207,7 @@ def _lines(db, tenant_id: str, items: list[dict]) -> list[dict]:
 
 
 async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = None, send: bool = True,
+                       may_change_advance: bool = True,
                        sender: dict | None = None) -> dict:
     """data: lead_id or phone (+ name), items, discount_paise, valid_until (YYYY-MM-DD),
     advance: {"kind": "rule"|"none"|"percent"|"fixed", "value"}, ready_in_days, notes, sold_by."""
@@ -204,6 +239,8 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     # Logged whenever staff move away from "the rule" to a different amount, including a shop with no rule of
     # its own whose items carry one (same as a counter bill).
     if asked.get("kind") != "rule" and advance != shop_advance:
+        if not may_change_advance:
+            raise OrderError(LOCKED_ADVANCE)
         advance_note = (f"Advance rule {rule_text(shop_rule)} ({_rupees(shop_advance)}). "
                         f"Staff changed it to {_rupees(advance)} for this order.")
     ready = data.get("ready_in_days")

@@ -821,3 +821,69 @@ def test_low_came_returns_the_order_link_only_to_people_who_may_see_money(env):
         res = as_(env, MANAGER).post("/api/v1/bookings/b0000000-0000-4000-8000-000000000001/came")
     assert res.status_code == 200 and res.json()["href"] is None
     assert res.json()["deal_id"] == "d0000000-0000-4000-8000-000000000001"
+
+
+# ═══════════════════════════ the download (v9.2 #27) ═══════════════════════════
+
+import csv as _csv
+import io as _io
+
+DOWNLOADER = {**MANAGER, "permissions": ["bookings.manage", "leads.download"]}
+DOWNLOADER_MONEY = {**DOWNLOADER, "permissions": ["bookings.manage", "leads.download", "deals.view"]}
+RAVI_DL = {**RAVI, "permissions": ["bookings.view", "leads.download"]}
+
+
+def _export(env, ctx, qs=""):
+    res = as_(env, ctx).get("/api/v1/bookings/export" + qs)
+    rows = list(_csv.DictReader(_io.StringIO(res.content.decode("utf-8-sig")))) if res.status_code == 200 else None
+    return res, rows
+
+
+def test_export_needs_download_permission(env):
+    add_booking(env.db)
+    assert _export(env, MANAGER, "?start=2026-11-24")[0].status_code == 403
+    assert _export(env, NOBODY, "?start=2026-11-24")[0].status_code == 403
+    assert env.db.rows("app_audit_logs") == []
+
+
+def test_export_day_columns_and_activity_log(env):
+    add_booking(env.db, customer_name="=cmd|' /C calc'!A0", status="came")
+    add_booking(env.db, id="b0000000-0000-4000-8000-000000000002", number=2, phone="+911", start=ist("2026-11-25", "11:00"))
+    res, rows = _export(env, DOWNLOADER, "?start=2026-11-24")
+    assert res.status_code == 200 and res.headers["content-disposition"].endswith("bookings_2026-11-24.csv")
+    assert len(rows) == 1 and rows[0]["code"] == "BK-0001" and rows[0]["status"] == "Came"
+    assert rows[0]["date"] == "2026-11-24" and rows[0]["time"] == "10:00" and rows[0]["phone"] == "+919876543210"
+    assert rows[0]["customer"].startswith("'=")                   # never runs as a formula
+    assert "advance_amount_rupees" not in rows[0]                 # no deals.view
+    log = [r for r in env.db.rows("app_audit_logs") if r.get("action") == "leads.download"]
+    assert log[0]["metadata"]["list"] == "Bookings" and log[0]["metadata"]["rows"] == 1 and log[0]["tenant_id"] == T1
+
+
+def test_export_week_range_and_bad_ranges(env):
+    add_booking(env.db)
+    add_booking(env.db, id="b0000000-0000-4000-8000-000000000002", number=2, phone="+911", start=ist("2026-11-27", "11:00"))
+    _, rows = _export(env, DOWNLOADER, "?start=2026-11-23&end=2026-11-29")
+    assert [r["code"] for r in rows] == ["BK-0001", "BK-0002"]
+    assert _export(env, DOWNLOADER, "?start=2026-11-29&end=2026-11-23")[0].status_code == 400
+    assert _export(env, DOWNLOADER, "?start=2026-01-01&end=2026-12-31")[0].status_code == 400
+    assert _export(env, DOWNLOADER, "?start=soon")[0].status_code == 400
+
+
+def test_export_amount_only_with_deals_view_and_owner_sees_it(env):
+    add_booking(env.db, advance_paise=20050)
+    assert "advance_amount_rupees" not in _export(env, DOWNLOADER, "?start=2026-11-24")[1][0]
+    assert _export(env, DOWNLOADER_MONEY, "?start=2026-11-24")[1][0]["advance_amount_rupees"] == "200.5"
+    assert _export(env, OWNER, "?start=2026-11-24")[1][0]["advance_amount_rupees"] == "200.5"
+
+
+def test_export_keeps_the_staff_members_column_scope_and_skips_cancelled(env):
+    add_booking(env.db)                                               # R1 (Ravi)
+    add_booking(env.db, id="b0000000-0000-4000-8000-000000000002", number=2, phone="+911", resource_id="2e000000-0000-4000-8000-000000000002")
+    add_booking(env.db, id="b0000000-0000-4000-8000-000000000003", number=3, phone="+912", status="cancelled")
+    assert [r["code"] for r in _export(env, RAVI_DL, "?start=2026-11-24")[1]] == ["BK-0001"]
+    assert [r["code"] for r in _export(env, OWNER, "?start=2026-11-24")[1]] == ["BK-0001", "BK-0002"]
+
+
+def test_export_never_reads_another_business(env):
+    add_booking(env.db, tenant_id=T2)
+    assert _export(env, OWNER, "?start=2026-11-24")[1] == []

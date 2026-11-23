@@ -298,6 +298,12 @@ class _Query:
                      for b in self.db.rows("scheduled_broadcasts") if b.get("id") == br.get("broadcast_id")}
             names.discard(None)
             return " | ".join(sorted(names)) or None
+        if "->>" in column:
+            # PostgREST JSON path: metadata->>caller_id is the text of that key (None when missing).
+            base, key = column.split("->>", 1)
+            inner = r.get(base)
+            got = inner.get(key) if isinstance(inner, dict) else None
+            return None if got is None else str(got)
         return r.get(column)
 
     def neq(self, column, value):
@@ -377,7 +383,7 @@ class _Query:
 
     def in_(self, column, values):
         allowed = set(values)
-        return self._add_filter(lambda r: r.get(column) in allowed)
+        return self._add_filter(lambda r: (self._value(r, column) if "->>" in column else r.get(column)) in allowed)
 
     def or_(self, filter_string: str):
         """Minimal PostgREST `or_` support: "col.op.val,col2.op2.val2", OR'd together.

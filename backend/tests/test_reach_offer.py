@@ -41,7 +41,7 @@ class ReachOfferTests(rp.ReachBase):
         self.assertEqual(row["broadcast_ref"], res.json()["broadcast_id"])
 
     def test_scheduled_send_with_an_offer_creates_it(self):
-        res = self.send(schedule_type="scheduled", schedule_at=rp.now_iso(days=1),
+        res = self.send(schedule_type="scheduled", schedule_at=rp.day_time_iso(1),
                         offer={"title": "Weekend sale", "ends_on": end_in(9)})
         self.assertEqual(res.status_code, 200, res.text)
         self.assertEqual(self.db.rows("ai_offers")[0]["broadcast_ref"], self.db.rows("scheduled_broadcasts")[0]["id"])
@@ -55,13 +55,13 @@ class ReachOfferTests(rp.ReachBase):
         self.assertEqual(self.db.rows("scheduled_broadcasts"), [])
 
     def test_a_scheduled_offer_starts_the_day_the_campaign_goes_out(self):
-        res = self.send(schedule_type="scheduled", schedule_at=rp.now_iso(days=3),
+        res = self.send(schedule_type="scheduled", schedule_at=rp.day_time_iso(3),
                         offer={"title": "Weekend sale", "ends_on": end_in(9)})
         self.assertEqual(res.status_code, 200, res.text)
         self.assertEqual(self.db.rows("ai_offers")[0]["starts_on"], end_in(3))
 
     def test_an_offer_ending_before_the_scheduled_send_is_refused(self):
-        res = self.send(schedule_type="scheduled", schedule_at=rp.now_iso(days=5),
+        res = self.send(schedule_type="scheduled", schedule_at=rp.day_time_iso(5),
                         offer={"title": "Weekend sale", "ends_on": end_in(2)})
         self.assertEqual(res.status_code, 422, res.text)
         self.assertEqual(self.db.rows("scheduled_broadcasts"), [])

@@ -25,6 +25,10 @@ SOURCES = ("stop_reply", "chat_ai", "call", "staff")
 # Not stored in opted_out_source: the list's own label for a person who is only "Don't call".
 DO_NOT_CALL_SOURCE = "do_not_call"
 DO_NOT_CALL_LABEL = "Don't call (from a call)"
+# Also not stored in opted_out_source: a person staff blocked (leads.blocked_at) gets nothing on any
+# channel, so the list shows them too, labelled. They come off by unblocking, not by Remove.
+BLOCKED_SOURCE = "blocked"
+BLOCKED_LABEL = "Blocked by you"
 _DETAIL_MAX = 200
 
 

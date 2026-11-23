@@ -99,11 +99,12 @@ export const COMING_SOON_BOXES: { key: string; label: string; icon: LucideIcon; 
 
 export const COMING_SOON_BOX_KEYS: string[] = COMING_SOON_BOXES.map((b) => b.key);
 
-/** The lists you can switch on and off. "Today's bookings" shows whenever the server sends it. */
-export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock", "todays_feedback"];
+/** The lists you can switch on and off. Each shows only when the server sends it to this person. */
+export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock", "todays_bookings", "todays_feedback"];
 export const LIST_LABELS: Record<HomeListKey, string> = {
   waiting: "Waiting for your reply",
   low_stock: "Stock running low",
+  todays_bookings: "Today's bookings",
   todays_feedback: "Today's feedback",
 };
 
@@ -141,6 +142,7 @@ export function listsFromLayout(layout: Pick<HomeLayout, "lists"> | null | undef
   return {
     waiting: listIsOn(layout, "waiting"),
     low_stock: listIsOn(layout, "low_stock"),
+    todays_bookings: listIsOn(layout, "todays_bookings"),
     todays_feedback: listIsOn(layout, "todays_feedback"),
   };
 }
@@ -171,7 +173,7 @@ export function moveBox(selected: readonly BoxKey[], key: string, delta: -1 | 1)
 
 /** Body for PUT /home/layout. */
 export function buildSavePayload(selected: readonly BoxKey[], lists: Record<HomeListKey, boolean>): HomeLayoutSave {
-  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES) as HomeBoxKey[], lists: { waiting: lists.waiting, low_stock: lists.low_stock, todays_feedback: lists.todays_feedback } };
+  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES) as HomeBoxKey[], lists: { waiting: lists.waiting, low_stock: lists.low_stock, todays_bookings: lists.todays_bookings, todays_feedback: lists.todays_feedback } };
 }
 
 /** ₹1,86,400 (Indian grouping); paise only when there are some. A negative number shows as -₹12,000. */
