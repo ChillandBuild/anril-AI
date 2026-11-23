@@ -2497,7 +2497,7 @@ export type HomeLayout = {
 };
 export type HomeLayoutSave = { boxes: HomeBoxKey[]; lists: Record<HomeListKey, boolean> };
 
-export type TeachKind = "answer" | "word";
+export type TeachKind = "answer" | "word" | "liked";
 export interface TeachItem {
   id: string;
   kind: TeachKind;
@@ -2505,9 +2505,24 @@ export interface TeachItem {
   reply: string;
   source: "manual" | "chat" | "couldnt_answer";
   times_taught: number;
+  /** The chat message this was saved from (kind "liked" saved with the 👍 in Chats). */
+  message_id?: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type LeadDetailField = {
+  key: string;
+  label: string;
+  value: string;
+  by: "ai" | "staff" | "form";
+  name: string | null;
+  at: string | null;
+};
+export type LeadDetails = {
+  fields: LeadDetailField[];
+  addable: { key: string; label: string }[];
+};
 export interface TeachOffer {
   id: string;
   title: string;
@@ -2786,6 +2801,15 @@ export const api = {
   },
   customerProfile: {
     get: (leadId: string) => apiFetch<CustomerProfile>(`/api/v1/customer-profile/${encodeURIComponent(leadId)}`),
+  },
+  /** Details about the customer shown on the About panel (an empty value clears that detail). */
+  leadDetails: {
+    get: (leadId: string) => apiFetch<LeadDetails>(`/api/v1/leads/${encodeURIComponent(leadId)}/details`),
+    set: (leadId: string, key: string, value: string) =>
+      apiFetch<LeadDetails>(`/api/v1/leads/${encodeURIComponent(leadId)}/details`, {
+        method: "PATCH",
+        body: JSON.stringify({ key, value }),
+      }),
   },
   leads: {
     list: async (params?: {
@@ -4415,6 +4439,15 @@ export const api = {
       apiFetch<TeachItem>(`/api/v1/ai-teach/items/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
     deleteItem: (id: string) =>
       apiFetch<{ deleted: boolean }>(`/api/v1/ai-teach/items/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    /** Save one AI reply as a style example ("Like" in Chats). Owner or Knowledge Base access. */
+    like: (messageId: string) =>
+      apiFetch<TeachItem>("/api/v1/ai-teach/liked", { method: "POST", body: JSON.stringify({ message_id: messageId }) }),
+    unlike: (messageId: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/v1/ai-teach/liked/${encodeURIComponent(messageId)}`, { method: "DELETE" }),
+    likedMarks: (messageIds: string[]) =>
+      apiFetch<{ liked: string[] }>(
+        `/api/v1/ai-teach/liked/marks?message_ids=${messageIds.map(encodeURIComponent).join(",")}`,
+      ),
     offers: () => apiFetch<TeachOffer[]>("/api/v1/ai-teach/offers"),
     addOffer: (body: TeachOfferInput) =>
       apiFetch<TeachOffer>("/api/v1/ai-teach/offers", { method: "POST", body: JSON.stringify(body) }),

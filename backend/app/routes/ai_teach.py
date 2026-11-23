@@ -3,7 +3,7 @@ View = owner, brain.view or knowledge.view (knowledge.manage implies it). Edit =
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db.supabase import get_supabase
@@ -58,7 +58,7 @@ class OfferPatch(BaseModel):
 @router.get("/items")
 def list_items(kind: Optional[str] = None, ctx: dict = Depends(require_view)):
     if kind not in (None, *ai_teach.KINDS):
-        raise HTTPException(status_code=422, detail="Kind must be answer or word.")
+        raise HTTPException(status_code=422, detail="Kind must be answer, word or liked.")
     return ai_teach.list_items(get_supabase(), ctx["tenant_id"], kind)
 
 
@@ -123,3 +123,30 @@ def get_media_rule(ctx: dict = Depends(require_view)):
 def put_media_rule(body: MediaRuleIn, ctx: dict = Depends(require_edit)):
     return {"rule": _write(lambda: ai_teach.save_media_rule(get_supabase(), ctx["tenant_id"], body.rule)),
             "max_chars": ai_teach.MAX_MEDIA_RULE}
+
+
+# ---------------------------------------------------------------- replies you like (👍 on an AI reply in Chats)
+
+class LikeIn(BaseModel):
+    message_id: str
+
+
+@router.post("/liked")
+def like_reply(body: LikeIn, ctx: dict = Depends(require_edit)):
+    """Saves an AI agent reply (and the customer's message before it) as a reply you like."""
+    caller = (ctx.get("caller_id") or "") if ctx.get("role") == "caller" else None
+    return _write(lambda: ai_teach.like_message(get_supabase(), ctx["tenant_id"], body.message_id, ctx.get("user_id"),
+                                                caller_id=caller))
+
+
+@router.delete("/liked/{message_id}")
+def unlike_reply(message_id: str, ctx: dict = Depends(require_edit)):
+    _write(lambda: ai_teach.unlike_message(get_supabase(), ctx["tenant_id"], message_id))
+    return {"deleted": True}
+
+
+@router.get("/liked/marks")
+def liked_marks(message_ids: str = Query("", max_length=9000), ctx: dict = Depends(require_edit)):
+    """Which AI replies on screen are already liked: {liked: [message_id, ...]}."""
+    ids = [m.strip() for m in message_ids.split(",") if m.strip()]
+    return {"liked": ai_teach.liked_message_ids(get_supabase(), ctx["tenant_id"], ids)}

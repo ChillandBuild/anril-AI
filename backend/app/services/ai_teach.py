@@ -1,7 +1,8 @@
 """Teach & offers: what the owner taught the AI agent, and the offers that are on now.
 
 Two tables (migration 311, tenant-scoped, backend service key only):
-  ai_teach_items  kind 'answer' (a doubt + how to answer it) and kind 'word' (a word the shop uses).
+  ai_teach_items  kind 'answer' (a doubt + how to answer it), kind 'word' (a word the shop uses) and
+                  kind 'liked' (a customer message + a reply the owner liked; the AI copies its style, migration 340).
                   One row per (tenant, kind, match_key), so the same question taught twice is one row.
   ai_offers       an offer with a required end date; the AI mentions it only between starts_on and ends_on.
 
@@ -16,10 +17,10 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
-KINDS = ("answer", "word")
+KINDS = ("answer", "word", "liked")
 SOURCES = ("manual", "chat", "couldnt_answer")
 
-MAX_PROMPT = {"answer": 300, "word": 80}
+MAX_PROMPT = {"answer": 300, "word": 80, "liked": 300}
 MAX_REPLY = 1000
 MAX_TITLE = 120
 MAX_DETAILS = 500
@@ -32,6 +33,9 @@ MAX_ANSWER_ITEMS = 60
 MAX_ANSWER_CHARS = 2500
 MAX_WORD_ITEMS = 80
 MAX_WORD_CHARS = 1500
+MAX_LIKED_SAVED = 50      # examples a business can keep
+MAX_LIKED_PROMPT = 10     # the newest ones the AI reads
+MAX_LIKED_CHARS = 3000
 _CACHE_SECONDS = 60.0
 
 NOT_READY = "Teach & offers not ready"
@@ -167,6 +171,10 @@ def _taught_text(db, tenant_id: str, today: date) -> str:
         ("answer", MAX_ANSWER_ITEMS, MAX_ANSWER_CHARS,
          "ANSWERS THE OWNER TAUGHT YOU (use these exact facts when a customer asks something similar):", "- {p} -> {r}"),
         ("word", MAX_WORD_ITEMS, MAX_WORD_CHARS, "WORDS THIS SHOP USES:", "- {p} = {r}"),
+        ("liked", MAX_LIKED_PROMPT, MAX_LIKED_CHARS,
+         "REPLIES THE OWNER LIKED (copy their tone, length, language mix and emoji use. Style only: never copy "
+         "their prices, offers or facts; those come only from the catalogue, knowledge and offers above):",
+         "- Customer: {p}\n  Reply: {r}"),
     ):
         items = _rows(
             db.table("ai_teach_items").select("prompt,reply,updated_at")
@@ -207,15 +215,16 @@ def prompt_block(db, tenant_id: str, now: datetime | None = None) -> str:
 
 def _clean_item(kind: str, prompt: str, reply: str) -> tuple[str, str, str]:
     if kind not in KINDS:
-        raise TeachError("Kind must be answer or word.")
-    label = "question" if kind == "answer" else "word"
+        raise TeachError("Kind must be answer, word or liked.")
+    label = {"answer": "question", "word": "word", "liked": "customer's message"}[kind]
     prompt, reply = _squash(prompt), (reply or "").strip()
     if not prompt:
         raise TeachError(f"Write the {label} first.")
     if len(prompt) > MAX_PROMPT[kind]:
         raise TeachError(f"The {label} is too long (most {MAX_PROMPT[kind]} characters).")
     if not reply:
-        raise TeachError("Write the answer first." if kind == "answer" else "Write what it means first.")
+        raise TeachError({"answer": "Write the answer first.", "word": "Write what it means first.",
+                          "liked": "Write the reply first."}[kind])
     if len(reply) > MAX_REPLY:
         raise TeachError(f"That is too long (most {MAX_REPLY} characters).")
     key = match_key(prompt)
@@ -242,7 +251,7 @@ def list_items(db, tenant_id: str, kind: str | None = None) -> list[dict]:
 
 
 def save_item(db, tenant_id: str, kind: str, prompt: str, reply: str, *, source: str = "manual",
-              user_id: str | None = None) -> dict:
+              user_id: str | None = None, message_id: str | None = None) -> dict:
     """Adds an item. The same question (match_key) again updates that row's reply, bumps times_taught
     and updated_at: one row, counted once per teaching."""
     prompt, reply, key = _clean_item(kind, prompt, reply)
@@ -256,14 +265,19 @@ def save_item(db, tenant_id: str, kind: str, prompt: str, reply: str, *, source:
             row = existing[0]
             patch = {"reply": reply, "prompt": prompt, "times_taught": int(row.get("times_taught") or 1) + 1,
                      "updated_at": _now_iso()}
+            if message_id:
+                patch["message_id"] = message_id
             res = _run(lambda: db.table("ai_teach_items").update(patch)
                        .eq("id", row["id"]).eq("tenant_id", tenant_id).execute())
             clear_cache(tenant_id)
             return {**row, **patch, **(_rows(res)[0] if _rows(res) else {})}
+        if kind == "liked" and _liked_count(db, tenant_id) >= MAX_LIKED_SAVED:
+            raise TeachError(f"You have {MAX_LIKED_SAVED} replies you like. Remove one first.")
         try:
             res = _run(lambda: db.table("ai_teach_items").insert({
                 "tenant_id": tenant_id, "kind": kind, "prompt": prompt, "reply": reply, "match_key": key,
-                "source": source, "created_by": user_id}).execute())
+                "source": source, "created_by": user_id,
+                **({"message_id": message_id} if message_id else {})}).execute())
             clear_cache(tenant_id)
             return _rows(res)[0]
         except TableMissing:
@@ -298,6 +312,74 @@ def delete_item(db, tenant_id: str, item_id: str) -> None:
     if not _rows(res):
         raise TeachError("Not found.", 404)
     clear_cache(tenant_id)
+
+
+# ---------------------------------------------------------------- replies you like (👍 in Chats)
+
+def _liked_count(db, tenant_id: str) -> int:
+    res = _run(lambda: db.table("ai_teach_items").select("id", count="exact").eq("tenant_id", tenant_id)
+               .eq("kind", "liked").execute())
+    count = getattr(res, "count", None)
+    return int(count) if isinstance(count, int) else len(_rows(res))
+
+
+def like_message(db, tenant_id: str, message_id: str, user_id: str | None = None, *,
+                 caller_id: str | None = None) -> dict:
+    """👍 on an AI agent reply in Chats: saves it with the customer's message(s) just before it.
+    caller_id (a telecaller): only replies on their own customers, like the thumbs-down."""
+    try:
+        found = _rows(db.table("messages").select("id, lead_id, direction, is_ai_generated, content, created_at")
+                      .eq("id", message_id).eq("tenant_id", tenant_id).limit(1).execute())
+    except Exception:  # a malformed id is just "not found", never a 500
+        found = []
+    if not found:
+        raise TeachError("That message was not found.", 404)
+    msg = found[0]
+    if msg.get("direction") != "outbound" or not msg.get("is_ai_generated"):
+        raise TeachError("Only replies the AI agent sent can be liked.")
+    if caller_id is not None:
+        lead = _rows(db.table("leads").select("assigned_to").eq("id", msg["lead_id"]).eq("tenant_id", tenant_id)
+                     .limit(1).execute())
+        if not lead or lead[0].get("assigned_to") != caller_id:
+            raise TeachError("That message was not found.", 404)
+    reply = (msg.get("content") or "").strip()
+    if not reply:
+        raise TeachError("This reply has no words to copy.")
+    if len(reply) > MAX_REPLY:
+        raise TeachError(f"This reply is too long to use as an example (most {MAX_REPLY} characters).")
+    before = _rows(db.table("messages").select("direction, content").eq("tenant_id", tenant_id)
+                   .eq("lead_id", msg["lead_id"]).lt("created_at", msg["created_at"])
+                   .order("created_at", desc=True).limit(6).execute())
+    asked: list[str] = []
+    for row in before:  # newest first: the customer's messages since the business last wrote
+        if row.get("direction") != "inbound":
+            break
+        if _squash(row.get("content")):
+            asked.append(_squash(row["content"]))
+        if len(asked) == 3:
+            break
+    if not asked:
+        raise TeachError("There is no customer message just before this reply, so there is nothing to pair it with.")
+    prompt = " / ".join(reversed(asked))[-MAX_PROMPT["liked"]:]
+    return save_item(db, tenant_id, "liked", prompt, reply, source="chat", user_id=user_id, message_id=message_id)
+
+
+def unlike_message(db, tenant_id: str, message_id: str) -> None:
+    _run(lambda: db.table("ai_teach_items").delete().eq("tenant_id", tenant_id).eq("kind", "liked")
+         .eq("message_id", message_id).execute())
+    clear_cache(tenant_id)
+
+
+def liked_message_ids(db, tenant_id: str, message_ids: list[str]) -> list[str]:
+    """Which of these messages are saved as replies you like (for the 👍 state in Chats)."""
+    if not message_ids:
+        return []
+    try:
+        rows = _rows(_run(lambda: db.table("ai_teach_items").select("message_id").eq("tenant_id", tenant_id)
+                          .eq("kind", "liked").in_("message_id", message_ids[:200]).execute()))
+    except TableMissing:
+        return []
+    return [r["message_id"] for r in rows if r.get("message_id")]
 
 
 # ---------------------------------------------------------------- offers

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { formatRupees } from "@/components/deals/money";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
+import { CustomerDetails } from "./CustomerDetails";
 import type { Option } from "./inboxFilters";
 import { cleanOtherReason, OTHER_REASON_MAX } from "./notBuyingReason";
 
@@ -32,11 +33,6 @@ function fmtDateTime(iso: string): string {
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
-}
-
-function humanKey(key: string): string {
-  const s = key.replace(/[_-]+/g, " ").trim();
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** datetime-local value (IST wall time) -> ISO with the India offset. */
@@ -67,6 +63,7 @@ export function CustomerActions({
   const canReply = role === "owner" || permissions.includes("conversations.reply");
   const canManageDeals = role === "owner" || permissions.includes("deals.manage");
   const canSeeMoney = role === "owner" || permissions.includes("deals.view") || canManageDeals;
+  const canEditDetails = role === "owner" || permissions.includes("leads.manage");
   // Real bookings: only people who can make them ask, and only when at least one service is offered.
   const canBook = role === "owner" || permissions.includes("bookings.manage");
   const { data: bookingSetup } = useSWR(canBook ? "bookings/setup" : null, () => bookingsApi.setup(), {
@@ -124,9 +121,6 @@ export function CustomerActions({
   const won = deals.filter((d) => d.stage === "won");
   const wonTotal = won.reduce((s, d) => s + (d.total_paise || 0), 0);
   const lastWon = [...won].sort((a, b) => (b.won_at || b.created_at).localeCompare(a.won_at || a.created_at))[0];
-  const collected = Object.entries(lead.collected_data || {}).filter(
-    ([, v]) => v !== null && v !== undefined && String(v).trim() !== ""
-  );
   const seg = SEGMENT_CHIP[lead.segment];
 
   return (
@@ -316,18 +310,7 @@ export function CustomerActions({
             <span className="rounded-md border border-primary/30 px-2 py-1 text-[11.5px] font-semibold text-primary">{lead.ad_campaign_name}</span>
           )}
         </div>
-        {collected.length > 0 ? (
-          <dl className="mt-2.5 space-y-1.5">
-            {collected.slice(0, 6).map(([k, v]) => (
-              <div key={k} className="flex gap-2 text-[12.5px]">
-                <dt className="shrink-0 text-[#64748b]">{humanKey(k)}</dt>
-                <dd className="min-w-0 truncate font-semibold text-[#0A1528]">{String(v)}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="mt-2 text-[11.5px] text-[#94a3b8]">Details the AI agent picks up in the chat show here.</p>
-        )}
+        <CustomerDetails leadId={lead.id} canEdit={canEditDetails} version={JSON.stringify(lead.collected_data ?? {})} />
       </div>
 
       {/* ── What they've bought ── */}

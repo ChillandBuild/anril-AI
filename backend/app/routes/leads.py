@@ -1389,6 +1389,44 @@ async def put_interested_in(lead_id: UUID, body: InterestedInBody, ctx: dict = D
     return {"items": items}
 
 
+class LeadDetailBody(BaseModel):
+    key: str = Field(..., min_length=1, max_length=80)
+    value: str = Field("", max_length=400)
+
+
+def _details_call(fn):
+    from app.services import lead_details
+    try:
+        return fn()
+    except lead_details.DetailError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+
+
+@router.get("/{lead_id}/details")
+async def get_lead_details(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
+    """The About panel's details: what the AI saved from the chat, form answers and team edits."""
+    from app.services import lead_details
+    db = get_supabase()
+    _lead_for_interest(db, ctx, lead_id)
+    return await run_in_threadpool(_details_call, lambda: lead_details.view(db, ctx["tenant_id"], str(lead_id)))
+
+
+@router.patch("/{lead_id}/details")
+async def set_lead_detail(lead_id: UUID, body: LeadDetailBody, ctx: dict = Depends(require_leads_manage)):
+    """A team member sets or clears one detail. The AI never writes over it after this."""
+    from app.services import lead_details
+    from app.services.audit_log import record_audit_event
+    db = get_supabase()
+    _lead_for_interest(db, ctx, lead_id)
+    name = await run_in_threadpool(actor_name, db, ctx)
+    out = await run_in_threadpool(_details_call, lambda: lead_details.staff_set(
+        db, ctx["tenant_id"], str(lead_id), body.key, body.value, name=name))
+    record_audit_event(db, tenant_id=ctx["tenant_id"], actor_user_id=ctx.get("user_id"), actor_role=ctx.get("role"),
+                       action="lead.detail_changed", target_type="lead", target_id=str(lead_id),
+                       metadata={"key": body.key, "cleared": not body.value.strip()})
+    return out
+
+
 @router.post("/{lead_id}/convert", response_model=Lead)
 async def mark_converted(lead_id: UUID, payload: ConvertPayload | None = None, tenant_id: str = Depends(get_tenant_id)):
     db = get_supabase()

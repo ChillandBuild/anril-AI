@@ -2204,6 +2204,16 @@ async def generate_reply(
         db, tenant_id, lead_id, phone or lead_data.get("phone"),
         channel=channel, catalog=catalog_items_by_id, max_images=catalog_max_images,
     )
+    # v9.2: what the customer says about themselves (budget, item, date...) goes on their About panel.
+    # A small separate read that runs alongside the reply, never in its way (a tool here would cost a
+    # second reply round: this provider writes no text on a turn where it calls a tool). Left out while
+    # package selling runs, where save_details already collects the details that flow asks for.
+    if not deal_ctx.offerings_enabled:
+        try:
+            from app.services import lead_details
+            lead_details.save_in_background(db, tenant_id, lead_id, recent_thread, message)
+        except Exception:
+            logger.warning(f"Customer details read skipped for tenant {tenant_id}")
     payment_guard_fired = deal_turn.pre_turn_guards(deal_ctx, message)
     if payment_guard_fired:
         logger.info(f"Payment complaint: lead {lead_id} handed to a person before the model ran")

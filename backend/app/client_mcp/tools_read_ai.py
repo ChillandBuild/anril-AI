@@ -103,8 +103,8 @@ def knowledge_document_text(document_id: str) -> dict:
 
 @client_tool(title="Teach and offers")
 def teach_and_offers() -> dict:
-    """What you taught Anril (answers to doubts and the words your shop uses, newest first, at most 50
-    each) and the offers that are on now or start later."""
+    """What you taught Anril (answers to doubts, the words your shop uses and replies you like, by `kind`,
+    newest first, at most 50) and the offers that are on now or start later."""
     ctx = _ctx()
     items = teach_routes.list_items(kind=None, ctx=ctx) or []
     offers = [o for o in (teach_routes.list_offers(ctx=ctx) or []) if o.get("status") in ("live", "upcoming")]
