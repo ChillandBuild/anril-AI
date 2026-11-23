@@ -1,10 +1,15 @@
 name: Deploy frontend to Vercel
 
 # Why this exists: Vercel's Git integration blocks commits whose author is not a
-# member of the Vercel team (only the owner is). This workflow builds and deploys
-# with the owner's VERCEL_TOKEN instead, so a teammate's push still ships.
+# member of the Vercel team (only the owner is). This workflow deploys with the
+# owner's VERCEL_TOKEN instead, so a teammate's push still ships.
 # Setup: add a repo secret named VERCEL_TOKEN (Vercel > Account > Tokens).
 # Until that secret exists the workflow skips itself with a warning.
+#
+# Vercel builds it, not GitHub: some production env values (the Supabase URL among
+# them) are marked Sensitive in Vercel, and `vercel pull` only gets "[SENSITIVE]"
+# placeholders for those. A build here then dies on "Invalid supabaseUrl". Sending
+# the source with `vercel deploy` lets Vercel build it with the real values.
 
 on:
   push:
@@ -57,18 +62,9 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: npm install --global vercel@64.0.2
 
-      - name: Pull Vercel project settings
+      - name: Deploy (Vercel builds it)
         if: steps.gate.outputs.enabled == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      - name: Build
-        if: steps.gate.outputs.enabled == 'true'
-        run: vercel build --prod
-
-      - name: Deploy
-        if: steps.gate.outputs.enabled == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        # Run from the repo root: the project's Root Directory setting (frontend) applies.
+        run: vercel deploy --prod --yes --archive=tgz --token="$VERCEL_TOKEN"
