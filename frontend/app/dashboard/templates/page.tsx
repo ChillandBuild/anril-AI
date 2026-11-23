@@ -8,8 +8,10 @@ import {
   RefreshCw,
   Search,
   Filter,
-  Grid,
+  LayoutGrid,
   List,
+  ChevronDown,
+  Sparkles,
   Shuffle,
   Trash2,
   Eye,
@@ -23,19 +25,25 @@ import {
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
-import { KpiCard } from "@/components/kpi-card";
 import { LANGUAGES, STATUS_COLORS } from "./types";
 import type { Template, TemplateUsage } from "./types";
-import { NO_FILTERS, filterTemplates, languageOptions, usedInOptions } from "./template-filters";
+import { NEEDS_FIX, NEEDS_FIX_STATUSES, NO_FILTERS, filterTemplates, languageOptions, statusNote, usedInOptions } from "./template-filters";
+import { timeAgo } from "./template-card-model";
+import { prefillFromTemplate, savePrefill } from "./template-prefill";
+import type { TemplatePrefill } from "./template-prefill";
 import ExcelPanel from "./components/excel-panel";
 import TemplateNotes from "./components/template-notes";
 import TemplateCard from "./components/template-card";
+import TemplateRow from "./components/template-row";
+import AiDraftDialog from "./components/ai-draft-dialog";
 import WhatsAppPreview from "./components/whatsapp-preview";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AiraId from "./components/aira-id";
 
 // Remembers filters, view mode and list scroll for the session, so opening a template and coming back lands where you left off
 const VIEW_STATE_KEY = "templates:view-state";
+// When this browser last ran "Sync" with Meta, for the line under the buttons
+const LAST_SYNC_KEY = "templates:last-sync";
 
 type SavedViewState = {
   searchQuery: string;
@@ -78,6 +86,9 @@ export default function TemplatesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [excelOpen, setExcelOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -150,6 +161,11 @@ export default function TemplatesPage() {
     if (saved.viewMode === "GRID" || saved.viewMode === "TABLE") setViewMode(saved.viewMode);
     pendingScrollTop.current = saved.scrollTop ?? null;
     setViewStateRestored(true);
+    try {
+      setLastSynced(localStorage.getItem(LAST_SYNC_KEY));
+    } catch {
+      // storage unavailable: the line just doesn't say when
+    }
   }, []);
 
   useEffect(() => {
@@ -194,6 +210,13 @@ export default function TemplatesPage() {
       });
       if (!res.ok) throw new Error("Failed to sync templates from Meta");
       const result = await res.json();
+      const now = new Date().toISOString();
+      setLastSynced(now);
+      try {
+        localStorage.setItem(LAST_SYNC_KEY, now);
+      } catch {
+        // storage unavailable
+      }
       await loadTemplates();
       alert(`Sync completed: ${result.total} templates synced (${result.added} added, ${result.updated} updated).`);
     } catch (e) {
@@ -256,8 +279,12 @@ export default function TemplatesPage() {
   }
 
   // Variations Modal Logic
-  async function openVariationsModal(id: string, e: React.MouseEvent) {
+  function openVariationsModal(id: string, e: React.MouseEvent) {
     e.stopPropagation();
+    openVariations(id);
+  }
+
+  async function openVariations(id: string) {
     setVariationsModalId(id);
     setVariationsList([]);
     setNewVariation("");
@@ -334,202 +361,236 @@ export default function TemplatesPage() {
   // Calculate statistics
   const countApproved = templates.filter((t) => t.status === "APPROVED").length;
   const countPending = templates.filter((t) => t.status === "PENDING").length;
-  const countRejected = templates.filter((t) => t.status === "REJECTED" || t.status === "PAUSED").length;
+  const countRejected = templates.filter((t) => NEEDS_FIX_STATUSES.includes(t.status)).length;
+
+  const summary = [
+    { key: "APPROVED", count: countApproved, label: "Approved Templates", mid: "Approved", short: "Approved", hint: "ready to send", tone: "text-[#15803d]", edge: "border-l-[#15803d]" },
+    { key: "PENDING", count: countPending, label: "Pending Review", mid: "Pending Review", short: "Pending", hint: "Meta is checking", tone: "text-[#b45309]", edge: "border-l-[#b45309]" },
+    { key: NEEDS_FIX, count: countRejected, label: "Rejected / Paused", mid: "Rejected / Paused", short: "Rejected / Paused", hint: "see why and fix", tone: "text-[#c2410c]", edge: "border-l-[#dc2626]" },
+  ];
+  const ghostBtn =
+    "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3.5 font-label text-[13px] font-semibold text-ink shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-50";
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedCategory("ALL");
+    setSelectedStatus("ALL");
+    setSelectedLanguage("ALL");
+    setSelectedUsedIn("ALL");
+  };
+  const openBuilderWith = (p: TemplatePrefill) => {
+    savePrefill(p);
+    router.push("/dashboard/templates/new");
+  };
 
   return (
     <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
-      {/* Top Locked Section: Stats, Actions & Filters */}
-      <div className="shrink-0 space-y-4 pb-4">
-        {/* Action Bar */}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            onClick={handleSyncAll}
-            disabled={syncing || !canManageTemplates}
-            title={canManageTemplates ? "Sync from Meta" : "Read-only role: sync is disabled"}
-            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Syncing..." : "Sync"}
-          </button>
-          <Link
-            href="/dashboard/templates/carousel"
-            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-          >
-            <Layers size={12} />
-            Carousel
-          </Link>
-          <button
-            onClick={() => setExcelOpen(true)}
-            title="Upload many templates, or download all of them, as Excel"
-            className="h-9 px-3 bg-white border border-[#e2e8f0] hover:bg-[#f1f5f9] text-[#0A1528] rounded-xl font-label text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-          >
-            <Download size={12} />
-            Excel
-          </button>
-          <Link
-            href="/dashboard/templates/new"
-            className="h-9 px-4 bg-primary hover:bg-primary/90 text-white rounded-xl font-label text-xs font-bold transition-all shadow-md shadow-primary-200 flex items-center justify-center gap-1.5"
-          >
-            <Plus size={14} />
-            Create Template
-          </Link>
-        </div>
+      {/* Top Locked Section: summary, actions & filters */}
+      <div className="shrink-0 space-y-3 pb-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+          {/* Summary cards: click one to show just those */}
+          <div className="grid flex-1 grid-cols-3 gap-2 md:gap-3">
+            {summary.map((s) => {
+              const active = selectedStatus === s.key;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setSelectedStatus(active ? "ALL" : s.key)}
+                  aria-pressed={active}
+                  className={`flex min-w-0 items-center gap-2 rounded-2xl border border-l-4 bg-white px-2.5 py-2 text-left shadow-sm transition-all hover:shadow-md md:gap-3 md:px-4 md:py-2.5 ${s.edge} ${
+                    active ? "border-primary-300 ring-2 ring-primary-100" : "border-[#e7e2da]"
+                  }`}
+                >
+                  <span className={`font-display text-2xl font-bold tabular-nums md:text-[28px] ${s.tone}`}>
+                    {loading ? <span className="inline-block h-6 w-5 animate-pulse rounded bg-[#f1f5f9] align-middle" /> : s.count}
+                  </span>
+                  <span className="min-w-0 leading-tight">
+                    <span className="block font-label text-[12.5px] font-bold text-ink md:truncate md:text-[15px]">
+                      <span className="md:hidden">{s.short}</span>
+                      <span className="hidden md:inline 2xl:hidden">{s.mid}</span>
+                      <span className="hidden 2xl:inline">{s.label}</span>
+                    </span>
+                    <span className="hidden truncate text-[12.5px] text-ink-muted md:block">{s.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:gap-4">
-          {[
-            { label: "Approved Templates", count: countApproved, edge: "bg-emerald-500" },
-            { label: "Pending Review", count: countPending, edge: "bg-amber-400" },
-            { label: "Rejected / Paused", count: countRejected, edge: "bg-rose-500" },
-          ].map((s) => (
-            <KpiCard
-              key={s.label}
-              label={s.label}
-              value={s.count}
-              loading={loading}
-              hint={loading ? "Loading…" : "templates loaded"}
-              edge={s.edge}
-            />
-          ))}
-        </div>
-
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2 animate-slide-up">
-          <AlertCircle size={15} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Filter Results Panel */}
-      <div className="rounded-2xl border border-surface-mid/80 bg-white/95 p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2.5 xl:flex-nowrap">
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-700 ring-1 ring-primary-100">
-              <Filter size={14} />
-            </span>
-            <div className="hidden leading-tight sm:block">
-              <span className="block font-label text-[13px] font-bold text-on-surface">Filter Results</span>
-              <span className="block font-body text-[10px] text-on-surface-muted">
-                {activeFilterCount > 0 ? `${activeFilterCount} active` : "All templates"}
-              </span>
+          {/* Actions */}
+          <div className="flex shrink-0 flex-col gap-1.5 xl:items-end">
+            <div className="grid grid-cols-6 gap-2 md:flex md:flex-wrap md:items-center">
+              <button
+                onClick={handleSyncAll}
+                disabled={syncing || !canManageTemplates}
+                title={canManageTemplates ? "Get the latest templates and approvals from Meta" : "Read-only role: sync is disabled"}
+                className={`${ghostBtn} col-span-2`}
+              >
+                <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
+              <Link href="/dashboard/templates/carousel" className={`${ghostBtn} col-span-2`}>
+                <Layers size={14} />
+                Carousel
+              </Link>
+              <button onClick={() => setExcelOpen(true)} title="Upload many templates, or download all of them, as Excel" className={`${ghostBtn} col-span-2`}>
+                <Download size={14} />
+                Excel
+              </button>
+              {canManageTemplates && (
+                <button onClick={() => setAiOpen(true)} className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}>
+                  <Sparkles size={14} />
+                  Write with AI
+                </button>
+              )}
+              <Link
+                href="/dashboard/templates/new"
+                className={`order-first ${canManageTemplates ? "col-span-3" : "col-span-6"} flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 md:order-none font-label text-[13px] font-semibold text-white shadow-md shadow-primary-200 transition-colors hover:bg-primary/90`}
+              >
+                <Plus size={15} />
+                Create Template
+              </Link>
             </div>
+            <p className="hidden text-[12px] text-ink-muted md:block xl:text-right">
+              {lastSynced ? `Synced with Meta ${timeAgo(lastSynced)}` : "Meta updates approvals here as they happen"} · Excel = upload many or download all
+            </p>
           </div>
+        </div>
 
-          <div className="relative min-w-[160px] flex-1">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search templates..."
-              style={{ paddingLeft: "2rem", paddingRight: searchQuery ? "1.75rem" : "0.75rem" }}
-              className="h-9 w-full rounded-xl border border-surface-mid bg-white font-body text-xs font-semibold text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-200"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-[#1e293b] transition-colors"
-              >
-                <X size={12} />
-              </button>
-            )}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2 animate-slide-up">
+            <AlertCircle size={15} />
+            <span>{error}</span>
           </div>
+        )}
 
-          <Select
-            size="sm"
-            aria-label="Filter by type"
-            className="w-[130px] shrink-0 sm:w-[150px]"
-            value={selectedCategory}
-            onChange={setSelectedCategory}
-            options={[
-              { value: "ALL", label: "All Types" },
-              { value: "MARKETING", label: "Marketing" },
-              { value: "UTILITY", label: "Utility" },
-              { value: "AUTHENTICATION", label: "Authentication" },
-            ]}
-          />
+        {/* Filter bar */}
+        <div className="rounded-2xl border border-[#e7e2da] bg-white p-2 shadow-sm md:p-2.5">
+          <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+            <div className="hidden shrink-0 items-center gap-2 pr-1 md:flex">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-700">
+                <Filter size={14} />
+              </span>
+              <div className="leading-tight">
+                <span className="block font-label text-[14px] font-bold text-ink">Filter Results</span>
+                <span className="block text-[12px] text-ink-muted">
+                  {loading ? "Loading…" : `${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
+                </span>
+              </div>
+            </div>
 
-          <Select
-            size="sm"
-            aria-label="Filter by status"
-            className="w-[130px] shrink-0 sm:w-[150px]"
-            value={selectedStatus}
-            onChange={setSelectedStatus}
-            options={[
-              { value: "ALL", label: "All Statuses" },
-              { value: "APPROVED", label: "Approved" },
-              { value: "PENDING", label: "Pending" },
-              { value: "REJECTED", label: "Rejected" },
-              { value: "PAUSED", label: "Paused" },
-              { value: "DISABLED", label: "Disabled" },
-              { value: "ARCHIVED", label: "Archived" },
-              { value: "DELETED", label: "Deleted" },
-            ]}
-          />
+            <div className="relative min-w-0 flex-1 basis-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or words in the message"
+                aria-label="Search templates"
+                style={{ paddingLeft: "2.1rem", paddingRight: searchQuery ? "1.9rem" : "0.75rem" }}
+                className="h-10 w-full rounded-xl border border-[#e2e8f0] bg-white text-[13.5px] text-ink placeholder:text-[#94a3b8] transition-colors hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} aria-label="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-ink">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
 
-          <Select
-            size="sm"
-            aria-label="Filter by language"
-            className="w-[140px] shrink-0 sm:w-[160px]"
-            value={selectedLanguage}
-            onChange={setSelectedLanguage}
-            options={[{ value: "ALL", label: "All languages" }, ...languageChoices]}
-          />
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 text-[13px] font-semibold text-ink md:hidden"
+            >
+              <ChevronDown size={14} className={`transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
+              Filter · {activeFilterCount - (searchQuery ? 1 : 0)}
+            </button>
 
-          <Select
-            size="sm"
-            aria-label="Filter by where it is used"
-            className="w-[150px] shrink-0 sm:w-[180px]"
-            value={selectedUsedIn}
-            onChange={setSelectedUsedIn}
-            options={[
-              { value: "ALL", label: "Used in: All" },
-              { value: "NONE", label: "Used in: Not used yet" },
-              ...usedInChoices.map((o) => ({ value: o.value, label: `Used in: ${o.label}` })),
-            ]}
-          />
+            <div className={`${filtersOpen ? "grid" : "hidden"} w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center xl:flex-nowrap`}>
+              <Select
+                size="sm"
+                aria-label="Filter by type"
+                className="md:w-[140px]"
+                value={selectedCategory}
+                onChange={setSelectedCategory}
+                options={[
+                  { value: "ALL", label: "All Types" },
+                  { value: "MARKETING", label: "Marketing" },
+                  { value: "UTILITY", label: "Utility" },
+                  { value: "AUTHENTICATION", label: "Authentication" },
+                ]}
+              />
+              <Select
+                size="sm"
+                aria-label="Filter by status"
+                className="md:w-[150px]"
+                value={selectedStatus}
+                onChange={setSelectedStatus}
+                options={[
+                  { value: "ALL", label: "All Statuses" },
+                  { value: "APPROVED", label: "Approved" },
+                  { value: "PENDING", label: "Pending Review" },
+                  { value: NEEDS_FIX, label: "Rejected or paused" },
+                  { value: "REJECTED", label: "Rejected" },
+                  { value: "PAUSED", label: "Paused" },
+                  { value: "DISABLED", label: "Turned off" },
+                  { value: "ARCHIVED", label: "Archived" },
+                  { value: "DELETED", label: "Deleted" },
+                ]}
+              />
+              <Select
+                size="sm"
+                aria-label="Filter by language"
+                className="md:w-[155px]"
+                value={selectedLanguage}
+                onChange={setSelectedLanguage}
+                options={[{ value: "ALL", label: "All Languages" }, ...languageChoices]}
+              />
+              <Select
+                size="sm"
+                aria-label="Filter by where it is used"
+                className="md:w-[150px]"
+                value={selectedUsedIn}
+                onChange={setSelectedUsedIn}
+                options={[
+                  { value: "ALL", label: "Used in: All" },
+                  { value: "NONE", label: "Used in: Not used yet" },
+                  ...usedInChoices.map((o) => ({ value: o.value, label: `Used in: ${o.label}` })),
+                ]}
+              />
+            </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {hasFilters && (
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedCategory("ALL");
-                  setSelectedStatus("ALL");
-                  setSelectedLanguage("ALL");
-                  setSelectedUsedIn("ALL");
-                }}
-                className="flex h-9 items-center gap-1 rounded-full border border-transparent px-2.5 text-[11px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
-              >
-                <X size={11} /> Clear
-              </button>
-            )}
-            {/* Grid/Table Toggle */}
-            <div className="flex h-9 items-center gap-0.5 rounded-lg border border-surface-mid bg-[#f8f5ef] p-0.5">
-              <button
-                onClick={() => setViewMode("GRID")}
-                aria-label="Grid view"
-                title="Grid view"
-                className={`flex h-full items-center justify-center rounded-md px-2 transition-all ${
-                  viewMode === "GRID" ? "bg-white text-primary shadow-sm" : "text-[#94a3b8] hover:text-[#1e293b]"
-                }`}
-              >
-                <Grid size={13} />
-              </button>
-              <button
-                onClick={() => setViewMode("TABLE")}
-                aria-label="Table view"
-                title="Table view"
-                className={`flex h-full items-center justify-center rounded-md px-2 transition-all ${
-                  viewMode === "TABLE" ? "bg-white text-primary shadow-sm" : "text-[#94a3b8] hover:text-[#1e293b]"
-                }`}
-              >
-                <List size={13} />
-              </button>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {hasFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="flex h-10 items-center gap-1 rounded-xl px-2.5 text-[12.5px] font-semibold text-[#475569] transition-colors hover:bg-red-50 hover:text-red-600"
+                >
+                  <X size={12} /> Clear
+                </button>
+              )}
+              <div className="hidden h-10 items-center rounded-xl border border-[#e2e8f0] bg-white p-1 md:flex" role="group" aria-label="View">
+                {([
+                  { mode: "GRID", label: "Cards", icon: LayoutGrid },
+                  { mode: "TABLE", label: "List", icon: List },
+                ] as const).map((v) => (
+                  <button
+                    key={v.mode}
+                    onClick={() => setViewMode(v.mode)}
+                    aria-pressed={viewMode === v.mode}
+                    className={`flex h-full items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-colors ${
+                      viewMode === v.mode ? "bg-[#0A1528] text-white" : "text-ink hover:bg-[#f8fafc]"
+                    }`}
+                  >
+                    <v.icon size={13} />
+                    {v.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
       {/* Scrollable Templates Content */}
       <div
@@ -537,45 +598,67 @@ export default function TemplatesPage() {
         onScroll={(e) => writeViewState({ scrollTop: e.currentTarget.scrollTop })}
         className="relative flex-1 overflow-y-auto min-h-0 pr-1 pb-6"
       >
-        {/* Main Content Area */}
         {loading ? (
         <AiraLoader inline className="min-h-[50vh]" />
       ) : filteredTemplates.length === 0 ? (
         <div className="card text-center py-16 rounded-3xl border border-border-subtle bg-white">
           <HelpCircle size={36} className="mx-auto text-ink-muted mb-3" />
-          <p className="font-display font-semibold text-ink text-base">No Templates Found</p>
-          <p className="font-body text-xs text-ink-muted mt-1 max-w-xs mx-auto leading-relaxed">
-            Create a new template to submit it to WhatsApp, or sync with Meta to load your existing structures.
+          <p className="font-display font-semibold text-ink text-base">{hasFilters ? "No templates match these filters" : "No templates yet"}</p>
+          <p className="font-body text-sm text-ink-muted mt-1 max-w-sm mx-auto leading-relaxed">
+            {hasFilters
+              ? "Try clearing a filter or searching for other words."
+              : "Create a template and send it to Meta for approval, or sync to load the ones you already have."}
           </p>
-          <div className="mt-6 flex items-center justify-center gap-3">
-            <button onClick={handleSyncAll} disabled={!canManageTemplates} className="btn-ghost text-xs disabled:opacity-40">Sync from Meta</button>
-            {canManageTemplates && (
-              <Link href="/dashboard/templates/new" className="btn-primary text-xs px-5 py-2">
-                New Template
-              </Link>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            {hasFilters ? (
+              <button onClick={clearFilters} className="btn-ghost text-sm">Clear filters</button>
+            ) : (
+              <>
+                <button onClick={handleSyncAll} disabled={!canManageTemplates} className="btn-ghost text-sm disabled:opacity-40">Sync from Meta</button>
+                {canManageTemplates && (
+                  <>
+                    <button onClick={() => setAiOpen(true)} className="btn-ghost text-sm inline-flex items-center gap-1.5"><Sparkles size={14} /> Write with AI</button>
+                    <Link href="/dashboard/templates/new" className="btn-primary text-sm px-5 py-2">Create Template</Link>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>
       ) : viewMode === "GRID" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTemplates.map((t) => (
-            <TemplateCard
-              key={t.id}
-              template={t}
-              usage={usage[t.id]}
-              usageReady={usageReady}
-              canFix={canManageTemplates}
-              onEdit={(tmpl) => router.push(`/dashboard/templates/${tmpl.id}`)}
-              onDelete={canManageTemplates ? (tmpl) => handleDelete(tmpl.id) : undefined}
-              onSync={canManageTemplates ? (tmpl) => handleSyncSingle(tmpl.id) : undefined}
-              onSend={(tmpl) => router.push(`/dashboard/outbound-leads?template=${encodeURIComponent(tmpl.name)}`)}
-              onDuplicate={canManageTemplates ? (tmpl) => {
-                // Quick duplicate to builder
-                router.push(`/dashboard/templates/new?duplicate=${tmpl.id}`);
-              } : undefined}
-            />
-          ))}
-        </div>
+        <>
+          {/* Phone: compact rows */}
+          <div className="space-y-2.5 md:hidden">
+            {filteredTemplates.map((t) => (
+              <TemplateRow key={t.id} template={t} usage={usage[t.id]} onOpen={setSelectedTemplate} />
+            ))}
+          </div>
+          {/* Laptop and up: every card the same size */}
+          <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredTemplates.map((t) => (
+              <TemplateCard
+                key={t.id}
+                template={t}
+                usage={usage[t.id]}
+                usageReady={usageReady}
+                canFix={canManageTemplates}
+                syncing={syncingId === t.id}
+                onPreview={setSelectedTemplate}
+                onEdit={(tmpl) => router.push(`/dashboard/templates/${tmpl.id}`)}
+                onDelete={canManageTemplates ? (tmpl) => handleDelete(tmpl.id) : undefined}
+                onSync={canManageTemplates ? (tmpl) => handleSyncSingle(tmpl.id) : undefined}
+                onVariations={canManageTemplates ? (tmpl) => openVariations(tmpl.id) : undefined}
+                onSend={(tmpl) => router.push(`/dashboard/outbound-leads?template=${encodeURIComponent(tmpl.name)}`)}
+                onDuplicate={canManageTemplates ? (tmpl) => openBuilderWith(prefillFromTemplate(tmpl)) : undefined}
+                onMakeUtility={
+                  canManageTemplates
+                    ? (tmpl) => openBuilderWith(prefillFromTemplate(tmpl, { category: "UTILITY", suffix: "utility", source: `Utility copy of ${tmpl.name}. Send it to Meta, then switch the staff alert to it.` }))
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        </>
       ) : (
         /* Table View */
         <div className="bg-white border border-border-subtle rounded-2xl overflow-hidden shadow-sm">
@@ -719,6 +802,15 @@ export default function TemplatesPage() {
         onSubmitted={loadTemplates}
       />
 
+      <AiDraftDialog
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onDrafted={(p) => {
+          setAiOpen(false);
+          openBuilderWith(p);
+        }}
+      />
+
       {/* ── View Detail Drawer/Modal ─────────────────────────────────────────── */}
       {selectedTemplate && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-dialog flex items-center justify-center p-4">
@@ -775,10 +867,12 @@ export default function TemplatesPage() {
                   </div>
                 </div>
 
-                {selectedTemplate.rejection_reason && (
+                {statusNote(selectedTemplate) && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
-                    <p className="font-semibold mb-0.5">WhatsApp Rejection Reason:</p>
-                    <p className="leading-relaxed">{selectedTemplate.rejection_reason}</p>
+                    <p className="font-semibold mb-0.5">
+                      {selectedTemplate.status === "PAUSED" ? "Why Meta paused it" : selectedTemplate.status === "REJECTED" ? "Why Meta rejected it" : "What Meta did"}
+                    </p>
+                    <p className="leading-relaxed">{statusNote(selectedTemplate)?.text}</p>
                   </div>
                 )}
 

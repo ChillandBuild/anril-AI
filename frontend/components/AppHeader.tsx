@@ -416,8 +416,8 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname === "/dashboard/templates") {
     return {
-      title: "Templates",
-      description: "Create, sync and manage your WhatsApp message templates.",
+      title: "WhatsApp Message Templates",
+      description: "Create, sync and manage your WhatsApp messages. Meta must approve each one before you send it.",
     };
   }
   if (pathname === "/dashboard/templates/new") {

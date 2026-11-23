@@ -9,6 +9,10 @@ export type TemplateFilters = {
   usedIn: string; // ALL | NONE | an area key from the usage call
 };
 
+/** The "Rejected / Paused" summary card: every template Meta has stopped. */
+export const NEEDS_FIX = "NEEDS_FIX";
+export const NEEDS_FIX_STATUSES: string[] = ["REJECTED", "PAUSED", "DISABLED"];
+
 export const NO_FILTERS: TemplateFilters = { search: "", category: "ALL", status: "ALL", language: "ALL", usedIn: "ALL" };
 
 /** Places that count right now: a finished Reach campaign is history, not use. */
@@ -25,7 +29,9 @@ export function filterTemplates(list: Template[], f: TemplateFilters, usage: Tem
       (t.short_code ?? "").includes(q);
     if (!matchesSearch) return false;
     if (f.category !== "ALL" && t.category !== f.category) return false;
-    if (f.status !== "ALL" && t.status !== f.status) return false;
+    if (f.status === NEEDS_FIX) {
+      if (!NEEDS_FIX_STATUSES.includes(t.status)) return false;
+    } else if (f.status !== "ALL" && t.status !== f.status) return false;
     if (f.language !== "ALL" && t.language !== f.language) return false;
     if (f.usedIn === "NONE") return (usage[t.id] ?? []).length === 0;
     if (f.usedIn !== "ALL") return liveUsage(usage[t.id]).some((e) => e.area === f.usedIn);

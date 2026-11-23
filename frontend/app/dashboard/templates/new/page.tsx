@@ -13,6 +13,7 @@ import {
   X,
   FileCode,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
@@ -35,6 +36,7 @@ import VariableInserter from "../components/variable-inserter";
 import PlaceholderGuide from "../components/placeholder-guide";
 import WhatsAppPreview from "../components/whatsapp-preview";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
+import { takePrefill } from "../template-prefill";
 
 export default function NewTemplatePage() {
   const router = useRouter();
@@ -67,6 +69,22 @@ export default function NewTemplatePage() {
 
   // Buttons State
   const [buttons, setButtons] = useState<Button[]>([]);
+
+  // Opened from "Copy", "Change to Utility" or "Write with AI" on the Templates page: start filled in
+  const [prefillSource, setPrefillSource] = useState("");
+  useEffect(() => {
+    const p = takePrefill();
+    if (!p) return;
+    setName(p.name);
+    setCategory(p.category);
+    setLanguage(p.language);
+    setHeaderType(p.headerType);
+    setHeaderText(p.headerText);
+    setBodyText(p.bodyText);
+    setFooterText(p.footerText);
+    setButtons(p.buttons);
+    setPrefillSource(p.source);
+  }, []);
 
   const generatedName = name
     .toLowerCase()
@@ -281,6 +299,16 @@ export default function NewTemplatePage() {
           </div>
         ))}
       </div>
+
+      {prefillSource && (
+        <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-primary-200 bg-primary-50/70 p-4 text-sm text-primary-800">
+          <Sparkles size={16} className="mt-0.5 shrink-0" />
+          <p className="font-body">
+            {prefillSource}
+            {(headerType === "IMAGE" || headerType === "VIDEO" || headerType === "DOCUMENT") && " Add the header file again in step 2."}
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2.5 animate-slide-up">
