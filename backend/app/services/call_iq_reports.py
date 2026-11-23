@@ -304,7 +304,8 @@ def evaluation(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
 def results(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
     """Calls -> visits booked -> orders -> money per telecaller. Visits = bookings that person made by phone
     in the days (not cancelled, not still waiting for the advance); orders = paid orders sold by that person;
-    money = their sales before GST (the same number Reports shows), only for people with deals.view."""
+    money = their sales before GST (the same number Reports shows), only for people with deals.view.
+    talk_seconds = time on the phone, from each call's recorded length (calls with no length add nothing)."""
     bounds = period_bounds(period, RESULT_DAYS, now)
     assert bounds is not None
     tenant_id = ctx["tenant_id"]
@@ -313,7 +314,7 @@ def results(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
     ids = [str(c["id"]) for c in callers]
 
     calls = safe(lambda: paged(lambda: (
-        db.table("call_logs").select("id,caller_id,manual_status").eq("tenant_id", tenant_id)
+        db.table("call_logs").select("id,caller_id,manual_status,duration_seconds").eq("tenant_id", tenant_id)
         .in_("caller_id", ids).gte("created_at", bounds[0]).lt("created_at", bounds[1]))), [], "calls") if ids else []
     deals = safe(lambda: paged(lambda: (
         db.table("deals").select("id,sold_by,total_paise,gst_paise").eq("tenant_id", tenant_id).eq("stage", "won")
@@ -325,12 +326,13 @@ def results(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
         .in_("created_by", list(user_to_caller)).in_("status", ["booked", "came", "no_show"])
         .gte("created_at", bounds[0]).lt("created_at", bounds[1]))), [], "visits") if user_to_caller else []
 
-    rows = {cid: {"calls": 0, "connected": 0, "visits": 0, "orders": 0, "revenue": 0} for cid in ids}
+    rows = {cid: {"calls": 0, "connected": 0, "talk_seconds": 0, "visits": 0, "orders": 0, "revenue": 0} for cid in ids}
     for r in calls:
         row = rows.get(str(r["caller_id"]))
         if row is not None:
             row["calls"] += 1
             row["connected"] += 1 if r.get("manual_status") == "connected" else 0
+            row["talk_seconds"] += int(r.get("duration_seconds") or 0)
     for v in visits:
         row = rows.get(user_to_caller.get(str(v["created_by"]), ""))
         if row is not None:
@@ -342,7 +344,8 @@ def results(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
             row["revenue"] += int(d.get("total_paise") or 0) - int(d.get("gst_paise") or 0)
 
     def shape(cid: str | None, name: str | None, row: dict) -> dict:
-        out: dict = {"calls": row["calls"], "connected": row["connected"], "visits": row["visits"], "orders": row["orders"]}
+        out: dict = {"calls": row["calls"], "connected": row["connected"], "talk_seconds": row["talk_seconds"],
+                     "visits": row["visits"], "orders": row["orders"]}
         if cid is not None:
             out = {"caller_id": cid, "name": name, **out}
         if sees_money:
@@ -350,5 +353,5 @@ def results(db, ctx: dict, period: str, now: datetime | None = None) -> dict:
         return out
 
     people = [shape(str(c["id"]), _name(c), rows[str(c["id"])]) for c in callers]
-    total = {k: sum(r[k] for r in rows.values()) for k in ("calls", "connected", "visits", "orders", "revenue")}
+    total = {k: sum(r[k] for r in rows.values()) for k in ("calls", "connected", "talk_seconds", "visits", "orders", "revenue")}
     return {"period": period, "callers": people, "totals": shape(None, None, total)}

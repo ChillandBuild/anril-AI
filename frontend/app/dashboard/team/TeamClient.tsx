@@ -7,13 +7,11 @@ import { Loader2, Plus } from "lucide-react";
 import useSWR from "swr";
 import { api, Caller, CallTeamsResponse, TeamMember } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { showsEvaluation } from "@/lib/evaluation-visibility";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { useCallers, useTeamList } from "@/hooks/useApi";
 
 import AssignmentLog from "../telecalling/components/assignment-log";
-import PerformanceView from "../telecalling/components/performance-view";
-import WinnerBanner from "./WinnerBanner";
+import PeopleView from "./PeopleView";
 import TeamsPanel from "./TeamsPanel";
 
 interface TeamClientProps {
@@ -50,9 +48,6 @@ export function TeamClient({ fallbackTeam, fallbackCallers }: TeamClientProps) {
 
   const callers = callersData?.data ?? [];
   const adminCaller = callersData?.admin_caller ?? null;
-  // SIM clients get no evaluation at all: no winner banner, no /winners request.
-  // Unknown (still loading) resolves to false, so it can't flash in for SIM.
-  const showWinners = showsEvaluation(teamData?.calling_provider);
 
   // Adding a person happens on the Roles page (Users tab), so the button needs the right to
   // manage the team AND the right to create logins there. A Team leader has neither.
@@ -115,12 +110,10 @@ export function TeamClient({ fallbackTeam, fallbackCallers }: TeamClientProps) {
         </div>
       )}
 
-      {showWinners && !isLeader && <WinnerBanner />}
-
       {tab === "log" ? (
         <AssignmentLog callers={callers} />
       ) : (
-        <PerformanceView callers={callers} adminCaller={adminCaller} callingProvider={teamData?.calling_provider} teamFilter={teamFilter} />
+        <PeopleView callers={callers} adminCaller={adminCaller} callingProvider={teamData?.calling_provider} teamFilter={teamFilter} />
       )}
     </div>
   );

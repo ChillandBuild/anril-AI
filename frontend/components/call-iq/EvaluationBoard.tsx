@@ -5,6 +5,9 @@ import Link from "next/link";
 import { AiraLoader } from "@/components/AiraLoader";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import WinnerBanner from "@/app/dashboard/team/WinnerBanner";
+import NeedsAttention from "@/app/dashboard/telecalling/components/sections/NeedsAttention";
+import LeadProfileModal from "@/app/dashboard/telecalling/components/sections/LeadProfileModal";
 import {
   EVALUATION_PERIODS, callReviewHref, getEvaluation, scoreText, scoreTone,
   type EvaluationPeriod, type EvaluationPerson, type EvaluationResponse, type ScoreTone,
@@ -61,8 +64,11 @@ export function EvaluationBoard() {
   const [period, setPeriod] = useState<EvaluationPeriod>("7d");
   const { data, err, loading, reload } = useCallIqData<EvaluationResponse>(() => getEvaluation(period), period);
   // The Call review page (and the endpoints behind it) need team.manage; team.view alone would land on a page that can't load the call.
-  const { role, permissions } = useAuthRole();
+  const { role, roleSlug, permissions } = useAuthRole();
   const canReviewCalls = role === "owner" || permissions.includes("team.manage");
+  // A Team leader sees only their team, so the business-wide winners stay hidden from them (as on the old Team page).
+  const showWinners = roleSlug !== "team_leader";
+  const [viewingLeadId, setViewingLeadId] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -74,6 +80,8 @@ export function EvaluationBoard() {
       ) : null}
       {data && data.available ? (
         <>
+          {canReviewCalls ? <NeedsAttention onViewLead={setViewingLeadId} /> : null}
+          {showWinners ? <WinnerBanner /> : null}
           <p className="font-label text-xs text-ink-secondary">Scores are out of 100, marked by the AI on each recorded conversation.</p>
           {data.callers.length === 0 ? (
             <Card><p className="font-label text-sm text-ink-secondary">No telecallers to show yet.</p></Card>
@@ -112,6 +120,7 @@ export function EvaluationBoard() {
           </Card>
         </>
       ) : null}
+      {viewingLeadId ? <LeadProfileModal leadId={viewingLeadId} onClose={() => setViewingLeadId(null)} /> : null}
     </div>
   );
 }

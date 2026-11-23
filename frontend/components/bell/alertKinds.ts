@@ -41,6 +41,8 @@ export type ChipKey = (typeof CHIPS)[number]["key"];
 
 const CONVERSATIONS = "/dashboard/conversations";
 const TELECALLING = "/dashboard/telecalling";
+/** Call-scoring warnings live on Call IQ › Evaluation (the Needs attention list). */
+const NEEDS_ATTENTION = "/dashboard/call-iq/evaluation#needs-attention";
 // Alerts about one lead open that lead's chat (or, for assignments, the telecalling page) when no link is stored.
 const TELECALLING_LEAD_TYPES = new Set(["lead_assigned", "lead_reassigned", "sim_call_handoff"]);
 const SCHEDULED = "/dashboard/telecalling/scheduled";
@@ -78,7 +80,7 @@ const KINDS: Record<string, AlertKind> = {
   callback_claimable: { category: "calls", icon: "phone", module: "Calling", action: fixed("Call back list", SCHEDULED) },
   leads_waiting: { category: "calls", icon: "phone", module: "Calling", action: fixed("Open", TELECALLING) },
   sim_call_handoff: { category: "calls", icon: "phone", module: "Calling", action: { label: "Open", href: () => null } },
-  call_alerts_summary: { category: "calls", icon: "phone", module: "Calling", action: fixed("Open", `${TELECALLING}#needs-attention`) },
+  call_alerts_summary: { category: "calls", icon: "phone", module: "Calling", action: fixed("Open", NEEDS_ATTENTION) },
 
   deal_double_payment: { category: "money", icon: "money", module: "Orders", action: fixed("See", "/dashboard/deals") },
   intake_double_payment: { category: "money", icon: "money", module: "Paid forms", action: fixed("See", "/dashboard/intake") },
@@ -111,7 +113,7 @@ const CALL_ALERT: AlertKind = {
   category: "calls",
   icon: "phone",
   module: "Calling",
-  action: fixed("Open", `${TELECALLING}#needs-attention`),
+  action: fixed("Open", NEEDS_ATTENTION),
 };
 
 export function alertKindFor(type: string): AlertKind {

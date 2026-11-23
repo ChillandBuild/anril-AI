@@ -154,7 +154,7 @@ describe("alertHref fallback order", () => {
   });
 
   it("call_alert_<x> opens the needs-attention list", () => {
-    expect(alertHref(mk("call_alert_no_answer"))).toBe("/dashboard/telecalling#needs-attention");
+    expect(alertHref(mk("call_alert_no_answer"))).toBe("/dashboard/call-iq/evaluation#needs-attention");
   });
 });
 

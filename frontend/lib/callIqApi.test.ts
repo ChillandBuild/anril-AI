@@ -3,6 +3,11 @@ import {
   callReviewHref,
   canOpenLive,
   canOpenTeamReports,
+  canDownloadCalls,
+  canSeeCallCharts,
+  periodDates,
+  sortResults,
+  talkText,
   countByState,
   dueText,
   hasView,
@@ -15,6 +20,7 @@ import {
   sortLive,
   stateLabel,
   type LivePerson,
+  type ResultsPerson,
   type ResultsResponse,
 } from "./callIqApi";
 
@@ -127,5 +133,47 @@ describe("callbacks due now", () => {
     expect(dueText("2026-11-22T07:00:00Z", now)).toBe("due now");
     expect(dueText("2026-11-22T06:40:00Z", now)).toBe("20 min late");
     expect(dueText("not a date", now)).toBe("");
+  });
+});
+
+describe("results table", () => {
+  const row = (name: string, calls: number, orders: number, talk?: number): ResultsPerson => ({
+    caller_id: name, name, calls, connected: 0, orders, talk_seconds: talk,
+  });
+
+  it("sorts by a number column, ties by name", () => {
+    const rows = [row("Bala", 5, 1), row("Anitha", 5, 3), row("Chitra", 9, 0)];
+    expect(sortResults(rows, "calls", "desc").map((r) => r.name)).toEqual(["Chitra", "Anitha", "Bala"]);
+    expect(sortResults(rows, "orders", "asc").map((r) => r.name)).toEqual(["Chitra", "Bala", "Anitha"]);
+    expect(sortResults(rows, "name", "asc").map((r) => r.name)).toEqual(["Anitha", "Bala", "Chitra"]);
+  });
+
+  it("treats a missing talk time as zero", () => {
+    const rows = [row("Bala", 1, 0, 120), row("Anitha", 1, 0)];
+    expect(sortResults(rows, "talk_seconds", "desc").map((r) => r.name)).toEqual(["Bala", "Anitha"]);
+  });
+
+  it("writes talk time in plain words", () => {
+    expect(talkText(undefined)).toBe("0 min");
+    expect(talkText(40)).toBe("40 s");
+    expect(talkText(720)).toBe("12 min");
+    expect(talkText(3900)).toBe("1 h 5 min");
+  });
+
+  it("turns a period into the same India-time days the server counts", () => {
+    expect(periodDates("today", "2026-11-23")).toEqual({ from: "2026-11-23", to: "2026-11-23" });
+    expect(periodDates("7d", "2026-11-23")).toEqual({ from: "2026-11-17", to: "2026-11-23" });
+    expect(periodDates("30d", "2026-03-01")).toEqual({ from: "2026-01-31", to: "2026-03-01" });
+  });
+
+  it("shows charts to the owner, Reports access or a Team leader; the download needs Reports and lead download", () => {
+    expect(canSeeCallCharts("owner", [], null)).toBe(true);
+    expect(canSeeCallCharts("manager", ["team.view", "analytics.view"], null)).toBe(true);
+    expect(canSeeCallCharts("manager", ["team.view"], "team_leader")).toBe(true);
+    expect(canSeeCallCharts("manager", ["team.view"], null)).toBe(false);
+    expect(canDownloadCalls("owner", [])).toBe(true);
+    expect(canDownloadCalls("manager", ["analytics.view", "leads.download"])).toBe(true);
+    expect(canDownloadCalls("manager", ["leads.download"])).toBe(false);
+    expect(canDownloadCalls("manager", ["analytics.view"])).toBe(false);
   });
 });

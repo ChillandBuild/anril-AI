@@ -220,11 +220,12 @@ def test_evaluation_tenant_isolation():
 def seed_results(db):
     a = caller(db, T1, "Anitha", user_id="u-anitha")
     b = caller(db, T1, "Bala", user_id="u-bala")
-    for _ in range(3):
-        db.add("call_logs", tenant_id=T1, caller_id=a, status="completed", manual_status="connected", created_at=TODAY)
+    for talk in (90, 60, None):  # seconds on the phone; None = no recording length known
+        db.add("call_logs", tenant_id=T1, caller_id=a, status="completed", manual_status="connected", created_at=TODAY,
+               duration_seconds=talk)
     db.add("call_logs", tenant_id=T1, caller_id=a, status="no_answer", manual_status="not_reachable", created_at=TODAY)
-    db.add("call_logs", tenant_id=T1, caller_id=b, status="completed", manual_status="connected", created_at=TODAY)
-    db.add("call_logs", tenant_id=T1, caller_id=a, status="completed", manual_status="connected", created_at=YESTERDAY)
+    db.add("call_logs", tenant_id=T1, caller_id=b, status="completed", manual_status="connected", created_at=TODAY, duration_seconds=30)
+    db.add("call_logs", tenant_id=T1, caller_id=a, status="completed", manual_status="connected", created_at=YESTERDAY, duration_seconds=45)
     db.add("call_logs", tenant_id=T1, caller_id=None, status="completed", created_at=TODAY)  # owner's own call
     # visits booked: bookings a telecaller made by phone in the days (cancelled / waiting for advance / other source / other client do not count)
     for status, who, source, tenant, when in (
@@ -247,16 +248,16 @@ def test_results_today_calls_to_orders_to_money_with_totals():
     a, b = seed_results(db)
     out = svc.results(db, ctx(role="owner"), "today", NOW)
     rows = {r["name"]: r for r in out["callers"]}
-    assert rows["Anitha"] == {"caller_id": a, "name": "Anitha", "calls": 4, "connected": 3, "visits": 2, "orders": 2, "revenue_paise": 150000}
-    assert rows["Bala"] == {"caller_id": b, "name": "Bala", "calls": 1, "connected": 1, "visits": 0, "orders": 0, "revenue_paise": 0}
-    assert out["totals"] == {"calls": 5, "connected": 4, "visits": 2, "orders": 2, "revenue_paise": 150000}
+    assert rows["Anitha"] == {"caller_id": a, "name": "Anitha", "calls": 4, "connected": 3, "talk_seconds": 150, "visits": 2, "orders": 2, "revenue_paise": 150000}
+    assert rows["Bala"] == {"caller_id": b, "name": "Bala", "calls": 1, "connected": 1, "talk_seconds": 30, "visits": 0, "orders": 0, "revenue_paise": 0}
+    assert out["totals"] == {"calls": 5, "connected": 4, "talk_seconds": 180, "visits": 2, "orders": 2, "revenue_paise": 150000}
 
 
 def test_results_7d_adds_the_earlier_days():
     db = FakeSupabase()
     seed_results(db)
     out = svc.results(db, ctx(role="owner"), "7d", NOW)
-    assert out["totals"] == {"calls": 6, "connected": 5, "visits": 3, "orders": 3, "revenue_paise": 220000}
+    assert out["totals"] == {"calls": 6, "connected": 5, "talk_seconds": 225, "visits": 3, "orders": 3, "revenue_paise": 220000}
 
 
 def test_results_money_is_left_out_without_deals_view():
@@ -270,7 +271,7 @@ def test_results_money_is_left_out_without_deals_view():
 
 def test_results_with_nobody_to_show_is_empty_not_an_error():
     out = svc.results(FakeSupabase(), ctx(role="owner"), "today", NOW)
-    assert out["callers"] == [] and out["totals"] == {"calls": 0, "connected": 0, "visits": 0, "orders": 0, "revenue_paise": 0}
+    assert out["callers"] == [] and out["totals"] == {"calls": 0, "connected": 0, "talk_seconds": 0, "visits": 0, "orders": 0, "revenue_paise": 0}
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────

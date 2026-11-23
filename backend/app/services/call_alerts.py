@@ -81,7 +81,7 @@ def raise_alert(
             for user_id in admin_user_ids(db, tenant_id):
                 notify_user(tenant_id, user_id, f"call_alert_{type}", ALERT_LABELS[type],
                             f"{name}: {quote or ALERT_LABELS[type]}", db=db,
-                            push_url="/dashboard/telecalling#needs-attention")
+                            push_url="/dashboard/call-iq/evaluation#needs-attention")
             db.table("call_alerts").update({"notified_at": now.isoformat()}).eq("id", alert_id).execute()
     return True
 
@@ -163,7 +163,7 @@ def send_morning_summaries(db, now: datetime | None = None) -> int:
             text = ", ".join(f"{n} {ALERT_LABELS[t].lower()}" for t, n in sorted(counts.items(), key=lambda kv: -kv[1]))
             for user_id in admin_user_ids(db, tenant_id):
                 notify_user(tenant_id, user_id, "call_alerts_summary", "Yesterday's calls need attention",
-                            f"{text}.", db=db, push_url="/dashboard/telecalling#needs-attention")
+                            f"{text}.", db=db, push_url="/dashboard/call-iq/evaluation#needs-attention")
                 sent += 1
         except Exception as e:
             logger.error(f"Morning summary failed for tenant {tenant_id}: {e}")

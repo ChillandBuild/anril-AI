@@ -111,7 +111,7 @@ export function CallingOverviewCard() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
           <div>
-            <dt className="text-sm text-ink-secondary">Calling hours</dt>
+            <dt className="text-sm text-ink-secondary">Shift hours</dt>
             <dd className="text-sm font-semibold text-ink">{data.rules.calling_hours}</dd>
           </div>
           <EditLink />

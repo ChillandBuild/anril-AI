@@ -410,10 +410,10 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                     <span className="font-body text-xs text-ink-muted">Stop recycling after this many total attempts</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="font-label text-xs font-semibold text-ink w-32">Calling hours</label>
+                    <label className="font-label text-xs font-semibold text-ink w-32">Re-try hours</label>
                     <Select
                       size="sm"
-                      aria-label="Calling hours start"
+                      aria-label="Re-try hours start"
                       value={String(draft.recycle_start_hour ?? 9)}
                       onChange={(v) => setDraft({ ...draft, recycle_start_hour: Number(v) })}
                       className="w-auto min-w-[100px]"
@@ -422,13 +422,13 @@ export function TelecallingConfigPanel({ canManage = true }: { canManage?: boole
                     <span className="font-body text-xs text-ink-muted">to</span>
                     <Select
                       size="sm"
-                      aria-label="Calling hours end"
+                      aria-label="Re-try hours end"
                       value={String(draft.recycle_end_hour ?? 18)}
                       onChange={(v) => setDraft({ ...draft, recycle_end_hour: Number(v) })}
                       className="w-auto min-w-[100px]"
                       options={Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${i.toString().padStart(2, "0")}:00` }))}
                     />
-                    <span className="font-body text-xs text-ink-muted">IST</span>
+                    <span className="font-body text-xs text-ink-muted">IST. No-answer leads go back in the queue only inside these hours.</span>
                   </div>
                 </div>
               )}

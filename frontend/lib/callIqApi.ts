@@ -181,6 +181,8 @@ export type ResultsPeriod = "today" | "7d" | "30d";
 export interface ResultsRow {
   calls: number;
   connected: number;
+  /** Seconds on the phone (each call's recorded length). Left out by an older server. */
+  talk_seconds?: number;
   /** Visits booked by phone. Left out by an older server. */
   visits?: number;
   orders: number;
@@ -216,6 +218,37 @@ export function pickedUpText(row: Pick<ResultsRow, "calls" | "connected">): stri
   return `${row.connected} of ${row.calls} picked up`;
 }
 
+/** "1 h 5 min", "12 min", "40 s", or "0 min". */
+export function talkText(seconds: number | undefined): string {
+  const s = Math.max(0, Math.round(seconds ?? 0));
+  if (s === 0) return "0 min";
+  if (s < 60) return `${s} s`;
+  const mins = Math.round(s / 60);
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+}
+
+export type ResultsSortKey = "name" | "calls" | "connected" | "talk_seconds" | "visits" | "orders" | "revenue_paise";
+
+/** The per-person rows sorted by one column; ties fall back to the name. Names sort A to Z when going up. */
+export function sortResults(rows: ResultsPerson[], key: ResultsSortKey, dir: "asc" | "desc"): ResultsPerson[] {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    if (key === "name") return sign * byName;
+    const diff = (a[key] ?? 0) - (b[key] ?? 0);
+    return diff !== 0 ? sign * diff : byName;
+  });
+}
+
+/** The India-time dates a period covers, as YYYY-MM-DD, the same days the server counts. */
+export function periodDates(period: ResultsPeriod, todayIso: string): { from: string; to: string } {
+  const days = period === "today" ? 1 : period === "7d" ? 7 : 30;
+  const d = new Date(`${todayIso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - (days - 1));
+  return { from: d.toISOString().slice(0, 10), to: todayIso };
+}
+
 // ─── Who may open which screen ────────────────────────────────────────────────
 
 /** Same rule as the server: the owner passes; a .manage permission also counts as .view. */
@@ -231,4 +264,14 @@ export function canOpenLive(role: string | null, permissions: string[]): boolean
 
 export function canOpenTeamReports(role: string | null, permissions: string[]): boolean {
   return hasView(role, permissions, "team.view");
+}
+
+/** The call charts and the download read the Reports numbers: owner, Reports access (analytics.view), or a Team leader. */
+export function canSeeCallCharts(role: string | null, permissions: string[], roleSlug: string | null): boolean {
+  return role === "owner" || permissions.includes("analytics.view") || roleSlug === "team_leader";
+}
+
+/** The download also needs the right to take customer lists out (leads.download), and the server wants analytics.view. */
+export function canDownloadCalls(role: string | null, permissions: string[]): boolean {
+  return role === "owner" || (permissions.includes("analytics.view") && permissions.includes("leads.download"));
 }
