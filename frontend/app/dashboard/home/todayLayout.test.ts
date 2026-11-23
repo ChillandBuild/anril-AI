@@ -4,20 +4,27 @@ import {
   BOX_KEYS,
   BOX_META,
   COMING_SOON_BOX_KEYS,
-  COMING_SOON_LISTS,
+  LIST_KEYS,
+  LIST_LABELS,
   MAX_BOXES,
   addBox,
+  boxSub,
   buildSavePayload,
   canAddBox,
   formatBoxValue,
   formatRupees,
   isBoxKey,
+  isLoss,
   listIsOn,
+  listsFromLayout,
   moveBox,
   removeBox,
   resolveBoxes,
+  starsText,
   waitingFor,
 } from "./todayLayout";
+
+const ALL_LISTS_ON = { waiting: true, low_stock: true, todays_feedback: true };
 
 const today = {
   available: ["money_in_today", "new_enquiries_today", "hot_waiting", "to_collect", "callbacks_today", "orders_pending", "ads_today"] as HomeBoxKey[],
@@ -52,7 +59,7 @@ describe("resolveBoxes", () => {
   });
 
   it("ignores unknown and duplicate keys", () => {
-    const boxes = ["money_in_today", "profit_month", "money_in_today", "hot_waiting"] as unknown as HomeBoxKey[];
+    const boxes = ["money_in_today", "renewals_due", "money_in_today", "hot_waiting"] as unknown as HomeBoxKey[];
     expect(resolveBoxes({ boxes }, today)).toEqual(["money_in_today", "hot_waiting"]);
   });
 
@@ -69,11 +76,14 @@ describe("resolveBoxes", () => {
 describe("max 12 guard", () => {
   const twelve = BOX_KEYS.slice(0, 11) as HomeBoxKey[];
 
-  it("12 working boxes exist, so the cap of 12 can now be reached with real keys", () => {
-    expect(BOX_KEYS).toHaveLength(12);
+  it("more boxes exist than one person can turn on: the cap is how many are ON, not how many exist", () => {
+    expect(BOX_KEYS).toHaveLength(15);
     expect(MAX_BOXES).toBe(12);
-    expect(addBox(BOX_KEYS.slice(0, 11), "bookings_today")).toEqual(BOX_KEYS);
-    expect(addBox(BOX_KEYS, "low_stock")).toEqual(BOX_KEYS);
+    const eleven = BOX_KEYS.slice(0, 11);
+    const full = [...eleven, "bookings_today"] as HomeBoxKey[];
+    expect(addBox(eleven, "bookings_today")).toEqual(full);
+    expect(addBox(full, "profit_month")).toEqual(full);
+    expect(addBox(BOX_KEYS.slice(0, 12), "feedback_week")).toEqual(BOX_KEYS.slice(0, 12));
   });
 
   it("canAddBox turns false at 12", () => {
@@ -91,25 +101,24 @@ describe("max 12 guard", () => {
 
   it("buildSavePayload never sends more than 12 or an unknown key", () => {
     const many = [...BOX_KEYS, ...BOX_KEYS, "profit_month"] as unknown as HomeBoxKey[];
-    const payload = buildSavePayload(many, { waiting: true, low_stock: false });
+    const payload = buildSavePayload(many, { waiting: true, low_stock: false, todays_feedback: true });
     expect(payload.boxes.length).toBeLessThanOrEqual(MAX_BOXES);
     expect(payload.boxes.every(isBoxKey)).toBe(true);
-    expect(payload.lists).toEqual({ waiting: true, low_stock: false });
+    expect(payload.lists).toEqual({ waiting: true, low_stock: false, todays_feedback: true });
   });
 });
 
 describe("Target this month box", () => {
-  it("is a working box now, and profit stays coming soon", () => {
+  it("is a working box now", () => {
     expect(BOX_KEYS).toContain("target_month");
     expect(isBoxKey("target_month")).toBe(true);
     expect(BOX_META.target_month.label).toBe("Target this month");
     expect(COMING_SOON_BOX_KEYS).not.toContain("target_month");
-    expect(COMING_SOON_BOX_KEYS).toContain("profit_month");
   });
 
   it("can be added and saved like any other box", () => {
     expect(addBox([], "target_month")).toEqual(["target_month"]);
-    expect(buildSavePayload(["target_month", "hot_waiting"], { waiting: true, low_stock: true }).boxes).toEqual(["target_month", "hot_waiting"]);
+    expect(buildSavePayload(["target_month", "hot_waiting"], ALL_LISTS_ON).boxes).toEqual(["target_month", "hot_waiting"]);
   });
 
   it("is kept by resolveBoxes only when this person may see it", () => {
@@ -127,7 +136,7 @@ describe("Target this month box", () => {
 
 describe("coming-soon keys", () => {
   it("are never selectable", () => {
-    expect(COMING_SOON_BOX_KEYS).toHaveLength(4);
+    expect(COMING_SOON_BOX_KEYS).toEqual(["renewals_due"]);
     for (const key of COMING_SOON_BOX_KEYS) {
       expect(isBoxKey(key)).toBe(false);
       expect(BOX_KEYS).not.toContain(key);
@@ -137,7 +146,7 @@ describe("coming-soon keys", () => {
   });
 
   it("are not kept by resolveBoxes even when a saved layout names them", () => {
-    const boxes = ["expenses_today", "hot_waiting"] as unknown as HomeBoxKey[];
+    const boxes = ["renewals_due", "hot_waiting"] as unknown as HomeBoxKey[];
     expect(resolveBoxes({ boxes }, { available: ["hot_waiting"], defaults: ["hot_waiting"] })).toEqual(["hot_waiting"]);
   });
 });
@@ -162,8 +171,8 @@ describe("lists", () => {
   it("default on, off only when the layout says false", () => {
     expect(listIsOn(null, "waiting")).toBe(true);
     expect(listIsOn({ lists: null }, "low_stock")).toBe(true);
-    expect(listIsOn({ lists: { waiting: false, low_stock: true } }, "waiting")).toBe(false);
-    expect(listIsOn({ lists: { waiting: false, low_stock: true } }, "low_stock")).toBe(true);
+    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_feedback: true } }, "waiting")).toBe(false);
+    expect(listIsOn({ lists: { waiting: false, low_stock: true, todays_feedback: true } }, "low_stock")).toBe(true);
   });
 });
 
@@ -198,7 +207,6 @@ describe("Bookings today box", () => {
     expect(isBoxKey("bookings_today")).toBe(true);
     expect(BOX_META.bookings_today.label).toBe("Bookings today");
     expect(COMING_SOON_BOX_KEYS).not.toContain("bookings_today");
-    expect(COMING_SOON_LISTS.map((l) => l.key)).not.toContain("bookings");
   });
   it("is kept only when this person may see it", () => {
     const some = { available: ["hot_waiting", "bookings_today"] as HomeBoxKey[], defaults: ["hot_waiting"] as HomeBoxKey[] };
@@ -206,7 +214,92 @@ describe("Bookings today box", () => {
     expect(resolveBoxes({ boxes: ["bookings_today", "hot_waiting"] as HomeBoxKey[] }, { available: ["hot_waiting"], defaults: ["hot_waiting"] })).toEqual(["hot_waiting"]);
   });
   it("saves like any other box and shows as a count", () => {
-    expect(buildSavePayload(["bookings_today"], { waiting: true, low_stock: true }).boxes).toEqual(["bookings_today"]);
+    expect(buildSavePayload(["bookings_today"], ALL_LISTS_ON).boxes).toEqual(["bookings_today"]);
     expect(formatBoxValue({ value: 7, unit: "count" })).toBe("7");
+  });
+});
+
+describe("Profit this month box", () => {
+  it("is a working money box, no longer coming soon", () => {
+    expect(BOX_KEYS).toContain("profit_month");
+    expect(isBoxKey("profit_month")).toBe(true);
+    expect(BOX_META.profit_month.label).toBe("Profit this month");
+    expect(BOX_META.profit_month.group).toBe("money");
+    expect(COMING_SOON_BOX_KEYS).not.toContain("profit_month");
+  });
+  it("shows rupees like the other money boxes", () => {
+    expect(formatBoxValue({ value: 4_800_000, unit: "paise" })).toBe("₹48,000");
+  });
+  it("shows a loss as a negative number with the word Loss", () => {
+    expect(formatBoxValue({ value: -250_000, unit: "paise" })).toBe("-₹2,500");
+    expect(formatRupees(-30050)).toBe("-₹300.50");
+    expect(isLoss("profit_month", { value: -1 })).toBe(true);
+    expect(isLoss("profit_month", { value: 0 })).toBe(false);
+    expect(isLoss("to_collect", { value: -1 })).toBe(false);
+    expect(boxSub("profit_month", { value: -250_000, sub: "Nov so far" })).toBe("Loss · Nov so far");
+    expect(boxSub("profit_month", { value: 250_000, sub: "Nov so far" })).toBe("Nov so far");
+  });
+});
+
+describe("Expenses today box", () => {
+  it("is a working money box, no longer coming soon", () => {
+    expect(BOX_KEYS).toContain("expenses_today");
+    expect(BOX_META.expenses_today.label).toBe("Expenses today");
+    expect(BOX_META.expenses_today.group).toBe("money");
+    expect(COMING_SOON_BOX_KEYS).not.toContain("expenses_today");
+    expect(formatBoxValue({ value: 120_000, unit: "paise" })).toBe("₹1,200");
+    expect(formatBoxValue({ value: 0, unit: "paise" })).toBe("₹0");
+  });
+});
+
+describe("Feedback this week box", () => {
+  it("is a working box, no longer coming soon", () => {
+    expect(BOX_KEYS).toContain("feedback_week");
+    expect(BOX_META.feedback_week.label).toBe("Feedback this week");
+    expect(COMING_SOON_BOX_KEYS).not.toContain("feedback_week");
+    expect(COMING_SOON_BOX_KEYS).toContain("renewals_due");
+  });
+  it("shows the average with one decimal and a star", () => {
+    expect(formatBoxValue({ value: 4.3, unit: "stars" })).toBe("4.3★");
+    expect(formatBoxValue({ value: 5, unit: "stars" })).toBe("5.0★");
+    expect(formatBoxValue({ value: 3.66, unit: "stars" })).toBe("3.7★");
+  });
+  it("shows a dash while nobody has answered", () => {
+    expect(formatBoxValue({ value: null, unit: "stars" })).toBe("—");
+    expect(formatBoxValue({ value: null, unit: "paise" })).toBe("—");
+  });
+  it("keeps the sub line as the server sent it", () => {
+    expect(boxSub("feedback_week", { value: 4.3, sub: "12 answered · 2 unhappy open" })).toBe("12 answered · 2 unhappy open");
+  });
+  it("is kept by resolveBoxes only when this person may see it", () => {
+    const some = { available: ["hot_waiting", "feedback_week"] as HomeBoxKey[], defaults: ["hot_waiting"] as HomeBoxKey[] };
+    expect(resolveBoxes({ boxes: ["feedback_week", "hot_waiting"] as HomeBoxKey[] }, some)).toEqual(["feedback_week", "hot_waiting"]);
+    expect(resolveBoxes({ boxes: ["feedback_week", "hot_waiting"] as HomeBoxKey[] }, { available: ["hot_waiting"], defaults: ["hot_waiting"] })).toEqual(["hot_waiting"]);
+  });
+});
+
+describe("Today's feedback list", () => {
+  it("can be switched on and off like the others, default on", () => {
+    expect(LIST_KEYS).toContain("todays_feedback");
+    expect(LIST_LABELS.todays_feedback).toBe("Today's feedback");
+    expect(listIsOn(null, "todays_feedback")).toBe(true);
+    expect(listIsOn({ lists: { waiting: true, low_stock: true, todays_feedback: false } }, "todays_feedback")).toBe(false);
+  });
+  it("an older saved layout without it still shows it", () => {
+    const old = { lists: { waiting: false, low_stock: true } } as unknown as Parameters<typeof listsFromLayout>[0];
+    expect(listsFromLayout(old)).toEqual({ waiting: false, low_stock: true, todays_feedback: true });
+  });
+  it("is saved with the layout", () => {
+    expect(buildSavePayload(["hot_waiting"], { waiting: true, low_stock: true, todays_feedback: false }).lists).toEqual({
+      waiting: true,
+      low_stock: true,
+      todays_feedback: false,
+    });
+  });
+  it("draws stars as text", () => {
+    expect(starsText(4)).toBe("★★★★☆");
+    expect(starsText(1)).toBe("★☆☆☆☆");
+    expect(starsText(9)).toBe("★★★★★");
+    expect(starsText(-2)).toBe("☆☆☆☆☆");
   });
 });

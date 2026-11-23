@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Phone, Star } from "lucide-react";
 import { useAuthRole } from "../contexts/AuthRoleContext";
@@ -8,6 +9,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { SwitchPill } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
+import { feedbackRowTarget, HIGHLIGHT_MS, recentRowId, unhappyRowId } from "./feedbackHighlight";
 import {
   averageText,
   feedbackApi,
@@ -36,6 +38,9 @@ const STATUS_TONE = {
   bad: "bg-[#fef3f2] text-[#b42318]",
   none: "bg-slate-100 text-slate-700",
 } as const;
+
+// Soft amber, not green, so it reads as "look here" and not as "good".
+const HIGHLIGHT = "bg-[#fff4d6] ring-2 ring-inset ring-[#f0b429]";
 
 const TZ = "Asia/Kolkata";
 
@@ -74,6 +79,12 @@ export function FeedbackPanel() {
   const [reportFailed, setReportFailed] = useState(false);
   const [fixingId, setFixingId] = useState<string | null>(null);
 
+  // The unhappy-customer bell links here with ?fb=<feedback id>: scroll to that row and mark it for a moment.
+  const fb = useSearchParams().get("fb");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const handledFb = useRef<string | null>(null);
+  const highlightTimer = useRef<number | undefined>(undefined);
+
   const loadSettings = useCallback(async () => {
     try {
       const s = await feedbackApi.settings();
@@ -102,6 +113,21 @@ export function FeedbackPanel() {
     setReport(null);
     void loadReport();
   }, [loadReport]);
+
+  useEffect(() => {
+    if (!report || !fb || handledFb.current === fb) return;
+    handledFb.current = fb; // once per link, so "Mark fixed" reloading the report does not re-highlight
+    const target = feedbackRowTarget(report, fb);
+    if (!target) return;
+    const el = document.getElementById(target);
+    if (!el) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    setHighlightId(target);
+    highlightTimer.current = window.setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+  }, [report, fb]);
+
+  useEffect(() => () => window.clearTimeout(highlightTimer.current), []);
 
   async function save(next: { on: boolean; offer: string }, doneText: string) {
     setSaving(true);
@@ -303,7 +329,14 @@ export function FeedbackPanel() {
                 {report.unhappy_open.map((r) => {
                   const tel = telHref(r.phone);
                   return (
-                    <li key={r.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
+                    <li
+                      key={r.id}
+                      id={unhappyRowId(r.id)}
+                      className={cn(
+                        "flex scroll-mt-24 flex-col gap-2 rounded-lg py-3 transition-colors motion-reduce:transition-none sm:flex-row sm:items-start sm:justify-between",
+                        highlightId === unhappyRowId(r.id) && cn(HIGHLIGHT, "px-2"),
+                      )}
+                    >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           {r.lead_id ? (
@@ -392,7 +425,14 @@ export function FeedbackPanel() {
             ) : (
               <ul className="mt-2 divide-y divide-[#eef2f6]">
                 {report.recent.map((r) => (
-                  <li key={r.id} className="flex items-start justify-between gap-3 py-2.5">
+                  <li
+                    key={r.id}
+                    id={recentRowId(r.id)}
+                    className={cn(
+                      "flex scroll-mt-24 items-start justify-between gap-3 rounded-lg py-2.5 transition-colors motion-reduce:transition-none",
+                      highlightId === recentRowId(r.id) && cn(HIGHLIGHT, "px-2"),
+                    )}
+                  >
                     <div className="min-w-0">
                       {r.lead_id ? (
                         <Link href={`/dashboard/leads/${r.lead_id}`} className="text-sm font-semibold text-[#0A1528] hover:text-primary">

@@ -19,7 +19,6 @@ import {
   BOX_KEYS,
   BOX_META,
   COMING_SOON_BOXES,
-  COMING_SOON_LISTS,
   GROUPS,
   LIST_KEYS,
   LIST_LABELS,
@@ -228,8 +227,12 @@ export function EditTodayModal({
     }
   }
 
-  const showWaitingToggle = today.waiting !== null;
-  const showStockToggle = today.low_stock !== null;
+  // A list can be switched only when the server sends it to this person.
+  const listAvailable: Record<HomeListKey, boolean> = {
+    waiting: today.waiting !== null,
+    low_stock: today.low_stock !== null,
+    todays_feedback: !!today.todays_feedback,
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -375,17 +378,10 @@ export function EditTodayModal({
               Lists below the boxes
             </h3>
             <ul className="mt-3 space-y-2">
-              {LIST_KEYS.filter((k) => (k === "waiting" ? showWaitingToggle : showStockToggle)).map((k) => (
+              {LIST_KEYS.filter((k) => listAvailable[k]).map((k) => (
                 <li key={k} className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                   <span className="min-w-0 flex-1 font-label text-sm font-semibold text-ink">{LIST_LABELS[k]}</span>
                   <Switch checked={lists[k]} label={`Show ${LIST_LABELS[k]}`} onChange={(v) => setLists((cur) => ({ ...cur, [k]: v }))} />
-                </li>
-              ))}
-              {COMING_SOON_LISTS.map((l) => (
-                <li key={l.key} className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 opacity-70">
-                  <span className="min-w-0 flex-1 font-label text-sm font-semibold text-ink">{l.label}</span>
-                  <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 font-label text-xs font-bold text-slate-700">Coming soon</span>
-                  <Switch checked={false} disabled label={`${l.label} (coming soon)`} />
                 </li>
               ))}
             </ul>

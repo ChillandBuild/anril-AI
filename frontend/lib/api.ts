@@ -2410,11 +2410,15 @@ export type HomeBoxKey =
   | "quotes_open"
   | "won_month"
   | "target_month"
-  | "low_stock";
+  | "low_stock"
+  | "profit_month"
+  | "expenses_today"
+  | "feedback_week";
 export type HomeBox = {
-  /** Paise when unit is "paise"; a plain number when "count". */
-  value: number;
-  unit: "paise" | "count" | string;
+  /** Paise when unit is "paise" (negative = a loss); a plain number when "count"; average stars when "stars"
+   *  (null when nobody has answered yet). */
+  value: number | null;
+  unit: "paise" | "count" | "stars" | string;
   sub?: string | null;
   href: string;
 };
@@ -2433,6 +2437,8 @@ export type HomeWaitingItem = {
   waiting_since: string;
 };
 export type HomeLowStockItem = { item_id: string; name: string; stock: number; low_stock_at: number | null };
+/** One answered feedback row on the Today's feedback list. */
+export type HomeFeedbackItem = { id: string; lead_id: string; name: string | null; stars: number; reason: string | null };
 export type HomeToday = {
   /** Boxes this person may see and this client uses, in priority order. */
   available: HomeBoxKey[];
@@ -2442,8 +2448,10 @@ export type HomeToday = {
   hot_bar: HomeHotBar | null;
   waiting: { total: number; items: HomeWaitingItem[] } | null;
   low_stock: { total: number; items: HomeLowStockItem[] } | null;
+  /** Sent only to people who may see Feedback while it is switched on for the client. */
+  todays_feedback?: { total: number; items: HomeFeedbackItem[] } | null;
 };
-export type HomeListKey = "waiting" | "low_stock";
+export type HomeListKey = "waiting" | "low_stock" | "todays_feedback";
 export type HomeLayout = {
   boxes: HomeBoxKey[] | null;
   lists: Record<HomeListKey, boolean> | null;

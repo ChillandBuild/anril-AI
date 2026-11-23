@@ -29,7 +29,6 @@ const KINDS: { kind: AdvanceKind; label: string; hint: string }[] = [
 
 const COMING_LATER = [
   "AI agent offers Pay full or advance",
-  "Advance rule per item",
   "Show who changed the advance on an order",
   "Turn balance reminders on/off",
 ];
@@ -175,6 +174,11 @@ export default function PaymentsPage() {
                 </div>
               </fieldset>
             )}
+
+            <p className="mt-4 text-sm text-ink-muted">
+              An item can have its own advance:{" "}
+              <Link href="/dashboard/catalog" className="font-semibold text-primary underline">set it on the item&apos;s page</Link>.
+            </p>
 
             {!ruleHidden ? (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

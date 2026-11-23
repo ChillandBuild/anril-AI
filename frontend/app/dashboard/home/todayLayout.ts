@@ -51,7 +51,7 @@ export type BoxMeta = {
   tint: string;
 };
 
-/** The 12 working boxes, in default priority order. */
+/** The working boxes, in default priority order. A person can turn on at most MAX_BOXES of them. */
 export const BOX_KEYS: BoxKey[] = [
   "money_in_today",
   "new_enquiries_today",
@@ -65,6 +65,9 @@ export const BOX_KEYS: BoxKey[] = [
   "target_month",
   "low_stock",
   "bookings_today",
+  "profit_month",
+  "expenses_today",
+  "feedback_week",
 ];
 
 export const BOX_META: Record<BoxKey, BoxMeta> = {
@@ -80,6 +83,9 @@ export const BOX_META: Record<BoxKey, BoxMeta> = {
   target_month: { label: "Target this month", icon: Target, group: "money", module: "Settings", tint: "bg-lime-50 text-lime-700" },
   low_stock: { label: "Low stock", icon: Package, group: "work", module: "Catalogue", tint: "bg-stone-100 text-stone-700" },
   bookings_today: { label: "Bookings today", icon: CalendarCheck, group: "work", module: "Bookings", tint: "bg-sky-50 text-sky-700" },
+  profit_month: { label: "Profit this month", icon: TrendingUp, group: "money", module: "Reports", tint: "bg-green-50 text-green-800" },
+  expenses_today: { label: "Expenses today", icon: HandCoins, group: "money", module: "Commerce", tint: "bg-red-50 text-red-700" },
+  feedback_week: { label: "Feedback this week", icon: Star, group: "work", module: "Customers", tint: "bg-amber-50 text-amber-800" },
 };
 
 export function isBoxKey(key: string): key is BoxKey {
@@ -88,24 +94,18 @@ export function isBoxKey(key: string): key is BoxKey {
 
 /** Planned boxes. Shown greyed and locked in Edit Today; never sent to or from the backend. */
 export const COMING_SOON_BOXES: { key: string; label: string; icon: LucideIcon; group: BoxGroup; module: string }[] = [
-  { key: "expenses_today", label: "Expenses today", icon: HandCoins, group: "money", module: "Commerce" },
-  { key: "profit_month", label: "Profit this month (owner)", icon: TrendingUp, group: "money", module: "Reports" },
-  { key: "feedback_week", label: "Feedback this week", icon: Star, group: "work", module: "Customers" },
   { key: "renewals_due", label: "Renewals due", icon: CalendarClock, group: "work", module: "Customers" },
 ];
 
 export const COMING_SOON_BOX_KEYS: string[] = COMING_SOON_BOXES.map((b) => b.key);
 
-/** The two lists you can switch on and off. "Today's bookings" shows whenever the server sends it. */
-export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock"];
+/** The lists you can switch on and off. "Today's bookings" shows whenever the server sends it. */
+export const LIST_KEYS: HomeListKey[] = ["waiting", "low_stock", "todays_feedback"];
 export const LIST_LABELS: Record<HomeListKey, string> = {
   waiting: "Waiting for your reply",
   low_stock: "Stock running low",
+  todays_feedback: "Today's feedback",
 };
-
-export const COMING_SOON_LISTS: { key: string; label: string }[] = [
-  { key: "feedback", label: "Today's feedback" },
-];
 
 /**
  * Boxes to draw, in order. A saved layout wins, cut down to what this person may
@@ -138,7 +138,11 @@ export function listIsOn(layout: Pick<HomeLayout, "lists"> | null | undefined, k
 }
 
 export function listsFromLayout(layout: Pick<HomeLayout, "lists"> | null | undefined): Record<HomeListKey, boolean> {
-  return { waiting: listIsOn(layout, "waiting"), low_stock: listIsOn(layout, "low_stock") };
+  return {
+    waiting: listIsOn(layout, "waiting"),
+    low_stock: listIsOn(layout, "low_stock"),
+    todays_feedback: listIsOn(layout, "todays_feedback"),
+  };
 }
 
 export function canAddBox(selected: readonly string[]): boolean {
@@ -167,22 +171,38 @@ export function moveBox(selected: readonly BoxKey[], key: string, delta: -1 | 1)
 
 /** Body for PUT /home/layout. */
 export function buildSavePayload(selected: readonly BoxKey[], lists: Record<HomeListKey, boolean>): HomeLayoutSave {
-  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES) as HomeBoxKey[], lists: { waiting: lists.waiting, low_stock: lists.low_stock } };
+  return { boxes: selected.filter(isBoxKey).slice(0, MAX_BOXES) as HomeBoxKey[], lists: { waiting: lists.waiting, low_stock: lists.low_stock, todays_feedback: lists.todays_feedback } };
 }
 
-/** ₹1,86,400 (Indian grouping); paise only when there are some. */
+/** ₹1,86,400 (Indian grouping); paise only when there are some. A negative number shows as -₹12,000. */
 export function formatRupees(paise: number | null | undefined): string {
   if (paise == null || !Number.isFinite(paise)) return "—";
   const whole = paise % 100 === 0;
-  return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
+  const text = "₹" + (Math.abs(paise) / 100).toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
+  return paise < 0 ? "-" + text : text;
 }
 
 export function formatBoxValue(box: Pick<HomeBox, "value" | "unit">): string {
+  if (box.value == null) return "—";
   if (box.unit === "paise") return formatRupees(box.value);
+  // Feedback this week: the average, one decimal ("4.3★").
+  if (box.unit === "stars") return Number.isFinite(box.value) ? `${box.value.toFixed(1)}★` : "—";
   // The Target box: a percent for the team, and "Set a target" for an owner who has not set one.
   if (box.unit === "percent") return Number.isFinite(box.value) ? `${box.value.toLocaleString("en-IN")}%` : "—";
   if (box.unit === "set_target") return "Set a target";
   return Number.isFinite(box.value) ? box.value.toLocaleString("en-IN") : "—";
+}
+
+/** Profit below zero is a loss: the card says so in words, not only with a minus sign. */
+export function isLoss(key: string, box: Pick<HomeBox, "value">): boolean {
+  return key === "profit_month" && box.value != null && box.value < 0;
+}
+
+/** The small line under a box's number. A loss starts with the word "Loss". */
+export function boxSub(key: string, box: Pick<HomeBox, "value" | "sub">): string {
+  const sub = box.sub ?? "";
+  if (!isLoss(key, box)) return sub;
+  return sub ? `Loss · ${sub}` : "Loss";
 }
 
 /** "5m" · "2h 10m" · "3d". For how long a chat has waited. */
@@ -216,3 +236,9 @@ export type TodaysBooking = {
 };
 
 export type TodaysBookings = { total: number; items: TodaysBooking[] };
+
+/** Stars as text for the feedback list: 4 -> "★★★★☆". Out-of-range numbers are held to 0..5. */
+export function starsText(stars: number): string {
+  const n = Math.max(0, Math.min(5, Math.round(Number.isFinite(stars) ? stars : 0)));
+  return "★".repeat(n) + "☆".repeat(5 - n);
+}
