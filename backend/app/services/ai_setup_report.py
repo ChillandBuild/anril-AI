@@ -5,6 +5,7 @@ Every query filters tenant_id. A missing table or column (migration 322 not appl
 empty or neutral answer, never a crash. No AI call is made anywhere in here.
 """
 import logging
+import uuid
 import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -267,6 +268,35 @@ def delete_feedback(db, ctx: dict, message_id: str) -> None:
             raise
 
 
+MINE_MAX_IDS = 200
+
+
+def _is_uuid(value: str) -> bool:
+    """One bad id would make the whole lookup fail, hiding every mark on screen: drop it instead."""
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+def my_feedback(db, ctx: dict, message_ids: list[str]) -> dict[str, dict]:
+    """The caller's own thumbs-down marks on the given replies: {message_id: {reason, note}}.
+
+    Only marks this person made, in this business. Anything unreadable (table not ready yet) is just "no marks".
+    """
+    ids = [m for m in dict.fromkeys(i.strip() for i in message_ids if i and i.strip()) if _is_uuid(m)][:MINE_MAX_IDS]
+    if not ids:
+        return {}
+    try:
+        rows = db.table("ai_reply_feedback").select("message_id,reason,note").eq("tenant_id", ctx["tenant_id"]) \
+            .eq("created_by", ctx["user_id"]).in_("message_id", ids).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - a missing table or a malformed id means "no marks", never a 500
+        logger.warning("reply feedback: could not read own marks: %s", exc)
+        return {}
+    return {r["message_id"]: {"reason": r.get("reason"), "note": r.get("note")} for r in rows if r.get("message_id")}
+
+
 def _feedback_rows(db, tenant_id: str, period: Period) -> list[dict]:
     try:
         return fetch_bounded(
@@ -280,7 +310,27 @@ def _feedback_rows(db, tenant_id: str, period: Period) -> list[dict]:
 
 # ── the AI report card ────────────────────────────────────────────────────────
 
+def _counts_in_database(db, tenant_id: str, period: Period) -> dict | None:
+    """The four report-card numbers counted by migration 326 in one round trip.
+    None when the function is not there yet (or answers oddly): the caller counts on the server instead."""
+    try:
+        res = db.rpc("ai_report_card_counts", {"p_tenant_id": tenant_id, "p_start": period.start_iso,
+                                               "p_end": period.end_iso}).execute()
+        data = res.data
+        row = data[0] if isinstance(data, list) and data else data
+        if not isinstance(row, dict):
+            return None
+        return {"chats": int(row["chats"]), "handled_by_aira": int(row["handled_alone"]),
+                "handed_over": int(row["handed_over"]), "knowledge_gaps": int(row["knowledge_gaps"])}
+    except Exception as exc:
+        logger.info("report card: counting on the server (database counts unavailable): %s", exc)
+        return None
+
+
 def _handled(db, tenant_id: str, period: Period) -> dict:
+    counted = _counts_in_database(db, tenant_id, period)
+    if counted is not None:
+        return counted
     try:
         messages = fetch_bounded(
             lambda: db.table("messages").select("lead_id,direction,is_ai_generated,reply_source")

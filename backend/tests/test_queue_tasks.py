@@ -24,19 +24,19 @@ MESSAGES = {
     "call-alert-summary", "brain-weekly-digest", "instant-forms-catch-up", "otp-sweep",
     "unmarked-bookings", "order-payment-reminders", "batch-expiry",
     "booking-release-holds", "booking-reminders", "booking-call-now",
-    "feedback-ask", "reports-monthly-bells", "evening-summary", "comeback-offers",
+    "feedback-ask", "reports-monthly-bells", "evening-summary", "comeback-offers", "fee-reminders",
 }
 CALLS = {"call-ai-sweep", "crm-cutoff-sweep", "call-break-limits"}
 COMPANION = {"companion-memory", "companion-diary", "companion-kb-ingest", "companion-kb-learning"}
-CLASS_B = {"numbers-pool-sync", "send-log-prune", "scheduler-runs-prune", "private-send-meta-reconcile", "auto-archive-idle"}
+CLASS_B = {"numbers-pool-sync", "send-log-prune", "password-help-prune", "scheduler-runs-prune", "private-send-meta-reconcile", "auto-archive-idle"}
 CLASS_C = {
     "reengagement-rules", "silence-nudge", "pending-whatsapp-alerts", "callback-notifications",
     "call-alert-summary", "brain-weekly-digest", "unmarked-bookings", "order-payment-reminders", "batch-expiry",
     "booking-release-holds", "booking-reminders", "booking-call-now",
-    "feedback-ask", "reports-monthly-bells", "call-break-limits", "evening-summary", "comeback-offers",
+    "feedback-ask", "reports-monthly-bells", "call-break-limits", "evening-summary", "comeback-offers", "fee-reminders",
 }
 SYNC_JOBS = {
-    "assignment-sweep", "recycle-contacts", "callback-notifications", "call-alert-summary",
+    "assignment-sweep", "recycle-contacts", "password-help-prune", "callback-notifications", "call-alert-summary",
     "ad-insights-sync", "brain-weekly-digest", "inbound-stopped-replying", "unmarked-bookings", "batch-expiry",
     "expense-repeats", "booking-call-now", "reports-monthly-bells", "call-break-limits",
     "evening-summary", "comeback-offers",
@@ -65,6 +65,7 @@ CALLEES = {
     "otp-sweep": ("app.services.otp.sweep", True, True),
     "numbers-pool-sync": ("app.services.number_sync.sync_all_tenants_pool", True, False),
     "send-log-prune": ("app.services.outbound_router.prune_send_log", True, False),
+    "password-help-prune": ("app.services.password_help.prune_old", False, True),
     "scheduler-runs-prune": ("app.main._prune_scheduler_runs", True, False),
     "private-send-meta-reconcile": ("app.services.private_send.process_meta_reconcile", True, False),
     "auto-archive-idle": ("app.services.auto_archive.archive_idle_chats", True, False),
@@ -90,6 +91,7 @@ CALLEES = {
     "call-break-limits": ("app.services.call_rules.check_break_limits", False, True),
     "evening-summary": ("app.services.evening_summary.send_evening_summaries", False, True),
     "comeback-offers": ("app.services.comeback_offer.send_comeback_offers", False, True),
+    "fee-reminders": ("app.services.fee_plans.send_fee_reminders", True, False),
 }
 
 
@@ -120,6 +122,7 @@ AT_IST = {
     "companion-diary": ([f"{h:02d}:35" for h in range(24)], None),  # hourly at :05 UTC
     "numbers-pool-sync": (["06:00", "18:00"], None),
     "send-log-prune": (["03:00"], None),
+    "password-help-prune": (["03:45"], None),
     "scheduler-runs-prune": (["03:15"], None),
     "private-send-meta-reconcile": (["03:30"], None),
     "auto-archive-idle": (["04:00"], None),
@@ -128,6 +131,7 @@ AT_IST = {
     "reports-monthly-bells": (["09:00"], None),
     "evening-summary": (["20:00"], None),
     "comeback-offers": (["11:00"], None),
+    "fee-reminders": (["10:00"], None),
 }
 
 
@@ -149,7 +153,7 @@ def _call_task(name: str):
 def test_every_scheduled_job_has_a_periodic_task():
     every = {pid for (_, pid) in queue_app.periodic_registry.periodic_tasks}
     assert every == set(EVERY) | set(AT_IST) | SAFETY_TASKS
-    assert len(_periodic()) == 46
+    assert len(_periodic()) == 48
 
 
 def test_task_name_matches_periodic_id():
@@ -202,7 +206,7 @@ def test_retry_classes():
         want = "B" if job_id in CLASS_B else "C" if job_id in CLASS_C else "A"
         assert cls == want, job_id
     values = list(queue_tasks.RETRY_CLASS.values())
-    assert (values.count("A"), values.count("B"), values.count("C")) == (24, 5, 17)
+    assert (values.count("A"), values.count("B"), values.count("C")) == (24, 6, 18)
 
 
 def test_sync_and_async_split():

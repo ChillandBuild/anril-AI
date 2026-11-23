@@ -57,6 +57,9 @@ def notify_user(
         return
     db = db or get_supabase()
     try:
+        from app.services.notification_config import delivery_allowed
+        if not delivery_allowed(tenant_id, user_id, type, db=db):
+            return  # switched off, or this person is not who the owner chose for this alert
         if dedupe_lead_id:
             existing = (
                 db.table("app_notifications")
@@ -265,12 +268,15 @@ def notify_pool(
         if m:
             url = f"/dashboard/conversations?lead={m.group(1)}"
     try:
+        from app.services.notification_config import delivery_allowed
         recipients = set(_active_caller_user_ids(db, tenant_id))
         owner = _owner_user_id(db, tenant_id)
         if owner:
             recipients.add(owner)
         for uid in recipients:
             if uid in exclude:
+                continue
+            if not delivery_allowed(tenant_id, uid, type, db=db):
                 continue
             _insert_notification(db, {
                 "tenant_id": tenant_id,

@@ -10,7 +10,7 @@ import hmac
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.db.supabase import get_supabase
 from app.routes.auto_messages import _SlidingWindow
@@ -124,3 +124,18 @@ def mark_done(request_id: str) -> bool:
         .eq("id", request_id).execute()
     )
     return bool(res.data)
+
+
+KEEP_DAYS = 90
+
+
+def prune_old(db=None) -> int:
+    """Delete password-help requests older than 90 days (done or not): they hold an email or phone."""
+    db = db or get_supabase()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
+    try:
+        res = db.table("password_help_requests").delete().lt("created_at", cutoff).execute()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("password_help prune failed (%s)", type(e).__name__)
+        return 0
+    return len(res.data or [])

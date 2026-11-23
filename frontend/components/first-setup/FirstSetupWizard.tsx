@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { FIRST_SETUP_STEPS, firstSetupApi, setAiAgentOn, type FirstSetupStep } from "@/lib/firstSetupApi";
 import { InterviewQuestionsForm, InterviewReview, StarterStep } from "./WorkspaceSteps";
 import type { InterviewDraft } from "@/lib/api";
-import { GSTIN_PATTERN } from "./helpers";
+import { GSTIN_PATTERN, asksForGstin, gstTypeFor, type GstChoice } from "./helpers";
 
 // The 6 first-setup steps. Every step can be skipped, "Finish later" is always on screen, and each
 // step saves through the screen that already owns that setting. Progress is remembered on the server,
@@ -47,9 +47,15 @@ function LinkStep({ title, text, links, onNext }: { title: string; text: string;
   );
 }
 
-/** Do you have GST? Saved with the rest of the business details. */
+const GST_CHOICES: { value: GstChoice; label: string; hint: string }[] = [
+  { value: "yes", label: "Yes", hint: "Registered" },
+  { value: "composition", label: "Composition", hint: "Bill of supply" },
+  { value: "no", label: "No", hint: "Simple bill" },
+];
+
+/** Do you have GST? Yes, Composition or No. Saved with the rest of the business details. */
 function GstCard({ onNext }: { onNext: () => void }) {
-  const [hasGst, setHasGst] = useState<"yes" | "no" | null>(null);
+  const [choice, setChoice] = useState<GstChoice | null>(null);
   const [gstin, setGstin] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,15 +65,16 @@ function GstCard({ onNext }: { onNext: () => void }) {
     setSaving(true);
     setError(null);
     try {
-      if (hasGst === "yes" && clean) {
-        if (!GSTIN_PATTERN.test(clean)) {
+      if (choice) {
+        if (asksForGstin(choice) && clean && !GSTIN_PATTERN.test(clean)) {
           setError("That GSTIN doesn't look right. It has 15 characters, like 33ABCDE1234F1Z5.");
           setSaving(false);
           return;
         }
-        // The details are saved as one block, so read what is there first and change only the GSTIN.
+        // The details are saved as one block, so read what is there first and change only the GST fields.
         const current = await api.businessProfile.get();
-        await api.businessProfile.save({ ...current, gstin: clean });
+        const next = { ...current, gst_type: gstTypeFor(choice), ...(asksForGstin(choice) && clean ? { gstin: clean } : {}) };
+        await api.businessProfile.save(next);
       }
       onNext();
     } catch (err) {
@@ -79,22 +86,25 @@ function GstCard({ onNext }: { onNext: () => void }) {
   return (
     <div className={card}>
       <h1 className={heading}>Do you have GST?</h1>
-      <p className={sub}>Your GSTIN goes on your bills. You can add or change it later in Settings.</p>
+      <p className={sub}>
+        Your GSTIN goes on your bills. A Composition business gets a Bill of supply, with no tax lines. You can add or change it later in Settings.
+      </p>
       {error && <div className={errorBox}>{error}</div>}
-      <div className="grid grid-cols-2 gap-2">
-        {(["yes", "no"] as const).map((v) => (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {GST_CHOICES.map((c) => (
           <button
-            key={v}
+            key={c.value}
             type="button"
-            aria-pressed={hasGst === v}
-            onClick={() => setHasGst(v)}
-            className={`rounded-xl border px-4 py-3 font-body text-sm font-medium ${hasGst === v ? "border-primary bg-primary/5 text-ink" : "border-border text-ink"}`}
+            aria-pressed={choice === c.value}
+            onClick={() => setChoice(c.value)}
+            className={`rounded-xl border px-4 py-3 font-body text-sm font-medium ${choice === c.value ? "border-primary bg-primary/5 text-ink" : "border-border text-ink"}`}
           >
-            {v === "yes" ? "Yes" : "No"}
+            {c.label}
+            <span className="block text-xs font-normal text-ink-secondary">{c.hint}</span>
           </button>
         ))}
       </div>
-      {hasGst === "yes" && (
+      {asksForGstin(choice) && (
         <div className="mt-4">
           <label htmlFor="fs-gstin" className="font-body text-sm font-medium text-ink mb-1.5 block">
             GSTIN (optional)

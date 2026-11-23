@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 
 from app.db.supabase import get_supabase
@@ -19,6 +20,15 @@ QUIET_TIME_ALLOWED_TYPES: frozenset[str] = frozenset({
     "handover_new",
     "number_disconnected", "whatsapp_disconnected",
 })
+
+
+# These can never be switched off on Settings > Alerts (money, "the AI agent needs a person", "number disconnected").
+ALWAYS_ON_TYPES: frozenset[str] = QUIET_TIME_ALLOWED_TYPES
+
+
+def is_always_on(alert_type: str) -> bool:
+    """True for the alerts the owner cannot turn off."""
+    return (alert_type or "") in ALWAYS_ON_TYPES
 
 
 def allowed_in_quiet_time(alert_type: str) -> bool:
@@ -135,6 +145,7 @@ def save_notification_config(tenant_id: str, config: dict, db=None) -> None:
         },
         on_conflict="tenant_id,key",
     ).execute()
+    invalidate_policy_cache(tenant_id)
 
 
 def effective_quiet_hours(cfg: dict) -> dict:
@@ -170,7 +181,7 @@ def push_allowed(tenant_id: str, event_type: str, *, db=None) -> bool:
         cfg = get_notification_config(tenant_id, db=db)
         if not cfg.get("push_enabled"):
             return False
-        if not cfg.get("events", {}).get(event_type, True):
+        if not cfg.get("events", {}).get(event_type, True) and not is_always_on(event_type):
             return False
         quiet = effective_quiet_hours(cfg)
         if quiet.get("enabled") and not allowed_in_quiet_time(event_type):
@@ -180,4 +191,82 @@ def push_allowed(tenant_id: str, event_type: str, *, db=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"push_allowed check failed for {tenant_id}/{event_type}: {e}")
+        return True
+
+
+# ── who gets an alert: the one gate notify_user / notify_pool ask ─────────────
+# Settings > Alerts saves two things per alert: on/off (notification_config.events) and who gets it
+# (app_settings "alert_recipients": a list of owner / team / assigned). Reading both plus every member's role
+# costs a few queries, so the answer is cached for 60 seconds per business (a save clears it at once).
+POLICY_TTL_SECONDS = 60
+_RECIPIENTS_KEY = "alert_recipients"
+_policy_cache: dict[str, tuple[float, dict]] = {}
+
+
+def invalidate_policy_cache(tenant_id: str | None = None) -> None:
+    """Forget the cached alert policy for one business (or all of them)."""
+    if tenant_id is None:
+        _policy_cache.clear()
+    else:
+        _policy_cache.pop(tenant_id, None)
+
+
+def _load_policy(db, tenant_id: str) -> dict:
+    cached = _policy_cache.get(tenant_id)
+    now = time.monotonic()
+    if cached and now - cached[0] < POLICY_TTL_SECONDS:
+        return cached[1]
+    # Read the on/off switches here rather than through get_notification_config, which hides a failed read
+    # behind the defaults: caching that would switch every alert back on for a minute after a blip.
+    events = dict(_NOTIFICATION_CONFIG_DEFAULT["events"])
+    cfg_row = (
+        db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", "notification_config")
+        .maybe_single().execute()
+    )
+    if cfg_row and cfg_row.data and cfg_row.data.get("value"):
+        stored_cfg = json.loads(cfg_row.data["value"])
+        if isinstance(stored_cfg, dict):
+            events.update(stored_cfg.get("events") or {})
+    recipients: dict[str, list[str]] = {}
+    row = (
+        db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", _RECIPIENTS_KEY)
+        .maybe_single().execute()
+    )
+    if row and row.data and row.data.get("value"):
+        stored = json.loads(row.data["value"])
+        if isinstance(stored, dict):
+            recipients = {k: [w for w in v if isinstance(w, str)] for k, v in stored.items() if isinstance(v, list)}
+    members = db.table("tenant_users").select("user_id,role").eq("tenant_id", tenant_id).execute().data or []
+    roles = {m["user_id"]: m.get("role") for m in members if isinstance(m, dict) and m.get("user_id")}
+    policy = {"events": events, "recipients": recipients, "roles": roles}
+    _policy_cache[tenant_id] = (now, policy)
+    return policy
+
+
+def delivery_allowed(tenant_id: str, user_id: str, alert_type: str, *, db=None) -> bool:
+    """Whether this person should get this kind of alert at all (bell and phone pop-up; WhatsApp alerts have their own settings).
+
+    - An alert the owner switched off reaches nobody, except the always-on ones (money, the AI agent needs a
+      person, number disconnected).
+    - When the owner chose who gets an alert: "team" reaches everyone; "owner" reaches only the owner; "assigned"
+      reaches whoever the app addressed it to (the person it belongs to).
+    - An alert nobody has configured, an unknown alert type, or anything we cannot read behaves as before: allowed.
+    """
+    try:
+        db = db or get_supabase()
+        policy = _load_policy(db, tenant_id)
+        if not policy["events"].get(alert_type, True) and not is_always_on(alert_type):
+            return False
+        from app.services.alert_catalog import who_is_fixed  # catalog imports this module
+        if who_is_fixed(alert_type):
+            return True
+        who = policy["recipients"].get(alert_type)
+        if not who or "team" in who or "assigned" in who:
+            return True
+        role = policy["roles"].get(user_id)
+        if role is None:
+            return True  # someone we cannot place: do not drop the alert
+        return "owner" in who and role == "owner"
+    except Exception as e:  # fail open: an alert lost is worse than one extra alert
+        logger.warning(f"delivery_allowed check failed for {tenant_id}/{alert_type}: {e}")
         return True

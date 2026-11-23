@@ -64,8 +64,11 @@ export function writeTries(tries: LoginTries): void {
 }
 
 /** The Anril team makes the login with a temporary password; the owner changes it on first sign-in. */
-export function mustChangePassword(user: { user_metadata?: Record<string, unknown> | null } | null | undefined): boolean {
-  return user?.user_metadata?.must_change_password === true;
+export function mustChangePassword(
+  user: { user_metadata?: Record<string, unknown> | null; app_metadata?: Record<string, unknown> | null } | null | undefined,
+): boolean {
+  // app_metadata is set by the server and only the server clears it; user_metadata is the older copy.
+  return user?.app_metadata?.must_change_password === true || user?.user_metadata?.must_change_password === true;
 }
 
 export const MIN_PASSWORD_LENGTH = 8;
@@ -87,3 +90,27 @@ export function errorCode(digest: string | null | undefined): string | null {
 
 /** 15 characters: 2 digits (state), 5 letters, 4 digits, a letter, then 1, Z and a check character. */
 export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+/** "Do you have GST?": Yes (registered), Composition, or No. */
+export type GstChoice = "yes" | "composition" | "no";
+export type GstType = "regular" | "composition" | "none";
+
+/** What the owner's pick means for the bill (saved as gst_type in Business details). */
+export function gstTypeFor(choice: GstChoice): GstType {
+  if (choice === "composition") return "composition";
+  return choice === "no" ? "none" : "regular";
+}
+
+/** Only a registered business (Yes or Composition) has a GSTIN to type. */
+export function asksForGstin(choice: GstChoice | null): boolean {
+  return choice === "yes" || choice === "composition";
+}
+
+export const FIRST_SETUP_TOTAL = 6;
+const SETUP_STEP_KEYS = ["business", "items", "hours", "alerts", "connect", "ai"];
+
+/** The Home card: "Finish setup (3 of 6 done)". finished = all 6 steps are done, so the card goes away. */
+export function finishSetupCard(doneSteps: readonly string[] | null | undefined): { done: number; total: number; finished: boolean; title: string } {
+  const done = new Set((doneSteps ?? []).filter((s) => SETUP_STEP_KEYS.includes(s))).size;
+  return { done, total: FIRST_SETUP_TOTAL, finished: done >= FIRST_SETUP_TOTAL, title: `Finish setup (${done} of ${FIRST_SETUP_TOTAL} done)` };
+}

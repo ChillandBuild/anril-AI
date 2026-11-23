@@ -14,6 +14,9 @@ import {
   type WhoChoice,
 } from "@/lib/automationsApi";
 
+/** The server marks alerts that can never be switched off (money, the AI agent needs a person, number disconnected). */
+type AlertRowView = AlertRow & { locked?: boolean; who_fixed?: boolean };
+
 const HOW_WORDS: Record<string, string> = { bell: "Bell", push: "Phone pop-up", whatsapp: "WhatsApp" };
 
 function errText(e: unknown, fallback: string): string {
@@ -104,7 +107,7 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
   );
 }
 
-function AlertLine({ row, canManage, onChange }: { row: AlertRow; canManage: boolean; onChange: (key: string, on: boolean, who?: WhoChoice[]) => Promise<void> }) {
+function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage: boolean; onChange: (key: string, on: boolean, who?: WhoChoice[]) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
 
   async function run(on: boolean, who?: WhoChoice[]) {
@@ -135,8 +138,13 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRow; canManage: boo
             {row.how.map((h) => HOW_WORDS[h] ?? h).join(" + ")}
             {row.comes_through_in_quiet_time ? " · comes through at night" : ""}
           </p>
+          {row.locked && (
+            <p className="mt-0.5 font-body text-xs font-semibold text-[#556274]">
+              <span aria-hidden>{"🔒 "}</span>Always on. It is too important to switch off.
+            </p>
+          )}
         </div>
-        <SwitchPill on={row.on} disabled={!canManage} loading={busy} aria-label={row.label} onChange={(next) => run(next)} />
+        <SwitchPill on={row.on} disabled={!canManage || !!row.locked} loading={busy} aria-label={row.locked ? `${row.label} (always on)` : row.label} onChange={(next) => run(next)} />
       </div>
       {row.on && (
         <div role="group" aria-label={`Who gets: ${row.label}`} className="mt-2 flex flex-wrap gap-1.5">
@@ -147,7 +155,7 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRow; canManage: boo
                 key={o.value}
                 type="button"
                 aria-pressed={picked}
-                disabled={!canManage || busy}
+                disabled={!canManage || busy || !!row.who_fixed}
                 onClick={() => toggleWho(o.value)}
                 className={`min-h-9 rounded-full border px-3 font-label text-xs font-bold disabled:opacity-60 ${
                   picked ? "border-primary bg-primary text-white" : "border-border-subtle bg-white text-ink hover:border-primary/40"
@@ -157,6 +165,11 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRow; canManage: boo
               </button>
             );
           })}
+          {row.who_fixed && (
+            <span className="self-center font-body text-xs text-[#556274]">
+              {row.key === "number_disconnected" ? "Goes to the owner and anyone who manages numbers." : "Always goes to the person it belongs to."}
+            </span>
+          )}
         </div>
       )}
     </li>
@@ -205,7 +218,7 @@ export default function AlertsSettingsPage() {
             <section key={g.area} aria-label={g.area} className="space-y-2">
               <h2 className="font-label text-xs font-bold uppercase tracking-wider text-[#556274]">{g.area}</h2>
               <ul className="space-y-2">
-                {g.rows.map((r) => <AlertLine key={r.key} row={r} canManage={canManage} onChange={changeAlert} />)}
+                {g.rows.map((r) => <AlertLine key={r.key} row={r as AlertRowView} canManage={canManage} onChange={changeAlert} />)}
               </ul>
             </section>
           ))}

@@ -130,7 +130,7 @@ function StartCount({ data, canCount, onStarted }: { data: StockCountsView; canC
                 <span className="text-ink"><b>{c.place}</b> · {c.finished_at ? new Date(c.finished_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""}
                   {c.finished_by_name ? ` · ${c.finished_by_name}` : ""}</span>
                 <span className={cn("font-semibold tabular-nums", (c.loss_paise ?? 0) > (c.gain_paise ?? 0) ? "text-rose-700" : "text-emerald-700")}>
-                  {(c.loss_paise ?? 0) || (c.gain_paise ?? 0) ? `${(c.loss_paise ?? 0) ? `−${formatPaise(c.loss_paise ?? 0)}` : ""}${(c.gain_paise ?? 0) ? ` +${formatPaise(c.gain_paise ?? 0)}` : ""}` : "all matched"}
+                  {c.loss_paise === undefined && c.gain_paise === undefined ? "finished" : (c.loss_paise ?? 0) || (c.gain_paise ?? 0) ? `${(c.loss_paise ?? 0) ? `−${formatPaise(c.loss_paise ?? 0)}` : ""}${(c.gain_paise ?? 0) ? ` +${formatPaise(c.gain_paise ?? 0)}` : ""}` : "all matched"}
                 </span>
               </li>
             ))}
@@ -234,8 +234,8 @@ function OpenCount({ count, canCount, isOwner, toolbarSlot, onChanged }: {
         <StatCard icon="🔢" label="Counted" value={`${c.counted} of ${items(c.total)}`}
           sub={`${c.counters.length ? `by ${c.counters.join(" and ")} · ` : ""}${count.place} · started ${time(count.started_at)}${paused ? " · paused" : ""}`} />
         <StatCard icon="✅" label="Match" value={items(c.match)} sub="no change" />
-        <StatCard icon="➖" label="Less than system" tone={c.less.items ? "red" : "plain"} value={`${items(c.less.items)} · ${c.less.pieces} pcs`} sub={`${formatPaise(c.less.value_paise)} at cost`} />
-        <StatCard icon="➕" label="More than system" value={`${items(c.more.items)} · ${c.more.pieces} pcs`} sub={formatPaise(c.more.value_paise)} />
+        <StatCard icon="➖" label="Less than system" tone={c.less.items ? "red" : "plain"} value={`${items(c.less.items)} · ${c.less.pieces} pcs`} sub={c.less.value_paise === undefined ? "pieces only" : `${formatPaise(c.less.value_paise)} at cost`} />
+        <StatCard icon="➕" label="More than system" value={`${items(c.more.items)} · ${c.more.pieces} pcs`} sub={c.more.value_paise === undefined ? "pieces only" : formatPaise(c.more.value_paise)} />
         <StatCard icon="⏳" label="Not counted yet" tone={c.not_counted ? "amber" : "plain"} value={items(c.not_counted)}
           sub="tap to see them" onClick={() => setShowMissing((v) => !v)} active={showMissing} />
       </div>

@@ -12,6 +12,7 @@ import { useAuthRole } from "../../../contexts/AuthRoleContext";
 import { ChipInput, SIZE_PRESETS, cellKey } from "../../VariantChips";
 import { StockHistoryDrawer } from "../../StockHistoryDrawer";
 import { DEFAULT_LOW_AT, GST_RATE_OPTIONS, formatPaise } from "../../money";
+import { costsHidden } from "@/lib/billBrand";
 
 const ITEM_TYPES = ["product", "service", "property", "course", "other"];
 
@@ -65,6 +66,8 @@ export default function CatalogueItemPage() {
   const canManage = role === "owner" || permissions.includes("catalog.manage");
 
   const [detail, setDetail] = useState<CatalogItemDetail | null>(null);
+  // The API leaves the cost price out for people without Orders access: no cost field, no stock value.
+  const hideCost = costsHidden(detail as { costs_hidden?: boolean } | null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [groups, setGroups] = useState<CatalogVariantGroup[]>([]);
 
@@ -233,7 +236,7 @@ export default function CatalogueItemPage() {
         price_note: priceNote.trim() || null,
         gst_rate: gst === "" ? null : Number(gst),
         hsn_code: hsn.trim() || null,
-        cost_price_paise: toPaise(cost),
+        ...(hideCost ? {} : { cost_price_paise: toPaise(cost) }),
         low_stock_at: lowAt.trim() === "" ? null : Math.round(Number(lowAt)),
         advance_rule: advMode === "shop" ? null : advMode === "none" ? { kind: "none" as const, value: 0 }
           : { kind: advKind, value: Number(advValue) || 0 },
@@ -417,13 +420,15 @@ export default function CatalogueItemPage() {
                   <input value={hsn} onChange={(e) => setHsn(e.target.value)} disabled={ro} inputMode="numeric" className={cn(inputCls, "font-mono")} placeholder="5007" />
                 </Field>
               </div>
-              <Field label={<span className="inline-flex items-center gap-1">Cost price <Lock size={12} className="text-ink-muted" /></span>}
-                hint="What you paid. Never shown to customers; used for stock value.">
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">₹</span>
-                  <input value={cost} onChange={(e) => setCost(e.target.value)} disabled={ro} inputMode="decimal" className={cn(inputCls, "pl-7")} placeholder="2600" />
-                </div>
-              </Field>
+              {!hideCost && (
+                <Field label={<span className="inline-flex items-center gap-1">Cost price <Lock size={12} className="text-ink-muted" /></span>}
+                  hint="What you paid. Never shown to customers; used for stock value.">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">₹</span>
+                    <input value={cost} onChange={(e) => setCost(e.target.value)} disabled={ro} inputMode="decimal" className={cn(inputCls, "pl-7")} placeholder="2600" />
+                  </div>
+                </Field>
+              )}
               <Field label="Type">
                 <Select value={itemType} disabled={ro} onChange={setItemType}
                   options={ITEM_TYPES.map((t) => ({ value: t, label: <span className="capitalize">{t}</span>, text: t }))} />
@@ -569,7 +574,7 @@ export default function CatalogueItemPage() {
             <Card title="📦 This item">
               <dl className="space-y-1.5 text-sm">
                 <Row label="In stock">{total == null ? "Not counted" : `${total} pieces`}{(detail.held_quantity ?? 0) > 0 && <span className="font-normal text-ink-muted"> · {detail.held_quantity} held for unpaid links</span>}</Row>
-                <Row label="Stock value">{stockValue != null ? `${formatPaise(stockValue)} at cost ${formatPaise(detail.cost_price_paise ?? 0)}` : "Add a cost price"}</Row>
+                {!hideCost && <Row label="Stock value">{stockValue != null ? `${formatPaise(stockValue)} at cost ${formatPaise(detail.cost_price_paise ?? 0)}` : "Add a cost price"}</Row>}
                 <Row label="Sold this month">{detail.sold_this_month}</Row>
                 <Row label="Asked but out">{detail.waiting ? `${detail.waiting} on the waiting list` : "Nobody waiting"}</Row>
               </dl>

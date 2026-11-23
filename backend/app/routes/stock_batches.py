@@ -4,7 +4,7 @@ import asyncio
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_any_permission, require_permission
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, get_tenant_id, require_any_permission, require_permission
 from app.services import stock_batches as sb
 from app.services.audit_log import record_audit_event
 
@@ -26,9 +26,23 @@ async def _run(fn, *args, **kwargs):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+_BATCH_MONEY = ("cost_paise", "value_paise", "value_at")
+
+
+def without_costs(view: dict) -> dict:
+    """The Batches tab for someone who can't see money (no deals.view): no cost, no value, no ₹ on the cards."""
+    return {
+        **view,
+        "batches": [{k: v for k, v in row.items() if k not in _BATCH_MONEY} for row in view.get("batches") or []],
+        "cards": {k: {kk: vv for kk, vv in card.items() if kk != "value_paise"} for k, card in (view.get("cards") or {}).items()},
+        "costs_hidden": True,
+    }
+
+
 @router.get("/batches", dependencies=[Depends(require_view)])
-async def overview(tenant_id: str = Depends(get_tenant_id)):
-    return await _run(sb.overview, get_supabase(), tenant_id)
+async def overview(tenant_id: str = Depends(get_tenant_id), ctx: dict = Depends(get_tenant_and_role)):
+    view = await _run(sb.overview, get_supabase(), tenant_id)
+    return view if _has_permission(ctx, "deals.view") else without_costs(view)
 
 
 @router.get("/items/{item_id}/batches", dependencies=[Depends(require_billing)])

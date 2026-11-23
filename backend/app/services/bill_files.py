@@ -13,6 +13,7 @@ import io
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.services import bill_brand
 from app.services.deals import _rupees
 
 FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
@@ -51,6 +52,48 @@ def _item_label(line: dict) -> str:
     if line.get("variant"):
         name += f" ({line['variant']})"
     return f"{name} × {line.get('qty') or 1}"
+
+
+def _brand(bill: dict) -> dict:
+    return bill.get("brand") or {}
+
+
+def _picture(url: str | None, max_w: int, max_h: int) -> bytes | None:
+    """A shop's logo or signature as a small PNG, or None (no picture set, or it couldn't be read:
+    the bill is then drawn without it)."""
+    if not url:
+        return None
+    try:
+        import httpx
+        from PIL import Image
+
+        res = httpx.get(url, timeout=4.0)
+        res.raise_for_status()
+        pic = Image.open(io.BytesIO(res.content))
+        pic.load()
+        flat = Image.new("RGB", pic.size, "white")
+        flat.paste(pic.convert("RGBA"), mask=pic.convert("RGBA").split()[3])
+        flat.thumbnail((max_w, max_h))
+        out = io.BytesIO()
+        flat.save(out, "PNG", optimize=True)
+        return out.getvalue()
+    except Exception:
+        return None
+
+
+def _wrap(d, text: str, font, max_width: float) -> list[str]:
+    lines: list[str] = []
+    for para in str(text).splitlines():
+        line = ""
+        for word in para.split():
+            trial = f"{line} {word}".strip()
+            if line and d.textlength(trial, font=font) > max_width:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    return [ln for ln in lines if ln]
 
 
 def bill_number(bill: dict) -> str:
@@ -112,11 +155,21 @@ def bill_png(bill: dict) -> bytes:
         y += 28
 
     business = bill.get("business") or {}
+    brand = _brand(bill)
+    logo = _picture(brand.get("logo_url"), 360, 110)
+    if logo:
+        pic = Image.open(io.BytesIO(logo))
+        img.paste(pic, ((width - pic.width) // 2, y))
+        y += pic.height + 18
     centre(business.get("legal_name") or "Bill", f["shop"], INK, 64)
     place = " · ".join(p for p in (_place(business), business.get("phone") or "") if p)
     if place:
         centre(place, f["sub"], SUB, 40)
-    centre(f"Bill {bill_number(bill)} · {_when(bill.get('invoice_date'))}".strip(" ·"), f["sub"], SUB, 40)
+    ids = " · ".join(p for p in (f"PAN {brand['pan']}" if brand.get("pan") else "",
+                                 f"Licence {brand['licence_number']}" if brand.get("licence_number") else "") if p)
+    if ids:
+        centre(ids, f["sub"], SUB, 40)
+    centre(f"{bill.get('title') or 'Bill'} {bill_number(bill)} · {_when(bill.get('invoice_date'))}".strip(" ·"), f["sub"], SUB, 40)
     dashed()
 
     lines = bill.get("lines") or []
@@ -147,6 +200,25 @@ def bill_png(bill: dict) -> bytes:
         y += 50
     else:
         row(label, amount, f["row"], fill=colour)
+    if bill_brand.has_pay_block(brand):
+        dashed()
+        if brand.get("upi_id"):
+            centre(f"Pay by UPI: {brand['upi_id']}", f["small"], INK, 38)
+        for text in bill_brand.bank_lines(brand):
+            centre(text, f["small"], SUB, 36)
+    if brand.get("terms"):
+        y += 6
+        for text in _wrap(d, brand["terms"], f["small"], width - 2 * pad)[:8]:
+            centre(text, f["small"], SUB, 34)
+    sign = _picture(brand.get("signature_url"), 260, 90)
+    if sign:
+        y += 10
+        pic = Image.open(io.BytesIO(sign))
+        img.paste(pic, (width - pad - pic.width, y))
+        y += pic.height + 6
+        label_w = d.textlength("Authorised signatory", font=f["small"])
+        d.text((width - pad - label_w, y), "Authorised signatory", font=f["small"], fill=SUB)
+        y += 40
     y += pad - 20
 
     img = img.crop((0, 0, width, y))
@@ -183,11 +255,16 @@ def invoice_pdf(bill: dict) -> bytes:
     pdf.set_right_margin(210 - right)
     business = bill.get("business") or {}
     customer = bill.get("customer") or {}
-    is_gst = bill.get("bill_type") == "gst"
+    is_gst = bill.get("bill_type") == "gst" and not bill.get("composition")
+    brand = _brand(bill)
 
     # Seller (left) and invoice details (right)
     top = 16
     pdf.set_xy(left, top)
+    logo = _picture(brand.get("logo_url"), 480, 160)
+    if logo:
+        pdf.image(io.BytesIO(logo), x=left, y=top, h=14)
+        pdf.set_xy(left, top + 16)
     pdf.set_font("Noto", "B", 16)
     pdf.cell(110, 8, business.get("legal_name") or "Bill", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Noto", "", 9)
@@ -198,16 +275,22 @@ def invoice_pdf(bill: dict) -> bytes:
     contact = " · ".join(p for p in (business.get("phone"), business.get("email")) if p)
     if contact:
         pdf.cell(105, 4.6, contact, new_x="LMARGIN", new_y="NEXT")
-    if is_gst and business.get("gstin"):
+    if (is_gst or bill.get("composition")) and business.get("gstin"):
         pdf.set_text_color(40, 50, 60)
         pdf.set_font("Noto", "B", 9)
         pdf.cell(105, 5, f"GSTIN {business['gstin']}", new_x="LMARGIN", new_y="NEXT")
+    for label, value in (("PAN", brand.get("pan")), ("Licence no.", brand.get("licence_number"))):
+        if value:
+            pdf.set_text_color(40, 50, 60)
+            pdf.set_font("Noto", "B", 9)
+            pdf.cell(105, 5, f"{label} {value}", new_x="LMARGIN", new_y="NEXT")
     seller_bottom = pdf.get_y()
 
     pdf.set_text_color(150, 160, 170)
     pdf.set_font("Noto", "B", 8)
     pdf.set_xy(130, top)
-    pdf.cell(right - 130, 5, "TAX INVOICE" if is_gst else "BILL", align="R", new_x="LEFT", new_y="NEXT")
+    pdf.cell(right - 130, 5, (bill.get("title") or ("TAX INVOICE" if is_gst else "BILL")).upper(), align="R",
+             new_x="LEFT", new_y="NEXT")
     pdf.set_text_color(17, 27, 33)
     pdf.set_font("Noto", "B", 13)
     pdf.cell(right - 130, 7, bill_number(bill), align="R", new_x="LEFT", new_y="NEXT")
@@ -313,12 +396,54 @@ def invoice_pdf(bill: dict) -> bytes:
     elif paid and not balance:
         total_row("", "Paid in full · thank you", bold=True, colour=GREEN, size=8.5)
 
+    _pay_and_sign(pdf, brand, left, right)
+
     pdf.ln(12)
     pdf.set_font("Noto", "", 8)
     pdf.set_text_color(150, 160, 170)
-    note = "This is a computer-made tax invoice." if is_gst else "Thank you for shopping with us."
+    if bill.get("composition"):
+        note = bill_brand.COMPOSITION_NOTE
+    else:
+        note = "This is a computer-made tax invoice." if is_gst else "Thank you for shopping with us."
     pdf.cell(0, 5, f"{note} Made with Anril.", align="C")
     return bytes(pdf.output())
+
+
+def _pay_and_sign(pdf, brand: dict, left: float, right: float) -> None:
+    """Under the totals: where to pay (UPI, bank), the terms, and the signature. Nothing when the shop set none."""
+    sign = _picture(brand.get("signature_url"), 360, 150)
+    if not (bill_brand.has_pay_block(brand) or brand.get("terms") or sign):
+        return
+    if pdf.get_y() > 235:
+        pdf.add_page()
+    pdf.ln(8)
+    top = pdf.get_y()
+    if bill_brand.has_pay_block(brand):
+        pdf.set_text_color(150, 160, 170)
+        pdf.set_font("Noto", "B", 8)
+        pdf.cell(100, 5, "PAY TO", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(17, 27, 33)
+        pdf.set_font("Noto", "", 9)
+        if brand.get("upi_id"):
+            pdf.cell(100, 4.8, f"UPI: {brand['upi_id']}", new_x="LMARGIN", new_y="NEXT")
+        for text in bill_brand.bank_lines(brand):
+            pdf.cell(100, 4.8, text, new_x="LMARGIN", new_y="NEXT")
+    bottom = pdf.get_y()
+    if sign:
+        pdf.image(io.BytesIO(sign), x=right - 38, y=top, h=14)
+        pdf.set_xy(right - 50, top + 15)
+        pdf.set_font("Noto", "", 8)
+        pdf.set_text_color(90, 100, 110)
+        pdf.cell(50, 4.5, "Authorised signatory", align="R")
+        bottom = max(bottom, top + 20)
+    pdf.set_xy(left, bottom + 2)
+    if brand.get("terms"):
+        pdf.set_text_color(150, 160, 170)
+        pdf.set_font("Noto", "B", 8)
+        pdf.cell(0, 5, "TERMS", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(90, 100, 110)
+        pdf.set_font("Noto", "", 8.5)
+        pdf.multi_cell(right - left, 4.2, str(brand["terms"]), new_x="LMARGIN", new_y="NEXT")
 
 
 def pdf_filename(bill: dict) -> str:

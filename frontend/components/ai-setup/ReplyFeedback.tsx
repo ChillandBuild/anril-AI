@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { aiSetupApi, FEEDBACK_REASONS, type FeedbackReason } from "@/lib/aiSetupApi";
+import { replyMarks } from "@/components/ai-setup/replyMarks";
 
 /** A small thumbs-down on one AI reply, with a reason. Saved so it counts on the AI report card. */
 export function ReplyFeedback({ messageId }: { messageId: string }) {
@@ -10,11 +11,24 @@ export function ReplyFeedback({ messageId }: { messageId: string }) {
   const [reason, setReason] = useState<FeedbackReason>("wrong");
   const [note, setNote] = useState("");
 
+  // A mark this person left earlier (before a reload) shows again, with Undo. One call covers every reply on screen.
+  useEffect(() => {
+    let alive = true;
+    void replyMarks.get(messageId).then((mark) => {
+      if (!alive || !mark) return;
+      setReason(mark.reason);
+      setNote(mark.note ?? "");
+      setStep("done");
+    });
+    return () => { alive = false; };
+  }, [messageId]);
+
   async function send() {
     if (busy) return;
     setBusy(true);
     try {
       await aiSetupApi.thumbsDown(messageId, reason, note);
+      replyMarks.set(messageId, { reason, note: note.trim() || null });
       setStep("done");
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "Could not save that. Please try again.");
@@ -28,6 +42,7 @@ export function ReplyFeedback({ messageId }: { messageId: string }) {
     setBusy(true);
     try {
       await aiSetupApi.undoThumbsDown(messageId);
+      replyMarks.set(messageId, null);
       setStep("idle");
       setNote("");
     } catch {
@@ -38,9 +53,10 @@ export function ReplyFeedback({ messageId }: { messageId: string }) {
   }
 
   if (step === "done") {
+    const label = FEEDBACK_REASONS.find((r) => r.value === reason)?.label;
     return (
       <p className="mt-1 font-body text-xs text-[#556274]">
-        Noted, thank you. <button type="button" onClick={undo} disabled={busy} className="font-semibold text-primary underline">Undo</button>
+        Noted, thank you{label ? `: ${label}` : ""}. <button type="button" onClick={undo} disabled={busy} className="font-semibold text-primary underline">Undo</button>
       </p>
     );
   }

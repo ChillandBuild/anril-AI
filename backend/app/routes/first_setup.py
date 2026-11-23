@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase
+from app.dependencies.auth import get_current_user
 from app.dependencies.tenant import require_permission
 
 logger = logging.getLogger(__name__)
@@ -69,3 +70,22 @@ def put_progress(payload: ProgressIn, ctx: dict = Depends(require_settings_manag
         logger.error("first_setup: save failed for %s (%s)", ctx["tenant_id"], type(e).__name__)
         raise HTTPException(status_code=500, detail="Couldn't save your progress. Please try again.")
     return progress
+
+
+class NewPasswordIn(BaseModel):
+    current_password: str = Field(..., max_length=200)
+    new_password: str = Field(..., max_length=200)
+
+
+@router.post("/new-password")
+def new_password(body: NewPasswordIn, user: dict = Depends(get_current_user)):
+    """First sign-in: swap the password the Anril team gave for the owner's own (any signed-in person)."""
+    from app.services.password_change import PasswordChangeError, change_first_password
+    try:
+        change_first_password(user.get("user_id"), user.get("email"), body.current_password, body.new_password)
+    except PasswordChangeError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("first-setup new-password failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Could not save the new password. Please try again.") from None
+    return {"changed": True}

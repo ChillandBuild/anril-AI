@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { passwordChangeApi } from "@/lib/passwordChangeApi";
 import { AnrilLogo } from "@/components/logo";
 import { checkNewPassword, mustChangePassword } from "@/components/first-setup/helpers";
 import a from "@/components/auth/auth.module.css";
@@ -44,17 +45,15 @@ export default function ChangePasswordPage() {
     }
     setSaving(true);
     setError(null);
-    const supabase = createClient();
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: next,
-      current_password: current,
-      data: { must_change_password: false },
-    });
-    if (updateError) {
-      setError(/same|different/i.test(updateError.message) ? "The new password must be different from the old one" : updateError.message);
+    try {
+      await passwordChangeApi.firstPassword(current, next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the new password. Please try again.");
       setSaving(false);
       return;
     }
+    // Pick up the cleared flag so the dashboard stops sending us back here.
+    await createClient().auth.refreshSession().catch(() => {});
     // A team member whose owner set a temporary password has a second flag on the server; clear it too.
     await api.rbac.markPasswordResetComplete().catch(() => {});
     router.push("/dashboard");

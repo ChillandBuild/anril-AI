@@ -232,6 +232,16 @@ def _remove_quietly(db, path: str) -> None:
         logger.warning(f"business_details: couldn't remove old picture {path}: {e}")
 
 
+def charges_gst(tenant_id: str, db=None) -> bool:
+    """False for a composition shop or one not registered for GST: its bills add and show no tax (Bill of supply).
+    Anything unreadable keeps the old behaviour (GST)."""
+    try:
+        return (get_business_details(tenant_id, db).get("gst_type") or "regular") not in ("composition", "none")
+    except Exception as e:
+        logger.warning(f"business_details: defaulting charges_gst for {tenant_id}: {e}")
+        return True
+
+
 def prices_include_gst(tenant_id: str, db=None) -> bool:
     try:
         return bool(get_business_details(tenant_id, db).get("prices_include_gst", True))

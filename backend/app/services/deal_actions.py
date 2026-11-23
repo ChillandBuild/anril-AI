@@ -15,6 +15,7 @@ bridge keep working on the same intake_sessions rows.
 """
 import json
 import logging
+from datetime import datetime, timezone
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -746,7 +747,58 @@ def _quote_failed(ctx: DealContext, turn: _Turn) -> str:
     )
 
 
+async def _relink_for_full(ctx: DealContext, deal: dict) -> str:
+    """The customer asked to pay the whole amount, not the advance: a new link for everything still due
+    (the advance link is cancelled once the new one exists, and the order no longer asks an advance)."""
+    from app.services import deals
+    rows = (ctx.db.table("deals").select("*").eq("id", deal["id"]).eq("tenant_id", ctx.tenant_id)
+            .limit(1).execute().data or [])
+    before = rows[0] if rows else dict(deal)
+    if int(before.get("paid_paise") or 0) > 0 and before.get("payment_link"):
+        return before["payment_link"]  # the advance came in meanwhile: the open link is already for the balance
+    ctx.db.table("deals").update({"advance_paise": 0, "payment_link": None}).eq("id", deal["id"]).eq("tenant_id", ctx.tenant_id).execute()
+    try:
+        made = await deals.send_payment_link(ctx.tenant_id, deal["id"], send_whatsapp_message=False, amount_paise=None, db=ctx.db)
+    except Exception:
+        ctx.db.table("deals").update({"advance_paise": before.get("advance_paise"), "payment_link": before.get("payment_link")}) \
+            .eq("id", deal["id"]).eq("tenant_id", ctx.tenant_id).execute()
+        raise
+    new_id = (made.get("deal_patch") or {}).get("razorpay_payment_link_id")
+    if await _old_link_still_payable(ctx, before, new_id):
+        # The advance link could not be cancelled (Razorpay refused, or it was just paid). Two live links could
+        # both be paid, so take the new one back and keep the advance link: the customer pays that one.
+        from app.services.payment_razorpay import cancel_payment_link
+        if new_id:
+            await cancel_payment_link(new_id, ctx.tenant_id)
+        ctx.db.table("deals").update({
+            "advance_paise": before.get("advance_paise"), "payment_link": before.get("payment_link"),
+            "razorpay_payment_link_id": before.get("razorpay_payment_link_id"),
+            "link_expires_at": before.get("link_expires_at"),
+        }).eq("id", deal["id"]).eq("tenant_id", ctx.tenant_id).execute()
+        logger.warning("deal %s: advance link not cancelled; kept it instead of a full-amount link", deal["id"])
+        return before["payment_link"]
+    return made["payment_link"]
+
+
+async def _old_link_still_payable(ctx: DealContext, before: dict, new_id: str | None) -> bool:
+    """True when the deal had a different, unexpired link that Razorpay would not cancel."""
+    from app.services import deal_engine
+    from app.services.payment_razorpay import cancel_payment_link
+    old = before.get("razorpay_payment_link_id")
+    if not old or old == new_id or not before.get("payment_link"):
+        return False
+    expires_at = deal_engine.parse_time(before.get("link_expires_at"))
+    if expires_at is not None and expires_at <= datetime.now(timezone.utc):
+        return False
+    try:
+        return not await cancel_payment_link(old, ctx.tenant_id)
+    except Exception:
+        return True
+
+
 async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
+    # pay_full: the customer asked to pay the whole amount now, not just the advance.
+    pay_full = args.get("pay_full") is True or str(args.get("pay_full")).lower() == "true"
     if ctx.payment_concern:
         return "send_quote " + _PAYMENT_CONCERN_REFUSAL
     if turn.quote_text:
@@ -763,7 +815,14 @@ async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
             continue
         link = deal["payment_link"]
         advance = int(deal.get("advance_paise") or 0) if not int(deal.get("paid_paise") or 0) else 0
-        if not deals._link_is_live(deal):
+        if pay_full and advance:
+            try:
+                link = await _relink_for_full(ctx, deal)
+            except Exception:
+                logger.exception("Full-amount link for deal %s failed for lead %s", deal["id"], ctx.lead_id)
+                return _quote_failed(ctx, turn)
+            advance = 0
+        elif not deals._link_is_live(deal):
             # Never hand the customer a dead link: make a new one (the old one is cancelled).
             try:
                 link = (await deals.send_payment_link(ctx.tenant_id, deal["id"], send_whatsapp_message=False,
@@ -776,7 +835,7 @@ async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
     try:
         created = await deals.create_deal(
             ctx.tenant_id, ctx.lead_id, lines, "whatsapp", "awaiting_payment", send_link=False,
-            advance_by_rule=True, db=ctx.db,
+            advance_by_rule=not pay_full, db=ctx.db,
         )
     except Exception:
         logger.exception("create_deal (send_quote) failed for lead %s", ctx.lead_id)

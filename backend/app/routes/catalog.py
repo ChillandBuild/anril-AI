@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_id, require_permission
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, get_tenant_id, require_permission
 from app.services.catalog_retrieval import embed_and_store_catalog_item, reindex_catalog_items
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,20 @@ _VALID_STATUSES = {"draft", "ready"}
 _AI_RULES_DEFAULTS = {"can_recommend": True, "can_send_images": True, "max_images_per_reply": 3}
 
 
+def sees_costs(ctx: dict) -> bool:
+    """Cost prices are money: only the owner and people who can see Orders & payments (deals.view)."""
+    return _has_permission(ctx, "deals.view")
+
+
+def hide_costs(row: dict) -> dict:
+    """The item without its cost price (the screen reads `costs_hidden` and drops the cost fields)."""
+    return {**{k: v for k, v in row.items() if k != "cost_price_paise"}, "costs_hidden": True}
+
+
 @router.get("/items")
-async def list_items(q: str | None = None, tenant_id: str = Depends(get_tenant_id)):
+async def list_items(q: str | None = None, tenant_id: str = Depends(get_tenant_id), ctx: dict = Depends(get_tenant_and_role)):
     db = get_supabase()
+    costs = sees_costs(ctx)
     query = db.table("catalog_items").select("*").eq("tenant_id", tenant_id)
     if q:
         query = query.ilike("name", f"%{q}%")
@@ -47,18 +58,17 @@ async def list_items(q: str | None = None, tenant_id: str = Depends(get_tenant_i
         first_photo.setdefault(m["catalog_item_id"], m["storage_path"])
     bucket = db.storage.from_("catalog-media")
     extra = _list_extras(db, tenant_id, wanted)
-    return {
-        "data": [
-            {
-                **{k: v for k, v in i.items() if k != "embedding"},
-                "embedding": bool(i.get("embedding")),
-                "held_quantity": held.get(i["id"], 0),
-                "thumbnail_url": bucket.get_public_url(first_photo[i["id"]]) if i["id"] in first_photo else None,
-                **extra.get(i["id"], _EMPTY_EXTRAS),
-            }
-            for i in items
-        ]
-    }
+    rows = [
+        {
+            **{k: v for k, v in i.items() if k != "embedding"},
+            "embedding": bool(i.get("embedding")),
+            "held_quantity": held.get(i["id"], 0),
+            "thumbnail_url": bucket.get_public_url(first_photo[i["id"]]) if i["id"] in first_photo else None,
+            **extra.get(i["id"], _EMPTY_EXTRAS),
+        }
+        for i in items
+    ]
+    return {"data": rows if costs else [hide_costs(r) for r in rows]}
 
 
 _EMPTY_EXTRAS = {"sizes": [], "colours": [], "out_variants": [], "low_variants": [], "sold_30d": 0, "waiting": 0}
@@ -112,10 +122,11 @@ def _validate_gst_rate(value) -> None:
         raise HTTPException(status_code=400, detail="gst_rate must be between 0 and 40")
 
 
-def _clean_stock_fields(payload: dict) -> dict:
-    """Cost price, HSN and the low-stock alert level from the Edit item form (only keys sent)."""
+def _clean_stock_fields(payload: dict, costs: bool = True) -> dict:
+    """Cost price, HSN and the low-stock alert level from the Edit item form (only keys sent).
+    costs=False (no Orders access): a cost price in the payload is ignored."""
     out: dict = {}
-    if "cost_price_paise" in payload:
+    if costs and "cost_price_paise" in payload:
         cost = payload["cost_price_paise"]
         if cost is not None:
             try:
@@ -176,6 +187,7 @@ async def create_item(
     _ctx: dict = Depends(require_catalog_manage),
 ):
     db = get_supabase()
+    costs = sees_costs(_ctx)
     price_paise = payload.get("price_paise")
     if price_paise is not None and price_paise < 0:
         raise HTTPException(status_code=400, detail="price_paise must not be negative")
@@ -195,7 +207,7 @@ async def create_item(
         "price_note": payload.get("price_note"),
         "stock_quantity": 0 if stock_quantity is not None else None,  # opening stock goes in below
         "gst_rate": payload.get("gst_rate"),
-        **_clean_stock_fields(payload),
+        **_clean_stock_fields(payload, costs),
     }).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create catalog item")
@@ -210,7 +222,7 @@ async def create_item(
         )
     except Exception as e:
         logger.warning(f"Failed to embed catalog item {item['id']}: {e}")
-    return item
+    return item if costs else hide_costs(item)
 
 
 @router.patch("/items/{item_id}")
@@ -225,7 +237,8 @@ async def update_item(
         k: v for k, v in payload.items()
         if k in {"name", "item_type", "description", "status", "attributes", "variant_group_id", "price_paise", "price_note", "stock_quantity", "gst_rate"}
     }
-    updates.update(_clean_stock_fields(payload))
+    costs = sees_costs(_ctx)
+    updates.update(_clean_stock_fields(payload, costs))
     if "status" in updates and updates["status"] not in _VALID_STATUSES:
         raise HTTPException(status_code=400, detail=f"status must be one of {_VALID_STATUSES}")
     if updates.get("price_paise") is not None and updates["price_paise"] < 0:
@@ -282,7 +295,7 @@ async def update_item(
             )
         except Exception as e:
             logger.warning(f"Failed to re-embed catalog item {item['id']}: {e}")
-    return item
+    return item if costs else hide_costs(item)
 
 
 @router.delete("/items/{item_id}")
@@ -782,7 +795,7 @@ _STOCK_WHY = {"stock_in": "New stock came", "found": "Found in shop", "damaged":
 
 
 @router.get("/items/{item_id}")
-async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id), ctx: dict = Depends(get_tenant_and_role)):
     """One item for its page: the item, sizes x colours, photos, sold this month, people waiting."""
     from app.services.deals import held_quantities
     from app.services.meta_catalog import item_link
@@ -819,6 +832,8 @@ async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
              .eq("tenant_id", tenant_id).limit(1).execute()).data or []
         group = g[0]["name"] if g else None
     held = held_quantities(tenant_id, [item["id"]], db).get(item["id"], 0) if item.get("stock_quantity") is not None else 0
+    if not sees_costs(ctx):
+        item = hide_costs(item)
     return {
         **item,
         "held_quantity": held,
@@ -873,7 +888,7 @@ async def correct_stock(
                                           created_by=ctx.get("user_id"), db=db)
             if not result["ok"]:
                 raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
-        return await item_detail(item_id, tenant_id=tenant_id)
+        return await item_detail(item_id, tenant_id=tenant_id, ctx=ctx)
     if _has_variants(db, tenant_id, str(item_id)):
         raise HTTPException(status_code=400, detail="Pick the size or colour to correct")
     rows = (
@@ -892,7 +907,7 @@ async def correct_stock(
                               created_by=ctx.get("user_id"), db=db)
         if not result["ok"]:
             raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
-    return await item_detail(item_id, tenant_id=tenant_id)
+    return await item_detail(item_id, tenant_id=tenant_id, ctx=ctx)
 
 
 # ── The shop's Meta catalogue (services/meta_catalog.py) ────────────────────────

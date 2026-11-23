@@ -20,6 +20,7 @@ import { AdSpendSection } from "@/components/dashboard/AdSpendSection";
 import { isSmsOnly } from "@/lib/utils";
 import { KpiCard } from "@/components/kpi-card";
 import { TodayBlock } from "./home/TodayBlock";
+import { FinishSetupCard } from "@/components/first-setup/FinishSetupCard";
 
 const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; bar: string }> = {
   A: { label: "Hot", bar: "bg-emerald-500" },
@@ -201,6 +202,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
 
   return (
     <div className="dashboard-swiss space-y-8">
+      <FinishSetupCard />
       <TodayBlock />
 
       <div className="space-y-8">

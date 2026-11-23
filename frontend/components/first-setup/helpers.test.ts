@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   GSTIN_PATTERN,
+  asksForGstin,
+  finishSetupCard,
+  gstTypeFor,
   LOGIN_PAUSE_MS,
   NO_TRIES,
   addWrongTry,
@@ -88,5 +91,30 @@ describe("GSTIN_PATTERN", () => {
     expect(GSTIN_PATTERN.test("33abcde1234f1z5")).toBe(false);
     expect(GSTIN_PATTERN.test("33ABCDE1234F1Z")).toBe(false);
     expect(GSTIN_PATTERN.test("")).toBe(false);
+  });
+});
+
+describe("GST choice", () => {
+  it("maps each pick to the bill type", () => {
+    expect(gstTypeFor("yes")).toBe("regular");
+    expect(gstTypeFor("composition")).toBe("composition");
+    expect(gstTypeFor("no")).toBe("none");
+  });
+  it("asks for a GSTIN only when registered", () => {
+    expect(asksForGstin("yes")).toBe(true);
+    expect(asksForGstin("composition")).toBe(true);
+    expect(asksForGstin("no")).toBe(false);
+    expect(asksForGstin(null)).toBe(false);
+  });
+});
+
+describe("finishSetupCard", () => {
+  it("counts the steps done and names the card", () => {
+    expect(finishSetupCard(["business", "items", "hours"])).toEqual({ done: 3, total: 6, finished: false, title: "Finish setup (3 of 6 done)" });
+  });
+  it("ignores repeats and unknown steps, and finishes at 6", () => {
+    expect(finishSetupCard(["business", "business", "nope"]).done).toBe(1);
+    expect(finishSetupCard(["business", "items", "hours", "alerts", "connect", "ai"]).finished).toBe(true);
+    expect(finishSetupCard(null).done).toBe(0);
   });
 });

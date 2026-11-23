@@ -1241,7 +1241,8 @@ async def get_lead_messages(lead_id: UUID, tenant_id: str = Depends(get_tenant_i
     return result.data or []
 
 @router.get("/{lead_id}", response_model=LeadWithMessages)
-async def get_lead(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
+async def get_lead(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
+    tenant_id = ctx["tenant_id"]
     db = get_supabase()
     lead_result = db.table("leads").select("*").eq("id", str(lead_id)).eq("tenant_id", tenant_id).is_("deleted_at", "null").maybe_single().execute()
     if not lead_result or not lead_result.data:
@@ -1282,6 +1283,7 @@ async def get_lead(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
             lead["channel"] = campaign.data["platform"]
 
     _add_came_from(db, tenant_id, [lead])
+    _hide_numbers_for_caller(db, tenant_id, ctx, [lead])  # a cloud-calling telecaller sees 98•••••210
     return lead
 
 @router.patch("/{lead_id}", response_model=Lead)

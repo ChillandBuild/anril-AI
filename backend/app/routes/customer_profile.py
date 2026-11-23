@@ -46,6 +46,21 @@ def _lead_or_404(db, ctx: dict, lead_id: str) -> dict:
     return lead
 
 
+def _phone_for(db, tenant_id: str, ctx: dict, phone: str | None) -> tuple[str | None, bool]:
+    """Call IQ: a cloud-calling telecaller sees 98•••••210 when the business hides numbers.
+    Any problem leaves the number as it was."""
+    if not phone or ctx.get("role") != "caller":
+        return phone, False
+    try:
+        from app.services.call_rules import hides_numbers, mask_phone
+
+        if hides_numbers(db, tenant_id, ctx):
+            return mask_phone(phone), True
+    except Exception as e:
+        logger.warning(f"Customer page: could not apply hidden numbers for {tenant_id}: {e}")
+    return phone, False
+
+
 def _names(db, table: str, column: str, tenant_id: str, ids: set) -> dict[str, str]:
     ids = {str(i) for i in ids if i}
     if not ids:
@@ -297,9 +312,11 @@ def customer_profile(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
     for c in chats:
         channels[c["channel"]] = channels.get(c["channel"], 0) + 1
 
+    phone, phone_hidden = _phone_for(db, tenant_id, ctx, lead.get("phone"))
+
     return {
         "lead": {
-            "id": str(lead["id"]), "name": lead.get("name"), "phone": lead.get("phone"),
+            "id": str(lead["id"]), "name": lead.get("name"), "phone": phone, "phone_hidden": phone_hidden,
             "source": lead.get("source"), "ad_name": lead.get("ad_name"), "created_at": lead.get("created_at"),
             "segment": lead.get("segment"), "score": lead.get("score"), "handled_by": handler,
             "ai_enabled": lead.get("ai_enabled") is not False,

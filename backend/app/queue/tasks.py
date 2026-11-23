@@ -27,6 +27,7 @@ RETRY_CLASS: dict[str, str] = {
     "otp-sweep": "A",
     "numbers-pool-sync": "B",
     "send-log-prune": "B",
+    "password-help-prune": "B",
     "scheduler-runs-prune": "B",
     "private-send-meta-reconcile": "B",
     "auto-archive-idle": "B",
@@ -51,6 +52,7 @@ RETRY_CLASS: dict[str, str] = {
     "reports-monthly-bells": "C",
     "call-break-limits": "C",
     "evening-summary": "C",
+    "fee-reminders": "C",
     "comeback-offers": "C",
 }
 
@@ -233,6 +235,15 @@ async def numbers_pool_sync(timestamp: int) -> None:
 async def send_log_prune(timestamp: int) -> None:
     from app.services.outbound_router import prune_send_log
     await prune_send_log()
+
+
+@queue_app.periodic(cron="15 22 * * *", periodic_id="password-help-prune")  # 03:45 IST
+@queue_app.task(name="password-help-prune", queue="maintenance")
+def password_help_prune(timestamp: int) -> None:
+    """Forgot-password requests hold an email or phone: keep them 90 days, then delete."""
+    from app.db.supabase import get_supabase
+    from app.services.password_help import prune_old
+    prune_old(get_supabase())
 
 
 @queue_app.periodic(cron="45 21 * * *", periodic_id="scheduler-runs-prune")  # 03:15 IST
@@ -456,6 +467,16 @@ def evening_summary(timestamp: int) -> None:
     from app.db.supabase import get_supabase
     from app.services.evening_summary import send_evening_summaries
     send_evening_summaries(get_supabase())
+
+
+# Courses (v9.2 P2). Class C: WhatsApp fee reminders 3 days before, on, and 3 days after each part's due date.
+# Each send is claimed first, so a re-run never double-sends. Off until the template is approved and switched on.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(10, 0), periodic_id="fee-reminders")
+@queue_app.task(name="fee-reminders", **_one_at_a_time("fee-reminders"), queue="messages")
+async def fee_reminders(timestamp: int) -> None:
+    """10 AM IST: fee instalment reminders to students (or their parent)."""
+    from app.services.fee_plans import send_fee_reminders
+    await send_fee_reminders()
 
 
 @queue_app.periodic(cron=_daily_ist_as_utc_cron(11, 0), periodic_id="comeback-offers")

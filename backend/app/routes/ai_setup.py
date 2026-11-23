@@ -86,6 +86,14 @@ async def thumbs_down(body: FeedbackIn, ctx: dict = Depends(require_feedback)):
     return {"ok": True, "feedback": saved}
 
 
+@router.get("/reply-feedback/mine")
+async def my_thumbs_down(message_ids: str = Query("", max_length=9000), ctx: dict = Depends(require_feedback)):
+    """The caller's own marks on the AI replies on screen: {marks: {message_id: {reason, note}}}."""
+    ids = [m for m in message_ids.split(",") if m.strip()]
+    marks = await asyncio.to_thread(report.my_feedback, get_supabase(), ctx, ids)
+    return {"marks": marks}
+
+
 @router.delete("/reply-feedback/{message_id}")
 async def undo_thumbs_down(message_id: str, ctx: dict = Depends(require_feedback)):
     await asyncio.to_thread(report.delete_feedback, get_supabase(), ctx, message_id)

@@ -13,6 +13,8 @@ from app.services.notification_config import (
     get_notification_config,
     save_notification_config,
     allowed_in_quiet_time,
+    invalidate_policy_cache,
+    is_always_on,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,14 @@ _CATALOG: tuple[dict, ...] = (
 )
 
 _BY_KEY = {a["key"]: a for a in _CATALOG}
+
+
+def who_is_fixed(key: str) -> bool:
+    """Alerts about one person's own work (their customer wrote back, their call-back is due) always go to that
+    person, and "number disconnected" always goes to the owner and whoever manages numbers: the senders pick the
+    people, so a "who gets it" choice could only drop them. These rows show who gets it, but it cannot be changed."""
+    a = _BY_KEY.get(key)
+    return bool(a) and (list(a["who"]) == ["assigned"] or key == "number_disconnected")
 
 
 def alert_keys() -> list[str]:
@@ -97,9 +107,12 @@ def list_alerts(db, tenant_id: str) -> dict:
             "key": a["key"],
             "label": a["label"],
             "area": a["area"],
-            "who": recipients.get(a["key"]) or list(a["who"]),
+            "who": list(a["who"]) if who_is_fixed(a["key"]) else (recipients.get(a["key"]) or list(a["who"])),
+            "who_fixed": who_is_fixed(a["key"]),
             "how": how,
-            "on": bool(events.get(a["key"], True)),
+            # An always-on alert shows as on and locked, whatever an older save says.
+            "on": True if is_always_on(a["key"]) else bool(events.get(a["key"], True)),
+            "locked": is_always_on(a["key"]),
             "comes_through_in_quiet_time": allowed_in_quiet_time(a["key"]),
         })
     return {"alerts": alerts, "quiet_time": quiet_time_view(cfg), "who_labels": WHO_LABELS}
@@ -109,7 +122,9 @@ def set_alert(db, tenant_id: str, key: str, on: bool, who: list[str] | None = No
     """Turn one alert on or off and, when `who` is given, change who gets it. Raises KeyError / ValueError."""
     if key not in _BY_KEY:
         raise KeyError(key)
-    if who is not None:
+    if not on and is_always_on(key):
+        raise ValueError("This alert cannot be switched off. It is about money, a customer who needs a person, or a disconnected number.")
+    if who is not None and not who_is_fixed(key):
         clean = [w for w in dict.fromkeys(who) if w in WHO_CHOICES]
         if not clean or len(clean) != len(set(who)):
             raise ValueError("Pick who should get this alert: the owner, the whole team, or the person it belongs to.")
@@ -119,9 +134,11 @@ def set_alert(db, tenant_id: str, key: str, on: bool, who: list[str] | None = No
             {"tenant_id": tenant_id, "key": RECIPIENTS_KEY, "value": json.dumps(recipients), "is_secret": False},
             on_conflict="tenant_id,key",
         ).execute()
+        invalidate_policy_cache(tenant_id)
     cfg = get_notification_config(tenant_id, db=db)
     cfg["events"] = {**(cfg.get("events") or {}), key: bool(on)}
     save_notification_config(tenant_id, cfg, db=db)
+    invalidate_policy_cache(tenant_id)
     return next(a for a in list_alerts(db, tenant_id)["alerts"] if a["key"] == key)
 
 

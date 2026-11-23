@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ItemThumb } from "./ItemThumb";
 import { MetaCatalogueBar } from "./MetaCatalogueBar";
 import { formatPaise, isLow, stockValuePaise } from "./money";
+import { costsHidden } from "@/lib/billBrand";
 
 type Filter = "all" | "out" | "low" | "waiting" | "not_selling" | "draft";
 
@@ -120,6 +121,9 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
   const products = useMemo(() => items.filter((i) => i.item_type === "product"), [items]);
   const missingIndex = useMemo(() => items.filter((i) => i.status === "ready" && !i.embedding).length, [items]);
 
+  // The API leaves cost prices out for people without Orders access: no stock value then.
+  const costsAreHidden = useMemo(() => items.length > 0 && items.every((i) => costsHidden(i as { costs_hidden?: boolean })), [items]);
+
   const stats = useMemo(() => {
     const tracked = products.filter((i) => i.stock_quantity != null);
     const pieces = tracked.reduce((a, i) => a + Math.max(i.stock_quantity ?? 0, 0), 0);
@@ -222,8 +226,12 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
       <MetaCatalogueBar canManage={canManage} onChanged={() => loadItems(query || undefined)} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard icon="📦" label="Stock value" value={formatPaise(stats.value)}
-          sub={`at cost price · ${stats.pieces} pieces${stats.noCost ? ` · ${stats.noCost} without cost` : ""}`} />
+        {costsAreHidden ? (
+          <StatCard icon="📦" label="Stock value" value="Not shown" sub={`${stats.pieces} pieces · cost prices are for people who can see Orders`} />
+        ) : (
+          <StatCard icon="📦" label="Stock value" value={formatPaise(stats.value)}
+            sub={`at cost price · ${stats.pieces} pieces${stats.noCost ? ` · ${stats.noCost} without cost` : ""}`} />
+        )}
         <StatCard icon="🔴" label="Out of stock" tone={stats.outNames.length ? "red" : "plain"}
           value={`${stats.outNames.length} ${stats.outNames.length === 1 ? "size" : "sizes"}`}
           sub={stats.outNames.slice(0, 3).join(", ") || "Nothing sold out"} active={filter === "out"} onClick={() => toggle("out")} />

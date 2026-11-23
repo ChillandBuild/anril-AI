@@ -853,3 +853,112 @@ async def test_send_quote_relinks_a_deal_whose_link_expired_instead_of_opening_a
     relink.assert_awaited_once()
     create.assert_not_awaited()
     assert "https://rzp.io/new" in turn.quote_text
+
+
+class TestPayFullInsteadOfAdvance:
+    """A customer who is offered an advance can say "I will pay it all now": send_quote(pay_full=true)."""
+
+    def test_a_new_quote_asks_the_advance_rule_by_default(self, monkeypatch):
+        shop = Shop(monkeypatch)
+        run_shop([call("send_quote", item_ids=["sku-runner"], quantities=[2])])
+        assert shop.created[0]["advance_by_rule"] is True
+
+    def test_pay_full_makes_a_new_quote_without_the_advance_rule(self, monkeypatch):
+        shop = Shop(monkeypatch)
+        out = run_shop([call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)])
+        assert shop.created[0]["advance_by_rule"] is False and "https://rzp.io/l/deal1" in out.quote_text
+
+    def test_pay_full_on_an_open_advance_quote_swaps_in_a_full_amount_link(self, monkeypatch):
+        from app.services import deals
+        from tests.fake_supabase import FakeSupabase
+        db = FakeSupabase()
+        db.add("deals", id="d9", tenant_id=TENANT, advance_paise=100000, paid_paise=0,
+               payment_link="https://rzp.io/l/advance", razorpay_payment_link_id="plink_adv", total_paise=499800)
+        existing = [{"id": "d9", "stage": "awaiting_payment", "payment_link": "https://rzp.io/l/advance",
+                     "total_paise": 499800, "advance_paise": 100000, "paid_paise": 0, "link_expires_at": _in(hours=10),
+                     "items": [{"catalog_item_id": "sku-runner", "qty": 2, "name": "Runner X", "line_total_paise": 499800}]}]
+        shop = Shop(monkeypatch, existing=existing)
+        asked, cancelled = [], []
+
+        async def send_payment_link(tenant_id, deal_id, *, send_whatsapp_message=True, amount_paise=None, db=None):
+            row = db.rows("deals")[0]
+            asked.append((amount_paise, row["advance_paise"], row["payment_link"]))
+            return {"payment_link": "https://rzp.io/l/full", "message_sent": False,
+                    "deal_patch": {"razorpay_payment_link_id": "plink_full"}}
+
+        async def cancel(plink_id, tenant_id):
+            cancelled.append(plink_id)
+            return True
+
+        import app.services.payment_razorpay as rzp
+        monkeypatch.setattr(deals, "send_payment_link", send_payment_link)
+        monkeypatch.setattr(rzp, "cancel_payment_link", cancel)
+        ctx = deal_actions.DealContext(config={}, db=db, lead_id=LEAD, tenant_id=TENANT, phone=PHONE,
+                                       catalog=CATALOG, max_images=3)
+        out = asyncio.run(deal_actions.apply_tool_calls(
+            [call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)], ctx))
+        assert not shop.created
+        assert asked == [(None, 0, None)]  # no advance, no old link to reuse, whole balance
+        assert cancelled == ["plink_adv"]
+        assert "https://rzp.io/l/full" in out.quote_text and "advance" not in out.quote_text.lower()
+
+    def test_a_failed_full_link_puts_the_advance_back(self, monkeypatch):
+        from app.services import deals
+        from tests.fake_supabase import FakeSupabase
+        db = FakeSupabase()
+        db.add("deals", id="d9", tenant_id=TENANT, advance_paise=100000, paid_paise=0,
+               payment_link="https://rzp.io/l/advance", total_paise=499800)
+        existing = [{"id": "d9", "stage": "awaiting_payment", "payment_link": "https://rzp.io/l/advance",
+                     "total_paise": 499800, "advance_paise": 100000, "paid_paise": 0, "link_expires_at": _in(hours=10),
+                     "items": [{"catalog_item_id": "sku-runner", "qty": 2, "name": "Runner X", "line_total_paise": 499800}]}]
+        Shop(monkeypatch, existing=existing)
+
+        async def broken(*a, **k):
+            raise RuntimeError("401")
+
+        monkeypatch.setattr(deals, "send_payment_link", broken)
+        monkeypatch.setattr(deal_actions, "open_handover", lambda ctx, reason: None)
+        ctx = deal_actions.DealContext(config={}, db=db, lead_id=LEAD, tenant_id=TENANT, phone=PHONE,
+                                       catalog=CATALOG, max_images=3)
+        out = asyncio.run(deal_actions.apply_tool_calls(
+            [call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)], ctx))
+        row = db.rows("deals")[0]
+        assert out.quote_text is None and row["advance_paise"] == 100000 and row["payment_link"] == "https://rzp.io/l/advance"
+
+
+class TestPayFullNeverLeavesTwoLinks:
+    def test_an_advance_link_that_will_not_cancel_is_kept_and_the_full_link_taken_back(self, monkeypatch):
+        from app.services import deals
+        import app.services.payment_razorpay as rzp
+        from tests.fake_supabase import FakeSupabase
+        db = FakeSupabase()
+        db.add("deals", id="d9", tenant_id=TENANT, advance_paise=100000, paid_paise=0,
+               payment_link="https://rzp.io/l/advance", razorpay_payment_link_id="plink_adv", total_paise=499800,
+               link_expires_at=_in(hours=10))
+        existing = [{"id": "d9", "stage": "awaiting_payment", "payment_link": "https://rzp.io/l/advance",
+                     "total_paise": 499800, "advance_paise": 100000, "paid_paise": 0, "link_expires_at": _in(hours=10),
+                     "items": [{"catalog_item_id": "sku-runner", "qty": 2, "name": "Runner X", "line_total_paise": 499800}]}]
+        Shop(monkeypatch, existing=existing)
+        cancelled = []
+
+        async def send_payment_link(tenant_id, deal_id, *, send_whatsapp_message=True, amount_paise=None, db=None):
+            db.table("deals").update({"payment_link": "https://rzp.io/l/full", "razorpay_payment_link_id": "plink_full"}) \
+                .eq("id", deal_id).execute()
+            return {"payment_link": "https://rzp.io/l/full", "message_sent": False,
+                    "deal_patch": {"razorpay_payment_link_id": "plink_full"}}
+
+        async def cancel(plink_id, tenant_id):
+            cancelled.append(plink_id)
+            return plink_id != "plink_adv"  # Razorpay refuses to cancel the advance link
+
+        monkeypatch.setattr(deals, "send_payment_link", send_payment_link)
+        monkeypatch.setattr(rzp, "cancel_payment_link", cancel)
+        ctx = deal_actions.DealContext(config={}, db=db, lead_id=LEAD, tenant_id=TENANT, phone=PHONE,
+                                       catalog=CATALOG, max_images=3)
+        out = asyncio.run(deal_actions.apply_tool_calls(
+            [call("send_quote", item_ids=["sku-runner"], quantities=[2], pay_full=True)], ctx))
+        row = db.rows("deals")[0]
+        assert cancelled == ["plink_adv", "plink_full"]
+        assert row["payment_link"] == "https://rzp.io/l/advance" and row["razorpay_payment_link_id"] == "plink_adv"
+        assert row["advance_paise"] == 100000
+        assert "https://rzp.io/l/full" not in (out.quote_text or "")

@@ -20,6 +20,23 @@ host=github.com
 
 ## Active Backlog
 
+### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329 live; 330 NOT applied)
+- **Migration 330 (Courses tables) is not applied**: Prem declined it on 2026-11-23. The Courses tab stays hidden
+  until `course_batches` exists (properties.availability checks it). Apply 330, then education businesses see it.
+  The fee-reminders job (10:00 IST) does nothing until then.
+- Courses: waitlist is not told when a seat frees; no pay link / UPI QR in fee reminders; AI cannot call
+  join_waitlist / next_open_batch yet; turning AI Replies off also pauses fee reminders (master switch).
+- Properties: "liked, thinking → loan help after 2 days" not built; a cancelled order does not give units back;
+  units_left set after an order was paid never counts that order.
+- Bills: UPI prints as text (no QR helper); app-level types for brand/advance_changes live as casts, not in lib/api.ts.
+- Alerts: WhatsApp owner alerts don't obey the off switch (only "AI needs a person", which is always on); the
+  60 s alert-policy cache is per process (the queue worker can send a just-disabled alert for up to a minute).
+- Purchases routes still show cost to purchases.view without deals.view (confirm the policy).
+- Single-lead page: a telecaller can still open another telecaller's customer by URL (unchanged).
+- Call reviews `?call=` deep link opens only for team.manage (telecallers see another page).
+- Not visually checked: any of the new pages (Properties, Courses, Password help, Alerts locks, bill brand,
+  Payments switch, Finish setup card, tab-bar height fix).
+
 - **Inbound leads v2 — later parts (Prem, 2026-11-18).** Built now: the list (Interest/Result chips, top cards, reply status, set result, came/paid from orders). **Still to build, in this order of ask:** (Q2, Prem: "later we need to build") **AI details per lead**: the AI agent picks budget / area / loan / visit date / what they want (mapped to the Catalogue) out of the chat and saves it on the customer, each marked "from chat" and editable; this also feeds the "What they want / Why lost / Customers" sub-tabs and business/city for chat leads (today only Instant forms and IndiaMART/JustDial fill business/city, via `leads.collected_data`). B, C, D were built 2026-11-18 (decisions/log.md). Left: a WhatsApp version of the 8 PM unmarked-bookings check (needs an approved day-closing template and an open-hours setting), a follow-up for exactly the people selected (today follow-ups are rules only), and per-lead tags (Prem said build tags later).
 
 - **Meta Ads reporting-column parity — built locally, awaiting deploy and sync (2026-11-10).** All Ads now has Result rate, Results value, Results ROAS, Schedule and Last significant edit; Messaging Ads now has cost per messaging contact/new contact, reply rate, block rate and Meta-to-Anril contact match rate. Both Customize Columns pickers provide hover descriptions for every option. Migration `254_meta_ads_schedule_and_edit_metadata.sql` was applied to live Supabase and verified: `ad_campaigns.meta_updated_at` and `ad_sets.start_time`, `end_time`, `meta_updated_at` now exist. Before rollout: deploy the backend and frontend, then run a Meta Ads sync to populate schedule/edit metadata. Frontend typecheck and production build pass. Focused backend tests cannot collect in this Windows environment because installed Python is missing the declared `phonenumbers` dependency; restore dependencies before the next backend test run.

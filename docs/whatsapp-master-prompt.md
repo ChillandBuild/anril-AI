@@ -62,6 +62,20 @@ cannot see a diary or slots" rule). Cached 60 s per tenant; any read problem add
 from `leads.collected_data["instant_forms"]`, newest first, at most 3 forms / ~1,500 characters, consent and
 disclaimer questions left out. Cached 60 s per lead; any read problem adds nothing.
 
+**Properties block (appended right after the Bookings block, before Form answers; text built in
+`services/properties.py`, v9.2 P1).** Only for a business that has at least one property (a catalogue item
+with `item_type = 'property'`). Up to 15 properties (project, kind, BHK, size, price range unless the item's
+`ai_share_price` is off, units left), then the rules: ask budget, BHK, area and loan need one at a time, and
+offer a site visit with the booking link when there is one. Cached 60 s per tenant; any read problem adds nothing.
+
+**Courses block (appended right after the Properties block; text built in `services/courses.py`, v9.2 P2).**
+Only for a business with open batches (`course_batches` not closed, under a catalogue item with
+`item_type = 'course'`). One line per batch (course - batch, dates, timing, mode, seats left or FULL, fee unless
+the course's `ai_share_price` is off, teacher), labelled as facts the business entered, then: when a batch is
+full offer the next open one, else say we will put them on the waiting list. When a "Demo class" Bookings
+service exists and the booking link is on, it adds the link to offer a free demo. Cached 60 s per tenant;
+any read problem adds nothing.
+
 ---
 
 ## The prompt

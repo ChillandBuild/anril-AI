@@ -211,6 +211,22 @@ def put_order_settings(payload: OrderSettingsIn, ctx: dict = Depends(require_own
         raise _bad(e)
 
 
+class RemindersIn(BaseModel):
+    on: bool
+
+
+@router.get("/balance-reminders")
+def get_balance_reminders(ctx: dict = Depends(require_deals_view)):
+    """Is the automatic WhatsApp reminder for an unpaid balance on? (On unless the owner turned it off.)"""
+    return {"on": orders_service.balance_reminders_on(get_supabase(), ctx["tenant_id"])}
+
+
+@router.put("/balance-reminders")
+def put_balance_reminders(payload: RemindersIn, ctx: dict = Depends(require_owner)):
+    """Owner only: switch the automatic balance reminders on or off for the whole shop."""
+    return {"on": orders_service.save_balance_reminders(get_supabase(), ctx["tenant_id"], payload.on)}
+
+
 # ── Day closing ───────────────────────────────────────────────────────────────
 
 @router.get("/day-closing")

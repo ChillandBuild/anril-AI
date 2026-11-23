@@ -124,6 +124,32 @@ def save_order_settings(db, tenant_id: str, data: dict) -> dict:
     return clean
 
 
+REMINDERS_KEY = "balance_reminders"  # app_settings: "off" = no automatic balance reminders; unset = on (as always)
+
+
+def balance_reminders_on(db, tenant_id: str) -> bool:
+    """Settings > Payments & advance: the shop's switch for the automatic balance reminders.
+    ON unless the owner turned it off; a failed read never turns reminders off."""
+    try:
+        rows = (db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", REMINDERS_KEY)
+                .limit(1).execute().data or [])
+    except Exception as e:
+        logger.warning(f"Balance reminder switch for {tenant_id} unreadable, treating as on: {e}")
+        return True
+    value = str((rows[0].get("value") if rows else "") or "").strip().lower()
+    return value not in ("off", "false", "0", "no")
+
+
+def save_balance_reminders(db, tenant_id: str, on: bool) -> bool:
+    from app.config_dynamic import invalidate_cache
+    db.table("app_settings").upsert({
+        "tenant_id": tenant_id, "key": REMINDERS_KEY, "value": "on" if on else "off", "is_secret": False,
+        "updated_at": "now()",
+    }, on_conflict="tenant_id,key").execute()
+    invalidate_cache(REMINDERS_KEY)
+    return bool(on)
+
+
 # ─────────────────────────────────────────────────────────────── small helpers
 
 def _now() -> datetime:
@@ -572,6 +598,7 @@ def order_detail(db, tenant_id: str, deal_id: str) -> dict:
         },
         "ready_preview": ready_preview,
         "advance_note": deal.get("advance_note"),
+        "advance_changes": advance_changes(db, tenant_id, deal_id),
         "returnable": _returnable(db, tenant_id, deal_id),
         "settings": {"working_label": order_settings(tenant_id)["working_label"]},
         "stage": deal.get("stage"),
@@ -1136,6 +1163,9 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
     if method not in CARD_METHODS + ("link",):
         raise OrderError("Pick how they pay")
     bill_type = data.get("bill_type") or "gst"
+    from app.services.business_details import charges_gst
+    if bill_type == "gst" and not charges_gst(tenant_id, db):
+        bill_type = "simple"  # composition / not registered: no tax added, so the bill's lines add up to its total
     if bill_type not in ("gst", "simple"):
         raise OrderError("Pick GST bill or Simple bill")
     gstin = (data.get("gstin") or "").strip().upper() or None
@@ -1191,7 +1221,7 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
     }
     deal = db.table("deals").insert(row).execute().data[0]
     if advance_note:
-        _audit(db, tenant_id, user_id, "order.advance_changed", deal["id"], {"note": advance_note})
+        log_advance_change(db, tenant_id, user_id, deal["id"], advance_note, from_paise=asked, to_paise=advance)
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     stock_short = _check_stock(db, tenant_id, lines) if mode == "now" else []
 
@@ -1230,6 +1260,48 @@ def _audit(db, tenant_id: str, user_id: str | None, action: str, target_id: str,
         logger.warning(f"Audit {action} for {target_id} failed: {e}")
 
 
+def _actor_name(db, tenant_id: str, user_id: str | None) -> str | None:
+    """Who a signed-in user is, in the shop's words: their teammate name, else "Owner"."""
+    if not user_id:
+        return None
+    try:
+        rows = db.table("callers").select("name").eq("tenant_id", tenant_id).eq("user_id", user_id).limit(1).execute().data or []
+        if rows and rows[0].get("name"):
+            return str(rows[0]["name"])
+        users = db.table("tenant_users").select("role").eq("tenant_id", tenant_id).eq("user_id", user_id).limit(1).execute().data or []
+        return "Owner" if users and users[0].get("role") == "owner" else None
+    except Exception:
+        return None
+
+
+def log_advance_change(db, tenant_id: str, user_id: str | None, deal_id: str, note: str, *,
+                       from_paise: int, to_paise: int) -> None:
+    """Staff changed the advance the rule asked for: log {from, to, by, at} (the activity log keeps the time)."""
+    _audit(db, tenant_id, user_id, "order.advance_changed", deal_id, {
+        "note": note, "from_paise": int(from_paise), "to_paise": int(to_paise),
+        "by_name": _actor_name(db, tenant_id, user_id),
+    })
+
+
+def advance_changes(db, tenant_id: str, deal_id: str) -> list[dict]:
+    """"Advance changed ₹500 → ₹300 by Ravi, 23 Nov", oldest first. Older rows without the two
+    amounts are left out (the order still shows their written note)."""
+    try:
+        rows = (db.table("app_audit_logs").select("metadata, created_at").eq("tenant_id", tenant_id)
+                .eq("action", "order.advance_changed").eq("target_id", deal_id).order("created_at")
+                .limit(20).execute().data or [])
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        meta = r.get("metadata") or {}
+        if meta.get("from_paise") is None or meta.get("to_paise") is None:
+            continue
+        out.append({"from_paise": int(meta["from_paise"]), "to_paise": int(meta["to_paise"]),
+                    "by": meta.get("by_name"), "at": r.get("created_at")})
+    return out
+
+
 # ─────────────────────────────────────────────────────────────── payment reminders (scheduler)
 
 async def send_due_reminders(db=None, now: datetime | None = None, limit: int = 200) -> int:
@@ -1256,12 +1328,18 @@ async def send_due_reminders(db=None, now: datetime | None = None, limit: int = 
         .lt("reminders_sent", len(REMINDER_DAYS)).not_.is_("lead_id", "null").limit(limit).execute()
     ).data or []
     sent = 0
+    switch: dict[str, bool] = {}  # tenant -> balance reminders on?
     for deal in rows:
         start = _parse(deal.get("reminders_from"))
         step = int(deal.get("reminders_sent") or 0)
         if not start or step >= len(REMINDER_DAYS) or balance_paise(deal) <= 0:
             continue
         if now < start + timedelta(days=REMINDER_DAYS[step]):
+            continue
+        tenant = deal["tenant_id"]
+        if tenant not in switch:
+            switch[tenant] = balance_reminders_on(db, tenant)
+        if not switch[tenant]:  # the owner turned balance reminders off: not counted, so switching on resumes them
             continue
         # Counted even if WhatsApp refuses it, so a closed window can't make it retry every hour.
         _mark_reminded(db, deal["tenant_id"], deal)
@@ -1382,7 +1460,8 @@ def public_bill(db, token: str) -> dict | None:
         db.table("deal_payments").select("method").eq("deal_id", deal["id"]).eq("tenant_id", tenant_id).execute()
     ).data or []
     methods = list(dict.fromkeys(METHOD_LABELS.get(p.get("method"), "") for p in paid_by if p.get("method")))
-    return {
+    from app.services.bill_brand import decorate  # logo, signature, PAN, UPI, bank, terms; "Bill of supply" for composition
+    return decorate({
         "methods": [m for m in methods if m],
         "business": {k: business.get(k) or "" for k in ("legal_name", "address", "city", "state", "pincode", "gstin", "phone", "email")},
         "bill_type": deal.get("bill_type") or "gst",
@@ -1409,7 +1488,7 @@ def public_bill(db, token: str) -> dict | None:
         "refunded_paise": int(deal.get("refunded_paise") or 0),
         "pay_link": deal.get("payment_link") if deal.get("stage") == "awaiting_payment" else None,
         "quote": _public_quote(deal),
-    }
+    }, db, tenant_id, business)
 
 
 def _public_quote(deal: dict) -> dict | None:

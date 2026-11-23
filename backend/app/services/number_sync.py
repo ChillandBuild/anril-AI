@@ -17,6 +17,57 @@ from app.services.numbers_pool import get_unlocked_number_ids, normalize_phone_n
 
 logger = logging.getLogger(__name__)
 
+# Meta statuses that mean "customers can no longer reach you on this number".
+DISCONNECTED_STATUSES = frozenset({"DISCONNECTED", "OFFLINE", "BANNED", "DELETED"})
+# Members besides the owner who run the WhatsApp numbers and so should hear about a disconnect.
+_NUMBER_ADMIN_PERMISSIONS = ("numbers.manage", "settings.manage")
+
+
+def number_alert_user_ids(db, tenant_id: str) -> list[str]:
+    """The owner(s) plus anyone whose role can manage numbers or settings."""
+    members = db.table("tenant_users").select("user_id,role,role_id").eq("tenant_id", tenant_id).execute().data or []
+    role_ids = [m["role_id"] for m in members if m.get("role_id") and m.get("role") != "owner"]
+    allowed_roles: set[str] = set()
+    if role_ids:
+        rows = db.table("tenant_roles").select("id,permissions").eq("tenant_id", tenant_id).in_("id", role_ids).execute().data or []
+        for r in rows:
+            perms = r.get("permissions") or []
+            if any(p in perms for p in _NUMBER_ADMIN_PERMISSIONS):
+                allowed_roles.add(r["id"])
+    return [
+        m["user_id"] for m in members
+        if m.get("user_id") and (m.get("role") == "owner" or m.get("role_id") in allowed_roles)
+    ]
+
+
+def alert_if_number_disconnected(db, tenant_id: str, row: dict, new_status: str | None) -> int:
+    """Raise "your WhatsApp number is disconnected" once per number per status change.
+
+    `row` is the number as it was before this sync, `new_status` is the status Meta reports now. An alert goes out only
+    when the status changed to a disconnected one, so the next sync (same status) stays quiet. Best-effort: never raises.
+    Returns how many people were told.
+    """
+    try:
+        new = (new_status or "").upper()
+        old = (row.get("meta_status") or "").upper()
+        if new not in DISCONNECTED_STATUSES or new == old:
+            return 0
+        from app.services.notify import notify_user
+        label = row.get("display_name") or row.get("number") or "Your WhatsApp number"
+        told = 0
+        for user_id in number_alert_user_ids(db, tenant_id):
+            notify_user(
+                tenant_id, user_id, "number_disconnected",
+                "Your WhatsApp number is disconnected",
+                f"{label} is disconnected, so customers cannot reach you on it. Open Settings, Connect channels to fix it.",
+                db=db, push_url="/dashboard/settings/connect-channels",
+            )
+            told += 1
+        return told
+    except Exception as e:
+        logger.warning(f"number_disconnected alert failed for number {row.get('id')}: {e}")
+        return 0
+
 
 async def apply_meta_snapshot(db, tenant_id: str, row: dict, meta: dict, unlocked_ids: set[str], source: str) -> dict:
     """Write Meta's view of one number onto its row, advance warm-up/rest,
@@ -37,6 +88,8 @@ async def apply_meta_snapshot(db, tenant_id: str, row: dict, meta: dict, unlocke
     merged = {**row, **updates}
 
     db.table("phone_numbers").update(updates).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
+    # After the status is saved, so a failed save is retried (and re-alerted) on the next sync, not lost.
+    alert_if_number_disconnected(db, tenant_id, row, updates.get("meta_status"))
 
     new_quality = updates.get("quality_rating")
     if new_quality:

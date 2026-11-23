@@ -357,8 +357,8 @@ def _deal_total(tenant_id: str, lines: list[dict], db) -> int:
     added on top here, so the payment link charges the right amount; line
     totals stay pre-tax for the export's taxable-value column."""
     subtotal = sum(li["line_total_paise"] for li in lines)
-    from app.services.business_details import prices_include_gst
-    if prices_include_gst(tenant_id, db):
+    from app.services.business_details import charges_gst, prices_include_gst
+    if prices_include_gst(tenant_id, db) or not charges_gst(tenant_id, db):
         return subtotal
     tax = sum(round(li["line_total_paise"] * li["gst_rate"] / 100) for li in lines if li.get("gst_rate"))
     return subtotal + tax
@@ -617,6 +617,9 @@ def mark_won(
             logger.error(f"Deal {deal_id} won but its payment row failed: {e}")
         deal = {**deal, "paid_paise": int(deal.get("total_paise") or 0)}
     warnings = _deduct_for_deal(tenant_id, deal_id, created_by, db, direction=-1)
+    # v9.2 P1: a paid order of a property takes its units off "units left" (once per order; never raises).
+    from app.services import properties
+    properties.on_deal_paid(db, tenant_id, deal_id)
     return {"deal": deal, "stock_warnings": warnings}
 
 

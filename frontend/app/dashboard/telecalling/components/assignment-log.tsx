@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/Select";
 import { Download, RefreshCw, ArrowRight, ClipboardList } from "lucide-react";
 import { api, Caller, AssignmentLogEntry, AssignmentLogSummary } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
+import { assignmentReasonLabel } from "../lib/assignmentReason";
 
 const SEGMENT_LABEL: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not Interested" };
 const SEGMENT_STYLE: Record<string, string> = {
@@ -12,13 +13,6 @@ const SEGMENT_STYLE: Record<string, string> = {
   B: "bg-amber-50 text-amber-600 border-amber-200",
   C: "bg-sky-50 text-sky-600 border-sky-200",
   D: "bg-gray-100 text-gray-500 border-gray-200",
-};
-const REASON_LABEL: Record<string, string> = {
-  created: "On entry", scored: "Scored up", manual: "Manual edit",
-  sweep: "Sweep", bot_flow: "Bot flow", ai_agent: "AI agent",
-  autopilot: "Autopilot", call_callback: "Call → callback", call_converted: "Call → won",
-  caller_unavailable: "Caller away", backlog_claim: "Claimed on login",
-  escalation: "Escalation", round_robin: "Round-robin",
 };
 
 const PAGE_SIZE = 50;
@@ -190,7 +184,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
                   )}
                 </td>
                 <td className="px-4 py-2.5 font-body text-xs text-on-surface-muted">
-                  {REASON_LABEL[e.reason || ""] || e.reason || "—"}
+                  {assignmentReasonLabel(e.reason, e.prev_caller_name)}
                   <span className="block text-[10px] opacity-70">{e.method}</span>
                 </td>
                 <td className="px-4 py-2.5 font-body text-xs text-on-surface-muted whitespace-nowrap">{timeAgo(e.created_at)}</td>

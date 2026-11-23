@@ -279,7 +279,7 @@ export default function NewBillPage() {
           {done.message && !done.message.sent && done.message.share_url && (
             <a href={done.message.share_url} target="_blank" rel="noopener noreferrer"
               onClick={() => api.orders.shared(o.id, method === "link" ? "pay_link" : "bill", done.message!.text).catch(() => {})}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 font-label text-sm font-bold text-white shadow-sm hover:opacity-90">
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-label text-sm font-bold text-white shadow-sm hover:opacity-90">
               Share on WhatsApp
             </a>
           )}

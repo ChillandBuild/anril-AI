@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { SegmentBadge } from "@/components/segment-badge";
 import { isClosedLeadStatus, isWorkingLeadStatus } from "@/lib/call-wrapup";
 import { AiraLoader } from "@/components/AiraLoader";
+import { moduleChromeStyle } from "@/lib/moduleChrome";
 import { KpiCard } from "@/components/kpi-card";
 
 export default function CallerView({ callerId, readOnly = false }: { callerId: string | null; readOnly?: boolean }) {
@@ -133,7 +134,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
+    <div style={moduleChromeStyle({ tabs: true, chips: true })} className="flex min-h-[calc(100vh_-_8rem_-_var(--module-chrome))] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh_-_5.5rem_-_var(--module-chrome))] xl:min-h-0 xl:overflow-hidden">
       <div className="grid flex-1 grid-cols-1 gap-4 pb-4 xl:grid-cols-12 xl:min-h-0 xl:pb-0">
         {/* Left Side: Lead List (4/12) */}
         <div className="flex flex-col gap-5 pr-0 xl:col-span-4 xl:min-h-0 xl:pr-1">
