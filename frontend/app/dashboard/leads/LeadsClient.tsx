@@ -591,6 +591,7 @@ export function LeadsClient() {
     broadcasts: broadcastHistory.flatMap((h) =>
       h.broadcast_id ? [{ id: h.broadcast_id, label: `${h.template_name} · ${new Date(h.timestamp).toLocaleDateString()}` }] : [],
     ),
+    tags: tagCounts.map((t) => t.tag),
   };
 
   // "Save as a group": the filters on screen become a group that fills itself. Rules use rolling
@@ -605,6 +606,7 @@ export function LeadsClient() {
     ...(assigned ? { assigned_to: assigned } : {}),
     ...(replyWindow ? { reply_window: replyWindow } : {}),
     ...(bought ? { bought } : {}),
+    ...(tagFilter ? { tag: tagFilter } : {}),
   };
   const canSaveAsGroup = canManageLeads && Object.keys(savedRule).length > 0;
   const [savingGroupOpen, setSavingGroupOpen] = useState(false);
@@ -615,7 +617,7 @@ export function LeadsClient() {
     if (!name) return;
     try {
       const group = await api.customerGroups.create(name, savedRule);
-      const left = [search && "the search", getDatePreset() === "custom" && "the custom dates", groupId && "the group filter", (onlyLeads || cameFrom || tagFilter) && "Leads only, Came from or Tag"].filter(Boolean);
+      const left = [search && "the search", getDatePreset() === "custom" && "the custom dates", groupId && "the group filter", (onlyLeads || cameFrom) && "Leads only or Came from"].filter(Boolean);
       toast.success(
         `Saved "${group.name}": ${group.member_count} people today. It updates by itself.` +
           (left.length ? ` (${left.join(" and ")} isn't part of it.)` : ""),

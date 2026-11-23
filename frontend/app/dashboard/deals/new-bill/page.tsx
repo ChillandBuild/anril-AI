@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -14,6 +14,8 @@ import { computeBill } from "../orders/billMath";
 import { unpaidHintText } from "./unpaidHint";
 import { reportSend, rupees } from "../orders/orderUi";
 import { ScanBox } from "../../catalog/ScanBox";
+import { isConnectionError, newClientRef, queueBill } from "@/lib/offlineBills";
+import { WaitingBills } from "./WaitingBills";
 
 type Line = {
   key: string; item: NewBillItem; variant: NewBillVariant | null; qty: number;
@@ -96,6 +98,8 @@ export default function NewBillPage() {
   const [readyBy, setReadyBy] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<NewBillResult | null>(null);
+  // v9.2 #74: one "send once" key per bill, kept across retries of the same bill until it is saved or reset.
+  const clientRef = useRef<string | null>(null);
   const [waitFor, setWaitFor] = useState<NewBillVariant | null>(null);
 
   // Who is this number? (so a returning customer's name fills in)
@@ -203,6 +207,7 @@ export default function NewBillPage() {
     setLines([]); setPhone(""); setName(""); setKnown(null); setB2b(false); setGstin(""); setBusiness("");
     setDiscountText(""); setEditDiscount(false); setBillType("gst"); setMethod("cash"); setAdvanceText("");
     setHandover("pickup"); setReadyBy(""); setDone(null); setPicking(null);
+    clientRef.current = null;
   }
 
   async function save() {
@@ -219,8 +224,9 @@ export default function NewBillPage() {
       return;
     }
     setSaving(true);
-    try {
-      const out = await api.orders.createBill({
+    clientRef.current ??= newClientRef();
+    const body = {
+        client_ref: clientRef.current,
         mode,
         phone: hasPhone ? phone : undefined,
         name: name.trim() || undefined,
@@ -235,14 +241,27 @@ export default function NewBillPage() {
         advance_paise: mode === "later" ? advance : undefined,
         handover: mode === "later" ? handover : undefined,
         ready_by: mode === "later" && readyBy ? readyBy : undefined,
-      });
+    };
+    try {
+      const out = await api.orders.createBill(body);
+      clientRef.current = null;
       setDone(out);
       reportSend(out.order.id, method === "link" ? "pay_link" : "bill", out.message);
       if (out.stock_short.length) {
         toast.message(`Sold more than the shelf shows: ${out.stock_short.map((s) => `${s.name} (${s.available} left)`).join(", ")}. Check the stock.`);
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't save the bill");
+      if (isConnectionError(e) && method !== "link") {
+        // No internet: keep the bill on this device; it goes out (once) when the connection is back.
+        queueBill({ client_ref: body.client_ref, body, made_at: new Date().toISOString(),
+                    label: `${name.trim() || "Walk-in"} · ${rupees(totals.total_paise)}` });
+        toast.message("No internet. The bill is saved on this device and goes out when you're back online.");
+        reset();
+      } else if (isConnectionError(e)) {
+        toast.error("A payment link needs the internet. Take cash, UPI or card, or try again when you're back online.");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Couldn't save the bill");
+      }
     } finally {
       setSaving(false);
     }
@@ -302,6 +321,7 @@ export default function NewBillPage() {
           <ArrowLeft size={14} /> Orders
         </Link>
       </div>
+      <WaitingBills />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         {/* ── left: items ─────────────────────────────────── */}
         <div className="min-w-0 space-y-3">

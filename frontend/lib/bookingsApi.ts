@@ -92,7 +92,11 @@ export interface Booking {
   note: string | null;
   /** Set when the advance-payment link could not be sent. */
   advance_error?: string | null;
+  /** Site visits only: how the visit went (set after Came). */
+  visit_outcome?: VisitOutcome | null;
 }
+
+export type VisitOutcome = "liked_thinking" | "ready_to_book" | "not_interested";
 
 export type FreeRanges = Record<string, [string, string][]>;
 
@@ -197,6 +201,8 @@ export const bookingsApi = {
   cancel: (id: string, reason?: string) =>
     apiFetch<Booking>(`${BASE}/${encodeURIComponent(id)}/cancel`, json("POST", { reason: reason || undefined })),
   came: (id: string) => apiFetch<{ deal_id: string | null; href: string | null; order_error?: string | null }>(`${BASE}/${encodeURIComponent(id)}/came`, json("POST")),
+  visitOutcome: (id: string, outcome: VisitOutcome) =>
+    apiFetch<{ visit_outcome: VisitOutcome; loan_followup_due_at: string | null }>(`${BASE}/${encodeURIComponent(id)}/visit-outcome`, json("POST", { outcome })),
   noShow: (id: string) => apiFetch<Booking>(`${BASE}/${encodeURIComponent(id)}/no-show`, json("POST")),
   /** The list for one day (end left out) or a week, as a file. Needs "Download lists". */
   exportCsv: async (start: string, end?: string) => {

@@ -68,6 +68,21 @@ async def execute_broadcast(row: dict) -> dict:
 
     try:
         leads_raw: list[dict] = row.get("leads_json") or []
+        # v9.2 #118: a later day of a multi-day send doesn't start when the days before drew too much push-back.
+        if row.get("drip_group_id"):
+            stats = None
+            try:
+                from app.services import reach_quality
+                earlier = [i for i in reach_quality.group_row_ids(db, tenant_id, row) if i != str(row_id)]
+                stats = reach_quality.pushback(db, tenant_id, earlier) if earlier else None
+            except Exception as qe:  # the check must never cost the day its send
+                logger.warning(f"Broadcast {row_id}: day-start push-back check failed, carrying on: {qe}")
+            if stats and reach_quality.too_much_pushback(stats):
+                _finish(db, row_id, "aborted", {"sent": 0, "failed": 0, "note": "stopped_pushback",
+                                                "pushback_rate": round(stats["rate"], 4)})
+                if not row.get("abort_requested"):  # an earlier day already stopped the rest and rang the owner
+                    reach_quality.stop_rest(db, tenant_id, row, stats)
+                return {"sent": 0, "failed": 0, "stopped_pushback": True}
         if not leads_raw:
             _finish(db, row_id, "done", {"sent": 0, "failed": 0, "note": "empty_leads"})
             return {"sent": 0, "failed": 0}
@@ -168,6 +183,7 @@ async def execute_broadcast(row: dict) -> dict:
         broadcast_id = row_id  # reuse scheduled_broadcast id as broadcast_id
         recipient_rows = []
         aborted = False
+        pushback_stopped = False
         deferred = False
 
         # AUDIT-2026-09.md finding C4: recipient rows used to be written ONLY
@@ -307,7 +323,6 @@ async def execute_broadcast(row: dict) -> dict:
                 # Track-only usage metering: one billable send per successfully
                 # delivered recipient. Never blocks/caps — best-effort only.
                 meter(db, tenant_id, "message_sent")
-
                 if lead_id:
                     try:
                         db.table("messages").insert({
@@ -325,6 +340,23 @@ async def execute_broadcast(row: dict) -> dict:
                         db.rpc("increment_lead_no_reply_count", {"p_lead_id": lead_id}).execute()
                     except Exception:
                         pass
+
+                # v9.2 #118: at 50, 100, 200, 400... sends, stop the run if too many people pushed back (said stop / turned
+                # off marketing) on this campaign so far, counting earlier days of a multi-day send too. Checked after
+                # this send's message row is written, so its own push-back is still counted later.
+                if not pushback_stopped and _pushback_checkpoint(sent):
+                    try:
+                        from app.services import reach_quality
+                        stats = reach_quality.pushback(db, tenant_id, reach_quality.group_row_ids(db, tenant_id, row))
+                        if reach_quality.too_much_pushback(stats):
+                            pushback_stopped = True
+                            aborted = True
+                            if phone:  # this one was just sent; the "not sent" rows start after it
+                                already_recorded_phones.add(phone)
+                            reach_quality.stop_rest(db, tenant_id, row, stats)
+                            break
+                    except Exception as qe:
+                        logger.warning(f"Broadcast {row_id}: push-back check failed, carrying on: {qe}")
 
             except Exception as e:
                 logger.error(f"Scheduled broadcast send failed for {phone}: {e}")
@@ -439,6 +471,8 @@ async def execute_broadcast(row: dict) -> dict:
 
         result = {"sent": sent, "failed": failed, "broadcast_id": broadcast_id,
                   "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked}
+        if pushback_stopped:
+            result["note"] = "stopped_pushback"
         if deferred:
             # Unsent leads have no recipient row yet, so tomorrow's run sends
             # exactly those (already-recorded phones are skipped on resume).
@@ -601,6 +635,11 @@ def _defer_send(db, row_id: str, tenant_id: str, reason: str, result: dict | Non
     if result is not None:
         update["result"] = json.dumps({**result, "note": reason})
     db.table("scheduled_broadcasts").update(update).eq("id", row_id).execute()
+
+
+def _pushback_checkpoint(sent: int) -> bool:
+    """50, 100, 200, 400, ... sends: often early, when a bad list shows itself, rarely on a big run."""
+    return sent >= 50 and sent % 50 == 0 and ((sent // 50) & (sent // 50 - 1)) == 0
 
 
 def _finish(db, row_id: str, status: str, result: dict | None, error: str | None = None) -> None:

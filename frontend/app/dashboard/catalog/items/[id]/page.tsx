@@ -111,6 +111,7 @@ export default function CatalogueItemPage() {
   const [to, setTo] = useState(0);
   const [why, setWhy] = useState<StockWhy | null>(null);
   const [correcting, setCorrecting] = useState(false);
+  const [damagedPhoto, setDamagedPhoto] = useState<File | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -284,8 +285,12 @@ export default function CatalogueItemPage() {
     if (!detail || !target || !why) return;
     setCorrecting(true);
     try {
-      const updated = await api.catalog.correctStock(detail.id, { variant_id: target.variantId, to, why });
+      const photo = why === "damaged" && damagedPhoto ? await api.catalog.uploadStockPhoto(detail.id, damagedPhoto) : null;
+      const updated = await api.catalog.correctStock(detail.id, {
+        variant_id: target.variantId, to, why, ...(photo ? { photo_path: photo.path } : {}),
+      });
       setDetail(updated);
+      setDamagedPhoto(null);
       toast.success("Stock corrected and saved in the history");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't correct the stock");
@@ -306,6 +311,17 @@ export default function CatalogueItemPage() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function setPhotoColour(mediaId: string, colour: string) {
+    if (!detail) return;
+    try {
+      const saved = await api.catalog.updateMedia(mediaId, { colour: colour || null });
+      const next = (saved as { colour?: string | null }).colour ?? null;
+      setDetail((d) => (d ? { ...d, photos: d.photos.map((x) => (x.id === mediaId ? { ...x, colour: next } : x)) } : d));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save the colour");
     }
   }
 
@@ -364,14 +380,24 @@ export default function CatalogueItemPage() {
           <Card title="Basic">
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {detail?.photos.map((p) => (
-                <div key={p.id} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface-low">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.label ?? name} className="h-full w-full object-cover" />
-                  {canManage && (
-                    <button type="button" onClick={() => removePhoto(p.id)} aria-label="Remove photo"
-                      className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:block">
-                      <X size={12} />
-                    </button>
+                <div key={p.id} className="flex w-24 flex-col gap-1">
+                  <div className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface-low">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={p.label ?? name} className="h-full w-full object-cover" />
+                    {canManage && (
+                      <button type="button" onClick={() => removePhoto(p.id)} aria-label="Remove photo"
+                        className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:block">
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  {detail.colours.length > 0 && (canManage || p.colour) && (
+                    <select value={p.colour ?? ""} disabled={!canManage} onChange={(e) => void setPhotoColour(p.id, e.target.value)}
+                      aria-label="Colour in this photo" title="The AI will not send this photo when this colour is out of stock"
+                      className="w-24 rounded-md border border-border bg-white px-1 py-0.5 text-[11px] text-ink">
+                      <option value="">Any colour</option>
+                      {detail.colours.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   )}
                 </div>
               ))}
@@ -615,6 +641,18 @@ export default function CatalogueItemPage() {
                   </button>
                 ))}
               </div>
+              {why === "damaged" && (
+                <label className="mt-3 block text-sm">
+                  <span className="font-semibold text-ink">Photo of the damaged pieces <span className="font-normal text-ink-muted">(if you like)</span></span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Photo of the damaged pieces"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (f && f.size > 5 * 1024 * 1024) { toast.error("That picture is too big. Keep it under 5 MB."); e.target.value = ""; setDamagedPhoto(null); return; }
+                      setDamagedPhoto(f);
+                    }}
+                    className="mt-1 block w-full text-xs text-ink-muted file:mr-2 file:rounded-lg file:border file:border-border file:bg-white file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-ink" />
+                </label>
+              )}
               <button type="button" onClick={saveCorrection} disabled={!why || to === target.current || correcting}
                 className="btn-primary mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 !py-0 disabled:opacity-50">
                 {correcting && <Loader2 size={14} className="animate-spin" />} Save correction

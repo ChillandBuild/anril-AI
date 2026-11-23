@@ -1,7 +1,7 @@
 import logging
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.db.supabase import get_supabase
@@ -61,7 +61,7 @@ def _active_team_callers(db, tenant_id: str) -> list[dict]:
 
 
 @router.get("/me")
-def get_me(ctx: dict = Depends(get_tenant_and_role)):
+def get_me(request: Request, ctx: dict = Depends(get_tenant_and_role)):
     db = get_supabase()
 
     # Enabled features for this tenant
@@ -89,6 +89,10 @@ def get_me(ctx: dict = Depends(get_tenant_and_role)):
         .execute()
     )
     is_system_admin = bool(admin and admin.data)
+    if not is_system_admin:  # Anril staff looking in on a business are not that business's logins
+        from app.services.login_log import note_login
+        note_login(db, ctx, request.headers.get("authorization"), request.headers,
+                   request.client.host if request.client else None)
 
     caller = (
         db.table("callers")

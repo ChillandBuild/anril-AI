@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Booking, WeekHours } from "@/lib/bookingsApi";
 import {
-  addBlock, bookingFlags, canMarkNoShow, canMarkVisit, rupees, sameInstant, clickMinutes, columnAt, copyDayToAll, defaultHours, dropMinutes, freeBands, gridRange,
+  addBlock, bookingFlags, canMarkNoShow, canMarkVisit, canSetVisitOutcome, isSiteVisit, visitOutcomeNote, LOAN_HELP_LINE, rupees, sameInstant, clickMinutes, columnAt, copyDayToAll, defaultHours, dropMinutes, freeBands, gridRange,
   historyNote, hoursSummary, normaliseHours, parsePhone, placeBooking, resourcesForService, snapMinutes, summariseDay, timesByPart, validateDay,
   minutesInWords, paiseToRupeesText, rupeesTextToPaise, templateStatusText, validateRules,
   validateHours,
@@ -332,5 +332,25 @@ describe("held link bookings", () => {
   });
   it("once the number is confirmed the waiting flag goes", () => {
     expect(bookingFlags({ ...base, phone_checked: true }).map((f) => f.label)).toEqual(["Advance due"]);
+  });
+});
+
+describe("site visit outcome", () => {
+  const b = { status: "came" as const, resource_id: "r1", service_name: "Site visit" };
+  it("knows a site visit by its service name", () => {
+    expect(isSiteVisit({ service_name: " site visit " })).toBe(true);
+    expect(isSiteVisit({ service_name: "Haircut" })).toBe(false);
+  });
+  it("only after Came, only on a site visit, for the same people as Came", () => {
+    expect(canSetVisitOutcome(b, { canManage: true, myResourceId: null })).toBe(true);
+    expect(canSetVisitOutcome(b, { canManage: false, myResourceId: "r1" })).toBe(true);
+    expect(canSetVisitOutcome(b, { canManage: false, myResourceId: "r2" })).toBe(false);
+    expect(canSetVisitOutcome({ ...b, status: "booked" }, { canManage: true, myResourceId: null })).toBe(false);
+    expect(canSetVisitOutcome({ ...b, service_name: "Haircut" }, { canManage: true, myResourceId: null })).toBe(false);
+  });
+  it("only liked-thinking promises the loan message", () => {
+    expect(visitOutcomeNote("liked_thinking")).toBe(LOAN_HELP_LINE);
+    expect(visitOutcomeNote("ready_to_book")).toBeNull();
+    expect(visitOutcomeNote(null)).toBeNull();
   });
 });

@@ -54,9 +54,10 @@ class TestAuditLogEndpoint(unittest.TestCase):
         self.assertEqual(len(body["data"]), 1)
         audit_tbl.select.return_value.eq.assert_called_with("tenant_id", "tenant-1")
         # Must not return the full app_audit_logs firehose for this tenant --
-        # only team.* / role.* actions and what the Anril AI connector did (claude.*) belong there.
+        # only team.* / role.* actions, new logins, money rows (owner here) and what the Anril AI connector did (claude.*).
         audit_tbl.select.return_value.eq.return_value.or_.assert_called_once_with(
-            "action.like.team.%,action.like.role.%,action.like.claude.%"
+            "action.like.team.%,action.like.role.%,action.eq.auth.login,"
+            "action.eq.order.refund,action.eq.order.discount,action.eq.order.advance_changed,action.like.claude.%"
         )
 
 

@@ -23,7 +23,14 @@ HREFS = {
     "feedback": "/dashboard/leads?tab=feedback",
     "evening_summary": "/dashboard/automations",
     "comeback_offer": "/dashboard/automations",
+    "balance_reminders": "/dashboard/settings/payments",
+    "fee_reminders": "/dashboard/catalog/courses",
+    "booking_reminders": "/dashboard/bookings",
+    "back_in_stock": "/dashboard/catalog",
 }
+
+
+OWN_PAGE_KEYS = ("balance_reminders", "fee_reminders", "booking_reminders", "back_in_stock")  # switched on their own pages
 
 
 def _humanise(key: str) -> str:
@@ -85,8 +92,10 @@ def _reengagement(db, tenant_id: str) -> list[dict]:
         wait = f"{hours // 24} day{'s' if hours // 24 != 1 else ''}" if hours >= 24 and hours % 24 == 0 else f"{hours} hours"
         who = "a broadcast" if s.get("type") == "broadcast" else "a chat"
         name = s.get("template_name") if s.get("message_type") == "template" else None
+        label = (f"Follow-up {wait} after a campaign reply with no order" if s.get("type") == "campaign_reply"
+                 else f"Follow-up {wait} after {who} goes quiet")
         out.append({
-            "key": f"reengagement:{s['id']}", "name": f"Follow-up {wait} after {who} goes quiet", "kind": "reengagement",
+            "key": f"reengagement:{s['id']}", "name": label, "kind": "reengagement",
             "on": True, "template_name": name, "template_status": template_status_of(db, tenant_id, name) if name else None,
             "href": HREFS["reengagement"], "switchable": False, "note": None,
         })
@@ -130,12 +139,69 @@ def _comeback(db, tenant_id: str) -> list[dict]:
     }]
 
 
+def _has_rows(db, tenant_id: str, table: str) -> bool:
+    return bool(db.table(table).select("tenant_id").eq("tenant_id", tenant_id).limit(1).execute().data)
+
+
+def _own_page(key: str, name: str, kind: str, on: bool, template_name: str | None, status: str | None, note: str | None) -> dict:
+    """A reminder that is switched on its own page: shown here with its state and a link, no switch of its own.
+    The template is named only while it is on, so a WhatsApp pause on it is raised (and the owner told) only for live ones."""
+    return {"key": key, "name": name, "kind": kind, "on": on, "template_name": template_name if on else None,
+            "template_status": status if on else None, "href": HREFS[key], "switchable": False, "note": note}
+
+
+def _balance_reminders(db, tenant_id: str) -> list[dict]:
+    from app.services import orders
+    name = orders.ORDER_TEMPLATES["reminder"]["name"]
+    on = orders.balance_reminders_on(db, tenant_id)
+    if on and not _has_rows(db, tenant_id, "deals"):
+        return []                                     # no orders yet: nothing to remind about
+    return [_own_page("balance_reminders", "Reminders for money still to pay on an order", "balance_reminders", on, name,
+                      template_status_of(db, tenant_id, name), "Day 1, 3 and 7 after a payment link. Switch it in Settings > Payments.")]
+
+
+def _fee_reminders(db, tenant_id: str) -> list[dict]:
+    from app.services import fee_plans
+    on = fee_plans.reminders_on(tenant_id)
+    if not on and not _has_rows(db, tenant_id, "fee_plans"):
+        return []                                     # a business with no course fees has nothing to list
+    name = fee_plans.FEE_TEMPLATE["name"]
+    return [_own_page("fee_reminders", "Course fee reminders", "fee_reminders", on, name,
+                      fee_plans.template_status(db, tenant_id), "Sent before each fee is due. Switch it on the Courses page.")]
+
+
+def _booking_reminders(db, tenant_id: str) -> list[dict]:
+    from app.services import booking_messages
+    if not (_has_rows(db, tenant_id, "booking_settings") or _has_rows(db, tenant_id, "bookings")):
+        return []
+    name = booking_messages.BOOKING_TEMPLATES["reminder"]["name"]
+    status = template_status_of(db, tenant_id, name)
+    on = status == "APPROVED"
+    return [_own_page("booking_reminders", "Booking reminders", "booking_reminders", on, name, status,
+                      "Sent the day before and 2 hours before a booking." if on
+                      else "Starts by itself once the booking messages are approved by WhatsApp. Set them up in Bookings.")]
+
+
+def _back_in_stock(db, tenant_id: str) -> list[dict]:
+    from app.services import stock_asks
+    name = stock_asks.TEMPLATE_NAME
+    status = template_status_of(db, tenant_id, name)
+    if status is None and not _has_rows(db, tenant_id, "stock_waitlist"):
+        return []
+    on = status == "APPROVED"
+    return [_own_page("back_in_stock", "Back-in-stock message", "back_in_stock", on, name, status,
+                      "Goes to people who asked when you mark an item back in stock." if on
+                      else "Needs the back-in-stock message approved by WhatsApp. Set it up in Catalogue.")]
+
+
 def collect_automations(db, tenant_id: str) -> list[dict]:
     """Every automation of the business with its template and on/off, before the paused state is added."""
     out: list[dict] = []
     for label, fn in (("auto messages", _auto_messages), ("scheduled messages", _scheduled),
                       ("follow-ups", _reengagement), ("feedback", _feedback),
-                      ("evening summary", _evening), ("come-back offer", _comeback)):
+                      ("evening summary", _evening), ("come-back offer", _comeback),
+                      ("balance reminders", _balance_reminders), ("fee reminders", _fee_reminders),
+                      ("booking reminders", _booking_reminders), ("back in stock", _back_in_stock)):
         out += _safe(label, lambda fn=fn: fn(db, tenant_id))
     return out
 
@@ -188,7 +254,7 @@ def set_automation_on(db, tenant_id: str, key: str, on: bool) -> None:
         evening_summary.save_on(db, tenant_id, on)
     elif key == "comeback_offer":
         comeback_offer.set_on(db, tenant_id, on)
-    elif key == "scheduled_templates" or key.startswith("reengagement:"):
+    elif key in OWN_PAGE_KEYS or key == "scheduled_templates" or key.startswith("reengagement:"):
         raise NotSwitchable(key)
     else:
         raise LookupError(key)

@@ -497,6 +497,15 @@ app.include_router(automations.router, prefix="/api/v1/automations", tags=["auto
 # PUBLIC on purpose (the person cannot sign in): rate-limited inside the route, stores a request for the Anril team.
 app.include_router(password_help.router, prefix="/api/v1/password-help", tags=["password-help"])
 app.include_router(first_setup.router, prefix="/api/v1/first-setup", tags=["first-setup"], dependencies=_auth)
+# v9.2 batch 3: "Let the Anril team do it" (+ the operator's list), the knowledge website link and Undo, the after-hours
+# message, the WhatsApp-disconnected banner's state, and the error page's report to Anril support.
+from app.routes import setup_help as setup_help_routes, knowledge_extras, reply_settings, connection_status, client_errors
+app.include_router(setup_help_routes.router, prefix="/api/v1/setup-help", tags=["setup-help"], dependencies=_auth)
+app.include_router(setup_help_routes.operator_router, prefix="/api/v1/operator", tags=["operator"])
+app.include_router(knowledge_extras.router, prefix="/api/v1/knowledge", tags=["knowledge"], dependencies=_auth)
+app.include_router(reply_settings.router, prefix="/api/v1/reply-settings", tags=["reply-settings"], dependencies=_auth)
+app.include_router(connection_status.router, prefix="/api/v1/connection-status", tags=["connection-status"], dependencies=_auth)
+app.include_router(client_errors.router, prefix="/api/v1/client-errors", tags=["client-errors"], dependencies=_auth)
 app.include_router(properties_routes.router, prefix="/api/v1/properties", tags=["properties"], dependencies=_auth)
 app.include_router(courses_routes.router, prefix="/api/v1/courses", tags=["courses"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)

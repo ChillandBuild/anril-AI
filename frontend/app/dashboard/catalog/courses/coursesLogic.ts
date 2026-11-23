@@ -72,8 +72,11 @@ export function partLabel(p: Pick<FeePart, "paid" | "late" | "due_on"> & { on_or
 /** One line for the fee reminders card. */
 export function reminderHelp(state: ReminderState | undefined): string {
   if (!state) return "";
-  if (state.enabled) return "On. Parents and students get a WhatsApp 3 days before, on the day and 3 days after a part is due.";
-  if (state.template === "APPROVED") return "Off. Switch it on to remind about unpaid parts.";
+  const withLink = state.link_template === "APPROVED"
+    ? " With a pay link for that part when Razorpay is connected."
+    : state.link_template === "PENDING" ? " The version with a pay link is still with WhatsApp for checking." : "";
+  if (state.enabled) return `On. Parents and students get a WhatsApp 3 days before, on the day and 3 days after a part is due.${withLink}`;
+  if (state.template === "APPROVED" || state.link_template === "APPROVED") return `Off. Switch it on to remind about unpaid parts.${withLink}`;
   if (state.template === "PENDING") return "Off. WhatsApp is still checking the reminder message. You can switch it on once it is approved.";
   if (state.template === "REJECTED") return "Off. WhatsApp turned the message down. Send it again.";
   return "Off. First send the reminder message to WhatsApp for approval.";

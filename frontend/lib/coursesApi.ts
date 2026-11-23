@@ -116,6 +116,9 @@ export interface ReminderState {
   /** APPROVED | PENDING | REJECTED, or null when it was never sent to WhatsApp. */
   template: string | null;
   template_body: string;
+  /** v9.2 #217: the same reminder with a Razorpay pay link for the part; status as above. */
+  link_template?: string | null;
+  link_template_body?: string;
 }
 
 export interface BatchBody {

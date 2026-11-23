@@ -103,6 +103,8 @@ class NewBillIn(BaseModel):
     handover: Literal["pickup", "courier"] | None = None
     ready_by: str | None = Field(None, max_length=10)
     notes: str | None = Field(None, max_length=2000)
+    # v9.2 #74: "send once" key made on the device, so a bill saved offline and retried is never made twice.
+    client_ref: str | None = Field(None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 @router.post("/bills")

@@ -16,6 +16,7 @@ import { NEEDS_MANAGE_REASON } from "@/components/brain/testAiraLogic";
 import { useBrainData } from "@/components/brain/useBrainData";
 import { WaitingOnYou } from "@/components/brain/WaitingOnYou";
 import { AiraLoader } from "@/components/AiraLoader";
+import { BrainHeaderControls } from "@/components/brain/BrainHeaderControls";
 
 const TEST_AIRA_ENDPOINT = "/api/v1/brain/sandbox";
 
@@ -122,9 +123,17 @@ export default function AiraBrainPage() {
                 {refreshedAt ? <>Status loaded at <time dateTime={refreshedAt}>{new Date(refreshedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" })} IST</time></> : "Loading current status…"}
                 {" · Conflict check time is shown under Needs attention."}
               </p>
-              <button type="button" disabled={isRetrying} onClick={retry} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 font-label text-xs font-bold text-ink hover:bg-surface-mid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
-                <RefreshCw size={13} aria-hidden className={isRetrying ? "animate-spin" : ""} />Refresh status
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <BrainHeaderControls
+                  aiOn={data.status.auto_reply === "on"}
+                  canSwitch={isOwner || permissions.includes("settings.manage")}
+                  canUndo={canManage}
+                  onChanged={retry}
+                />
+                <button type="button" disabled={isRetrying} onClick={retry} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 font-label text-xs font-bold text-ink hover:bg-surface-mid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
+                  <RefreshCw size={13} aria-hidden className={isRetrying ? "animate-spin" : ""} />Refresh status
+                </button>
+              </div>
             </div>
             {refreshError && <p role="alert" className="font-body text-sm text-danger">{refreshError} Showing the last loaded status; try refreshing again.</p>}
             <NextBrainAction brain={data} onSelect={setActiveSection} activeSection={activeSection} canManageSettings={isOwner || permissions.includes("settings.manage")} />

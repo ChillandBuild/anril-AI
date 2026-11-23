@@ -165,7 +165,7 @@ class SendToCallingTests(_Base):
         self.assertEqual(res.status_code, 200, res.text)
         # A picked group hands every member to send_to_calling, which counts the said-stop one itself.
         self.assertEqual(sorted(m.call_args[0][2]), sorted([U("m1"), U("m2"), U("stop")]))
-        self.assertEqual(m.call_args[1], {"reason": "group"})
+        self.assertEqual(m.call_args[1], {"reason": "group", "group_id": U("g")})
 
     def test_group_members_with_no_whatsapp_still_go_to_calling(self):
         self._group()

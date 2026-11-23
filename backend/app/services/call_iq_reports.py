@@ -10,14 +10,18 @@ from datetime import datetime, timedelta, timezone
 
 from app.dependencies.tenant import _has_permission
 from app.services.assignment import get_telecalling_config
+from app.services.call_rules import phone_mask_for
 from app.services.call_marking import CHECKS
 from app.services.call_teams import caller_scope
-from app.services.reports_common import paged, safe
+from app.services.reports_common import chunks, paged, safe
 from app.services.telecaller_performance import COUNTED_STATUSES, ist_day_bounds, summarize_calls
 
 logger = logging.getLogger(__name__)
 
 ON_CALL_STATUSES = ("initiated", "in_progress")
+CALLBACK_LATE = timedelta(minutes=30)    # a callback is "due now" from 30 minutes late ...
+CALLBACK_AHEAD = timedelta(minutes=15)   # ... up to 15 minutes before its time
+WAITING_SHOWN = 50
 ON_CALL_MAX_AGE = timedelta(hours=3)  # a call row stuck "in progress" for longer than this is not a live call
 EVAL_DAYS = {"7d": 7, "30d": 30}
 RESULT_DAYS = {"today": 1, "7d": 7, "30d": 30}
@@ -108,17 +112,78 @@ def person_state(caller: dict, live_call_at: str | None) -> tuple[str, str | Non
     return "off", since
 
 
+def _leads_by_id(db, tenant_id: str, lead_ids: list[str]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for part in chunks(sorted(set(lead_ids))):
+        for lead in db.table("leads").select("id,name,phone,assigned_to,do_not_call,opted_out") \
+                .eq("tenant_id", tenant_id).in_("id", part).execute().data or []:
+            out[str(lead["id"])] = lead
+    return out
+
+
+def _callable(lead: dict | None) -> bool:
+    return bool(lead) and not lead.get("do_not_call") and not lead.get("opted_out")
+
+
+def callbacks_due_now(db, tenant_id: str, callers: list[dict], mask, now: datetime) -> list[dict]:
+    """Pending callbacks due from 30 minutes ago to 15 minutes from now, for people of `callers`, earliest first."""
+    ids = {str(c["id"]) for c in callers}
+    names = {str(c["id"]): _name(c) for c in callers}
+    jobs = paged(lambda: (
+        db.table("follow_up_jobs").select("id,lead_id,scheduled_for,message_preview").eq("tenant_id", tenant_id)
+        .eq("cadence", "callback").eq("status", "pending")
+        .gte("scheduled_for", (now - CALLBACK_LATE).isoformat()).lte("scheduled_for", (now + CALLBACK_AHEAD).isoformat())
+    ))
+    leads = _leads_by_id(db, tenant_id, [j["lead_id"] for j in jobs])
+    rows = []
+    for job in sorted(jobs, key=lambda j: j["scheduled_for"]):
+        lead = leads.get(str(job["lead_id"]))
+        if not _callable(lead) or str(lead.get("assigned_to")) not in ids:
+            continue
+        phone = lead.get("phone") or ""
+        rows.append({
+            "job_id": job["id"], "lead_id": lead["id"], "name": (lead.get("name") or "").strip() or None,
+            "phone": mask(phone) if mask and phone else phone, "caller_id": str(lead["assigned_to"]),
+            "caller_name": names.get(str(lead["assigned_to"])), "due_at": job["scheduled_for"],
+            "why": (job.get("message_preview") or "").strip() or None,
+        })
+    return rows
+
+
+def waiting_hot_leads(db, tenant_id: str, callers: list[dict], mask, called_today: set[str]) -> dict:
+    """Hot leads held by people of `callers` that nobody has called yet today: {total, rows (best score first)}."""
+    ids = [str(c["id"]) for c in callers]
+    names = {str(c["id"]): _name(c) for c in callers}
+    waiting: list[dict] = []
+    for part in chunks(ids):
+        waiting += paged(lambda part=part: (
+            db.table("leads").select("id,name,phone,assigned_to,score,do_not_call,opted_out").eq("tenant_id", tenant_id)
+            .in_("assigned_to", part).eq("call_status", "hot").is_("deleted_at", "null")
+        ))
+    waiting = [ld for ld in waiting if _callable(ld) and str(ld["id"]) not in called_today]
+    waiting.sort(key=lambda ld: (-(ld.get("score") or 0), (ld.get("name") or "").lower()))
+    rows = []
+    for ld in waiting[:WAITING_SHOWN]:
+        phone = ld.get("phone") or ""
+        rows.append({
+            "lead_id": ld["id"], "name": (ld.get("name") or "").strip() or None,
+            "phone": mask(phone) if mask and phone else phone, "caller_id": str(ld["assigned_to"]),
+            "caller_name": names.get(str(ld["assigned_to"])),
+        })
+    return {"total": len(waiting), "rows": rows}
+
+
 def live(db, ctx: dict, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     callers = visible_callers(db, ctx)
     ids = [str(c["id"]) for c in callers]
     if not ids:
-        return {"callers": [], "as_of": now.isoformat()}
+        return {"callers": [], "callbacks_due": [], "waiting": {"total": 0, "rows": []}, "as_of": now.isoformat()}
     tenant_id = ctx["tenant_id"]
     day_start, day_end = ist_day_bounds(now)
 
     today_calls = safe(lambda: paged(lambda: (
-        db.table("call_logs").select("id,caller_id,status,created_at").eq("tenant_id", tenant_id)
+        db.table("call_logs").select("id,caller_id,lead_id,status,created_at").eq("tenant_id", tenant_id)
         .in_("caller_id", ids).gte("created_at", day_start).lt("created_at", day_end))), [], "today's calls")
     calls_today: dict[str, int] = {}
     live_since: dict[str, str] = {}
@@ -148,7 +213,12 @@ def live(db, ctx: dict, now: datetime | None = None) -> dict:
             "caller_id": cid, "name": _name(c), "state": state, "since": since,
             "calls_today": calls_today.get(cid, 0), "break_minutes_today": breaks.get(cid, 0),
         })
-    return {"callers": people, "as_of": now.isoformat()}
+    mask = phone_mask_for(db, tenant_id, ctx)
+    called_today = {str(r["lead_id"]) for r in today_calls if r.get("lead_id")}
+    due = safe(lambda: callbacks_due_now(db, tenant_id, callers, mask, now), [], "callbacks due now")
+    waiting = safe(lambda: waiting_hot_leads(db, tenant_id, callers, mask, called_today),
+                   {"total": 0, "rows": []}, "waiting hot leads")
+    return {"callers": people, "callbacks_due": due, "waiting": waiting, "as_of": now.isoformat()}
 
 
 # ── Evaluation ───────────────────────────────────────────────────────────────

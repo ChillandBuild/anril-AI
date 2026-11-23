@@ -69,6 +69,11 @@ export interface GroupRule {
   assigned_to?: string;
   reply_window?: "open" | "closed";
   bought?: "repeat" | "quiet";
+  /** A Customers tag (matched ignoring case). */
+  tag?: string;
+  /** Total paid, in paise. Needs the deals.view permission to read or save. */
+  spend_min_paise?: number;
+  spend_max_paise?: number;
 }
 
 export interface CustomerGroup {
@@ -81,10 +86,16 @@ export interface CustomerGroup {
   rule_text: string | null;
   /** Everyone in it today, Said-stop people included. */
   member_count: number;
+  /** The count could not be read just now (member_count is then 0). */
+  count_unknown?: boolean;
   /** How many of them are on Said stop (nothing is sent to them). */
   stop_count: number;
   made_by: string | null;
   created_at: string;
+  /** Where the group is used: "Reach", "Call IQ", "Follow-ups". Only on the list. */
+  used_by?: string[];
+  /** The rule has a spend filter this person may not see (no deals.view). */
+  spend_hidden?: boolean;
 }
 
 /** How a person got on Said stop. null = before Anril recorded it. */
@@ -265,7 +276,8 @@ export interface CatalogItem {
 
 export interface CatalogItemDetail extends CatalogItem {
   group_name: string | null;
-  photos: { id: string; url: string; label: string | null }[];
+  /** colour = the colour this photo shows; the AI never sends it while that colour is out of stock. */
+  photos: { id: string; url: string; label: string | null; colour?: string | null }[];
   sold_this_month: number;
   waiting: number;
   public_url: string;
@@ -420,6 +432,18 @@ export interface WrapupPayload {
   duration_seconds?: number;
   manual_started_at?: string;
   manual_ended_at?: string;
+  /** "Next step booked" with a service and time picked: the backend makes a real booking. */
+  booking?: { service_id: string; resource_id?: string; start_at: string } | null;
+}
+
+export interface WrapupBookingOptions {
+  enabled: boolean;
+  services: { id: string; name: string; duration_min: number }[];
+}
+export interface WrapupBookingTime {
+  start_at: string;
+  resource_id: string;
+  resource_name: string;
 }
 
 export interface WrapupContext {
@@ -436,6 +460,7 @@ export interface WrapupSaved {
   call_status: LeadCallStatus | null;
   next_action_at: string | null;
   deal_id: string | null;
+  booking_id?: string | null;
   score: number | null;
   score_status: CallScoreStatus | null;
 }
@@ -986,7 +1011,7 @@ export interface WabaTemplate {
 export interface ReengagementStep {
   id: string;
   tenant_id: string;
-  type: "broadcast" | "inbound";
+  type: "broadcast" | "inbound" | "campaign_reply";
   broadcast_id?: string | null;
   delay_hours: number;
   target_segments: string[];
@@ -1388,6 +1413,7 @@ export interface AuditLogEntry {
   target_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+  money?: boolean;
 }
 
 export interface TelecallingAnalytics {
@@ -2056,6 +2082,8 @@ export interface StockMovement {
   deal_id: string | null;
   note: string | null;
   created_at: string;
+  /** A photo of the damaged pieces, when one was attached. */
+  photo_url?: string | null;
 }
 
 export interface IntakeField {
@@ -2879,6 +2907,14 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ item_id: itemId }),
       }),
+    /** Catalogue items this person is interested in (customer card and page). */
+    getInterestedIn: (leadId: string) =>
+      apiFetch<{ items: { id: string; name: string }[] }>(`/api/v1/leads/${encodeURIComponent(leadId)}/interested-in`),
+    setInterestedIn: (leadId: string, itemIds: string[]) =>
+      apiFetch<{ items: { id: string; name: string }[] }>(`/api/v1/leads/${encodeURIComponent(leadId)}/interested-in`, {
+        method: "PUT",
+        body: JSON.stringify({ item_ids: itemIds }),
+      }),
     compose: (phone: string, content: string, name?: string) =>
       apiFetch<{ lead_id: string; sid: string; phone: string }>(`/api/v1/leads/compose`, {
         method: "POST",
@@ -3109,6 +3145,13 @@ export const api = {
       if (target.callLogId) q.set("call_log_id", target.callLogId);
       return apiFetch<WrapupContext>(`/api/v1/calls/wrapup-context?${q.toString()}`);
     },
+    wrapupBooking: () => apiFetch<WrapupBookingOptions>(`/api/v1/calls/wrapup-booking`),
+    wrapupBookingDays: (serviceId: string) =>
+      apiFetch<{ dates: string[] }>(`/api/v1/calls/wrapup-booking/days?service_id=${encodeURIComponent(serviceId)}`),
+    wrapupBookingTimes: (serviceId: string, date: string) =>
+      apiFetch<{ times: WrapupBookingTime[] }>(
+        `/api/v1/calls/wrapup-booking/times?service_id=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`,
+      ),
     statsToday: () =>
       apiFetch<{ calls_today: number; conversions_today: number }>(`/api/v1/calls/stats-today`),
     recentByLeads: (leadIds: string[]) =>
@@ -3213,7 +3256,7 @@ export const api = {
       return res.data || [];
     },
     createStep: (data: {
-      type: "broadcast" | "inbound";
+      type: "broadcast" | "inbound" | "campaign_reply";
       broadcast_id?: string | null;
       delay_hours: number;
       target_segments: string[];
@@ -3353,8 +3396,24 @@ export const api = {
   },
   catalog: {
     item: (itemId: string) => apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}`),
-    correctStock: (itemId: string, body: { variant_id?: string | null; to: number; why: StockWhy }) =>
+    correctStock: (itemId: string, body: { variant_id?: string | null; to: number; why: StockWhy; photo_path?: string }) =>
       apiFetch<CatalogItemDetail>(`/api/v1/catalog/items/${encodeURIComponent(itemId)}/correct-stock`, { method: "POST", body: JSON.stringify(body) }),
+    /** A photo of damaged pieces (JPG, PNG or WebP, up to 5 MB). Pass the returned path to correctStock. */
+    uploadStockPhoto: async (itemId: string, file: File): Promise<{ path: string; url: string }> => {
+      const authHeaders = await getAuthHeaders();
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_URL}/api/v1/catalog/items/${encodeURIComponent(itemId)}/stock-photo`, {
+        method: "POST",
+        body: fd,
+        headers: { ...authHeaders },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Couldn't upload the photo" }));
+        throw new Error(err.detail || "Couldn't upload the photo");
+      }
+      return res.json();
+    },
     /** Upload price list (backend services/price_list.py): read -> preview -> check -> apply. */
     priceListRead: (file: File) => {
       const fd = new FormData();
@@ -3519,7 +3578,7 @@ export const api = {
       const res = await apiFetch<{ data: CatalogMedia[] }>(`/api/v1/catalog/media`);
       return res.data || [];
     },
-    updateMedia: (id: string, data: { label?: string }) =>
+    updateMedia: (id: string, data: { label?: string; colour?: string | null }) =>
       apiFetch<CatalogMedia>(`/api/v1/catalog/media/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -3693,6 +3752,13 @@ export const api = {
       }),
     callbacksBoard: () =>
       apiFetch<{ data: CallbackBoardItem[] }>(`/api/v1/follow-ups/callbacks/board`),
+    callbacksStats: () =>
+      apiFetch<{ kept: number; due: number; percent: number | null; days: number }>(`/api/v1/follow-ups/callbacks/stats`),
+    scheduleCallback: (leadId: string, scheduledFor: string, note?: string) =>
+      apiFetch<unknown>(`/api/v1/follow-ups/callback`, {
+        method: "POST",
+        body: JSON.stringify({ lead_id: leadId, scheduled_for: scheduledFor, note: note || null }),
+      }),
   },
   settings: {
     getAiAutoReply: () =>
@@ -3897,13 +3963,15 @@ export const api = {
       apiFetch<{ deleted: boolean }>(`/api/v1/rbac/users/${userId}`, {
         method: "DELETE",
       }),
-    auditLog: (params?: { page?: number; date_from?: string; date_to?: string }) => {
+    auditLog: (params?: { page?: number; date_from?: string; date_to?: string; person?: string; type?: string }) => {
       const qs = new URLSearchParams();
       if (params?.page) qs.set("page", String(params.page));
       if (params?.date_from) qs.set("date_from", params.date_from);
       if (params?.date_to) qs.set("date_to", params.date_to);
+      if (params?.person) qs.set("person", params.person);
+      if (params?.type) qs.set("type", params.type);
       const query = qs.toString();
-      return apiFetch<{ data: AuditLogEntry[]; total: number; page: number; limit: number }>(
+      return apiFetch<{ data: AuditLogEntry[]; total: number; page: number; limit: number; types?: string[] }>(
         `/api/v1/rbac/audit-log${query ? `?${query}` : ""}`,
       );
     },
@@ -6064,6 +6132,8 @@ export interface NewBillInput {
   handover?: "pickup" | "courier";
   ready_by?: string;
   notes?: string;
+  /** v9.2 #74: "send once" key made on the device (offline billing). */
+  client_ref?: string;
 }
 
 export interface NewBillResult {
@@ -6072,6 +6142,8 @@ export interface NewBillResult {
   payment_link: string | null;
   stock_short: { name: string; available: number }[];
   stock_warnings: { name: string; available: number | null }[];
+  /** True when this bill was already made by an earlier try with the same client_ref. */
+  repeated?: boolean;
 }
 
 export interface OrderTemplatesSetup {

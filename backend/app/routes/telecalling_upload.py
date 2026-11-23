@@ -2,6 +2,7 @@ import csv
 import io
 import logging
 import re
+import urllib.parse
 import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -14,10 +15,13 @@ from app.dependencies.tenant import _has_permission, get_tenant_and_role, requir
 from app.services.assignment import add_upload_pending, assign_upload_batch, get_telecalling_config, remove_upload_pending
 from app.services.assignment_rules import get_channel_rules
 from app.services.audit_log import record_audit_event
+from app.services.call_rules import phone_mask_for
+from app.services.reports_common import chunks, paged
 from app.services.call_team_scope import is_team_leader, scoped_caller_ids
 from app.services.call_wrapup import CLOSED_LEAD_STATUSES
 from app.services.download_gate import log_download, require_download
 from app.services.segmentation import new_lead_score_and_segment
+from app.services.upload_taken_out import csv_text, reason_for_existing, results_for, summarize
 
 logger = logging.getLogger(__name__)
 # No router-wide gate: uploading and undoing are owner-only (require_owner on each), the history list
@@ -25,6 +29,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PHONE_RE = re.compile(r"[^\d+]")
+HISTORY_COLUMNS = ("id,tenant_id,file_name,total_contacts,inserted,duplicates,assigned,segment_override,"
+                   "assignment_snapshot,created_at,undone_at,undone_by,undone_count")
+
+
+def _attachment(filename: str) -> dict:
+    """Content-Disposition that survives non-English file names: an ASCII fallback plus the UTF-8 name."""
+    clean = filename.replace("\r", "").replace("\n", "").replace('"', "")
+    ascii_name = clean.encode("ascii", "ignore").decode().strip() or "download.csv"
+    if not ascii_name.lower().endswith(".csv"):
+        ascii_name += ".csv"
+    return {"Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{urllib.parse.quote(clean)}"}
 
 
 def _normalize_phone(raw: str) -> str | None:
@@ -77,11 +92,21 @@ async def upload_telecalling_contacts(
     fieldmap = {f.strip().lower(): f for f in reader.fieldnames}
 
     rows_by_phone: dict[str, dict] = {}
-    for row in reader:
-        phone = _normalize_phone(row.get(fieldmap.get("phone", "phone"), ""))
-        if not phone:
-            continue
+    taken_out: list[dict] = []   # rows this upload left out, with why (item 234)
+    row_of_phone: dict[str, int] = {}
+    for row_no, row in enumerate(reader, start=2):   # row 1 is the header
+        raw_phone = row.get(fieldmap.get("phone", "phone"), "")
+        phone = _normalize_phone(raw_phone)
         name_key = fieldmap.get("name")
+        row_name = ((row.get(name_key) or "").strip() or None) if name_key else None
+        if not phone:
+            taken_out.append({"row": row_no, "phone": (raw_phone or "").strip()[:30], "name": row_name, "reason": "bad_number"})
+            continue
+        if phone in rows_by_phone:
+            # The last copy is the one used, so the earlier (discarded) copy is what was taken out.
+            earlier = row_of_phone[phone]
+            taken_out.append({"row": earlier, "phone": phone, "name": rows_by_phone[phone].get("name"), "reason": "duplicate"})
+        row_of_phone[phone] = row_no
         rows_by_phone[phone] = {
             "phone": phone,
             "name": (row.get(name_key) or "").strip() or None if name_key else None,
@@ -200,6 +225,17 @@ async def upload_telecalling_contacts(
             "new": str(ld["id"]) in inserted_id_set,
         })
 
+    # Known people the upload left alone (said stop, already a customer, closed, already with a telecaller).
+    for phone in all_upload_phones:
+        ld = lead_by_phone.get(phone)
+        if not ld:
+            continue
+        reason = reason_for_existing(ld, is_new=str(ld["id"]) in inserted_id_set)
+        if reason:
+            taken_out.append({"row": row_of_phone.get(phone), "phone": phone, "name": ld.get("name") or rows_by_phone[phone].get("name"), "reason": reason})
+    taken_out.sort(key=lambda r: (r.get("row") or 0))
+    stored_taken_out, taken_out_counts = summarize(taken_out)
+
     csv_path: str | None = None
     try:
         storage_filename = f"{tenant_id}/telecalling/{uuid.uuid4().hex[:8]}_{file.filename}"
@@ -219,7 +255,12 @@ async def upload_telecalling_contacts(
         "assignment_snapshot": snapshot,
         "csv_storage_path": csv_path,
     }
-    batch_result = db.table("telecalling_upload_batches").insert(batch_row).execute()
+    try:
+        batch_result = db.table("telecalling_upload_batches").insert(
+            {**batch_row, "taken_out": stored_taken_out, "taken_out_counts": taken_out_counts}).execute()
+    except Exception as e:  # migration 334 not applied yet: save the batch without the taken-out list
+        logger.warning("upload batch saved without taken_out (migration 334 missing?): %s", e)
+        batch_result = db.table("telecalling_upload_batches").insert(batch_row).execute()
     batch_id = batch_result.data[0]["id"] if batch_result.data else None
 
     return {
@@ -228,6 +269,7 @@ async def upload_telecalling_contacts(
         "inserted": inserted,
         "duplicates": len(existing_set),
         "assigned": len(assignments),
+        "taken_out": sum(taken_out_counts.values()),
     }
 
 
@@ -278,12 +320,22 @@ async def get_upload_history(
     scoped = scoped_caller_ids(db, ctx)  # None = owner / everyone; a set = a Team leader's own team
     is_owner = ctx.get("role") == "owner"
 
-    base = db.table("telecalling_upload_batches").select("*").eq("tenant_id", tenant_id).order("created_at", desc=True)
+    def newest(columns: str):
+        return db.table("telecalling_upload_batches").select(columns).eq("tenant_id", tenant_id).order("created_at", desc=True)
+
+    # Columns are listed so the big taken_out list is never pulled for the history. Migration 334 adds the counts.
+    def read(start: int, end: int) -> list[dict]:
+        try:
+            return newest(HISTORY_COLUMNS + ",taken_out_counts").range(start, end).execute().data or []
+        except Exception as e:
+            logger.info("upload history without taken_out_counts (migration 334 missing?): %s", e)
+            return newest(HISTORY_COLUMNS).range(start, end).execute().data or []
+
     if scoped is None:
-        rows = base.range(offset, offset + limit - 1).execute().data or []
+        rows = read(offset, offset + limit - 1)
     else:
         # Rows are filtered after reading, so scan the newest batches (not just one page) and slice.
-        recent = base.range(0, 299).execute().data or []
+        recent = read(0, 299)
         visible: list[dict] = []
         for row in recent:
             mine = _scope_snapshot(row.get("assignment_snapshot") or [], scoped)
@@ -294,9 +346,87 @@ async def get_upload_history(
 
     names = _user_names(db, tenant_id, sorted({str(r["undone_by"]) for r in rows if r.get("undone_by")}))
     for r in rows:
+        # Rows taken out belong to no telecaller, so only the owner sees them. Uploads from before
+        # migration 334 have no list: the page shows a dash (taken_out_counts is None).
+        r.pop("taken_out", None)  # never sent to the page (the query does not read it either)
+        counts = r.pop("taken_out_counts", None)
+        r["taken_out_counts"] = counts if (is_owner and scoped is None) else None
         r["undone_by_name"] = names.get(str(r["undone_by"])) or "the owner" if r.get("undone_by") else None
         r["can_undo"] = bool(is_owner and not r.get("undone_at"))
     return rows
+
+
+@router.get("/history/results")
+async def upload_results(
+    batch_ids: str = Query(..., description="comma-separated batch ids (the ones on screen)"),
+    ctx: dict = Depends(history_viewer),
+):
+    """Per upload: how many of its people were called since, reached, and converted.
+    Loaded separately from the list so the history opens fast. A Team leader sees their own team's rows."""
+    tenant_id = ctx["tenant_id"]
+    db = get_supabase()
+    ids: list[str] = []
+    for part in batch_ids.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.append(str(UUID(part)))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad batch id")
+    ids = ids[:30]
+    if not ids:
+        return {}
+    scoped = scoped_caller_ids(db, ctx)
+    batches = (
+        db.table("telecalling_upload_batches").select("id,created_at,assignment_snapshot")
+        .eq("tenant_id", tenant_id).in_("id", ids).execute().data or []
+    )
+    out: dict[str, dict] = {}
+    for b in batches:
+        snap = _scope_snapshot(b.get("assignment_snapshot") or [], scoped)
+        lead_ids = sorted({str(r["lead_id"]) for r in snap if r.get("lead_id")})
+        calls: list[dict] = []
+        for part in chunks(lead_ids):
+            calls += paged(lambda part=part: (
+                db.table("call_logs").select("id,lead_id,created_at,manual_status,duration_seconds,status,outcome")
+                .eq("tenant_id", tenant_id).in_("lead_id", part).gte("created_at", b["created_at"])
+            ))
+        out[str(b["id"])] = results_for(set(lead_ids), calls, b["created_at"])
+    return out
+
+
+@router.get("/history/{batch_id}/taken-out")
+async def download_taken_out_csv(batch_id: UUID, ctx: dict = Depends(history_viewer)):
+    """What the upload left out and why, as a spreadsheet. Same download rule as the assignments file."""
+    require_download(ctx)
+    tenant_id = ctx["tenant_id"]
+    db = get_supabase()
+    if scoped_caller_ids(db, ctx) is not None:
+        # Left-out rows belong to no telecaller, so a Team leader has nothing of their own here.
+        raise HTTPException(status_code=403, detail="Only the owner can download the rows taken out.")
+    try:
+        rows = (
+            db.table("telecalling_upload_batches").select("file_name,taken_out")
+            .eq("id", str(batch_id)).eq("tenant_id", tenant_id).limit(1).execute().data or []
+        )
+    except Exception as e:  # migration 334 not applied yet
+        logger.info("taken_out not readable yet: %s", e)
+        rows = []
+    if not rows or rows[0].get("taken_out") is None:
+        raise HTTPException(status_code=404, detail="No list of taken-out rows was saved for this upload")
+    taken = rows[0]["taken_out"] or []
+    file_name = rows[0].get("file_name") or "contacts.csv"
+    log_download(db, ctx, list_name=f"Upload rows taken out: {file_name}", row_count=len(taken),
+                 filters={"batch_id": str(batch_id)})
+    name = f"taken_out_{file_name}"
+    if not name.endswith(".csv"):
+        name += ".csv"
+    return Response(
+        content=csv_text(taken, mask=phone_mask_for(db, tenant_id, ctx)),
+        media_type="text/csv",
+        headers=_attachment(name),
+    )
 
 
 @router.get("/history/{batch_id}/csv")
@@ -374,7 +504,7 @@ async def download_assignment_csv(
                 return Response(
                     content=output.getvalue(),
                     media_type="text/csv",
-                    headers={"Content-Disposition": f"attachment; filename={csv_filename}"},
+                    headers=_attachment(csv_filename),
                 )
         except Exception:
             logger.exception("Failed to download or merge CSV from storage, falling back to assignment snapshot")
@@ -398,7 +528,7 @@ async def download_assignment_csv(
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={csv_filename}"},
+        headers=_attachment(csv_filename),
     )
 
 

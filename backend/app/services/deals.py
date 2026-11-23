@@ -75,6 +75,23 @@ def get_deal_tenant_id(deal_id: str, db=None) -> str | None:
 
 # ---------------------------------------------------------------- stock
 
+def _stock_low_check(db, tenant_id: str, item_id: str | None, variant_id: str | None, delta: int, quantity_after) -> None:
+    """Settings > Alerts "running low": a movement that takes stock under 3 rings once per item per day. Never raises."""
+    try:
+        if delta >= 0 or quantity_after is None or int(quantity_after) >= 3:
+            return
+        from app.services import alert_events
+        if not item_id and variant_id:
+            rows = (db.table("catalog_item_variants").select("catalog_item_id").eq("id", variant_id)
+                    .eq("tenant_id", tenant_id).limit(1).execute().data or [])
+            item_id = rows[0]["catalog_item_id"] if rows else None
+        if item_id:
+            alert_events.stock_moved(db, tenant_id, item_id=item_id, variant_id=variant_id, delta=delta,
+                                     quantity_after=quantity_after)
+    except Exception as e:
+        logger.warning(f"stock low check failed: {e}")
+
+
 def adjust_stock(
     tenant_id: str,
     item_id: str,
@@ -115,6 +132,7 @@ def adjust_stock(
         params["p_new_batch"] = new_batch
     res = db.rpc("apply_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
+    _stock_low_check(db, tenant_id, item_id, None, delta, row.get("quantity_after") if row.get("tracked") else None)
     return {
         "ok": bool(row.get("ok")),
         "tracked": bool(row.get("tracked")),
@@ -162,6 +180,7 @@ def adjust_variant_stock(
         params["p_new_batch"] = new_batch
     res = db.rpc("apply_variant_stock_movement", params).execute()
     row = (res.data or [{}])[0] if isinstance(res.data, list) else (res.data or {})
+    _stock_low_check(db, tenant_id, None, variant_id, delta, row.get("quantity_after"))
     return {"ok": bool(row.get("ok")), "tracked": True, "quantity_after": row.get("quantity_after")}
 
 

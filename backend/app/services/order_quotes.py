@@ -263,6 +263,11 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     if advance_note:
         orders.log_advance_change(db, tenant_id, user_id, deal["id"], advance_note,
                                   from_paise=shop_advance, to_paise=advance)
+    try:
+        orders.log_discount(db, tenant_id, user_id, deal["id"], discount_paise=bill.get("discount_paise") or 0,
+                            subtotal_paise=bill.get("subtotal_paise") or 0, kind="quote")
+    except Exception as e:  # the log must never stop the quote being saved
+        logger.warning(f"Discount log for quote {deal['id']} failed: {e}")
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     message = await send_quote(db, tenant_id, deal["id"], user_id=user_id, sender=sender) if send else None
     return {"order": orders.order_detail(db, tenant_id, deal["id"]), "message": message}

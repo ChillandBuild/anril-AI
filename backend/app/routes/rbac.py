@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 import string
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from app.db.supabase import get_supabase
-from app.dependencies.tenant import get_tenant_and_role, require_permission, invalidate_tenant_cache
+from app.dependencies.tenant import _has_permission, get_tenant_and_role, require_permission, invalidate_tenant_cache
 from app.services.assignment import get_telecalling_config
 from app.services.audit_log import record_audit_event
 from app.services.call_teams import forget_leader, team_by_caller, teams_led_by_user
@@ -331,38 +332,76 @@ def delete_role(role_id: str, ctx: dict = Depends(require_roles_manage)):
     return {"deleted": True}
 
 
+# What each "type" filter on the Activity log means. Money rows (refunds, discounts on a bill, advance changes) carry
+# rupee figures, so they are shown, and can be filtered, only for the owner and people with deals.view.
+AUDIT_KINDS = {
+    "team": ["team.%"],
+    "roles": ["role.%"],
+    "money": ["order.refund", "order.discount", "order.advance_changed"],
+    "login": ["auth.login"],
+    "claude": ["claude.%"],
+}
+MONEY_ACTIONS = set(AUDIT_KINDS["money"])
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_UUID = re.compile(r"[0-9a-fA-F-]{8,40}")
+
+
+def _audit_kinds_for(ctx: dict) -> list[str]:
+    kinds = ["team", "roles", "login"]
+    if _has_permission(ctx, "deals.view"):
+        kinds.append("money")
+    # The Anril AI connector's rows can hold the text of a message sent to a customer: owner only.
+    if ctx.get("role") == "owner":
+        kinds.append("claude")
+    return kinds
+
+
 @router.get("/audit-log")
 def list_audit_log(
     page: int = 1,
     limit: int = 50,
     date_from: str | None = None,
     date_to: str | None = None,
+    person: str | None = None,
+    type: str | None = None,
     ctx: dict = Depends(require_roles_read),
 ):
     db = get_supabase()
-    # Tenant-facing scope is deliberately narrower than the operator console's
-    # view of this same table: team membership and role/permission changes,
-    # not every settings/broadcast/operator action ever logged for this tenant.
-    # The owner also sees what was done through the Anril AI connector
-    # (claude.*): those rows can hold the text of a message sent to a customer,
-    # so staff who can only view roles do not get them.
-    scope = "action.like.team.%,action.like.role.%"
-    if ctx.get("role") == "owner":
-        scope += ",action.like.claude.%"
+    # Tenant-facing scope is deliberately narrower than the operator console's view of this same table: team and
+    # role changes, new logins, and (with deals.view) money rows. Not every settings/broadcast/operator action.
+    allowed = _audit_kinds_for(ctx)
+    if type is not None and type not in AUDIT_KINDS:
+        raise HTTPException(status_code=400, detail="Unknown type.")
+    kinds = [type] if type else allowed
+    if type and type not in allowed:
+        return {"data": [], "total": 0, "page": page, "limit": limit, "types": allowed}
+    if date_from and not _DAY.fullmatch(date_from) or date_to and not _DAY.fullmatch(date_to):
+        raise HTTPException(status_code=400, detail="Dates look like 2026-11-23.")
+    if person is not None and not _UUID.fullmatch(person):
+        raise HTTPException(status_code=400, detail="Unknown person.")
+    parts = []
+    for kind in kinds:
+        for pattern in AUDIT_KINDS[kind]:
+            parts.append(f"action.like.{pattern}" if pattern.endswith("%") else f"action.eq.{pattern}")
     q = db.table("app_audit_logs").select(
         "id, actor_user_id, actor_role, action, target_type, target_id, metadata, created_at",
         count="exact",
-    ).eq("tenant_id", ctx["tenant_id"]).or_(scope)
+    ).eq("tenant_id", ctx["tenant_id"]).or_(",".join(parts))
 
+    if person:
+        q = q.eq("actor_user_id", person)
     if date_from:
         q = q.gte("created_at", date_from)
     if date_to:
         q = q.lte("created_at", date_to + "T23:59:59.999Z")
 
-    offset = (page - 1) * limit
+    limit = max(1, min(int(limit), 100))
+    offset = (max(1, page) - 1) * limit
     result = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-
-    return {"data": result.data or [], "total": result.count or 0, "page": page, "limit": limit}
+    rows = result.data or []
+    for r in rows:
+        r["money"] = r.get("action") in MONEY_ACTIONS
+    return {"data": rows, "total": result.count or 0, "page": page, "limit": limit, "types": allowed}
 
 
 @router.get("/users")

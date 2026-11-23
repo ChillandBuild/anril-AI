@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Upload,
@@ -28,6 +27,7 @@ import { Select } from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { createPortal } from "react-dom";
+import { takenOutReasons, takenOutTotal } from "./takenOut";
 
 function Portal({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -77,6 +77,14 @@ interface HistoryItem {
   undone_at?: string | null;
   undone_by_name?: string | null;
   undone_count?: number | null;
+  /** {reason: rows} the upload left out. Null for uploads from before this was recorded, and for a Team leader. */
+  taken_out_counts?: Record<string, number> | null;
+}
+
+interface UploadResults {
+  called: number;
+  reached: number;
+  converted: number;
 }
 
 interface UndoPreview {
@@ -810,6 +818,7 @@ function HistoryTab() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [results, setResults] = useState<Record<string, UploadResults>>({});
   const LIMIT = 20;
 
   const fetchHistory = useCallback(async (p: number) => {
@@ -825,6 +834,13 @@ function HistoryTab() {
       const data: HistoryItem[] = Array.isArray(raw) ? raw : [];
       setHistory(data);
       setHasMore(data.length === LIMIT);
+      // Called / reached / converted are worked out separately so the list opens fast.
+      if (data.length > 0) {
+        fetch(`${API_URL}/api/v1/telecalling-upload/history/results?batch_ids=${data.map((d) => d.id).join(",")}`, { headers })
+          .then((r) => (r.ok ? r.json() : {}))
+          .then((r: Record<string, UploadResults>) => setResults(r))
+          .catch(() => setResults({}));
+      }
     } catch {
       setHistory([]);
     } finally {
@@ -859,6 +875,29 @@ function HistoryTab() {
       window.URL.revokeObjectURL(url);
     } catch {
       alert("Failed to download CSV.");
+    }
+  }
+
+  async function handleDownloadTakenOut(batchId: string, fileName: string) {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/telecalling-upload/history/${batchId}/taken-out`, { headers });
+      if (res.status === 403) {
+        alert("You don't have permission to download lists.");
+        return;
+      }
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `taken_out_${fileName}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert("Failed to download the rows taken out.");
     }
   }
 
@@ -934,6 +973,10 @@ function HistoryTab() {
                     <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Inserted</th>
                     <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Duplicates</th>
                     <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Assigned</th>
+                    <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Taken out</th>
+                    <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Called</th>
+                    <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Reached</th>
+                    <th className="pb-3 pr-4 text-right font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Converted</th>
                     <th className="pb-3 font-label text-xs font-semibold text-on-surface-muted uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -956,6 +999,15 @@ function HistoryTab() {
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-emerald-600">{item.inserted}</td>
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-amber-600">{item.duplicates}</td>
                       <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-blue-600">{item.assigned}</td>
+                      <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-on-surface">
+                        {takenOutTotal(item.taken_out_counts) ?? "—"}
+                        {takenOutReasons(item.taken_out_counts) && (
+                          <span className="block max-w-[180px] whitespace-normal font-body text-[10px] font-normal text-on-surface-muted">{takenOutReasons(item.taken_out_counts)}</span>
+                        )}
+                      </td>
+                      <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-on-surface">{results[item.id]?.called ?? "—"}</td>
+                      <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-on-surface">{results[item.id]?.reached ?? "—"}</td>
+                      <td className="py-4 pr-4 text-right font-label text-sm tabular-nums text-emerald-600">{results[item.id]?.converted ?? "—"}</td>
                       <td className="py-4">
                         <div className="flex items-center gap-1">
                           {canDownload && (
@@ -964,6 +1016,14 @@ function HistoryTab() {
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-semibold text-primary hover:bg-primary/10 transition-colors"
                             >
                               <Download size={13} /> CSV
+                            </button>
+                          )}
+                          {canDownload && (takenOutTotal(item.taken_out_counts) ?? 0) > 0 && (
+                            <button
+                              onClick={() => handleDownloadTakenOut(item.id, item.file_name)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-label font-semibold text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <Download size={13} /> Taken out
                             </button>
                           )}
                           {item.can_undo && (

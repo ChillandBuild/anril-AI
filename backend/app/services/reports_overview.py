@@ -7,6 +7,7 @@ counts (the three biggest, zeros skipped); no AI is involved.
 from datetime import datetime, timedelta, timezone
 
 from app.services.reports_common import Flags, Period, build_report, chunks, count_phrase, finish, money, paged, plural, safe, sentence
+from app.services import reports_money
 from app.services.reports_data import (
     booking_count, buyers_split, call_numbers, is_hot, modules_in_use, new_chats, won_deals, sales_before_gst,
 )
@@ -36,6 +37,10 @@ def compute(db, tenant_id: str, period: Period, flags: Flags) -> tuple[dict, dic
         if ad.get("spend_paise"):
             numbers["ad_spend_paise"] = ad["spend_paise"]
             numbers["cost_per_chat_paise"] = ad.get("cost_per_chat_paise")
+    if flags.sees_profit:  # purchases.view AND deals.view: the Reports > Money formula, so both pages agree
+        got = safe(lambda: reports_money.profit_for(db, tenant_id, period, numbers["sales_paise"]), None, "profit")
+        if got is not None:
+            numbers["profit_paise"] = got
     return numbers, {}
 
 
@@ -55,6 +60,9 @@ def build_cards(numbers: dict, before: dict | None, modules: dict, flags: Flags)
     wanted: list[dict | None] = []
     if modules.get("orders") and flags.sees_money:
         wanted.append(_card("sales_paise", "Sales", numbers, before, "paise", href="/dashboard/analytics?tab=money"))
+    if modules.get("orders") and flags.sees_profit:
+        # An estimate: sales less refunds, the catalogue cost price of what sold, and expenses.
+        wanted.append(_card("profit_paise", "Estimated profit", numbers, before, "paise", href="/dashboard/analytics?tab=money", estimate=True))
     if modules.get("orders"):
         wanted.append(_card("paid", "People who paid", numbers, before, people={"metric": "paid"}))
     wanted.append(_card("first_chats", "New chats", numbers, before, people={"metric": "new_chats"}))
@@ -66,7 +74,8 @@ def build_cards(numbers: dict, before: dict | None, modules: dict, flags: Flags)
     if modules.get("bookings"):
         wanted.append(_card("bookings", "Bookings", numbers, before, href="/dashboard/bookings"))
     wanted.append(_card("new_buyers", "New customers", numbers, before, people={"metric": "bought_new"}))
-    return [c for c in wanted if c][:6]
+    cards = [c for c in wanted if c]
+    return cards[:7] if any(c["key"] == "profit_paise" for c in cards) else cards[:6]
 
 
 # ── things to do (as of now) ──────────────────────────────────────────────────
@@ -130,6 +139,21 @@ def todo_items(db, tenant_id: str, flags: Flags, now: datetime) -> list[dict]:
     return sorted(candidates, key=lambda c: -c["count"])[:3]
 
 
+def _profit_this_month(db, tenant_id: str, period: Period, numbers: dict, now: datetime) -> dict | None:
+    """The estimated profit of this IST month so far, next to the target (same formula as Home's profit box).
+    When the picked days already are the 1st to today, the figure computed for them is reused."""
+    from app.services.reports_common import IST, resolve_period
+    today = now.astimezone(IST).date()
+    first = today.replace(day=1)
+    if period.start == first and period.end == today and numbers.get("profit_paise") is not None:
+        profit = int(numbers["profit_paise"])
+    else:
+        month = resolve_period(first.isoformat(), today.isoformat())
+        sales = sum(sales_before_gst(d) for d in won_deals(db, tenant_id, month))
+        profit = reports_money.profit_for(db, tenant_id, month, sales)
+    return {"profit_paise": profit, "month": today.strftime("%Y-%m")}
+
+
 def report(db, tenant_id: str, period: Period, compare: bool, flags: Flags, now: datetime | None = None) -> dict:
     from app.services import sales_target
     now = now or datetime.now(timezone.utc)
@@ -140,6 +164,8 @@ def report(db, tenant_id: str, period: Period, compare: bool, flags: Flags, now:
     payload["target"] = safe(lambda: sales_target.overview(db, tenant_id, now, sees_money=flags.sees_money), None, "target")
     if payload["target"]:  # the page needs only this month and the cost-price count
         payload["target"] = {"this_month": payload["target"]["this_month"], "cost_coverage": payload["target"].get("cost_coverage")}
+        if flags.sees_profit:
+            payload["target"]["profit_this_month"] = safe(lambda: _profit_this_month(db, tenant_id, period, payload["period"], now), None, "month profit")
     unmarked = safe(lambda: len(unmarked_lead_ids(db, tenant_id, period)), 0, "unmarked chats")
     payload["unmarked_chats"] = {"count": unmarked, "href": "/dashboard/inbound-leads?result=none"}
     payload["period"]["unmarked_chats"] = unmarked

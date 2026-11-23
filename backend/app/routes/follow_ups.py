@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -10,6 +11,9 @@ from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, require_
 from app.dependencies.auth import get_current_user
 from app.services.ai_reply import generate_reengagement_message, send_whatsapp
 from app.services.call_teams import caller_scope
+from app.services.call_wrapup import CLOSED_LEAD_STATUSES
+from app.services.bookings import IST
+from app.services.callback_stats import kept_on_time
 from app.services.growth import build_follow_up_summary, utcnow
 
 
@@ -143,20 +147,70 @@ async def run_due_follow_ups(limit: int = Query(20, ge=1, le=100), ctx: dict = D
     }
 
 
+def _future_or_400(value: str) -> str:
+    """A scheduled call must be at a real time that is not already in the past (5 minutes of slack).
+    A time with no zone is Indian time (as in Bookings). Returns the time as UTC ISO, ready to save."""
+    try:
+        when = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Pick a valid date and time.")
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=IST)
+    when = when.astimezone(timezone.utc)
+    if when < datetime.now(timezone.utc) - timedelta(minutes=5):
+        raise HTTPException(status_code=400, detail="Pick a time in the future.")
+    return when.isoformat()
+
+
+def _is_plain_telecaller(db, ctx: dict) -> bool:
+    """A telecaller who is not a Team leader and not the owner: sees and touches only their own leads."""
+    return ctx.get("role") == "caller" and caller_scope(db, ctx) is None
+
+
+def _assert_own_lead(ctx: dict, assigned_to) -> None:
+    if not ctx.get("caller_id") or str(assigned_to) != str(ctx["caller_id"]):
+        raise HTTPException(status_code=403, detail="That customer isn't assigned to you.")
+
+
+@router.get("/callbacks/stats")
+async def callbacks_stats(ctx: dict = Depends(get_tenant_and_role)):
+    """Kept on time: scheduled calls (last 30 days) that got a call within 15 minutes of their time.
+    Same people as the board: a Team leader sees only their team's calls."""
+    db = get_supabase()
+    scope = caller_scope(db, ctx)
+    if scope is None and ctx.get("role") == "caller":
+        scope = {str(ctx["caller_id"])} if ctx.get("caller_id") else set()  # a plain telecaller: their own calls
+    return await asyncio.to_thread(kept_on_time, db, ctx["tenant_id"], scope)
+
+
 @router.post("/callback")
 async def create_callback(payload: CallbackCreate, ctx: dict = Depends(get_tenant_and_role)):
     db = get_supabase()
+    when_iso = _future_or_400(payload.scheduled_for)
+    # The lead must be this business's own (and, for a Team leader, held by their team), and callable.
+    lead = db.table("leads").select("id,assigned_to,do_not_call,opted_out,call_status,converted_at").eq("id", payload.lead_id).eq("tenant_id", ctx["tenant_id"]).limit(1).execute().data or []
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    scope = caller_scope(db, ctx)
+    if scope is not None and str(lead[0].get("assigned_to")) not in scope:
+        raise HTTPException(status_code=403, detail="That lead is not in your team.")
+    if scope is None and ctx.get("role") == "caller":
+        _assert_own_lead(ctx, lead[0].get("assigned_to"))
+    if lead[0].get("do_not_call") or lead[0].get("opted_out"):
+        raise HTTPException(status_code=400, detail="This customer can't be called (Do Not Call or Said stop).")
     row = db.table("follow_up_jobs").insert({
         "lead_id": payload.lead_id,
         "channel": "phone",
         "cadence": "callback",
         "status": "pending",
-        "scheduled_for": payload.scheduled_for,
-        "message_preview": payload.note,
+        "scheduled_for": when_iso,
+        "message_preview": (payload.note or "").strip()[:500] or None,
         "scheduled_by_caller_id": ctx.get("caller_id"),
         "tenant_id": ctx["tenant_id"],
     }).execute()
-    db.table("leads").update({"call_status": "callback"}).eq("id", payload.lead_id).eq("tenant_id", ctx["tenant_id"]).execute()
+    if lead[0].get("call_status") not in CLOSED_LEAD_STATUSES and not lead[0].get("converted_at"):
+        # A closed or converted customer keeps their status; the scheduled call is still saved.
+        db.table("leads").update({"call_status": "callback"}).eq("id", payload.lead_id).eq("tenant_id", ctx["tenant_id"]).execute()
     return row.data[0] if row.data else {}
 
 
@@ -281,13 +335,17 @@ def _team_callbacks(db, tenant_id: str, scope: set[str]) -> tuple[list[dict], di
 def _assert_callback_in_scope(db, ctx: dict, job_id: str) -> None:
     """403 when a Team leader touches a callback whose lead is not held by their team."""
     scope = caller_scope(db, ctx)
-    if scope is None:
-        return
+    if scope is None and ctx.get("role") != "caller":
+        return  # the owner
     tenant_id = ctx["tenant_id"]
     job = db.table("follow_up_jobs").select("lead_id").eq("id", job_id).eq("tenant_id", tenant_id).limit(1).execute().data or []
     lead = []
     if job:
         lead = db.table("leads").select("assigned_to").eq("id", job[0]["lead_id"]).eq("tenant_id", tenant_id).limit(1).execute().data or []
+    if scope is None:  # a plain telecaller: only calls on their own leads
+        if not lead or str(lead[0].get("assigned_to")) != str(ctx.get("caller_id")):
+            raise HTTPException(status_code=403, detail="That call-back isn't assigned to you.")
+        return
     if not lead or str(lead[0].get("assigned_to")) not in scope:
         raise HTTPException(status_code=403, detail="That call-back is not in your team.")
 
@@ -428,8 +486,14 @@ async def reschedule_callback(
 
     lead_id = job_res.data["lead_id"]
 
+    when_iso = _future_or_400(payload.scheduled_for)
+    flags = db.table("leads").select("do_not_call,opted_out").eq("id", lead_id).eq("tenant_id", tenant_id).limit(1).execute().data or []
+    if flags and (flags[0].get("do_not_call") or flags[0].get("opted_out")):
+        raise HTTPException(status_code=400, detail="This customer can't be called (Do Not Call or Said stop).")
+
     # 2. If requester role is 'caller', verify that the lead's assigned_to matches the caller's caller_id.
-    if role == "caller":
+    #    A Team leader (also role 'caller') may move their team's calls: _assert_callback_in_scope covers them.
+    if role == "caller" and caller_scope(db, ctx) is None:
         if not caller_id:
             raise HTTPException(status_code=403, detail="Caller profile not found")
         # Fetch lead's assigned_to
@@ -450,7 +514,7 @@ async def reschedule_callback(
     update_res = (
         db.table("follow_up_jobs")
         .update({
-            "scheduled_for": payload.scheduled_for,
+            "scheduled_for": when_iso,
             "status": "pending",
             "due_notified_at": None,
             "claimable_notified_at": None,

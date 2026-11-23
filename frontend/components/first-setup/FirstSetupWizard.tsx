@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { FIRST_SETUP_STEPS, firstSetupApi, setAiAgentOn, type FirstSetupStep } from "@/lib/firstSetupApi";
@@ -7,6 +7,7 @@ import { InterviewQuestionsForm, InterviewReview, StarterStep } from "./Workspac
 import type { InterviewDraft } from "@/lib/api";
 import { GSTIN_PATTERN, asksForGstin, gstTypeFor, type GstChoice } from "./helpers";
 import { ConnectStep } from "./ConnectStep";
+import { setupHelpApi } from "@/lib/setupHelpApi";
 
 // The 6 first-setup steps. Every step can be skipped, "Finish later" is always on screen, and each
 // step saves through the screen that already owns that setting. Progress is remembered on the server,
@@ -28,7 +29,7 @@ const errorBox = "mb-4 p-3 rounded-xl bg-red-50 text-red-700 font-body text-sm";
 const outline =
   "w-full rounded-xl border border-border px-4 py-3 text-center font-body text-sm font-medium text-ink hover:border-primary hover:bg-primary/5";
 
-function LinkStep({ title, text, links, onNext }: { title: string; text: string; links: { href: string; label: string }[]; onNext: () => void }) {
+function LinkStep({ title, text, links, onNext, extra }: { title: string; text: string; links: { href: string; label: string }[]; onNext: () => void; extra?: ReactNode }) {
   return (
     <div className={card}>
       <h1 className={heading}>{title}</h1>
@@ -39,11 +40,52 @@ function LinkStep({ title, text, links, onNext }: { title: string; text: string;
             {l.label}
           </Link>
         ))}
+        {extra}
       </div>
       <button type="button" onClick={onNext} className="btn-primary mt-4 w-full justify-center">
         Done, next step
       </button>
       <p className="mt-2 text-center font-body text-xs text-ink-muted">Each link opens in a new tab, so you can come straight back here.</p>
+    </div>
+  );
+}
+
+/** v9.2 #80: ask the Anril team to add the catalogue. One open ask per business, so a second tap changes nothing. */
+function CatalogueHelp() {
+  const [requested, setRequested] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setupHelpApi.catalogueStatus().then((r) => setRequested(r.requested)).catch(() => setRequested(false));
+  }, []);
+
+  async function ask() {
+    setBusy(true);
+    setError(null);
+    try {
+      await setupHelpApi.requestCatalogue();
+      setRequested(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send your request. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (requested) {
+    return (
+      <p role="status" className="rounded-xl bg-primary/5 px-4 py-3 text-center font-body text-sm font-medium text-ink">
+        Requested · we&apos;ll WhatsApp you
+      </p>
+    );
+  }
+  return (
+    <div>
+      {error && <p role="alert" className={errorBox}>{error}</p>}
+      <button type="button" onClick={ask} disabled={busy || requested === null} className={`${outline} disabled:opacity-60`}>
+        {busy ? "Sending…" : "Let the Anril team do it"}
+      </button>
     </div>
   );
 }
@@ -258,6 +300,7 @@ export function FirstSetupWizard({ onFinish }: { onFinish: () => void }) {
           title={TITLES.items}
           text="Add your items one by one, or upload a price list (Excel, PDF or a photo of your price board). You can also skip this and do it later."
           links={[{ href: "/dashboard/catalog", label: "Add items or upload a price list" }]}
+          extra={<CatalogueHelp />}
           onNext={() => move(true)}
         />
       )}

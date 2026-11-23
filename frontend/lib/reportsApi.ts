@@ -198,6 +198,8 @@ export interface ReportCard {
   /** Opens the people behind the number. */
   people?: PeopleRef;
   href?: string;
+  /** True for a figure that is worked out from cost prices and expenses, not counted (the profit card). */
+  estimate?: boolean;
 }
 
 export interface TodoItem { text: string; count: number; href: string }
@@ -205,6 +207,8 @@ export interface TodoItem { text: string; count: number; href: string }
 export interface SalesTarget {
   this_month?: { month?: string; target_paise?: number | null; money_in_paise?: number | null; pct?: number | null };
   cost_coverage?: { with_cost: number; total: number } | null;
+  /** Only for people who may see profit (Orders view and Purchases view). */
+  profit_this_month?: { profit_paise: number; month?: string } | null;
 }
 
 export interface OverviewReport extends ReportBase {

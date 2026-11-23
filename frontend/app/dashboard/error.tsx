@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { RefreshCw, AlertTriangle } from "lucide-react";
+import { reportClientError } from "@/lib/connectionStatusApi";
 
 export default function DashboardError({
   error,
@@ -11,6 +12,8 @@ export default function DashboardError({
 }) {
   useEffect(() => {
     console.error("Dashboard render error:", error);
+    // v9.2 #24: tell Anril support (code and page only), once per browser session.
+    reportClientError(error?.digest, window.location.pathname);
   }, [error]);
 
   const isNetwork =

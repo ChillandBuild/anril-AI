@@ -38,6 +38,7 @@ import {
   type ExtraCustomerEvent,
 } from "@/lib/customersApi";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { InterestedIn } from "@/components/chats/InterestedIn";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 
@@ -697,6 +698,13 @@ export default function CustomerPage() {
             {canManage && tags.length >= MAX_TAGS_PER_PERSON && (
               <p className="mt-2 text-xs text-[#556274]">{MAX_TAGS_PER_PERSON} tags is the most one person can have.</p>
             )}
+          </div>
+
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-bold text-[#0A1528]">Interested in</h2>
+            <div className="mt-2.5">
+              <InterestedIn leadId={leadId ?? profile.lead.id} />
+            </div>
           </div>
 
           <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">

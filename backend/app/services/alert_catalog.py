@@ -32,7 +32,9 @@ WHO_LABELS = {"owner": "Owner", "team": "Whole team", "assigned": "The person it
 # whatsapp = a WhatsApp message to the owner's alert numbers (Settings > Alerts, WhatsApp section).
 _CATALOG: tuple[dict, ...] = (
     {"key": "handover_new", "label": "The AI agent needs a person", "area": "Chats", "who": ["team"], "how": ["bell", "push", "whatsapp"]},
+    {"key": "handover_unanswered", "label": "Nobody replied 15 minutes after a handover", "area": "Chats", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "lead_replied", "label": "A customer wrote back", "area": "Chats", "who": ["assigned"], "how": ["bell", "push"]},
+    {"key": "hot_lead_waiting", "label": "A hot customer has waited 30 minutes for a reply", "area": "Chats", "who": ["owner", "assigned"], "how": ["bell", "push"]},
     {"key": "lead_assigned", "label": "A customer was given to you", "area": "Customers", "who": ["assigned"], "how": ["bell", "push"]},
     {"key": "callback_due", "label": "A call-back is due", "area": "Calling", "who": ["assigned"], "how": ["bell", "push"]},
     {"key": "callback_claimable", "label": "A call-back is waiting for someone", "area": "Calling", "who": ["team"], "how": ["bell", "push"]},
@@ -41,10 +43,12 @@ _CATALOG: tuple[dict, ...] = (
     {"key": "intake_paid", "label": "A payment came in", "area": "Money", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "intake_double_payment", "label": "A customer paid twice (form)", "area": "Money", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "deal_double_payment", "label": "A customer paid twice (order)", "area": "Money", "who": ["owner"], "how": ["bell", "push"]},
+    {"key": "refund_done", "label": "A refund was given", "area": "Money", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "quote_accepted", "label": "A customer accepted a quote", "area": "Orders", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "day_closing", "label": "Cash does not match at day closing", "area": "Orders", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "purchase_order", "label": "A purchase order needs you", "area": "Purchases", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "batch_expiry", "label": "Stock is about to expire", "area": "Stock", "who": ["owner"], "how": ["bell", "push"]},
+    {"key": "stock_low", "label": "An item is running low (under 3 left)", "area": "Stock", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "booking_new", "label": "A new booking", "area": "Bookings", "who": ["team"], "how": ["bell", "push"]},
     {"key": "booking_cancelled", "label": "A booking was cancelled", "area": "Bookings", "who": ["team"], "how": ["bell", "push"]},
     {"key": "feedback_unhappy", "label": "An unhappy customer", "area": "Feedback", "who": ["owner"], "how": ["bell", "push"]},
@@ -53,6 +57,7 @@ _CATALOG: tuple[dict, ...] = (
     {"key": "intake_trigger_failed", "label": "A paid form had a problem", "area": "Forms", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "template_paused", "label": "WhatsApp paused or turned down a message template", "area": "Messages", "who": ["owner"], "how": ["bell", "push"]},
     {"key": "number_disconnected", "label": "Your WhatsApp number is disconnected", "area": "WhatsApp", "who": ["owner"], "how": ["bell", "push"]},
+    {"key": "campaign_paused", "label": "A campaign was stopped (too many said stop)", "area": "Messages", "who": ["owner"], "how": ["bell", "push"]},
 )
 
 _BY_KEY = {a["key"]: a for a in _CATALOG}

@@ -51,6 +51,8 @@ describe("words", () => {
     expect(reminderHelp({ enabled: false, template: null, template_body: "" })).toMatch(/First send/);
     expect(reminderHelp({ enabled: false, template: "PENDING", template_body: "" })).toMatch(/still checking/);
     expect(reminderHelp({ enabled: true, template: "APPROVED", template_body: "" })).toMatch(/3 days before/);
+    expect(reminderHelp({ enabled: true, template: "APPROVED", template_body: "", link_template: "APPROVED" })).toMatch(/pay link for that part/);
+    expect(reminderHelp({ enabled: false, template: null, template_body: "", link_template: "APPROVED" })).toMatch(/Switch it on/);
   });
 });
 

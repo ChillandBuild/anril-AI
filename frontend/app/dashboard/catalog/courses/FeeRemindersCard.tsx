@@ -26,7 +26,8 @@ export function FeeRemindersCard({ canManage }: { canManage: boolean }) {
   }
 
   if (error) return null; // no orders access, or the tables are not there yet: the card is simply not shown
-  const approved = data?.template === "APPROVED";
+  const approved = data?.template === "APPROVED" || data?.link_template === "APPROVED";
+  const linkMissing = data?.link_template == null || data?.link_template === "REJECTED";
   return (
     <section className="rounded-xl border border-[#e2e8f0] bg-white p-4" aria-label="Fee reminders">
       <div className="flex items-start justify-between gap-3">
@@ -41,6 +42,12 @@ export function FeeRemindersCard({ canManage }: { canManage: boolean }) {
         <div className="mt-3">
           <button type="button" className={BTN_SECONDARY} disabled={busy} onClick={() => run(coursesApi.submitReminderTemplate)}>
             {busy ? "Sending…" : data.template === "REJECTED" ? "Send the message again" : "Send the message to WhatsApp for approval"}
+          </button>
+        </div>
+      ) : canManage && data && linkMissing ? (
+        <div className="mt-3">
+          <button type="button" className={BTN_SECONDARY} disabled={busy} onClick={() => run(coursesApi.submitReminderTemplate)}>
+            {busy ? "Sending…" : "Also send the version with a pay link for approval"}
           </button>
         </div>
       ) : null}

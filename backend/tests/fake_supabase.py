@@ -277,6 +277,10 @@ class _Query:
                 return len(won)
             stamps = [str(t) for t in (r.get("converted_at"), r.get("booked_at"), *(d.get("won_at") for d in won)) if t]
             return max(stamps) if stamps else None
+        if self.name == "leads" and column == "total_spent_paise":
+            # Migration 333: paid minus refunded over the person's deals, never below zero per deal.
+            return sum(max(int(d.get("paid_paise") or 0) - int(d.get("refunded_paise") or 0), 0)
+                       for d in self.db.rows("deals") if d.get("lead_id") == r.get("id"))
         if self.name == "leads" and column in ("waiting_since", "last_message") and column not in r:
             # Migrations 282/283: waiting since the first unanswered inbound message; newest message.
             msgs = sorted((m for m in self.db.rows("messages") if m.get("lead_id") == r.get("id")),

@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { api, API_URL, AuditLogEntry, ClientRole, PermissionDef, RbacUser } from "@/lib/api";
+import { actionLabel, activityDetail, isMoneyRow, typeOptions } from "@/lib/activityLog";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { cn } from "@/lib/utils";
 import { formatRupees } from "@/lib/reportsApi";
@@ -189,6 +190,7 @@ export default function RolesPage() {
   const { role, permissions: myPermissions, loading: roleLoading } = useAuthRole();
   const canWrite = role === "owner" || myPermissions.includes("roles.manage");
   const canView = canWrite || myPermissions.includes("roles.view");
+  const canSeeMoney = role === "owner" || myPermissions.includes("deals.view") || myPermissions.includes("deals.manage");
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTab: Tab = searchParams.get("tab") === "users" ? "users" : searchParams.get("tab") === "audit" ? "audit" : "roles";
@@ -224,6 +226,11 @@ export default function RolesPage() {
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditPage, setAuditPage] = useState(1);
   const [auditLoading, setAuditLoading] = useState(true); // the audit tab fetches as soon as it opens
+  const [auditPerson, setAuditPerson] = useState("");
+  const [auditType, setAuditType] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
+  const [auditTypes, setAuditTypes] = useState<string[] | undefined>(undefined);
 
   useEffect(() => {
     setTab(urlTab);
@@ -301,15 +308,19 @@ export default function RolesPage() {
     if (tab !== "audit" || !canView) return;
     let active = true;
     setAuditLoading(true);
-    api.rbac.auditLog({ page: auditPage }).then((res) => {
+    api.rbac.auditLog({
+      page: auditPage, person: auditPerson || undefined, type: auditType || undefined,
+      date_from: auditFrom || undefined, date_to: auditTo || undefined,
+    }).then((res) => {
       if (!active) return;
       setAuditEntries(res.data);
       setAuditTotal(res.total);
+      setAuditTypes(res.types);
     }).catch(() => undefined).finally(() => {
       if (active) setAuditLoading(false);
     });
     return () => { active = false; };
-  }, [tab, auditPage, canView]);
+  }, [tab, auditPage, auditPerson, auditType, auditFrom, auditTo, canView]);
 
   function startRole(role: ClientRole) {
     setEditingRoleId(role.id);
@@ -1108,28 +1119,46 @@ export default function RolesPage() {
             <h2 className="font-display text-base font-bold text-ink">Activity log</h2>
             <span className="rounded-full bg-surface-subtle px-2.5 py-1 font-label text-[10px] font-bold text-ink-muted">{auditLoading ? "—" : auditTotal} total</span>
           </div>
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1 font-label text-[10px] font-bold text-ink-muted">Person
+              <select className="input h-9 py-0 text-xs" value={auditPerson} onChange={(e) => { setAuditPerson(e.target.value); setAuditPage(1); }}>
+                <option value="">Everyone</option>
+                {users.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || u.email}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 font-label text-[10px] font-bold text-ink-muted">Type
+              <select className="input h-9 py-0 text-xs" value={auditType} onChange={(e) => { setAuditType(e.target.value); setAuditPage(1); }}>
+                {typeOptions(auditTypes).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 font-label text-[10px] font-bold text-ink-muted">From
+              <input type="date" className="input h-9 py-0 text-xs" value={auditFrom} max={auditTo || undefined} onChange={(e) => { setAuditFrom(e.target.value); setAuditPage(1); }} />
+            </label>
+            <label className="flex flex-col gap-1 font-label text-[10px] font-bold text-ink-muted">To
+              <input type="date" className="input h-9 py-0 text-xs" value={auditTo} min={auditFrom || undefined} onChange={(e) => { setAuditTo(e.target.value); setAuditPage(1); }} />
+            </label>
+            {(auditPerson || auditType || auditFrom || auditTo) && (
+              <button type="button" className="btn-secondary h-9 px-3 text-xs" onClick={() => { setAuditPerson(""); setAuditType(""); setAuditFrom(""); setAuditTo(""); setAuditPage(1); }}>Clear</button>
+            )}
+          </div>
           {auditLoading ? (
             <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-primary" /></div>
           ) : auditEntries.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <Inbox size={32} className="text-ink-muted/40" />
-              <p className="font-body text-sm text-ink-muted">No audit events yet.</p>
+              <p className="font-body text-sm text-ink-muted">Nothing here yet.</p>
             </div>
           ) : (
             <div className="divide-y divide-border-subtle">
               {auditEntries.map((entry) => {
                 const user = users.find((u) => u.user_id === entry.actor_user_id);
-                const metaText = entry.metadata && Object.keys(entry.metadata).length > 0
-                  ? Object.entries(entry.metadata)
-                      .filter(([, v]) => v !== null && v !== undefined && v !== "********")
-                      .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-                      .join(" · ")
-                  : "";
+                const metaText = activityDetail(entry, canSeeMoney);
+                const money = isMoneyRow(entry);
                 return (
-                  <div key={entry.id} className="flex flex-col gap-1 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-2">
+                  <div key={entry.id} className={`flex flex-col gap-1 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-2${money ? " rounded-xl bg-yellow-50" : ""}`}>
                     <div className="min-w-0">
                       <p className="font-body text-sm font-bold text-ink">
-                        {entry.action} <span className="font-body text-xs font-normal text-ink-muted">by {user?.full_name || user?.email || entry.actor_role || "system"}</span>
+                        {actionLabel(entry.action)} <span className="font-body text-xs font-normal text-ink-muted">by {user?.full_name || user?.email || entry.actor_role || "system"}</span>
                       </p>
                       {metaText && <p className="mt-0.5 truncate font-body text-xs text-ink-muted">{metaText}</p>}
                     </div>

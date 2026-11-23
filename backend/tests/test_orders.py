@@ -464,3 +464,15 @@ def test_remind_all_reminds_only_the_chip_on_screen(db):
     assert run(orders.remind_all(db, T, state="waiting", dry_run=True))["ready"] == 1
     assert run(orders.remind_all(db, T, state="advance", dry_run=True))["ready"] == 1
     assert run(orders.remind_all(db, T, dry_run=True))["ready"] == 2
+
+
+def test_a_bill_sent_twice_with_the_same_send_once_key_is_made_once(db):
+    """v9.2 #74: an offline bill retried after the first try did reach us returns that bill, nothing doubled."""
+    out, sent = _bill(db, phone="98400 12345", client_ref="dev-abc12345")
+    again, sent2 = _bill(db, phone="98400 12345", client_ref="dev-abc12345")
+    assert again["repeated"] is True and again["order"]["id"] == out["order"]["id"]
+    assert len(db.rows("deals")) == 1 and len(db.rows("deal_payments")) == 1
+    assert next(v for v in db.rows("catalog_item_variants") if v["id"] == "red-m")["stock_quantity"] == 0  # taken once
+    sent2.assert_not_awaited()
+    other, _ = _bill(db, phone="98400 12345", client_ref="dev-xyz98765")
+    assert other["order"]["id"] != out["order"]["id"] and len(db.rows("deals")) == 2

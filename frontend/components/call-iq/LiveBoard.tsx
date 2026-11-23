@@ -9,6 +9,7 @@ import {
   type LivePerson, type LiveResponse, type LiveState,
 } from "@/lib/callIqApi";
 import { Card, ErrorBox, Stat } from "./CallIqShell";
+import { CallbacksDue, WaitingHotLeads } from "./LiveLists";
 import { useCallIqData } from "./useCallIqData";
 
 const STATE_STYLE: Record<LiveState, { chip: string; dot: string }> = {
@@ -85,6 +86,10 @@ export function LiveBoard() {
           {people.map((p) => <PersonCard key={p.caller_id} person={p} now={shownNow} />)}
         </div>
       )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <CallbacksDue rows={data?.callbacks_due ?? []} now={shownNow} />
+        <WaitingHotLeads total={data?.waiting?.total ?? 0} rows={data?.waiting?.rows ?? []} />
+      </div>
       <p className="font-label text-xs text-ink-secondary">This page refreshes by itself every 20 seconds.</p>
     </div>
   );

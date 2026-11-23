@@ -24,6 +24,16 @@ export interface WrapupDraft {
   saleMode: "products" | "amount";
   products: SaleLine[];
   amountRupees: string;
+  /** "Next step booked": a real booking to make when the wrap-up is saved (only when Bookings is set up). */
+  booking: DraftBooking | null;
+}
+
+export interface DraftBooking {
+  serviceId: string;
+  /** The visit time (ISO). Also the next-step time of the wrap-up. */
+  startAt: string;
+  /** "Haircut, Tomorrow 11:00 AM": what the telecaller sees after picking. */
+  label: string;
 }
 
 const PAST_TOLERANCE_MS = 5 * 60_000;
@@ -35,6 +45,7 @@ export function emptyDraft(): WrapupDraft {
   return {
     manualStatus: null, outcome: null, notes: "", nextActionAt: null, retrySuggested: false, reason: null,
     preferredLanguage: null, stopMessages: false, saleMode: "products", products: [], amountRupees: "",
+    booking: null,
   };
 }
 
@@ -42,7 +53,7 @@ export function selectConnect(draft: WrapupDraft, value: CallConnect, context: W
   if (value === "connected") return { ...draft, manualStatus: value, nextActionAt: null, retrySuggested: false };
   return {
     ...draft, manualStatus: value, outcome: null, reason: null, preferredLanguage: null, stopMessages: false,
-    nextActionAt: context?.retry_suggestions[value] ?? null, retrySuggested: true,
+    nextActionAt: context?.retry_suggestions[value] ?? null, retrySuggested: true, booking: null,
   };
 }
 
@@ -50,7 +61,13 @@ export function selectOutcome(draft: WrapupDraft, value: CallResult): WrapupDraf
   return {
     ...draft, outcome: value, reason: null, preferredLanguage: null, stopMessages: false,
     nextActionAt: resultOption(value).time ? draft.nextActionAt : null,
+    booking: value === "interested_booked" ? draft.booking : null,
   };
+}
+
+/** Pick (or clear) the visit to book. The visit time doubles as the wrap-up's next-step time. */
+export function setBooking(draft: WrapupDraft, booking: DraftBooking | null): WrapupDraft {
+  return { ...draft, booking, nextActionAt: booking ? booking.startAt : null, retrySuggested: false };
 }
 
 /**
@@ -129,5 +146,8 @@ export function draftToPayload(draft: WrapupDraft): WrapupPayload {
       ? draft.products.map((p) => ({ catalog_item_id: p.catalogItemId, qty: p.qty }))
       : [],
     amount_paise: sale && draft.saleMode === "amount" ? amountPaise(draft.amountRupees) : null,
+    booking: connected && draft.outcome === "interested_booked" && draft.booking
+      ? { service_id: draft.booking.serviceId, resource_id: "any", start_at: draft.booking.startAt }
+      : null,
   };
 }

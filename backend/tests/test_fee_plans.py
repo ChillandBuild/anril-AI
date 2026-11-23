@@ -327,3 +327,66 @@ def test_fetch_all_reads_past_the_1000_row_cap():
         db.add("fee_plans", id=f"{i:05d}", tenant_id=T, deal_id=f"d{i}", parts=[])
     rows = fp.fetch_all(lambda: db.table("fee_plans").select("*").eq("tenant_id", T))
     assert len(rows) == 2300 and len({r["id"] for r in rows}) == 2300
+
+
+# ── v9.2 #217: the pay-link reminder ─────────────────────────────────────────────
+
+LINK_TEMPLATE = {"name": "fee_reminder_link", "language": "en", "body_text": "Hi {{1}} {{2}} {{3}} {{4}} {{5}} {{6}}"}
+
+
+def test_the_link_reminder_carries_a_pay_link_for_this_part():
+    db, _ = world(THREE)
+    with patch.object(fp, "_part_link", AsyncMock(return_value="https://rzp.io/l/x1")) as mk:
+        sent, send, _ = run(db, template={**LINK_TEMPLATE, "_plain": TEMPLATE})
+    assert sent == 1
+    tpl, phone, values = send.call_args.args[2:]
+    assert tpl["name"] == "fee_reminder_link" and values[-1] == "https://rzp.io/l/x1" and len(values) == 6
+    assert mk.await_args.args[3:6] == (0, "due", "+919876543210")
+
+
+def test_no_pay_link_falls_back_to_the_plain_reminder():
+    db, _ = world(THREE)
+    with patch.object(fp, "_part_link", AsyncMock(return_value=None)):
+        sent, send, _ = run(db, template={**LINK_TEMPLATE, "_plain": TEMPLATE})
+    tpl, _, values = send.call_args.args[2:]
+    assert sent == 1 and tpl["name"] == "fee_reminder" and len(values) == 5
+
+
+def test_only_the_link_reminder_approved_and_no_link_sends_nothing_and_frees_the_claim():
+    db, _ = world(THREE)
+    with patch.object(fp, "_part_link", AsyncMock(return_value=None)):
+        sent, send, _ = run(db, template={**LINK_TEMPLATE, "_plain": None})
+    assert sent == 0 and send.await_count == 0 and db.rows("fee_plan_reminders") == []
+
+
+def test_reminders_can_be_switched_on_with_only_the_link_message_approved():
+    db, _ = world(THREE)
+    with patch("app.config_dynamic.get_setting", return_value=None), \
+            patch("app.config_dynamic.save_setting") as save:
+        db.add("message_templates", tenant_id=T, name="fee_reminder_link", status="APPROVED")
+        fp.set_reminders(db, T, True)
+        save.assert_called_once_with("fee_reminders_enabled", "true", tenant_id=T)
+
+
+def test_owed_on_part_takes_partial_credit_off_the_first_part_it_cant_cover():
+    parts = [{"amount_paise": 10000}, {"amount_paise": 10000}, {"amount_paise": 10000}]
+    assert [fp.owed_on_part(parts, {}, 4000, i) for i in range(3)] == [6000, 10000, 10000]
+    assert [fp.owed_on_part(parts, {}, 14000, i) for i in range(3)] == [0, 6000, 10000]
+    # A part marked paid on the plan is owed nothing and its money isn't counted twice.
+    assert [fp.owed_on_part(parts, {0: 10000}, 13000, i) for i in range(3)] == [0, 7000, 10000]
+
+
+def test_part_link_is_made_on_its_own_for_what_is_owed_and_never_touches_the_order_link():
+    import asyncio
+    db, plan = world(THREE)
+    db.rows("deals")[0].update(total_paise=900000, paid_paise=100000)
+    made = AsyncMock(return_value={"payment_link_url": "https://rzp.io/l/f1"})
+    with patch("app.services.payment_razorpay.create_payment_link", made), \
+            patch("app.services.deals.send_payment_link", AsyncMock()) as order_link:
+        assert asyncio.run(fp._part_link(db, T, plan, 0, "due", "+919876543210", "Ravi")) == "https://rzp.io/l/f1"
+    order_link.assert_not_awaited()
+    kw = made.await_args.kwargs
+    assert kw["amount_paise"] == 200000 and kw["notes"]["fee_plan_id"] == "P1" and kw["notes"]["deal_id"] == "D1"
+    assert kw["idempotency_key"] == "fee:P1:0:due:200000"
+    db.rows("deals")[0].update(paid_paise=900000)
+    assert asyncio.run(fp._part_link(db, T, plan, 2, "due", "+919876543210", "Ravi")) is None

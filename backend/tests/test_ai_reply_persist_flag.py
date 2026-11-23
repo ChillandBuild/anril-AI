@@ -20,7 +20,8 @@ def _build(db, **kwargs):
          patch("app.config_dynamic.get_setting", return_value=""), \
          patch("app.services.business_details.get_business_details", return_value={}), \
          patch.object(intake, "get_intake_config", return_value={"enabled": False}), \
-         patch("app.services.form_answers_ai.prompt_block", return_value=""):  # a read of leads.collected_data
+         patch("app.services.interested_in.prompt_line", return_value=""), \
+         patch("app.services.form_answers_ai.prompt_block", return_value=""):  # reads of leads.collected_data / interested_item_ids
         return ai_reply.build_reply_system_prompt(
             db, "lead-1", "t-1", {"phone": "+910000000000"}, TAMIL_ASK, **kwargs
         )

@@ -1267,6 +1267,9 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         except ValueError:
             raise OrderError("Pick a ready date")
     handover = "taken" if mode == "now" else (data.get("handover") if data.get("handover") in ("pickup", "courier") else "pickup")
+    client_ref = (data.get("client_ref") or "").strip() or None
+    if client_ref and (again := _bill_by_ref(db, tenant_id, client_ref)):
+        return again
     now = _now().isoformat()
     row = {
         "tenant_id": tenant_id, "lead_id": lead_id, "deal_number": deals_service._next_deal_number(db, tenant_id),
@@ -1280,10 +1283,24 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         "created_by": user_id, "ready_by": ready_by, "notes": (data.get("notes") or "").strip()[:2000] or None,
         **({"place_id": staff_place} if (staff_place := _staff_place(db, tenant_id, user_id)) else {}),
         "bill_token": secrets.token_urlsafe(16), "advance_note": advance_note,
+        **({"client_ref": client_ref} if client_ref else {}),
     }
-    deal = db.table("deals").insert(row).execute().data[0]
+    try:
+        deal = db.table("deals").insert(row).execute().data[0]
+    except Exception as e:
+        if client_ref and _is_duplicate_ref(e) and (again := _bill_by_ref(db, tenant_id, client_ref)):
+            return again  # the same bill arrived twice at once: the other one made it
+        if client_ref and "client_ref" in str(e):
+            # Migration 337 not applied yet: make the bill without the key (as before #74).
+            logger.warning("bill: client_ref column missing, saving without it")
+            row.pop("client_ref", None)
+            deal = db.table("deals").insert(row).execute().data[0]
+        else:
+            raise
     if advance_note:
         log_advance_change(db, tenant_id, user_id, deal["id"], advance_note, from_paise=asked, to_paise=advance)
+    log_discount(db, tenant_id, user_id, deal["id"], discount_paise=bill.get("discount_paise") or 0,
+                 subtotal_paise=bill.get("subtotal_paise") or 0, kind="bill")
     deals_service._insert_items(tenant_id, deal["id"], lines, db)
     stock_short = _check_stock(db, tenant_id, lines) if mode == "now" else []
 
@@ -1310,6 +1327,25 @@ async def create_bill(db, tenant_id: str, data: dict, *, user_id: str | None = N
         message = await notify(db, tenant_id, deal["id"], kind, user_id=user_id, pay_link=link, sender=sender)
     return {"order": order_detail(db, tenant_id, deal["id"]), "message": message, "payment_link": link,
             "stock_short": stock_short, "stock_warnings": warnings}
+
+
+def _is_duplicate_ref(e: Exception) -> bool:
+    text = str(e)
+    return "23505" in text or "duplicate key" in text.lower()
+
+
+def _bill_by_ref(db, tenant_id: str, client_ref: str) -> dict | None:
+    """The bill already made with this "send once" key, shaped like a fresh create_bill answer (nothing re-sent)."""
+    try:
+        rows = (db.table("deals").select("id, payment_link").eq("tenant_id", tenant_id).eq("client_ref", client_ref)
+                .limit(1).execute().data or [])
+    except Exception as e:  # migration 337 not applied yet
+        logger.info("bill by client_ref unavailable: %s", type(e).__name__)
+        return None
+    if not rows:
+        return None
+    return {"order": order_detail(db, tenant_id, rows[0]["id"]), "message": None,
+            "payment_link": rows[0].get("payment_link"), "stock_short": [], "stock_warnings": [], "repeated": True}
 
 
 def _audit(db, tenant_id: str, user_id: str | None, action: str, target_id: str, metadata: dict) -> None:
@@ -1343,6 +1379,21 @@ def log_advance_change(db, tenant_id: str, user_id: str | None, deal_id: str, no
         "note": note, "from_paise": int(from_paise), "to_paise": int(to_paise),
         "by_name": _actor_name(db, tenant_id, user_id),
     })
+
+
+def log_discount(db, tenant_id: str, user_id: str | None, deal_id: str, *, discount_paise: int, subtotal_paise: int,
+                 kind: str = "bill") -> None:
+    """A discount given on a bill or quote goes in the Activity log (a bill without a discount writes nothing).
+    Never raises: it runs while an order is being made."""
+    try:
+        if int(discount_paise or 0) <= 0:
+            return
+        _audit(db, tenant_id, user_id, "order.discount", deal_id, {
+            "discount_paise": int(discount_paise), "subtotal_paise": int(subtotal_paise or 0), "kind": kind,
+            "by_name": _actor_name(db, tenant_id, user_id),
+        })
+    except Exception as e:
+        logger.warning(f"Discount log for {deal_id} failed: {e}")
 
 
 def advance_changes(db, tenant_id: str, deal_id: str) -> list[dict]:

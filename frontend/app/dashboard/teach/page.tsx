@@ -7,6 +7,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AnswersCard } from "./AnswersCard";
 import { OffersCard } from "./OffersCard";
 import { WordsCard } from "./WordsCard";
+import { MediaRuleCard } from "./MediaRuleCard";
 
 export default function TeachPage() {
   const { role, permissions, loading: roleLoading } = useAuthRole();
@@ -73,6 +74,7 @@ export default function TeachPage() {
           <div className="space-y-4">
             <AnswersCard items={answers} canEdit={canEdit} onChange={() => void load()} />
             <WordsCard items={words} canEdit={canEdit} onChange={() => void load()} />
+            <MediaRuleCard canEdit={canEdit} />
             <section className="card opacity-60" aria-label="Replies you like, coming soon">
               <h2 className="font-display text-base font-bold text-ink">Replies you like</h2>
               <p className="font-body text-sm text-ink-secondary">Coming soon</p>

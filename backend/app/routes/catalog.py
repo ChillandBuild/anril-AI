@@ -373,6 +373,24 @@ async def upload_item_media(
     return {**res.data[0], "url": url}
 
 
+def _media_colour(db, tenant_id: str, media_id: UUID, raw) -> str | None:
+    """The colour to link a photo to: empty clears it; otherwise it must be a colour this
+    item really has (so the stock check can match it). Saved in the item's own spelling."""
+    colour = " ".join(str(raw or "").split())
+    if not colour:
+        return None
+    media = (db.table("catalog_media").select("catalog_item_id").eq("id", str(media_id))
+             .eq("tenant_id", tenant_id).limit(1).execute()).data or []
+    if not media:
+        raise HTTPException(status_code=404, detail="Catalog media not found")
+    rows = (db.table("catalog_item_variants").select("colour").eq("tenant_id", tenant_id)
+            .eq("catalog_item_id", media[0]["catalog_item_id"]).execute()).data or []
+    for v in rows:
+        if " ".join(str(v.get("colour") or "").split()).lower() == colour.lower():
+            return " ".join(str(v["colour"]).split())
+    raise HTTPException(status_code=400, detail="That colour isn't on this item")
+
+
 @router.patch("/media/{media_id}")
 async def update_media(
     media_id: UUID,
@@ -384,6 +402,8 @@ async def update_media(
     updates: dict = {}
     if "label" in payload:
         updates["label"] = (payload.get("label") or "").strip() or None
+    if "colour" in payload:
+        updates["colour"] = _media_colour(db, tenant_id, media_id, payload.get("colour"))
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")
 
@@ -648,16 +668,103 @@ async def change_stock(
 @router.get("/items/{item_id}/stock-movements")
 async def stock_movements(item_id: UUID, tenant_id: str = Depends(get_tenant_id)):
     db = get_supabase()
-    rows = (
-        db.table("stock_movements")
-        .select("id, catalog_item_id, delta, quantity_after, reason, deal_id, note, created_at")
-        .eq("tenant_id", tenant_id)
-        .eq("catalog_item_id", str(item_id))
-        .order("created_at", desc=True)
-        .limit(100)
-        .execute()
-    ).data or []
+
+    def _read(columns: str) -> list[dict]:
+        return (
+            db.table("stock_movements")
+            .select(columns)
+            .eq("tenant_id", tenant_id)
+            .eq("catalog_item_id", str(item_id))
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        ).data or []
+
+    base = "id, catalog_item_id, delta, quantity_after, reason, deal_id, note, created_at"
+    try:
+        rows = _read(base + ", photo_path")
+    except Exception:  # migration 333 (damaged-stock photo) not applied yet
+        rows = _read(base)
+    bucket = None
+    for r in rows:
+        path = r.pop("photo_path", None)
+        # only ever this business's own folder, whatever a row says
+        if path and path.startswith(f"{tenant_id}/"):
+            bucket = bucket or db.storage.from_("catalog-media")  # storage only when a row has a photo
+            r["photo_url"] = bucket.get_public_url(path)
+        else:
+            r["photo_url"] = None
     return {"data": rows}
+
+
+_STOCK_PHOTO_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+_STOCK_PHOTO_MAX = 5 * 1024 * 1024
+
+
+def _sniff_image(data: bytes) -> tuple[str, str] | None:
+    """(extension, content type) from the file's own first bytes, or None when it is no JPG/PNG/WebP."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg", "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png", "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return None
+
+
+def _looks_like_image(data: bytes) -> bool:
+    return _sniff_image(data) is not None
+
+
+@router.post("/items/{item_id}/stock-photo")
+async def upload_stock_photo(
+    item_id: UUID,
+    file: UploadFile = File(...),
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_catalog_manage),
+):
+    """A photo of damaged pieces, saved first and attached when the stock is corrected.
+    Pictures only (JPG, PNG, WebP), up to 5 MB. Returns {path, url}."""
+    db = get_supabase()
+    owned = db.table("catalog_items").select("id").eq("id", str(item_id)).eq("tenant_id", tenant_id).limit(1).execute()
+    if not owned.data:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    ext = _STOCK_PHOTO_TYPES.get((file.content_type or "").lower())
+    if not ext:
+        raise HTTPException(status_code=400, detail="Pick a picture (JPG, PNG or WebP)")
+    content = await file.read(_STOCK_PHOTO_MAX + 1)
+    if len(content) > _STOCK_PHOTO_MAX:
+        raise HTTPException(status_code=413, detail="That picture is too big. Keep it under 5 MB.")
+    sniffed = _sniff_image(content)
+    if not sniffed:
+        raise HTTPException(status_code=400, detail="That file is not a picture")
+    ext, content_type = sniffed  # what the bytes are, not what the browser claimed
+    path = f"{tenant_id}/{item_id}/stock/{uuid4()}.{ext}"
+    db.storage.from_("catalog-media").upload(path, content, {"content-type": content_type})
+    return {"path": path, "url": db.storage.from_("catalog-media").get_public_url(path)}
+
+
+def _attach_stock_photo(db, tenant_id: str, item_id: str, variant_id: str | None, user_id: str | None,
+                        reason: str, note: str, photo_path: str) -> None:
+    """Put the photo on the movement the correction just wrote (the stock functions return no id).
+    Never raises: the stock has already changed, so a photo problem is logged, not shown as an error."""
+    try:
+        _attach_stock_photo_row(db, tenant_id, item_id, variant_id, user_id, reason, note, photo_path)
+    except Exception:
+        logger.warning("stock photo not attached for item %s", item_id, exc_info=True)
+
+
+def _attach_stock_photo_row(db, tenant_id: str, item_id: str, variant_id: str | None, user_id: str | None,
+                            reason: str, note: str, photo_path: str) -> None:
+    query = (db.table("stock_movements").select("id").eq("tenant_id", tenant_id).eq("catalog_item_id", item_id)
+             .eq("reason", reason).eq("note", note).is_("photo_path", "null"))
+    if variant_id:
+        query = query.eq("variant_id", variant_id)
+    if user_id:
+        query = query.eq("created_by", user_id)
+    rows = query.order("created_at", desc=True).limit(1).execute().data or []
+    if rows:
+        db.table("stock_movements").update({"photo_path": photo_path}).eq("id", rows[0]["id"]).eq("tenant_id", tenant_id).execute()
 
 
 # ── Sizes x colours (migration 294) ──────────────────────────────────────────────
@@ -808,12 +915,20 @@ async def item_detail(item_id: UUID, tenant_id: str = Depends(get_tenant_id), ct
     item = {k: v for k, v in rows[0].items() if k != "embedding"}
     item["embedding"] = bool(rows[0].get("embedding"))
     bucket = db.storage.from_("catalog-media")
-    photos = [
-        {"id": m["id"], "url": bucket.get_public_url(m["storage_path"]), "label": m.get("label")}
-        for m in (
+    try:
+        media_rows = (
+            db.table("catalog_media").select("id, storage_path, label, colour, sort_order").eq("tenant_id", tenant_id)
+            .eq("catalog_item_id", str(item_id)).order("sort_order").execute()
+        ).data or []
+    except Exception:  # migration 333 (photo colour) not applied yet
+        media_rows = (
             db.table("catalog_media").select("id, storage_path, label, sort_order").eq("tenant_id", tenant_id)
             .eq("catalog_item_id", str(item_id)).order("sort_order").execute()
         ).data or []
+    photos = [
+        {"id": m["id"], "url": bucket.get_public_url(m["storage_path"]), "label": m.get("label"),
+         "colour": m.get("colour")}
+        for m in media_rows
     ]
     month_start = _month_start_ist()
     sold = sum(
@@ -875,6 +990,11 @@ async def correct_stock(
     note = _STOCK_WHY[why]
     reason = "restock" if why == "stock_in" else "adjustment"
     variant_id = payload.get("variant_id")
+    photo_path = payload.get("photo_path") or None
+    if photo_path:
+        # only a picture just uploaded for this very item, and only for "Damaged"
+        if why != "damaged" or not isinstance(photo_path, str) or not photo_path.startswith(f"{tenant_id}/{item_id}/stock/") or ".." in photo_path:
+            raise HTTPException(status_code=400, detail="A photo can only go with damaged stock")
     if variant_id:
         rows = (
             db.table("catalog_item_variants").select("id, stock_quantity").eq("id", str(variant_id))
@@ -888,6 +1008,8 @@ async def correct_stock(
                                           created_by=ctx.get("user_id"), db=db)
             if not result["ok"]:
                 raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
+            if photo_path:
+                _attach_stock_photo(db, tenant_id, str(item_id), str(variant_id), ctx.get("user_id"), reason, note, photo_path)
         return await item_detail(item_id, tenant_id=tenant_id, ctx=ctx)
     if _has_variants(db, tenant_id, str(item_id)):
         raise HTTPException(status_code=400, detail="Pick the size or colour to correct")
@@ -907,6 +1029,8 @@ async def correct_stock(
                               created_by=ctx.get("user_id"), db=db)
         if not result["ok"]:
             raise HTTPException(status_code=409, detail="Stock changed meanwhile. Reload and try again.")
+        if photo_path:
+            _attach_stock_photo(db, tenant_id, str(item_id), None, ctx.get("user_id"), reason, note, photo_path)
     return await item_detail(item_id, tenant_id=tenant_id, ctx=ctx)
 
 

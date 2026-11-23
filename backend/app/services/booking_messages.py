@@ -173,6 +173,8 @@ async def submit_templates(db, tenant_id: str, ctx: dict | None = None) -> dict:
         except Exception as e:
             logger.warning("booking templates: %s did not submit: %s", spec["name"], e)
             problems.append(f"{spec['name']}: could not be sent to WhatsApp")
+    from app.services import property_visit_messages as pvm
+    await pvm.submit_templates(db, tenant_id, ctx, problems)  # property businesses only
     return {"templates": templates_status(db, tenant_id), "problems": problems}
 
 
@@ -288,7 +290,8 @@ async def _send_template(db, tenant_id: str, phone: str, key: str, values: list[
     from app.services.call_details_share import _approved_templates, render_template
     from app.services.meta_cloud import send_template_message
 
-    wanted = BOOKING_TEMPLATES[key]["name"]
+    # key: a BOOKING_TEMPLATES key, or the name of a site-visit template (services/property_visit_messages.py)
+    wanted = BOOKING_TEMPLATES[key]["name"] if key in BOOKING_TEMPLATES else key
     approved = await _io(_approved_templates, db, tenant_id)
     template = next((t for t in approved if t.get("name") == wanted), None)
     if not template:
@@ -818,12 +821,21 @@ def two_hour_due(b: dict, now: datetime) -> bool:
 async def _send_reminder(db, tenant_id: str, b: dict, label: str) -> tuple[str | None, str]:
     full = await _io(_decorate, db, tenant_id, dict(b))
     name = _first_name(full.get("customer_name"))
+    values = [name, full["service_name"], label, full["resource_name"]]
+    template_key = "reminder"
+    contact_line = ""
+    from app.services import property_visit_messages as pvm
+    visit = await _io(pvm.reminder_plan, db, tenant_id, full, label, name)
+    if visit:  # a property site visit: the executive's phone is in the reminder
+        if visit["contact"]:
+            contact_line = f" {visit['contact']} if you need directions."
+        if visit["template"]:  # Meta approved it; until then the booking reminder goes out as before
+            template_key, values = visit["template"], visit["values"]
     text = (f"Reminder: {name}, your {full['service_name']} booking is {label} "
-            f"with {full['resource_name']}. Will you be there?")
+            f"with {full['resource_name']}.{contact_line} Will you be there?")
     payloads = [f"{YES_PREFIX}{b['id']}", f"{CANCEL_PREFIX}{b['id']}"]
     buttons = [{"id": payloads[0], "title": YES_TITLE}, {"id": payloads[1], "title": CANCEL_TITLE}]
-    values = [name, full["service_name"], label, full["resource_name"]]
-    sid, why = await _deliver(db, tenant_id, full, text=text, template_key="reminder", values=values,
+    sid, why = await _deliver(db, tenant_id, full, text=text, template_key=template_key, values=values,
                               buttons=buttons, payloads=payloads)
     if not sid:
         logger.info("booking %s: reminder not sent (%s)", b["id"], why)

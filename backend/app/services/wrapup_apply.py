@@ -10,6 +10,7 @@ from app.services.call_wrapup import (
     consecutive_no_connects, is_no_connect, lead_status_after, reminder_note, sale_lines, suggest_retry_at,
 )
 from app.services.deals import create_deal
+from app.services.wrapup_booking import book_visit
 from app.services.growth import cancel_pending_follow_ups, record_stage_event, sync_follow_up_jobs
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,17 @@ async def apply_wrapup(
             # Nobody should be dialled for an unreachable lead -- no more retry reminders.
             next_at = None
 
+    # "Next step booked" with a service and time chosen: make the real booking first, so a taken time
+    # refuses the whole wrap-up (BookingError, nothing else written) instead of leaving a promise with no slot.
+    booking_id = None
+    if wrapup.get("booking") and outcome == "interested_booked":
+        if not lead_id:
+            from app.services.booking_setup import BookingError
+            raise BookingError("This call isn't linked to a customer, so it can't be booked")
+        booking_id = await book_visit(
+            db, tenant_id, call_log_id=call_log_id, lead_id=lead_id, booking=wrapup["booking"], note=notes, user_id=user_id,
+        )
+
     # The sale first: if the deal can't be created (unknown product, no price) nothing is written.
     # A conditional update claims the conversion atomically (scoped to this call_logs row, only when
     # its outcome isn't already 'converted'), so a double-tap or a retry racing another request's
@@ -105,7 +117,7 @@ async def apply_wrapup(
         log_updates["status"] = "completed"
     db.table("call_logs").update(log_updates).eq("id", call_log_id).eq("tenant_id", tenant_id).execute()
 
-    summary = {"call_status": None, "next_action_at": log_updates["next_action_at"], "deal_id": deal_id}
+    summary = {"call_status": None, "next_action_at": log_updates["next_action_at"], "deal_id": deal_id, "booking_id": booking_id}
     if not lead_id:
         return summary
     rows = (
@@ -148,7 +160,7 @@ async def apply_wrapup(
         metadata={
             "outcome": outcome, "manual_status": manual_status, "call_status": status,
             "reason": log_updates["outcome_reason"], "preferred_language": log_updates["preferred_language"],
-            "deal_id": deal_id,
+            "deal_id": deal_id, "booking_id": booking_id,
         },
         tenant_id=tenant_id, db=db,
     )

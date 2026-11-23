@@ -47,6 +47,16 @@ def _profit_parts(db, tenant_id: str, period: Period) -> tuple[int, int, str, st
     return cost, exp, "range", _period_text(period)
 
 
+def profit_for(db, tenant_id: str, period: Period, sales_paise: int) -> int:
+    """sales - refunds - cost of items sold - expenses for the days, when the caller already has the sales
+    (the same formula as compute below, without fetching the paid orders again)."""
+    refunds = sum(int(r["amount_paise"]) for r in paged(
+        lambda: db.table("deal_refunds").select("id,amount_paise").eq("tenant_id", tenant_id).neq("status", "failed")
+        .gte("created_at", period.start_iso).lt("created_at", period.end_iso)))
+    cost, expenses, _scope, _label = _profit_parts(db, tenant_id, period)
+    return int(sales_paise) - refunds - cost - expenses
+
+
 def compute(db, tenant_id: str, period: Period, flags: Flags) -> tuple[dict, dict]:
     deals = won_deals(db, tenant_id, period)
     sales = sum(sales_before_gst(d) for d in deals)

@@ -840,6 +840,10 @@ async def _execute_immediate_send(
     deferred_leads: list = []
     picker = SenderPicker(tenant_id)
     idx = 0
+    # v9.2 #118: who got it so far, for the push-back check (stop when >2% of 100+ say stop).
+    pushback_stopped = False
+    pb_lead_ids: list[str] = []
+    pb_msg_ids: list[str] = []
 
     try:
         for idx, lead in enumerate(eligible):
@@ -996,6 +1000,24 @@ async def _execute_immediate_send(
                         db.table("messages").insert(msg_row).execute()
                     except Exception as db_err:
                         logger.error(f"messages insert failed for {phone}: {db_err}")
+
+                if lead_id:
+                    pb_lead_ids.append(lead_id)
+                if meta_msg_id:
+                    pb_msg_ids.append(meta_msg_id)
+                from app.services.broadcast_executor import _pushback_checkpoint
+                if not pushback_stopped and _pushback_checkpoint(sent):
+                    try:
+                        from app.services import reach_quality
+                        stats = reach_quality.live_pushback(db, tenant_id, pb_lead_ids, pb_msg_ids,
+                                                            broadcast_timestamp.isoformat(), sent)
+                        if reach_quality.too_much_pushback(stats):
+                            pushback_stopped = aborted = True
+                            reach_quality.stop_rest(db, tenant_id, {"id": broadcast_id,
+                                                                    "template_name": body.template_name}, stats)
+                            break
+                    except Exception as qe:
+                        logger.warning(f"Broadcast {broadcast_id}: push-back check failed, carrying on: {qe}")
             except Exception as e:
                 fail_reason = _map_meta_error(str(e))
                 logger.error(f"Bulk-send failed for {phone}: {e}")
@@ -1214,6 +1236,7 @@ async def _execute_immediate_send(
                 "deferred_to_tomorrow": len(deferred_leads),
                 "skipped_monthly_limit": skipped_monthly,
                 "skipped_blocked": skipped_blocked,
+                **({"note": "stopped_pushback"} if pushback_stopped else {}),
             }),
         }).eq("id", broadcast_id).execute()
         logger.info(f"Immediate broadcast {broadcast_id}: sent={sent} failed={total_failed} aborted={aborted}")

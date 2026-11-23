@@ -24,6 +24,8 @@ MAX_REPLY = 1000
 MAX_TITLE = 120
 MAX_DETAILS = 500
 MAX_OFFER_DAYS = 365
+MEDIA_RULE_KEY = "ai_media_rule"          # app_settings: what to do when a customer sends a photo or voice note
+MAX_MEDIA_RULE = 300
 ENDED_KEEP_DAYS = 60
 
 MAX_ANSWER_ITEMS = 60
@@ -114,8 +116,39 @@ def _live_offers(rows: list[dict], today: date) -> list[dict]:
     return sorted(live, key=lambda r: str(r["ends_on"]))
 
 
+def read_media_rule(db, tenant_id: str) -> str:
+    """The owner's rule for photos and voice notes ("" when none). Never raises: a read problem means no rule."""
+    try:
+        row = (db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", MEDIA_RULE_KEY)
+               .maybe_single().execute())
+        return _squash(row.data.get("value")) if row and isinstance(row.data, dict) else ""
+    except Exception as exc:
+        logger.warning("Teach media rule not read for tenant %s: %s", tenant_id, exc)
+        return ""
+
+
+def save_media_rule(db, tenant_id: str, rule: str) -> str:
+    """Saves (or clears, when empty) the photo/voice-note rule and drops the cached prompt block."""
+    text = _squash(rule)
+    if len(text) > MAX_MEDIA_RULE:
+        raise TeachError(f"Keep it under {MAX_MEDIA_RULE} characters.")
+    db.table("app_settings").upsert(
+        {"tenant_id": tenant_id, "key": MEDIA_RULE_KEY, "value": text, "is_secret": False}, on_conflict="key,tenant_id",
+    ).execute()
+    try:
+        from app.config_dynamic import invalidate_cache
+        invalidate_cache(MEDIA_RULE_KEY)
+    except Exception:
+        pass
+    clear_cache(tenant_id)
+    return text
+
+
 def _taught_text(db, tenant_id: str, today: date) -> str:
     parts: list[str] = []
+    media = read_media_rule(db, tenant_id)
+    if media:
+        parts.append(f"\n\nWHEN A CUSTOMER SENDS A PHOTO OR VOICE NOTE: {media}")
 
     offers = _live_offers(_rows(
         db.table("ai_offers").select("title,details,starts_on,ends_on")

@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
-import { bookingsApi, type Booking, type BookingResource } from "@/lib/bookingsApi";
-import { FLAG_CLASS, STATUS_CLASS, STATUS_LABEL, bookingFlags, canMarkNoShow, canMarkVisit, customerLabel, isOpen } from "./bookingsLogic";
+import { bookingsApi, type Booking, type BookingResource, type VisitOutcome } from "@/lib/bookingsApi";
+import { FLAG_CLASS, STATUS_CLASS, STATUS_LABEL, bookingFlags, VISIT_OUTCOMES, canMarkNoShow, canMarkVisit, canSetVisitOutcome, customerLabel, isOpen, visitOutcomeNote } from "./bookingsLogic";
 import { formatDateTime } from "./bookingsTime";
 import { SlotPicker, type PickedSlot } from "./SlotPicker";
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, ConfirmSheet, Field, INPUT_CLS, Sheet, errorText } from "./bookingsUi";
@@ -48,6 +48,21 @@ export function BookingSheet({
   const canVisit = canMarkVisit(booking, who2);
   const canNoShow = canMarkNoShow(booking, who2);
   const open = isOpen(booking.status);
+  const canOutcome = canSetVisitOutcome(booking, who2);
+  const [outcome, setOutcome] = useState<VisitOutcome | null>(booking.visit_outcome ?? null);
+
+  async function saveOutcome(value: VisitOutcome) {
+    setBusy(true);
+    try {
+      await bookingsApi.visitOutcome(booking.id, value);
+      setOutcome(value);
+      toast.success("Saved");
+      onChanged();
+    } catch (err) {
+      toast.error(errorText(err));
+    }
+    setBusy(false);
+  }
 
   async function run(fn: () => Promise<unknown>, done: string, after?: () => void) {
     setBusy(true);
@@ -247,6 +262,26 @@ export function BookingSheet({
             <button type="button" className={BTN_DANGER} onClick={() => setMode("cancel")}>
               Cancel booking
             </button>
+          </div>
+        )}
+        {canOutcome && (
+          <div className="border-t border-[#eef2f6] pt-3">
+            <p className="mb-2 text-sm font-semibold text-ink">How did the visit go?</p>
+            <div className="flex flex-wrap gap-2">
+              {VISIT_OUTCOMES.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  aria-pressed={outcome === o.value}
+                  disabled={busy}
+                  className={outcome === o.value ? BTN_PRIMARY : BTN_SECONDARY}
+                  onClick={() => void saveOutcome(o.value)}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {visitOutcomeNote(outcome) && <p className="mt-2 text-sm text-ink-secondary">{visitOutcomeNote(outcome)}</p>}
           </div>
         )}
         {canSeeMoney && booking.status === "came" && booking.deal_id && (

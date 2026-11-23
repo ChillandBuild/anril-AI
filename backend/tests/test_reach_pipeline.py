@@ -221,6 +221,31 @@ class SendLoopTests(ReachBase):
         self.assertEqual(out["failures"], [])
 
 
+class SendNowPushbackTests(ReachBase):
+    run_send = SendLoopTests.run_send
+
+    def test_send_now_stops_at_50_when_too_many_say_stop(self):
+        """v9.2 #118: the Send Now loop has the same push-back stop as scheduled sends."""
+        leads = [upload.BulkLeadItem(phone=f"+91980000{i:04d}", opt_in_source="website") for i in range(60)]
+        bad = {"sent": 50, "said_stop": 3, "stopped_marketing": 0, "rate": 0.06}
+        with patch("app.services.reach_quality.MIN_SENT", 50), \
+                patch("app.services.reach_quality.live_pushback", return_value=bad) as live, \
+                patch("app.services.reach_quality.stop_rest") as stop:
+            send = self.run_send(leads)
+        self.assertEqual(send.await_count, 50)
+        live.assert_called_once()
+        stop.assert_called_once()
+        row = self.db.rows("scheduled_broadcasts")[0]
+        self.assertEqual(row["status"], "aborted")
+        self.assertEqual(json.loads(row["result"])["note"], "stopped_pushback")
+
+    def test_send_now_carries_on_when_the_check_fails(self):
+        leads = [upload.BulkLeadItem(phone=f"+91980000{i:04d}", opt_in_source="website") for i in range(55)]
+        with patch("app.services.reach_quality.live_pushback", side_effect=RuntimeError("db down")):
+            send = self.run_send(leads)
+        self.assertEqual(send.await_count, 55)
+
+
 class HistoryTests(ReachBase):
     def setUp(self):
         super().setUp()

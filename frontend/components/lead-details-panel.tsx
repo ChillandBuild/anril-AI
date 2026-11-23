@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, API_URL, DealSummary, getAuthHeaders, Lead } from "@/lib/api";
-import { ChevronRight, CheckCircle2, Calendar, TrendingUp, MessageCircle, Plus } from "lucide-react";
+import { ChevronRight, CheckCircle2, Calendar, TrendingUp, MessageCircle, Plus, ShoppingBag } from "lucide-react";
 import { SegmentBadge } from "./segment-badge";
 import { describeScoreEvent, type ScoreEventLike } from "./scoreHistory";
 import { NewDealDialog } from "./deals/NewDealDialog";
@@ -10,6 +10,7 @@ import { StageBadge } from "./deals/StageBadge";
 import { formatRupees } from "./deals/money";
 import { CustomerActions } from "./chats/CustomerActions";
 import { LeadForms } from "./chats/LeadForms";
+import { InterestedIn } from "./chats/InterestedIn";
 import type { Option } from "./chats/inboxFilters";
 
 // ─── Channel icons ─────────────────────────────────────────────────────────────
@@ -363,6 +364,10 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
                 {groupMoves.slice(0, 8).map((ev) => <ScoreEventCard key={ev.id} ev={ev} />)}
               </div>
             )}
+          </Section>
+
+          <Section icon={<ShoppingBag size={12} />} title="Interested in">
+            <InterestedIn leadId={lead.id} />
           </Section>
 
           <LeadForms leadId={lead.id} />

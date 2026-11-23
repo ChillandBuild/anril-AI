@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app.dependencies.auth import get_current_user
 from app.dependencies.tenant import get_tenant_and_role
 from app.main import app
+from app.routes import customer_groups as groups_routes
 from tests.fake_supabase import FakeSupabase
 
 def U(name: str) -> str:
@@ -95,7 +96,25 @@ class CustomerGroupsRouteTests(unittest.TestCase):
         self.assertEqual(rows[0]["member_count"], 1)
         self.assertEqual(rows[1]["member_count"], 0)
         self.assertEqual(rows[1]["id"], first["id"])
-        self.assertEqual(set(rows[0]), {"id", "name", "kind", "rule", "rule_text", "member_count", "stop_count", "made_by", "created_at"})
+        self.assertEqual(set(rows[0]), {"id", "name", "kind", "rule", "rule_text", "member_count", "stop_count", "made_by", "created_at",
+                                       "spend_hidden", "used_by"})
+
+    def test_one_failing_count_does_not_break_the_list(self):
+        self._create("Fine")
+        bad = self._create("Broken").json()
+        real = groups_routes._count
+
+        def flaky(db, ctx, gid, opted_out_only):
+            if gid == bad["id"]:
+                raise RuntimeError("function total_spent_paise does not exist")
+            return real(db, ctx, gid, opted_out_only)
+
+        with patch.object(groups_routes, "_count", flaky):
+            res = self.client.get("/api/v1/customer-groups")
+        self.assertEqual(res.status_code, 200)
+        by_name = {r["name"]: r for r in res.json()}
+        self.assertTrue(by_name["Broken"]["count_unknown"])
+        self.assertNotIn("count_unknown", by_name["Fine"])
 
     def test_rename_follows_the_same_duplicate_rule(self):
         self._create("Alpha")

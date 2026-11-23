@@ -16,6 +16,10 @@ Stored shape (customer_groups.rule jsonb), every key optional but at least one s
   assigned_to    caller id | "unassigned" | "ai_agent"
   reply_window   "open" | "closed"
   bought         "repeat" | "quiet"
+  tag            a Customers tag (matched ignoring case)
+  spend_min_paise / spend_max_paise
+                 total paid (net of refunds, across all deals) at least / at most this many paise.
+                 Rupee figures: saved and shown only to people with deals.view.
 """
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -26,7 +30,9 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # Keys copied straight onto LeadFilters. added_days is turned into date_from.
 _FILTER_KEYS = ("segment", "buyer", "source_filter", "broadcast_id", "ad_campaign_id",
-                "assigned_to", "reply_window", "bought")
+                "assigned_to", "reply_window", "bought", "tag", "spend_min_paise", "spend_max_paise")
+SPEND_KEYS = ("spend_min_paise", "spend_max_paise")
+MAX_SPEND_PAISE = 10**11  # 100 crore rupees: a typo guard, not a business limit
 
 
 class GroupRule(BaseModel):
@@ -39,6 +45,15 @@ class GroupRule(BaseModel):
     assigned_to: str | None = Field(None, max_length=64)
     reply_window: str | None = Field(None, pattern="^(open|closed)$")
     bought: str | None = Field(None, pattern="^(repeat|quiet)$")
+    tag: str | None = Field(None, max_length=30)
+    spend_min_paise: int | None = Field(None, ge=0, le=MAX_SPEND_PAISE)
+    spend_max_paise: int | None = Field(None, ge=0, le=MAX_SPEND_PAISE)
+
+    @field_validator("tag")
+    @classmethod
+    def _tag_trim(cls, v):
+        v = (v or "").strip()
+        return v or None
 
     @field_validator("broadcast_id", "ad_campaign_id")
     @classmethod
@@ -61,12 +76,26 @@ class GroupRule(BaseModel):
             raise ValueError("A campaign can only be picked with Came from: Meta Ads")
         if self.segment and self.buyer:
             raise ValueError("Pick one Status")
+        if (self.spend_min_paise is not None and self.spend_max_paise is not None
+                and self.spend_min_paise > self.spend_max_paise):
+            raise ValueError("Spend: the least can't be more than the most")
         if not self.as_dict():
             raise ValueError("Add at least one rule")
         return self
 
     def as_dict(self) -> dict:
         return {k: v for k, v in self.model_dump().items() if v not in (None, "")}
+
+
+def without_money(rule: dict | None) -> dict | None:
+    """The rule minus its rupee figures, for people who cannot see them (no deals.view)."""
+    if not rule:
+        return rule
+    return {k: v for k, v in rule.items() if k not in SPEND_KEYS}
+
+
+def has_spend(rule: dict | None) -> bool:
+    return bool(rule) and any(rule.get(k) is not None for k in SPEND_KEYS)
 
 
 def parse_rule(raw) -> dict | None:
@@ -100,7 +129,12 @@ def apply_rule(filters, rule: dict):
     return filters.model_copy(update=updates)
 
 
-def describe(rule: dict, names: dict | None = None) -> str:
+def _rupees(paise: int) -> str:
+    rupees = int(paise) // 100
+    return f"₹{rupees:,}"
+
+
+def describe(rule: dict, names: dict | None = None, show_money: bool = True) -> str:
     """One short line for the Groups table, e.g. "Hot · came from broadcast diwali_offer ·
     added in the last 60 days". `names` may hold the broadcast, campaign and caller names."""
     names = names or {}
@@ -127,6 +161,16 @@ def describe(rule: dict, names: dict | None = None) -> str:
     if rule.get("assigned_to"):
         parts.append({"unassigned": "nobody handling", "ai_agent": "AI agent handling"}.get(
             rule["assigned_to"], f"handled by {names['caller']}" if names.get("caller") else "one team member"))
+    if rule.get("tag"):
+        parts.append(f"tagged {rule['tag']}")
+    if show_money:
+        low, high = rule.get("spend_min_paise"), rule.get("spend_max_paise")
+        if low is not None and high is not None:
+            parts.append(f"spent {_rupees(low)} to {_rupees(high)}")
+        elif low is not None:
+            parts.append(f"spent {_rupees(low)} or more")
+        elif high is not None:
+            parts.append(f"spent {_rupees(high)} or less")
     if rule.get("added_days"):
         parts.append(f"added in the last {rule['added_days']} days")
     return " · ".join(parts)

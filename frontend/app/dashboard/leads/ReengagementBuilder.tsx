@@ -107,7 +107,8 @@ function placeholderCount(body?: string | null): number {
 type StepRow = ReengagementStep & { target_group_id?: string | null };
 
 interface ReengagementBuilderProps {
-  type: "broadcast" | "inbound";
+  /** "campaign_reply" = someone replied to a campaign and has not ordered. broadcastId is optional there (blank = any campaign). */
+  type: "broadcast" | "inbound" | "campaign_reply";
   broadcastId?: string;
   templates: WabaTemplate[];
   canManage?: boolean;
@@ -133,11 +134,13 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
-  const [delayValue, setDelayValue] = useState(6);
-  const [delayUnit, setDelayUnit] = useState<DelayUnit>("hours");
+  // A campaign-reply follow-up is always a day-step (approved template only), so it starts at 1 day.
+  const isCampaignReply = type === "campaign_reply";
+  const [delayValue, setDelayValue] = useState(isCampaignReply ? 1 : 6);
+  const [delayUnit, setDelayUnit] = useState<DelayUnit>(isCampaignReply ? "days" : "hours");
   const [segments, setSegments] = useState<string[]>(["C"]);
   const [sources, setSources] = useState<string[]>([]);
-  const [messageType, setMessageType] = useState<"freeform" | "template">("freeform");
+  const [messageType, setMessageType] = useState<"freeform" | "template">(isCampaignReply ? "template" : "freeform");
   const [content, setContent] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [fallbackTemplate, setFallbackTemplate] = useState("");
@@ -173,9 +176,15 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
     setLoading(true);
     try {
       const rows = await api.reengagement.listSteps(
-        type === "broadcast" ? { type: "broadcast", broadcast_id: broadcastId } : { type: "inbound" }
+        type === "broadcast"
+          ? { type: "broadcast", broadcast_id: broadcastId }
+          : type === "campaign_reply"
+            ? { type: "campaign_reply", broadcast_id: broadcastId }
+            : { type: "inbound" }
       );
-      setSteps([...rows].sort((a, b) => a.delay_hours - b.delay_hours));
+      // With no campaign picked, show only the "any campaign" steps.
+      const shown = type === "campaign_reply" && !broadcastId ? rows.filter((r) => !r.broadcast_id) : rows;
+      setSteps([...shown].sort((a, b) => a.delay_hours - b.delay_hours));
     } catch {
       toast.error("Failed to load sequence");
     } finally {
@@ -202,11 +211,11 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
   }
 
   function resetForm() {
-    setDelayValue(6);
-    setDelayUnit("hours");
+    setDelayValue(isCampaignReply ? 1 : 6);
+    setDelayUnit(isCampaignReply ? "days" : "hours");
     setSegments(["C"]);
     setSources([]);
-    setMessageType("freeform");
+    setMessageType(isCampaignReply ? "template" : "freeform");
     setContent("");
     setTemplateName("");
     setFallbackTemplate("");
@@ -285,7 +294,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
       } else {
         await api.reengagement.createStep({
           type,
-          broadcast_id: type === "broadcast" ? broadcastId : null,
+          broadcast_id: type === "inbound" ? null : broadcastId ?? null,
           ...payload,
         });
         toast.success("Message added to sequence");
@@ -311,17 +320,22 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
 
   // The bar covers the 24-hour window, or stretches to the longest day-step.
   const timelineMax = Math.max(24, ...steps.map((s) => s.delay_hours));
-  const anchorLabel = type === "broadcast" ? "after the broadcast was sent" : "after the lead replied";
+  const anchorLabel =
+    type === "broadcast" ? "after the broadcast was sent" : isCampaignReply ? "after they replied to a campaign" : "after the lead replied";
 
   return (
     <div className="space-y-6">
       {/* Clock explainer */}
       <div className="rounded-2xl border border-on-surface/10 bg-surface/50 p-5">
         <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-muted">
-          {type === "broadcast" ? "Campaign Follow-up" : "Lead Reply Follow-up"} — how timing works
+          {type === "broadcast" ? "Campaign Follow-up" : isCampaignReply ? "Campaign Reply, No Order" : "Lead Reply Follow-up"} — how timing works
         </h3>
         <p className="mt-2 text-sm text-on-surface">
-          {type === "broadcast" ? (
+          {isCampaignReply ? (
+            <>Each message goes out a set number of <strong>days after someone replied to a campaign</strong>, if they
+            have <strong>not ordered</strong> since. It always uses an approved template. Pick one campaign, or leave it
+            on &quot;Any campaign&quot; to cover them all.</>
+          ) : type === "broadcast" ? (
             <>Each message fires a set number of hours <strong>after the broadcast is sent</strong>. Per lead, when a
             message fires: if their 24h WhatsApp window is still open it sends as <strong>freeform</strong>; otherwise
             your <strong>backup template</strong> is sent instead (or the lead is skipped if no backup is set).</>
@@ -460,10 +474,14 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                   value={delayUnit}
                   onChange={(v) => changeDelay(delayValue, v as DelayUnit)}
                   className="w-28"
-                  options={[
-                    { value: "hours", label: "Hours" },
-                    { value: "days", label: "Days" },
-                  ]}
+                  options={
+                    isCampaignReply
+                      ? [{ value: "days", label: "Days" }]
+                      : [
+                          { value: "hours", label: "Hours" },
+                          { value: "days", label: "Days" },
+                        ]
+                  }
                 />
               </div>
               {delayHours === null && (

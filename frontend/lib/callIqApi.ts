@@ -19,7 +19,43 @@ export interface LivePerson {
   break_minutes_today: number;
 }
 
-export interface LiveResponse { callers: LivePerson[]; as_of?: string }
+/** A scheduled call due from 30 minutes ago to 15 minutes from now, not done yet. */
+export interface LiveCallback {
+  job_id: string;
+  lead_id: string;
+  name: string | null;
+  /** Masked (98•••••210) for a telecaller when the business hides numbers. */
+  phone: string;
+  caller_id: string;
+  caller_name: string | null;
+  due_at: string;
+  why: string | null;
+}
+
+/** A Hot lead nobody has called yet today. */
+export interface LiveWaitingLead {
+  lead_id: string;
+  name: string | null;
+  phone: string;
+  caller_id: string;
+  caller_name: string | null;
+}
+
+export interface LiveResponse {
+  callers: LivePerson[];
+  as_of?: string;
+  callbacks_due?: LiveCallback[];
+  waiting?: { total: number; rows: LiveWaitingLead[] };
+}
+
+/** "due in 10 min" / "due now" / "20 min late", from the minutes between now and the scheduled time. */
+export function dueText(dueAt: string, now: Date = new Date()): string {
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) return "";
+  const mins = Math.round((due.getTime() - now.getTime()) / 60_000);
+  if (mins === 0) return "due now";
+  return mins > 0 ? `due in ${minutesText(mins)}` : `${minutesText(-mins)} late`;
+}
 
 export const LIVE_REFRESH_MS = 20_000;
 

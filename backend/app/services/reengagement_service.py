@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from app.db.supabase import get_supabase
 from app.services.ai_reply import send_whatsapp, get_last_send_error
+from app.services import campaign_reply_followup
 from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
@@ -30,6 +31,10 @@ class NoSenderAvailable(Exception):
 # time instead of re-checking every due lead every minute.
 _NO_SENDER_UNTIL: dict[str, datetime] = {}
 _NO_SENDER_RECHECK = timedelta(minutes=10)
+
+# "Campaign reply, no order" steps: when each was last scanned (see the campaign_reply branch).
+_CAMPAIGN_REPLY_SCANNED: dict[str, datetime] = {}
+_CAMPAIGN_REPLY_RESCAN = timedelta(minutes=10)
 
 
 def utcnow() -> datetime:
@@ -298,6 +303,41 @@ async def process_due_reengagements() -> int:
                     continue
 
                 # Process sending
+                success = await _send_reengagement(db, tenant_id, lead, step)
+                if success:
+                    sent_count += 1
+
+        elif step["type"] == "campaign_reply":
+            # C. Replied to a Reach campaign, no order since (services/campaign_reply_followup.py)
+            if not target_segments or not _is_day_step(step):
+                continue  # a wait under 24h is not allowed for this trigger (it would need a freeform message)
+            # The scan reads a lot of rows, so each step is looked at most every 10 minutes.
+            last_scan = _CAMPAIGN_REPLY_SCANNED.get(step_id)
+            if last_scan and now - last_scan < _CAMPAIGN_REPLY_RESCAN:
+                continue
+            _CAMPAIGN_REPLY_SCANNED[step_id] = now
+            try:
+                due_ids = campaign_reply_followup.due_lead_ids(db, tenant_id, step, now)
+            except Exception as e:
+                logger.warning("reengagement: campaign-reply step %s not read: %s", step_id, e)
+                continue
+            if not due_ids:
+                continue
+            processed_ids = _already_processed_lead_ids(db, step_id, due_ids)
+            pending_lead_ids = [lid for lid in due_ids if lid not in processed_ids]
+            if not pending_lead_ids:
+                continue
+            leads_by_id = _fetch_leads_by_id(db, tenant_id, pending_lead_ids)
+            for lead_id in pending_lead_ids:
+                lead = leads_by_id.get(lead_id)
+                if not lead or lead.get("segment") not in target_segments:
+                    continue
+                if not _lead_matches_sources(lead, target_sources):
+                    continue
+                if group_ids is not None and str(lead_id) not in group_ids:
+                    continue
+                if lead.get("converted_at"):
+                    continue
                 success = await _send_reengagement(db, tenant_id, lead, step)
                 if success:
                     sent_count += 1

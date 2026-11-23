@@ -1,6 +1,6 @@
 // Pure rules for the Bookings screens: grid placement, drag snapping, hours validation,
 // flags on a booking, phone checks. No React, so it is unit-tested.
-import type { Booking, BookingResource, BookingSettings, BookingStatus, FreeRanges, FreeTime, HoursBlock, WeekHours } from "@/lib/bookingsApi";
+import type { Booking, BookingResource, BookingSettings, BookingStatus, FreeRanges, FreeTime, HoursBlock, VisitOutcome, WeekHours } from "@/lib/bookingsApi";
 import { hhmmToMinutes, minutesOnDay, minutesToHhmm, weekdayIndex } from "./bookingsTime";
 
 export const STEP_MIN = 15;
@@ -97,6 +97,31 @@ export function bookingFlags(b: Pick<Booking, "status" | "phone_checked" | "adva
 export function canMarkVisit(b: Pick<Booking, "status" | "resource_id">, who: { canManage: boolean; myResourceId: string | null }): boolean {
   if (b.status !== "booked") return false;
   return who.canManage || (who.myResourceId !== null && who.myResourceId === b.resource_id);
+}
+
+// ── Site visit outcome (properties) ──────────────────────────────────────────
+
+export const SITE_VISIT_SERVICE = "Site visit";
+export const VISIT_OUTCOMES: { value: VisitOutcome; label: string }[] = [
+  { value: "liked_thinking", label: "Liked it, thinking" },
+  { value: "ready_to_book", label: "Ready to book" },
+  { value: "not_interested", label: "Not interested" },
+];
+export const LOAN_HELP_LINE = "We'll WhatsApp them about home-loan help in 2 days.";
+
+export function isSiteVisit(b: Pick<Booking, "service_name">): boolean {
+  return (b.service_name ?? "").trim().toLowerCase() === SITE_VISIT_SERVICE.toLowerCase();
+}
+
+/** The outcome choice: a site visit already marked Came, for the same people who may mark Came. */
+export function canSetVisitOutcome(b: Pick<Booking, "status" | "resource_id" | "service_name">, who: { canManage: boolean; myResourceId: string | null }): boolean {
+  if (b.status !== "came" || !isSiteVisit(b)) return false;
+  return who.canManage || (who.myResourceId !== null && who.myResourceId === b.resource_id);
+}
+
+/** "Liked it, thinking" gets the loan-help promise line. */
+export function visitOutcomeNote(outcome: VisitOutcome | null | undefined): string | null {
+  return outcome === "liked_thinking" ? LOAN_HELP_LINE : null;
 }
 
 /** "Didn't come" only makes sense once the booking time has started. */

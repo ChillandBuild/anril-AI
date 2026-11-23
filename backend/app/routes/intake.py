@@ -653,6 +653,10 @@ async def _handle_deal_payment_event(payload: dict, event: str, deal_id: str, te
     from app.services.deals import expire_deal_link, mark_lost, mark_won, record_payment
 
     if event in ("payment_link.expired", "payment_link.cancelled"):
+        link_notes = payload.get("payload", {}).get("payment_link", {}).get("entity", {}).get("notes") or {}
+        if isinstance(link_notes, dict) and link_notes.get("fee_plan_id"):
+            # A course fee reminder's own link (fee_plans._part_link): it dying says nothing about the order.
+            return {"status": "ignored", "event": event}
         event_plink = payload.get("payload", {}).get("payment_link", {}).get("entity", {}).get("id")
         if _is_stale_link_event("deals", deal_id, tenant_id, event_plink):
             return {"status": "ignored", "event": event}

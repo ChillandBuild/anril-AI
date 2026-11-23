@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WrapupContext } from "@/lib/api";
-import { applyContext, draftError, draftToPayload, emptyDraft, selectConnect, selectOutcome, type WrapupDraft } from "./wrapup-draft";
+import { applyContext, draftError, draftToPayload, emptyDraft, selectConnect, selectOutcome, setBooking, type WrapupDraft } from "./wrapup-draft";
 
 const NOW = new Date("2026-09-27T08:30:00Z");
 const LATER = "2026-09-27T12:30:00.000Z";
@@ -126,5 +126,31 @@ describe("payload", () => {
   it("sends the exact time once the telecaller has picked it themselves", () => {
     const picked = { ...selectConnect(emptyDraft(), "busy", CTX), nextActionAt: "2026-09-30T05:00:00.000Z", retrySuggested: false };
     expect(draftToPayload(picked).next_action_at).toBe("2026-09-30T05:00:00.000Z");
+  });
+});
+
+describe("visit booking on Interested, next step booked", () => {
+  const VISIT = { serviceId: "svc-1", startAt: "2026-09-28T05:30:00.000Z", label: "Haircut, Tomorrow 11:00 AM" };
+
+  it("the visit time is the next-step time, so no second time needs picking", () => {
+    const d = setBooking(connected("interested_booked", { notes: "Coming in" }), VISIT);
+    expect(d.nextActionAt).toBe(VISIT.startAt);
+    expect(draftError(d, NOW)).toBeNull();
+    expect(draftToPayload(d).booking).toEqual({ service_id: "svc-1", resource_id: "any", start_at: VISIT.startAt });
+    expect(draftToPayload(d).next_action_at).toBe(VISIT.startAt);
+  });
+
+  it("sends no booking when none was picked, or for any other result", () => {
+    expect(draftToPayload(connected("interested_booked", { notes: "x", nextActionAt: LATER })).booking).toBeNull();
+    const other = selectOutcome(setBooking(connected("interested_booked"), VISIT), "maybe_later");
+    expect(other.booking).toBeNull();
+    expect(draftToPayload({ ...connected("maybe_later"), booking: VISIT }).booking).toBeNull();
+  });
+
+  it("clearing the booking clears the time, and changing the connect answer drops it", () => {
+    const d = setBooking(setBooking(connected("interested_booked"), VISIT), null);
+    expect(d.booking).toBeNull();
+    expect(d.nextActionAt).toBeNull();
+    expect(selectConnect(setBooking(connected("interested_booked"), VISIT), "busy", CTX).booking).toBeNull();
   });
 });

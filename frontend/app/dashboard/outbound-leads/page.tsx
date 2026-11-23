@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles, Users } from "lucide-react";
 import { API_URL, api, getAuthHeaders, type CustomerGroup } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
+import { checkRow, parseScanCsv, rowsToCsv, type ScanRow } from "@/lib/scanReview";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { usePolling } from "@/hooks/usePolling";
@@ -308,14 +309,20 @@ type Template = {
   status: string;
 };
 
+// v9.2 #115: four plain answers instead of six jargon ones. Values stay inside the leads.opt_in_source
+// CHECK list (migration 117), so the backend rules and stored data are unchanged. "Not sure" counts as no.
 const OPT_IN_OPTIONS: { value: string; label: string; description: string }[] = [
-  { value: "click_to_wa_ad", label: "Click-to-WhatsApp Ad", description: "Lead clicked a Meta ad that opened WhatsApp directly." },
-  { value: "website_form", label: "Website Form (with WA consent)", description: "Lead submitted a form that explicitly asked for WhatsApp contact." },
-  { value: "offline_event", label: "Offline Event (signed consent)", description: "Lead signed a physical or digital consent at an event." },
-  { value: "previous_enquiry", label: "Previous Enquiry", description: "Lead previously contacted us through any channel." },
-  { value: "imported", label: "Imported from another tool", description: "Data migrated from a CRM or spreadsheet with consent on record." },
-  { value: "manual", label: "No explicit consent (call only)", description: "No WhatsApp consent — this batch will be call-only outreach." },
+  { value: "website_form", label: "They asked us to WhatsApp them", description: "A form, a sign-up or our WhatsApp ad where they said yes to messages. Offers and updates are fine." },
+  { value: "previous_enquiry", label: "They bought from us or asked us before", description: "Past customers and people who enquired. Best for updates and reminders." },
+  { value: "offline_event", label: "They agreed in person", description: "At the shop, an event or on a signed form. Best for updates and reminders." },
+  { value: "manual", label: "Not sure", description: "If you're not sure they agreed, treat it as no. Call them instead of messaging." },
 ];
+
+const OPT_IN_RESULT: Record<string, string> = {
+  marketing: "You can send offers and updates to this list.",
+  utility: "Best for updates and reminders. Offers to people who only enquired get more of them saying stop.",
+  blocked: "Don't WhatsApp people who haven't agreed — they report you and WhatsApp lowers your number's quality. Call them instead.",
+};
 
 // ─── Step Indicator ───────────────────────────────────────────────────────────
 
@@ -693,6 +700,9 @@ export default function OutboundLeadsPage() {
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [parseLoading, setParseLoading] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  // v9.2 #116: what we read off a notebook photo, checked by the owner before it becomes a list.
+  const [scanRows, setScanRows] = useState<ScanRow[] | null>(null);
+  const [scanFileName, setScanFileName] = useState("scan.csv");
   const [optInSource, setOptInSource] = useState("");
   const [optInValidation, setOptInValidation] = useState<OptInValidation | null>(null);
   const [optInLoading, setOptInLoading] = useState(false);
@@ -760,7 +770,7 @@ export default function OutboundLeadsPage() {
         const auth = await getAuthHeaders();
         const res = await fetch(`${API_URL}/api/v1/upload/broadcast/${activeBroadcastId}/progress`, { headers: auth });
         if (!res.ok || cancelled) return;
-        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number; skipped_monthly_limit?: number; skipped_blocked?: number } = await res.json();
+        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number; skipped_monthly_limit?: number; skipped_blocked?: number; note?: string } = await res.json();
         const sentSoFar = data.sent ?? 0;
         const failedSoFar = data.failed ?? 0;
         setSendingIndex((i) => Math.max(i, Math.min(sentSoFar + failedSoFar, sendingNames.length - 1)));
@@ -780,7 +790,9 @@ export default function OutboundLeadsPage() {
           setCurrentStep(6);
           setActiveTab("history");
           refreshHistory();
-          if (data.status === "aborted") toast("Broadcast stopped — leads already sent stay sent.");
+          if (data.status === "aborted" && data.note === "stopped_pushback") {
+            toast.error("We stopped this campaign: more than 2 in 100 people said stop or turned off offers. The ones already sent stay sent.", { duration: 12000 });
+          } else if (data.status === "aborted") toast("Broadcast stopped — leads already sent stay sent.");
           if (data.status === "failed") toast.error("Broadcast failed before it could finish.");
         }
       } catch {
@@ -1341,27 +1353,56 @@ export default function OutboundLeadsPage() {
     setCsvFilePath(null);
     setCsvFileName(null);
 
+    setScanRows(null);
+
     setParseLoading(true);
     try {
       const lowerName = picked.name.toLowerCase();
       const isScan = lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".png") || lowerName.endsWith(".pdf");
-      const f = isScan ? await convertScanToCsv(picked) : await toCsvFile(picked);
-      setCsvFile(f);
-      const auth = await getAuthHeaders();
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch(`${API_URL}/api/v1/upload/parse`, { method: "POST", body: fd, headers: auth });
-      if (!res.ok) throw new Error(await res.text());
-      const data: ParsedData = await res.json();
-      setParsedData(data);
-      setCsvFileUrl(data.csv_file_url ?? null);
-      setCsvFilePath(data.csv_file_path ?? null);
-      setCsvFileName(data.csv_file_name ?? null);
+      if (isScan) {
+        // Stop here: the owner checks what we read (names, wrong numbers) before the normal upload runs.
+        const scanned = await convertScanToCsv(picked);
+        const rows = parseScanCsv(await scanned.text());
+        if (!rows.length) throw new Error("We couldn't read any phone numbers in this photo. Try a clearer photo, or type them into a sheet.");
+        setScanFileName(scanned.name);
+        setScanRows(rows);
+        return;
+      }
+      await parseCsvFile(await toCsvFile(picked));
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Parse failed");
     } finally {
       setParseLoading(false);
     }
+  }
+
+  async function useScanRows() {
+    if (!scanRows?.length) return;
+    setParseError(null);
+    setParseLoading(true);
+    try {
+      const f = new File([rowsToCsv(scanRows)], scanFileName, { type: "text/csv" });
+      await parseCsvFile(f);
+      setScanRows(null); // only once it worked: a failed upload keeps the owner's fixes on screen
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : "Parse failed");
+    } finally {
+      setParseLoading(false);
+    }
+  }
+
+  async function parseCsvFile(f: File) {
+    setCsvFile(f);
+    const auth = await getAuthHeaders();
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch(`${API_URL}/api/v1/upload/parse`, { method: "POST", body: fd, headers: auth });
+    if (!res.ok) throw new Error(await res.text());
+    const data: ParsedData = await res.json();
+    setParsedData(data);
+    setCsvFileUrl(data.csv_file_url ?? null);
+    setCsvFilePath(data.csv_file_path ?? null);
+    setCsvFileName(data.csv_file_name ?? null);
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1747,6 +1788,10 @@ export default function OutboundLeadsPage() {
                     </div>
                   )}
 
+                  {scanRows && (
+                    <ScanReview rows={scanRows} onChange={setScanRows} onUse={useScanRows} onCancel={() => setScanRows(null)} busy={parseLoading} />
+                  )}
+
                   {parsedData && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div className="p-4 bg-primary/5 border border-primary/15 rounded-xl text-center">
@@ -1891,8 +1936,8 @@ export default function OutboundLeadsPage() {
           {currentStep === 2 && (
             <div className="space-y-6 flex-1">
               <div>
-                <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Opt-in Source</h2>
-                <p className="font-body text-sm text-on-surface-muted">How did these leads consent to be contacted?</p>
+                <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Did these people agree to hear from you?</h2>
+                <p className="font-body text-sm text-on-surface-muted">Pick the one that fits most of the list. Meta doesn&apos;t see this answer — it only decides what we let you send, so answer honestly.</p>
               </div>
 
               <div className="space-y-2">
@@ -1930,7 +1975,10 @@ export default function OutboundLeadsPage() {
                   ${optInValidation.allowed ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-700 border-red-100"}`}>
                   {optInValidation.allowed ? <Check size={16} className="mt-0.5 shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
                   <span>
-                    <strong className="capitalize">{optInValidation.template_type}</strong> — {optInValidation.message}
+                    {OPT_IN_RESULT[optInValidation.template_type] ?? optInValidation.message}
+                    {!optInValidation.allowed && (
+                      <Link href="/dashboard/telecalling/upload" className="ml-1 font-semibold underline underline-offset-2">Upload this list for calling</Link>
+                    )}
                   </span>
                 </div>
               )}
@@ -2051,6 +2099,14 @@ export default function OutboundLeadsPage() {
                     placeholder="Select a template…"
                     options={templates.map(t => ({ value: t.name, label: `${t.name} (${t.category.toLowerCase()})` }))}
                   />
+                  {!isGroup && optInValidation?.template_type === "utility" &&
+                    templates.find((t) => t.name === templateName)?.category?.toUpperCase() === "MARKETING" && (
+                    <p className="flex items-start gap-1.5 font-label text-xs text-amber-700 mt-2">
+                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                      This is an offer message, but you said these people only enquired or agreed in person. Offers to them
+                      bring more &quot;stop&quot; replies; a campaign is stopped on its own if more than 2 in 100 say stop.
+                    </p>
+                  )}
                   {templatesPending && (
                     <p className="font-label text-xs text-on-surface-muted mt-2">Loading templates…</p>
                   )}
@@ -3681,5 +3737,78 @@ export default function OutboundLeadsPage() {
       )}
       {resultsFor && <CampaignResultsDrawer broadcastId={resultsFor.id} title={resultsFor.title} onClose={() => setResultsFor(null)} />}
     </div>
+  );
+}
+
+/** v9.2 #116: check what we read off a notebook photo — type names we couldn't read, fix or remove wrong numbers. */
+function ScanReview({ rows, onChange, onUse, onCancel, busy }: {
+  rows: ScanRow[]; onChange: (rows: ScanRow[]) => void; onUse: () => void; onCancel: () => void; busy: boolean;
+}) {
+  const checks = rows.map(checkRow);
+  const wrong = checks.filter((c) => c.phoneWrong).length;
+  const noName = checks.filter((c) => c.nameMissing).length;
+  const set = (i: number, patch: Partial<ScanRow>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <section aria-label="Check what we read" className="rounded-xl border border-primary/20 bg-white p-4 space-y-3">
+      <div>
+        <p className="font-display text-sm font-bold text-on-surface">Check what we read from the photo</p>
+        <p className="font-body text-xs text-on-surface-muted mt-0.5" aria-live="polite">
+          {rows.length} {rows.length === 1 ? "person" : "people"} found.
+          {noName > 0 && (noName === 1 ? " 1 name we couldn't read — type it in or leave it blank." : ` ${noName} names we couldn't read — type them in or leave them blank.`)}
+          {wrong > 0 && (wrong === 1 ? " 1 number looks wrong — fix or remove it." : ` ${wrong} numbers look wrong — fix or remove them.`)}
+          {noName === 0 && wrong === 0 && " Everything looks readable."}
+        </p>
+      </div>
+      <div className="max-h-80 overflow-y-auto rounded-lg border border-surface-mid divide-y divide-surface-mid">
+        {rows.map((r, i) => (
+          <div key={i} className={cn("flex items-center gap-2 px-3 py-2", checks[i].phoneWrong && "bg-red-50/60")}>
+            <span className="w-6 shrink-0 text-right font-label text-[11px] text-on-surface-muted">{i + 1}</span>
+            <input
+              aria-label={`Name on line ${i + 1}`}
+              value={checks[i].nameMissing && /\?|unclear|illegible|unreadable/i.test(r.name) ? "" : r.name}
+              placeholder={checks[i].nameMissing ? "Couldn't read — type the name" : "Name"}
+              onChange={(e) => set(i, { name: e.target.value })}
+              className={cn("min-w-0 flex-1 rounded-md border px-2 py-1 font-body text-sm",
+                checks[i].nameMissing ? "border-amber-300 bg-amber-50 placeholder:text-amber-700" : "border-surface-mid bg-white")}
+            />
+            <input
+              aria-label={`Phone on line ${i + 1}`}
+              aria-invalid={checks[i].phoneWrong}
+              aria-describedby={checks[i].phoneWrong ? `scan-phone-wrong-${i}` : undefined}
+              value={r.phone}
+              inputMode="tel"
+              onChange={(e) => set(i, { phone: e.target.value })}
+              className={cn("w-36 shrink-0 rounded-md border px-2 py-1 font-body text-sm tabular-nums",
+                checks[i].phoneWrong ? "border-red-300 bg-red-50 text-red-800" : "border-surface-mid bg-white")}
+            />
+            {checks[i].phoneWrong && (
+              <span id={`scan-phone-wrong-${i}`} className="font-label text-[11px] text-red-700 shrink-0">
+                <AlertTriangle size={12} className="inline sm:hidden" aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only">Looks wrong</span>
+              </span>
+            )}
+            <button type="button" aria-label={`Remove line ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              className="shrink-0 rounded-md p-1 text-on-surface-muted hover:bg-surface-low hover:text-red-700">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onUse} disabled={busy || rows.length === 0}
+          className="rounded-lg bg-primary px-4 py-2 font-label text-sm font-semibold text-white disabled:opacity-50">
+          Use these {rows.length}
+        </button>
+        {wrong > 0 && (
+          <button type="button" onClick={() => onChange(rows.filter((r) => !checkRow(r).phoneWrong))}
+            className="rounded-lg border border-red-200 px-3 py-2 font-label text-sm text-red-700 hover:bg-red-50">
+            Remove the {wrong} wrong number{wrong === 1 ? "" : "s"}
+          </button>
+        )}
+        <button type="button" onClick={onCancel} className="rounded-lg px-3 py-2 font-label text-sm text-on-surface-muted hover:bg-surface-low">
+          Start again
+        </button>
+      </div>
+    </section>
   );
 }

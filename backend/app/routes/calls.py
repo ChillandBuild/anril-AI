@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import json
 import logging
@@ -27,6 +28,9 @@ from app.services.call_wrapup import (
 )
 from app.services.deals import DealError
 from app.services.wrapup_apply import apply_wrapup
+from app.services import bookings as bookings_engine
+from app.services import wrapup_booking
+from app.services.booking_setup import BookingError
 from app.services.telecmi_client import initiate_click2call
 from app.services.assignment import (
     get_telecalling_config, get_upload_pending, qualifying_unassigned_leads, record_assignment_event, remove_upload_pending,
@@ -114,6 +118,13 @@ class WrapupProduct(BaseModel):
     qty: int = Field(1, ge=1, le=1000)
 
 
+class WrapupBooking(BaseModel):
+    """Item 136: the booking a "next step booked" wrap-up makes (only when the business has Bookings set up)."""
+    service_id: str = Field(min_length=1, max_length=64)
+    resource_id: str = Field("any", max_length=64)
+    start_at: str = Field(min_length=1, max_length=40)
+
+
 class WrapupIn(BaseModel):
     manual_status: ConnectValue
     outcome: OutcomeValue | None = None
@@ -124,6 +135,7 @@ class WrapupIn(BaseModel):
     stop_messages: bool = False
     products: list[WrapupProduct] = Field(default_factory=list, max_length=20)
     amount_paise: int | None = Field(None, ge=100, le=10_000_000_000)
+    booking: WrapupBooking | None = None
     manual_started_at: datetime | None = None
     manual_ended_at: datetime | None = None
     duration_seconds: int | None = Field(default=None, ge=0, le=24 * 60 * 60)
@@ -1050,6 +1062,14 @@ async def set_outcome(call_log_id: str, payload: WrapupIn, background_tasks: Bac
     is_telecmi = row.get("provider") == "telecmi"
     now = datetime.now(timezone.utc)
     next_at = as_aware(payload.next_action_at) if payload.next_action_at else None
+    booking_in = payload.booking.model_dump() if payload.booking else None
+    if booking_in:
+        if payload.outcome != "interested_booked":
+            raise HTTPException(status_code=400, detail="A booking only goes with \"next step booked\".")
+        try:
+            next_at = bookings_engine.parse_ts(booking_in["start_at"])  # the reminder is the visit time
+        except BookingError as e:
+            raise HTTPException(status_code=400, detail=e.message)
     try:
         validate_wrapup(
             never_connected=is_telecmi and cloud_never_connected(row),
@@ -1073,7 +1093,7 @@ async def set_outcome(call_log_id: str, payload: WrapupIn, background_tasks: Bac
         "manual_status": payload.manual_status, "outcome": payload.outcome, "notes": payload.notes,
         "next_action_at": next_at, "reason": payload.reason, "preferred_language": payload.preferred_language,
         "stop_messages": payload.stop_messages, "products": [p.model_dump() for p in payload.products],
-        "amount_paise": payload.amount_paise,
+        "amount_paise": payload.amount_paise, "booking": booking_in,
     }
     try:
         result = await apply_wrapup(
@@ -1082,6 +1102,8 @@ async def set_outcome(call_log_id: str, payload: WrapupIn, background_tasks: Bac
         )
     except DealError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except BookingError as e:  # time taken, same-day rule, service gone: nothing of the wrap-up was saved
+        raise HTTPException(status_code=e.status_code, detail=e.message)
 
     scoring = finalize_call_score(db, call_log_id)
     if is_telecmi:
@@ -1093,6 +1115,7 @@ async def set_outcome(call_log_id: str, payload: WrapupIn, background_tasks: Bac
         "call_status": result["call_status"],
         "next_action_at": result["next_action_at"],
         "deal_id": result["deal_id"],
+        "booking_id": result.get("booking_id"),
     }
     # SIM clients get no evaluation at all -- gated on the tenant's own
     # calling_provider, same as every other route, not on whether this
@@ -1592,6 +1615,34 @@ async def pending_wrapups_summary(ctx: dict = Depends(get_tenant_and_role)):
         }
         for c in callers
     ]
+
+
+@router.get("/wrapup-booking")
+async def get_wrapup_booking(ctx: dict = Depends(get_tenant_and_role)):
+    """Item 136: does this business have Bookings set up, and which services can a wrap-up book."""
+    return await asyncio.to_thread(wrapup_booking.options, get_supabase(), ctx["tenant_id"])
+
+
+@router.get("/wrapup-booking/days")
+async def get_wrapup_booking_days(service_id: str = Query(..., max_length=64), ctx: dict = Depends(get_tenant_and_role)):
+    try:
+        days = await asyncio.to_thread(wrapup_booking.free_days, get_supabase(), ctx["tenant_id"], service_id)
+    except BookingError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    return {"dates": days}
+
+
+@router.get("/wrapup-booking/times")
+async def get_wrapup_booking_times(
+    service_id: str = Query(..., max_length=64), date: str = Query(..., max_length=10),
+    ctx: dict = Depends(get_tenant_and_role),
+):
+    try:
+        day = bookings_engine.parse_day(date)
+        times = await asyncio.to_thread(wrapup_booking.free_times, get_supabase(), ctx["tenant_id"], service_id, day)
+    except BookingError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    return {"times": times}
 
 
 @router.get("/wrapup-context")

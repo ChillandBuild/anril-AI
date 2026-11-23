@@ -48,7 +48,8 @@ def main() -> None:
         ids.append(lead["id"])
         for t in tags:
             db.table("lead_tags").insert({"tenant_id": tid, "lead_id": lead["id"], "tag": t}).execute()
-    item = db.table("catalog_items").insert({"tenant_id": tid, "name": "Silk saree", "price_paise": 450000}).execute().data[0]
+    item = db.table("catalog_items").insert({"tenant_id": tid, "name": "Silk saree", "price_paise": 450000,
+                                              "status": "ready"}).execute().data[0]
     deals = [  # lead index, stage, total, paid
         (0, "awaiting_payment", 450000, 0),
         (1, "awaiting_payment", 900000, 300000),

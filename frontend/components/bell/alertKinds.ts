@@ -65,6 +65,7 @@ const KINDS: Record<string, AlertKind> = {
   lead_reassigned: { category: "needs_you", icon: "chat", module: "Leads", action: chatAction },
   handover_new: { category: "needs_you", icon: "chat", module: "Chats", action: chatAction },
   lead_hot: { category: "needs_you", icon: "chat", module: "Leads", action: chatAction },
+  hot_lead_waiting: { category: "needs_you", icon: "chat", module: "Chats", action: chatAction },
   supplier_message: { category: "needs_you", icon: "chat", module: "Purchases", action: chatAction },
   booking_new: { category: "needs_you", icon: "info", module: "Bookings", action: bookingsAction("Open bookings") },
   booking_cancelled: { category: "needs_you", icon: "alert", module: "Bookings", action: bookingsAction("Open bookings") },
@@ -85,8 +86,10 @@ const KINDS: Record<string, AlertKind> = {
   quote_accepted: { category: "money", icon: "money", module: "Orders", action: fixed("See", "/dashboard/deals") },
   day_closing: { category: "money", icon: "money", module: "Orders", action: fixed("See", "/dashboard/deals/day-closing") },
   purchase_order: { category: "money", icon: "money", module: "Purchases", action: fixed("See", "/dashboard/purchases") },
+  refund_done: { category: "money", icon: "money", module: "Orders", action: fixed("See", "/dashboard/deals") },
 
   batch_expiry: { category: "stock", icon: "box", module: "Stock", action: fixed("See batches", "/dashboard/catalog?tab=batches") },
+  stock_low: { category: "stock", icon: "box", module: "Stock", action: fixed("See stock", "/dashboard/catalog") },
 
   sms_low_balance: { category: "other", icon: "sms", module: "SMS", action: fixed("Top up", "/dashboard/sms") },
   scheduled_template_failed: { category: "other", icon: "alert", module: "Scheduled messages", action: fixed("See", "/dashboard/scheduled-templates") },

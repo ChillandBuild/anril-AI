@@ -485,6 +485,25 @@ async def came(booking_id: str, ctx: dict = Depends(view)):
     return done
 
 
+class VisitOutcomeIn(BaseModel):
+    outcome: str = Field(..., max_length=30)
+
+
+@router.post("/{booking_id}/visit-outcome")
+def visit_outcome(booking_id: str, body: VisitOutcomeIn, ctx: dict = Depends(view)):
+    """How a property site visit went (after Came). "liked_thinking" schedules the home-loan help message 2 days
+    later. Same people as Came / Didn't come."""
+    from datetime import datetime, timezone
+    from app.services import property_visit_messages as pvm
+    db = get_supabase()
+    with _errors():
+        _may_act(db, ctx, booking_id)
+        try:
+            return pvm.record_outcome(db, ctx["tenant_id"], booking_id, body.outcome, datetime.now(timezone.utc))
+        except pvm.OutcomeError as e:
+            raise HTTPException(status_code=e.status_code, detail=str(e))
+
+
 @router.post("/{booking_id}/no-show")
 def no_show(booking_id: str, ctx: dict = Depends(view)):
     db = get_supabase()

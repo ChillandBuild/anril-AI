@@ -234,3 +234,51 @@ async def test_resuming_a_broadcast_skips_already_recorded_phones_and_never_rese
     recipient_insert_calls = [c for c in db.calls if c["table"] == "broadcast_recipients" and c["op"] == "insert"]
     assert len(recipient_insert_calls) == 1
     assert db.recipient_inserts[0]["phone"] == LEAD_B["phone"]
+
+
+@pytest.mark.asyncio
+async def test_a_run_stops_at_the_next_50_when_too_many_people_push_back():
+    """v9.2 #118: after 50 sends the push-back check runs; over 2% stops the rest (no duplicate row for #50)."""
+    leads = [{"id": f"lead-{i}", "phone": f"+9190000{i:05d}", "name": f"P{i}"} for i in range(60)]
+    row = {**ROW, "leads_json": [{"phone": l["phone"], "name": l["name"]} for l in leads]}
+    db = FakeDB(leads, [{"id": "phone-num-1", "meta_phone_number_id": "num-1", "number": "+910000000000"}], _templates())
+    stats = {"sent": 120, "said_stop": 3, "stopped_marketing": 1, "rate": 4 / 120}
+    from app.services import reach_quality
+    with patch("app.services.broadcast_executor.get_supabase", return_value=db), \
+         patch("app.services.broadcast_executor.send_template_message", new=AsyncMock(return_value={"messages": [{"id": "wamid.x"}]})) as mock_send, \
+         patch("app.services.broadcast_executor.meter"), \
+         patch("app.services.broadcast_executor.SenderPicker", _FixedPicker), \
+         patch("app.services.broadcast_executor.new_lead_score_and_segment", return_value=(3, "C")), \
+         patch.object(reach_quality, "group_row_ids", return_value=["broadcast-1"]), \
+         patch.object(reach_quality, "pushback", return_value=stats), \
+         patch.object(reach_quality, "stop_rest") as stop_rest:
+        result = await broadcast_executor.execute_broadcast(dict(row))
+    assert mock_send.await_count == 50 and result["sent"] == 50
+    stop_rest.assert_called_once()
+    phones = [r["phone"] for r in db.recipient_inserts]
+    assert len(phones) == len(set(phones)) == 60      # 50 sent + 10 not sent, nobody twice
+
+
+def test_pushback_counts_said_stop_and_turned_off_marketing():
+    from tests.fake_supabase import FakeSupabase
+    from app.services import reach_quality
+    db = FakeSupabase()
+    for i in range(100):
+        db.add("broadcast_recipients", id=f"r{i}", tenant_id="t1", broadcast_id="b1", send_status="sent",
+               meta_message_id=f"w{i}", opted_out_at=None)
+    db.rows("broadcast_recipients")[0].update(send_status="opted_out_skip", opted_out_at="2026-11-23T10:00:00+00:00")
+    db.add("messages", id="m1", tenant_id="t1", meta_message_id="w5", delivery_error_code="131050")
+    db.add("messages", id="m2", tenant_id="t1", meta_message_id="w6", delivery_error_code="131049")   # not a stop
+    db.add("broadcast_recipients", id="other", tenant_id="t2", broadcast_id="b1", send_status="sent",
+           opted_out_at="2026-11-23T10:00:00+00:00")                                                   # other tenant
+    stats = reach_quality.pushback(db, "t1", ["b1"])
+    assert (stats["sent"], stats["said_stop"], stats["stopped_marketing"]) == (100, 1, 1)
+    assert not reach_quality.too_much_pushback(stats)                         # exactly 2%: not over
+    db.rows("broadcast_recipients")[1].update(opted_out_at="2026-11-23T10:05:00+00:00")
+    assert reach_quality.too_much_pushback(reach_quality.pushback(db, "t1", ["b1"]))
+    assert not reach_quality.too_much_pushback({"sent": 40, "rate": 0.5})     # too few sent to judge
+
+
+def test_pushback_is_checked_at_doubling_points_only():
+    from app.services.broadcast_executor import _pushback_checkpoint
+    assert [n for n in range(1, 1700) if _pushback_checkpoint(n)] == [50, 100, 200, 400, 800, 1600]

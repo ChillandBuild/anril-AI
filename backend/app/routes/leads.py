@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.config import settings
 from app.db.supabase import get_supabase
 from app.services.actor import actor_name, sender_fields
@@ -24,7 +24,7 @@ from app.services.assignment import get_telecalling_config, record_assignment_ev
 from app.services.call_teams import assert_can_move_lead, assign_scope
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.share_product import ShareProductError, share_product
-from app.services import group_rules, scheduled_templates
+from app.services import group_rules, interested_in, scheduled_templates
 from app.services.call_details_share import ShareError, _whatsapp_ready, compose_templates, prepare_template, send_approved_template
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,18 @@ class LeadFilters(BaseModel):
     came_from: str | None = Field(None, max_length=30)
     # A tag (customers > tags), matched ignoring upper / lower case.
     tag: str | None = Field(None, max_length=30)
+    # Total spend in paise (paid minus refunded, migration 333). Set only by a saved Group rule
+    # (services/group_rules.apply_rule, which skips validation), never by a request body: the
+    # rupee figure needs deals.view, so a client cannot probe it through a preview or broadcast.
+    spend_min_paise: int | None = None
+    spend_max_paise: int | None = None
+
+    @field_validator("spend_min_paise", "spend_max_paise", mode="before")
+    @classmethod
+    def _spend_not_from_clients(cls, v):
+        if v is not None:
+            raise ValueError("Spend filters are only available inside a group rule")
+        return v
 
 
 class CustomBroadcastRequest(LeadFilters):
@@ -504,6 +516,10 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
     elif f.bought == "quiet":
         quiet_since = (datetime.now(timezone.utc) - timedelta(days=BUYER_QUIET_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = query.eq("is_buyer", True).lt("last_purchase_at", quiet_since)
+    if f.spend_min_paise is not None:
+        query = query.gte("total_spent_paise", int(f.spend_min_paise))
+    if f.spend_max_paise is not None:
+        query = query.lte("total_spent_paise", int(f.spend_max_paise))
     if f.only == "leads":
         # Never bought: not marked paid and no won deal (won_deal_count is the computed field above).
         query = query.is_("converted_at", "null").eq("won_deal_count", 0)
@@ -1335,6 +1351,43 @@ async def update_lead(lead_id: UUID, updates: LeadUpdate, tenant_id: str = Depen
         db=db,
     )
     return updated
+
+class InterestedInBody(BaseModel):
+    item_ids: list[UUID] = Field(default_factory=list, max_length=interested_in.MAX_ITEMS)  # not a UUID: 422
+
+
+def _lead_for_interest(db, ctx: dict, lead_id: UUID) -> None:
+    """404 unless the lead is this business's and (for a telecaller) assigned to them."""
+    rows = (db.table("leads").select("id,assigned_to").eq("id", str(lead_id))
+            .eq("tenant_id", ctx["tenant_id"]).is_("deleted_at", "null").limit(1).execute()).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if ctx.get("role") == "caller" and ctx.get("caller_id") and rows[0].get("assigned_to") != ctx["caller_id"]:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+
+@router.get("/{lead_id}/interested-in")
+async def get_interested_in(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
+    """The Catalogue items this person is interested in: {items: [{id, name}]}."""
+    db = get_supabase()
+    _lead_for_interest(db, ctx, lead_id)
+    return {"items": await run_in_threadpool(interested_in.items_for, db, ctx["tenant_id"], str(lead_id))}
+
+
+@router.put("/{lead_id}/interested-in")
+async def put_interested_in(lead_id: UUID, body: InterestedInBody, ctx: dict = Depends(require_leads_manage)):
+    """Replace the list. Only Catalogue items of this business are kept."""
+    db = get_supabase()
+    _lead_for_interest(db, ctx, lead_id)
+    try:
+        items = await run_in_threadpool(interested_in.set_items, db, ctx["tenant_id"], str(lead_id), [str(i) for i in body.item_ids])
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("interested-in save failed")
+        raise HTTPException(status_code=503, detail="Could not save yet. Try again soon.")
+    return {"items": items}
+
 
 @router.post("/{lead_id}/convert", response_model=Lead)
 async def mark_converted(lead_id: UUID, payload: ConvertPayload | None = None, tenant_id: str = Depends(get_tenant_id)):

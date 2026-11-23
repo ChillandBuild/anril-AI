@@ -51,7 +51,8 @@ def classify(lead: dict) -> str:
     return "open"
 
 
-def _log_assignments(db, tenant_id: str, lead_ids: list[str], rows: dict, caller: dict, reason: str) -> None:
+def _log_assignments(db, tenant_id: str, lead_ids: list[str], rows: dict, caller: dict, reason: str,
+                     group_id: str | None = None) -> None:
     """The Assignment Log rows (same shape as assignment.record_assignment_event), one insert per batch."""
     try:
         db.table("lead_stage_events").insert([{
@@ -61,16 +62,18 @@ def _log_assignments(db, tenant_id: str, lead_ids: list[str], rows: dict, caller
             "tenant_id": tenant_id,
             "metadata": {"caller_id": str(caller["id"]), "caller_name": caller.get("name"), "reason": reason,
                          "method": "round-robin", "score": None, "matched_segments": [],
-                         "prev_caller_id": None, "prev_caller_name": None},
+                         "prev_caller_id": None, "prev_caller_name": None,
+                         **({"group_id": group_id} if group_id else {})},
         } for lid in lead_ids]).execute()
     except Exception as e:
         logger.warning("send_to_calling: assignment log failed for %d leads: %s", len(lead_ids), e)
 
 
-def send_to_calling(db, tenant_id: str, lead_ids: list[str], *, reason: str) -> dict:
+def send_to_calling(db, tenant_id: str, lead_ids: list[str], *, reason: str, group_id: str | None = None) -> dict:
     """Give the open, unassigned people in lead_ids to callers (round-robin). See module docstring.
 
     reason is stored on the assignment log (e.g. "customers_bulk", "group", "form_no_whatsapp").
+    group_id (a Customers group) is kept on that log too, so Groups can say "Used by Call IQ".
     """
     from app.services import assignment
 
@@ -137,7 +140,7 @@ def send_to_calling(db, tenant_id: str, lead_ids: list[str], *, reason: str) -> 
             out["added_ids"].extend(done)
             per_caller[caller_id] += len(done)
             if done:
-                _log_assignments(db, tenant_id, done, rows, caller, reason)
+                _log_assignments(db, tenant_id, done, rows, caller, reason, group_id)
     try:
         assignment._save_setting_json(db, tenant_id, assignment.RR_STATE_KEY, {"last_caller_id": last_used})
     except Exception as e:

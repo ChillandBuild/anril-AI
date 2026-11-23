@@ -4,6 +4,7 @@ import {
   canOpenLive,
   canOpenTeamReports,
   countByState,
+  dueText,
   hasView,
   minutesText,
   pickedUpText,
@@ -116,5 +117,15 @@ describe("who may open what", () => {
     expect(canOpenLive("caller", ["team.view"])).toBe(true);
     expect(canOpenLive("caller", ["deals.view"])).toBe(false);
     expect(canOpenLive(null, [])).toBe(false);
+  });
+});
+
+describe("callbacks due now", () => {
+  const now = new Date("2026-11-22T07:00:00Z");
+  it("says how far the scheduled time is, in plain words", () => {
+    expect(dueText("2026-11-22T07:10:00Z", now)).toBe("due in 10 min");
+    expect(dueText("2026-11-22T07:00:00Z", now)).toBe("due now");
+    expect(dueText("2026-11-22T06:40:00Z", now)).toBe("20 min late");
+    expect(dueText("not a date", now)).toBe("");
   });
 });

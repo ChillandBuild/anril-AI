@@ -93,6 +93,12 @@ export function StockHistoryDrawer({
                     <span>{movement.quantity_after} after</span>
                   </div>
                   {movement.note && <p className="mt-1.5 text-xs text-ink">{movement.note}</p>}
+                  {movement.photo_url && (
+                    <a href={movement.photo_url} target="_blank" rel="noreferrer" className="mt-2 block w-fit" title="Open the photo">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={movement.photo_url} alt="Damaged pieces" className="h-16 w-16 rounded-lg border border-border object-cover" />
+                    </a>
+                  )}
                   {movement.deal_id && (
                     <Link
                       href={`/dashboard/deals/${movement.deal_id}`}

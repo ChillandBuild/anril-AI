@@ -15,19 +15,33 @@ import { Metric, MetricGrid, SectionCard } from "./reportsUi";
 
 export function TargetBar({ target }: { target?: SalesTarget | null }) {
   const t = target?.this_month;
-  if (!t || !t.target_paise) return null;
-  const pct = Math.max(0, Math.round(t.pct ?? 0));
-  const money = t.money_in_paise !== null && t.money_in_paise !== undefined;
+  const profit = target?.profit_this_month;
+  const hasTarget = !!t && !!t.target_paise;
+  const hasProfit = profit?.profit_paise !== undefined && profit?.profit_paise !== null;
+  if (!hasTarget && !hasProfit) return null;
+  const pct = Math.max(0, Math.round(t?.pct ?? 0));
+  const money = t?.money_in_paise !== null && t?.money_in_paise !== undefined;
+  const month = t?.month ?? profit?.month;
   return (
-    <SectionCard title={`Target for ${t.month ? monthLabel(t.month) : "this month"}`}>
-      <p className="font-body text-sm text-on-surface">
-        {money ? `${formatRupees(t.money_in_paise)} of ${formatRupees(t.target_paise)} · ` : ""}
-        <span className="font-bold">{pct}%</span>
-        {!money ? " of the target" : ""}
-      </p>
-      <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface-mid" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(pct, 100)} aria-label="Target progress">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(pct, 100)}%` }} />
-      </div>
+    <SectionCard title={`${hasProfit ? "Target & profit" : "Target"} for ${month ? monthLabel(month) : "this month"}`}>
+      {hasTarget && (
+        <>
+          <p className="font-body text-sm text-on-surface">
+            {money ? `${formatRupees(t?.money_in_paise)} of ${formatRupees(t?.target_paise)} · ` : ""}
+            <span className="font-bold">{pct}%</span>
+            {!money ? " of the target" : ""}
+          </p>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface-mid" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(pct, 100)} aria-label="Target progress">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+        </>
+      )}
+      {hasProfit && (
+        <p className={`font-body text-sm text-on-surface${hasTarget ? " mt-3" : ""}`}>
+          Estimated profit so far: <span className="font-bold">{formatRupees(profit?.profit_paise)}</span>
+          <span className="text-[#556274]"> (sales less refunds, cost of items sold and expenses)</span>
+        </p>
+      )}
     </SectionCard>
   );
 }
@@ -77,7 +91,7 @@ export function OverviewTab({
             )}
             {data.cards?.length > 0 && (
               <MetricGrid>
-                {orderOverviewCards(data.cards, business?.business_type).slice(0, 6).map((c) => (
+                {orderOverviewCards(data.cards, business?.business_type).slice(0, 7).map((c) => (
                   <Metric
                     key={c.key}
                     statKey={c.key}
@@ -87,6 +101,7 @@ export function OverviewTab({
                     kind={c.kind}
                     people={c.people ?? null}
                     href={c.href}
+                    hint={c.estimate ? "An estimate" : undefined}
                     onPeople={tools.openPeople}
                   />
                 ))}

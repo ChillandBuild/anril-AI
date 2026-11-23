@@ -52,6 +52,32 @@ def test_overview_cards_follow_what_the_business_uses():
     assert all(c["kind"] != "paise" for c in no_money)
 
 
+def test_profit_card_needs_orders_view_and_purchases_view(db):
+    from app.services import reports_money
+    everything = {"orders": True, "calls": True, "ads": True, "bookings": True}
+    numbers, _ = reports_overview.compute(db, T1, PERIOD, ALL)
+    money, _ = reports_money.compute(db, T1, PERIOD, ALL)
+    assert numbers["profit_paise"] == money["profit_paise"]          # the same figure as Reports > Money
+    cards = reports_overview.build_cards(numbers, None, everything, ALL)
+    profit = next(c for c in cards if c["key"] == "profit_paise")
+    assert profit["label"] == "Estimated profit" and profit["kind"] == "paise" and profit["estimate"] is True
+    assert cards[0]["key"] == "sales_paise" and cards[1]["key"] == "profit_paise" and len(cards) == 7
+    only_orders, _ = reports_overview.compute(db, T1, PERIOD, ORDERS_ONLY)
+    assert "profit_paise" not in only_orders
+    assert all(c["key"] != "profit_paise" for c in reports_overview.build_cards(numbers, None, everything, ORDERS_ONLY))
+    assert all(c["key"] != "profit_paise" for c in reports_overview.build_cards(numbers, None, {"orders": False}, ALL))
+
+
+def test_overview_report_profit_only_for_profit_viewers(db):
+    full = reports_overview.report(db, T1, PERIOD, False, ALL, now=NOW)
+    assert isinstance(full["period"]["profit_paise"], int)
+    this_month = full["target"]["profit_this_month"]
+    assert this_month["month"] == "2026-10" and isinstance(this_month["profit_paise"], int)
+    for flags in (ORDERS_ONLY, NONE):
+        out = reports_overview.report(db, T1, PERIOD, False, flags, now=NOW)
+        assert "profit_paise" not in json.dumps(out) and "profit_this_month" not in json.dumps(out)
+
+
 def test_hot_not_called_in_24_hours(db):
     assert reports_overview.hot_not_called(db, T1, NOW) == 1  # L1 was called this morning, L3 was not
 
@@ -77,7 +103,7 @@ def test_overview_report_shape(db):
     out = reports_overview.report(db, T1, PERIOD, True, ALL, now=NOW)
     assert set(out) >= {"period", "before", "in_short", "todo", "cards", "target", "unmarked_chats"}
     assert out["unmarked_chats"] == {"count": 3, "href": "/dashboard/inbound-leads?result=none"}
-    assert set(out["target"]) == {"this_month", "cost_coverage"} and out["before"]["first_chats"] == 1
+    assert set(out["target"]) == {"this_month", "cost_coverage", "profit_this_month"} and out["before"]["first_chats"] == 1
     assert out["in_short"] == "4 new chats, up 3 from before; 2 people paid, ₹1,500."
 
 

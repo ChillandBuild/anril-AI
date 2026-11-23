@@ -71,11 +71,8 @@ async def share_product(
     item = items[0]
     caption = product_caption(item)
 
-    photos = (
-        db.table("catalog_media").select("storage_path")
-        .eq("catalog_item_id", item_id).eq("tenant_id", tenant_id)
-        .order("sort_order").limit(1).execute()
-    ).data or []
+    from app.services.catalog_photos import sendable_photos
+    photos = sendable_photos(db, tenant_id, item_id, 1, columns="storage_path")  # not an out-of-stock colour
 
     if photos:
         url = db.storage.from_(BUCKET).get_public_url(photos[0]["storage_path"])

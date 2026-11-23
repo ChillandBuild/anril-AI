@@ -17,15 +17,18 @@ import {
   describeCallingResult,
   followUpHrefForGroup,
 } from "@/lib/customersApi";
+import { paiseToRupeesText, rupeesToPaise, usedByLabel } from "@/lib/groupRuleMoney";
 
 /** Names the rule editor offers, loaded once by the Customers page. */
 export interface RuleChoices {
   callers: { id: string; name: string }[];
   campaigns: { id: string; label: string }[];
   broadcasts: { id: string; label: string }[];
+  /** Tags in use (Customers > Tag filter). */
+  tags?: string[];
 }
 
-type RuleField = "status" | "source" | "added" | "handled" | "reply" | "bought";
+type RuleField = "status" | "source" | "added" | "handled" | "reply" | "bought" | "tag" | "spend";
 
 const FIELD_LABELS: Record<RuleField, string> = {
   status: "Status is",
@@ -34,8 +37,10 @@ const FIELD_LABELS: Record<RuleField, string> = {
   handled: "Handled by",
   reply: "Reply window is",
   bought: "Bought",
+  tag: "Tagged",
+  spend: "Total spent",
 };
-const FIELD_ORDER: RuleField[] = ["status", "source", "added", "handled", "reply", "bought"];
+const FIELD_ORDER: RuleField[] = ["status", "source", "added", "handled", "reply", "bought", "tag", "spend"];
 
 const STATUS_CHOICES = [
   { value: "A", label: "Hot" },
@@ -72,6 +77,8 @@ function fieldsOf(rule: GroupRule): RuleField[] {
   if (rule.assigned_to) out.push("handled");
   if (rule.reply_window) out.push("reply");
   if (rule.bought) out.push("bought");
+  if (rule.tag) out.push("tag");
+  if (rule.spend_min_paise !== undefined || rule.spend_max_paise !== undefined) out.push("spend");
   return out;
 }
 
@@ -83,11 +90,13 @@ function withoutField(rule: GroupRule, field: RuleField): GroupRule {
   if (field === "handled") delete next.assigned_to;
   if (field === "reply") delete next.reply_window;
   if (field === "bought") delete next.bought;
+  if (field === "tag") delete next.tag;
+  if (field === "spend") { delete next.spend_min_paise; delete next.spend_max_paise; }
   return next;
 }
 
 /** A sensible first value when a rule row is added, so the row is never half-empty. */
-function withDefault(rule: GroupRule, field: RuleField): GroupRule {
+function withDefault(rule: GroupRule, field: RuleField, defaultTag?: string): GroupRule {
   switch (field) {
     case "status": return { ...rule, segment: "A" };
     case "source": return { ...rule, source_filter: "broadcast" };
@@ -95,21 +104,29 @@ function withDefault(rule: GroupRule, field: RuleField): GroupRule {
     case "handled": return { ...rule, assigned_to: "unassigned" };
     case "reply": return { ...rule, reply_window: "open" };
     case "bought": return { ...rule, bought: "repeat" };
+    case "tag": return { ...rule, tag: defaultTag ?? "" };
+    case "spend": return { ...rule, spend_min_paise: 0 };
   }
 }
 
 function isRuleValid(rule: GroupRule): boolean {
+  if (rule.tag !== undefined && !rule.tag.trim()) return false;
+  const { spend_min_paise: lo, spend_max_paise: hi } = rule;
+  if (lo !== undefined && hi !== undefined && lo > hi) return false;
   return fieldsOf(rule).length > 0;
 }
 
-function RuleEditor({ rule, onChange, choices, disabled }: {
+function RuleEditor({ rule, onChange, choices, disabled, canSeeMoney }: {
   rule: GroupRule;
   onChange: (rule: GroupRule) => void;
   choices: RuleChoices;
   disabled?: boolean;
+  /** deals.view: the Total spent rule is offered and shown only with it. */
+  canSeeMoney?: boolean;
 }) {
   const used = fieldsOf(rule);
-  const free = FIELD_ORDER.filter((f) => !used.includes(f));
+  const tagNames = choices.tags ?? [];
+  const free = FIELD_ORDER.filter((f) => !used.includes(f) && (f !== "spend" || canSeeMoney) && (f !== "tag" || tagNames.length > 0));
   const [adding, setAdding] = useState(false);
   const handledChoices = [
     { value: "unassigned", label: "Nobody (unassigned)" },
@@ -161,6 +178,38 @@ function RuleEditor({ rule, onChange, choices, disabled }: {
         <Select size="sm" aria-label="Reply window" disabled={disabled} options={REPLY_CHOICES} value={rule.reply_window ?? ""}
           onChange={(v) => onChange({ ...rule, reply_window: v as GroupRule["reply_window"] })} />
       );
+    } else if (field === "tag") {
+      const names = tagNames.some((t) => t.toLowerCase() === (rule.tag ?? "").toLowerCase()) || !rule.tag
+        ? tagNames : [...tagNames, rule.tag ?? ""];
+      control = (
+        <Select size="sm" aria-label="Tag" disabled={disabled} value={rule.tag ?? ""}
+          options={names.map((t) => ({ value: t, label: t }))}
+          onChange={(v) => onChange({ ...rule, tag: v })} />
+      );
+    } else if (field === "spend") {
+      const setSide = (side: "spend_min_paise" | "spend_max_paise", text: string) => {
+        const next = { ...rule, [side]: rupeesToPaise(text) };
+        // Both boxes empty keeps the row (min 0 = everyone), so it does not vanish while typing.
+        if (next.spend_min_paise === undefined && next.spend_max_paise === undefined) next.spend_min_paise = 0;
+        onChange(next);
+      };
+      const bad = rule.spend_min_paise !== undefined && rule.spend_max_paise !== undefined && rule.spend_min_paise > rule.spend_max_paise;
+      control = (
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <input type="text" inputMode="decimal" aria-label="Spent at least, in rupees" placeholder="₹ from" disabled={disabled}
+              defaultValue={paiseToRupeesText(rule.spend_min_paise)} onChange={(e) => setSide("spend_min_paise", e.target.value)}
+              className="h-9 w-full min-w-0 rounded-lg border border-[#cbd5e1] px-2.5 text-sm text-[#0A1528] disabled:bg-slate-50" />
+            <span className="text-xs text-[#64748b]">to</span>
+            <input type="text" inputMode="decimal" aria-label="Spent at most, in rupees" placeholder="₹ up to" disabled={disabled}
+              defaultValue={paiseToRupeesText(rule.spend_max_paise)} onChange={(e) => setSide("spend_max_paise", e.target.value)}
+              className="h-9 w-full min-w-0 rounded-lg border border-[#cbd5e1] px-2.5 text-sm text-[#0A1528] disabled:bg-slate-50" />
+          </div>
+          <span className={cn("text-[11px]", bad ? "font-semibold text-red-600" : "text-[#64748b]")}>
+            {bad ? "The first amount must be less than the second." : "Total paid, after refunds. Leave one side empty for no limit."}
+          </span>
+        </div>
+      );
     } else {
       control = (
         <Select size="sm" aria-label="Bought" disabled={disabled} options={BOUGHT_CHOICES} value={rule.bought ?? ""}
@@ -190,7 +239,7 @@ function RuleEditor({ rule, onChange, choices, disabled }: {
           <div className="flex flex-wrap gap-1.5 rounded-xl border border-dashed border-[#cbd5e1] p-2">
             {free.map((f) => (
               <button key={f} type="button"
-                onClick={() => { onChange(withDefault(rule, f)); setAdding(false); }}
+                onClick={() => { onChange(withDefault(rule, f, tagNames[0])); setAdding(false); }}
                 className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-[#334155] hover:bg-slate-200">
                 {FIELD_LABELS[f].replace(/ (is|in the)$/, "")}
               </button>
@@ -229,6 +278,7 @@ type Draft = { kind: "picked" | "rule"; name: string; rule: GroupRule };
 export function GroupsPanel({ choices }: { choices: RuleChoices }) {
   const { role, permissions } = useAuthRole();
   const canManage = role === "owner" || permissions.includes("leads.manage");
+  const canSeeMoney = role === "owner" || permissions.includes("deals.view") || permissions.includes("deals.manage");
 
   const [groups, setGroups] = useState<CustomerGroup[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -416,7 +466,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
         {draft.kind === "rule" && (
           <div>
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">People who…</p>
-            <RuleEditor rule={draft.rule} onChange={(rule) => setDraft({ ...draft, rule })} choices={choices} />
+            <RuleEditor rule={draft.rule} onChange={(rule) => setDraft({ ...draft, rule })} choices={choices} canSeeMoney={canSeeMoney} />
           </div>
         )}
         <div className="flex gap-2">
@@ -454,11 +504,18 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
           <p className="mt-1 text-xs text-[#64748b]">
             {selected.made_by ? `Made by ${selected.made_by} · ` : ""}{formatDate(selected.created_at)}
           </p>
+          <p className="mt-0.5 text-xs font-semibold text-[#64748b]">{usedByLabel(selected.used_by)}</p>
 
           {isRule && (
             <div className="mt-4">
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">People who…</p>
-              <RuleEditor rule={editRule ?? selected.rule ?? {}} onChange={setEditRule} choices={choices} disabled={!canManage} />
+              <RuleEditor rule={editRule ?? selected.rule ?? {}} onChange={setEditRule} choices={choices}
+                canSeeMoney={canSeeMoney} disabled={!canManage || selected.spend_hidden} />
+              {selected.spend_hidden && (
+                <p className="mt-2 text-xs text-[#64748b]">
+                  This group also has a spend rule. You need access to Orders &amp; payments to see or change the rules.
+                </p>
+              )}
               {editRule && (
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={saveRule} disabled={saving || !isRuleValid(editRule)}
@@ -614,9 +671,10 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
                         <span className="block truncate text-xs text-[#64748b]">
                           {g.kind === "rule" ? g.rule_text || "Fills itself" : "Picked by hand"}
                         </span>
+                        <span className="block truncate text-[11px] font-semibold text-[#94a3b8]">{usedByLabel(g.used_by)}</span>
                       </span>
                       <span className="hidden md:block"><KindPill kind={g.kind} /></span>
-                      <span className="text-sm font-semibold text-[#0A1528]">{g.member_count.toLocaleString("en-IN")}</span>
+                      <span className="text-sm font-semibold text-[#0A1528]">{g.count_unknown ? "?" : g.member_count.toLocaleString("en-IN")}</span>
                       <span className="hidden truncate text-xs text-[#64748b] md:block">
                         {g.made_by ?? "—"} · {formatDate(g.created_at)}
                       </span>

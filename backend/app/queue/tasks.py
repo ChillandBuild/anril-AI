@@ -40,8 +40,10 @@ RETRY_CLASS: dict[str, str] = {
     "companion-kb-ingest": "A",
     "companion-kb-learning": "A",
     "inbound-stopped-replying": "A",
+    "handover-stale-alert": "A",
     "unmarked-bookings": "C",
     "batch-expiry": "C",
+    "alert-sweeps": "A",
     "expense-repeats": "A",
     "order-payment-reminders": "C",
     "meta-catalogue-sync": "A",
@@ -49,6 +51,7 @@ RETRY_CLASS: dict[str, str] = {
     "booking-reminders": "C",
     "booking-call-now": "C",
     "feedback-ask": "C",
+    "visit-loan-followup": "C",
     "reports-monthly-bells": "C",
     "call-break-limits": "C",
     "evening-summary": "C",
@@ -282,6 +285,16 @@ def call_alert_summary(timestamp: int) -> None:
     send_morning_summaries(get_supabase())
 
 
+# Class A: v9.2 #157. stale_alerted_at is claimed with "still null" before the owner is told, so a re-run or an
+# overlap never alerts the same handover twice.
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="handover-stale-alert")
+@queue_app.task(name="handover-stale-alert", queue="maintenance")
+def handover_stale_alert(timestamp: int) -> None:
+    """A chat handed to a person 15 minutes ago and nobody replied: tell the owner once."""
+    from app.services.handover_alerts import sweep_stale_handovers
+    sweep_stale_handovers()
+
+
 # Class A: the update re-checks every condition, so a re-run or overlap marks nobody twice.
 @queue_app.periodic(cron="17 * * * *", periodic_id="inbound-stopped-replying")
 @queue_app.task(name="inbound-stopped-replying", queue="maintenance")
@@ -314,6 +327,16 @@ def batch_expiry(timestamp: int) -> None:
     """Batches & expiry: owners hear about expired and soon-expiring batches at 9:30 AM IST."""
     from app.services.stock_batches import ring_expiry_bells
     ring_expiry_bells()
+
+
+# Class A: a sweep. "Hot customer waiting 30 minutes" claims a per-lead-per-day row (alert_fired) before it rings,
+# so a re-run or an overlap never rings the same lead twice.
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="alert-sweeps")
+@queue_app.task(name="alert-sweeps", queue="messages")
+def alert_sweeps(timestamp: int) -> None:
+    """Settings > Alerts: a Hot chat nobody has answered for 30 minutes."""
+    from app.services.alert_events import sweep_hot_leads
+    sweep_hot_leads()
 
 
 # Class A: each repeat is added once a month (unique index), so a re-run adds nothing twice.
@@ -424,6 +447,14 @@ def booking_call_now(timestamp: int) -> None:
     """No 'Yes, coming' an hour after the 2-hour reminder: flag the booking Call now, one bell."""
     from app.services.booking_messages import flag_call_now
     flag_call_now()
+
+
+@queue_app.periodic(cron="*/15 * * * *", periodic_id="visit-loan-followup")
+@queue_app.task(name="visit-loan-followup", **_one_at_a_time("visit-loan-followup"), queue="messages")
+async def visit_loan_followup(timestamp: int) -> None:
+    """Property site visits marked "Liked it, thinking": the home-loan help message 2 days later (10 AM-8 PM IST)."""
+    from app.services.property_visit_messages import send_loan_followups
+    await send_loan_followups()
 
 
 # Customers › Feedback (v9.2 #17). Class C: it messages customers; the row is written before the send and

@@ -12,6 +12,7 @@ order page all net it out. A refund on a GST invoice gets a credit note number p
 year ("CN/2026-27/0001"). The customer gets a WhatsApp ("refund started, 5-7 days" or "given
 back by cash"), or a Share on WhatsApp link when it can't be sent.
 """
+import asyncio
 import logging
 
 from app.services import deals as deals_service
@@ -99,6 +100,51 @@ def _restock(db, tenant_id: str, deal_id: str, picked: list[dict], user_id: str 
             logger.warning(f"Refund restock of {line.get('name')} on {deal_id} failed: {e}")
             warnings.append(line.get("name"))
     return warnings
+
+
+def _log_refund(db, tenant_id: str, deal: dict, given: int, method: str | None, reason: str, mode: str,
+                user_id: str | None, credit_note: str | None) -> None:
+    """The refund goes in the Activity log (Team & roles). Never stops the refund that already happened."""
+    try:
+        orders._audit(db, tenant_id, user_id, "order.refund", str(deal["id"]), {
+            "amount_paise": int(given), "method": method, "reason": reason, "mode": mode,
+            "order": orders.order_label(deal), "credit_note": credit_note,
+            "by_name": orders._actor_name(db, tenant_id, user_id),
+        })
+    except Exception as e:
+        logger.warning(f"Refund log for {deal.get('id')} failed: {e}")
+
+
+def _alert_refund(db, tenant_id: str, deal: dict, given: int, method: str | None, reason: str,
+                  user_id: str | None) -> None:
+    """Rings "A refund was given" for people who can see money. Can be slow (web push): run it off the request."""
+    try:
+        from app.services import alert_events
+        alert_events.refund_done(db, tenant_id, deal_id=str(deal["id"]), deal_label=f"order {orders.order_label(deal)}",
+                                 amount_paise=int(given), method=method, reason=reason, by_user_id=user_id)
+    except Exception as e:
+        logger.warning(f"Refund alert for {deal.get('id')} failed: {e}")
+
+
+def _log_and_alert(db, tenant_id: str, deal: dict, given: int, method: str | None, reason: str, mode: str,
+                   user_id: str | None, credit_note: str | None) -> None:
+    _log_refund(db, tenant_id, deal, given, method, reason, mode, user_id, credit_note)
+    _alert_refund(db, tenant_id, deal, given, method, reason, user_id)
+
+
+_BACKGROUND: set = set()
+
+
+def _fire_and_forget(coro) -> None:
+    """Run a coroutine without making the caller wait; a failure is logged, never raised."""
+    task = asyncio.ensure_future(coro)
+    _BACKGROUND.add(task)
+
+    def _done(t):
+        _BACKGROUND.discard(t)
+        if not t.cancelled() and t.exception():
+            logger.warning(f"Background refund alert failed: {t.exception()}")
+    task.add_done_callback(_done)
 
 
 async def refund(db, tenant_id: str, deal_id: str, *, mode: str, amount_paise: int | None, method: str | None,
@@ -194,6 +240,8 @@ async def refund(db, tenant_id: str, deal_id: str, *, mode: str, amount_paise: i
         _restock(db, tenant_id, deal_id, picked, user_id)
     if closes and deal["stage"] != "lost":
         deals_service.mark_lost(tenant_id, deal_id, f"Refunded · {reason}", created_by=user_id, db=db)
+    await asyncio.to_thread(_log_refund, db, tenant_id, deal, given, method, reason, mode, user_id, credit_note)
+    _fire_and_forget(asyncio.to_thread(_alert_refund, db, tenant_id, deal, given, method, reason, user_id))
     message = await orders.notify(db, tenant_id, deal_id, "refund", user_id=user_id, sender=sender,
                                   extra={"_refund": {"amount_paise": given, "method": method}})
     partial = given < amount

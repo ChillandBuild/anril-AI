@@ -9,6 +9,7 @@ import { TickMark } from "@/components/ui/controls";
 import { draftError, selectConnect, selectOutcome, type WrapupDraft } from "../../lib/wrapup-draft";
 import QuickTimePicker from "./QuickTimePicker";
 import SalePicker from "./SalePicker";
+import BookVisit from "./BookVisit";
 
 const CONNECT_ICON: Record<CallConnect, typeof PhoneCall> = {
   connected: PhoneCall, not_picked: PhoneMissed, busy: PhoneOff, switched_off: Power,
@@ -187,7 +188,9 @@ export default function WrapupModal({
             </section>
           )}
 
-          {option?.time && (
+          {draft.outcome === "interested_booked" && <BookVisit draft={draft} onChange={onChange} />}
+
+          {option?.time && !draft.booking && (
             <section>
               <p className={LABEL}>{option.timeLabel}{option.time === "required" ? " *" : ""}</p>
               <QuickTimePicker value={draft.nextActionAt} onChange={setTime} now={clock} optional={option.time === "optional"} />

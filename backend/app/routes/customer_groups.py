@@ -19,13 +19,14 @@ from app.routes.conversations import _filter_params, _view
 from app.routes.leads import (
     LeadFilters, _fetch_all, _filtered_leads_query, _in_scopes, require_leads_manage, require_leads_view,
 )
-from app.services.group_rules import GroupRule, describe, parse_rule
+from app.services.group_rules import GroupRule, describe, has_spend, parse_rule, without_money
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 DUPLICATE_NAME = "A group with this name already exists"
+SPEND_NEEDS_DEALS = "Spend rules need access to Orders & payments"
 
 # "Save as a group" on Chats: most people one group can take from the Chats list.
 FROM_CHATS_MAX = 5000
@@ -164,13 +165,17 @@ def _creator_names(db, tenant_id: str, user_ids: list[str]) -> dict[str, str]:
 
 
 def _shape(row: dict, member_count: int, stop_count: int = 0, rule_text: str | None = None,
-           made_by: str | None = None) -> dict:
+           made_by: str | None = None, show_money: bool = True) -> dict:
     kind = row.get("kind") or "picked"
+    rule = parse_rule(row.get("rule")) if kind == "rule" else None
     return {
         "id": str(row["id"]),
         "name": row["name"],
         "kind": kind,
-        "rule": parse_rule(row.get("rule")) if kind == "rule" else None,
+        # Rupee rules (total spend) are only for people who can see money (deals.view).
+        "rule": rule if show_money else without_money(rule),
+        "spend_hidden": bool(not show_money and has_spend(rule)),
+        "used_by": [],
         "rule_text": rule_text,
         "member_count": member_count,
         "stop_count": stop_count,
@@ -182,14 +187,63 @@ def _shape(row: dict, member_count: int, stop_count: int = 0, rule_text: str | N
 def _full_shape(db, ctx: dict, row: dict, made_by: str | None = None) -> dict:
     """A group with its counts. A rule group's count is everyone its filters match today."""
     gid = str(row["id"])
+    money = _has_permission(ctx, "deals.view")
     stop = _count(db, ctx, gid, opted_out_only=True)
     if (row.get("kind") or "picked") == "rule":
         rule = parse_rule(row.get("rule")) or {}
         members = _count(db, ctx, gid, opted_out_only=False) + stop
-        text = describe(rule, _rule_names(db, ctx["tenant_id"], rule)) if rule else None
-        return _shape(row, members, stop, text, made_by)
+        text = describe(rule, _rule_names(db, ctx["tenant_id"], rule), show_money=money) if rule else None
+        return _shape(row, members, stop, text, made_by, money)
     members = _member_counts(db, ctx["tenant_id"], [gid]).get(gid, 0)
-    return _shape(row, members, stop, None, made_by)
+    return _shape(row, members, stop, None, made_by, money)
+
+
+USED_BY_ORDER = ("Reach", "Call IQ", "Follow-ups")
+
+
+def _used_by(db, tenant_id: str, rows: list[dict]) -> dict[str, list[str]]:
+    """group id -> where it is used: "Reach" (a campaign was sent to it, or one is scheduled),
+    "Call IQ" (it was sent to calling) and "Follow-ups" (a follow-up step is aimed at it).
+    Each lookup is one query for every group, and a failed lookup only leaves its word out."""
+    import json
+    from app.services.reach_audience import GROUP_LABEL_PREFIX
+
+    used: dict[str, set[str]] = {str(r["id"]): set() for r in rows}
+    by_label = {f"{GROUP_LABEL_PREFIX}{r['name']}": str(r["id"]) for r in rows}
+    try:  # Follow-ups: a step with target_group_id (migration 320)
+        steps = (db.table("reengagement_steps").select("target_group_id").eq("tenant_id", tenant_id)
+                 .not_.is_("target_group_id", "null").execute().data or [])
+        for s in steps:
+            if str(s.get("target_group_id")) in used:
+                used[str(s["target_group_id"])].add("Follow-ups")
+    except Exception as e:
+        logger.info("Groups: follow-up use not read: %s", e)
+    try:  # Reach: a group send is saved with the group's name in the file-name slot (see upload.bulk_send)
+        held = (db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", "broadcast_history")
+                .maybe_single().execute())
+        history = json.loads(held.data["value"]) if held and held.data and held.data.get("value") else []
+        for h in history:
+            if isinstance(h, dict) and not h.get("csv_file_url") and not h.get("csv_file_path") \
+                    and by_label.get(h.get("csv_file_name") or ""):
+                used[by_label[h["csv_file_name"]]].add("Reach")
+        pending = (db.table("scheduled_broadcasts").select("csv_file_name").eq("tenant_id", tenant_id)
+                   .in_("csv_file_name", list(by_label)).limit(1000).execute().data or []) if by_label else []
+        for p in pending:
+            if by_label.get(p.get("csv_file_name") or ""):
+                used[by_label[p["csv_file_name"]]].add("Reach")
+    except Exception as e:
+        logger.info("Groups: Reach use not read: %s", e)
+    try:  # Call IQ: the assignment log keeps the group id of a "send group to calling" (new rows only)
+        events = (db.table("lead_stage_events").select("metadata").eq("tenant_id", tenant_id)
+                  .eq("event_type", "assigned").eq("metadata->>reason", "group")
+                  .order("created_at", desc=True).limit(1000).execute().data or [])
+        for ev in events:
+            gid = str((ev.get("metadata") or {}).get("group_id") or "")
+            if gid in used:
+                used[gid].add("Call IQ")
+    except Exception as e:
+        logger.info("Groups: Call IQ use not read: %s", e)
+    return {gid: [w for w in USED_BY_ORDER if w in words] for gid, words in used.items()}
 
 
 @router.get("")
@@ -201,14 +255,22 @@ def list_groups(ctx: dict = Depends(require_leads_view)):
     picked_ids = [str(r["id"]) for r in rows if (r.get("kind") or "picked") == "picked"]
     counts = _member_counts(db, tenant_id, picked_ids) if picked_ids else {}
     creators = _creator_names(db, tenant_id, [str(r["created_by"]) for r in rows if r.get("created_by")])
+    used = _used_by(db, tenant_id, rows)
     out = []
     for r in rows:
         gid = str(r["id"])
         made_by = creators.get(str(r.get("created_by")))
-        if (r.get("kind") or "picked") == "rule":
-            out.append(_full_shape(db, ctx, r, made_by))
-        else:
-            out.append(_shape(r, counts.get(gid, 0), _count(db, ctx, gid, opted_out_only=True), None, made_by))
+        try:
+            if (r.get("kind") or "picked") == "rule":
+                shaped = _full_shape(db, ctx, r, made_by)
+            else:
+                shaped = _shape(r, counts.get(gid, 0), _count(db, ctx, gid, opted_out_only=True), None, made_by)
+        except Exception as e:  # e.g. total_spent_paise missing before migration 333: one group, not the whole list
+            logger.warning("Groups: count for group %s failed: %s", gid, e)
+            shaped = _shape(r, 0, 0, None, made_by, _has_permission(ctx, "deals.view"))
+            shaped["count_unknown"] = True
+        shaped["used_by"] = used.get(gid, [])
+        out.append(shaped)
     return out
 
 
@@ -218,6 +280,8 @@ def create_group(body: NewGroupIn, ctx: dict = Depends(require_leads_manage)):
     tenant_id = ctx["tenant_id"]
     if _name_taken(db, tenant_id, body.name):
         raise HTTPException(status_code=409, detail=DUPLICATE_NAME)
+    if body.rule and has_spend(body.rule.as_dict()) and not _has_permission(ctx, "deals.view"):
+        raise HTTPException(status_code=403, detail=SPEND_NEEDS_DEALS)
     try:
         res = db.table("customer_groups").insert({
             "tenant_id": tenant_id,
@@ -342,6 +406,9 @@ def update_rule(group_id: UUID, body: RuleIn, ctx: dict = Depends(require_leads_
     if group.get("kind") != "rule":
         raise HTTPException(status_code=400, detail="Only a group that fills itself has rules")
     rule = body.rule.as_dict()
+    if not _has_permission(ctx, "deals.view") and (has_spend(rule) or has_spend(parse_rule(group.get("rule")))):
+        # A spend rule is a rupee figure: not for people who cannot see money, and they cannot change one either.
+        raise HTTPException(status_code=403, detail=SPEND_NEEDS_DEALS)
     db.table("customer_groups").update({
         "rule": rule,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -392,7 +459,7 @@ def send_group_to_calling(group_id: UUID, ctx: dict = Depends(require_leads_mana
         rows = (db.table("customer_group_members").select("lead_id").eq("group_id", gid)
                 .eq("tenant_id", ctx["tenant_id"]).limit(customer_calling.MAX_PEOPLE).execute().data or [])
         lead_ids = [str(r["lead_id"]) for r in rows]
-        return customer_calling.send_to_calling(db, ctx["tenant_id"], lead_ids, reason="group")
+        return customer_calling.send_to_calling(db, ctx["tenant_id"], lead_ids, reason="group", group_id=gid)
     # A self-filling group: its rules are the Customers filters, which already hide bounced numbers.
     from app.routes.leads import LeadFilters, _fetch_all, _filtered_leads_query
     filters = LeadFilters(group_id=gid)
@@ -400,7 +467,7 @@ def send_group_to_calling(group_id: UUID, ctx: dict = Depends(require_leads_mana
     live = (_fetch_all(lambda: _filtered_leads_query(db, ctx, filters, columns="id", memo=memo),
                        order_by=("created_at", "id"))
             if _filtered_leads_query(db, ctx, filters, columns="id", memo=memo) is not None else [])
-    result = customer_calling.send_to_calling(db, ctx["tenant_id"], [r["id"] for r in live], reason="group")
+    result = customer_calling.send_to_calling(db, ctx["tenant_id"], [r["id"] for r in live], reason="group", group_id=gid)
     # That list leaves Said stop people out; count them so the line reads like the others.
     result["said_stop"] = int(result.get("said_stop") or 0) + int(resolved.get("stopped") or 0)
     return result

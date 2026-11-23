@@ -1737,6 +1737,7 @@ def _load_catalog_images(
 ) -> list[tuple[str, bytes]]:
     """(label, image bytes) for the recommended items, in the client's ranked order, capped
     at max_images in total. A storage failure costs the photo, never the reply."""
+    from app.services.catalog_photos import sendable_photos
     images: list[tuple[str, bytes]] = []
     for item_id in item_ids or ():
         remaining = max_images - len(images)
@@ -1744,11 +1745,8 @@ def _load_catalog_images(
             break
         item = items_by_id.get(item_id) or {}
         try:
-            rows = (
-                db.table("catalog_media").select("id,storage_path,label")
-                .eq("catalog_item_id", item_id).eq("tenant_id", tenant_id)
-                .order("sort_order").limit(remaining).execute()
-            ).data or []
+            # never a photo of a colour that is out of stock (services/catalog_photos.py)
+            rows = sendable_photos(db, tenant_id, item_id, remaining)
             for row in rows:
                 data = db.storage.from_("catalog-media").download(row["storage_path"])
                 images.append((row["label"] or item.get("name") or "Photo", data))
@@ -1829,6 +1827,13 @@ def build_reply_system_prompt(
     if lead_name:
         lead_facts.append(f"Lead name: {lead_name}")
     lead_facts.append(f"Current segment: {lead_segment} (A=hot, B=warm, C=cold, D=disqualified)")
+    try:
+        from app.services import interested_in as _interested_in
+        interest_line = _interested_in.prompt_line(db, tenant_id, lead_id, lead_data.get("interested_item_ids"))
+    except Exception:
+        interest_line = ""
+    if interest_line:
+        lead_facts.append(interest_line)  # a fact, not an instruction
     if summary:
         lead_facts.append(f"Earlier conversation summary:\n{summary}")
     system_prompt += "\n\nLEAD CONTEXT:\n" + "\n".join(lead_facts)
@@ -1929,6 +1934,14 @@ def build_reply_system_prompt(
                 "Escalation prompt block failed for lead %s — replying without it",
                 lead_id,
             )
+        # v9.2 #157: the owner's after-hours wording, only when the team is out. Never blocks a reply.
+        try:
+            from app.services import after_hours
+            _after_hours_line = after_hours.prompt_line(get_supabase(), tenant_id)
+            if _after_hours_line:
+                system_prompt += "\n" + _after_hours_line
+        except Exception:
+            logger.warning("After-hours prompt line failed for lead %s — replying without it", lead_id)
 
     # The lead's recent product orders (quoted / link sent / paid), so a "did my order go
     # through?" or "send the link again" is answered from facts. Never raises.
@@ -2000,13 +2013,12 @@ async def generate_reply(
     db = get_supabase()
 
     # Step 0: fetch lead + load module configs
-    lead_row = (
-        db.table("leads")
-        .select("ai_enabled,score,segment,phone,converted_at,tenant_id,assigned_to,name,blocked_at,needs_human_attention,tamil_locked,source")
-        .eq("id", str(lead_id))
-        .limit(1)
-        .execute()
-    )
+    _lead_cols = "ai_enabled,score,segment,phone,converted_at,tenant_id,assigned_to,name,blocked_at,needs_human_attention,tamil_locked,source"
+    try:
+        # interested_item_ids (migration 333) rides along so the prompt needs no extra leads read
+        lead_row = db.table("leads").select(_lead_cols + ",interested_item_ids").eq("id", str(lead_id)).limit(1).execute()
+    except Exception:  # migration not applied yet
+        lead_row = db.table("leads").select(_lead_cols).eq("id", str(lead_id)).limit(1).execute()
     lead_data = lead_row.data[0] if lead_row.data else {}
     if lead_data.get("blocked_at"):
         logger.info(f"Lead {lead_id} is blocked — skipping auto-reply")

@@ -32,6 +32,14 @@ FEE_TEMPLATE = {
              "Please pay it soon, or reply here and we will help."),
     "examples": ["Ravi", "Bright Academy", "Rs 5,000", "Python batch", "28 Nov"],
 }
+# v9.2 #217: the same reminder with a Razorpay pay link for exactly this part. Used once Meta approves it and
+# the business has Razorpay; otherwise the plain fee_reminder goes out as before.
+FEE_LINK_TEMPLATE = {
+    "name": "fee_reminder_link",
+    "body": ("Hi {{1}}, a fee reminder from {{2}}. {{3}} for {{4}} is due on {{5}}. "
+             "Pay here: {{6}} or reply here and we will help."),
+    "examples": ["Ravi", "Bright Academy", "Rs 5,000", "Python batch", "28 Nov", "https://rzp.io/l/AbC123"],
+}
 
 
 class FeeError(Exception):
@@ -340,12 +348,12 @@ def receipt(db, tenant_id: str, payment_id: str) -> dict:
 
 # ───────────────────────────────────────────────────────────── the reminder template and switch
 
-def template_status(db, tenant_id: str) -> str | None:
+def template_status(db, tenant_id: str, name: str = FEE_TEMPLATE["name"]) -> str | None:
     """APPROVED | PENDING | REJECTED | ... or None when it was never submitted."""
     from app.config_dynamic import get_setting
     waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
     rows = (db.table("message_templates").select("name, status, meta_waba_id").eq("tenant_id", tenant_id)
-            .eq("name", FEE_TEMPLATE["name"]).execute()).data or []
+            .eq("name", name).execute()).data or []
     rows = [r for r in rows if not waba_id or r.get("meta_waba_id") == waba_id]
     return ((rows[0].get("status") or "PENDING").upper()) if rows else None
 
@@ -357,34 +365,42 @@ def reminders_on(tenant_id: str) -> bool:
 
 def reminders_state(db, tenant_id: str) -> dict:
     return {"enabled": reminders_on(tenant_id), "template": template_status(db, tenant_id),
-            "template_body": FEE_TEMPLATE["body"]}
+            "template_body": FEE_TEMPLATE["body"],
+            "link_template": template_status(db, tenant_id, FEE_LINK_TEMPLATE["name"]),
+            "link_template_body": FEE_LINK_TEMPLATE["body"]}
 
 
 def set_reminders(db, tenant_id: str, enabled: bool) -> dict:
     """OFF until the template is approved: switching on before that is refused in plain words."""
     from app.config_dynamic import save_setting
-    if enabled and template_status(db, tenant_id) != "APPROVED":
+    if enabled and "APPROVED" not in (template_status(db, tenant_id),
+                                      template_status(db, tenant_id, FEE_LINK_TEMPLATE["name"])):
         raise FeeError("Send the fee reminder message to WhatsApp and wait until it is approved, then switch this on")
     save_setting(SETTING_KEY, "true" if enabled else "false", tenant_id=tenant_id)
     return reminders_state(db, tenant_id)
 
 
 async def submit_template(db, tenant_id: str, ctx: dict | None = None) -> dict:
-    """Submit `fee_reminder` (utility, English) through the Templates page's own path, if not already there."""
+    """Submit `fee_reminder` and `fee_reminder_link` (utility, English) through the Templates page's own path,
+    each only if not already there. The plain one is required; the link one failing is logged, not raised."""
     from fastapi import HTTPException
     from app.routes.templates import CreateTemplate, create_template
 
-    if template_status(db, tenant_id) not in (None, "REJECTED"):
-        return reminders_state(db, tenant_id)
-    try:
-        await create_template(CreateTemplate(name=FEE_TEMPLATE["name"], category="UTILITY", language="en",
-                                             body_text=FEE_TEMPLATE["body"], body_examples=FEE_TEMPLATE["examples"]),
-                              tenant_id=tenant_id, _ctx=ctx or {})
-    except HTTPException as e:
-        raise FeeError(str(e.detail))
-    except Exception as e:
-        logger.warning("fee reminder template did not submit: %s", e)
-        raise FeeError("Could not send the message to WhatsApp. Please try again")
+    for tpl, required in ((FEE_TEMPLATE, True), (FEE_LINK_TEMPLATE, False)):
+        if template_status(db, tenant_id, tpl["name"]) not in (None, "REJECTED"):
+            continue
+        try:
+            await create_template(CreateTemplate(name=tpl["name"], category="UTILITY", language="en",
+                                                 body_text=tpl["body"], body_examples=tpl["examples"]),
+                                  tenant_id=tenant_id, _ctx=ctx or {})
+        except HTTPException as e:
+            if required:
+                raise FeeError(str(e.detail))
+            logger.warning("fee reminder link template did not submit: %s", e.detail)
+        except Exception as e:
+            logger.warning("fee reminder template %s did not submit: %s", tpl["name"], e)
+            if required:
+                raise FeeError("Could not send the message to WhatsApp. Please try again")
     return reminders_state(db, tenant_id)
 
 
@@ -467,7 +483,56 @@ async def _tenant_ready(db, tenant_id: str) -> dict | None:
     if not (get_setting("meta_phone_number_id", tenant_id=tenant_id) and get_setting("meta_access_token", tenant_id=tenant_id)):
         return None
     approved = await _io(_approved_templates, db, tenant_id)
-    return next((t for t in approved if t.get("name") == FEE_TEMPLATE["name"]), None)
+    plain = next((t for t in approved if t.get("name") == FEE_TEMPLATE["name"]), None)
+    link = next((t for t in approved if t.get("name") == FEE_LINK_TEMPLATE["name"]), None)
+    # The link one is tried first; "_plain" is what goes out when no pay link can be made for a part.
+    return {**link, "_plain": plain} if link else plain
+
+
+def owed_on_part(parts: list[dict], plan_paid: dict[int, int], deal_paid_paise: int, index: int) -> int:
+    """What is still owed on this part, by the same rule as covered_parts: money put on the order elsewhere
+    covers unpaid parts earliest first, and what is left over after the whole parts it covers is taken off
+    the first part it can't fully cover."""
+    extra = max(int(deal_paid_paise or 0) - sum(plan_paid.values()), 0)
+    for i, part in enumerate(parts):
+        amount = int(part.get("amount_paise") or 0)
+        if i in plan_paid or amount <= 0:
+            if i == index:
+                return 0
+            continue
+        take = min(extra, amount)
+        extra -= take
+        if i == index:
+            return amount - take
+    return 0
+
+
+async def _part_link(db, tenant_id: str, plan: dict, index: int, kind: str, phone: str, name: str) -> str | None:
+    """A Razorpay link for what is owed on this part, or None when none can be made (no Razorpay, nothing owed).
+    Made on its own, NOT through the order's link: the order's own link and its payment reminders are left as
+    they are. notes.deal_id puts the money on the order through the usual webhook (fee_plan_id marks it as a
+    fee link, so its expiry never clears the order's link). One link per part and reminder: links last 24 hours
+    and the reminders are days apart, and a retried send replays the same link instead of making another."""
+    from app.services.payment_razorpay import create_payment_link
+    try:
+        deal = (await _io(lambda: db.table("deals").select("total_paise, paid_paise, deal_number").eq("id", plan["deal_id"])
+                          .eq("tenant_id", tenant_id).limit(1).execute().data)) or [{}]
+        plan_paid = await _io(_payments, db, tenant_id, plan["id"])
+        owed = owed_on_part(plan.get("parts") or [], {k: int(v.get("paid_paise") or 0) for k, v in plan_paid.items()},
+                            int(deal[0].get("paid_paise") or 0), index)
+        left = int(deal[0].get("total_paise") or 0) - int(deal[0].get("paid_paise") or 0)
+        amount = min(owed, left)
+        if amount <= 0:
+            return None
+        link = await create_payment_link(
+            idempotency_key=f"fee:{plan['id']}:{index}:{kind}:{amount}",
+            notes={"deal_id": str(plan["deal_id"]), "fee_plan_id": str(plan["id"]), "fee_part": str(index)},
+            amount_paise=amount, customer_name=name or "Student", customer_phone=phone,
+            description=f"Fee part {index + 1}", tenant_id=tenant_id)
+        return link.get("payment_link_url") or None
+    except Exception as e:
+        logger.info("fee reminder: no pay link for plan %s part %s: %s", plan.get("id"), index, e)
+        return None
 
 
 async def send_fee_reminders(db=None, now: datetime | None = None) -> int:
@@ -576,6 +641,16 @@ async def _remind_part(db, tenant_id, plan, enrol, lead, index, part, kind, temp
         values = [_first_name(enrol.get("student_name") or lead.get("name")), business,
                   _rupees(part["amount_paise"]), book[0].get("name") or "your course",
                   day_text(_day(part["due_on"]))]
+        if template.get("name") == FEE_LINK_TEMPLATE["name"]:
+            link = await _part_link(db, tenant_id, plan, index, kind, phone,
+                                    enrol.get("student_name") or lead.get("name") or "")
+            if link:
+                values.append(link)
+            elif template.get("_plain"):
+                template = template["_plain"]
+            else:  # only the link message is approved and no link could be made: try again next run
+                await _io(_unclaim, db, tenant_id, claim)
+                return 0
         res = await _send_one(db, tenant_id, template, phone, values)
     except Exception as e:
         logger.warning("fee reminder plan %s part %s failed: %s", plan["id"], index, e)

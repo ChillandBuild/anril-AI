@@ -14,7 +14,7 @@ require_leads_manage = require_permission("leads.manage")
 
 
 class ReengagementStepCreate(BaseModel):
-    type: str  # 'broadcast' or 'inbound'
+    type: str  # 'broadcast', 'inbound' or 'campaign_reply'
     broadcast_id: str | None = None
     delay_hours: int
     target_segments: list[str]
@@ -117,8 +117,10 @@ def create_step(
     payload: ReengagementStepCreate,
     ctx: dict = Depends(require_leads_manage),
 ):
-    if payload.type not in ("broadcast", "inbound"):
+    if payload.type not in ("broadcast", "inbound", "campaign_reply"):
         raise HTTPException(status_code=400, detail="Invalid step type")
+    if payload.type == "campaign_reply" and payload.delay_hours < DAY_STEP_HOURS:
+        raise HTTPException(status_code=400, detail="This follow-up waits at least 1 day")
     if payload.type == "broadcast" and not payload.broadcast_id:
         raise HTTPException(status_code=400, detail="broadcast_id is required for broadcast steps")
     db = get_supabase()
@@ -148,6 +150,9 @@ def create_step(
     except Exception as e:
         if group_id and "target_group_id" in str(e):
             raise HTTPException(status_code=400, detail=GROUP_COLUMN_MISSING)
+        if payload.type == "campaign_reply" and ("23514" in str(e) or "type_check" in str(e)):
+            # the database does not know this trigger yet (migration 333 not applied)
+            raise HTTPException(status_code=503, detail="This follow-up isn't switched on yet. Try again after the next update.")
         raise
     return res.data[0] if res.data else {}
 
@@ -159,6 +164,11 @@ def update_step(
     ctx: dict = Depends(require_leads_manage),
 ):
     db = get_supabase()
+    if payload.delay_hours < DAY_STEP_HOURS:
+        saved = (db.table("reengagement_steps").select("type").eq("id", step_id)
+                 .eq("tenant_id", ctx["tenant_id"]).limit(1).execute()).data or []
+        if saved and saved[0].get("type") == "campaign_reply":
+            raise HTTPException(status_code=400, detail="This follow-up waits at least 1 day")
     _validate_step_fields(
         payload.delay_hours, payload.message_type, payload.target_sources,
         db=db, tenant_id=ctx["tenant_id"], template_name=payload.template_name,

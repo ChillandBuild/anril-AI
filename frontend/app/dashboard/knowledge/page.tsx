@@ -33,6 +33,7 @@ import KitStarter from "./KitStarter";
 import { Select } from "@/components/ui/Select";
 import ReadinessLine from "./ReadinessLine";
 import KnowledgeGapAnswerForm from "./KnowledgeGapAnswerForm";
+import AddWebsiteCard from "./AddWebsiteCard";
 
 // ─── Interfaces & Types ───────────────────────────────────────────────────────
 
@@ -969,6 +970,15 @@ export default function KnowledgePage() {
               uploadedDocumentId={uploadedDocumentId}
               canManage={canManageKnowledge}
               onUploaded={async () => {
+                announceApprovalsChanged();
+                await loadDocuments();
+              }}
+            />
+          )}
+
+          {canManageKnowledge && (
+            <AddWebsiteCard
+              onAdded={async () => {
                 announceApprovalsChanged();
                 await loadDocuments();
               }}

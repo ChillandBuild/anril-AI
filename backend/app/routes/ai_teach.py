@@ -107,3 +107,19 @@ def end_offer(offer_id: str, ctx: dict = Depends(require_edit)):
 def remove_offer(offer_id: str, ctx: dict = Depends(require_edit)):
     _write(lambda: ai_teach.delete_offer(get_supabase(), ctx["tenant_id"], offer_id))
     return {"deleted": True}
+
+
+class MediaRuleIn(BaseModel):
+    rule: str = ""
+
+
+@router.get("/media-rule")
+def get_media_rule(ctx: dict = Depends(require_view)):
+    """What the AI does when a customer sends a photo or a voice note. Empty = no rule set."""
+    return {"rule": ai_teach.read_media_rule(get_supabase(), ctx["tenant_id"]), "max_chars": ai_teach.MAX_MEDIA_RULE}
+
+
+@router.put("/media-rule")
+def put_media_rule(body: MediaRuleIn, ctx: dict = Depends(require_edit)):
+    return {"rule": _write(lambda: ai_teach.save_media_rule(get_supabase(), ctx["tenant_id"], body.rule)),
+            "max_chars": ai_teach.MAX_MEDIA_RULE}

@@ -262,3 +262,24 @@ async def test_inbound_step_reaches_people_past_the_first_1000(db):
         await svc.process_due_reengagements()
     assert len(seen) == 1205
     assert "Cold" not in seen and "Fresh" not in seen
+
+
+def test_campaign_reply_before_the_migration_is_a_plain_503(client, db):
+    _tpl(db, "promo")
+    real = db.table
+
+    def table(name):
+        t = real(name)
+        if name == "reengagement_steps":
+            class Boom:
+                def insert(self, *_a, **_k):
+                    raise RuntimeError('new row violates check constraint "reengagement_steps_type_check" (23514)')
+            return Boom()
+        return t
+
+    body = _body(48)
+    body["type"] = "campaign_reply"
+    with patch.object(db, "table", table):
+        r = client.post("/api/v1/reengagement/steps", json=body)
+    assert r.status_code == 503
+    assert "isn't switched on" in r.json()["detail"]

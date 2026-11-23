@@ -70,3 +70,15 @@ async def test_failed_attempt_is_ignored():
     assert out["status"] == "ignored"
     lost.assert_not_called()
     won.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_fee_reminder_link_expiring_leaves_the_order_link_alone():
+    """v9.2 #217: a course fee reminder's own link expires after a day; the order's link must not be cleared."""
+    payload = {"payload": {"payment_link": {"entity": {"id": "plink_fee", "notes": {"deal_id": "d1", "fee_plan_id": "P1"}}}}}
+    with patch("app.services.deals.expire_deal_link") as clear, patch("app.services.deals.mark_lost") as lost:
+        out = await _handle_deal_payment_event(payload, "payment_link.expired", "d1", "t1")
+        out2 = await _handle_deal_payment_event(payload, "payment_link.cancelled", "d1", "t1")
+    assert out["status"] == out2["status"] == "ignored"
+    clear.assert_not_called()
+    lost.assert_not_called()

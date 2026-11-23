@@ -36,6 +36,23 @@ describe("TargetBar", () => {
     expect(html).not.toContain("₹");
     expect(html).toContain("of the target");
   });
+  it("shows the profit estimate under the target for people who may see profit", () => {
+    const html = renderToStaticMarkup(<TargetBar target={{ this_month: { month: "2026-11", target_paise: 20000000, money_in_paise: 18600000, pct: 93 }, profit_this_month: { profit_paise: 4250000, month: "2026-11" } }} />);
+    expect(html).toContain("Target &amp; profit");
+    expect(html).toContain("Estimated profit so far");
+    expect(html).toContain("₹42,500");
+  });
+  it("profit alone still shows when no target is set; nothing at all without either", () => {
+    const html = renderToStaticMarkup(<TargetBar target={{ this_month: { month: "2026-11" }, profit_this_month: { profit_paise: -50000, month: "2026-11" } }} />);
+    expect(html).toContain("Estimated profit so far");
+    expect(html).not.toContain("progressbar");
+    expect(renderToStaticMarkup(<TargetBar target={{ this_month: { month: "2026-11" } }} />)).toBe("");
+  });
+  it("no profit line without the profit figure", () => {
+    const html = renderToStaticMarkup(<TargetBar target={{ this_month: { month: "2026-11", target_paise: 20000000, money_in_paise: 1, pct: 1 } }} />);
+    expect(html).not.toContain("Estimated profit");
+    expect(html).toContain("Target for");
+  });
   it("no target, no bar", () => {
     expect(renderToStaticMarkup(<TargetBar target={null} />)).toBe("");
   });

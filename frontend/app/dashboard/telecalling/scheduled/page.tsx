@@ -19,7 +19,9 @@ import {
   PhoneCall,
   Activity,
   Award,
-  Sparkles
+  Sparkles,
+  Plus,
+  CalendarClock
 } from "lucide-react";
 import { api, CallbackBoardItem, CallLog } from "@/lib/api";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
@@ -31,6 +33,8 @@ import { usePolling } from "@/hooks/usePolling";
 import { useActiveCall } from "../../contexts/ActiveCallContext";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { AiraLoader } from "@/components/AiraLoader";
+import { keptDetail, keptHeadline, type KeptOnTime } from "./keptOnTime";
+import { MoveCallModal, ScheduleCallModal } from "./ScheduleModals";
 
 type GroupedCallbacks = {
   overdue: CallbackBoardItem[];
@@ -68,7 +72,7 @@ export default function ScheduledCallsPage() {
   const [markingDone, setMarkingDone] = useState<string | null>(null);
   const [callingProvider, setCallingProvider] = useState<"telecmi" | "sim_basic">("telecmi");
   const { setActiveCall: setActiveCallCtx } = useActiveCall();
-  const { role, callerId } = useAuthRole();
+  const { role, callerId, permissions } = useAuthRole();
 
   // Context Handoff Modal State
   const [handoffCallback, setHandoffCallback] = useState<CallbackBoardItem | null>(null);
@@ -76,6 +80,9 @@ export default function ScheduledCallsPage() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loadingHandoff, setLoadingHandoff] = useState(false);
   const [takeoverLoading, setTakeoverLoading] = useState(false);
+  const [kept, setKept] = useState<KeptOnTime | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [moving, setMoving] = useState<CallbackBoardItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -85,6 +92,7 @@ export default function ScheduledCallsPage() {
       ]);
       setCallbacks(Array.isArray(res?.data) ? res.data : []);
       setCallingProvider(assignmentMode?.calling_provider ?? "telecmi");
+      api.followUps.callbacksStats().then(setKept).catch(() => undefined);
     } catch {
       toast.error("Failed to load scheduled calls");
     } finally {
@@ -265,6 +273,19 @@ export default function ScheduledCallsPage() {
       `}} />
 
 
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-[#e2e8f0]/60 bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-light text-primary"><CalendarClock size={18} /></span>
+          <div>
+            <p className="font-display text-xl font-black text-[#13284A]">{keptHeadline(kept)} <span className="font-label text-[10px] font-bold uppercase tracking-wider text-[#94a3b8]">kept on time</span></p>
+            <p className="font-body text-[11px] text-[#94a3b8]">{keptDetail(kept)}</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => setScheduling(true)} className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 font-label text-[11px] font-bold text-white hover:opacity-90">
+          <Plus size={13} /> Schedule a call
+        </button>
+      </div>
+
       {loading ? (
         <AiraLoader inline />
       ) : callbacks.length === 0 ? (
@@ -361,11 +382,12 @@ export default function ScheduledCallsPage() {
                                     ? `Scheduled by ${cb.scheduled_by.name}`
                                     : "Auto-scheduled"}
                             </span>
-                            {cb.message_preview && (
-                              <span className="font-label text-[10px] text-[#475569] bg-[#f8fafc] border border-[#f1f5f9] px-2 py-0.5 rounded-lg truncate max-w-[240px]">
-                                {cb.message_preview}
-                              </span>
-                            )}
+                            <span
+                              title={cb.message_preview || undefined}
+                              className="font-label text-[10px] text-[#475569] bg-[#f8fafc] border border-[#f1f5f9] px-2 py-0.5 rounded-lg truncate max-w-[280px]"
+                            >
+                              <span className="font-bold text-[#94a3b8]">Why: </span>{cb.message_preview || "—"}
+                            </span>
                           </div>
                         </div>
 
@@ -376,6 +398,14 @@ export default function ScheduledCallsPage() {
 
                         {/* Right Actions Column */}
                         <div className="flex items-center gap-2 shrink-0 justify-end">
+                          {(isAssignedToMe || role === "owner" || permissions.includes("team.view")) && (
+                            <button
+                              onClick={() => setMoving(cb)}
+                              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-[#e2e8f0] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#f8fafc] transition-all"
+                            >
+                              <CalendarClock size={12} /> Move
+                            </button>
+                          )}
                           {isAssignedToMe && (
                             <>
                               <button
@@ -635,6 +665,8 @@ export default function ScheduledCallsPage() {
           </div>
         </div>
       )}
+      {scheduling && <ScheduleCallModal onClose={() => setScheduling(false)} onSaved={load} />}
+      {moving && <MoveCallModal jobId={moving.id} name={moving.lead.name || "this customer"} onClose={() => setMoving(null)} onSaved={load} />}
     </div>
   );
 }

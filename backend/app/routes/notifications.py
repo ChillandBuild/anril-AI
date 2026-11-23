@@ -79,6 +79,7 @@ MONEY_ALERT_TYPES = (
     "quote_accepted",
     "day_closing",
     "purchase_order",
+    "refund_done",
 )
 
 _READ_WINDOW_DAYS = 7
