@@ -47,9 +47,9 @@ _LATIN_PLANETS = {
 }
 _LATIN_SIGNS = {
     "மேஷம்": r"mesh(?:am|a)?|aries", "ரிஷபம்": r"v?rish(?:a)?bh?(?:am|a)?|taurus",
-    "மிதுனம்": r"mi[dt]h?un(?:am|a)?|gemini", "கடகம்": r"ka[dt]a?[gk](?:am|a)?|cancer",
+    "மிதுனம்": r"mi[dt]h?un(?:am|a)?|gemini", "கடகம்": r"ka[dt]a?[gk](?:am|a)?|kar[kc]a(?:ta|tam|m)?|cancer",
     "சிம்மம்": r"simm?h?(?:am|a)|leo", "கன்னி": r"kanni|kanya|virgo", "துலாம்": r"th?ul(?:aa?m|a)|libra",
-    "விருச்சிகம்": r"v[ir]+u?[sc]+h?i[gk](?:am|a)?|scorpio", "தனுசு": r"[dt]h?anus(?:u)?|[dt]h?anur|sagittarius",
+    "விருச்சிகம்": r"v[ir]+u?[sc]+h?i[gk](?:am|a)?|scorpio", "தனுசு": r"[dt]h?anus(?:u)?|[dt]h?anur|dhanu|sagittarius",
     "மகரம்": r"ma[gk]ar(?:am|a)?|capricorn", "கும்பம்": r"kumbh?(?:am|a)|aquarius", "மீனம்": r"meen(?:am|a)|pisces",
 }
 _LATIN_ENDING = (r"(?:th?ila|th?il|th?ula|thla|il|yil|iyil|ukku|kku|vukku|ai|vai|in|vin|yin|iyin|al|aal|"
@@ -583,13 +583,46 @@ def _period_checks(c: Chart, clause: str, ms) -> list[tuple[str, str]]:
     return out
 
 
+# "லக்னாதிபதி செவ்வாய்", "ராசிநாதன் சுக்கிரன்", "lagna lord is Mars", "rasi athipathi Sukran": the planet named
+# right after a lagna-lord / rasi-lord word. Live, 23 Nov: "உங்க ஜாதகப்படி லக்னாதிபதி செவ்வாய், ராசிநாதன்
+# சுக்கிரன்" went out for a Magaram lagnam (lord சனி), Simmam rasi (lord சூரியன்).
+_LAGNA_LORD = re.compile(
+    r"(?:லக்னாதிபதி|லக்னநாதன்|லக்னநாதர்|லக்ன\s*அதிபதி|லக்னத்தின்\s+அதிபதி|லக்னத்து\s+அதிபதி|"
+    r"\blagn(?:a|am)?\s*(?:athipathi|adhipathi|lord)|\blagnathipathi|\bascendant\s+lord|\blord\s+of\s+the\s+(?:lagna|ascendant))"
+    r"(?:\s+(?:is|ஆன|ஆக|ஆனவர்))?[\s,:]+(\S+)", re.I)
+_RASI_LORD = re.compile(
+    r"(?:ராசிநாதன்|ராசிநாதர்|ராசி\s*அதிபதி|ராசியின்\s+அதிபதி|ராசிக்கு\s+அதிபதி|"
+    r"\brasi\s*(?:athipathi|adhipathi|lord|nathan)|\brasinathan|\bmoon\s+sign\s+lord|\blord\s+of\s+(?:the|your)\s+rasi)"
+    r"(?:\s+(?:is|ஆன|ஆக|ஆனவர்))?[\s,:]+(\S+)", re.I)
+
+
+def _lagna_rasi_lord(c: Chart, clause: str) -> list[tuple[str, str]]:
+    out = []
+    for pattern, sign, what in ((_LAGNA_LORD, c.lagna, "lagnam"), (_RASI_LORD, c.rasi, "rasi")):
+        if not sign or sign not in SIGN_LORD:
+            continue
+        for m in pattern.finditer(clause):
+            before = _WORD_SPLIT.split(clause[:m.start()].strip())
+            if before and sign_name(before[-1]):   # "கடக ராசிக்கு அதிபதி சந்திரன்": that sign's lord, not theirs
+                continue
+            p = planet_name(m.group(1))
+            if p:
+                lord = SIGN_LORD[sign]
+                out.append(("ok", "") if p == lord else
+                           ("wrong", f"the {what} is {sign}, so its lord is {lord}, not {p}"))
+    return out
+
+
 def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
     """Every chart claim the code can read in a reply -> [("ok" | "wrong", reason)]. Empty chart -> []."""
     if c.empty() or not text:
         return []
-    out, last_house = [], None
+    out, last_house, your_before = [], None, False
     for clause in _CLAUSE_SPLIT.split(text):
         ms = _mentions(clause)
+        # "உங்கள் ஜாதகத்தில் லக்னம் மேஷம். ராசி ரிஷபம்." -> the second clause is still about "your" chart
+        your = bool(_YOUR.search(clause)) or (your_before and bool(ms) and ms[0][0] in "RL")
+        your_before = your
         if not ms:
             continue
         # "6ம் இடம் மிதுனத்தில். அதோட அதிபதி சனி" -> "its lord" is the 6th lord
@@ -599,21 +632,32 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
             if k is not None:
                 ms = ms[:k] + [("H", last_house, "its")] + ms[k:]
         last_house = next((m[1] for m in reversed(ms) if m[0] == "h"), last_house)
-        if any(m[0] in "hHp" for m in ms):    # "10ம் இடம் துலாம் ராசி": a house's sign, not the person's rasi
+        if any(m[0] in "hH" for m in ms):    # "10ம் இடம் துலாம் ராசி": a house's sign, not the person's rasi
             ms = [("s", m[1], m[2]) if m[0] in "RL" else m for m in ms]
+        elif any(m[0] == "p" for m in ms):
+            # "சூரியன் மேஷ ராசியில்": a rasi AFTER a planet is where the planet sits. A rasi before the first
+            # planet and any lagnam stay the person's ("லக்னம் மேஷம், அதன் அதிபதி செவ்வாய்").
+            first_p = next(i for i, m in enumerate(ms) if m[0] == "p")
+            ms = [("s", m[1], m[2]) if m[0] == "R" and i > first_p else m for i, m in enumerate(ms)]
         skip = bool(_SKIP.search(clause))
         if not skip:
             out += _rule_checks(c, clause, ms)
             out += _period_checks(c, clause, ms)
-        if skip or _LORD.search(clause) or any(re.search(p, clause, re.I) for p in _DIGNITY.values()):
+        if skip:
             continue
         navamsa = bool(_NAVAMSA.search(clause))
-        if _YOUR.search(clause):           # "your rasi is Simmam" / "உங்கள் மகர லக்னம்"
+        if not navamsa:
+            out += _lagna_rasi_lord(c, clause)
+        # "your rasi is Simmam" / "உங்கள் மகர லக்னம்"; checked even when the clause goes on to its lord
+        # ("லக்னம் மேஷம், அதன் அதிபதி செவ்வாய்" once let a wrong lagnam through)
+        if your:
             for kind, s, _ in ms:
                 actual = c.rasi if kind == "R" else (c.d9_lagna if navamsa else c.lagna) if kind == "L" else None
                 if kind in "RL" and actual:
                     out.append(("ok", "") if s == actual else
                                ("wrong", f"the {'rasi' if kind == 'R' else 'lagnam'} is {actual}, not {s}"))
+        if _LORD.search(clause) or any(re.search(p, clause, re.I) for p in _DIGNITY.values()):
+            continue
         # planet groups: "Sun, Mercury and Venus in Viruchigam" -> one group of 3
         dative = any(k == "p" and _DATIVE.search(w) for k, _, w in ms)
         groups, i = [], 0

@@ -138,3 +138,25 @@ def test_a_sign_the_count_starts_from_is_not_a_position(chart):
     assert find_wrong(chart, "சனி உங்க சிம்ம ராசிக்கு 8-ம் இடமான மீனத்துல இருக்கார்") == []
     assert find_wrong(chart, "Sani unga Simma rasikku 8il irukkar") == []
     assert find_wrong(chart, "சனி உங்க சிம்ம ராசிக்கு 5ம் இடத்துல இருக்கார்")   # 5th from anywhere: still caught
+
+
+def test_a_wrong_lagnam_with_its_lord_and_a_rasi_in_the_next_sentence_are_caught(chart):
+    # live Playground reply (23 Nov): the model read a chart pasted in the chat history, not APP DATA
+    reply = ("உங்கள் ஜாதகத்தில் லக்னம் மேஷம், அதன் அதிபதி செவ்வாய். "
+             "ராசி ரிஷபம், அதன் அதிபதி சுக்கிரன்.")
+    wrong = find_wrong(chart, reply)
+    assert "the lagnam is மகரம், not மேஷம்" in wrong and "the rasi is சிம்மம், not ரிஷபம்" in wrong
+    assert find_wrong(chart, "உங்க ராசி சிம்மம், அதிபதி சூரியன் விருச்சிகத்துல இருக்கார்") == []
+
+
+@pytest.mark.parametrize("reply,expect", [
+    ("உங்க ஜாதகப்படி லக்னாதிபதி செவ்வாய், ராசிநாதன் சுக்கிரன்.", 2),   # live, 23 Nov
+    ("Your lagna lord is Mars.", 1),
+    ("Unga rasi athipathi Sukran.", 1),
+    ("உங்க லக்னாதிபதி சனி, ராசிநாதன் சூரியன்.", 0),
+    ("பொதுவாக லக்னாதிபதி பலமா இருக்கணும்.", 0),
+    ("If the lagna lord is Mars, you are bold.", 0),
+    ("7ம் இடமான கடக ராசிக்கு அதிபதி சந்திரன், அவர் 8ம் இடமான சிம்மத்துல இருக்கார்.", 0),   # that sign's lord
+])
+def test_lagna_lord_and_rasi_lord_claims(chart, reply, expect):
+    assert len(find_wrong(chart, reply)) == expect, find_wrong(chart, reply)

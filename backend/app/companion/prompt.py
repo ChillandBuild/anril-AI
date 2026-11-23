@@ -96,6 +96,25 @@ CHART_RULES = """[CHART RULES]
   person's profile in the app and ask from there."""
 
 
+PASTED_CHART = ("[The person pasted a horoscope here. It is not used: this person's own chart is the one in "
+                "APP DATA, and a pasted one may be someone else's.]")
+PASTED_CHART_LINES = 4   # lines that each state a chart fact
+
+
+def hide_pasted_chart(text: str | None) -> str | None:
+    """Chart guard: a message that is a pasted chart (4+ lines that state chart facts) is swapped, whole, for
+    PASTED_CHART. Live, 23 Nov: a test chat held Vivek's pasted chart (Mesha lagnam),
+    and the reply said "your lagnam is Mesham" though APP DATA has Magaram. One or two chart words in a
+    question ("my rasi is Kanni right?") are not a pasted chart and stay."""
+    if not text:
+        return text
+    from app.companion.chart_check import is_chart_fact
+    lines = text.split("\n")
+    if sum(is_chart_fact(line) for line in lines) < PASTED_CHART_LINES:
+        return text
+    return PASTED_CHART
+
+
 def own_reasoning_allowed(settings: dict) -> str:
     """OWN_REASONING_ALLOWED, plus, when the business wrote its own handoff line, a nudge to point the person
     to its people after an own-reading answer. Jothidar: "...end with one short friendly line ... like:
@@ -183,8 +202,9 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     if guard:   # birth date, time and place never reach the model (birth_guard.py)
         app_data = strip_app_data(app_data)
         memory_context = strip_birth_text(memory_context) or ""
-        history = [{**m, "content": strip_birth_text(m["content"])} if m.get("content") else m for m in history]
-        user_message = strip_birth_text(user_message) or user_message
+        history = [{**m, "content": strip_birth_text(hide_pasted_chart(m["content"]) if m.get("role") == "user"
+                                                     else m["content"])} if m.get("content") else m for m in history]
+        user_message = strip_birth_text(hide_pasted_chart(user_message)) or user_message
     sections = [PLATFORM_RULES]
     sections.append(_character_block(settings))
     current = mood if mood in MOODS else (settings.get("default_mood") or "calm")

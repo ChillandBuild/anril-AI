@@ -125,3 +125,32 @@ def test_the_prompt_asks_for_the_businesss_own_handoff_line_after_an_own_answer(
     assert own_reasoning_allowed({}) == OWN_REASONING_ALLOWED
     text = own_reasoning_allowed({"handoff_line": 'இதை நம்ம "AstroTamil" ஜோதிடர்கிட்ட கேளுங்க.'})
     assert 'like: "இதை நம்ம AstroTamil ஜோதிடர்கிட்ட கேளுங்க."' in text
+
+
+# --- a chart pasted into the chat never reaches the model (live 23 Nov: "your lagnam is Mesham") ---------
+
+PASTED = ("this is my horoscope details\n\nPlanets\tPositions\tDegrees\tRasi\n"
+          "Sun Sun\t256° 26'\t16° 26′\tDhanu Dhanu\tJupiter\nMoon Moon\t30° 7'\t0° 7′\tVrishabha Vrishabha\tVenus\n"
+          "Jupiter Jupiter\t117° 40'\t27° 40′\tKarka Karka\tMoon\nAscendant Ascendant\t1° 22'\t1° 22′\tMesha Mesha\tMars\n"
+          "Rasi\tVrishabha\nAscendant\tMesha")
+
+
+def test_a_pasted_chart_is_swapped_and_a_short_chart_question_stays():
+    from app.companion.prompt import PASTED_CHART, hide_pasted_chart
+    assert hide_pasted_chart(PASTED) == PASTED_CHART
+    assert hide_pasted_chart("En rasi Kanni thaane? Guru Simmathil irukka?") == "En rasi Kanni thaane? Guru Simmathil irukka?"
+
+
+def test_with_the_guard_on_a_pasted_chart_in_history_is_not_sent(env):
+    _guard(env)
+    env.state["replies"] = [RIGHT, RIGHT]
+    reply(env.jothidar["id"], PASTED, app_data=APP_DATA)
+    reply(env.jothidar["id"], "Kalyanam eppo?", app_data=APP_DATA)
+    sent = json.dumps(env.state["llm"][1]["messages"], ensure_ascii=False)
+    assert "Mesha Mesha" not in sent and "pasted a horoscope" in sent
+
+
+def test_with_the_guard_off_a_pasted_chart_is_sent_as_before(env):
+    env.state["replies"] = [RIGHT]
+    reply(env.jothidar["id"], PASTED, app_data=APP_DATA)
+    assert "Mesha Mesha" in json.dumps(env.state["llm"][0]["messages"], ensure_ascii=False)
