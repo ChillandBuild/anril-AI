@@ -116,34 +116,35 @@ def _resolve_tenant(db, token: str) -> str | None:
     return rows[0]["tenant_id"] if rows else None
 
 
-# Where requests reach us from in production: client -> Cloudflare (Render's DDoS edge; checked
-# 2026-11-23: the onrender.com host is a CNAME to *.cdn.cloudflare.net and answers with
-# server: cloudflare + cf-ray) -> Render's load balancer (it terminates TLS, render.com/docs/web-services)
-# -> uvicorn. So the socket peer uvicorn sees is Render's load balancer, never a Cloudflare address:
-# checking the peer against Cloudflare's published ranges would reject every real request.
-# What we trust instead: a peer on a private/loopback network, where Render's load balancer sits
-# and an internet caller can't. Render's docs don't state the address, so if the warning in
-# _client_ip shows up in the Render logs, set TRUSTED_PROXY_CIDRS to the address it names.
-_DEFAULT_TRUSTED_PROXIES = (
-    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8",
-    "::1/128", "fc00::/7",
-)
+# Where requests reach us from in production (checked live 2026-11-23):
+#   client -> Cloudflare (Render's DDoS edge: the onrender.com host is a CNAME to
+#   *.cdn.cloudflare.net, answers with server: cloudflare + cf-ray) -> Render's load balancer
+#   (peer 10.209.x.x in the uvicorn access log) -> uvicorn -> this app.
+# Uvicorn on Render trusts every proxy (FORWARDED_ALLOW_IPS=* behaviour): it replaces
+# request.client with the LEFTMOST X-Forwarded-For entry, which the caller types. A request
+# with "X-Forwarded-For: 203.0.113.77" was logged as 203.0.113.77:0. So request.client.host
+# is NOT a safe key on Render, and neither is anything we parse out of X-Forwarded-For.
+# CF-Connecting-IP is: Cloudflare overwrites it on every request, and the service is only
+# reachable through Cloudflare (render.com/docs/web-services: the port "is not directly
+# reachable via the public internet").
+# TRUSTED_PROXY_CIDRS (optional, for a setup where uvicorn's rewrite is switched off): when
+# set, CF-Connecting-IP is only believed from a peer inside those ranges.
 
 
 @functools.lru_cache(maxsize=1)
-def _trusted_proxies() -> tuple:
+def _trusted_proxies() -> tuple | None:
     raw = env_settings.trusted_proxy_cidrs
-    cidrs = _DEFAULT_TRUSTED_PROXIES if raw is None else [c.strip() for c in raw.split(",") if c.strip()]
+    if raw is None:
+        return None
     nets = []
-    for cidr in cidrs:
+    for cidr in (c.strip() for c in raw.split(",")):
+        if not cidr:
+            continue
         try:
             nets.append(ipaddress.ip_network(cidr, strict=False))
         except ValueError:
             logger.warning("TRUSTED_PROXY_CIDRS: ignoring %r, not a CIDR", cidr)
     return tuple(nets)
-
-
-_warned_untrusted_peer = False
 
 
 def _parse_ip(value: str | None) -> str | None:
@@ -156,33 +157,18 @@ def _parse_ip(value: str | None) -> str | None:
 def _client_ip(request: Request) -> str:
     """The client address a per-IP rate limit keys on.
 
-    Forwarded headers are only believed when the socket peer is a trusted proxy: anyone who
-    reaches the app another way can type CF-Connecting-IP or X-Forwarded-For and get a fresh
-    bucket per request. From a trusted peer: CF-Connecting-IP (Cloudflare overwrites whatever
-    the client sent), else the rightmost X-Forwarded-For entry (the one the nearest proxy
-    appended; the leftmost is client-typed). True-Client-IP is not used: Cloudflare only sets
-    it on some plans, so a client-typed one can pass straight through."""
-    peer = _parse_ip(request.client.host) if request.client else None
-    if peer is None:
-        return request.client.host if request.client and request.client.host else "unknown"
-    peer_addr = ipaddress.ip_address(peer)
-    if not any(peer_addr in net for net in _trusted_proxies()):
-        global _warned_untrusted_peer
-        if not _warned_untrusted_peer and request.headers.get("cf-connecting-ip"):
-            # Once per process: if this shows up for every request on Render, the load balancer's
-            # address is outside the trusted list and all callers share one rate-limit bucket.
-            _warned_untrusted_peer = True
-            logger.warning("client ip: ignoring forwarded headers from untrusted peer %s (TRUSTED_PROXY_CIDRS)", peer)
-        return peer
-    edge = _parse_ip(request.headers.get("cf-connecting-ip"))
-    if edge:
-        return edge
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        nearest = _parse_ip(forwarded.split(",")[-1])
-        if nearest:
-            return nearest
-    return peer
+    CF-Connecting-IP when it holds a valid IP (Cloudflare sets it on every request and
+    overwrites a client-typed one), else request.client.host. X-Forwarded-For and
+    True-Client-IP are never read here: the caller controls the leftmost X-Forwarded-For
+    entry, and True-Client-IP is not set on every Cloudflare plan, so a typed one passes
+    through. With TRUSTED_PROXY_CIDRS set, CF-Connecting-IP only counts from those peers."""
+    peer = request.client.host if request.client and request.client.host else "unknown"
+    trusted = _trusted_proxies()
+    if trusted is not None:
+        peer_ip = _parse_ip(peer)
+        if peer_ip is None or not any(ipaddress.ip_address(peer_ip) in net for net in trusted):
+            return peer
+    return _parse_ip(request.headers.get("cf-connecting-ip")) or peer
 
 
 async def _read_payload(request: Request) -> dict:
