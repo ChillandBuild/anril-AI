@@ -157,10 +157,16 @@ class GroupSendTests(ReachBase):
         # Customers keep their source, name and score: nothing was re-saved as an "upload".
         self.assertEqual(json.dumps(self.db.rows("leads"), sort_keys=True), before)
 
-    def test_the_browser_cannot_slip_extra_people_into_a_group_send(self):
-        res, run = self.send(leads=[{"phone": "+919888888888", "opt_in_source": "website"}])
+    def test_an_uploaded_list_added_to_a_group_keeps_its_own_consent(self):
+        # v9.2: one campaign from a group + an uploaded list. The group's people are still read here;
+        # the list's rows are sent like any uploaded list, so a row with no real consent is dropped.
+        res, run = self.send(leads=[{"phone": "+919888888888", "opt_in_source": "website"},
+                                    {"phone": "+919777777777", "opt_in_source": "manual"}])
         self.assertEqual(res.status_code, 200, res.text)
-        self.assertNotIn("+919888888888", {l.phone for l in run.call_args.kwargs["eligible"]})
+        sent = {l.phone for l in run.call_args.kwargs["eligible"]}
+        self.assertIn("+919888888888", sent)
+        self.assertNotIn("+919777777777", sent)
+        self.assertEqual(len(sent), 5)  # the group's 4 people, read on the server, plus the one consented row
 
     def test_another_tenants_group_is_refused(self):
         res, run = self.send(group_id=U("theirs"))

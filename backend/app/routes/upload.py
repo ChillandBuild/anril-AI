@@ -364,8 +364,9 @@ class BulkSendRequest(BaseModel):
     tag_id: Optional[str] = None  # broadcast tag for per-product interest tracking
     exclude_negative_replies: bool = False  # skip leads who previously rejected a broadcast
     include_opted_out: bool = False  # send to opted-out leads if True
-    # A Customers group as the audience (Reach "Customers group"). When set, `leads` is ignored and the
-    # people are read from the group here, never trusted from the browser.
+    # A Customers group as the audience (Reach "Customers group"). Its people are read from the group here,
+    # never trusted from the browser. With `leads` too (v9.2: one campaign from a group + an uploaded list)
+    # both are sent, each with its own consent: the group's from Customers, the list's from step 2.
     group_id: Optional[str] = None
     # Unset = exactly the old flow. Set = after a successful send/schedule the AI agent is told about
     # this offer until its end date (Teach & offers, ai_offers source 'reach').
@@ -375,7 +376,7 @@ class BulkSendRequest(BaseModel):
 class ReachPreviewRequest(BaseModel):
     """The confirm step's question: who would this campaign reach, and what does Meta charge?"""
     group_id: Optional[str] = None
-    leads: list[BulkLeadItem] = []          # the uploaded list, when no group is picked
+    leads: list[BulkLeadItem] = []          # the uploaded list (with or without a group)
     tag_id: Optional[str] = None
     exclude_negative_replies: bool = False
     include_opted_out: bool = False
@@ -756,6 +757,20 @@ def _group_leads(resolved: dict) -> list[BulkLeadItem]:
     ]
 
 
+def _merge_group_into(body: "BulkSendRequest", resolved: dict) -> None:
+    """A group, alone or with an uploaded list: the group's people first (so a repeated number keeps the
+    group's consent and is sent once by the dedupe below), then the list's rows with their own consent."""
+    uploaded = list(body.leads)
+    body.leads = _group_leads(resolved) + uploaded
+    body.include_opted_out = False
+    label = f"{reach_audience.GROUP_LABEL_PREFIX}{resolved['group']['name']}"
+    if uploaded:
+        body.csv_file_name = f"{label} + {body.csv_file_name or 'uploaded list'}"[:200]
+    else:
+        body.csv_file_url = body.csv_file_path = None
+        body.csv_file_name = label
+
+
 @router.post("/reach-preview")
 async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_outbound_manage)):
     """The Reach confirm step: how many people are in the audience, who will be left out and why,
@@ -765,6 +780,7 @@ async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_o
     group = None
     stopped_in_group = 0
     no_number = 0
+    people = []
     if body.group_id:
         resolved = await asyncio.to_thread(_resolve_group_or_http, db, ctx, body.group_id)
         group = {**resolved["group"], "members": resolved["members"]}
@@ -774,20 +790,21 @@ async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_o
         # People who said stop are never sent to, whatever the include_opted_out switch says.
         include_opted_out = False
     else:
-        people = []
-        for lead in body.leads:
-            source = (lead.opt_in_source or "").strip().lower()
-            people.append({"phone": lead.phone, "opted_in": bool(source) and source != "manual"})
         include_opted_out = body.include_opted_out
+    # The uploaded list, alone or added to the group (repeats are counted once below).
+    for lead in body.leads:
+        source = (lead.opt_in_source or "").strip().lower()
+        people.append({"phone": lead.phone, "opted_in": bool(source) and source != "manual"})
     nums = await asyncio.to_thread(
         lambda: reach_audience.preview_numbers(
             db, tenant_id, people, tag_id=body.tag_id, include_opted_out=include_opted_out,
             exclude_negative_replies=body.exclude_negative_replies))
     no_number += nums["invalid"]
     said_stop = nums["said_stop"] + stopped_in_group
-    in_audience = (group["members"] if group else nums["total"] + nums["invalid"])
+    in_audience = (group["members"] if group else 0) + (len(body.leads) if body.leads else (0 if group else nums["total"] + nums["invalid"]))
     return {
-        "audience": "group" if group else "list",
+        "audience": ("group+list" if body.leads else "group") if group else "list",
+        "from_list": len(body.leads),
         "group": group,
         "in_audience": in_audience,
         "said_stop": said_stop,
@@ -1282,10 +1299,7 @@ async def bulk_send(
     group_resolved: dict | None = None
     if body.group_id:
         group_resolved = await asyncio.to_thread(_resolve_group_or_http, get_supabase(), _ctx, body.group_id)
-        body.leads = _group_leads(group_resolved)
-        body.include_opted_out = False
-        body.csv_file_url = body.csv_file_path = None
-        body.csv_file_name = f"{reach_audience.GROUP_LABEL_PREFIX}{group_resolved['group']['name']}"
+        _merge_group_into(body, group_resolved)
 
     eligible = []
     rejected = []

@@ -739,6 +739,10 @@ export default function OutboundLeadsPage() {
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [groupId, setGroupId] = useState(searchParams.get("group") ?? "");
   const selectedGroup = groups?.find((g) => g.id === groupId) ?? null;
+  // v9.2: an uploaded list (file or notebook photo) can also take a Customers group. Each keeps its own
+  // consent: the group's from Customers, the list's from step 2. Repeated numbers get one message.
+  const [addGroupId, setAddGroupId] = useState("");
+  const addedGroup = groups?.find((g) => g.id === addGroupId) ?? null;
   // The confirm step's numbers: who is left out and why, who will get it, and Meta's charge.
   const [reachPreview, setReachPreview] = useState<ReachPreview | null>(null);
   const [reachLoading, setReachLoading] = useState(false);
@@ -746,12 +750,14 @@ export default function OutboundLeadsPage() {
   const reachRequestRef = useRef(0);
   // How many people the confirm step is about (a group: those who will get it; a list: its rows),
   // and how many different numbers that is.
-  const audienceTotal = isGroup ? (reachPreview?.will_get ?? selectedGroup?.member_count ?? 0) : (parsedData?.total_rows ?? 0);
+  const audienceTotal = isGroup ? (reachPreview?.will_get ?? selectedGroup?.member_count ?? 0)
+    : addedGroup ? (reachPreview?.will_get ?? (parsedData?.total_rows ?? 0) + addedGroup.member_count)
+    : (parsedData?.total_rows ?? 0);
   const uniqueAudience = isGroup ? audienceTotal : (parsedData?.unique_phone_count ?? parsedData?.total_rows ?? 0);
 
   // Load the groups once, the first time "Customers group" is picked.
   useEffect(() => {
-    if (!isGroup || groups !== null) return;
+    if (groups !== null) return;
     let cancelled = false;
     api.customerGroups.list()
       .then((rows) => { if (!cancelled) { setGroups(rows); setGroupsError(null); } })
@@ -889,7 +895,7 @@ export default function OutboundLeadsPage() {
     if (currentStep !== 5) return;
     fetchReachPreview();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, excludeNegativeReplies, includeOptedOut, selectedTag, isGroup, groupId]);
+  }, [currentStep, excludeNegativeReplies, includeOptedOut, selectedTag, isGroup, groupId, addGroupId]);
 
   // Tags management state
   const [tagsList, setTagsList] = useState<BroadcastTag[]>([]);
@@ -1510,7 +1516,7 @@ export default function OutboundLeadsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({
-          group_id: isGroup ? groupId : undefined,
+          group_id: isGroup ? groupId : addGroupId || undefined,
           leads,
           tag_id: selectedTag || undefined,
           exclude_negative_replies: isGroup ? false : excludeNegativeReplies,
@@ -1590,7 +1596,7 @@ export default function OutboundLeadsPage() {
 
       const payload = {
         leads,
-        group_id: isGroup ? groupId : undefined,
+        group_id: isGroup ? groupId : addGroupId || undefined,
         template_name: templateName,
         schedule_type: scheduleType,
         // scheduleAt is a naive local wall-clock string from <input type="datetime-local">
@@ -1824,6 +1830,33 @@ export default function OutboundLeadsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Also send to a Customers group: one campaign, two lists, a running total. */}
+                  <div className="space-y-2 rounded-2xl border border-surface-mid bg-surface-low p-4">
+                    <label htmlFor="add-group" className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider">
+                      Also send to a Customers group <span className="normal-case font-normal">(optional)</span>
+                    </label>
+                    <Select
+                      id="add-group"
+                      value={addGroupId}
+                      onChange={(v) => { setAddGroupId(v === "none" ? "" : v); setReachPreview(null); }}
+                      placeholder={groups === null ? "Loading groups…" : "No group"}
+                      disabled={groups === null || groups.length === 0}
+                      options={[{ value: "none", label: "No group" }, ...(groups ?? []).map((g) => ({
+                        value: g.id,
+                        label: `${g.name} (${g.member_count.toLocaleString()} ${g.member_count === 1 ? "person" : "people"})`,
+                        text: g.name,
+                      }))]}
+                    />
+                    {addedGroup && (
+                      <p className="font-body text-sm text-on-surface">
+                        Selected: <b>{addedGroup.member_count.toLocaleString()}</b> from the group
+                        {parsedData ? <> + <b>{parsedData.total_rows.toLocaleString()}</b> from {csvFile?.name ?? "your list"}</> : null}
+                        {" "}= <b>{(addedGroup.member_count + (parsedData?.total_rows ?? 0)).toLocaleString()} people</b>.
+                        {" "}Repeats get one message. The group&apos;s consent comes from Customers; the list&apos;s from the next step.
+                      </p>
+                    )}
+                  </div>
                   </>)}
                   <div className="flex justify-end pt-2">
                     <button

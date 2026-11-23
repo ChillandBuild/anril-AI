@@ -46,12 +46,10 @@ Screen numbers are in the pending page `docs/research/v92-pending-list.html`.
 22. "Stay logged in on this laptop" + staff email note
 23. Google sign-in (Google Cloud + Supabase provider)
 Also later: paid GSTIN lookup (name + address from the GST record); the free part (state, PAN, check digit) shipped.
-Left from the build list (2026-11-24):
-- #12 Follow-ups back in the Settings list: the page is unchanged at Engage > Auto-messages > Follow-ups; adding it to Settings breaks 13 menu tests that lock Prem's v9.2 menu. Needs Prem's yes.
+Left from the build list (2026-11-24; #12 settled: Follow-ups stays under Engage; #29 done: an uploaded list can take a group too):
 - #13 "In Anril + phone app" column on Numbers: needs Meta's coexistence field verified before the number sync asks for it.
 - #20 / #30 WhatsApp copies of the 8 PM "not marked" nudge and the 9 AM campaign summary: both go as bell + push today; WhatsApp needs approved templates.
 - #28 Google Ads live connect + sync (spend, clicks): needs a Google Ads API developer token + OAuth app. Spend still comes from the report upload.
-- #29 One campaign from groups + notebook + file: waits on "Consent asked per list" (held item 9).
 - #31 Calling settings (record, keep period, IVR, missed call -> WhatsApp, voicemail, top up): mostly set in TeleCMI; needs a decision on what Anril controls.
 
 ### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329, 330 live)
