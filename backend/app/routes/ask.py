@@ -279,14 +279,9 @@ async def _dispatch(name: str, tenant_id: str, args: dict, ctx: dict | None = No
 
 
 def _without_money(result):
-    """compare_analytics minus its rupee parts, for people who may not see money."""
-    if not isinstance(result, dict):
-        return result
-    out = {k: v for k, v in result.items() if k != "money_metrics"}
-    for side in ("current", "previous"):
-        if isinstance(out.get(side), dict):
-            out[side] = {k: v for k, v in out[side].items() if k != "money"}
-    return out
+    """compare_analytics minus its rupee parts, for people who may not see money (same keys as /compare)."""
+    from app.routes.analytics import strip_compare_rupees
+    return strip_compare_rupees(result)
 
 
 _ANSWER_SYSTEM_PROMPT = (

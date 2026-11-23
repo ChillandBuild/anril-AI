@@ -57,6 +57,39 @@ def get_analytics_tenant_id(ctx: dict = Depends(get_tenant_and_role)) -> str:
     return _tenant_id_for_permission(ctx, {"analytics.view"})
 
 
+def sees_money(ctx: dict = Depends(get_tenant_and_role)) -> bool:
+    """Rupee figures (ad spend, cost per lead) follow the Reports rule: owner or "See orders" (deals.view)."""
+    from app.dependencies.tenant import _has_permission
+    return _has_permission(ctx, "deals.view")
+
+
+# Rupee keys: the compare page's money block, and each ad campaign row.
+COMPARE_RUPEE_KEYS = ("spend", "cost_per_lead", "cost_per_hot_lead")
+AD_RUPEE_KEYS = ("spend_inr", "cost_per_lead", "cost_per_conversion")
+
+
+def strip_compare_rupees(payload: dict) -> dict:
+    """/compare without rupees: counts (impressions, clicks, ad leads) stay, spend and costs go."""
+    if not isinstance(payload, dict):
+        return payload
+    out = dict(payload)
+    for side in ("current", "previous"):
+        part = out.get(side)
+        if isinstance(part, dict) and isinstance(part.get("money"), dict):
+            out[side] = {**part, "money": {k: v for k, v in part["money"].items() if k not in COMPARE_RUPEE_KEYS}}
+    if isinstance(out.get("money_metrics"), dict):
+        out["money_metrics"] = {k: v for k, v in out["money_metrics"].items() if k not in COMPARE_RUPEE_KEYS}
+    return out
+
+
+def strip_ad_rupees(payload: dict) -> dict:
+    """/ad-performance without rupees: leads and rates stay, spend and cost per lead go."""
+    if not isinstance(payload, dict):
+        return payload
+    rows = [{k: v for k, v in r.items() if k not in AD_RUPEE_KEYS} for r in payload.get("campaigns") or []]
+    return {**payload, "campaigns": rows}
+
+
 def require_analytics_view(ctx: dict = Depends(get_tenant_and_role)) -> dict:
     _tenant_id_for_permission(ctx, {"analytics.view"})
     return ctx
@@ -1428,8 +1461,11 @@ async def compare_analytics(
     comparison_start: str | None = Query(None),
     comparison_end: str | None = Query(None),
     tenant_id: str = Depends(get_dashboard_analytics_tenant_id),
+    money_ok: bool = Depends(sees_money),
 ):
     """Return a period, optionally alongside an explicitly selected comparison.
+    Without deals.view the rupee parts (spend, cost per lead) are left out; direct Python callers
+    (Ask, the client MCP money tools) do their own gating, so only an explicit False strips here.
 
     Day bucketing and period boundaries are IST -- this is an India-based
     product and a UTC "day" starts at 05:30 local, which shifts 6% of rows
@@ -1463,7 +1499,7 @@ async def compare_analytics(
     def series_for(source: str, key: str) -> list[dict]:
         return align_series(current[source], previous[source], key) if previous else []
 
-    return {
+    payload = {
         "preset": preset,
         "current": {
             "start": current["start"], "end": current["end"],
@@ -1508,6 +1544,7 @@ async def compare_analytics(
             "messages_out": series_for("daily_messages", "outbound"),
         } if previous else {},
     }
+    return strip_compare_rupees(payload) if money_ok is False else payload
 
 
 @router.get("/compare/export")
@@ -1667,10 +1704,14 @@ async def messaging_analytics(
 
 
 @router.get("/ad-performance")
-async def ad_performance_summary(tenant_id: str = Depends(get_analytics_tenant_id)):
+async def ad_performance_summary(tenant_id: str = Depends(get_analytics_tenant_id),
+                                 money_ok: bool = Depends(sees_money)):
+    """Per-campaign leads and rates; spend and cost per lead only for owner / deals.view
+    (direct Python callers such as Ask gate money themselves, so only an explicit False strips)."""
     db = get_supabase()
     from app.services.growth import build_ad_performance
-    return build_ad_performance(tenant_id=tenant_id, db=db)
+    payload = build_ad_performance(tenant_id=tenant_id, db=db)
+    return strip_ad_rupees(payload) if money_ok is False else payload
 
 
 @router.get("/inbound")
