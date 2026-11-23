@@ -32,4 +32,17 @@ DROP TABLE IF EXISTS public.booking_service_resources;
 DROP TABLE IF EXISTS public.booking_resources;
 DROP TABLE IF EXISTS public.booking_services;
 DROP TABLE IF EXISTS public.booking_settings;
+
+-- Put the old temple table back under its old name (317 renamed it, indexes too).
+DO $$
+DECLARE r record;
+BEGIN
+  IF to_regclass('public.bookings_legacy_029') IS NOT NULL AND to_regclass('public.bookings') IS NULL THEN
+    ALTER TABLE public.bookings_legacy_029 RENAME TO bookings;
+    FOR r IN SELECT indexname FROM pg_indexes
+             WHERE schemaname = 'public' AND tablename = 'bookings' AND indexname LIKE 'bookings\_legacy\_029\_%' LOOP
+      EXECUTE format('ALTER INDEX public.%I RENAME TO %I', r.indexname, 'bookings_' || substr(r.indexname, 21));
+    END LOOP;
+  END IF;
+END $$;
 -- btree_gist is left installed (harmless; other code may use it).

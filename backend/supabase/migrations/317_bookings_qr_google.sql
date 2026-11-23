@@ -100,16 +100,23 @@ CREATE INDEX IF NOT EXISTS idx_booking_leave_resource ON public.booking_leave (t
 
 -- The old temple-booking table (devotee_name, rasi, nakshatram; migration 029) is still live
 -- because 130_drop_legacy_booking_artifacts was never applied. It had 0 rows and no code reads it
--- (checked 2026-11-23). Drop it, its link column on lead_conversation_state and its trigger
--- function, but ONLY when it is that old table, so re-running this file never touches real bookings.
+-- (checked 2026-11-23). Nothing is deleted: it is RENAMED to bookings_legacy_029 (its indexes too,
+-- so bookings_pkey is free), keeping its trigger and the lead_conversation_state.booking_id link.
+-- Only when it is that old table, so re-running this file never touches real bookings.
+-- Safe to drop bookings_legacy_029 later on purpose; undo renames it back.
 DO $$
+DECLARE r record;
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_schema = 'public' AND table_name = 'bookings' AND column_name = 'devotee_name') THEN
-    ALTER TABLE public.lead_conversation_state DROP CONSTRAINT IF EXISTS lead_conversation_state_booking_id_fkey;
-    ALTER TABLE public.lead_conversation_state DROP COLUMN IF EXISTS booking_id;
-    DROP TABLE public.bookings;
-    DROP FUNCTION IF EXISTS public.generate_booking_ref();
+             WHERE table_schema = 'public' AND table_name = 'bookings' AND column_name = 'devotee_name')
+     AND to_regclass('public.bookings_legacy_029') IS NULL THEN
+    ALTER TABLE public.bookings RENAME TO bookings_legacy_029;
+    FOR r IN SELECT indexname FROM pg_indexes
+             WHERE schemaname = 'public' AND tablename = 'bookings_legacy_029' AND indexname LIKE 'bookings\_%' LOOP
+      EXECUTE format('ALTER INDEX public.%I RENAME TO %I', r.indexname, 'bookings_legacy_029_' || substr(r.indexname, 10));
+    END LOOP;
+    COMMENT ON TABLE public.bookings_legacy_029 IS
+      'Old temple bookings (migration 029). Empty and unused; renamed by 317 on 2026-11-23. Safe to drop.';
   END IF;
 END $$;
 
