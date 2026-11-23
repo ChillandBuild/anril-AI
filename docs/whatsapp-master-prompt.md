@@ -190,6 +190,13 @@ They exist because Meta enforces on **recipient behaviour** (blocks and reports)
 not on a checklist — so the goal is to never generate a message a customer would
 want to report.
 
+## Blocks added after the master text (per tenant)
+
+`_build_base_prompt()` appends, in order: CHANNEL, BUSINESS DESCRIPTION, **GOAL OF EVERY CHAT**
+(only when the owner picked goals on Anril Brain: `app_settings.ai_chat_goals`, built by
+`services/brain_overview.goals_block`; one goal, or a first goal and a fallback "only if they say
+not now"), then the HANDOVER RULE and the no-placeholder line. No goal picked = no block.
+
 ## What this prompt does NOT cover
 
 A prompt constrains what the assistant *says*. It cannot fix:

@@ -390,6 +390,8 @@ def _build_base_prompt(channel: str, tenant_id: str | None) -> str:
     if description:
         prompt += "\n\nBUSINESS DESCRIPTION:\n" + description
 
+    from app.services.brain_overview import goals_block
+    prompt += goals_block(tenant_id)
     prompt += _handover_rule_block(tenant_id)
     prompt += (
         "\n\nNEVER write a placeholder like \"[Insert Link Here]\" or \"[link]\" in a reply. "
@@ -1182,9 +1184,11 @@ _GENERIC_FALLBACK_MARKERS = [
     "team will get back to you",
 ]
 
-_TRIGGER_PRIORITY = ["C", "B", "A", "D", "F"]
+_TRIGGER_PRIORITY = ["C", "G", "H", "B", "A", "D", "F"]
 _TRIGGER_REASONS: dict[str, str] = {
     "C": "User requested a human agent",
+    "G": "Customer is angry or complaining",
+    "H": "Big or bulk order",
     "B": "AI failed to generate a response",
     "A": "AI gave a generic fallback reply",
     "D": "User repeated the same question",
@@ -2075,6 +2079,10 @@ async def generate_reply(
         if prev_inbound and _is_similar(message, prev_inbound.get("content", "")):
             escalation_flags.add("D")
             logger.info(f"Trigger D: lead {lead_id} repeated same question")
+    # Triggers G (angry or complaining) and H (big or bulk order): Replies & handover ticks.
+    from app.services import handover_triggers
+    if "G" in inbox_cfg.get("triggers", []) and handover_triggers.angry(message):
+        escalation_flags.add("G")
     # Settings > Auto-Reply: the AI master, this channel's row and the lead's source row.
     from app.services.automation_guards import ai_replies_allowed
     global_ai_enabled = ai_replies_allowed(tenant_id, channel, lead_data.get("source"))
@@ -2598,8 +2606,14 @@ async def generate_reply(
         db=db,
     )
 
-    # Step 6: Fire inbox escalation — trigger-based only (A/B/C/D/F), no segment gate.
-    # Creates an UNASSIGNED pending handover → shared pool (admin + any telecaller).
+    # Step 6: Fire inbox escalation — trigger-based only (A/B/C/D/F/G/H), no segment gate.
+    # Goes to the lead's teammate, else the named person from Replies & handover, else the shared pool.
+    if "H" in inbox_cfg.get("triggers", []):
+        try:
+            if handover_triggers.big_order(db, tenant_id, str(lead_id), message, inbox_cfg):
+                escalation_flags.add("H")
+        except Exception as e:
+            logger.warning(f"Big order check failed for lead {lead_id}: {e}")
     active_triggers = [
         t for t in _TRIGGER_PRIORITY
         if t in escalation_flags and should_escalate_to_inbox(inbox_cfg, t, channel)
@@ -2611,7 +2625,7 @@ async def generate_reply(
                 lead_id=str(lead_id),
                 reason=_TRIGGER_REASONS[primary],
                 tenant_id=tenant_id,
-                assigned_to=lead_data.get("assigned_to"),
+                assigned_to=handover_triggers.first_owner(inbox_cfg, lead_data.get("assigned_to")),
                 db=db,
             )
             logger.info(f"Inbox escalation fired for lead {lead_id} — trigger {primary}")

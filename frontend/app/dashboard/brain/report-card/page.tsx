@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { PeriodPicker } from "@/components/ai-setup/PeriodPicker";
 import { NoAccess, SetupShell, useSetupAccess } from "@/components/ai-setup/SetupShell";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { aiSetupApi, percentLabel, rupees, safeFixHref, splitChats, type Period, type ReportCard } from "@/lib/aiSetupApi";
+import { aiSetupApi, changeVs, percentLabel, rupees, safeFixHref, splitChats, type Period, type ReportCard } from "@/lib/aiSetupApi";
 
 const RADIUS = 54;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -53,6 +53,29 @@ function SplitBar({ parts }: { parts: { label: string; value: number; color: str
   );
 }
 
+function Change({ value, unit, goodWhenUp = true, label }: { value: number | null; unit: "pts" | "rupees"; goodWhenUp?: boolean; label: string }) {
+  if (value === null || value === 0) return null;
+  const up = value > 0;
+  const good = up === goodWhenUp;
+  const text = unit === "rupees" ? rupees(Math.abs(value)) : `${Math.abs(value)}%`;
+  return (
+    <span className={`font-body text-xs font-bold ${good ? "text-emerald-700" : "text-rose-700"}`}>
+      {up ? "▲" : "▼"} {text} vs {label}
+    </span>
+  );
+}
+
+const RESULT_ROWS: { key: keyof NonNullable<ReportCard["results"]>; label: string; color: string }[] = [
+  { key: "paid", label: "Paid", color: "#067647" },
+  { key: "booked", label: "Booked / ordered", color: "#038285" },
+  { key: "talking", label: "Still talking", color: "#b45309" },
+  { key: "passed", label: "Passed to a person", color: "#7c3aed" },
+  { key: "lost", label: "Lost", color: "#64748b" },
+  { key: "quiet", label: "Went quiet", color: "#94a3b8" },
+];
+
+const LOOK_TONE: Record<string, string> = { wrong: "bg-rose-50", slow: "bg-amber-50", open: "bg-slate-50" };
+
 export default function ReportCardPage() {
   const { loading: roleLoading, canView } = useSetupAccess();
   const { role } = useAuthRole();
@@ -79,6 +102,7 @@ export default function ReportCardPage() {
   }
 
   const split = card ? splitChats(card) : null;
+  const vsLabel = period === "7d" ? "last week" : `the ${period.replace("d", "")} days before`;
 
   return (
     <SetupShell toolbar={<PeriodPicker value={period} onChange={(p) => { setCard(null); setPeriod(p); }} />}>
@@ -88,7 +112,13 @@ export default function ReportCardPage() {
         <>
           <div className="flex flex-wrap items-stretch gap-4">
             <section className="card flex min-w-0 flex-[2_1_520px] flex-col gap-3" aria-labelledby="chats-h">
-              <h2 id="chats-h" className="font-display text-base font-bold text-ink">{card.chats} {card.chats === 1 ? "chat" : "chats"}</h2>
+              <h2 id="chats-h" className="flex flex-wrap items-baseline gap-x-3 font-display text-base font-bold text-ink">
+                {card.chats} {card.chats === 1 ? "chat" : "chats"}
+                <Change value={changeVs(card.handled_alone_pct, card.previous?.handled_alone_pct)} unit="pts" label={vsLabel} />
+                {card.team_reply_min != null && (
+                  <span className="font-body text-xs font-normal text-ink-secondary">· team replies in {card.team_reply_min} min on average after a handover</span>
+                )}
+              </h2>
               {card.chats === 0 ? (
                 <p className="font-body text-sm text-ink-secondary">No chats in this period yet.</p>
               ) : (
@@ -106,10 +136,45 @@ export default function ReportCardPage() {
               <section className="card flex min-w-0 flex-[1_1_300px] flex-col gap-2" aria-labelledby="sales-h">
                 <h2 id="sales-h" className="font-display text-base font-bold text-ink">Sales from AI chats</h2>
                 <p className="font-display text-3xl font-bold text-ink">{rupees(card.revenue_from_ai_paise)}</p>
-                <p className="font-body text-xs text-ink-secondary">Paid orders the AI agent closed, before GST</p>
+                <p className="font-body text-xs text-ink-secondary">
+                  {card.paid_orders_by_ai ?? 0} paid {card.paid_orders_by_ai === 1 ? "order" : "orders"} the AI agent closed, before GST
+                </p>
+                <Change value={changeVs(card.revenue_from_ai_paise, card.previous?.revenue_from_ai_paise)} unit="rupees" label={vsLabel} />
               </section>
             )}
           </div>
+          {card.results && card.chats > 0 && (
+            <section className="card" aria-labelledby="results-h">
+              <h2 id="results-h" className="font-display text-base font-bold text-ink">Chats by result <span className="font-body text-xs font-normal text-ink-secondary">what happened after the AI replied</span></h2>
+              <ul className="mt-3 space-y-2">
+                {RESULT_ROWS.map((r) => {
+                  const value = card.results?.[r.key] ?? 0;
+                  const most = Math.max(1, ...RESULT_ROWS.map((x) => card.results?.[x.key] ?? 0));
+                  return (
+                    <li key={r.key} className="grid grid-cols-[minmax(0,10rem)_1fr_3rem] items-center gap-3 font-body text-sm">
+                      <span className="truncate text-ink">{r.label}</span>
+                      <span className="h-2.5 overflow-hidden rounded-full bg-slate-100" aria-hidden><span className="block h-full rounded-full" style={{ width: `${(value / most) * 100}%`, background: r.color }} /></span>
+                      <span className="text-right font-bold tabular-nums text-ink">{value}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+          {card.look_at && card.look_at.length > 0 && (
+            <section className="card" aria-labelledby="look-h">
+              <h2 id="look-h" className="font-display text-base font-bold text-ink">Chats to look at <span className="font-body text-xs font-normal text-ink-secondary">picked by Anril, 2 minutes each</span></h2>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                {card.look_at.map((c) => (
+                  <div key={`${c.kind}-${c.lead_id}`} className={`rounded-xl px-4 py-3 ${LOOK_TONE[c.kind] ?? "bg-slate-50"}`}>
+                    <p className="font-body text-sm font-bold text-ink">{c.name || "A customer"}{c.at ? ` · ${new Date(c.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })}` : ""}</p>
+                    <p className="mt-0.5 font-body text-sm text-ink-secondary">{c.text}</p>
+                    <Link href={`/dashboard/conversations?lead=${c.lead_id}`} className="mt-1 inline-block font-body text-sm font-bold text-primary hover:underline">Open chat ›</Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="card flex flex-wrap items-start gap-3 !py-0 !pl-2" aria-labelledby="fix-h">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/login/healy-poster.png" alt="" width={150} height={150} className="h-[150px] w-[150px] shrink-0 object-contain" />

@@ -590,6 +590,8 @@ async def _process_inbound_message_background(
             # messages do the same inside generate_reply.
             from app.services.intake import note_lead_message
             note_lead_message(db, tenant_id, lead_id)
+            if msg_type == "image":
+                _photo_handover(db, tenant_id, lead_id)
             if not auto_reply_on:
                 logger.info(f"Media ack skipped for lead {lead_id}: AI auto-reply is off")
                 return
@@ -617,6 +619,24 @@ async def _process_inbound_message_background(
                 logger.error(f"Media ack failed for lead {lead_id}: {e}")
     except Exception as err:
         logger.error(f"Background inbound message processing failed for lead {lead_id}: {err}")
+
+
+def _photo_handover(db, tenant_id: str, lead_id: str) -> None:
+    """Replies & handover tick "Customer sends a photo": the AI can't read images, so a person gets
+    the chat (its teammate, else the named person). Never raises."""
+    try:
+        from app.services.assignment import get_inbox_config, should_escalate_to_inbox
+        cfg = get_inbox_config(tenant_id)
+        if not should_escalate_to_inbox(cfg, "I", "whatsapp"):
+            return
+        from app.services.ai_reply import _trigger_chat_escalation
+        from app.services.handover_triggers import REASONS, first_owner
+        lead = (db.table("leads").select("assigned_to").eq("id", lead_id).eq("tenant_id", tenant_id)
+                .limit(1).execute().data) or [{}]
+        _trigger_chat_escalation(lead_id=lead_id, reason=REASONS["I"], tenant_id=tenant_id,
+                                 assigned_to=first_owner(cfg, lead[0].get("assigned_to")), db=db)
+    except Exception:
+        logger.exception("Photo handover failed for lead %s", lead_id)
 
 
 def _pause_or_resume_automations(tenant_id: str | None, value: dict) -> None:

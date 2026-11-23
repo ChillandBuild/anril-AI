@@ -44,7 +44,8 @@ export function QrCard({
       <div className="flex gap-4">
         <div ref={wrap} className="shrink-0 rounded-xl border border-border bg-white p-2">
           {/* 512 px canvas for a sharp PNG, shown small. */}
-          <QRCodeCanvas value={link.url} size={512} level="M" marginSize={2} style={{ width: 96, height: 96 }} role="img" aria-label={`QR code for ${link.name}`} />
+          <QRCodeCanvas value={link.url} size={512} level="M" marginSize={2} style={{ width: 96, height: 96 }} role="img" aria-label={`QR code for ${link.name}`}
+            data-qr-file={link.archived ? undefined : pngFileName(link.name, link.code)} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

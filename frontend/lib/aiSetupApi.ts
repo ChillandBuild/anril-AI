@@ -21,7 +21,20 @@ export type ReportCard = {
   revenue_from_ai_paise?: number;
   money_hidden?: boolean;
   fix_these: FixThis[];
+  /** The same numbers for the days just before (v9.2: "vs last week"). */
+  previous?: { handled_alone_pct: number | null; passed_to_person: number; revenue_from_ai_paise?: number };
+  /** Average minutes from passed-to-a-person until a teammate answered. */
+  team_reply_min?: number | null;
+  paid_orders_by_ai?: number;
+  results?: { paid: number; booked: number; lost: number; passed: number; talking: number; quiet: number };
+  look_at?: { kind: "wrong" | "slow" | "open"; lead_id: string; name: string | null; at: string | null; text: string }[];
 };
+
+/** "▲ 6% vs last week" / "▼ 3%": the change in points (or rupees), null when there is nothing to compare. */
+export function changeVs(now: number | null | undefined, before: number | null | undefined): number | null {
+  if (now == null || before == null) return null;
+  return now - before;
+}
 export type ScoringLevel = { key: string; label: string; points: string; meaning: string; your_examples: string[] };
 export type ScoringView = {
   read_only: boolean;

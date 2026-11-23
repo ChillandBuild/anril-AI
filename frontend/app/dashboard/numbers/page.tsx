@@ -17,6 +17,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 
+import { NumberJobsPanel, type NumberJobs } from "./NumberJobsPanel";
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type QualityRating = "green" | "yellow" | "red";
@@ -36,12 +37,14 @@ type NumberHealth = {
 
 type NumbersPool = { limit: number; used: number; meta_limit?: number | null; meta_sent_24h?: number };
 
+
+
 type PhoneNumber = {
   id: string;
   provider: "meta_cloud";
   number: string;
   display_name: string;
-  role: "primary" | "standby" | "archived";
+  role: "primary" | "standby" | "extra" | "archived";
   status: "active" | "warming" | "restricted" | "archived";
   quality_rating: QualityRating | null;
   messaging_tier: number | null;
@@ -521,7 +524,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
 
 const numbersApi = {
   list: () =>
-    apiFetch<{ data: PhoneNumber[]; numbers_pool?: NumbersPool }>("/api/v1/numbers"),
+    apiFetch<{ data: PhoneNumber[]; numbers_pool?: NumbersPool; jobs?: NumberJobs }>("/api/v1/numbers"),
   create: (payload: {
     provider: string;
     number: string;
@@ -564,11 +567,12 @@ function NumbersPageContent() {
 
   const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
   const [numbersPool, setNumbersPool] = useState<NumbersPool | null>(null);
+  const [jobs, setJobs] = useState<NumberJobs | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "primary" | "standby" | "paused">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "primary" | "standby" | "extra" | "paused">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Tier guide banner state (auto-dismisses after 15s)
@@ -596,6 +600,7 @@ function NumbersPageContent() {
     const res = await numbersApi.list();
     setNumbers(res.data ?? []);
     setNumbersPool(res.numbers_pool ?? null);
+    setJobs(res.jobs ?? null);
   }
 
   useEffect(() => {
@@ -603,6 +608,7 @@ function NumbersPageContent() {
     numbersApi.list().then((res) => {
       setNumbers(res.data ?? []);
       setNumbersPool(res.numbers_pool ?? null);
+      setJobs(res.jobs ?? null);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -695,6 +701,7 @@ function NumbersPageContent() {
       }
       if (roleFilter === "primary") return num.role === "primary";
       if (roleFilter === "standby") return num.role === "standby";
+      if (roleFilter === "extra") return num.role === "extra";
       if (roleFilter === "paused") return num.paused_outbound;
       return true;
     });
@@ -724,6 +731,17 @@ function NumbersPageContent() {
       await numbersApi.update(id, { role: "primary" });
       await reload();
       toast.success("Set as primary number");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Update failed");
+    }
+  }
+
+  async function handleSetRole(num: PhoneNumber, role: "standby" | "extra") {
+    if (!canManageNumbers) return;
+    try {
+      await numbersApi.update(num.id, { role });
+      await reload();
+      toast.success(role === "extra" ? "Now Extra: it replies, but sends no campaigns and never takes over" : "Now Standby: it takes over if the Main number stops");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed");
     }
@@ -940,6 +958,9 @@ function NumbersPageContent() {
             />
           )}
 
+          {/* ── Which number does what (read only: how the senders work today) ── */}
+          {!loading && visible.length > 0 && <NumberJobsPanel jobs={jobs} numbers={visible} />}
+
           {/* ── Main Numbers Card ───────────────────────────────────────────── */}
           <div className="rounded-2xl bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 md:rounded-card md:p-8 space-y-6">
             {/* Control Bar: Title + Search + Filters + Sync */}
@@ -991,6 +1012,7 @@ function NumbersPageContent() {
                     { key: "all", label: "All" },
                     { key: "primary", label: "Primary" },
                     { key: "standby", label: "Standby" },
+                    { key: "extra", label: "Extra" },
                     { key: "paused", label: "Paused" },
                   ].map((tab) => (
                     <button
@@ -1125,7 +1147,7 @@ function NumbersPageContent() {
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-label text-[11px] font-semibold bg-surface-mid/80 text-on-surface-muted border border-border">
-                                  Standby Failover
+                                  {num.role === "extra" ? "Extra · no campaigns" : "Standby Failover"}
                                 </span>
                               )}
 
@@ -1272,6 +1294,19 @@ function NumbersPageContent() {
                               >
                                 <Star size={12} className="fill-primary-600/30" />
                                 <span>Set Primary</span>
+                              </button>
+                            )}
+
+                            {/* Standby <-> Extra */}
+                            {canManageNumbers && (num.role === "standby" || num.role === "extra") && (
+                              <button
+                                onClick={() => handleSetRole(num, num.role === "extra" ? "standby" : "extra")}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-surface hover:bg-surface-low text-on-surface font-label text-xs font-bold transition-all shadow-2xs"
+                                title={num.role === "extra"
+                                  ? "Standby: sends campaigns with Main and takes over if Main stops"
+                                  : "Extra: replies to whoever writes to it, but sends no campaigns and never takes over"}
+                              >
+                                <span>{num.role === "extra" ? "Make standby" : "Make extra"}</span>
                               </button>
                             )}
 

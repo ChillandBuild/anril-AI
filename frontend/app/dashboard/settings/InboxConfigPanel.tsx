@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { API_URL, getAuthHeaders } from "@/lib/api";
+import { API_URL, api, getAuthHeaders } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 import { CheckField, TickMark } from "@/components/ui/controls";
 import type { SectionLoadState } from "./SettingsSection";
 
@@ -9,6 +10,11 @@ export type InboxConfig = {
   auto_assign_enabled: boolean;
   channels: string[];
   triggers: string[];
+  /** Trigger H: an order at or above this (paise). */
+  order_above_paise?: number | null;
+  /** Who gets a handed-over chat with no teammate yet, and who takes it if nobody replies in 15 minutes. */
+  handover_to?: string | null;
+  backup_to?: string | null;
 };
 
 const DEFAULT: InboxConfig = {
@@ -24,6 +30,9 @@ const TRIGGER_LABELS: Record<string, { label: string; always?: boolean }> = {
   B: { label: "AI failed (technical error)" },
   D: { label: "Customer asked the same thing again" },
   C: { label: "Customer asked for a person", always: true },
+  G: { label: "Customer is angry or complains" },
+  H: { label: "Big order, or a bulk order" },
+  I: { label: "Customer sends a photo (the AI can't read images)" },
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -87,6 +96,14 @@ export function useInboxConfig() {
 
 export function HandoverFields({ state, disabled }: { state: InboxConfigState; disabled: boolean }) {
   const { draft, setDraft } = state;
+  const [team, setTeam] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    api.callers.list()
+      .then(({ data }) => setTeam(data.filter((c) => c.active !== false).map((c) => ({ value: c.id, label: c.name }))))
+      .catch(() => {});
+  }, []);
+  const rupees = Math.round((draft.order_above_paise ?? 2500000) / 100);
+  const people = [{ value: "", label: "Nobody: everyone can pick it up" }, ...team];
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -101,6 +118,29 @@ export function HandoverFields({ state, disabled }: { state: InboxConfigState; d
             label={label}
           />
         ))}
+      </div>
+      {draft.triggers.includes("H") && (
+        <label className="flex flex-wrap items-center gap-2 text-sm text-ink">
+          A big order is above ₹
+          <input type="number" min={1} step={500} value={rupees} disabled={disabled} aria-label="Big order above, in rupees"
+            onChange={(e) => setDraft({ ...draft, order_above_paise: Math.max(1, Number(e.target.value) || 0) * 100 })}
+            className="h-9 w-28 rounded-lg border border-border px-2 text-sm" />
+        </label>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <div className="mb-1.5 font-label text-xs font-semibold uppercase tracking-wider text-ink-muted">Who gets the chat</div>
+          <Select size="sm" aria-label="Who gets the chat" value={draft.handover_to ?? ""} disabled={disabled}
+            onChange={(v) => setDraft({ ...draft, handover_to: v || null })} options={people} />
+          <p className="mt-1 text-xs text-ink-muted">When the chat has no teammate yet.</p>
+        </div>
+        <div>
+          <div className="mb-1.5 font-label text-xs font-semibold uppercase tracking-wider text-ink-muted">Then, if no reply in 15 min</div>
+          <Select size="sm" aria-label="Backup" value={draft.backup_to ?? ""} disabled={disabled || !draft.handover_to}
+            onChange={(v) => setDraft({ ...draft, backup_to: v || null })}
+            options={[{ value: "", label: "Nobody: the owner is alerted" }, ...team.filter((t) => t.value !== draft.handover_to)]} />
+          <p className="mt-1 text-xs text-ink-muted">The owner is still told after 15 minutes.</p>
+        </div>
       </div>
       <CheckField
         checked={draft.auto_assign_enabled}

@@ -17,6 +17,19 @@ from app.services.numbers_pool import get_unlocked_number_ids
 logger = logging.getLogger(__name__)
 
 
+
+def set_default_sender(db, tenant_id: str, meta_phone_number_id: str | None) -> None:
+    """The Main number is the default sender: OTP codes, bills, order updates and alerts (any send
+    that names no number). Replies still go from the number the customer wrote to."""
+    if not meta_phone_number_id:
+        return
+    db.table("app_settings").upsert(
+        {"key": "meta_phone_number_id", "value": meta_phone_number_id, "tenant_id": tenant_id, "is_secret": False},
+        on_conflict="tenant_id,key",
+    ).execute()
+    from app.config_dynamic import invalidate_cache
+    invalidate_cache("meta_phone_number_id")
+
 def _insert_incident(db, payload: dict) -> None:
     try:
         db.table("incidents").insert(payload).execute()
@@ -93,14 +106,7 @@ async def ensure_healthy_primary(tenant_id: str) -> dict | None:
     logger.info(f"ensure_healthy_primary: {new_number['id']} took over from {primary['id']} (tenant {tenant_id})")
 
     # The tenant-wide default sender (used when a send names no number).
-    new_meta_id = new_number.get("meta_phone_number_id")
-    if new_meta_id:
-        db.table("app_settings").upsert(
-            {"key": "meta_phone_number_id", "value": new_meta_id, "tenant_id": tenant_id, "is_secret": False},
-            on_conflict="tenant_id,key",
-        ).execute()
-        from app.config_dynamic import invalidate_cache
-        invalidate_cache("meta_phone_number_id")
+    set_default_sender(db, tenant_id, new_number.get("meta_phone_number_id"))
 
     detail = {"old_number_id": primary["id"], "new_number_id": new_number["id"]}
     _insert_incident(db, {"type": "failover", "tenant_id": tenant_id, "phone_number_id": primary["id"], "detail": detail})

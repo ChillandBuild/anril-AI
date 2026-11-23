@@ -41,7 +41,7 @@ def sweep_stale_handovers(now: datetime | None = None, db=None) -> int:
     oldest_open = (now - GIVE_UP_AFTER).isoformat()
     global _query_failed_logged
     try:
-        rows = (db.table("chat_handovers").select("id,tenant_id,lead_id,opened_at")
+        rows = (db.table("chat_handovers").select("id,tenant_id,lead_id,opened_at,assigned_to")
                 .eq("status", "pending").is_("stale_alerted_at", "null")
                 .lte("opened_at", newest_open).gte("opened_at", oldest_open)
                 .order("opened_at").limit(_BATCH).execute().data) or []
@@ -60,6 +60,7 @@ def sweep_stale_handovers(now: datetime | None = None, db=None) -> int:
                    .eq("id", h["id"]).eq("status", "pending").is_("stale_alerted_at", "null").execute().data) or []
             if not won:
                 continue  # another run took it, or it was resolved a moment ago
+            _pass_to_backup(db, h)
             alerted += _alert_owner(db, h)
         except Exception as e:  # noqa: BLE001  one bad row must not stop the rest
             logger.warning("handover stale alert failed for %s: %s", h.get("id"), e)
@@ -85,3 +86,24 @@ def _alert_owner(db, h: dict) -> int:
         )
         told += 1
     return 1 if told else 0
+
+
+def _pass_to_backup(db, h: dict) -> bool:
+    """Replies & handover "then <backup> if no reply in 15 min": a handover still with the named person
+    moves to the backup, who gets told. Runs once per handover (inside the stale claim). Never raises."""
+    try:
+        from app.services.assignment import get_inbox_config
+        cfg = get_inbox_config(h["tenant_id"])
+        first, backup = cfg.get("handover_to"), cfg.get("backup_to")
+        if not backup or backup == first or not h.get("assigned_to") or h.get("assigned_to") != first:
+            return False
+        db.table("chat_handovers").update({"assigned_to": backup}).eq("id", h["id"])             .eq("tenant_id", h["tenant_id"]).eq("status", "pending").execute()
+        from app.services.notify import _caller_user_ids_by_ids, notify_user
+        for uid in _caller_user_ids_by_ids(db, h["tenant_id"], [backup]):
+            notify_user(h["tenant_id"], uid, "handover_new", "A chat passed to you",
+                        "Nobody replied in 15 minutes, so this chat is now yours.",
+                        db=db, push_url=f"/dashboard/conversations?lead={h['lead_id']}")
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("handover backup failed for %s: %s", h.get("id"), e)
+        return False

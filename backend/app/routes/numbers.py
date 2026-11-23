@@ -39,6 +39,9 @@ _numbers_pool_limit = numbers_pool_limit
 
 # Must match phone_numbers_status_check in supabase/migrations/009_phone_numbers_incidents.sql
 _VALID_PHONE_NUMBER_STATUSES = frozenset({"active", "warming", "restricted", "archived"})
+# Roles a person can pick (migration 346). Extra: replies to whoever writes, but no campaigns and
+# never takes over from Main. "archived" is set by the system only.
+_PICKABLE_ROLES = frozenset({"primary", "standby", "extra"})
 
 
 @router.get("/")
@@ -82,6 +85,7 @@ def _pool_response(db, tenant_id: str, rows: list[dict]) -> dict:
     ]
     active_rows = [r for r in rows if r.get("status") != "archived"]
     return {
+        "jobs": _jobs(db, tenant_id, active_rows),
         "data": data,
         "numbers_pool": {
             "limit": numbers_pool_limit(db, tenant_id),
@@ -90,6 +94,25 @@ def _pool_response(db, tenant_id: str, rows: list[dict]) -> dict:
             "meta_limit": portfolio_limit(active_rows),
             "meta_sent_24h": usage.total,
         },
+    }
+
+
+def _jobs(db, tenant_id: str, rows: list[dict]) -> dict:
+    """Which number does what today, as the senders actually work (read only):
+    replies go from the number the customer wrote to; Reach uses Main first, then Standby numbers
+    with room (never Extra); OTP, bills, order updates and alerts use the default sender."""
+    try:
+        got = (db.table("app_settings").select("value").eq("tenant_id", tenant_id)
+               .eq("key", "meta_phone_number_id").limit(1).execute().data or [])
+        default_meta = got[0].get("value") if got else None
+    except Exception:
+        default_meta = None
+    default_row = next((r for r in rows if default_meta and r.get("meta_phone_number_id") == default_meta), None)
+    main = next((r for r in rows if r.get("role") == "primary"), None)
+    return {
+        "default_sender_id": default_row["id"] if default_row else None,
+        "main_id": main["id"] if main else None,
+        "reach_ids": [r["id"] for r in rows if r.get("role") in ("primary", "standby") and not r.get("paused_outbound")],
     }
 
 
@@ -161,6 +184,8 @@ async def update_phone_number(
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_numbers_manage),
 ):
+    if payload.role is not None and payload.role not in _PICKABLE_ROLES:
+        raise HTTPException(status_code=400, detail="A number can be Main, Standby or Extra.")
     if payload.status is not None and payload.status not in _VALID_PHONE_NUMBER_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -168,6 +193,11 @@ async def update_phone_number(
         )
 
     db = get_supabase()
+    if payload.role in ("standby", "extra"):
+        current = (db.table("phone_numbers").select("role").eq("id", str(number_id)).eq("tenant_id", tenant_id)
+                   .limit(1).execute().data or [])
+        if current and current[0].get("role") == "primary":
+            raise HTTPException(status_code=400, detail="This is your Main number. Make another number Main first.")
     updates = {}
     if payload.role is not None:
         updates["role"] = payload.role
@@ -194,7 +224,7 @@ async def update_phone_number(
             )
 
     if payload.role == "primary":
-        target = db.table("phone_numbers").select("meta_status").eq("id", str(number_id)).eq("tenant_id", tenant_id).limit(1).execute().data
+        target = db.table("phone_numbers").select("meta_status,meta_phone_number_id").eq("id", str(number_id)).eq("tenant_id", tenant_id).limit(1).execute().data
         if target and not is_meta_connected(target[0]):
             raise HTTPException(
                 status_code=400,
@@ -206,6 +236,10 @@ async def update_phone_number(
     result = db.table("phone_numbers").update(updates).eq("id", str(number_id)).eq("tenant_id", tenant_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Phone number not found")
+    if payload.role == "primary" and target:
+        # Make main by hand moves the default sender too, the same as an automatic takeover does.
+        from app.services.failover import set_default_sender
+        set_default_sender(db, tenant_id, target[0].get("meta_phone_number_id"))
     return result.data[0]
 
 

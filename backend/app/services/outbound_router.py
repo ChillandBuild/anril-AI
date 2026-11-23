@@ -68,6 +68,8 @@ def _eligible(rows: list[dict], sent_now: dict[str, int], unlocked_ids: set[str]
         return []
     out = []
     for r in rows:
+        if r.get("role") == "extra":  # an Extra number is kept out of campaigns (migration 346)
+            continue
         if not can_broadcast(r, now, unlocked_ids):
             continue
         used = usage.per_number.get(r["id"], 0) + sent_now.get(r["id"], 0)

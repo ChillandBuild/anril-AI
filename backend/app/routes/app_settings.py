@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.config import settings as env_settings
 from app.dependencies.auth import get_current_user
@@ -120,6 +120,10 @@ class InboxConfigUpdate(BaseModel):
     segments: list[str] | None = None
     channels: list[str] | None = None
     triggers: list[str] | None = None
+    # v9.2: "Order above" amount for trigger H, and who gets a handover (named person + backup).
+    order_above_paise: int | None = Field(None, ge=100, le=100_000_000_00)
+    handover_to: str | None = Field(None, max_length=64)
+    backup_to: str | None = Field(None, max_length=64)
 
 
 
@@ -2051,7 +2055,17 @@ async def patch_inbox_config(payload: InboxConfigUpdate, ctx: dict = Depends(req
         bad = [c for c in patch["channels"] if c not in valid_ch]
         if bad:
             raise HTTPException(status_code=400, detail=f"Invalid channels: {bad}")
-    valid_tr = {"A", "B", "C", "D", "F"}
+    valid_tr = {"A", "B", "C", "D", "F", "G", "H", "I"}
+    # Named person and backup: an active teammate of this business, or "" to clear.
+    for key in ("handover_to", "backup_to"):
+        if key in patch and patch[key]:
+            from app.db.supabase import get_supabase as _db
+            found = (_db().table("callers").select("id").eq("tenant_id", tenant_id).eq("id", patch[key])
+                     .limit(1).execute().data or [])
+            if not found:
+                raise HTTPException(status_code=400, detail="That teammate isn't on your team")
+        elif key in patch:
+            patch[key] = None
     if "triggers" in patch:
         bad = [t for t in patch["triggers"] if t not in valid_tr]
         if bad:

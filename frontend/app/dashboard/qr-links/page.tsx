@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Download, Loader2, Plus } from "lucide-react";
+import { uniqueNames, zipStore } from "@/lib/zipStore";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { createQrLink, listQrLinks, updateQrLink, type QrLink, type QrList } from "@/lib/qrLinksApi";
 import { QrCard } from "./QrCard";
 import { QrForm, type QrFormResult } from "./QrForm";
 import { PrintDialog } from "./PrintDialog";
+
+const businessNameFor = (name: string | null) => (name ?? "").trim();
 
 export default function QrLinksPage() {
   const { role, permissions, tenantName, loading: roleLoading } = useAuthRole();
@@ -59,6 +62,22 @@ export default function QrLinksPage() {
     }
   }
 
+  // Download all: every QR in use (not archived), each as its own PNG, in one .zip.
+  async function downloadAll() {
+    const canvases = Array.from(document.querySelectorAll<HTMLCanvasElement>("canvas[data-qr-file]"));
+    if (!canvases.length) return;
+    const blobs = await Promise.all(canvases.map((c) => new Promise<Blob | null>((ok) => c.toBlob(ok, "image/png"))));
+    const names = uniqueNames(canvases.map((c) => c.dataset.qrFile || "qr.png"));
+    const files = await Promise.all(blobs.map(async (b, i) => ({ name: names[i], data: new Uint8Array(await (b as Blob).arrayBuffer()) })));
+    const url = URL.createObjectURL(zipStore(files.filter((f) => f.data.length)));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(businessNameFor(tenantName) || "qr-codes").replace(/[^\w-]+/g, "-")}-qr-codes.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success(`${files.length} QR ${files.length === 1 ? "code" : "codes"} downloaded`);
+  }
+
   if (roleLoading) return <div className="flex items-center justify-center gap-2 py-20 text-sm text-ink-muted"><Loader2 size={16} className="animate-spin" /> Loading…</div>;
   if (!canView) return <p className="py-20 text-center text-sm text-ink-muted">You don&apos;t have access to QR &amp; links.</p>;
 
@@ -71,11 +90,18 @@ export default function QrLinksPage() {
         <div>
           <p className="max-w-prose text-sm text-ink-muted">Print a QR for each place. When a customer scans it, WhatsApp opens with your first message, and you see which QR brought them.</p>
         </div>
-        {canManage && !creating && !editing && (
-          <button type="button" onClick={() => setCreating(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
-            <Plus size={16} /> New QR
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {items.some((l) => !l.archived) && (
+            <button type="button" onClick={() => void downloadAll()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-low">
+              <Download size={16} /> Download all
+            </button>
+          )}
+          {canManage && !creating && !editing && (
+            <button type="button" onClick={() => setCreating(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+              <Plus size={16} /> New QR
+            </button>
+          )}
+        </div>
       </div>
 
       {(creating || editing) && canManage && (

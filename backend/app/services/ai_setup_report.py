@@ -413,11 +413,130 @@ def report_card(db, tenant_id: str, days: int, *, sees_money: bool, caller_id: s
         "wrong_answers": reasons.get("wrong", 0),
         "fix_these": fix_these(questions, reasons, gap_chats),
     }
+    # v9.2: the same numbers for the days just before, the team's reply time, chats by result, and
+    # a few chats worth opening. Each part fails alone: the card above still shows.
+    prev = Period(period.start - timedelta(days=days), period.start - timedelta(days=1))
+    try:
+        p_counts = _handled(db, tenant_id, prev)
+        p_chats = int(p_counts.get("chats") or 0)
+        card["previous"] = {
+            "handled_alone_pct": round(int(p_counts.get("handled_by_aira") or 0) * 100 / p_chats) if p_chats else None,
+            "passed_to_person": int(p_counts.get("handed_over") or 0),
+        }
+    except Exception as exc:
+        logger.warning("report card: previous period unavailable: %s", exc)
+    card["team_reply_min"] = _team_reply_minutes(db, tenant_id, period)
+    card["results"] = _results(db, tenant_id, period, int(counts.get("handed_over") or 0))
+    card["look_at"] = _look_at(db, tenant_id, period)
     if sees_money:
         card["revenue_from_ai_paise"] = _ai_revenue(db, tenant_id, period)
+        card["paid_orders_by_ai"] = _ai_paid_count(db, tenant_id, period)
+        try:
+            card["previous"]["revenue_from_ai_paise"] = _ai_revenue(db, tenant_id, prev)
+        except Exception:
+            pass
     else:
         card["money_hidden"] = True
     return card
+
+
+def _ai_paid_count(db, tenant_id: str, period: Period) -> int:
+    from app.services.reports_data import won_deals
+    try:
+        return sum(1 for d in won_deals(db, tenant_id, period) if d.get("sold_by_ai"))
+    except Exception:
+        return 0
+
+
+def _handovers_in(db, tenant_id: str, period: Period) -> list[dict]:
+    try:
+        return fetch_bounded(
+            lambda: db.table("chat_handovers").select("id,lead_id,opened_at,answered_at,status")
+            .eq("tenant_id", tenant_id).gte("opened_at", period.start_iso).lt("opened_at", period.end_iso)
+            .order("opened_at").order("id"), "report card handover times")
+    except Exception as exc:
+        logger.warning("report card: handover times unavailable: %s", exc)
+        return []
+
+
+def _team_reply_minutes(db, tenant_id: str, period: Period) -> int | None:
+    """Average minutes from a chat being passed to a person until a teammate answered."""
+    waits = []
+    for h in _handovers_in(db, tenant_id, period):
+        opened, answered = _ts(h.get("opened_at")), _ts(h.get("answered_at"))
+        if opened and answered and answered >= opened:
+            waits.append((answered - opened).total_seconds() / 60)
+    return round(sum(waits) / len(waits)) if waits else None
+
+
+QUIET_AFTER = timedelta(days=2)
+
+
+def chat_result(lead: dict, handed_over: set[str], now: datetime) -> str:
+    """paid > booked > lost > passed to a person > went quiet (nothing for 2 days) > still talking."""
+    from app.services.inbound_leads_logic import lead_result
+    result = lead_result(lead)
+    if result in ("paid", "booked", "lost"):
+        return result
+    if lead["id"] in handed_over:
+        return "passed"
+    last = _ts(lead.get("last_inbound_at"))
+    return "quiet" if not last or now - last > QUIET_AFTER else "talking"
+
+
+def _results(db, tenant_id: str, period: Period, handed_over_count: int) -> dict:
+    """What happened to the chats the AI agent replied to in these days."""
+    out = {"paid": 0, "booked": 0, "lost": 0, "passed": 0, "talking": 0, "quiet": 0}
+    try:
+        msgs = fetch_bounded(
+            lambda: db.table("messages").select("lead_id").eq("tenant_id", tenant_id).eq("is_ai_generated", True)
+            .gte("created_at", period.start_iso).lt("created_at", period.end_iso).order("created_at").order("id"),
+            "report card AI chats")
+        ids = list({m["lead_id"] for m in msgs if m.get("lead_id")})
+        handed = {h["lead_id"] for h in _handovers_in(db, tenant_id, period) if h.get("lead_id")}
+        now = datetime.now(timezone.utc)
+        for part in chunks(ids, LEAD_CHUNK):
+            rows = (db.table("leads").select("id,converted_at,won_deal_count,lost_at,booked_at,last_inbound_at")
+                    .eq("tenant_id", tenant_id).in_("id", part).execute().data or [])
+            for lead in rows:
+                out[chat_result(lead, handed, now)] += 1
+    except Exception as exc:
+        logger.warning("report card: results unavailable: %s", exc)
+    return out
+
+
+def _look_at(db, tenant_id: str, period: Period) -> list[dict]:
+    """Up to three chats worth two minutes each: an answer marked wrong, a slow team reply, an open handover."""
+    picks: list[dict] = []
+    try:
+        wrong = (db.table("ai_reply_feedback").select("lead_id,note,created_at").eq("tenant_id", tenant_id)
+                 .eq("reason", "wrong").gte("created_at", period.start_iso).order("created_at", desc=True)
+                 .limit(1).execute().data or [])
+        for w in wrong:
+            if w.get("lead_id"):
+                picks.append({"kind": "wrong", "lead_id": w["lead_id"], "at": w.get("created_at"),
+                              "text": f"Answer marked wrong{': ' + w['note'] if w.get('note') else ''}"})
+        slow, still_open = None, None
+        for h in _handovers_in(db, tenant_id, period):
+            opened, answered = _ts(h.get("opened_at")), _ts(h.get("answered_at"))
+            if opened and answered and (answered - opened) > timedelta(minutes=30):
+                mins = round((answered - opened).total_seconds() / 60)
+                if not slow or mins > slow["mins"]:
+                    slow = {"kind": "slow", "lead_id": h["lead_id"], "at": h.get("opened_at"), "mins": mins,
+                            "text": f"Passed to a person, the team replied after {mins} min"}
+            if h.get("status") == "pending" and not answered:
+                still_open = still_open or {"kind": "open", "lead_id": h["lead_id"], "at": h.get("opened_at"),
+                                            "text": "Passed to a person and still waiting for a reply"}
+        picks += [x for x in (slow, still_open) if x]
+        ids = [p["lead_id"] for p in picks]
+        names = {r["id"]: r.get("name") for r in (db.table("leads").select("id,name").eq("tenant_id", tenant_id)
+                                                     .in_("id", ids).execute().data or [])} if ids else {}
+        for p in picks:
+            p["name"] = names.get(p["lead_id"]) or None
+            p.pop("mins", None)
+    except Exception as exc:
+        logger.warning("report card: chats to look at unavailable: %s", exc)
+    return picks[:3]
 
 
 # ── Questions & scoring (read-only) ───────────────────────────────────────────

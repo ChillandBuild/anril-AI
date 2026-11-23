@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BrainOverview } from "@/components/brain/BrainOverview";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -136,6 +137,7 @@ export default function AiraBrainPage() {
               </div>
             </div>
             {refreshError && <p role="alert" className="font-body text-sm text-danger">{refreshError} Showing the last loaded status; try refreshing again.</p>}
+            <BrainOverview canManage={isOwner || permissions.includes("settings.manage")} canSeeMoney={isOwner || permissions.includes("deals.view")} />
             <NextBrainAction brain={data} onSelect={setActiveSection} activeSection={activeSection} canManageSettings={isOwner || permissions.includes("settings.manage")} />
             <BrainWorkspace activeId={activeSection} onSelect={setActiveSection} sections={[
               { id: "overview", label: "Overview", description: "How Anril is doing and where its answers can improve.", content: <HeadlineStrip headline={data.headline} /> },
