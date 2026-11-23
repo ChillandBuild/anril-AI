@@ -15,6 +15,12 @@ function today(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * SIM or cloud per person is hidden until the telecaller phone app (v9.2 #22) lands: today only the Call
+ * button follows a per-person choice, the other calling screens read the business setting (Prem, 2026-11-23).
+ */
+const PER_PERSON_MODE = false;
+
 function PersonRow({ p, canMode, canLeave, onChanged }: {
   p: RulesPerson; canMode: boolean; canLeave: boolean; onChanged: () => void;
 }) {
@@ -44,14 +50,16 @@ function PersonRow({ p, canMode, canLeave, onChanged }: {
           <p className="text-sm font-semibold text-ink">{name}</p>
           <p className="text-sm text-ink-muted">Calls with: {modeWords(p.effective_mode)}</p>
         </div>
-        <select aria-label={`How ${name} calls`} value={p.calling_mode} disabled={!canMode || busy} className={INPUT}
-          onChange={(e) => void run(async () => {
-            await callRulesApi.setMode(p.id, e.target.value as CallingMode);
-            toast.success("Saved");
-            onChanged();
-          })}>
-          {MODE_CHOICES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
+        {PER_PERSON_MODE ? (
+          <select aria-label={`How ${name} calls`} value={p.calling_mode} disabled={!canMode || busy} className={INPUT}
+            onChange={(e) => void run(async () => {
+              await callRulesApi.setMode(p.id, e.target.value as CallingMode);
+              toast.success("Saved");
+              onChanged();
+            })}>
+            {MODE_CHOICES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        ) : null}
       </div>
 
       {line ? <p className="mt-1 text-sm font-semibold text-ink">{line}</p> : null}
@@ -98,12 +106,14 @@ function PersonRow({ p, canMode, canLeave, onChanged }: {
   );
 }
 
-/** Per person: SIM or office number, and leave. */
+/** Per person: SIM or office number (hidden for now, see PER_PERSON_MODE), and leave. */
 export function PeopleCard({ data, canMode, canLeave, onChanged }: {
   data: RulesPeople; canMode: boolean; canLeave: boolean; onChanged: () => void;
 }) {
   return (
-    <Card id="people-heading" title="Telecallers" hint={`By default the business calls with: ${modeWords(data.business_mode)}. Each person can use the other way.`}>
+    <Card id="people-heading" title="Telecallers" hint={PER_PERSON_MODE
+      ? `By default the business calls with: ${modeWords(data.business_mode)}. Each person can use the other way.`
+      : `Everyone calls with: ${modeWords(data.business_mode)} (change it in Settings, Calling). Picking SIM or cloud per person comes later, with the phone app.`}>
       {data.callers.length === 0 ? (
         <p className="text-sm text-ink-muted">No telecallers yet. Add them in Settings, Team &amp; roles.</p>
       ) : (

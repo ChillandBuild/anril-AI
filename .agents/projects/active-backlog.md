@@ -623,7 +623,7 @@ Measure first: ~10 questions where the Rule Book has the rule and a book has the
 Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Call reviews page does not read `?call=<call_log_id>` yet (Call IQ Evaluation "Review call" links just open the page).
 - Hidden numbers: applied to next-lead, /initiate (cloud) and the lead list; NOT to lead detail (`GET /leads/{id}` has no ctx) or customer_profile. SIM callers always see numbers (the phone dialer needs them).
-- Per-person SIM/cloud is used by /initiate only; callers.py (167, 281, 616, 641), call_review.py, leads.py:1868, analytics.py still read the business setting.
+- Per-person SIM/cloud: picker HIDDEN (PER_PERSON_MODE=false in components/call-iq-settings/PeopleCard.tsx, Prem 2026-11-23); do it with the telecaller phone app (#22). Then wire effective_calling_mode into callers.py (167, 281, 616, 641), call_review.py, leads.py:1868, analytics.py (only /initiate uses it today).
 - Assignment Log needs a label for reason "moved_for_leave".
 - Nothing emits a "number_disconnected" alert yet (key reserved in quiet-time allow list).
 - Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
