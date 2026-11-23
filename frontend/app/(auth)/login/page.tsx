@@ -6,6 +6,18 @@ import { Eye, EyeOff, X } from "lucide-react";
 import { AnrilLogo } from "@/components/logo";
 import LoginShowcase from "@/components/auth/LoginShowcase";
 import a from "@/components/auth/auth.module.css";
+import {
+  NO_TRIES,
+  addWrongTry,
+  formatCountdown,
+  isWrongPasswordError,
+  mustChangePassword,
+  pauseSecondsLeft,
+  readTries,
+  writeTries,
+  type LoginTries,
+} from "@/components/first-setup/helpers";
+import { requestPasswordHelp } from "@/lib/firstSetupApi";
 
 // Off until Google is set up in Google Cloud and enabled as a Supabase provider.
 // Calling signInWithOAuth before that lands people on a raw JSON error page.
@@ -49,6 +61,13 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [businessName, setBusinessName] = useState("");
+  const [helpNote, setHelpNote] = useState("");
+  const [phoneOrEmail, setPhoneOrEmail] = useState("");
+  // After 5 wrong passwords in this browser the button waits 10 minutes. A courtesy only: the
+  // real limit on sign-in attempts is Supabase's, on its server.
+  const [tries, setTries] = useState<LoginTries>(NO_TRIES);
+  const [now, setNow] = useState(() => Date.now());
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [peek, setPeek] = useState(false);
   const [wide, setWide] = useState(false);
@@ -63,6 +82,16 @@ export default function LoginPage() {
   const [cardH, setCardH] = useState(0);
   const [signinH, setSigninH] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setTries(readTries());
+  }, []);
+  const secondsLeft = pauseSecondsLeft(tries, now);
+  useEffect(() => {
+    if (!secondsLeft) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [secondsLeft]);
 
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason");
@@ -128,36 +157,54 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const stamp = Date.now();
+    setNow(stamp);
+    if (pauseSecondsLeft(readTries(), stamp) > 0) return;
     setLoading(true);
     setError(null);
     setNotice(null);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     if (error) {
+      if (isWrongPasswordError(error)) {
+        const next = addWrongTry(readTries(), Date.now());
+        writeTries(next);
+        setTries(next);
+        setNow(Date.now());
+      }
       setError(error.message);
       setLoading(false);
       return;
     }
-    router.push("/dashboard");
+    writeTries(NO_TRIES);
+    // The Anril team made this login with a first password: the owner picks their own now.
+    router.push(mustChangePassword(data.user) ? "/change-password" : "/dashboard");
     router.refresh();
   }
 
-  async function handleReset(e: React.FormEvent) {
+  // Forgot password is not automatic: the request goes to the Anril team, who check it is really
+  // the owner and give the new password in person or on a call. Nothing is sent by email or SMS.
+  async function handleHelpRequest(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-    });
-    // Same message whether or not the email has an account, so this form can't be
-    // used to find out who is a customer. Rate-limit errors land here too.
-    setNotice(
-      "If that email has an account, a reset link is on its way. Open it in this browser.",
-    );
+    setNotice(null);
+    try {
+      const res = await requestPasswordHelp({
+        identifier: phoneOrEmail.trim(),
+        business_name: businessName.trim(),
+        note: helpNote.trim(),
+      });
+      setNotice(res.message);
+      setPhoneOrEmail("");
+      setBusinessName("");
+      setHelpNote("");
+    } catch {
+      setError("We couldn't send your request. Check your internet and try again.");
+    }
     setLoading(false);
   }
 
@@ -182,7 +229,7 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPasskey();
+    const { data, error } = await supabase.auth.signInWithPasskey();
     if (error) {
       setPasskeyLoading(false);
       // User cancelled the OS passkey prompt or it timed out — not a real error, stay quiet.
@@ -191,7 +238,7 @@ export default function LoginPage() {
       }
       return;
     }
-    router.push("/dashboard");
+    router.push(mustChangePassword(data?.user) ? "/change-password" : "/dashboard");
     router.refresh();
   }
 
@@ -324,9 +371,12 @@ export default function LoginPage() {
                         <button
                           type="button"
                           className={`${a.link} mb-2`}
-                          onClick={() => switchView("forgot")}
+                          onClick={() => {
+                            setPhoneOrEmail(email);
+                            switchView("forgot");
+                          }}
                         >
-                          Reset password
+                          Forgot password?
                         </button>
                       </div>
                       <div className="relative">
@@ -363,10 +413,14 @@ export default function LoginPage() {
                     </div>
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || secondsLeft > 0}
                       className={a.primary}
                     >
-                      {loading ? "Signing in…" : "Sign in"}
+                      {secondsLeft > 0
+                        ? `Too many tries. Wait ${formatCountdown(secondsLeft)}`
+                        : loading
+                          ? "Signing in…"
+                          : "Sign in"}
                     </button>
                   </form>
 
@@ -401,40 +455,70 @@ export default function LoginPage() {
               ) : (
                 <>
                   <h1 className="text-[26px] font-extrabold tracking-tight">
-                    Reset your password
+                    Forgot your password?
                   </h1>
                   <p className="mt-1 mb-6 text-[15px] text-ink-muted">
-                    We&apos;ll email you a link to choose a new one.
+                    Send a request to the Anril team. They will check it is
+                    really you and give you a new password in person or on a
+                    call, Monday to Saturday, 10 to 6. We never send passwords
+                    by email or SMS. Team members: ask your owner to set a new
+                    password in Settings, Team &amp; roles.
                   </p>
 
-                  <form onSubmit={handleReset} className="space-y-4">
+                  <form onSubmit={handleHelpRequest} className="space-y-4">
                     <div>
-                      <label htmlFor="reset-email" className={a.label}>
-                        Email
+                      <label htmlFor="help-who" className={a.label}>
+                        Your login email and a phone number
                       </label>
                       <input
-                        id="reset-email"
-                        type="email"
-                        value={email}
+                        id="help-who"
+                        type="text"
+                        value={phoneOrEmail}
                         onChange={(e) => {
-                          setEmail(e.target.value);
+                          setPhoneOrEmail(e.target.value);
                           clearMessages();
                         }}
                         required
-                        inputMode="email"
+                        maxLength={120}
                         autoCapitalize="none"
                         autoCorrect="off"
-                        autoComplete="email"
                         className={a.field}
-                        placeholder="you@company.com"
+                        placeholder="you@shop.com, 98765 43210"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="help-business" className={a.label}>
+                        Business name (optional)
+                      </label>
+                      <input
+                        id="help-business"
+                        type="text"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        maxLength={120}
+                        className={a.field}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="help-note" className={a.label}>
+                        Anything we should know (optional)
+                      </label>
+                      <textarea
+                        id="help-note"
+                        value={helpNote}
+                        onChange={(e) => setHelpNote(e.target.value)}
+                        maxLength={300}
+                        rows={2}
+                        className={a.field}
+                        placeholder="For example: best time to call you"
                       />
                     </div>
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !phoneOrEmail.trim()}
                       className={a.primary}
                     >
-                      {loading ? "Sending…" : "Email me a reset link"}
+                      {loading ? "Sending…" : "Send request to Anril team"}
                     </button>
                   </form>
 

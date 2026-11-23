@@ -6,6 +6,26 @@ from app.db.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 
+# v9.2 #26 Quiet time: a business that never saved a quiet-time choice is quiet 9 PM to 9 AM (IST).
+# A business that saved one (on or off, any hours) keeps it exactly. get_notification_config marks the
+# never-saved case with quiet_hours_unsaved=True and effective_quiet_hours() applies this default.
+QUIET_TIME_DEFAULT: dict = {"enabled": True, "start_hour": 21, "end_hour": 9}
+
+# The only alerts that still come through during quiet time: money coming in or going out, "the AI agent
+# needs a person" (a handover) and "your WhatsApp number is disconnected".
+QUIET_TIME_ALLOWED_TYPES: frozenset[str] = frozenset({
+    "intake_paid", "intake_double_payment", "deal_double_payment", "payment_received",
+    "refund_done", "refund_issued",
+    "handover_new",
+    "number_disconnected", "whatsapp_disconnected",
+})
+
+
+def allowed_in_quiet_time(alert_type: str) -> bool:
+    """True when this kind of alert may still come through during quiet time."""
+    return (alert_type or "") in QUIET_TIME_ALLOWED_TYPES
+
+
 _NOTIFICATION_CONFIG_DEFAULT: dict = {
     "push_enabled": True,
     "events": {
@@ -16,6 +36,22 @@ _NOTIFICATION_CONFIG_DEFAULT: dict = {
         "lead_replied": True,
         "handover_new": True,
         "intake_trigger_failed": True,
+        # v9.2 #26: the other alerts listed on Settings > Alerts. All on until the owner turns one off.
+        "intake_paid": True,
+        "intake_double_payment": True,
+        "deal_double_payment": True,
+        "quote_accepted": True,
+        "purchase_order": True,
+        "day_closing": True,
+        "batch_expiry": True,
+        "sms_low_balance": True,
+        "booking_new": True,
+        "booking_cancelled": True,
+        "feedback_unhappy": True,
+        "call_alerts_summary": True,
+        "scheduled_template_failed": True,
+        "number_disconnected": True,
+        "template_paused": True,
     },
     "claimable_threshold_minutes": 15,
     "claimable_audience": "telecallers_and_admin",
@@ -61,9 +97,11 @@ def get_notification_config(tenant_id: str, db=None) -> dict:
             .maybe_single()
             .execute()
         )
+        saved_quiet = False
         if row and row.data:
             stored = json.loads(row.data["value"])
             if isinstance(stored, dict):
+                saved_quiet = isinstance(stored.get("quiet_hours"), dict)
                 merged["events"] = {**merged["events"], **(stored.get("events") or {})}
                 merged["quiet_hours"] = {**merged["quiet_hours"], **(stored.get("quiet_hours") or {})}
                 merged["whatsapp_notifications"] = {**merged["whatsapp_notifications"], **(stored.get("whatsapp_notifications") or {})}
@@ -74,14 +112,20 @@ def get_notification_config(tenant_id: str, db=None) -> dict:
                 for k in ("push_enabled", "claimable_threshold_minutes", "claimable_audience", "claimable_caller_ids"):
                     if k in stored:
                         merged[k] = stored[k]
+        # The settings were read fine and carry no quiet-time choice: the new default applies.
+        merged["quiet_hours_unsaved"] = not saved_quiet
     except Exception as e:
         logger.warning(f"get_notification_config failed for {tenant_id}: {e}")
     return merged
 
 
-def save_notification_config(tenant_id: str, config: dict) -> None:
+def save_notification_config(tenant_id: str, config: dict, db=None) -> None:
     """Persist notification_config to app_settings."""
-    db = get_supabase()
+    # quiet_hours_unsaved is a read-time marker, never stored. While it is set the owner has made no quiet-time
+    # choice, so the default quiet_hours block is left out too (saving it would turn a default into a "choice").
+    unsaved = bool(config.get("quiet_hours_unsaved"))
+    config = {k: v for k, v in config.items() if k != "quiet_hours_unsaved" and not (unsaved and k == "quiet_hours")}
+    db = db or get_supabase()
     db.table("app_settings").upsert(
         {
             "key": "notification_config",
@@ -91,6 +135,13 @@ def save_notification_config(tenant_id: str, config: dict) -> None:
         },
         on_conflict="tenant_id,key",
     ).execute()
+
+
+def effective_quiet_hours(cfg: dict) -> dict:
+    """The quiet-time window that really applies: the saved one, or the default when none was ever saved."""
+    if cfg.get("quiet_hours_unsaved"):
+        return dict(QUIET_TIME_DEFAULT)
+    return cfg.get("quiet_hours") or {}
 
 
 def _in_quiet_hours(quiet: dict, ist_hour: int) -> bool:
@@ -121,8 +172,8 @@ def push_allowed(tenant_id: str, event_type: str, *, db=None) -> bool:
             return False
         if not cfg.get("events", {}).get(event_type, True):
             return False
-        quiet = cfg.get("quiet_hours", {})
-        if quiet.get("enabled"):
+        quiet = effective_quiet_hours(cfg)
+        if quiet.get("enabled") and not allowed_in_quiet_time(event_type):
             ist_hour = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).hour
             if _in_quiet_hours(quiet, ist_hour):
                 return False

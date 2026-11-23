@@ -171,7 +171,26 @@ def eligible_callers(db, tenant_id: str) -> list[dict]:
         query = query.neq("user_id", owner_user_id)
     rows = list(query.execute().data or [])
     rows.sort(key=lambda c: (c.get("created_at") or "", c.get("id") or ""))
-    return rows
+    return _without_people_on_leave(db, tenant_id, rows)
+
+
+def _without_people_on_leave(db, tenant_id: str, rows: list[dict]) -> list[dict]:
+    """Call IQ leave (v9.2 #21): nobody gets new leads on a day they are on leave. Read apart from the
+    main query so a missing leave column (migration 321 not applied) never stops assignment."""
+    if not rows:
+        return rows
+    try:
+        from app.services.caller_leave import on_leave, today_ist
+        leave_rows = (
+            db.table("callers").select("id,leave_from,leave_to")
+            .eq("tenant_id", tenant_id).not_.is_("leave_from", "null").execute().data
+        ) or []
+        today = today_ist()
+        away = {r["id"] for r in leave_rows if isinstance(r, dict) and r.get("id") and on_leave(r, today)}
+    except Exception as e:
+        logger.warning(f"assignment: could not read leave for {tenant_id}: {e}")
+        return rows
+    return [r for r in rows if r.get("id") not in away]
 
 
 def caller_in_shift(caller: dict, cfg: dict, current_hour: int) -> bool:

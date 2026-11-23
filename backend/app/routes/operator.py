@@ -144,7 +144,8 @@ async def reset_password(tenant_id: str, _admin: dict = Depends(get_system_admin
     if not owner.data:
         raise HTTPException(status_code=404, detail="No owner found for this tenant")
     temp_pw = "Anril@" + secrets.token_urlsafe(10)
-    db.auth.admin.update_user_by_id(owner.data["user_id"], {"password": temp_pw})
+    # The owner is asked to pick their own password on next sign-in (Supabase merges user_metadata keys).
+    db.auth.admin.update_user_by_id(owner.data["user_id"], {"password": temp_pw, "user_metadata": {"must_change_password": True}})
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -207,6 +208,8 @@ def create_client(payload: CreateClientPayload, _admin: dict = Depends(get_syste
         "email": payload.email,
         "password": payload.password,
         "email_confirm": True,
+        # The Anril team picked this password: the owner is asked to change it on first sign-in.
+        "user_metadata": {"must_change_password": True},
     })
     user_id = user.user.id if hasattr(user, "user") else None
     if not user_id:

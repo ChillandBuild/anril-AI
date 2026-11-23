@@ -202,9 +202,9 @@ describe("Settings box in the drawer", () => {
     expect(box("owner", [])).toEqual({
       groups: [
         ["My business", ["Business details", "Payments & advance", "Target & profit", "Text size"]],
-        ["Connections", ["Channels", "Calling", "Limits & Meta charges"]],
+        ["Connections", ["Channels", "Calling", "Calling rules", "Limits & Meta charges"]],
         ["Team & roles", ["Team & roles"]],
-        ["Alerts & automations", ["Alerts"]],
+        ["Alerts & automations", ["Alerts", "Push & lead claims", "Automations"]],
       ],
       loose: ["Plans & subscription"],
     });

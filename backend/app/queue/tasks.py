@@ -49,6 +49,9 @@ RETRY_CLASS: dict[str, str] = {
     "booking-call-now": "C",
     "feedback-ask": "C",
     "reports-monthly-bells": "C",
+    "call-break-limits": "C",
+    "evening-summary": "C",
+    "comeback-offers": "C",
 }
 
 
@@ -430,3 +433,35 @@ def reports_monthly_bells(timestamp: int) -> None:
     """1st: "Your report for last month". 5th: "Last month's accountant file is ready"."""
     from app.services.reports_monthly import send_due_bells
     send_due_bells()
+
+
+# Call IQ (v9.2 #21). Class C: one bell per break (callers.break_alert_sent_at is stamped first), never two at
+# once. The same run starts any leave whose first day has arrived (moves that person's open leads).
+@queue_app.periodic(cron="*/5 * * * *", periodic_id="call-break-limits")
+@queue_app.task(name="call-break-limits", **_one_at_a_time("call-break-limits"), queue="calls")
+def call_break_limits(timestamp: int) -> None:
+    """Bell the owner when a telecaller stays on break past the business's limit; start due leaves."""
+    from app.db.supabase import get_supabase
+    from app.services.call_rules import check_break_limits
+    check_break_limits(get_supabase())
+
+
+# Alerts & automations (v9.2 #26). Class C: each sends WhatsApp messages. The evening summary records the day
+# it was sent per business before it sends; the come-back offer claims a row per customer first (30-day rule).
+# Both are OFF until the owner switches them on.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(20, 0), periodic_id="evening-summary")
+@queue_app.task(name="evening-summary", **_one_at_a_time("evening-summary"), queue="messages")
+def evening_summary(timestamp: int) -> None:
+    """8 PM IST: today's chats, new customers, orders and money to the owner on WhatsApp."""
+    from app.db.supabase import get_supabase
+    from app.services.evening_summary import send_evening_summaries
+    send_evening_summaries(get_supabase())
+
+
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(11, 0), periodic_id="comeback-offers")
+@queue_app.task(name="comeback-offers", **_one_at_a_time("comeback-offers"), queue="messages")
+def comeback_offers(timestamp: int) -> None:
+    """11 AM IST: the come-back offer to customers who bought before but not in 60 days (at most once a month)."""
+    from app.db.supabase import get_supabase
+    from app.services.comeback_offer import send_comeback_offers
+    send_comeback_offers(get_supabase())

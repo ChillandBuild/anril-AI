@@ -143,7 +143,8 @@ describe("navSections tab coverage", () => {
     // the 7 Call IQ addresses added to OLD_TABS above (upload tabs, team log) are pages, not rows.
     expect(allLeaves()).toHaveLength(OLD_TABS.length - 3 /* settings pages */ - 2 + 1 - 2 + 1 - 7 + 3 /* Calling, Leads to call, Call reviews */
       + 1 /* Purchases (2026-11-21) */ + 1 /* Teach & offers (2026-11-22) */ + 1 /* Expenses (2026-11-23) */
-      + 3 /* Bookings, Google Ads, QR & links (2026-11-23) */);
+      + 3 /* Bookings, Google Ads, QR & links (2026-11-23) */
+      + 3 /* Call IQ Live, Evaluation, Results */ + 3 /* Couldn't answer, AI report card, Questions & scoring */);
     expect(allEntries().every((e) => e.kind === "link")).toBe(true);
   });
 
@@ -582,9 +583,10 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
     buildNavAccess({ role: "caller", permissions, enabledFeatures: features, subStatus: "active" }).access;
   const rowsShown = (access: NavAccess) => visibleEntries(callIq, access).map((entry) => entry.key);
 
-  it("the section holds four plain rows in this order, and the nested Telecalling group is gone", () => {
+  it("the section holds its plain rows in this order (Call IQ pages last), and the nested Telecalling group is gone", () => {
     expect(callIq.entries.map((entry) => [entry.key, entry.label])).toEqual([
       ["calling", "Calling"], ["leads-to-call", "Leads to call"], ["call-reviews", "Call reviews"], ["team", "Team"],
+      ["call-iq-live", "Live"], ["call-iq-evaluation", "Evaluation"], ["call-iq-results", "Results"],
     ]);
     expect(callIq.entries.every((entry) => entry.kind === "link")).toBe(true);
   });
@@ -670,7 +672,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 
   it("a user with only team.view sees Team and the Who got which lead path", () => {
     const access = buildNavAccess({ role: "caller", permissions: ["team.view"], enabledFeatures: [], subStatus: "active" }).access;
-    expect(rowsShown(access)).toEqual(["leads-to-call", "team"]);
+    expect(rowsShown(access)).toEqual(["leads-to-call", "team", "call-iq-live", "call-iq-evaluation", "call-iq-results"]);
     expect(leafHref(leafByKey("leads-to-call"), access)).toBe("/dashboard/team?tab=log");
     expect(leafHref(leafByKey("team"), access)).toBe("/dashboard/team");
     expect(LEADS_CHIPS(access)).toEqual(["Who got which lead"]);
@@ -700,7 +702,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
   });
 
   it("without telecalling bought only the Team pages show; without an active subscription nothing does", () => {
-    expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: [], subStatus: "active" }).access)).toEqual(["leads-to-call", "team"]);
+    expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: [], subStatus: "active" }).access)).toEqual(["leads-to-call", "team", "call-iq-live", "call-iq-evaluation", "call-iq-results"]);
     expect(rowsShown(buildNavAccess({ role: "owner", permissions: [], enabledFeatures: ["telecalling_sim"], subStatus: "expired" }).access)).toEqual([]);
   });
 

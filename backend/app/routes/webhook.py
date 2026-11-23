@@ -619,6 +619,21 @@ async def _process_inbound_message_background(
         logger.error(f"Background inbound message processing failed for lead {lead_id}: {err}")
 
 
+def _pause_or_resume_automations(tenant_id: str | None, value: dict) -> None:
+    """Alerts & automations (v9.2 #26): a template that is rejected, paused or switched off pauses every
+    automation using it (red banner + bell); when it is approved again, only what this paused comes back.
+    Never breaks the webhook."""
+    try:
+        name = str((value or {}).get("message_template_name") or "").strip()
+        status = str((value or {}).get("event") or "").strip().upper()
+        if not tenant_id or not name or not status:
+            return
+        from app.services.template_pauses import on_template_status_change
+        on_template_status_change(get_supabase(), tenant_id, name, status)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"template status: could not update automations for {tenant_id}: {e}")
+
+
 def _apply_status_updates(db, tenant_id: str, statuses: list) -> None:
     """Meta delivery receipts (delivered, read, failed). Sync Supabase calls, run in
     a worker thread: every campaign send comes back as several of these, and one
@@ -804,6 +819,8 @@ async def whatsapp_webhook(
                 # tenant's own copy is written.
                 from app.routes.templates import apply_template_change
                 apply_template_change(get_supabase(), field, value, tenant_id=tenant_for_sig)
+                if field == "message_template_status_update":
+                    _pause_or_resume_automations(tenant_for_sig, value)
 
             elif field == "business_capability_update":
                 # Meta raised (or set) the business's messaging limit. entry.id is

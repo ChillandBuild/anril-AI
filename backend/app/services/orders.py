@@ -20,6 +20,7 @@ from urllib.parse import quote
 
 from app.db.supabase import get_supabase
 from app.services import deals as deals_service
+from app.services.bill_number_format import format_bill_number
 from app.services.deals import DealError, balance_paise, format_deal_number, _rupees
 
 logger = logging.getLogger(__name__)
@@ -239,7 +240,7 @@ def ensure_invoice(db, tenant_id: str, deal_id: str) -> str | None:
         n = _rpc_int(db.rpc("next_invoice_number", {"p_tenant_id": tenant_id, "p_fy": fy}).execute().data)
         if n is None:
             return None
-        number = f"{fy}/{n:04d}"
+        number = format_bill_number(db, tenant_id, fy, n)
         patch = {"invoice_number": number, "invoice_issued_at": _now().isoformat()}
         if not deal.get("bill_token"):
             patch["bill_token"] = secrets.token_urlsafe(16)

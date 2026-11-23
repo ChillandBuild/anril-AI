@@ -25,6 +25,7 @@ import {
   PanelRightOpen, PanelRightClose, UserRound, Loader2,
 } from "lucide-react";
 import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
+import { ReplyFeedback } from "@/components/ai-setup/ReplyFeedback";
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -181,6 +182,7 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
           <span>{new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
           {isOutbound && <DeliveryTicks msg={msg} onDark={!isAi} />}
         </p>
+        {isAi && <ReplyFeedback messageId={msg.id} />}
       </div>
     </div>
   );

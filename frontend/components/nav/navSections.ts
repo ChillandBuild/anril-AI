@@ -443,6 +443,70 @@ const TEAM_ROW: NavLeaf = {
   isActive: (p, tab = "") => p.startsWith(TEAM) && tab !== "log",
 };
 
+/** Call IQ (v9.2 #21): who is calling now, AI call scores, and calls -> orders -> money. */
+const CALL_IQ_LIVE: NavLeaf = {
+  kind: "link",
+  key: "call-iq-live",
+  href: "/dashboard/call-iq/live",
+  label: "Live",
+  icon: RadioTower,
+  visible: (a) => a.isSubscribed && a.canAny(["team.view", "telecalling.view"]),
+  isActive: (p) => p.startsWith("/dashboard/call-iq/live"),
+};
+
+const CALL_IQ_EVALUATION: NavLeaf = {
+  kind: "link",
+  key: "call-iq-evaluation",
+  href: "/dashboard/call-iq/evaluation",
+  label: "Evaluation",
+  icon: ListChecks,
+  visible: teamVisible,
+  isActive: (p) => p.startsWith("/dashboard/call-iq/evaluation"),
+};
+
+const CALL_IQ_RESULTS: NavLeaf = {
+  kind: "link",
+  key: "call-iq-results",
+  href: "/dashboard/call-iq/results",
+  label: "Results",
+  icon: BarChart2,
+  visible: teamVisible,
+  isActive: (p) => p.startsWith("/dashboard/call-iq/results"),
+};
+
+/** Anril Setup (v9.2 #23): questions the AI could not answer, its report card, and the scoring rules (read-only). */
+const knowledgeVisible = (a: NavAccess) => a.isSubscribed && a.canAny(["knowledge.view", "knowledge.manage"]) && a.messagingOn;
+
+const COULDNT_ANSWER: NavLeaf = {
+  kind: "link",
+  key: "couldnt-answer",
+  href: "/dashboard/brain/couldnt-answer",
+  label: "Couldn't answer",
+  icon: MessageSquare,
+  visible: knowledgeVisible,
+  isActive: (p) => p.startsWith("/dashboard/brain/couldnt-answer"),
+};
+
+const AI_REPORT_CARD: NavLeaf = {
+  kind: "link",
+  key: "ai-report-card",
+  href: "/dashboard/brain/report-card",
+  label: "AI report card",
+  icon: ReceiptText,
+  visible: knowledgeVisible,
+  isActive: (p) => p.startsWith("/dashboard/brain/report-card"),
+};
+
+const QUESTIONS_SCORING: NavLeaf = {
+  kind: "link",
+  key: "questions-scoring",
+  href: "/dashboard/brain/scoring",
+  label: "Questions & scoring",
+  icon: SlidersHorizontal,
+  visible: knowledgeVisible,
+  isActive: (p) => p.startsWith("/dashboard/brain/scoring"),
+};
+
 const ANRIL_BRAIN: NavLeaf = {
   kind: "link",
   key: "anril-brain",
@@ -451,7 +515,7 @@ const ANRIL_BRAIN: NavLeaf = {
   icon: Brain,
   badge: "brain",
   visible: (a) => a.brainGate,
-  isActive: (p) => p.startsWith("/dashboard/brain"),
+  isActive: (p) => p.startsWith("/dashboard/brain") && !["/couldnt-answer", "/report-card", "/scoring"].some((sub) => p.startsWith(`/dashboard/brain${sub}`)),
 };
 
 const KNOWLEDGE_BASE: NavLeaf = {
@@ -537,8 +601,8 @@ const ENGAGE: NavSection = { key: "engage", title: "Engage", icon: RadioTower, e
 const SMS: NavSection = { key: "sms", title: "Anril SMS", icon: MessageSquareText, entries: SMS_PAGES };
 const OTP: NavSection = { key: "otp", title: "Anril OTP", icon: KeyRound, entries: OTP_PAGES };
 const COMMERCE: NavSection = { key: "commerce", title: "Commerce", icon: Coins, entries: [DEALS, CATALOGUE, PURCHASES, EXPENSES] };
-const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW] };
-const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
+const CALL_IQ: NavSection = { key: "callIq", title: "Call IQ", icon: Phone, entries: [CALLING, LEADS_TO_CALL, CALL_REVIEWS, TEAM_ROW, CALL_IQ_LIVE, CALL_IQ_EVALUATION, CALL_IQ_RESULTS] };
+const AI_SETUP: NavSection = { key: "aiSetup", title: "Anril Setup", icon: Brain, entries: [ANRIL_BRAIN, COULDNT_ANSWER, AI_REPORT_CARD, QUESTIONS_SCORING, KNOWLEDGE_BASE, TEACH_AND_OFFERS, REPLIES_AND_HANDOVER] };
 const WHATSAPP: NavSection = { key: "whatsappSetup", title: "WhatsApp", icon: FileCheck, entries: [TEMPLATES, NUMBERS_POOL, QR_LINKS] };
 
 /** The main menu below Home, top to bottom. */

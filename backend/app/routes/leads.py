@@ -649,6 +649,7 @@ async def list_leads(
 
         _customer_fields(db, tenant_id, leads_data)
         _add_came_from(db, tenant_id, leads_data)
+        _hide_numbers_for_caller(db, tenant_id, ctx, leads_data)
 
     return PaginatedResponse(
         data=leads_data,
@@ -656,6 +657,23 @@ async def list_leads(
         page=page,
         limit=limit,
     )
+
+
+def _hide_numbers_for_caller(db, tenant_id: str, ctx: dict, leads: list[dict]) -> None:
+    """Call IQ (v9.2 #21): a cloud-calling telecaller sees 98•••••210 when the business hides numbers.
+    Calls are placed by lead id, so dialing still works. Any problem leaves the numbers as they were."""
+    if ctx.get("role") != "caller" or not leads:
+        return
+    try:
+        from app.services.call_rules import hides_numbers, mask_phone
+        if not hides_numbers(db, tenant_id, ctx):
+            return
+        for lead in leads:
+            if lead.get("phone"):
+                lead["phone"] = mask_phone(lead["phone"])
+                lead["phone_hidden"] = True
+    except Exception as e:
+        logger.warning(f"leads: could not apply hidden numbers for {tenant_id}: {e}")
 
 
 def _add_came_from(db, tenant_id: str, leads: list[dict]) -> None:

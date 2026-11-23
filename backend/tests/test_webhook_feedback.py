@@ -78,3 +78,25 @@ def test_receipts_reach_form_leads_with_the_error_code(monkeypatch):
         {"id": "wamid.2", "status": "failed", "errors": [{"code": 131026, "title": "Undeliverable"}]},
     ])
     assert seen == [("t1", "wamid.1", "delivered", None), ("t1", "wamid.2", "failed", 131026)]
+
+
+def test_template_status_reaches_automation_pauses(monkeypatch):
+    import app.services.template_pauses as tp
+    seen = []
+    monkeypatch.setattr(tp, "on_template_status_change", lambda db, t, name, status: seen.append((t, name, status)) or 1)
+    monkeypatch.setattr(webhook, "get_supabase", lambda: MagicMock())
+    webhook._pause_or_resume_automations("t1", {"event": "REJECTED", "message_template_name": "offer_v2"})
+    webhook._pause_or_resume_automations(None, {"event": "REJECTED", "message_template_name": "offer_v2"})
+    webhook._pause_or_resume_automations("t1", {"event": "APPROVED"})
+    assert seen == [("t1", "offer_v2", "REJECTED")]
+
+
+def test_template_pause_errors_never_break_the_webhook(monkeypatch):
+    import app.services.template_pauses as tp
+
+    def boom(*a):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(tp, "on_template_status_change", boom)
+    monkeypatch.setattr(webhook, "get_supabase", lambda: MagicMock())
+    webhook._pause_or_resume_automations("t1", {"event": "PAUSED", "message_template_name": "x"})
