@@ -49,7 +49,7 @@ export default function TeachPage() {
   const liked = (items ?? []).filter((i) => i.kind === "liked");
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:px-6">
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6">
       <div className="flex justify-end">
         <Link href="/dashboard/brain?section=test" className="btn-secondary min-h-9">
           <MessageCircle size={14} aria-hidden /> Test chat

@@ -25,7 +25,7 @@ export default function FormsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-5xl pb-28">
+      <div className="w-full pb-28">
         <CatalogueTabs />
         <SectionLoadGate state="error" onRetry={() => mutate()}>{null}</SectionLoadGate>
       </div>
@@ -33,7 +33,7 @@ export default function FormsPage() {
   }
   if (!data) {
     return (
-      <div className="mx-auto w-full max-w-5xl pb-28">
+      <div className="w-full pb-28">
         <CatalogueTabs />
         <AiraLoader inline className="min-h-[50vh]" />
       </div>
@@ -44,7 +44,7 @@ export default function FormsPage() {
   const servicesLive = services.status.live && services.status.state !== "failed";
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 pb-28">
+    <div className="w-full space-y-8 pb-28">
       <CatalogueTabs />
 
       <section aria-labelledby="services-form" className="rounded-2xl bg-surface px-5 py-5 ring-1 ring-surface-mid sm:px-6">

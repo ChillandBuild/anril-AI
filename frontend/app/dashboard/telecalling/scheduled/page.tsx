@@ -253,7 +253,7 @@ export default function ScheduledCallsPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-12">
+    <div className="w-full px-4 pb-12">
       {/* Custom Keyframe Animations */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes fadeIn {

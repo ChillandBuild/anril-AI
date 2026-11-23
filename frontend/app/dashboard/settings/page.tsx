@@ -40,14 +40,14 @@ export default function SettingsHomePage() {
 
   if (groups.length === 0 && loose.length === 0) {
     return (
-      <div className="mx-auto max-w-4xl rounded-2xl border border-border-subtle bg-surface-low px-4 py-6 text-center font-body text-sm text-ink-muted">
+      <div className="w-full rounded-2xl border border-border-subtle bg-surface-low px-4 py-6 text-center font-body text-sm text-ink-muted">
         There are no settings available for this account.
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 animate-slide-up">
+    <div className="w-full space-y-5 animate-slide-up">
       {groups.length > 0 && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {groups.map(({ group, items }) => {

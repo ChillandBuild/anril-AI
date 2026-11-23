@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
-import { ComingLater, ErrorBox, InShort, PageHeader } from "../payments/MyBusinessUi";
+import { ComingLater, ErrorBox, InShort } from "../payments/MyBusinessUi";
 import { PeopleCard } from "@/components/call-iq-settings/PeopleCard";
 import { RulesCard } from "@/components/call-iq-settings/RulesCard";
 import { rulesProblem, sameRules } from "@/components/call-iq-settings/callRulesLogic";
@@ -67,9 +66,7 @@ export default function CallingRulesPage() {
   const dirty = !!(draft && saved && !sameRules(draft, saved));
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 pb-10">
-      <PageHeader icon={PhoneCall} title="Calling rules" subtitle="When telecallers can call, how many calls a day, who uses a SIM, and leave." />
-
+    <div className="w-full space-y-4 pb-10">
       {state === "loading" ? <AiraLoader inline className="min-h-[200px]" /> : null}
       {state === "error" ? <ErrorBox message="Couldn't load this page." onRetry={() => void load()} /> : null}
 

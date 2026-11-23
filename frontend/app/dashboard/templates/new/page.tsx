@@ -253,7 +253,7 @@ export default function NewTemplatePage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
+    <div className="w-full pb-12">
       {/* Header and Back Link */}
       <div className="mb-6">
         <Link

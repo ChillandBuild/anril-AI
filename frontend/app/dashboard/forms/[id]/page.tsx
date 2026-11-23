@@ -115,7 +115,7 @@ export default function FormBuilderPage() {
 
   if (error || setupError) {
     return (
-      <div className="mx-auto w-full max-w-6xl pb-28">
+      <div className="w-full pb-28">
         <CatalogueTabs />
         <SectionLoadGate state="error" onRetry={() => mutate()}>{null}</SectionLoadGate>
       </div>
@@ -123,7 +123,7 @@ export default function FormBuilderPage() {
   }
   if (!design || !setup || !draft) {
     return (
-      <div className="mx-auto w-full max-w-6xl pb-28">
+      <div className="w-full pb-28">
         <CatalogueTabs />
         <AiraLoader inline className="min-h-[50vh]" />
       </div>
@@ -210,7 +210,7 @@ export default function FormBuilderPage() {
           : "Saved. Publish to use it on WhatsApp.";
 
   return (
-    <div className="mx-auto w-full max-w-6xl pb-28">
+    <div className="w-full pb-28">
       <CatalogueTabs />
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <Link href="/dashboard/forms" className="inline-flex items-center gap-1.5 font-label text-xs font-semibold text-ink-secondary hover:text-ink">

@@ -9,7 +9,7 @@ import { Card, InShort, PageHeader } from "../payments/MyBusinessUi";
 export default function OpenHoursPage() {
   const { canManageSettings } = useSettingsForm();
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 animate-slide-up">
+    <div className="w-full space-y-4 animate-slide-up">
       <PageHeader icon={Clock} title="Open hours" subtitle="When your shop is open. One place: everything else reads it." />
       <InShort>
         The AI agent tells customers when you&apos;re closed and when you open next, the booking link only offers

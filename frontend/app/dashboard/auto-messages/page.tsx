@@ -27,7 +27,7 @@ export default function AutoMessagesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 sm:px-6">
+    <div className="w-full min-w-0 space-y-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <p className="max-w-2xl font-body text-sm text-ink-secondary">
           When something happens, Anril sends your approved WhatsApp template.

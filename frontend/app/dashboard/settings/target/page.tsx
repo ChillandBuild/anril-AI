@@ -95,7 +95,7 @@ export default function TargetPage() {
   const coverage = costCoverageLine(data?.cost_coverage);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-10">
       <PageHeader icon={Target} title="Target & profit" subtitle="Set what you want to sell each month, and see how you are doing." />
 
       {state === "loading" ? <AiraLoader inline className="min-h-[200px]" /> : null}

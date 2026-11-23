@@ -33,8 +33,7 @@ export function OtpApiTab() {
     <div className="space-y-6">
       <section className="rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
         <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#64748b]">Developers</p>
-        <h2 className="mt-2 font-display text-2xl font-bold text-[#0A1528]">Anril OTP API</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#64748b]">
+        <p className="mt-2 max-w-prose text-sm leading-6 text-[#64748b]">
           Send one-time codes by SMS or WhatsApp from your own server, and check the codes your customers type back.
         </p>
 

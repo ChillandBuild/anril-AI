@@ -1,18 +1,7 @@
 "use client";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { CheckCircle2, ChevronDown, Loader2, Save } from "lucide-react";
+import { CheckCircle2, Loader2, Save } from "lucide-react";
 import { AiraLoader } from "@/components/AiraLoader";
 import type { LucideIcon } from "lucide-react";
-import { publishHeaderAccordion } from "@/lib/headerAccordion";
 import { cn } from "@/lib/utils";
 
 // The binary controls live in one shared place so the dashboard and the
@@ -20,110 +9,21 @@ import { cn } from "@/lib/utils";
 // settings panel already imports from this module.
 export { SwitchPill, CheckTick, CheckField, TickMark } from "@/components/ui/controls";
 
-/* ------------------------------------------------------------------ *
- * Accordion group
- *
- * Sections keep their own open state when rendered standalone. Wrapped
- * in <SettingsAccordion>, they hand that state to the group, which
- * publishes the section count and an expand/collapse-all control to the
- * app header (see lib/headerAccordion).
- *
- * Default open state follows the section count: a page with a single
- * section opens it (nothing to choose between, so a closed card would
- * just be an extra click), while a page with two or more starts fully
- * collapsed so you land on the list of topics, not a wall of forms.
- * Seeding waits until every section has registered — they all mount in
- * the same commit, so the first non-empty id list is the full one.
- * ------------------------------------------------------------------ */
-
-type AccordionCtx = {
-  isOpen: (id: string) => boolean;
-  toggle: (id: string) => void;
-  register: (id: string) => () => void;
-};
-
-const Ctx = createContext<AccordionCtx | null>(null);
-
+/**
+ * Settings sections are always open (2026-11-23): no chevron, nothing collapses.
+ * The group wrapper only spaces the cards. `defaultOpenId` and `startClosed` are
+ * still accepted so older callers compile, but they do nothing.
+ */
 export function SettingsAccordion({
   children,
-  defaultOpenId,
-  startClosed = false,
 }: {
   children: React.ReactNode;
+  /** No effect: sections are always open. */
   defaultOpenId?: string | string[];
-  /** Keep every section collapsed even when there is only one. */
+  /** No effect: sections are always open. */
   startClosed?: boolean;
 }) {
-  const [openIds, setOpenIds] = useState<Set<string>>(() => {
-    if (!defaultOpenId) return new Set();
-    const list = Array.isArray(defaultOpenId) ? defaultOpenId : [defaultOpenId];
-    return new Set(list);
-  });
-  const [ids, setIds] = useState<string[]>([]);
-  const seeded = useRef(false);
-
-  const register = useCallback((id: string) => {
-    setIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    return () => setIds((prev) => prev.filter((x) => x !== id));
-  }, []);
-
-  useEffect(() => {
-    if (seeded.current || ids.length === 0) return;
-    seeded.current = true;
-    if (typeof window !== "undefined" && window.location.hash) {
-      const hash = window.location.hash.replace("#", "");
-      if (hash === "business" || hash === "business-details") {
-        setOpenIds(new Set(["business-details"]));
-        return;
-      }
-      if (ids.includes(hash)) {
-        setOpenIds(new Set([hash]));
-        return;
-      }
-    }
-    if (defaultOpenId) {
-      const list = Array.isArray(defaultOpenId) ? defaultOpenId : [defaultOpenId];
-      setOpenIds(new Set(list));
-    } else if (ids.length === 1 && !startClosed) {
-      // Lone section opens; two or more stay closed until the user picks one.
-      setOpenIds(new Set(ids));
-    }
-  }, [ids, defaultOpenId, startClosed]);
-
-  const toggle = useCallback((id: string) => {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const isOpen = useCallback((id: string) => openIds.has(id), [openIds]);
-
-  const value = useMemo<AccordionCtx>(() => ({ isOpen, toggle, register }), [isOpen, toggle, register]);
-
-  const allOpen = ids.length > 0 && ids.every((id) => openIds.has(id));
-
-  const toggleAll = useCallback(() => {
-    setOpenIds((prev) => (ids.every((id) => prev.has(id)) ? new Set() : new Set(ids)));
-  }, [ids]);
-
-  // The section count and expand/collapse-all live in the app header. Only
-  // publish once there's more than one section — a lone section has nothing
-  // to expand against.
-  useEffect(() => {
-    publishHeaderAccordion(
-      ids.length > 1 ? { count: ids.length, openCount: openIds.size, allOpen, toggleAll } : null
-    );
-    return () => publishHeaderAccordion(null);
-  }, [ids, openIds, allOpen, toggleAll]);
-
-  return (
-    <Ctx.Provider value={value}>
-      <div className="space-y-2 sm:space-y-2.5">{children}</div>
-    </Ctx.Provider>
-  );
+  return <div className="space-y-2 sm:space-y-2.5">{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,92 +69,43 @@ const STATUS_STYLES: Record<SectionStatus["tone"], string> = {
 };
 
 export function SettingsSection({
-  id,
   icon: Icon,
   title,
   description,
   accent = "violet",
   status,
   dirty = false,
-  defaultOpen = true,
-  summary,
   headerAction,
   children,
 }: {
-  /** Stable id — required for the group toolbar to drive this section. */
+  /** Kept so callers still compile. */
   id: string;
   icon: LucideIcon;
   title: string;
   description: string;
   accent?: SectionAccent;
   status?: SectionStatus;
-  /** Shows an "Unsaved" marker on the header so it survives collapsing. */
+  /** Shows an "Unsaved" marker on the header. */
   dirty?: boolean;
+  /** No effect: sections are always open. */
   defaultOpen?: boolean;
-  /** What's currently set, shown under the description while collapsed. Phrasing content only (spans). */
+  /** No effect: sections are always open, so there is no collapsed summary. */
   summary?: React.ReactNode;
-  /** A control beside the chevron (e.g. an on/off switch). It edits the draft; Save applies it. */
+  /** A control on the right of the header (e.g. an on/off switch). It edits the draft; Save applies it. */
   headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const group = useContext(Ctx);
-  const [localOpen, setLocalOpen] = useState(defaultOpen);
-  const panelId = `${useId()}-panel`;
   const a = ACCENTS[accent];
 
-  // Inside a group the count rule decides the initial state, so only the
-  // standalone path reads defaultOpen.
-  const register = group?.register;
-  useEffect(() => {
-    if (!register) return;
-    return register(id);
-  }, [register, id]);
-
-  const open = group ? group.isOpen(id) : localOpen;
-  const onToggle = () => (group ? group.toggle(id) : setLocalOpen((o) => !o));
-
   return (
-    <section
-      className={cn(
-        "group/section relative overflow-hidden rounded-2xl border bg-white transition-all duration-300",
-        open
-          ? "border-primary/20 shadow-[0_2px_4px_rgba(28,25,23,0.03),0_18px_40px_-24px_rgba(28,25,23,0.28)]"
-          : "border-border/70 shadow-[0_1px_2px_rgba(28,25,23,0.03)] hover:border-border hover:shadow-[0_2px_4px_rgba(28,25,23,0.04),0_14px_32px_-24px_rgba(28,25,23,0.25)]"
-      )}
-    >
-      {/* Accent rail — fades in only while the section is open */}
+    <section className="group/section relative overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-[0_2px_4px_rgba(28,25,23,0.03),0_18px_40px_-24px_rgba(28,25,23,0.28)]">
       <span
         aria-hidden
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r transition-opacity duration-300",
-          a.rail,
-          open ? "opacity-100" : "opacity-0"
-        )}
+        className={cn("pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r", a.rail)}
       />
 
-      <div
-        className={cn(
-          "flex w-full items-start gap-3 px-4 py-3 transition-colors duration-200 sm:px-5 sm:py-3.5",
-          open ? "bg-white" : "hover:bg-surface-subtle/70"
-        )}
-      >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className={cn(
-          "-m-1 flex min-w-0 flex-1 items-start gap-3 rounded-xl p-1 text-left",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        )}
-      >
-        <span
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 transition-all duration-300",
-            a.tile,
-            a.glow
-          )}
-        >
+      <div className="flex w-full items-start gap-3 bg-white px-4 py-3 sm:px-5 sm:py-3.5">
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1", a.tile)}>
           <Icon size={15} className={a.icon} strokeWidth={2} />
         </span>
 
@@ -290,64 +141,15 @@ export function SettingsSection({
               </span>
             )}
           </span>
-          <span
-            className={cn(
-              "mt-0.5 block max-w-2xl font-body text-[12.5px] leading-snug text-ink-secondary",
-              !open && "line-clamp-1"
-            )}
-          >
+          <span className="mt-0.5 block max-w-2xl font-body text-[12.5px] leading-snug text-ink-secondary">
             {description}
           </span>
-          {summary && !open && <span className="mt-2 block">{summary}</span>}
         </span>
-      </button>
 
-        {/* Changing a header control opens a closed card, so its Save button is in view. */}
-        {headerAction && (
-          <div className="mt-1.5 flex shrink-0 items-center" onClickCapture={() => !open && onToggle()}>
-            {headerAction}
-          </div>
-        )}
-
-        {/* Decorative twin of the header button: same toggle for mouse users,
-            hidden from assistive tech so there is one accessible control. */}
-        <span
-          aria-hidden
-          onClick={onToggle}
-          className={cn(
-            "mt-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-all duration-300",
-            open
-              ? "border-primary/25 bg-primary-light text-primary"
-              : "border-border/80 bg-surface-subtle text-ink-muted group-hover/section:border-primary/25 group-hover/section:text-primary"
-          )}
-        >
-          <ChevronDown
-            size={14}
-            className={cn("transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]", open && "rotate-180")}
-          />
-        </span>
+        {headerAction && <div className="mt-1.5 flex shrink-0 items-center">{headerAction}</div>}
       </div>
 
-      {/* grid-rows 0fr → 1fr animates to the content's natural height */}
-      <div
-        id={panelId}
-        role="region"
-        className={cn(
-          "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        )}
-      >
-        {/* visibility (not display) keeps collapsed content out of the tab
-            order without killing the closing animation */}
-        <div
-          className={cn(
-            "overflow-hidden transition-[opacity,visibility] duration-300",
-            open ? "visible opacity-100" : "invisible opacity-0"
-          )}
-        >
-          <div className="border-t border-border-subtle px-4 py-4 sm:px-5 sm:py-5">{children}</div>
-        </div>
-      </div>
+      <div className="border-t border-border-subtle px-4 py-4 sm:px-5 sm:py-5">{children}</div>
     </section>
   );
 }

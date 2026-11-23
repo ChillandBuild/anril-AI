@@ -96,7 +96,7 @@ export default function SubscriptionPage() {
   if (me.status === "none" || me.status === "pending_approval") {
     const isInitialPending = me.status === "pending_approval";
     return (
-      <div className="mx-auto max-w-3xl space-y-6 animate-slide-up">
+      <div className="w-full space-y-6 animate-slide-up">
         <div>
           <h1 className="font-display text-2xl font-bold text-ink">Choose your plan</h1>
           <p className="text-sm text-ink-muted">Pick the features you need — your account unlocks once an admin approves your request.</p>
@@ -121,11 +121,7 @@ export default function SubscriptionPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-ink">Subscription</h1>
-        <p className="text-sm text-ink-muted">Your plan, usage, and add-ons.</p>
-      </div>
+    <div className="w-full space-y-6">
 
       <div className="rounded-3xl border border-border bg-gradient-to-br from-primary-light to-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">

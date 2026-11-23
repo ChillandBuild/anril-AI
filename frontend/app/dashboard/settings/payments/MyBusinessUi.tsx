@@ -6,16 +6,14 @@ import { cn } from "@/lib/utils";
 
 export const CARD = "rounded-2xl border border-border/70 bg-white p-4 shadow-[0_1px_2px_rgba(28,25,23,0.03)] sm:p-5";
 
-export function PageHeader({ icon: Icon, title, subtitle }: { icon: LucideIcon; title: string; subtitle: string }) {
+/** The page's name lives in the app header, so this is only the small intro line under it. */
+export function PageHeader({ icon: Icon, subtitle }: { icon: LucideIcon; title?: string; subtitle: string }) {
   return (
     <div className="flex items-start gap-3">
       <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary">
         <Icon size={18} strokeWidth={1.6} aria-hidden="true" />
       </span>
-      <div className="min-w-0">
-        <h1 className="font-display text-xl font-bold text-ink">{title}</h1>
-        <p className="mt-0.5 text-sm text-ink-muted">{subtitle}</p>
-      </div>
+      <p className="min-w-0 max-w-prose self-center text-sm text-ink-muted">{subtitle}</p>
     </div>
   );
 }

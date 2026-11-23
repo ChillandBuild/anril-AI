@@ -121,8 +121,7 @@ export default function PriceListPage() {
       {!preview ? (
         <div className="rounded-card border border-dashed border-border bg-white px-6 py-12 text-center shadow-sm">
           <FileSpreadsheet size={28} className="mx-auto text-primary" aria-hidden />
-          <h1 className="mt-3 font-display text-lg font-bold text-ink">Upload your price list</h1>
-          <p className="mx-auto mt-1 max-w-lg text-sm text-ink-muted">
+          <p className="mx-auto mt-3 max-w-lg text-sm text-ink-muted">
             An Excel or CSV sheet is read as it is. A PDF or a photo of a printed list is read by Anril. You see every row before
             anything changes: new items, new sizes, and price or stock updates.
           </p>

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import useSWR from "swr";
-import { GraduationCap, Pencil, Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { coursesApi, type Batch, type Course } from "@/lib/coursesApi";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { BTN_PRIMARY, BTN_SECONDARY, Notice, errorText } from "@/app/dashboard/bookings/bookingsUi";
@@ -43,10 +43,7 @@ export default function CoursesPage() {
     <div className="space-y-4">
       <CatalogueTabs />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="flex items-center gap-2 text-lg font-extrabold text-ink"><GraduationCap size={20} aria-hidden /> Courses and batches</h1>
-          <p className="text-sm text-ink-secondary">Each course has batches. Parents see the next batch with seats left.</p>
-        </div>
+        <p className="text-sm text-ink-secondary">Each course has batches. Parents see the next batch with seats left.</p>
         {canManage ? (
           <div className="flex flex-wrap gap-2">
             {can("bookings.manage") ? <button type="button" className={BTN_SECONDARY} onClick={demoClass}>Set up free demo class</button> : null}

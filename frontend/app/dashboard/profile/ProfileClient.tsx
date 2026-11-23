@@ -107,8 +107,7 @@ export function ProfileClient({
     return (
       <div>
         <div className="mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary">My performance</h1>
-          <p className="font-body text-on-surface-muted mt-1">{greeting}, {adminName.split(" ")[0]}</p>
+          <p className="font-body text-on-surface-muted">{greeting}, {adminName.split(" ")[0]}</p>
         </div>
 
         {/* Admin Identity Card */}

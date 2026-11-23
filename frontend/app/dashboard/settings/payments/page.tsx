@@ -128,7 +128,7 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-10">
       <PageHeader icon={Wallet} title="Payments & advance" subtitle="How you ask for money on orders, and what happens around it." />
 
       {state === "loading" ? <AiraLoader inline className="min-h-[200px]" /> : null}

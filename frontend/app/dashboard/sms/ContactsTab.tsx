@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { ClipboardPaste, Plus, Search, Upload } from "lucide-react";
@@ -33,33 +34,37 @@ export function ContactsTab() {
   // The inner tab lives in the URL (?tab=contacts|groups) so links can open the right one.
   const sub = parseContactsSub(params.get("tab"));
   const setSub = (next: "contacts" | "groups") => router.replace(`${pathname}?tab=${next}`, { scroll: false });
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Contacts" className="flex gap-2">
-        {(["contacts", "groups"] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            aria-selected={sub === k}
-            onClick={() => setSub(k)}
-            className={cn(
-              "h-9 rounded-full border px-4 text-sm font-bold",
-              sub === k ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
-            )}
-          >
-            {k === "contacts" ? "Contacts" : "Groups"}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div role="tablist" aria-label="Contacts" className="flex gap-2">
+          {(["contacts", "groups"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={sub === k}
+              onClick={() => setSub(k)}
+              className={cn(
+                "h-9 rounded-full border px-4 text-sm font-bold",
+                sub === k ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] text-[#64748b] hover:border-slate-300",
+              )}
+            >
+              {k === "contacts" ? "Contacts" : "Groups"}
+            </button>
+          ))}
+        </div>
+        <div ref={setToolbarSlot} className="flex min-w-0 flex-wrap items-center gap-2" />
       </div>
-      {sub === "contacts" ? <ContactsPanel /> : <GroupsPanel />}
+      {sub === "contacts" ? <ContactsPanel toolbarSlot={toolbarSlot} /> : <GroupsPanel />}
     </div>
   );
 }
 
 type GroupAction = "add" | "remove";
 
-function ContactsPanel() {
+function ContactsPanel({ toolbarSlot }: { toolbarSlot: HTMLElement | null }) {
   const router = useRouter();
   const { canManage } = usePerm();
   const [searchInput, setSearchInput] = useState("");
@@ -152,8 +157,8 @@ function ContactsPanel() {
 
   return (
     <Card>
-      {canManage && (
-        <div className="flex flex-wrap justify-end gap-2 border-b border-[#f1f5f9] px-4 py-3 sm:px-5">
+      {canManage && toolbarSlot && createPortal(
+        <>
           <Btn variant="outline" onClick={() => setPanel("add")}>
             <Plus size={15} /> Add contact
           </Btn>
@@ -163,7 +168,8 @@ function ContactsPanel() {
           <Btn onClick={() => setPanel("upload")}>
             <Upload size={15} /> Add multiple contacts
           </Btn>
-        </div>
+        </>,
+        toolbarSlot,
       )}
       {/* Mounted only while open, so each popup starts empty (no consent tick or group left from last time). */}
       {panel === "add" && <AddContactPanel open groups={groupList} onClose={() => setPanel(null)} onDone={refresh} />}

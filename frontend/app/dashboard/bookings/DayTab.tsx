@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import useSWR from "swr";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ export function DayTab({
   canManage,
   canSeeMoney,
   canDownload,
+  toolbarSlot,
 }: {
   setup: BookingSetup;
   date: string;
@@ -30,6 +32,7 @@ export function DayTab({
   canManage: boolean;
   canSeeMoney: boolean;
   canDownload: boolean;
+  toolbarSlot: HTMLElement | null;
 }) {
   const { data, error, mutate } = useSWR(["bookings/day", date], () => bookingsApi.day(date), {
     refreshInterval: 60_000,
@@ -73,31 +76,32 @@ export function DayTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <button type="button" aria-label="Previous day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, -1))}>
-            <ChevronLeft size={16} />
-          </button>
-          <button type="button" className={BTN_SECONDARY} onClick={() => onDate(today)} disabled={date === today}>
-            Today
-          </button>
-          <button type="button" aria-label="Next day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, 1))}>
-            <ChevronRight size={16} />
-          </button>
-          <h2 className="ml-2 font-display text-lg font-bold text-ink">
-            {dayLabel(date, today)}
-            {dayLabel(date, today) !== formatDay(date) && <span className="ml-2 text-sm font-semibold text-ink-muted">{formatDay(date)}</span>}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canDownload && <DownloadListButton start={date} disabled={!view || bookings.length === 0} />}
-        {canManage && (
-          <button type="button" className={BTN_PRIMARY} onClick={() => setCreating({})} disabled={!hasServices} title={hasServices ? undefined : "Add a service first"}>
-            <Plus size={16} aria-hidden /> New booking
-          </button>
+      {toolbarSlot &&
+        createPortal(
+          <>
+            <button type="button" aria-label="Previous day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, -1))}>
+              <ChevronLeft size={16} />
+            </button>
+            <button type="button" className={BTN_SECONDARY} onClick={() => onDate(today)} disabled={date === today}>
+              Today
+            </button>
+            <button type="button" aria-label="Next day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, 1))}>
+              <ChevronRight size={16} />
+            </button>
+            {canDownload && <DownloadListButton start={date} disabled={!view || bookings.length === 0} />}
+            {canManage && (
+              <button type="button" className={BTN_PRIMARY} onClick={() => setCreating({})} disabled={!hasServices} title={hasServices ? undefined : "Add a service first"}>
+                <Plus size={16} aria-hidden /> New booking
+              </button>
+            )}
+          </>,
+          toolbarSlot,
         )}
-        </div>
-      </div>
+
+      <h2 className="font-display text-lg font-bold text-ink">
+        {dayLabel(date, today)}
+        {dayLabel(date, today) !== formatDay(date) && <span className="ml-2 text-sm font-semibold text-ink-muted">{formatDay(date)}</span>}
+      </h2>
 
       {view && (counts.came > 0 || counts.toCome > 0 || counts.noShow > 0) && (
         <p className="text-sm text-ink-secondary">

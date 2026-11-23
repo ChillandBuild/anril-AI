@@ -26,7 +26,7 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
   general: "Basic account preferences.",
   business: "Your business details.",
   "connect-channels": "Connect WhatsApp, forms and other lead sources.",
-  "auto-reply": "How the AI replies to new messages.",
+  "auto-reply": "What Anril sends on its own, and when it hands a chat to your team.",
   "follow-ups": "When and how the AI follows up with leads.",
   inbox: "How chats are assigned and handed to your team.",
   "telecalling-behavior": "How calls are assigned and your cloud calling setup.",
@@ -36,6 +36,10 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
   target: "Set your monthly target once. Home shows how close you are.",
   display: "Make Anril easy to read on this screen.",
   "meta-charges": "What Meta charged this month, and the AI replies you used.",
+  alerts: "Choose which alerts reach you, and when.",
+  "calling-rules": "When telecallers can call, how many calls a day, who uses a SIM, and leave.",
+  "your-account": "Who's signed in, your password and passkeys.",
+  "razorpay-callback": "Finishing your Razorpay connection.",
 };
 
 const SETTINGS_ROUTE_LABELS: Record<string, string> = {
@@ -46,7 +50,18 @@ const SETTINGS_ROUTE_LABELS: Record<string, string> = {
   "follow-ups": "Follow-Ups",
   inbox: "Inbox & Handover",
   "telecalling-behavior": "Calling",
-  notifications: "Alerts",
+  alerts: "Alerts",
+  notifications: "Push & lead claims",
+  "calling-rules": "Calling rules",
+  "your-account": "Your account",
+  "razorpay-callback": "Razorpay",
+  // Old links: these redirect (to Services or Calling) but are labelled in case one shows for a moment.
+  packages: "Packages",
+  "quick-replies": "Quick replies",
+  "intake-config": "Intake form",
+  telecalling: "Calling",
+  business: "Business details",
+  general: "General",
   claude: "Anril AI for Claude",
   payments: "Payments & advance",
   target: "Target & profit",
@@ -57,8 +72,8 @@ const SETTINGS_ROUTE_LABELS: Record<string, string> = {
 /** Settings pages that live elsewhere in the menu since v9.2 Phase 2. */
 const MOVED_SETTINGS_TITLES: Record<string, string> = {
   "follow-ups": "Auto-Messages / Follow-ups",
-  "auto-reply": "Replies & handover / Auto-reply",
-  inbox: "Replies & handover / Handover",
+  "auto-reply": "Replies & handover",
+  inbox: "Replies & handover",
 };
 
 // Define a map of exact path matches and dynamic route prefixes
@@ -382,7 +397,9 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname?.startsWith("/dashboard/settings/")) {
     const segment = pathname.split("/")[3] ?? "general";
-    const label = SETTINGS_ROUTE_LABELS[segment] ?? "Settings";
+    // A page with no label yet is named from its address, never "Settings / Settings".
+    const label = SETTINGS_ROUTE_LABELS[segment]
+      ?? segment.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
     // Pages that moved out of Settings in the v9.2 menu are titled by their new home.
     const moved = MOVED_SETTINGS_TITLES[segment];
     return {
@@ -484,6 +501,50 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       title: "Team & roles",
       description: "Define read and write access for every dashboard area, then assign one role to each team member.",
     };
+  }
+
+  if (pathname === "/dashboard/brain/couldnt-answer") {
+    return { title: "Anril Setup / Couldn't answer", description: "Questions the AI did not know. Answer one once and it handles it next time." };
+  }
+  if (pathname === "/dashboard/brain/scoring") {
+    return { title: "Anril Setup / Questions & scoring", description: "How the AI decides if a customer is Hot, Warm, Cold or Not interested." };
+  }
+  if (pathname === "/dashboard/brain/report-card") {
+    return { title: "Anril Setup / AI report card", description: "How the AI agent did with your customers." };
+  }
+  if (pathname === "/dashboard/conversations") {
+    return { title: "Chats", description: "Messages from all your channels, in one inbox." };
+  }
+  if (pathname.startsWith("/dashboard/leads/")) {
+    return { title: "Customers / Customer details", description: "Who they are, their chats and notes, and what to do next." };
+  }
+  if (pathname === "/dashboard/automations") {
+    return { title: "Settings / Automations", description: "Messages Anril sends for you, without you pressing anything." };
+  }
+  if (pathname === "/dashboard/developer") {
+    return { title: "Developer / Connect your app", description: "Connect your own app to Anril: your connection details and how to send." };
+  }
+  // Old links: Intake and Consultations now redirect to the Form answers tab of Orders & payments.
+  if (pathname === "/dashboard/intake" || pathname === "/dashboard/consultations") {
+    return { title: "Orders & payments / Form answers", description: "What customers filled in on your forms." };
+  }
+  if (pathname === "/dashboard/subscriptions") {
+    return { title: "Settings / Choose your plan", description: "Pick the features you need. Your account unlocks once an admin approves your request." };
+  }
+  if (pathname === "/dashboard/catalog/courses") {
+    return { title: "Catalogue / Courses", description: "Your courses and their batches. Parents see the next batch with seats left." };
+  }
+  if (pathname.startsWith("/dashboard/catalog/courses/receipt/")) {
+    return { title: "Catalogue / Fee receipt", description: "The receipt for a fee payment." };
+  }
+  if (pathname === "/dashboard/catalog/properties") {
+    return { title: "Catalogue / Properties", description: "The flats, villas and plots you sell, and what the AI agent tells customers about them." };
+  }
+  if (pathname === "/dashboard/catalog/properties/new") {
+    return { title: "Catalogue / New property", description: "Add a flat, villa or plot. Photos and a brochure come next." };
+  }
+  if (pathname.startsWith("/dashboard/catalog/properties/")) {
+    return { title: "Catalogue / Property", description: "One property, its photos and brochure." };
   }
 
   // fallback/prefix matches

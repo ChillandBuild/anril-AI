@@ -617,8 +617,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-bold text-[#0A1528]">Groups</h2>
-          <p className="mt-0.5 text-xs text-[#64748b]">
+          <p className="text-xs text-[#64748b]">
             Lists of customers: picked by hand, or filled by rules that keep themselves up to date.
           </p>
         </div>

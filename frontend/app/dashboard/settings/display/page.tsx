@@ -45,14 +45,13 @@ export default function TextSizePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-10">
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary">
           <Type size={18} strokeWidth={1.6} aria-hidden="true" />
         </span>
         <div className="min-w-0">
-          <h1 className="font-display text-xl font-bold text-ink">Text size</h1>
-          <p className="mt-0.5 text-sm text-ink-muted">Make the words easier to read. It changes the whole app.</p>
+          <p className="text-sm text-ink-muted">Make the words easier to read. It changes the whole app.</p>
         </div>
       </div>
 

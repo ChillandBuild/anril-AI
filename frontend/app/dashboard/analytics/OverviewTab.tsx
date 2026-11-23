@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useState } from "react";
 import useSWR from "swr";
 import type { RangeValue } from "@/components/analytics/RangePicker";
 import type { ComparisonSelection } from "@/components/analytics/periodSelection";
@@ -61,9 +62,11 @@ export function OverviewTab({
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
+  // Both reports start loading together; one loader covers them until both are ready.
+  const [compareReady, setCompareReady] = useState(false);
   return (
     <div className="space-y-6">
-      <ReportFrame<OverviewReport> tab="overview" query={query} csvTab="overview" onMoneyHidden={onMoneyHidden}>
+      <ReportFrame<OverviewReport> tab="overview" query={query} csvTab="overview" onMoneyHidden={onMoneyHidden} extraLoading={!compareReady}>
         {(data, tools) => (
           <div className="space-y-5">
             {data.unmarked_chats && data.unmarked_chats.count > 0 && (
@@ -110,7 +113,9 @@ export function OverviewTab({
           </div>
         )}
       </ReportFrame>
-      <CompareTab range={range} comparison={comparison} />
+      <div className={compareReady ? undefined : "hidden"}>
+        <CompareTab range={range} comparison={comparison} onLoaded={setCompareReady} hideLoader />
+      </div>
     </div>
   );
 }

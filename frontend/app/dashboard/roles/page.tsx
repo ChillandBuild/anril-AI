@@ -992,7 +992,6 @@ export default function RolesPage() {
           <div className="card rounded-3xl overflow-hidden">
             <div className="mb-4 flex items-center justify-between">
               <div className="min-w-0">
-                <h2 className="font-display text-base font-bold text-ink">Users</h2>
                 <Link href="/dashboard/team" className="font-body text-xs font-semibold text-primary hover:underline">
                   Edit teams in Call IQ › Team
                 </Link>
@@ -1116,7 +1115,6 @@ export default function RolesPage() {
       ) : (
         <div className="card rounded-3xl overflow-hidden">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-base font-bold text-ink">Activity log</h2>
             <span className="rounded-full bg-surface-subtle px-2.5 py-1 font-label text-[10px] font-bold text-ink-muted">{auditLoading ? "—" : auditTotal} total</span>
           </div>
           <div className="mb-3 flex flex-wrap items-end gap-2">

@@ -218,7 +218,7 @@ export default function ServicesPage() {
   // which would read as real settings ("Off", "No packages yet").
   if (!loaded) {
     return (
-      <div className="mx-auto w-full max-w-5xl pb-28">
+      <div className="w-full pb-28">
         <CatalogueTabs />
         {loadFailed ? (
           <SectionLoadGate state="error" onRetry={load}>{null}</SectionLoadGate>
@@ -230,7 +230,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl pb-28">
+    <div className="w-full pb-28">
       <CatalogueTabs />
       <ConflictsLink />
 

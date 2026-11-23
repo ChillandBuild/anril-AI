@@ -20,10 +20,9 @@ function DialCockpit({ callerId, blockingWrapups, readOnly }: { callerId: string
   const cockpit = useCallingCockpit({ callerId, blockingWrapups, refreshQueue: noopRefresh });
 
   return (
-    <div className="mx-auto w-full max-w-md">
-      <div className="rounded-3xl border border-[#e2e8f0] bg-[#f8fafc] p-4 shadow-sm sm:p-5">
-        <h2 className="font-display text-xl font-extrabold tracking-tight text-[#0A1528]">Dial a number</h2>
-        <p className="mt-0.5 font-label text-xs text-[#475569]">
+    <div className="w-full">
+      <div className="w-full max-w-md rounded-3xl border border-[#e2e8f0] bg-[#f8fafc] p-4 shadow-sm sm:p-5">
+        <p className="font-label text-xs text-[#475569]">
           Call any number, even one that is not a lead yet. Type a name to find a customer.
         </p>
         {readOnly && (

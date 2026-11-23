@@ -3,12 +3,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { ChevronLeft, ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
+import { ChevronsLeft, Code2, LayoutDashboard, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
-import { activeSettingsItem, groupSettingsItems, isSettingsPath, settingsItemsFor, type SettingsNavItem } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
 import { SidebarSection } from "@/components/nav/SidebarSection";
 import { NavCount, navCountLabel } from "@/components/nav/NavCount";
@@ -105,8 +104,7 @@ function SidebarMenu() {
   const tab = useSearchParams()?.get("tab") ?? "";
   // Changes with the page or its tab, so the teal square hops on a tab change too.
   const pageKey = tab ? `${pathname}?tab=${tab}` : pathname;
-  const router = useRouter();
-  const { access, waEnabled, telecallingOn, canManageTeam, roleLoading, purchasedFeatures, claudeOn } = useNavAccess();
+  const { access, waEnabled, telecallingOn, canManageTeam, roleLoading } = useNavAccess();
   const [inboxCount, setInboxCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   // The logo's squares drop in on first show, then wave on each page change.
@@ -171,19 +169,9 @@ function SidebarMenu() {
   }
 
   const { isSubscribed, canSettings } = access;
-  // The Settings row opens /dashboard/settings, so the sidebar swaps to the Settings list
-  // exactly when the page is a Settings page (home, its pages, Team & roles, Plans & subscription).
-  const showSettings = isSettingsPath(pathname);
-  const visibleSettingsItems = settingsItemsFor(access, purchasedFeatures, claudeOn);
-  const settingsList = groupSettingsItems(visibleSettingsItems);
-  const activeSettings = activeSettingsItem(visibleSettingsItems, pathname);
-  const renderSettingsItem = (item: SettingsNavItem) => (
-    <MainNavItem key={item.href} href={item.href} active={activeSettings?.href === item.href} label={item.label} />
-  );
-
   const dashboard = dashboardEntry(access);
 
-  // Unseen call alerts ride on the Team row: its Needs attention list is where they are handled.
+  // Unseen call alerts ride on the Evaluation row: its Needs attention list is where they are handled.
   const badgeCount = (key: NavBadgeKey | undefined) =>
     key === "conversations" ? inboxCount : key === "brain" ? (brainCount ?? 0) : key === "alerts" ? alertCount : 0;
 
@@ -254,49 +242,21 @@ function SidebarMenu() {
 
       <SidebarProductSwitch />
 
-      {showSettings ? (
-        <GlowScroll className="px-3.5">
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard")}
-            className={cn(ROW, ROW_TOP, "mb-2 font-semibold")}
-          >
-            <ChevronLeft size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />
-            <span className="nav-lbl truncate">Settings</span>
-          </button>
-
-          {settingsList.groups.map(({ group, items }) => (
-            <div key={group} className="pt-3 first:pt-0">
-              <div className="nav-ws mb-2 truncate px-2.5 text-[9px] uppercase tracking-[.14em] text-[#78d6d8]">
-                {group}
-              </div>
-              {items.map(renderSettingsItem)}
-            </div>
-          ))}
-          {settingsList.loose.length > 0 && (
-            <div className="pt-3 first:pt-0">{settingsList.loose.map(renderSettingsItem)}</div>
-          )}
-          <ActiveIndicator pathname={pathname} />
-        </GlowScroll>
-      ) : (
-        <>
-          <div className="nav-ws mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
-          <GlowScroll as="nav" label="Main" className="px-3.5">
-            <MainNavItem
-              href={dashboard.href}
-              active={pathname === dashboard.href}
-              icon={LayoutDashboard}
-              label={dashboard.label}
-            />
-            {NAV_MENU.map((item) =>
-              item.kind === "link"
-                ? item.leaf.visible(access) ? renderLeaf(item.leaf) : null
-                : renderSection(item.section),
-            )}
-            <ActiveIndicator pathname={pageKey} />
-          </GlowScroll>
-        </>
-      )}
+      <div className="nav-ws mb-2 shrink-0 px-6 text-[9px] tracking-[.14em] text-[#78d6d8]">WORKSPACE</div>
+      <GlowScroll as="nav" label="Main" className="px-3.5">
+        <MainNavItem
+          href={dashboard.href}
+          active={pathname === dashboard.href}
+          icon={LayoutDashboard}
+          label={dashboard.label}
+        />
+        {NAV_MENU.map((item) =>
+          item.kind === "link"
+            ? item.leaf.visible(access) ? renderLeaf(item.leaf) : null
+            : renderSection(item.section),
+        )}
+        <ActiveIndicator pathname={pageKey} />
+      </GlowScroll>
 
       {/* Pinned footer: Developer, and the button that folds the sidebar. Stays out of the scrolling list. */}
       <div className="relative mx-3.5 mt-auto shrink-0 border-t border-[var(--navy-800)] pt-3.5">

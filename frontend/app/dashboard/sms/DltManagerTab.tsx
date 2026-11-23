@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { FileSpreadsheet, Plus } from "lucide-react";
@@ -25,7 +25,16 @@ const STATUS_OPTIONS = [
   { value: "submitted", label: "Submitted" },
 ];
 
-function EntityTable({ rows }: { rows: SmsDltEntity[] }) {
+function ToolbarRow({ leading, children }: { leading: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      {leading}
+      <div className="min-w-0 flex-1 [&>div]:justify-end">{children}</div>
+    </div>
+  );
+}
+
+function EntityTable({ rows, leading }: { rows: SmsDltEntity[]; leading: ReactNode }) {
   const { canManage } = usePerm();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -33,6 +42,7 @@ function EntityTable({ rows }: { rows: SmsDltEntity[] }) {
   const shown = rows.filter((r) => (!status || r.status === status) && matchesQuery([r.entity_id, r.entity_name], query));
   return (
     <div className="space-y-3 p-4 sm:p-5">
+      <ToolbarRow leading={leading}>
       <ListToolbar query={query} onQuery={setQuery} placeholder="Search entities" status={status} onStatus={setStatus} options={STATUS_OPTIONS}>
         {canManage && (
           <Btn onClick={() => setAddOpen(true)}>
@@ -40,6 +50,7 @@ function EntityTable({ rows }: { rows: SmsDltEntity[] }) {
           </Btn>
         )}
       </ListToolbar>
+      </ToolbarRow>
       <AddEntityPanel open={addOpen} onClose={() => setAddOpen(false)} />
       {shown.length === 0 ? (
         <Empty title={rows.length === 0 ? "No entities yet." : "No entities match."} hint={rows.length === 0 ? "Press Add entity to submit your DLT entity." : "Try a different search or status."} />
@@ -75,7 +86,7 @@ function EntityTable({ rows }: { rows: SmsDltEntity[] }) {
   );
 }
 
-function SenderTable({ rows }: { rows: SmsDltSender[] }) {
+function SenderTable({ rows, leading }: { rows: SmsDltSender[]; leading: ReactNode }) {
   const { canManage } = usePerm();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -84,6 +95,7 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
   const shown = rows.filter((r) => (!status || r.status === status) && matchesQuery([r.sender_id, r.entity_id, r.entity_name], query));
   return (
     <div className="space-y-3 p-4 sm:p-5">
+      <ToolbarRow leading={leading}>
       <ListToolbar query={query} onQuery={setQuery} placeholder="Search sender IDs" status={status} onStatus={setStatus} options={STATUS_OPTIONS}>
         {canManage && (
           <>
@@ -96,6 +108,7 @@ function SenderTable({ rows }: { rows: SmsDltSender[] }) {
           </>
         )}
       </ListToolbar>
+      </ToolbarRow>
       <AddSenderPanel open={addOpen} onClose={() => setAddOpen(false)} />
       <SenderExcelPanel open={excelOpen} onClose={() => setExcelOpen(false)} />
       {shown.length === 0 ? (
@@ -150,29 +163,34 @@ export function DltManagerTab() {
     { key: "template", label: "Content Template", count: templates.data ? templates.data.templates.length : null },
   ];
 
+  const pills = (
+    <div role="tablist" aria-label="DLT Manager" className="flex flex-wrap gap-2">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          role="tab"
+          aria-selected={inner === t.key}
+          onClick={() => setInner(t.key)}
+          className={cn(
+            "h-9 rounded-xl border px-3.5 text-sm font-bold transition-colors",
+            inner === t.key ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] bg-white text-[#64748b] hover:text-[#0A1528]",
+          )}
+        >
+          {t.label}
+          {t.count !== null ? ` (${t.count})` : ""}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="DLT Manager" className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={inner === t.key}
-            onClick={() => setInner(t.key)}
-            className={cn(
-              "h-9 rounded-xl border px-3.5 text-sm font-bold transition-colors",
-              inner === t.key ? "border-primary bg-primary/5 text-primary" : "border-[#e2e8f0] bg-white text-[#64748b] hover:text-[#0A1528]",
-            )}
-          >
-            {t.label}
-            {t.count !== null ? ` (${t.count})` : ""}
-          </button>
-        ))}
-      </div>
-
       {inner === "template" ? (
-        <TemplatesTab />
+        <>
+          {pills}
+          <TemplatesTab />
+        </>
       ) : (
         <Card>
           <CardHeader
@@ -185,15 +203,19 @@ export function DltManagerTab() {
             </div>
           )}
           {isLoading && !data ? (
-            <div className="p-4 sm:p-5">
+            <div className="space-y-3 p-4 sm:p-5">
+              {pills}
               <Skeleton className="h-40" />
             </div>
           ) : error && !data ? (
-            <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
+            <div className="space-y-3 pt-4">
+              <div className="px-4 sm:px-5">{pills}</div>
+              <LoadError message={friendlyError(error, "Check your connection.")} onRetry={() => void mutate()} />
+            </div>
           ) : inner === "entity" ? (
-            <EntityTable rows={entities} />
+            <EntityTable rows={entities} leading={pills} />
           ) : (
-            <SenderTable rows={senders} />
+            <SenderTable rows={senders} leading={pills} />
           )}
         </Card>
       )}

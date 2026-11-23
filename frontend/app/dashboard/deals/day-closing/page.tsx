@@ -132,7 +132,7 @@ export default function DayClosingPage() {
         <Link href="/dashboard/deals" className="inline-flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-label text-xs font-bold text-[#334155] shadow-sm hover:border-slate-300">
           <ArrowLeft size={14} /> Orders
         </Link>
-        <h1 className="font-display text-lg font-bold text-[#0A1528]">Day closing · {dayTitle(day)}</h1>
+        <p className="font-display text-lg font-bold text-[#0A1528]">{dayTitle(day)}</p>
         <input type="date" value={day} max={istToday()} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Day"
           className="h-9 rounded-xl border border-[#e2e8f0] bg-white px-3 text-xs font-bold text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary-200" />
         <button type="button" onClick={download} disabled={downloading || !data}

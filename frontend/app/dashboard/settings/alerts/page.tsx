@@ -199,10 +199,7 @@ export default function AlertsSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="font-label text-xl font-bold text-ink">Alerts</h1>
-        <p className="mt-1 font-body text-sm text-[#556274]">Choose what Anril tells you about, and who hears it.</p>
-      </header>
+      <p className="font-body text-sm text-[#556274]">Choose what Anril tells you about, and who hears it.</p>
 
       {isLoading && <div className="card h-24 animate-pulse rounded-3xl bg-border-subtle" />}
       {error && !data && (

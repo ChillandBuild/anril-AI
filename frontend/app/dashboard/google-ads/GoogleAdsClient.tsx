@@ -60,9 +60,8 @@ export function GoogleAdsClient() {
   const isCurrent = month === currentMonthIst();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 pb-10">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-black text-on-surface">Google Ads</h1>
+    <div className="w-full space-y-4 pb-10">
+      <header className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-1" role="group" aria-label="Month">
           <button type="button" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}
             className="rounded-lg border border-surface-mid p-2 text-on-surface">

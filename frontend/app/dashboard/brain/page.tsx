@@ -105,7 +105,7 @@ export default function AiraBrainPage() {
 
   if (!canView) {
     return (
-      <div className="mx-auto max-w-3xl rounded-2xl border border-border bg-white p-5">
+      <div className="w-full rounded-2xl border border-border bg-white p-5">
         <p className="font-body text-sm text-ink-secondary">You don&apos;t have access to Anril Brain.</p>
       </div>
     );
@@ -113,7 +113,7 @@ export default function AiraBrainPage() {
 
   return (
     <>
-      <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-5">
+      <div className="flex w-full min-w-0 flex-col gap-5">
         {isLoading && <LoadingState />}
         {!isLoading && error && data === null && <ErrorState message={error} isRetrying={isRetrying} onRetry={retry} />}
         {data && (

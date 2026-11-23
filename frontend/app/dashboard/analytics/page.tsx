@@ -60,8 +60,6 @@ function ReportsPage() {
 
   return (
     <div className="min-w-0 space-y-5">
-      <style>{PRINT_CSS}</style>
-
       <nav data-print-hide aria-label="Report tabs" className="-mx-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <ul className="flex w-max min-w-full gap-1 border-b border-surface-mid px-1">
           {tabs.map((t) => (
@@ -135,6 +133,7 @@ function ReportsPage() {
         </>
       )}
       {active === "ask" && <AskTab />}
+      <style>{PRINT_CSS}</style>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useCallback, useRef } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { isDateString, mondayOf, todayIst } from "./bookingsTime";
@@ -27,6 +27,7 @@ function BookingsPage() {
   const access = useBookingsAccess();
   const { data: setup, error, isLoading, mutate } = useBookingsSetup();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
 
   const rawTab = params.get("tab");
   const tab: TabId = (TABS.find((t) => t.id === rawTab)?.id ?? "day") as TabId;
@@ -68,34 +69,33 @@ function BookingsPage() {
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-extrabold text-ink">Bookings</h1>
-      </div>
-
-      <div role="tablist" aria-label="Bookings" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {TABS.map((t, i) => (
-          <button
-            key={t.id}
-            ref={(el) => {
-              tabRefs.current[i] = el;
-            }}
-            id={`bk-tab-${t.id}`}
-            role="tab"
-            type="button"
-            aria-selected={tab === t.id}
-            aria-controls="bk-panel"
-            tabIndex={tab === t.id ? 0 : -1}
-            onClick={() => go({ tab: t.id })}
-            onKeyDown={(e) => onTabKey(e, i)}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-bold transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
-              tab === t.id ? "bg-white text-ink shadow-sm ring-1 ring-[#e2e8f0]" : "text-[#64748b] hover:text-ink",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div role="tablist" aria-label="Bookings" className="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 pb-1">
+          {TABS.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              id={`bk-tab-${t.id}`}
+              role="tab"
+              type="button"
+              aria-selected={tab === t.id}
+              aria-controls="bk-panel"
+              tabIndex={tab === t.id ? 0 : -1}
+              onClick={() => go({ tab: t.id })}
+              onKeyDown={(e) => onTabKey(e, i)}
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-bold transition-colors",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
+                tab === t.id ? "bg-white text-ink shadow-sm ring-1 ring-[#e2e8f0]" : "text-[#64748b] hover:text-ink",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div ref={setToolbarSlot} className="flex min-w-0 flex-wrap items-center gap-2" />
       </div>
 
       <div id="bk-panel" role="tabpanel" aria-labelledby={`bk-tab-${tab}`}>
@@ -111,10 +111,11 @@ function BookingsPage() {
             canManage={canManage}
             canSeeMoney={access.money}
             canDownload={access.download}
+            toolbarSlot={toolbarSlot}
           />
         )}
         {setup && tab === "week" && (
-          <WeekTab weekStart={mondayOf(date)} onWeek={(m) => go({ date: m })} onPickDay={(d) => go({ tab: "day", date: d })} canDownload={access.download} />
+          <WeekTab weekStart={mondayOf(date)} onWeek={(m) => go({ date: m })} onPickDay={(d) => go({ tab: "day", date: d })} canDownload={access.download} toolbarSlot={toolbarSlot} />
         )}
         {setup && tab === "staff" && <StaffTab setup={setup} canManage={canManage} onChanged={() => void mutate()} />}
         {setup && tab === "link" && <LinkTab setup={setup} canManage={canManage} onChanged={() => void mutate()} />}

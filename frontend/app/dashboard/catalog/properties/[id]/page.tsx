@@ -112,7 +112,7 @@ export default function PropertyPage({ params }: { params: Promise<{ id: string 
   if (error || !property) return <p className="py-16 text-center text-sm text-ink-muted">This property was not found.</p>;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="w-full space-y-5">
       <Link href="/dashboard/catalog/properties" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">
         <ChevronLeft className="h-4 w-4" aria-hidden /> Properties
       </Link>

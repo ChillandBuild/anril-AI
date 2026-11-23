@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Metric } from "./reportsUi";
-import { TargetBar } from "./OverviewTab";
+import { OverviewTab, TargetBar } from "./OverviewTab";
+
+vi.mock("@/app/dashboard/contexts/AuthRoleContext", () => ({
+  useAuthRole: () => ({ role: "agent", permissions: [] }),
+}));
 
 describe("Metric", () => {
   it("a people number is a button with a plain label", () => {
@@ -55,5 +59,19 @@ describe("TargetBar", () => {
   });
   it("no target, no bar", () => {
     expect(renderToStaticMarkup(<TargetBar target={null} />)).toBe("");
+  });
+});
+
+describe("Reports Overview while loading", () => {
+  it("shows exactly one loader, not one for the report and one for the comparison", () => {
+    const html = renderToStaticMarkup(
+      <OverviewTab
+        query="preset=last_7d"
+        range={{ preset: "last_7d", start: "", end: "" }}
+        comparison={{ mode: "previous", start: "", end: "" }}
+        onMoneyHidden={() => {}}
+      />,
+    );
+    expect(html.match(/aria-label="Loading"/g)?.length).toBe(1);
   });
 });

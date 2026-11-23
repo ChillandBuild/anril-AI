@@ -32,7 +32,7 @@ export default function NewPropertyPage() {
   if (!canManage) return <p className="py-16 text-center text-sm text-ink-muted">You do not have access to add properties.</p>;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="w-full space-y-4">
       <Link href="/dashboard/catalog/properties" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">
         <ChevronLeft className="h-4 w-4" aria-hidden /> Properties
       </Link>

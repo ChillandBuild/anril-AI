@@ -101,7 +101,7 @@ export default function SentPage() {
     }`;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-6 sm:px-6">
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6">
       {todayNotSent > 0 && (
         <div role="status" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />

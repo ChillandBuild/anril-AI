@@ -43,10 +43,7 @@ export default function PropertiesPage() {
     <div className="space-y-4">
       <CatalogueTabs />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-ink">🏘 Properties</h1>
-          <p className="text-sm text-ink-muted">The flats, villas and plots you sell. The AI agent asks budget, BHK, area and loan need, then offers a site visit.</p>
-        </div>
+        <p className="max-w-prose text-sm text-ink-muted">The flats, villas and plots you sell. The AI agent asks budget, BHK, area and loan need, then offers a site visit.</p>
         {canManage && (
           <Link href="/dashboard/catalog/properties/new" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white">
             <Plus className="h-4 w-4" aria-hidden /> Add property

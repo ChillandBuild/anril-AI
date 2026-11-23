@@ -283,7 +283,7 @@ export default function TemplateDetailsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto py-12 text-center">
+      <div className="w-full py-12 text-center">
         <RefreshCw size={32} className="animate-spin text-emerald-600 mx-auto mb-4" />
         <p className="font-body text-ink-muted">Loading template details...</p>
       </div>
@@ -292,7 +292,7 @@ export default function TemplateDetailsPage() {
 
   if (!template) {
     return (
-      <div className="max-w-6xl mx-auto py-12">
+      <div className="w-full py-12">
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
           Template not found or has been deleted.
         </div>
@@ -313,7 +313,7 @@ export default function TemplateDetailsPage() {
   const sc = STATUS_COLORS[template.status] || { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400" };
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
+    <div className="w-full pb-12">
       {/* Back navigation & Quick status */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">

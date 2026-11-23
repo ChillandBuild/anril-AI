@@ -66,11 +66,10 @@ export default function QrLinksPage() {
   const businessName = (tenantName ?? "").trim();
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
+    <div className="w-full space-y-4 px-4 py-4 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink">QR &amp; links</h1>
-          <p className="text-sm text-ink-muted">Print a QR for each place. When a customer scans it, WhatsApp opens with your first message, and you see which QR brought them.</p>
+          <p className="max-w-prose text-sm text-ink-muted">Print a QR for each place. When a customer scans it, WhatsApp opens with your first message, and you see which QR brought them.</p>
         </div>
         {canManage && !creating && !editing && (
           <button type="button" onClick={() => setCreating(true)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">

@@ -42,12 +42,7 @@ export default function AutomationsPage() {
   const paused = (data?.automations ?? []).filter((a) => a.paused || a.paused_reason);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4">
-      <header>
-        <h1 className="font-label text-xl font-bold text-ink">Automations</h1>
-        <p className="mt-1 font-body text-sm text-[#556274]">Messages Anril sends for you, without you pressing anything.</p>
-      </header>
-
+    <div className="w-full space-y-4 p-4">
       {data && data.paused_count > 0 && (
         <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-3 font-body text-sm text-red-900">
           <p className="font-bold">

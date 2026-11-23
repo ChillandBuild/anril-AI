@@ -12,7 +12,7 @@ const ROW = "flex flex-col gap-3 border-t border-border-subtle px-3 py-4 first:b
 /** Static look-alike of the website form, so owners see what customers will get. */
 function FormPreview() {
   return (
-    <div className="grid max-w-[340px] gap-2.5 rounded-xl border border-[#e3e3e3] bg-white p-4 shadow-sm" aria-hidden>
+    <div className="mx-auto grid w-full max-w-[340px] gap-2.5 rounded-xl border border-[#e3e3e3] bg-white p-4 shadow-sm" aria-hidden>
       <p className="text-[15px] font-semibold text-[#1a1a1a]">Get details on WhatsApp</p>
       <div className="rounded-lg border border-[#cfcfcf] px-3 py-2 text-[13px] text-[#9a9a9a]">Your name</div>
       <div className="rounded-lg border border-[#cfcfcf] px-3 py-2 text-[13px] text-[#9a9a9a]">WhatsApp number</div>
@@ -145,7 +145,7 @@ function WebsiteFormRow({
           <CopyCode text={formSnippet(setup.form_script_url, eventKey)} eventLabel={chosen?.label ?? "Interested"} />
         </div>
       </div>
-      <div>
+      <div className="flex flex-col items-center">
         <p className="mb-2 font-label text-[10px] font-bold uppercase tracking-wide text-ink-secondary">Customers see</p>
         <FormPreview />
       </div>

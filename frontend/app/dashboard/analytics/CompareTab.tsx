@@ -428,6 +428,8 @@ export function CompareTab({
   range,
   comparison,
   onDataChange,
+  onLoaded,
+  hideLoader = false,
   filtersOpen,
   onToggleFilters,
   hasActiveFilters,
@@ -435,6 +437,10 @@ export function CompareTab({
   range: RangeValue;
   comparison: ComparisonSelection;
   onDataChange?: (ready: boolean) => void;
+  /** True once this tab has nothing left to wait for: data arrived, it failed, or the range is not complete. */
+  onLoaded?: (ready: boolean) => void;
+  /** The parent shows the one loader, so this tab draws none of its own. */
+  hideLoader?: boolean;
   filtersOpen?: boolean;
   onToggleFilters?: () => void;
   hasActiveFilters?: boolean;
@@ -452,6 +458,10 @@ export function CompareTab({
   useEffect(() => {
     onDataChange?.(data !== null);
   }, [data, onDataChange]);
+
+  useEffect(() => {
+    onLoaded?.(data !== null || err !== null || !rangeIsComplete);
+  }, [data, err, rangeIsComplete, onLoaded]);
 
   const params = useMemo<CompareParams>(() => {
     const reporting = { preset: range.preset, start: range.start, end: range.end };
@@ -509,7 +519,7 @@ export function CompareTab({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5">
           <div className={embedded ? "md:col-span-5 grid grid-cols-2 lg:grid-cols-4 gap-4" : "md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4"}>
             {!data ? (
-              <AiraLoader inline className="col-span-full min-h-24" />
+              hideLoader ? null : <AiraLoader inline className="col-span-full min-h-24" />
             ) : (
               buildOverviewCards({ current: data.current, previous: data.previous }).map((card) => (
                 <PerformanceKpi key={card.label} card={card} />

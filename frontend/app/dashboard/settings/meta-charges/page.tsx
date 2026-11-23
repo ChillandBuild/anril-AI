@@ -26,9 +26,7 @@ export default function MetaChargesPage() {
 
   if (error) {
     return (
-      <SectionCard title="Limits & Meta charges">
-        <LoadError message={error instanceof Error ? error.message : "Something went wrong."} onRetry={() => mutate()} />
-      </SectionCard>
+      <LoadError message={error instanceof Error ? error.message : "Something went wrong."} onRetry={() => mutate()} />
     );
   }
   if (isLoading || !data) return <LoadingState />;
@@ -36,8 +34,7 @@ export default function MetaChargesPage() {
   return (
     <div className="w-full space-y-4">
       <div>
-        <h1 className="font-display text-lg font-bold text-ink">Limits & Meta charges</h1>
-        <p className="mt-1 text-sm text-ink-secondary" data-testid="in-short">
+        <p className="text-sm text-ink-secondary" data-testid="in-short">
           {inShort(data.charges, data.ai_replies)}
         </p>
       </div>

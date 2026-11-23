@@ -59,7 +59,7 @@ export default function FormAnswersPage() {
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 pb-28">
+    <div className="w-full space-y-5 pb-28">
       <CatalogueTabs />
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 space-y-1">

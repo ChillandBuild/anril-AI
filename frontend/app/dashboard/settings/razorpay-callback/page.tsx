@@ -49,7 +49,7 @@ function RazorpayCallback() {
   }, [params, router]);
 
   return (
-    <div className="mx-auto mt-10 max-w-md rounded-3xl border border-primary-200/80 bg-white p-8 text-center shadow-[0_12px_40px_rgba(var(--primary-600-rgb),0.08)]">
+    <div className="mt-10 w-full rounded-3xl border border-primary-200/80 bg-white p-8 text-center shadow-[0_12px_40px_rgba(var(--primary-600-rgb),0.08)]">
       {status.kind === "working" && (
         <>
           <Loader2 size={28} className="mx-auto animate-spin text-primary" />

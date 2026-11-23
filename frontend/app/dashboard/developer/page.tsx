@@ -320,13 +320,11 @@ export default function DeveloperPage() {
   const code = samples(API_URL, tenantId, paths.send_template);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-16">
+    <div className="w-full space-y-6 pb-16">
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="font-label text-[11px] font-bold uppercase tracking-[0.14em] text-primary-600">Developer</p>
-          <h1 className="mt-1 font-display text-2xl font-bold text-ink">Connect your own app to Anril</h1>
-          <p className="mt-1 max-w-2xl font-body text-sm text-ink-secondary">
+          <p className="max-w-prose font-body text-sm text-ink-secondary">
             Everything a developer needs to send WhatsApp messages from this account and to receive what Anril sends
             back. Read top to bottom once; the code samples at the end are ready to paste.
           </p>

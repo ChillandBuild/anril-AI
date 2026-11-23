@@ -6,12 +6,11 @@ import { AiraLoader } from "@/components/AiraLoader";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 
 /** The page frame every Call IQ report screen shares: title, one plain line, then the content. */
-export function CallIqPage({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
+export function CallIqPage({ intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
     <div className="w-full min-w-0 max-w-[1400px] space-y-5 overflow-x-hidden px-4 py-4 pb-28 md:p-7">
       <header>
-        <h1 className="font-display text-xl font-bold text-primary sm:text-2xl">{title}</h1>
-        <p className="mt-1 font-label text-sm text-ink-secondary">{intro}</p>
+        <p className="font-label text-sm text-ink-secondary">{intro}</p>
       </header>
       {children}
     </div>

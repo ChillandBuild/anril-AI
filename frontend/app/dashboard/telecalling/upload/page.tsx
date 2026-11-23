@@ -944,8 +944,7 @@ function HistoryTab() {
       <div className="bg-surface rounded-[2rem] p-8 shadow-lg ring-1 ring-[#c4c7c7]/20">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-display text-xl font-bold text-on-surface">Upload History</h2>
-            <p className="font-body text-sm text-on-surface-muted mt-1">{canDownload ? "View all previous uploads and download assignment CSVs." : "View all previous uploads."}</p>
+            <p className="font-body text-sm text-on-surface-muted">{canDownload ? "View all previous uploads and download assignment CSVs." : "View all previous uploads."}</p>
           </div>
         </div>
 
@@ -1230,8 +1229,7 @@ function ScriptsTab() {
       <div className="bg-surface rounded-[2rem] p-8 shadow-lg ring-1 ring-[#c4c7c7]/20">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-display text-xl font-bold text-on-surface">Call Scripts</h2>
-            <p className="font-body text-sm text-on-surface-muted mt-1">Create guided talk tracks for your telecalling team.</p>
+            <p className="font-body text-sm text-on-surface-muted">Create guided talk tracks for your telecalling team.</p>
           </div>
           <button
             onClick={openCreate}

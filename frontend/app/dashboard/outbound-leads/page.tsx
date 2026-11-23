@@ -2957,7 +2957,6 @@ export default function OutboundLeadsPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <h2 className="font-display text-xl font-bold text-gray-900">Broadcast Tags</h2>
                     {tagsList.length > 0 && (
                       <span className="rounded-full bg-primary-100/80 border border-primary-200/60 px-2.5 py-0.5 font-label text-[11px] font-bold text-[var(--primary-800)]">
                         {tagsList.length} {tagsList.length === 1 ? "tag" : "tags"}
@@ -3307,8 +3306,7 @@ export default function OutboundLeadsPage() {
                 <ShieldCheck size={20} className="text-orange-600" />
               </div>
               <div>
-                <h2 className="font-display text-xl font-bold text-gray-900">Opted-Out Leads</h2>
-                <p className="font-body text-sm text-gray-500 mt-0.5">
+                <p className="font-body text-sm text-gray-500">
                   Excluded from broadcasts by a STOP/unsubscribe reply — globally or for one tag.
                 </p>
               </div>
@@ -3374,7 +3372,6 @@ export default function OutboundLeadsPage() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-display text-xl font-bold text-gray-900">Broadcast History</h2>
                   {historyRefreshing && (
                     <span className="inline-flex items-center gap-1 font-label text-[11px] font-semibold text-[var(--primary-800)]">
                       <RefreshCw size={11} className="animate-spin" /> Updating…
