@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { SwitchPill } from "@/components/ui/controls";
 import type { BrandImageKind, BusinessDetails, GstType } from "@/lib/businessDetailsApi";
+import { fillFromGstin, readGstin } from "@/lib/gstin";
 import { cleanPrefix, financialYear, previewBillNumber, stateCodeOf } from "./taxSplit";
 import type { FieldErrors } from "./validate";
 
@@ -53,7 +54,7 @@ function Field({
 }: {
   label: string;
   error?: string;
-  hint?: string;
+  hint?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -149,6 +150,17 @@ export function BusinessDetailsFields({
 }: Props) {
   const off = !canManage;
   const derivedState = stateCodeOf("", draft.gstin);
+  const gst = readGstin(draft.gstin);
+  const gstHint =
+    gst.status === "ok" ? (
+      gst.checkMatches ? (
+        <span className="text-success">✓ {gst.stateName} ({gst.stateCode}). State and PAN filled from it.</span>
+      ) : (
+        <span className="text-warning">The last character doesn&apos;t match. Check it for a typo. State and PAN are filled.</span>
+      )
+    ) : (
+      "Leave blank if you're not GST-registered. State and PAN fill in from it."
+    );
   const sample = previewBillNumber(draft.bill_prefix, financialYear(new Date()), 1);
 
   return (
@@ -258,17 +270,20 @@ export function BusinessDetailsFields({
           })}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="GSTIN" error={errors.gstin} hint="Leave blank if you're not GST-registered.">
+          <Field label="GSTIN" error={errors.gstin ?? (gst.status === "bad" ? gst.message : undefined)} hint={gstHint}>
             <input
               className={`${INPUT} font-mono uppercase tracking-wide`}
               value={draft.gstin}
               disabled={off}
               maxLength={15}
               placeholder="e.g. 33AAAAA0000A1Z5"
-              onChange={(e) => onChange({ gstin: e.target.value.toUpperCase() })}
+              onChange={(e) => {
+                const gstin = e.target.value.replace(/\s/g, "").toUpperCase();
+                onChange({ gstin, ...(fillFromGstin(readGstin(gstin), draft) ?? {}) });
+              }}
             />
           </Field>
-          <Field label="PAN" error={errors.pan}>
+          <Field label={gst.status === "ok" ? "PAN (from GSTIN)" : "PAN"} error={errors.pan}>
             <input
               className={`${INPUT} font-mono uppercase tracking-wide`}
               value={draft.pan}

@@ -215,6 +215,7 @@ export interface Lead {
   /** Latest broadcast this person was in, with the interest it gave them. */
   broadcast_score?: { broadcast_id: string; broadcast_name: string | null; segment: string } | null;
   blocked_by_name?: string | null;
+  blocked_reason?: string | null;
   /** Chats list only: 0 = needs you, 1 = AI agent is handling, 2 = handled by the team. */
   inbox_group?: 0 | 1 | 2 | null;
   /** Chats list only: when the customer's unanswered message arrived. */
@@ -2986,13 +2987,16 @@ export const api = {
       apiFetch<Lead>(`/api/v1/leads/${id}/pin`, {
         method: "PATCH",
       }),
-    archive: (id: string) =>
+    /** Toggles. When archiving or blocking, `reason` is the typed "Why" (optional). */
+    archive: (id: string, reason?: string) =>
       apiFetch<Lead>(`/api/v1/leads/${id}/archive`, {
         method: "PATCH",
+        ...(reason ? { body: JSON.stringify({ reason }) } : {}),
       }),
-    block: (id: string) =>
+    block: (id: string, reason?: string) =>
       apiFetch<Lead>(`/api/v1/leads/${id}/block`, {
         method: "PATCH",
+        ...(reason ? { body: JSON.stringify({ reason }) } : {}),
       }),
     release: (id: string) =>
       apiFetch<{ released: boolean }>(`/api/v1/leads/${id}/release`, {
@@ -4063,6 +4067,11 @@ export const api = {
     },
     summary: async (params?: InboundLeadFilters) =>
       apiFetch<InboundLeadsSummary>(`/api/v1/inbound-leads/summary?${inboundQuery(params)}`),
+    /** The What they want and Why lost tabs, over the same filters. */
+    insights: (params?: InboundLeadFilters) =>
+      apiFetch<InboundInsights>(`/api/v1/inbound-leads/insights?${inboundQuery(params)}`),
+    /** Today's money cards (needs deals.view). */
+    moneyToday: () => apiFetch<InboundMoneyToday>("/api/v1/inbound-leads/money-today"),
     resultLabels: () => apiFetch<InboundResultLabels>("/api/v1/inbound-leads/result-labels"),
     saveResultLabels: (labels: InboundResultLabels) =>
       apiFetch<InboundResultLabels>("/api/v1/inbound-leads/result-labels", { method: "PUT", body: JSON.stringify(labels) }),
@@ -4423,8 +4432,11 @@ export const api = {
   chats: {
     seen: (leadId: string) =>
       apiFetch<{ seen: boolean }>(`/api/v1/chats/${leadId}/seen`, { method: "POST" }),
-    book: (leadId: string, data: { booked_for?: string | null; note?: string | null }) =>
-      apiFetch<Lead>(`/api/v1/chats/${leadId}/booking`, { method: "PUT", body: JSON.stringify(data) }),
+    book: (leadId: string, data: { booked_for?: string | null; note?: string | null; send_confirmation?: boolean }) =>
+      apiFetch<Lead & { confirmation?: { sent: boolean; reason: string } }>(`/api/v1/chats/${leadId}/booking`, { method: "PUT", body: JSON.stringify(data) }),
+    /** Mark Booked: the visit time the customer gave in the chat. */
+    visitGuess: (leadId: string) =>
+      apiFetch<{ at: string | null; quote: string | null }>(`/api/v1/chats/${leadId}/visit-guess`),
     cancelBooking: (leadId: string) =>
       apiFetch<Lead>(`/api/v1/chats/${leadId}/booking`, { method: "DELETE" }),
     notBuying: (leadId: string, reason: string) =>
@@ -4562,7 +4574,7 @@ export const api = {
       apiFetch<DealSummaryStats>(`/api/v1/deals/summary?${dealFilterParams(filters)}`),
     get: (dealId: string) => apiFetch<Deal>(`/api/v1/deals/${dealId}`),
     recordPaymentOptions: (leadId: string) =>
-      apiFetch<{ prices_include_gst: boolean; gstin_set: boolean; gst_registered?: boolean; suggested_item_ids: string[] }>(
+      apiFetch<{ prices_include_gst: boolean; gstin_set: boolean; gst_registered?: boolean; suggested_item_ids: string[]; next_order_label?: string | null }>(
         `/api/v1/deals/record-payment/options?lead_id=${encodeURIComponent(leadId)}`
       ),
     recordPayment: (payload: {
@@ -4679,6 +4691,10 @@ export interface InboundLead {
   /** From a form (Instant form, IndiaMART, JustDial) only; chat leads have none yet. */
   business: string | null;
   city: string | null;
+  /** What they want: saved by the AI agent from the chat, or a form answer. */
+  wants?: string | null;
+  /** They said stop: offers and campaign templates skip them. */
+  opted_out?: boolean;
   last_message: { content: string | null; direction: "inbound" | "outbound"; at: string; ai: boolean } | null;
   /** Set when their message is the latest one (nobody has answered it). */
   waiting_since: string | null;
@@ -4723,6 +4739,23 @@ export interface InboundLeadsSummary {
   results: Record<"booked" | "paid" | "lost", number>;
   waiting: number;
   booked_or_paid: number;
+}
+
+export interface InboundInsights {
+  wants: { text: string; count: number; hot: number }[];
+  with_wants: number;
+  lost: { text: string; count: number }[];
+  lost_total: number;
+}
+
+export interface InboundMoneyToday {
+  store_orders: number;
+  store_matched: number;
+  store_new: number;
+  link_paid_paise: number;
+  link_payments: number;
+  store_paid_paise: number;
+  money_in_paise: number;
 }
 
 function inboundQuery(f?: InboundLeadFilters): URLSearchParams {

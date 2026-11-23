@@ -7,6 +7,8 @@ import { ChatThread } from "@/components/chat-thread";
 import { LeadDetailsPanel } from "@/components/lead-details-panel";
 import { EscalationPanel } from "@/components/escalation-panel";
 import { ChatsFolderPanel } from "@/components/chats/ChatsFolderPanel";
+import { ReasonDialog, type ReasonKind } from "@/components/chats/ReasonDialog";
+import { formatPhone } from "@/lib/utils";
 import { GROUPS_PAGE, fromChatsBody, saveChatsAsGroup, savedGroupMessage } from "@/components/chats/saveAsGroup";
 import { createClient } from "@/lib/supabase/client";
 import { usePolling } from "@/hooks/usePolling";
@@ -277,22 +279,37 @@ export default function ConversationsPage() {
 
   // Archiving/blocking changes which tab a lead belongs to, so it leaves the
   // current list. Optimistically remove; reload on failure.
+  // Both ask "Why?" first (optional), then act.
+  const [askWhy, setAskWhy] = useState<{ kind: ReasonKind; id: string; name: string } | null>(null);
+  const whoIs = (id: string) => {
+    const l = leads.find((x) => x.id === id);
+    return l?.name || formatPhone(l?.phone ?? "") || "this person";
+  };
+
   function handleArchive(id: string) {
     if (!canReplyToConversations) return;
-    setLeads((prev) => prev.filter((l) => l.id !== id));
-    if (selected?.id === id) setSelected(null);
-    api.leads.archive(id)
-      .then(() => toast.success("Chat archived"))
-      .catch(() => { toast.error("Failed to archive"); load(); });
+    setAskWhy({ kind: "archive", id, name: whoIs(id) });
   }
 
   function handleBlock(id: string) {
+    setAskWhy({ kind: "block", id, name: whoIs(id) });
+  }
+
+  function confirmWhy(reason: string) {
+    if (!askWhy) return;
+    const { kind, id } = askWhy;
+    setAskWhy(null);
     setLeads((prev) => prev.filter((l) => l.id !== id));
     if (selected?.id === id) setSelected(null);
-    api.leads.block(id)
-      .then(() => toast.success("Contact blocked"))
-      .catch(() => { toast.error("Failed to block"); load(); });
+    const call = kind === "archive" ? api.leads.archive(id, reason) : api.leads.block(id, reason);
+    call
+      .then(() => toast.success(kind === "archive" ? "Chat archived" : "Contact blocked"))
+      .catch(() => { toast.error(kind === "archive" ? "Failed to archive" : "Failed to block"); load(); });
   }
+
+  const whyDialog = askWhy && (
+    <ReasonDialog kind={askWhy.kind} name={askWhy.name} onCancel={() => setAskWhy(null)} onConfirm={confirmWhy} />
+  );
 
   // Reply from the Needs you page: open that chat in the Inbox.
   function handleEscalationReply(leadId: string) {
@@ -341,6 +358,7 @@ export default function ConversationsPage() {
   if (view === "needs_you" || view === "archived" || view === "blocked") {
     return (
       <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--shell-left)]">
+        {whyDialog}
         {/* Needs you, Archived and Blocked take the whole page width, with the Conversations tabs above. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ConversationList
@@ -363,6 +381,7 @@ export default function ConversationsPage() {
                   onOpenChat={handleEscalationReply}
                   canReply={canReplyToConversations}
                   canExport={role === "owner"}
+                  onSeeBlocked={() => handleViewChange("blocked")}
                 />
               )
             }
@@ -374,6 +393,7 @@ export default function ConversationsPage() {
 
   return (
     <div className="flex h-[calc(100dvh-5.25rem)] overflow-hidden bg-background lg:h-screen lg:pl-[var(--shell-left)]">
+      {whyDialog}
       {/* ── Conversation list ── */}
       <div className={`relative w-full flex-shrink-0 md:block md:w-[380px] md:max-w-[38vw] ${selected ? "hidden" : "block"}`}>
         <ConversationList

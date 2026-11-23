@@ -68,6 +68,7 @@ export function RecordPaymentDialog({
   const [pricesIncludeGst, setPricesIncludeGst] = useState(true);
   const [gstRegistered, setGstRegistered] = useState(false);
   const [sendInvoice, setSendInvoice] = useState(false);
+  const [orderLabel, setOrderLabel] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const name = lead.name || formatPhone(lead.phone) || "the customer";
 
@@ -80,6 +81,7 @@ export function RecordPaymentDialog({
     setPicked([]);
     setShowMore(false);
     setSendInvoice(false);
+    setOrderLabel(null);
     let live = true;
     api.catalog.listItems()
       .then((items) => live && setCatalog(items.filter((i) => i.price_paise != null)))
@@ -90,6 +92,7 @@ export function RecordPaymentDialog({
         setSuggested(o.suggested_item_ids);
         setPricesIncludeGst(o.prices_include_gst);
         setGstRegistered(o.gst_registered === true);
+        setOrderLabel(o.next_order_label ?? null);
       })
       .catch(() => {});
     return () => { live = false; };
@@ -140,9 +143,8 @@ export function RecordPaymentDialog({
     : picked.length > 1 && amountPaise < othersTotal ? `The products picked come to more than this. Raise the amount or remove one.`
     : null;
   const canSave = amountPaise >= 100 && !amountError && !saving;
-  // The invoice goes out once the money is in, so it needs Cash, UPI or Card.
-  const invoiceAllowed = gstRegistered && method !== "link";
-  const invoiceOn = invoiceAllowed && sendInvoice;
+  // Paid now: the invoice goes at once. A link: it goes by itself when the customer pays.
+  const invoiceOn = gstRegistered && sendInvoice;
 
   async function save() {
     if (!canSave) return;
@@ -157,7 +159,7 @@ export function RecordPaymentDialog({
         ...(invoiceOn ? { send_gst_invoice: true } : {}),
       });
       if (method === "link") {
-        if (res.message_sent) toast.success(`Payment link sent to ${name}`);
+        if (res.message_sent) toast.success(invoiceOn ? `Payment link sent to ${name}. The GST invoice follows when they pay.` : `Payment link sent to ${name}`);
         else toast.warning("Link made, but WhatsApp didn't send it. Copy it from Orders & payments and share it yourself.");
       } else {
         toast.success(`${formatRupees(res.deal?.total_paise ?? payable)} recorded as paid`);
@@ -200,7 +202,8 @@ export function RecordPaymentDialog({
               Record payment · {name}
             </h2>
             <p className="mt-0.5 text-[12px] leading-snug text-[#64748b]">
-              Saved as an order in <span className="font-semibold text-primary">Commerce › Orders &amp; payments</span>.
+              Saved as {orderLabel ? <>order <span className="font-semibold text-[#0A1528]">{orderLabel}</span></> : "an order"} in{" "}
+              <span className="font-semibold text-primary">Commerce › Orders &amp; payments</span>.
               The chat becomes <span className="font-semibold text-[#0A1528]">Came / Paid</span> once it&apos;s paid.
             </p>
           </div>
@@ -339,22 +342,24 @@ export function RecordPaymentDialog({
             )}
           </section>
 
-          {/* GST invoice: only for shops registered for GST. Goes out after Cash / UPI / Card is recorded. */}
+          {/* GST invoice: only for shops registered for GST. Paid now: sent at once. Link: sent when they pay. */}
           {gstRegistered && (
             <section className="flex items-center gap-3 rounded-xl border border-[#eef1f5] bg-[#fbfcfd] px-4 py-3">
               <SwitchPill
                 on={invoiceOn}
-                disabled={!invoiceAllowed}
                 onChange={setSendInvoice}
                 size="sm"
                 aria-label="Send GST invoice on WhatsApp"
               />
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-[#0A1528]">Send GST invoice on WhatsApp</p>
+                <p className="text-[13px] font-semibold text-[#0A1528]">
+                  Send GST invoice on WhatsApp
+                  {orderLabel && <span className="font-normal text-[#64748b]"> · order {orderLabel}</span>}
+                </p>
                 <p className="text-[11.5px] text-[#64748b]">
-                  {invoiceAllowed
-                    ? "The bill goes to the chat as soon as the payment is recorded."
-                    : "For Cash, UPI or Card. A link order can send its bill from Orders & payments."}
+                  {method === "link"
+                    ? "The bill goes to the chat by itself when they pay the link."
+                    : "The bill goes to the chat as soon as the payment is recorded."}
                 </p>
               </div>
             </section>

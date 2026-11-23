@@ -442,7 +442,17 @@ def record_payment_options(lead_id: str, ctx: dict = Depends(require_deals_manag
         # Only a shop registered for GST (not composition / none) can send a GST invoice.
         "gst_registered": bool(charges_gst(tenant_id, db)),
         "suggested_item_ids": suggested[:3],
+        # What this order will most likely be called (the counter is only taken on save).
+        "next_order_label": _next_order_label(db, tenant_id),
     }
+
+
+def _next_order_label(db, tenant_id: str) -> str | None:
+    try:
+        row = (db.table("deal_counters").select("last_number").eq("tenant_id", tenant_id).limit(1).execute()).data or []
+        return deals_service.format_deal_number(int((row[0].get("last_number") if row else 0) or 0) + 1)
+    except Exception:
+        return None
 
 
 class RecordPaymentIn(BaseModel):
@@ -503,8 +513,6 @@ async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_d
     paid_now = payload.method != "link"
     if payload.send_gst_invoice:
         from app.services.business_details import charges_gst
-        if not paid_now:
-            raise HTTPException(status_code=400, detail="The invoice can go out once it's paid. Pick Cash, UPI or Card.")
         if not charges_gst(tenant_id, db):
             raise HTTPException(status_code=400, detail="Your shop doesn't charge GST, so there is no GST invoice to send.")
     try:
@@ -521,8 +529,12 @@ async def record_payment(payload: RecordPaymentIn, ctx: dict = Depends(require_d
     if payload.sold_by:
         db.table("deals").update({"sold_by": payload.sold_by}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
     invoice = None
-    if payload.send_gst_invoice:
+    if payload.send_gst_invoice and paid_now:
         invoice = await _send_paid_invoice(db, tenant_id, deal_id, result["deal"], payload.method, ctx)
+    elif payload.send_gst_invoice:
+        # A link order: the Razorpay paid webhook sends the bill once the customer pays.
+        db.table("deals").update({"send_invoice_on_paid": True}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+        invoice = {"sent": False, "reason": "on_paid"}
     deal = _full(_load_deal(db, tenant_id, deal_id), db, tenant_id)
     return {
         "deal": deal,

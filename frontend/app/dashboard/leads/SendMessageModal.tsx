@@ -17,6 +17,8 @@ interface SendMessageModalProps {
   onAfterSend: () => void;
   /** Names the batch on the Scheduled templates page, e.g. "Hot leads". Only used when several leads are scheduled together. */
   batchLabel?: string;
+  /** Start on Template (Send template from Inbound leads); otherwise a free message when anyone can get one. */
+  startWithTemplate?: boolean;
 }
 
 type Mode = "text" | "template";
@@ -29,13 +31,13 @@ function windowOpen(lead: Pick<Lead, "last_inbound_at">, now: number): boolean {
   return !!lead.last_inbound_at && now - new Date(lead.last_inbound_at).getTime() < 24 * 60 * 60 * 1000;
 }
 
-export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLabel }: SendMessageModalProps) {
+export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLabel, startWithTemplate }: SendMessageModalProps) {
   const [now] = useState(() => Date.now());
   const openLeads = useMemo(() => selectedLeads.filter((l) => windowOpen(l, now)), [selectedLeads, now]);
   const skipped = selectedLeads.length - openLeads.length;
 
   // A template reaches everyone, so it is the default when nobody can get a free message.
-  const [mode, setMode] = useState<Mode>(openLeads.length === 0 ? "template" : "text");
+  const [mode, setMode] = useState<Mode>(startWithTemplate || openLeads.length === 0 ? "template" : "text");
   const [message, setMessage] = useState("");
   const [templates, setTemplates] = useState<SendDetailsTemplate[] | null>(null);
   const [templatesNote, setTemplatesNote] = useState<string | null>(null);

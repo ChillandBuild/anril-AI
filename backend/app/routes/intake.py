@@ -479,6 +479,28 @@ async def _handle_payment_event(payload: dict, session_id: str | None, deal_id: 
     return {"status": "ok"}
 
 
+async def _send_invoice_if_asked(tenant_id: str, deal_id: str) -> bool:
+    """Record payment by link with "Send GST invoice" on: now that it is paid in full, send the
+    order's bill (same as Orders > Send bill). True when it went, so the plain receipt is skipped.
+    Never raises: the payment is already saved."""
+    try:
+        from app.services import orders as orders_service
+        db = get_supabase()
+        row = (db.table("deals").select("send_invoice_on_paid").eq("id", deal_id).eq("tenant_id", tenant_id)
+               .limit(1).execute()).data or []
+        if not row or not row[0].get("send_invoice_on_paid"):
+            return False
+        orders_service.ensure_invoice(db, tenant_id, deal_id)
+        out = await orders_service.notify(db, tenant_id, deal_id, "bill")
+        if out.get("sent"):
+            db.table("deals").update({"send_invoice_on_paid": False}).eq("id", deal_id).eq("tenant_id", tenant_id).execute()
+            return True
+        logger.warning(f"Paid link: GST invoice for deal {deal_id} didn't go ({out.get('reason')}); sending the receipt")
+    except Exception as e:
+        logger.error(f"Paid link: GST invoice for deal {deal_id} failed: {e}")
+    return False
+
+
 def _astro_unauthorized() -> JSONResponse:
     # Same body for an unknown external_ref as for a bad signature: a partner that
     # can't sign must not be able to probe which session ids exist.
@@ -700,6 +722,8 @@ async def _handle_deal_payment_event(payload: dict, event: str, deal_id: str, te
         .eq("tenant_id", tenant_id).maybe_single().execute()
     ) if lead_id else None
     phone = (lead.data or {}).get("phone") if lead else None
+    if phone and result.get("won", True) and await _send_invoice_if_asked(tenant_id, deal_id):
+        return {"status": "ok"}  # the GST invoice is the receipt
     if phone:
         receipt = "Payment received, thank you! We'll be in touch shortly to arrange the next steps."
         if not result.get("won", True):

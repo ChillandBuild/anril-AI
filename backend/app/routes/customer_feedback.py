@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import _has_permission, require_any_permission, require_permission
 from app.services import customer_feedback as fb
+from app.services.actor import actor_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +27,8 @@ settings_manage = require_any_permission("settings.manage")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 MAX_DAYS = 366
-SELECT = ("id, lead_id, phone, kind, status, staff_name, asked_at, stars, answered_at, reason, reason_at")
+SELECT = ("id, lead_id, phone, kind, status, staff_name, asked_at, stars, answered_at, reason, reason_at, "
+          "fixed_by_name, review_link_sent")
 
 _STOP = {
     "the", "and", "was", "were", "for", "with", "that", "this", "have", "had", "has", "not", "but", "are",
@@ -87,7 +89,8 @@ def _shape(r: dict, names: dict) -> dict:
     return {"id": r["id"], "lead_id": r.get("lead_id"), "name": names.get(str(r.get("lead_id"))) or None,
             "phone": r.get("phone"), "stars": r.get("stars"), "reason": r.get("reason"),
             "staff_name": r.get("staff_name"), "asked_at": r.get("asked_at"),
-            "answered_at": r.get("answered_at"), "status": r.get("status"), "kind": r.get("kind")}
+            "answered_at": r.get("answered_at"), "status": r.get("status"), "kind": r.get("kind"),
+            "fixed_by_name": r.get("fixed_by_name"), "review_link_sent": bool(r.get("review_link_sent"))}
 
 
 @router.get("/settings")
@@ -135,8 +138,8 @@ async def results(
     lo = datetime(start.year, start.month, start.day, tzinfo=IST).astimezone(timezone.utc).isoformat()
     hi = datetime(end.year, end.month, end.day, tzinfo=IST) + timedelta(days=1)
     hi = hi.astimezone(timezone.utc).isoformat()
-    empty = {"average": None, "answered_pct": 0, "asked": 0, "answered": 0, "unhappy_open": [],
-             "reasons": [], "by_staff": [], "recent": []}
+    empty = {"average": None, "answered_pct": 0, "asked": 0, "answered": 0, "unhappy": 0, "google_reviews": 0,
+             "unhappy_open": [], "reasons": [], "unhappy_reasons": [], "by_staff": [], "recent": []}
     db = get_supabase()
     try:
         rows = (db.table("customer_feedback").select(SELECT).eq("tenant_id", tenant_id)
@@ -167,10 +170,15 @@ async def results(
         "answered_pct": round(len(answered) * 100 / len(rows), 1) if rows else 0,
         "asked": len(rows),
         "answered": len(answered),
+        "unhappy": sum(1 for r in answered if int(r["stars"]) <= fb.UNHAPPY_MAX),
+        "google_reviews": sum(1 for r in answered if r.get("review_link_sent")),
         "unhappy_open": [{k: v for k, v in _shape(r, names).items()
                           if k in ("id", "lead_id", "name", "phone", "stars", "reason", "staff_name", "asked_at")}
                          for r in open_rows],
         "reasons": group_reasons([r["reason"] for r in answered if (r.get("reason") or "").strip()]),
+        # Why people were unhappy: the same word grouping over the 1-3 star reasons only.
+        "unhappy_reasons": group_reasons([r["reason"] for r in answered
+                                          if int(r["stars"]) <= fb.UNHAPPY_MAX and (r.get("reason") or "").strip()], top=6),
         "by_staff": sorted(({"staff_name": n, "avg": round(sum(v) / len(v), 2), "count": len(v)}
                             for n, v in per_staff.items()), key=lambda s: (-s["avg"], s["staff_name"])),
         "recent": [_shape(r, names) for r in recent],
@@ -210,8 +218,9 @@ async def mark_fixed(feedback_id: str, ctx: dict = Depends(manage)):
         return {"id": feedback_id, "status": "fixed"}
     if not rows[0].get("stars"):
         raise HTTPException(status_code=400, detail="This person has not given stars yet.")
+    by_name = actor_name(db, ctx)
     db.table("customer_feedback").update({
-        "status": "fixed", "fixed_by": ctx.get("user_id"),
+        "status": "fixed", "fixed_by": ctx.get("user_id"), "fixed_by_name": by_name,
         "fixed_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", feedback_id).eq("tenant_id", tenant_id).execute()
-    return {"id": feedback_id, "status": "fixed"}
+    return {"id": feedback_id, "status": "fixed", "fixed_by_name": by_name}

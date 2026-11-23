@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from unittest.mock import patch
 
 from app.routes import customer_feedback as routes
 from app.services import customer_feedback as fb
@@ -258,6 +259,13 @@ def test_five_stars_thanks_with_review_link_and_offer(w):
     text = w.sent[0][2]
     assert "Priya" in text and "https://g.page/r/glow" in text and "THANKS10" in text
     assert w.bells == []
+    assert row["review_link_sent"] is True  # shows "Google review sent" on the Feedback list
+
+
+def test_two_stars_is_not_marked_review_sent(w):
+    f = w.feedback()
+    tap(w, 2, f["id"])
+    assert not w.row(f["id"]).get("review_link_sent")
 
 
 def test_one_to_three_stars_asks_what_went_wrong_and_rings_owners_only(w):
@@ -394,6 +402,8 @@ def test_results_numbers_reasons_staff_and_open_list(w):
     assert out["by_staff"] == [{"staff_name": "Anita", "avg": 4.5, "count": 2},
                                {"staff_name": "Ravi", "avg": 1.5, "count": 2}]
     assert len(out["recent"]) == 5 and out["recent"][0]["stars"] == 5
+    assert out["unhappy"] == 3                       # 1-3 stars in the period, fixed ones too
+    assert out["unhappy_reasons"][0] == {"text": "late", "count": 3}
 
 
 def test_results_default_period_empty_and_bad_dates(w):
@@ -416,9 +426,11 @@ def test_reasons_grouping_handles_tamil_and_skips_filler():
 def test_mark_fixed(w):
     from fastapi import HTTPException
     f = w.feedback(stars=2, status="answered", answered_at=iso(NOW))
-    out = run(routes.mark_fixed(f["id"], ctx(user_id="u-9")))
+    with patch.object(routes, "actor_name", return_value="Selvi"):
+        out = run(routes.mark_fixed(f["id"], ctx(user_id="u-9")))
     row = w.row(f["id"])
     assert out["status"] == "fixed" and row["status"] == "fixed" and row["fixed_by"] == "u-9" and row["fixed_at"]
+    assert row["fixed_by_name"] == "Selvi" and out["fixed_by_name"] == "Selvi"
     assert run(routes.mark_fixed(f["id"], ctx()))["status"] == "fixed"            # twice is fine
     other = w.feedback(tenant_id=T2, deal_id="o", stars=1, status="answered")
     asked = w.feedback(deal_id="q")

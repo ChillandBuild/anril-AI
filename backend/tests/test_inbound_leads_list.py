@@ -167,3 +167,53 @@ class InboundLeadsListTests(unittest.TestCase):
             {"meta_ad_id": "1", "name": "Free reading · Diwali"},
             {"meta_ad_id": "2", "name": "Free reading · Pongal"},
         ])
+
+
+class InboundInsightsMoneyTests(InboundLeadsListTests):
+    """v9.2: the Wants column, the What they want / Why lost tabs, and today's money cards."""
+
+    def test_rows_say_what_they_want(self):
+        for r in self.db.rows("leads"):
+            if r["id"] == "meena":
+                r["collected_data"] = {"wants": "Silk saree"}
+        rows = {r["id"]: r for r in self._list()["data"]}
+        self.assertEqual(rows["meena"]["wants"], "Silk saree")
+        self.assertIsNone(rows["divya"]["wants"])
+
+    def test_insights_group_wants_and_lost_reasons(self):
+        for r in self.db.rows("leads"):
+            if r["id"] in ("priya", "meena"):
+                r["collected_data"] = {"wants": " silk  saree " if r["id"] == "priya" else "Silk saree"}
+            if r["id"] == "suresh":
+                r["lost_reason"] = "Just looking · came twice"
+            if r["id"] == "divya":
+                r["lost_reason"] = "Just looking · wants cotton"
+        res = self.client.get("/api/v1/inbound-leads/insights")
+        self.assertEqual(res.status_code, 200, res.text)
+        body = res.json()
+        self.assertEqual(body["wants"], [{"text": "silk saree", "count": 2, "hot": 1}])
+        # suresh paid later, so only divya counts as lost (the note after " · " is grouped away)
+        self.assertEqual(body["lost"], [{"text": "Just looking", "count": 1}])
+        self.assertEqual((body["with_wants"], body["lost_total"]), (2, 1))
+
+    def test_money_today_splits_link_and_store(self):
+        today = NOW.isoformat()
+        self.db.rows("deal_payments").extend([
+            {"tenant_id": "tenant-1", "amount_paise": 245000, "method": "razorpay", "paid_at": today},
+            {"tenant_id": "tenant-1", "amount_paise": 85000, "method": "cash", "paid_at": today},
+            {"tenant_id": "tenant-1", "amount_paise": 99900, "method": "cash", "paid_at": ago(72)},
+            {"tenant_id": "tenant-2", "amount_paise": 1, "method": "cash", "paid_at": today},
+        ])
+        self.db.rows("deals").append({"id": "d2", "tenant_id": "tenant-1", "lead_id": "meena", "channel": "store",
+                                      "created_at": today, "stage": "won"})
+        res = self.client.get("/api/v1/inbound-leads/money-today")
+        self.assertEqual(res.status_code, 200, res.text)
+        body = res.json()
+        self.assertEqual((body["link_paid_paise"], body["link_payments"]), (245000, 1))
+        self.assertEqual((body["store_paid_paise"], body["money_in_paise"]), (85000, 330000))
+        self.assertEqual((body["store_orders"], body["store_matched"], body["store_new"]), (1, 1, 0))
+
+    def test_money_today_needs_deals_view(self):
+        app.dependency_overrides[get_tenant_and_role] = lambda: {
+            "tenant_id": "tenant-1", "role": "member", "user_id": "u2", "permissions": ["leads.view"]}
+        self.assertEqual(self.client.get("/api/v1/inbound-leads/money-today").status_code, 403)

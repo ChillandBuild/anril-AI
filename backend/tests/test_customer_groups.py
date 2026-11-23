@@ -269,7 +269,7 @@ class LeadsCustomerFieldsTests(unittest.TestCase):
         self.assertEqual(res.headers["content-disposition"], "attachment; filename=leads_all.csv")
         rows = list(csv.DictReader(io.StringIO(res.text)))
         self.assertEqual(list(rows[0].keys()), ["Name", "Phone", "Status", "Interest", "Came from", "Ad",
-                                                "Assigned to", "Spent", "Groups", "Added", "Last message"])
+                                                "Assigned to", "Spent", "Groups", "Added", "Last message", "Said stop"])
         by_name = {r["Name"]: r for r in rows}
         self.assertEqual(set(by_name), {U("L1"), U("L2"), U("L3")})
         self.assertEqual(by_name[U("L1")]["Status"], "Buyer")

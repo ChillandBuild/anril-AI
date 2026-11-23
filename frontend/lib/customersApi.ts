@@ -66,20 +66,26 @@ export function buildLeadsQuery(
   return qs;
 }
 
+/** Customers > All lists everyone, the people who said stop too (marked on their row). */
+function withSaidStop(qs: URLSearchParams): URLSearchParams {
+  qs.set("with_said_stop", "true");
+  return qs;
+}
+
 export async function fetchLeadsPage(
   params: LeadFiltersX & { page?: number; limit?: number; sort?: "newest" | "oldest" | "urgent" },
 ): Promise<{ data: LeadRow[]; total: number }> {
-  const res = await apiFetch<{ data: LeadRow[]; total: number }>(`/api/v1/leads/?${buildLeadsQuery(params)}`);
+  const res = await apiFetch<{ data: LeadRow[]; total: number }>(`/api/v1/leads/?${withSaidStop(buildLeadsQuery(params))}`);
   return { data: res.data || [], total: res.total ?? 0 };
 }
 
 export function fetchLeadsSummary(params: LeadFiltersX = {}): Promise<LeadsSummary> {
-  return apiFetch<LeadsSummary>(`/api/v1/leads/summary?${buildLeadsQuery(params)}`);
+  return apiFetch<LeadsSummary>(`/api/v1/leads/summary?${withSaidStop(buildLeadsQuery(params))}`);
 }
 
 export async function downloadLeadsCsv(params: LeadFiltersX = {}): Promise<void> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_URL}/api/v1/leads/export?${buildLeadsQuery(params)}`, { headers });
+  const res = await fetch(`${API_URL}/api/v1/leads/export?${withSaidStop(buildLeadsQuery(params))}`, { headers });
   if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`);
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
@@ -339,6 +345,9 @@ export interface FeedbackRow {
   asked_at: string | null;
   answered_at?: string | null;
   status?: string | null;
+  fixed_by_name?: string | null;
+  /** The 4-5 star thank-you carried the Google review link. */
+  review_link_sent?: boolean;
 }
 
 export interface FeedbackReport {
@@ -348,6 +357,12 @@ export interface FeedbackReport {
   answered: number;
   unhappy_open: FeedbackRow[];
   reasons: { text: string; count: number }[];
+  /** 1-3 star answers in the period (fixed ones too). */
+  unhappy?: number;
+  /** Thank-yous that carried the Google review link. */
+  google_reviews?: number;
+  /** Why people were unhappy: word groups over the 1-3 star reasons. */
+  unhappy_reasons?: { text: string; count: number }[];
   by_staff: { staff_name: string | null; avg: number | null; count: number }[];
   recent: FeedbackRow[];
 }

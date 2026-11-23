@@ -390,12 +390,14 @@ def _apply_came_from(db, tenant_id: str, query, came_from: str, memo: dict):
 
 
 def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", count: str | None = None,
-                          memo: dict | None = None, opted_out_only: bool = False):
+                          memo: dict | None = None, opted_out_only: bool = False,
+                          include_opted_out: bool = False):
     """Leads matching the Segments filters, or None when nothing can match.
 
     memo: pass one dict per request when the same filters are run again (paging); it keeps
     the lookups from being repeated. opted_out_only: the said-stop people instead of the
-    rest (same filters otherwise)."""
+    rest (same filters otherwise). include_opted_out: both (Customers > All only, which marks the
+    said-stop rows; never a broadcast, group or bulk action, so it is not a LeadFilters field)."""
     tenant_id = ctx["tenant_id"]
     memo = {} if memo is None else memo
     # NULL-safe "IS NOT TRUE": a bare .neq("col", True) compiles to `col <> true`,
@@ -463,7 +465,7 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
                  else query.in_("lead_tags.tag", tag_spellings))
     if opted_out_only:
         query = query.eq("opted_out", True)
-    else:
+    elif not include_opted_out:
         query = query.or_("opted_out.is.null,opted_out.eq.false")
     query = query.or_("whatsapp_undeliverable.is.null,whatsapp_undeliverable.eq.false")
     if f.date_from:
@@ -541,6 +543,9 @@ def _filtered_leads_query(db, ctx: dict, f: LeadFilters, columns: str = "*", cou
             from app.services.ad_performance import campaign_ids_with_placeholders
 
             query = query.in_("ad_campaign_id", campaign_ids_with_placeholders(db, tenant_id, f.ad_campaign_id))
+    if f.ad_campaign_id and f.source_filter != "meta_ads":
+        # One campaign of any kind (Google Ads > Open lists that campaign's people).
+        query = query.eq("ad_campaign_id", f.ad_campaign_id)
 
     if f.reply_window:
         cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -605,13 +610,14 @@ async def list_leads(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     filters: LeadFilters = Depends(_lead_filters),
+    with_said_stop: bool = Query(False),
     ctx: dict = Depends(require_leads_view),
 ):
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     offset = (page - 1) * limit
     source_filter, broadcast_id = filters.source_filter, filters.broadcast_id
-    query = _filtered_leads_query(db, ctx, filters, count="exact")
+    query = _filtered_leads_query(db, ctx, filters, count="exact", include_opted_out=with_said_stop)
     if query is None:
         return PaginatedResponse(data=[], total=0, page=page, limit=limit)
 
@@ -1041,10 +1047,12 @@ async def bulk_assign(
             
     return {"success": True, "count": len(leads)}
 
-def _matching_rows(db, ctx: dict, f: LeadFilters, columns: str, memo: dict, opted_out_only: bool = False) -> list[dict]:
+def _matching_rows(db, ctx: dict, f: LeadFilters, columns: str, memo: dict, opted_out_only: bool = False,
+                   include_opted_out: bool = False) -> list[dict]:
     """Every lead row the filters match, paged. [] when nothing can match."""
     def build():
-        return _filtered_leads_query(db, ctx, f, columns=columns, memo=memo, opted_out_only=opted_out_only)
+        return _filtered_leads_query(db, ctx, f, columns=columns, memo=memo, opted_out_only=opted_out_only,
+                                     include_opted_out=include_opted_out)
 
     if build() is None:
         return []
@@ -1052,13 +1060,15 @@ def _matching_rows(db, ctx: dict, f: LeadFilters, columns: str, memo: dict, opte
 
 
 @router.get("/summary")
-async def leads_summary(f: LeadFilters = Depends(_lead_filters), ctx: dict = Depends(require_leads_view)):
+async def leads_summary(f: LeadFilters = Depends(_lead_filters), with_said_stop: bool = Query(False),
+                        ctx: dict = Depends(require_leads_view)):
     """Headline numbers for the Customers page, over the leads these filters match.
+    with_said_stop: People counts the said-stop people too, like the list beside it.
     Declared before the /{lead_id} routes so "summary" is not read as an id."""
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     memo: dict = {}
-    ids = {r["id"] for r in _matching_rows(db, ctx, f, "id", memo)}
+    ids = {r["id"] for r in _matching_rows(db, ctx, f, "id", memo, include_opted_out=with_said_stop)}
 
     said_stop = 0
     stop_query = _filtered_leads_query(db, ctx, f, columns="id", count="exact", memo=memo, opted_out_only=True)
@@ -1098,11 +1108,13 @@ INTEREST_LABELS = {"A": "Hot", "B": "Warm", "C": "Cold", "D": "Not interested"}
 @router.get("/export")
 async def export_leads(
     f: LeadFilters = Depends(_lead_filters),
+    with_said_stop: bool = Query(False),
     tenant_id: str = Depends(get_owner_tenant_id),
 ):
     db = get_supabase()
     ctx = {"tenant_id": tenant_id, "role": "owner"}
-    leads = _matching_rows(db, ctx, f, "id,phone,name,source,ad_name,segment,assigned_to,created_at,last_inbound_at", {})
+    leads = _matching_rows(db, ctx, f, "id,phone,name,source,ad_name,segment,assigned_to,created_at,last_inbound_at,opted_out",
+                           {}, include_opted_out=with_said_stop)
 
     # Exclude leads that appear only in failed broadcasts (never successfully sent to)
     any_br_ids: set[str] = set()
@@ -1126,7 +1138,7 @@ async def export_leads(
             caller_names[str(c["id"])] = c.get("name") or ""
 
     fieldnames = ["Name", "Phone", "Status", "Interest", "Came from", "Ad", "Assigned to",
-                  "Spent", "Groups", "Added", "Last message"]
+                  "Spent", "Groups", "Added", "Last message", "Said stop"]
     _hide_numbers_for_caller(db, tenant_id, ctx, leads)  # the file follows the same rule as the screen
     rows = []
     for l in leads:
@@ -1144,6 +1156,7 @@ async def export_leads(
             "Groups": "; ".join(g["name"] for g in groups.get(lead_id, [])),
             "Added": l.get("created_at") or "",
             "Last message": l.get("last_inbound_at") or "",
+            "Said stop": "Yes" if l.get("opted_out") else "",
         })
 
     output = io.StringIO()
@@ -1512,23 +1525,34 @@ async def toggle_pin(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
     return result.data[0]
 
 
+class ReasonBody(BaseModel):
+    """The typed "Why" for Archive or Block (optional; a chip or the teammate's own words)."""
+    reason: str | None = Field(None, max_length=120)
+
+
+def _clean_reason(body: "ReasonBody | None") -> str | None:
+    text = " ".join(((body.reason if body else None) or "").split())
+    return text[:120] or None
+
+
 @router.patch("/{lead_id}/archive")
-async def toggle_archive(lead_id: UUID, ctx: dict = Depends(require_conversations_reply)):
-    """Toggle a conversation's archived state (inbox tidy — does not stop AI)."""
+async def toggle_archive(lead_id: UUID, ctx: dict = Depends(require_conversations_reply), body: ReasonBody | None = None):
+    """Toggle a conversation's archived state (inbox tidy — does not stop AI). Archiving keeps the typed Why."""
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     cur = db.table("leads").select("archived_at").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
     if not cur.data:
         raise HTTPException(status_code=404, detail="Lead not found")
     new_val = None if cur.data.get("archived_at") else datetime.now(timezone.utc).isoformat()
-    patch = {"archived_at": new_val, "archived_by_name": actor_name(db, ctx) if new_val else None, "archived_reason": None}
+    patch = {"archived_at": new_val, "archived_by_name": actor_name(db, ctx) if new_val else None,
+             "archived_reason": _clean_reason(body) if new_val else None}
     res = db.table("leads").update(patch).eq("id", str(lead_id)).eq("tenant_id", tenant_id).execute()
     return res.data[0] if res.data else patch
 
 
 @router.patch("/{lead_id}/block")
-async def toggle_block(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
-    """Toggle a contact's blocked state — hides from active inbox and stops AI auto-reply."""
+async def toggle_block(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role), body: ReasonBody | None = None):
+    """Toggle a contact's blocked state — hides from active inbox and stops AI auto-reply. Blocking keeps the reason."""
     db = get_supabase()
     tenant_id = ctx["tenant_id"]
     cur = db.table("leads").select("blocked_at").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
@@ -1538,6 +1562,7 @@ async def toggle_block(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
     update: dict = {
         "blocked_at": datetime.now(timezone.utc).isoformat() if blocking else None,
         "blocked_by_name": actor_name(db, ctx) if blocking else None,
+        "blocked_reason": _clean_reason(body) if blocking else None,
     }
     if blocking:
         update["ai_enabled"] = False  # blocked contacts must not get auto-replies

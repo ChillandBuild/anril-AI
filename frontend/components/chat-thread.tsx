@@ -27,6 +27,7 @@ import {
 import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
 import { ReplyFeedback } from "@/components/ai-setup/ReplyFeedback";
 import { LikeReply } from "@/components/ai-setup/LikeReply";
+import { VoiceNote } from "@/components/chats/VoiceNote";
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -170,8 +171,16 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
             <UserRound size={11} strokeWidth={2.5} /> {msg.sent_by_name}{isMine && <span className="font-semibold text-white/70"> (you)</span>}
           </p>
         )}
-        {msg.media_type && <MediaBubble msg={msg} />}
-        {msg.content && !(msg.media_type && msg.content.startsWith("[")) && (
+        {msg.media_type === "audio" && !isOutbound ? (
+          <VoiceNote
+            leadId={msg.lead_id}
+            messageId={msg.id}
+            heard={msg.content && !msg.content.startsWith("[") ? msg.content : ""}
+            playable={Boolean(msg.media_url?.startsWith("meta:"))}
+            onDark={false}
+          />
+        ) : msg.media_type && <MediaBubble msg={msg} />}
+        {msg.content && !(msg.media_type && msg.content.startsWith("[")) && !(msg.media_type === "audio" && !isOutbound) && (
           <p className={cn("whitespace-pre-wrap", msg.media_type && "mt-1.5 text-xs opacity-80")}>
             {msg.content}
           </p>

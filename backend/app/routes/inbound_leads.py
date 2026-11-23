@@ -178,7 +178,7 @@ def _apply_inbound(q, tenant_id: str, f: InboundFilters):
 _ROW_COLUMNS = (
     "id,phone,name,source,score,segment,created_at,ad_campaign_id,ad_name,assigned_to,ai_enabled,"
     "needs_human_attention,needs_human_intervention,converted_at,booked_at,booked_for,lost_at,lost_reason,lost_auto,"
-    "collected_data,last_inbound_at,waiting_since,last_message,won_deal_count"
+    "collected_data,last_inbound_at,waiting_since,last_message,won_deal_count,opted_out"
 )
 
 
@@ -296,6 +296,9 @@ _BUSINESS_KEYS = ("business", "business_name", "company", "company_name", "shop_
 _CITY_KEYS = ("city", "town", "location", "district")
 
 
+_WANTS_KEYS = ("wants", "interested_in", "requirement", "product", "item", "course", "service", "bhk")
+
+
 def _from_collected(collected, keys: tuple[str, ...]) -> str | None:
     if not isinstance(collected, dict):
         return None
@@ -352,6 +355,8 @@ def _enrich(
             "keyword": keyword_map.get(lead.get("id", ""), "—") or "—",
             "business": _from_collected(lead.get("collected_data"), _BUSINESS_KEYS),
             "city": _from_collected(lead.get("collected_data"), _CITY_KEYS),
+            # What they want: saved by the AI agent from the chat (lead details), or a form answer.
+            "wants": _from_collected(lead.get("collected_data"), _WANTS_KEYS),
             "last_message": last,
             "waiting_since": lead.get("waiting_since"),
             "last_inbound_at": lead.get("last_inbound_at"),
@@ -360,6 +365,7 @@ def _enrich(
             "lost_reason": lead.get("lost_reason"),
             "lost_auto": bool(lead.get("lost_auto")),
             "order": orders.get(lead.get("id", "")),
+            "opted_out": bool(lead.get("opted_out")),
             "handled_by": _handled_by(lead, callers),
         })
     return enriched
@@ -602,6 +608,88 @@ async def inbound_leads_summary(
     except Exception as e:
         logger.error(f"inbound-leads summary error: {e}")
         raise HTTPException(status_code=503, detail="Couldn't count inbound leads right now.")
+
+
+INSIGHT_ROWS = 3000  # enough for a month of enquiries; the lists are top-12 anyway
+
+
+def _top(values: list[str], hot: list[bool] | None = None, n: int = 12) -> list[dict]:
+    """Group the same text (ignoring case and extra spaces), most first. hot: count Hot ones too."""
+    groups: dict[str, dict] = {}
+    for i, raw in enumerate(values):
+        text = " ".join((raw or "").split())
+        if not text:
+            continue
+        g = groups.setdefault(text.lower(), {"text": text, "count": 0, "hot": 0})
+        g["count"] += 1
+        if hot and hot[i]:
+            g["hot"] += 1
+    return sorted(groups.values(), key=lambda g: (-g["count"], g["text"].lower()))[:n]
+
+
+@router.get("/insights")
+async def inbound_insights(
+    f: InboundFilters = Depends(_inbound_filters),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """The What they want and Why lost tabs, over the leads these filters match:
+    {wants: [{text, count, hot}], lost: [{text, count}], with_wants, lost_total}."""
+    db = get_supabase()
+    try:
+        rows = (_leads_query(db, "id,segment,collected_data,lost_at,lost_reason,converted_at,won_deal_count", tenant_id, f)
+                .order("created_at", desc=True).limit(INSIGHT_ROWS).execute()).data or []
+    except Exception as e:
+        logger.error(f"inbound-leads insights error: {e}")
+        raise HTTPException(status_code=503, detail="Couldn't read what people want right now.")
+    wants = [(_from_collected(r.get("collected_data"), _WANTS_KEYS) or "") for r in rows]
+    lost = [r for r in rows if lead_result(r) == "lost"]  # a later payment wins over Lost, as in the list
+    # "Budget too high · wants ground floor" groups under "Budget too high".
+    reasons = [((r.get("lost_reason") or "No reason given").split(" · ")[0]) for r in lost]
+    return {
+        "wants": _top(wants, [r.get("segment") == "A" for r in rows]),
+        "with_wants": sum(1 for w in wants if w),
+        "lost": [{"text": g["text"], "count": g["count"]} for g in _top(reasons)],
+        "lost_total": len(lost),
+    }
+
+
+@router.get("/money-today")
+async def money_today(ctx: dict = Depends(require_permission("deals.view"))):
+    """The four cards above Inbound leads: store orders today (matched to a chat / new customers),
+    paid on a WhatsApp link, paid at the store, and money in today (payments less refunds), IST day."""
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    ist = timezone(timedelta(hours=5, minutes=30))
+    start = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+    try:
+        payments = (db.table("deal_payments").select("amount_paise,method").eq("tenant_id", tenant_id)
+                    .gte("paid_at", start).limit(10000).execute()).data or []
+        refunds = (db.table("deal_refunds").select("amount_paise").eq("tenant_id", tenant_id)
+                   .neq("status", "failed").gte("created_at", start).limit(10000).execute()).data or []
+        store = (db.table("deals").select("id,lead_id").eq("tenant_id", tenant_id).eq("channel", "store")
+                 .gte("created_at", start).limit(5000).execute()).data or []
+        lead_ids = sorted({str(d["lead_id"]) for d in store if d.get("lead_id")})
+        leads: dict[str, dict] = {}
+        for i in range(0, len(lead_ids), 200):
+            for r in (db.table("leads").select("id,created_at,last_inbound_at").eq("tenant_id", tenant_id)
+                      .in_("id", lead_ids[i:i + 200]).execute()).data or []:
+                leads[str(r["id"])] = r
+    except Exception as e:
+        logger.error(f"inbound-leads money-today error: {e}")
+        raise HTTPException(status_code=503, detail="Couldn't read today's money right now.")
+    link = [p for p in payments if p.get("method") == "razorpay"]
+    at_store = [p for p in payments if p.get("method") != "razorpay"]
+    store_leads = [leads.get(str(d.get("lead_id"))) or {} for d in store]
+    total = sum(int(p.get("amount_paise") or 0) for p in payments)
+    return {
+        "store_orders": len(store),
+        "store_matched": sum(1 for l in store_leads if l.get("last_inbound_at")),
+        "store_new": sum(1 for l in store_leads if (l.get("created_at") or "") >= start),
+        "link_paid_paise": sum(int(p.get("amount_paise") or 0) for p in link),
+        "link_payments": len(link),
+        "store_paid_paise": sum(int(p.get("amount_paise") or 0) for p in at_store),
+        "money_in_paise": total - sum(int(r.get("amount_paise") or 0) for r in refunds),
+    }
 
 
 @router.get("/export")

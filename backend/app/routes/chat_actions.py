@@ -43,12 +43,33 @@ def mark_seen(lead_id: UUID, ctx: dict = Depends(require_conversations_view)):
 class BookingIn(BaseModel):
     booked_for: datetime | None = None
     note: str | None = Field(None, max_length=300)
+    # Send "your visit is booked for ..." on WhatsApp (inside the 24-hour window).
+    send_confirmation: bool = False
+
+
+def _own_lead(db, ctx: dict, lead_id: UUID) -> None:
+    """404 unless the chat is this business's and (for a telecaller) given to them."""
+    rows = (db.table("leads").select("id,assigned_to").eq("id", str(lead_id)).eq("tenant_id", ctx["tenant_id"])
+            .is_("deleted_at", "null").limit(1).execute()).data or []
+    if not rows or (ctx.get("role") == "caller" and ctx.get("caller_id") and rows[0].get("assigned_to") != ctx["caller_id"]):
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+
+@router.get("/{lead_id}/visit-guess")
+async def visit_guess(lead_id: UUID, ctx: dict = Depends(require_conversations_reply)):
+    """Mark Booked: the visit time the customer gave in the chat ({at, quote}), to fill the date."""
+    from app.services import visit_booking
+    db = get_supabase()
+    _own_lead(db, ctx, lead_id)
+    return await visit_booking.guess(db, ctx["tenant_id"], str(lead_id))
 
 
 @router.put("/{lead_id}/booking")
-def book_visit(lead_id: UUID, payload: BookingIn, ctx: dict = Depends(require_conversations_reply)):
-    """Marks the chat Booked. Booking clears Not buying: the newer decision wins."""
-    lead = _update_lead(lead_id, ctx["tenant_id"], {
+async def book_visit(lead_id: UUID, payload: BookingIn, ctx: dict = Depends(require_conversations_reply)):
+    """Marks the chat Booked. Booking clears Not buying: the newer decision wins. With send_confirmation
+    and a time, the customer gets the confirmation on WhatsApp ("confirmation": {sent, reason})."""
+    import asyncio
+    lead = await asyncio.to_thread(_update_lead, lead_id, ctx["tenant_id"], {
         "booked_at": _now(),
         "booked_for": payload.booked_for.isoformat() if payload.booked_for else None,
         "booking_note": (payload.note or "").strip() or None,
@@ -56,6 +77,10 @@ def book_visit(lead_id: UUID, payload: BookingIn, ctx: dict = Depends(require_co
         "lost_reason": None,
         "lost_auto": False,
     })
+    if payload.send_confirmation and payload.booked_for:
+        from app.services import visit_booking
+        lead = {**lead, "confirmation": await visit_booking.send_confirmation(
+            get_supabase(), ctx["tenant_id"], str(lead_id), payload.booked_for.isoformat())}
     return lead
 
 
@@ -92,6 +117,16 @@ def mark_not_buying(lead_id: UUID, payload: NotBuyingIn, ctx: dict = Depends(req
         "booked_for": None,
         "booking_note": None,
     })
+
+
+@router.get("/{lead_id}/lost-guess")
+async def lost_guess(lead_id: UUID, ctx: dict = Depends(require_conversations_reply)):
+    """Mark Lost: the reason chips for this business and the AI agent's guess from the chat
+    ({choices, reason, quote}). A telecaller only for their own customers."""
+    from app.services import lost_reasons
+    db = get_supabase()
+    _own_lead(db, ctx, lead_id)
+    return await lost_reasons.guess(db, ctx["tenant_id"], str(lead_id))
 
 
 @router.delete("/{lead_id}/not-buying")

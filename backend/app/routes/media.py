@@ -1,11 +1,12 @@
 import logging
 import mimetypes
 from uuid import UUID
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from app.db.supabase import get_supabase
 from app.services.actor import sender_fields
 from app.dependencies.tenant import require_permission
 from app.services.meta_cloud import (
+    download_media_from_meta,
     upload_media_to_meta,
     send_media_message,
     get_wa_type_for_mime,
@@ -14,6 +15,7 @@ from app.services.meta_cloud import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 require_conversations_reply = require_permission("conversations.reply")
+require_conversations_view = require_permission("conversations.view")
 
 # Max file sizes in bytes
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024       # 5 MB
@@ -161,3 +163,28 @@ async def send_media_to_lead(
     }).execute()
 
     return row.data[0] if row.data else {"sent": True, "media_id": media_id, "wa_type": wa_type}
+
+
+@router.get("/{lead_id}/messages/{message_id}/audio")
+async def voice_note_audio(lead_id: UUID, message_id: UUID, ctx: dict = Depends(require_conversations_view)):
+    """Play a WhatsApp voice note in the chat. The file stays on WhatsApp (media_url "meta:<id>"),
+    so it is fetched from Meta on each play; WhatsApp keeps it about 30 days, after that 410."""
+    db = get_supabase()
+    tenant_id = ctx["tenant_id"]
+    lead = (db.table("leads").select("id,assigned_to").eq("id", str(lead_id)).eq("tenant_id", tenant_id)
+            .is_("deleted_at", "null").limit(1).execute()).data or []
+    if not lead or (ctx.get("role") == "caller" and ctx.get("caller_id") and lead[0].get("assigned_to") != ctx["caller_id"]):
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    rows = (db.table("messages").select("media_url,media_type").eq("id", str(message_id)).eq("lead_id", str(lead_id))
+            .eq("tenant_id", tenant_id).limit(1).execute()).data or []
+    media_url = (rows[0].get("media_url") or "") if rows else ""
+    if not rows or rows[0].get("media_type") != "audio" or not media_url.startswith("meta:"):
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    try:
+        data, mime, _ = await download_media_from_meta(media_url[5:], tenant_id=tenant_id)
+    except HTTPException:
+        raise HTTPException(status_code=410, detail="WhatsApp no longer has this voice note. It keeps them for about 30 days.")
+    except Exception:
+        logger.exception("Voice note download failed for message %s", message_id)
+        raise HTTPException(status_code=502, detail="Couldn't get the voice note from WhatsApp. Try again.")
+    return Response(content=data, media_type=mime or "audio/ogg", headers={"Cache-Control": "private, max-age=3600"})

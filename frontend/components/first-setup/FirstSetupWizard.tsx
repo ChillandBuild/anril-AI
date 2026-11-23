@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { FIRST_SETUP_STEPS, firstSetupApi, setAiAgentOn, type FirstSetupStep } from "@/lib/firstSetupApi";
 import { InterviewQuestionsForm, InterviewReview, StarterStep } from "./WorkspaceSteps";
 import type { InterviewDraft } from "@/lib/api";
+import { fillFromGstin, readGstin } from "@/lib/gstin";
 import { GSTIN_PATTERN, asksForGstin, gstTypeFor, type GstChoice } from "./helpers";
 import { ConnectStep } from "./ConnectStep";
 import { setupHelpApi } from "@/lib/setupHelpApi";
@@ -103,7 +104,8 @@ function GstCard({ onNext }: { onNext: () => void }) {
   const [gstin, setGstin] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const clean = gstin.trim().toUpperCase();
+  const clean = gstin.replace(/\s/g, "").toUpperCase();
+  const read = readGstin(clean);
 
   async function save() {
     setSaving(true);
@@ -117,7 +119,8 @@ function GstCard({ onNext }: { onNext: () => void }) {
         }
         // The details are saved as one block, so read what is there first and change only the GST fields.
         const current = await api.businessProfile.get();
-        const next = { ...current, gst_type: gstTypeFor(choice), ...(asksForGstin(choice) && clean ? { gstin: clean } : {}) };
+        const filled = asksForGstin(choice) && clean ? { gstin: clean, ...(fillFromGstin(read, current) ?? {}) } : {};
+        const next = { ...current, gst_type: gstTypeFor(choice), ...filled };
         await api.businessProfile.save(next);
       }
       onNext();
@@ -153,7 +156,15 @@ function GstCard({ onNext }: { onNext: () => void }) {
           <label htmlFor="fs-gstin" className="font-body text-sm font-medium text-ink mb-1.5 block">
             GSTIN (optional)
           </label>
-          <input id="fs-gstin" value={gstin} onChange={(e) => setGstin(e.target.value)} maxLength={15} className="input" placeholder="33ABCDE1234F1Z5" autoCapitalize="characters" />
+          <input id="fs-gstin" value={gstin} onChange={(e) => setGstin(e.target.value)} maxLength={15} className="input font-mono uppercase" placeholder="33ABCDE1234F1Z5" autoCapitalize="characters" />
+          {read.status === "ok" && (
+            <p className={`mt-1.5 font-body text-sm ${read.checkMatches ? "text-success" : "text-warning"}`}>
+              {read.checkMatches ? "✓ " : ""}
+              {read.stateName} ({read.stateCode}) · PAN {read.pan}.{" "}
+              {read.checkMatches ? "We'll fill these in for you." : "The last character doesn't match, so check it for a typo."}
+            </p>
+          )}
+          {read.status === "bad" && <p className="mt-1.5 font-body text-sm text-danger">{read.message}</p>}
         </div>
       )}
       <button type="button" onClick={save} disabled={saving} className="btn-primary mt-5 w-full justify-center">

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, InboundLead, InboundLeadFilters, InboundResult, InboundResultLabels, Lead, Message } from "@/lib/api";
+import { api, InboundLead, InboundLeadFilters, InboundResult, InboundResultLabels, Lead } from "@/lib/api";
 import { useInboundAds, useInboundLeads, useInboundLeadsSummary } from "@/hooks/useApi";
 import {
   Download, X, RefreshCw, Link2, Copy, Check, Search, MessageSquare, Clock, CheckCircle2,
@@ -14,11 +14,14 @@ import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
 import { FilterMenu, FilterMenuOption } from "@/app/dashboard/leads/FilterMenu";
 import { LeadDetailsPanel } from "@/components/lead-details-panel";
+import { ChatThread } from "@/components/chat-thread";
 import type { Option } from "@/components/chats/inboxFilters";
 import { CheckTick } from "@/components/ui/controls";
 import { SendMessageModal } from "@/app/dashboard/leads/SendMessageModal";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { followUpHrefForGroup, savePickedPeopleAsGroup, tagsApi, type TagCount } from "@/lib/customersApi";
+import { InboundTabs, InsightsList, MoneyTodayCards, type InboundTab } from "./InboundInsights";
+import { SendTemplateAudience } from "./SendTemplateAudience";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -135,16 +138,10 @@ function SegmentPill({ segment }: { segment: string }) {
   return <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", s.className)}>{s.label}</span>;
 }
 
-function LatestMessage({ lead }: { lead: InboundLead }) {
-  const m = lead.last_message;
-  if (!m || !m.content) return <span className="text-xs text-[#94a3b8]">No messages yet</span>;
-  const who = m.direction === "inbound" ? null : m.ai ? "AI agent" : "You";
-  return (
-    <p className="line-clamp-2 text-[13px] leading-snug text-[#334155]" title={m.content}>
-      {who && <span className="font-semibold text-[#64748b]">{who}: </span>}
-      {m.content}
-    </p>
-  );
+/** What they want (saved by the AI agent from the chat, or a form answer), in place of the latest message. */
+function WantsCell({ lead }: { lead: InboundLead }) {
+  if (!lead.wants) return <span className="text-xs text-[#94a3b8]">Not said yet</span>;
+  return <p className="line-clamp-2 text-[13px] font-medium leading-snug text-[#334155]" title={lead.wants}>{lead.wants}</p>;
 }
 
 /** `onOpen` / `onUndo` make "Set result", the order and Undo buttons; leave them out inside another button (phone cards). */
@@ -320,6 +317,39 @@ function RenameSteps({ labels, onSaved }: { labels: InboundResultLabels; onSaved
 
 // ─── Drawer: one lead, with the same actions as Chats ────────────────────────
 
+/** "AI agent is replying · I'll take over": turns the AI off for this chat so you reply yourself. */
+function TakeOverBar({ lead, onChange }: { lead: Lead; onChange: (updated: Lead) => void }) {
+  const [busy, setBusy] = useState(false);
+  const aiOn = lead.ai_enabled !== false;
+  async function flip() {
+    setBusy(true);
+    try {
+      const updated = await api.leads.toggleAI(lead.id, !aiOn);
+      onChange({ ...lead, ...updated, ai_enabled: !aiOn });
+      toast.success(aiOn ? "You're replying now. The AI agent is off for this chat." : "The AI agent is replying again");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't change that");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={cn("flex items-center gap-3 border-b px-4 py-2.5",
+      aiOn ? "border-primary/15 bg-primary-light/50" : "border-[#fedf89] bg-[#fffaeb]")}>
+      <p className="min-w-0 flex-1 text-[12.5px] text-[#334155]">
+        {aiOn
+          ? <><span className="font-bold text-primary">✦ AI agent is replying</span> · turn it off to reply yourself</>
+          : <><span className="font-bold text-[#b54708]">You&apos;re replying</span> · the AI agent is off for this chat</>}
+      </p>
+      <button type="button" onClick={() => void flip()} disabled={busy}
+        className={cn("shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-50",
+          aiOn ? "border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-slate-50" : "text-primary hover:bg-primary/5")}>
+        {busy ? "Saving…" : aiOn ? "✋ I'll take over" : "Hand back to AI"}
+      </button>
+    </div>
+  );
+}
+
 function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
   leadId: string;
   row: InboundLead | undefined;
@@ -327,18 +357,17 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const router = useRouter();
   const [lead, setLead] = useState<Lead | null>(null);
-  const [messages, setMessages] = useState<Message[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [view, setView] = useState<"chat" | "details">("chat");
 
   useEffect(() => {
     let alive = true;
     setLead(null);
-    setMessages(null);
     setFailed(false);
-    Promise.all([api.leads.get(leadId), api.leads.messages(leadId)])
-      .then(([l, m]) => { if (alive) { setLead(l); setMessages(m); } })
+    setView("chat");
+    api.leads.get(leadId)
+      .then((l) => { if (alive) setLead(l); })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [leadId]);
@@ -349,14 +378,13 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const recent = (messages ?? []).slice(-6);
   const name = row ? displayName(row) : lead?.name || "Lead";
 
   // Portaled to <body> so no transformed parent can shift or clip the overlay.
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end bg-[#0A1528]/30" onClick={onClose}>
       <aside role="dialog" aria-modal="true" aria-label={`${name}: details`}
-        className="flex h-full w-full max-w-[440px] flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        className="flex h-full w-full max-w-[600px] flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start gap-3 border-b border-[#e2e8f0] p-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
             {initials(name)}
@@ -377,43 +405,17 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="flex gap-2 border-b border-[#e2e8f0] px-4 py-3">
-            <button type="button" onClick={() => router.push(`/dashboard/conversations?lead=${leadId}`)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark">
-              <MessageSquare size={14} /> Open chat
+        {failed ? (
+          <p className="p-4 text-xs text-[#b42318]">Couldn&apos;t load this lead. Close and try again.</p>
+        ) : !lead ? (
+          <div className="space-y-2 p-4">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />)}</div>
+        ) : view === "details" ? (
+          <div className="flex-1 overflow-y-auto">
+            <button type="button" onClick={() => setView("chat")}
+              className="m-3 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-primary hover:bg-primary/5">
+              <ChevronLeft size={14} /> Back to the chat
             </button>
-          </div>
-
-          <section className="border-b border-[#e2e8f0] px-4 py-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">Latest messages</p>
-            {failed ? (
-              <p className="text-xs text-[#b42318]">Couldn&apos;t load this lead. Close and try again.</p>
-            ) : messages === null ? (
-              <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-8 animate-pulse rounded-xl bg-slate-100" />)}</div>
-            ) : recent.length === 0 ? (
-              <p className="text-xs text-[#64748b]">No messages yet.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {recent.map((m) => (
-                  <li key={m.id} className={cn("flex", m.direction === "inbound" ? "justify-start" : "justify-end")}>
-                    <div className={cn("max-w-[85%] rounded-2xl px-3 py-1.5 text-[13px] leading-snug",
-                      m.direction === "inbound" ? "bg-slate-100 text-[#0A1528]" : "bg-primary/10 text-[#0A1528]")}>
-                      {m.direction === "outbound" && (
-                        <span className="block text-[11px] font-semibold text-primary">
-                          {m.is_ai_generated ? "AI agent" : m.sent_by_name || "You"}
-                        </span>
-                      )}
-                      <span className="line-clamp-4 whitespace-pre-line break-words">{m.content || (m.media_type ? `[${m.media_type}]` : "")}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* The Chats customer panel: Book a visit, Record payment, Not buying, orders, score. */}
-          {lead && (
+            {/* The Chats customer panel: Book a visit, Record payment, Not buying, orders, score. */}
             <div className="[&>div]:h-auto [&>div]:w-full [&>div]:overflow-visible [&>div]:border-l-0 [&>div>div:first-child]:hidden">
               <LeadDetailsPanel
                 lead={lead}
@@ -422,8 +424,23 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
                 onLeadUpdate={(updated) => { setLead(updated); onChanged(); }}
               />
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <TakeOverBar lead={lead} onChange={(updated) => { setLead(updated); onChanged(); }} />
+            {/* The real chat: every message, the reply box, templates and the free-reply time left. */}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ChatThread
+                key={lead.id}
+                lead={lead}
+                team={team}
+                onLeadUpdate={(updated) => { setLead(updated); onChanged(); }}
+                detailsOpen={false}
+                onToggleDetails={() => setView("details")}
+              />
+            </div>
+          </>
+        )}
       </aside>
     </div>,
     document.body,
@@ -566,12 +583,15 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
   const [segment, setSegment] = useState<string | undefined>();
   const [result, setResult] = useState<InboundResult | undefined>(initialResult);
   const [waiting, setWaiting] = useState(false);
+  const [tab, setTab] = useState<InboundTab>("all");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
   const [team, setTeam] = useState<Option[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendOpen, setSendOpen] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [audience, setAudience] = useState<{ leads: InboundLead[]; label: string } | null>(null);
   const [labels, setLabels] = useState<InboundResultLabels>(DEFAULT_LABELS);
   const { role, permissions } = useAuthRole();
   const canDownload = role === "owner" || permissions.includes("leads.download");
@@ -745,6 +765,10 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc]">
               <Link2 size={14} />
             </button>
+            <button type="button" onClick={() => setAudienceOpen(true)}
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-primary bg-white px-3 text-xs font-bold text-primary hover:bg-primary/5">
+              <MessageSquare size={13} /> Send template
+            </button>
             {canDownload && (
               <button type="button" onClick={handleExport} disabled={exporting || total === 0} title="Download the list on screen" aria-label="Download"
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#0A1528] hover:bg-[#f8fafc] disabled:opacity-40">
@@ -778,6 +802,9 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
         </div>
       </div>
 
+      <InboundTabs tab={tab} onChange={setTab} />
+      {tab === "all" && <MoneyTodayCards />}
+
       {/* ── Cards ───────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 shadow-sm">
@@ -806,6 +833,9 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
       </div>
 
       {/* ── Table ───────────────────────────────────────────── */}
+      {tab !== "all" ? (
+        <InsightsList tab={tab} filters={filters} onPick={(text) => { setSearchInput(text); setTab("all"); }} />
+      ) : (
       <div className="overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
         {selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 bg-[#0A1528] px-4 py-2.5 text-white">
@@ -865,7 +895,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
                         onChange={(on) => setSelected(on ? new Set(leads.map((l) => l.id)) : new Set())}
                         aria-label="Select everyone on this page" />
                     </th>
-                    {["Customer", "Latest message", "Result", "Handled by", "Came from", "Reply", ""].map((h, i) => (
+                    {["Customer", "Wants", "Result", "Handled by", "Came from", "Reply", ""].map((h, i) => (
                       <th key={i} className={cn("px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b]", i === 6 && "text-right")}>
                         {h || <span className="sr-only">Actions</span>}
                       </th>
@@ -896,7 +926,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
                             {[lead.business, lead.city].filter(Boolean).join(" · ") || lead.phone}
                           </p>
                         </td>
-                        <td className="max-w-[280px] px-4 py-3"><LatestMessage lead={lead} /></td>
+                        <td className="max-w-[280px] px-4 py-3"><WantsCell lead={lead} /></td>
                         <td className="px-4 py-3">
                           <ResultCell lead={lead} labels={labels} onOpen={() => setOpenId(lead.id)} onUndo={() => void undoAutoLost(lead)} />
                         </td>
@@ -935,7 +965,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
                         </div>
                         <ReplyCell lead={lead} now={now} />
                       </div>
-                      <LatestMessage lead={lead} />
+                      <WantsCell lead={lead} />
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <ResultCell lead={lead} labels={labels} />
                         <HandledBy lead={lead} />
@@ -967,6 +997,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
           </>
         )}
       </div>
+      )}
 
       {openId && (
         <LeadDrawer
@@ -978,6 +1009,22 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
         />
       )}
       {showGoogleModal && <GoogleAdsLinkModal onClose={() => setShowGoogleModal(false)} />}
+      {audienceOpen && (
+        <SendTemplateAudience
+          base={baseFilters}
+          onClose={() => setAudienceOpen(false)}
+          onNext={(people, label) => { setAudienceOpen(false); setAudience({ leads: people, label }); }}
+        />
+      )}
+      {audience && (
+        <SendMessageModal
+          selectedLeads={audience.leads.map((l) => ({ id: l.id, name: l.name === "—" ? null : l.name, last_inbound_at: l.last_inbound_at }))}
+          batchLabel={audience.label}
+          startWithTemplate
+          onClose={() => setAudience(null)}
+          onAfterSend={() => { setAudience(null); refresh(); }}
+        />
+      )}
       {sendOpen && selectedRows.length > 0 && (
         <SendMessageModal
           selectedLeads={selectedRows.map((l) => ({ id: l.id, name: l.name === "—" ? null : l.name, last_inbound_at: l.last_inbound_at }))}

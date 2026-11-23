@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarCheck, ChevronDown, ChevronRight, Loader2, Receipt, Undo2, X } from "lucide-react";
+import { CalendarCheck, ChevronRight, Loader2, Receipt, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { api, DealSummary, Lead } from "@/lib/api";
@@ -14,9 +14,8 @@ import { formatRupees } from "@/components/deals/money";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { CustomerDetails } from "./CustomerDetails";
 import type { Option } from "./inboxFilters";
-import { cleanOtherReason, OTHER_REASON_MAX } from "./notBuyingReason";
+import { MarkLostDialog } from "./MarkLostDialog";
 
-const NOT_BUYING_REASONS = ["Price too high", "Bought somewhere else", "Just looking", "Not reachable", "Wrong number"];
 
 const SEGMENT_CHIP: Record<string, { label: string; className: string }> = {
   A: { label: "🔥 Hot", className: "bg-orange-50 text-orange-600" },
@@ -34,6 +33,20 @@ function fmtDateTime(iso: string): string {
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 }
+
+/** ISO -> datetime-local value in IST wall time ("2026-11-16T16:00"). */
+function isoToIstLocal(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
+  return d.toISOString().slice(0, 16);
+}
+
+const CONFIRM_WHY: Record<string, string> = {
+  outside_24h_no_template: "they haven't messaged in 24 hours",
+  opted_out: "they said stop",
+  blocked: "they are blocked",
+  whatsapp_not_connected: "WhatsApp isn't connected",
+  no_phone: "there's no phone number",
+};
 
 /** datetime-local value (IST wall time) -> ISO with the India offset. */
 function istToIso(local: string): string | null {
@@ -75,12 +88,11 @@ export function CustomerActions({
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookFor, setBookFor] = useState("");
   const [bookNote, setBookNote] = useState("");
+  const [sendConfirm, setSendConfirm] = useState(true);
+  const [found, setFound] = useState<{ at: string | null; quote: string | null } | null>(null);
   const [lostOpen, setLostOpen] = useState(false);
-  const [otherOpen, setOtherOpen] = useState(false);
-  const [otherText, setOtherText] = useState("");
   const [busy, setBusy] = useState<null | "book" | "lost" | "undo">(null);
   const [payOpen, setPayOpen] = useState(false);
-  const lostRef = useRef<HTMLDivElement>(null);
   const firstName = (lead.name || "").trim().split(/\s+/)[0] || "this customer";
 
   useEffect(() => {
@@ -89,21 +101,19 @@ export function CustomerActions({
     setLostOpen(false);
   }, [lead.id]);
 
+  // Mark Booked: fill the time the customer gave in the chat (only if nothing is typed yet).
   useEffect(() => {
-    if (!lostOpen) {
-      setOtherOpen(false);
-      setOtherText("");
-    }
-  }, [lostOpen]);
-
-  useEffect(() => {
-    if (!lostOpen) return;
-    function onDown(e: MouseEvent) {
-      if (lostRef.current && !lostRef.current.contains(e.target as Node)) setLostOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [lostOpen]);
+    if (!bookingOpen) { setFound(null); return; }
+    let live = true;
+    api.chats.visitGuess(lead.id)
+      .then((g) => {
+        if (!live) return;
+        setFound(g);
+        if (g.at) setBookFor((cur) => cur || isoToIstLocal(g.at as string));
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [bookingOpen, lead.id]);
 
   async function run(kind: "book" | "lost" | "undo", fn: () => Promise<Lead>, done: string) {
     setBusy(kind);
@@ -165,6 +175,7 @@ export function CustomerActions({
                 <X size={14} />
               </button>
             </div>
+            <p className="font-label text-[10px] font-bold uppercase tracking-[0.08em] text-[#64748b]">When is the visit?</p>
             <input
               type="datetime-local"
               aria-label="Visit date and time"
@@ -172,6 +183,11 @@ export function CustomerActions({
               onChange={(e) => setBookFor(e.target.value)}
               className="h-9 w-full rounded-lg border border-[#e2e8f0] px-2.5 text-[12.5px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
+            {found?.at && found.quote && (
+              <p className="rounded-lg bg-[#eef4ff] px-2.5 py-1.5 text-[11.5px] leading-snug text-[#3538cd]">
+                ✦ AI agent found this in the chat: <span className="font-semibold">&ldquo;{found.quote}&rdquo;</span>
+              </p>
+            )}
             <input
               value={bookNote}
               onChange={(e) => setBookNote(e.target.value)}
@@ -179,16 +195,35 @@ export function CustomerActions({
               placeholder="Note (optional), e.g. trial for bridal saree"
               className="h-9 w-full rounded-lg border border-[#e2e8f0] px-2.5 text-[12.5px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
+            <label className="flex items-center gap-2 text-[12px] text-[#334155]">
+              <input
+                type="checkbox"
+                checked={sendConfirm && Boolean(istToIso(bookFor))}
+                disabled={!istToIso(bookFor)}
+                onChange={(e) => setSendConfirm(e.target.checked)}
+                className="h-4 w-4 accent-[var(--primary-600)]"
+              />
+              Send {firstName} the confirmation on WhatsApp
+            </label>
             <button
               type="button"
               disabled={busy !== null}
-              onClick={() =>
-                void run("book", () => api.chats.book(lead.id, { booked_for: istToIso(bookFor), note: bookNote.trim() || null }), "Marked as booked").then(() => {
+              onClick={() => {
+                const at = istToIso(bookFor);
+                void run("book", async () => {
+                  const res = await api.chats.book(lead.id, { booked_for: at, note: bookNote.trim() || null, send_confirmation: sendConfirm && Boolean(at) });
+                  if (res.confirmation && !res.confirmation.sent) {
+                    toast.warning(`Booked, but the confirmation wasn't sent: ${CONFIRM_WHY[res.confirmation.reason] ?? "WhatsApp didn't take it"}.`);
+                  } else if (res.confirmation?.sent) {
+                    toast.success(`Confirmation sent to ${firstName}`);
+                  }
+                  return res;
+                }, "Marked as booked").then(() => {
                   setBookingOpen(false);
                   setBookFor("");
                   setBookNote("");
-                })
-              }
+                });
+              }}
               className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-bold text-white hover:bg-[var(--primary-900)] disabled:opacity-50"
             >
               {busy === "book" && <Loader2 size={13} className="animate-spin" />} Save booking
@@ -234,70 +269,14 @@ export function CustomerActions({
             )}
           </div>
         ) : (
-          <div className="relative" ref={lostRef}>
-            <button
-              type="button"
-              onClick={() => setLostOpen((o) => !o)}
-              disabled={!canReply || busy !== null}
-              aria-expanded={lostOpen}
-              className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white text-[12.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <X size={14} className="text-[#64748b]" /> Not buying <ChevronDown size={13} className="text-[#64748b]" />
-            </button>
-            {lostOpen && (
-              <div className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-[#e2e8f0] bg-white py-1 shadow-xl">
-                <p className="px-3 pb-1 pt-1.5 font-label text-[10px] font-bold uppercase tracking-[0.08em] text-[#94a3b8]">Why?</p>
-                {NOT_BUYING_REASONS.map((reason) => (
-                  <button
-                    key={reason}
-                    type="button"
-                    onClick={() => { setLostOpen(false); void run("lost", () => api.chats.notBuying(lead.id, reason), "Marked as not buying"); }}
-                    className="w-full px-3 py-2 text-left text-[12.5px] text-[#334155] hover:bg-slate-50"
-                  >
-                    {reason}
-                  </button>
-                ))}
-                {otherOpen ? (
-                  <form
-                    className="border-t border-[#f1f5f9] px-3 pb-2 pt-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const reason = cleanOtherReason(otherText);
-                      if (!reason) return;
-                      setLostOpen(false);
-                      void run("lost", () => api.chats.notBuying(lead.id, reason), "Marked as not buying");
-                    }}
-                  >
-                    <label htmlFor="not-buying-other" className="sr-only">Reason in your own words</label>
-                    <input
-                      id="not-buying-other"
-                      autoFocus
-                      value={otherText}
-                      onChange={(e) => setOtherText(e.target.value)}
-                      maxLength={OTHER_REASON_MAX}
-                      placeholder="Write the reason"
-                      className="h-9 w-full rounded-lg border border-[#e2e8f0] px-2.5 text-[12.5px] text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!cleanOtherReason(otherText)}
-                      className="mt-2 h-8 w-full rounded-lg bg-primary text-[12px] font-bold text-white hover:bg-primary-dark disabled:opacity-40"
-                    >
-                      Save
-                    </button>
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setOtherOpen(true)}
-                    className="w-full border-t border-[#f1f5f9] px-3 py-2 text-left text-[12.5px] text-[#334155] hover:bg-slate-50"
-                  >
-                    Other…
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setLostOpen(true)}
+            disabled={!canReply || busy !== null}
+            className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white text-[12.5px] font-bold text-[#0A1528] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <X size={14} className="text-[#64748b]" /> Not buying
+          </button>
         )}
       </div>
 
@@ -334,6 +313,9 @@ export function CustomerActions({
         </button>
       )}
 
+      {lostOpen && (
+        <MarkLostDialog lead={lead} onClose={() => setLostOpen(false)} onSaved={(updated) => onLeadUpdate?.(updated)} />
+      )}
       <RecordPaymentDialog
         open={payOpen}
         onClose={() => setPayOpen(false)}

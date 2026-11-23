@@ -77,11 +77,21 @@ class RecordPaymentInvoiceTests(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         deals_routes.deals_service.create_deal.assert_not_called()
 
-    def test_payment_link_orders_cannot_send_the_invoice_yet(self):
-        with patch("app.services.business_details.charges_gst", return_value=True):
+    def test_payment_link_order_sends_the_invoice_once_paid(self):
+        from app.services import orders
+        self.db.add("deals", id=DEAL, tenant_id="t1", send_invoice_on_paid=False)
+        with patch("app.services.business_details.charges_gst", return_value=True),              patch.object(orders, "notify", new=AsyncMock()) as notify:
             res = self.client.post("/api/v1/deals/record-payment", json=self.body(method="link", send_gst_invoice=True))
-        self.assertEqual(res.status_code, 400)
-        deals_routes.deals_service.create_deal.assert_not_called()
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["invoice"], {"sent": False, "reason": "on_paid"})
+        notify.assert_not_called()  # nothing is sent until the customer pays
+        self.assertTrue(next(r for r in self.db.rows("deals") if r["id"] == DEAL)["send_invoice_on_paid"])
+
+    def test_options_show_the_next_order_number(self):
+        self.db.add("deal_counters", tenant_id="t1", last_number=1041)
+        with patch("app.services.business_details.get_business_details", return_value={}),              patch("app.services.business_details.prices_include_gst", return_value=True),              patch("app.services.business_details.charges_gst", return_value=True):
+            res = self.client.get(f"/api/v1/deals/record-payment/options?lead_id={LEAD}")
+        self.assertEqual(res.json()["next_order_label"], "D-1042")
 
     def test_options_say_whether_the_shop_is_gst_registered(self):
         with patch("app.services.business_details.get_business_details", return_value={"gstin": "33AAAAA0000A1Z5"}), \
@@ -91,6 +101,37 @@ class RecordPaymentInvoiceTests(unittest.TestCase):
                     res = self.client.get(f"/api/v1/deals/record-payment/options?lead_id={LEAD}")
                 self.assertEqual(res.status_code, 200, res.text)
                 self.assertIs(res.json()["gst_registered"], registered)
+
+
+class InvoiceWhenLinkPaidTests(unittest.TestCase):
+    """The Razorpay paid webhook sends the bill when Record payment asked for it."""
+
+    def run_it(self, flag, sent=True):
+        import asyncio
+        from app.routes import intake
+        from app.services import orders
+        db = FakeSupabase()
+        db.add("deals", id=DEAL, tenant_id="t1", send_invoice_on_paid=flag)
+        with patch.object(intake, "get_supabase", return_value=db),              patch.object(orders, "ensure_invoice", return_value="INV/1") as ensure,              patch.object(orders, "notify", new=AsyncMock(return_value={"sent": sent, "reason": None})) as notify:
+            out = asyncio.run(intake._send_invoice_if_asked("t1", DEAL))
+        return out, ensure, notify, db.rows("deals")[0]
+
+    def test_sends_the_bill_and_clears_the_flag(self):
+        out, ensure, notify, deal = self.run_it(True)
+        self.assertTrue(out)
+        ensure.assert_called_once()
+        self.assertEqual(notify.call_args.args[1:4], ("t1", DEAL, "bill"))
+        self.assertFalse(deal["send_invoice_on_paid"])
+
+    def test_not_asked_sends_nothing(self):
+        out, ensure, notify, _ = self.run_it(False)
+        self.assertFalse(out)
+        notify.assert_not_called()
+
+    def test_bill_that_did_not_go_falls_back_to_the_receipt(self):
+        out, _, _, deal = self.run_it(True, sent=False)
+        self.assertFalse(out)
+        self.assertTrue(deal["send_invoice_on_paid"])
 
 
 if __name__ == "__main__":

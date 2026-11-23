@@ -346,3 +346,42 @@ class CustomerProfileTests(_Base):
 
     def test_another_tenants_customer_is_404(self):
         self.assertEqual(self.client.get(f"/api/v1/customer-profile/{U('other')}").status_code, 404)
+
+
+class CustomersAllListsSaidStopTests(_Base):
+    """v9.2: Customers > All shows the people who said stop too, marked; nothing else does."""
+
+    def setUp(self):
+        super().setUp()
+        _lead(self.db, "priya")
+        _lead(self.db, "divya", opted_out=True)
+
+    def names(self, res):
+        self.assertEqual(res.status_code, 200, res.text)
+        return {r["name"] for r in res.json()["data"]}
+
+    def test_all_with_said_stop_lists_and_marks_them(self):
+        res = self.client.get("/api/v1/leads/?with_said_stop=true")
+        self.assertEqual(self.names(res), {"priya", "divya"})
+        self.assertTrue(next(r for r in res.json()["data"] if r["name"] == "divya")["opted_out"])
+        self.assertEqual(res.json()["total"], 2)
+
+    def test_without_the_flag_they_stay_out(self):
+        self.assertEqual(self.names(self.client.get("/api/v1/leads/")), {"priya"})
+
+    def test_people_count_matches_the_list(self):
+        body = self.client.get("/api/v1/leads/summary?with_said_stop=true").json()
+        self.assertEqual((body["people"], body["said_stop"]), (2, 1))
+        self.assertEqual(self.client.get("/api/v1/leads/summary").json()["people"], 1)
+
+
+class OneCampaignFilterTests(_Base):
+    """v9.2 Google Ads > Open: Customers filtered to one campaign of any kind."""
+
+    def test_campaign_filter_without_meta_source(self):
+        _lead(self.db, "g1", ad_campaign_id="camp-g")
+        _lead(self.db, "g2", ad_campaign_id="camp-other")
+        _lead(self.db, "plain")
+        res = self.client.get("/api/v1/leads/?ad_campaign_id=camp-g")
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual({r["name"] for r in res.json()["data"]}, {"g1"})

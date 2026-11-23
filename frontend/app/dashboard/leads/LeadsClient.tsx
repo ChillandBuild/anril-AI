@@ -214,6 +214,18 @@ function TagChips({ tags, onPick }: { tags?: string[]; onPick: (tag: string) => 
   );
 }
 
+/** ⛔ Said stop: they asked for no offers. Bills, order updates and replies still go. */
+function SaidStopMark() {
+  return (
+    <span
+      title="Said stop: no offers, follow-ups or calls. Bills, order updates and replies still go."
+      className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600"
+    >
+      ⛔ Said stop
+    </span>
+  );
+}
+
 function GroupsCell({ lead }: { lead: Lead }) {
   const groups = lead.groups ?? [];
   if (groups.length === 0) return <span className="text-xs text-[#64748b]">—</span>;
@@ -376,6 +388,8 @@ export function LeadsClient() {
   const onlyLeads = searchParams.get("only") === "leads";
   const cameFrom = searchParams.get("came_from") || undefined;
   const tagFilter = searchParams.get("tag") || undefined;
+  // Google Ads > Open: one campaign's people (cleared with the chip above the table).
+  const urlCampaign = searchParams.get("ad_campaign_id") || undefined;
   const setUrlParam = (key: string, value: string | undefined) =>
     replaceLeadsUrl((params) => {
       if (value) params.set(key, value);
@@ -449,7 +463,7 @@ export function LeadsClient() {
     bought,
     search: search || undefined,
     source_filter: sourceFilter !== "ALL" ? sourceFilter.toLowerCase() : undefined,
-    ad_campaign_id: sourceFilter === "META_ADS" && selectedCampaignId ? selectedCampaignId : undefined,
+    ad_campaign_id: sourceFilter === "META_ADS" && selectedCampaignId ? selectedCampaignId : urlCampaign,
     broadcast_id: sourceFilter === "BROADCAST" && selectedBroadcastId ? selectedBroadcastId : undefined,
     date_from: dateFrom,
     date_to: dateTo,
@@ -1010,6 +1024,15 @@ export function LeadsClient() {
               onClick={() => router.push("/dashboard/leads?tab=said-stop")}
             />
           </div>
+
+          {urlCampaign && sourceFilter !== "META_ADS" && (
+            <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary-light/40 px-3 py-2 text-sm text-ink">
+              Showing one ad campaign&apos;s people
+              <button type="button" onClick={() => setUrlParam("ad_campaign_id", undefined)} className="ml-auto text-xs font-bold text-primary hover:underline">
+                Show everyone ✕
+              </button>
+            </div>
+          )}
 
           {/* Main card with filters and table */}
           <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
@@ -1687,8 +1710,9 @@ export function LeadsClient() {
                                 />
                               </div>
                               <div className="min-w-0">
-                                <div className="whitespace-nowrap font-bold text-sm text-[#0A1528]">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap font-bold text-sm text-[#0A1528]">
                                   {getPrimaryLine(lead)}
+                                  {lead.opted_out && <SaidStopMark />}
                                 </div>
                                 {getSecondaryLine(lead) && (
                                   <div className="whitespace-nowrap text-xs text-[#64748b]">{getSecondaryLine(lead)}</div>
@@ -1741,7 +1765,9 @@ export function LeadsClient() {
                                 e.stopPropagation();
                                 setSendTemplateLeadId(lead.id);
                               }}
-                              className="whitespace-nowrap rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                              disabled={lead.opted_out}
+                              title={lead.opted_out ? "They said stop: no offers or campaign messages go to them" : undefined}
+                              className="whitespace-nowrap rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-transparent"
                             >
                               Send template
                             </button>
@@ -1773,6 +1799,7 @@ export function LeadsClient() {
                       title={getPrimaryLine(lead)}
                       subtitle={getSecondaryLine(lead) as string | undefined}
                     />
+                    {lead.opted_out && <div className="-mt-1 mb-2"><SaidStopMark /></div>}
                     <MobileRecordGrid>
                       <MobileRecordField label="Status" value={<StatusCell lead={lead} />} className="col-span-2" />
                       <MobileRecordField

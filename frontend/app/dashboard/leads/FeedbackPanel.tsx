@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Phone, Star } from "lucide-react";
+import { Phone, Settings2, Star } from "lucide-react";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SwitchPill } from "@/components/ui/controls";
@@ -63,12 +63,33 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint: 
   );
 }
 
+/** Why people were unhappy: one bar per word group, longest first. */
+function UnhappyBars({ rows }: { rows: { text: string; count: number }[] }) {
+  if (rows.length === 0) return <p className="mt-3 text-sm text-[#556274]">No unhappy reasons in this time. Good.</p>;
+  const most = Math.max(...rows.map((r) => r.count), 1);
+  return (
+    <ul className="mt-3 space-y-2.5">
+      {rows.map((r) => (
+        <li key={r.text} className="grid grid-cols-[minmax(0,7.5rem)_1fr_auto] items-center gap-3 text-sm">
+          <span className="truncate capitalize text-[#0A1528]">{r.text}</span>
+          <span className="h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+            <span className="block h-full rounded-full bg-[#f97066]" style={{ width: `${(r.count / most) * 100}%` }} />
+          </span>
+          <span className="w-6 text-right font-bold tabular-nums text-[#0A1528]">{r.count}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function FeedbackPanel() {
   const { role, permissions } = useAuthRole();
   const canManage = role === "owner" || permissions.includes("leads.manage");
 
   const [settings, setSettings] = useState<FeedbackSettings | null>(null);
   const [settingsFailed, setSettingsFailed] = useState(false);
+  // "Feedback message" opens the star message and offer. Open by itself while star messages are off.
+  const [messageOpen, setMessageOpen] = useState<boolean | null>(null);
   const [offerDraft, setOfferDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmOn, setConfirmOn] = useState(false);
@@ -174,6 +195,7 @@ export function FeedbackPanel() {
   const approved = status.tone === "good";
   const offerChanged = (settings?.offer ?? "") !== offerDraft.trim();
   const cost = feedbackCostText(settings?.cost_per_message_rupees);
+  const showMessage = messageOpen ?? !settings?.on;
 
   return (
     <div className="space-y-4">
@@ -189,6 +211,16 @@ export function FeedbackPanel() {
             </p>
           </div>
           <div className="flex items-center gap-2.5">
+            {settings && (
+              <button
+                type="button"
+                onClick={() => setMessageOpen(!showMessage)}
+                aria-expanded={showMessage}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] px-3 py-1.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50"
+              >
+                <Settings2 size={13} aria-hidden="true" /> Feedback message
+              </button>
+            )}
             <span className="text-sm font-semibold text-[#0A1528]">{settings?.on ? "On" : "Off"}</span>
             <SwitchPill
               on={Boolean(settings?.on)}
@@ -210,7 +242,7 @@ export function FeedbackPanel() {
           </p>
         )}
 
-        {settings && (
+        {settings && showMessage && (
           <div className="mt-4 grid gap-4 border-t border-[#eef2f6] pt-4 md:grid-cols-2">
             <div>
               <div className="text-sm font-bold text-[#0A1528]">The star message</div>
@@ -302,7 +334,7 @@ export function FeedbackPanel() {
 
       {report && (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Average stars"
               value={averageText(report.average)}
@@ -314,9 +346,14 @@ export function FeedbackPanel() {
               hint={`${report.answered.toLocaleString("en-IN")} of ${report.asked.toLocaleString("en-IN")} asked`}
             />
             <StatCard
-              label="Unhappy and still open"
-              value={report.unhappy_open.length.toLocaleString("en-IN")}
-              hint="1 to 3 stars, not fixed yet"
+              label="Unhappy (1-3 ★)"
+              value={(report.unhappy ?? report.unhappy_open.length).toLocaleString("en-IN")}
+              hint={`${report.unhappy_open.length.toLocaleString("en-IN")} still open`}
+            />
+            <StatCard
+              label="Google reviews"
+              value={(report.google_reviews ?? 0).toLocaleString("en-IN")}
+              hint="sent from the 4-5 ★ link"
             />
           </div>
 
@@ -384,19 +421,9 @@ export function FeedbackPanel() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
-              <h3 className="text-base font-bold text-[#0A1528]">What went wrong</h3>
-              {report.reasons.length === 0 ? (
-                <p className="mt-3 text-sm text-[#556274]">No reasons yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {report.reasons.map((r) => (
-                    <li key={r.text} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="min-w-0 break-words text-[#0A1528]">{r.text}</span>
-                      <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">{r.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <h3 className="text-base font-bold text-[#0A1528]">Why people were unhappy</h3>
+              <p className="mt-0.5 text-xs text-[#556274]">The words that came up most in 1 to 3 star answers.</p>
+              <UnhappyBars rows={report.unhappy_reasons ?? []} />
             </section>
 
             <section className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
@@ -443,6 +470,11 @@ export function FeedbackPanel() {
                       )}
                       {r.reason && <p className="mt-0.5 break-words text-xs text-[#556274]">&quot;{r.reason}&quot;</p>}
                       {r.staff_name && <p className="mt-0.5 text-xs text-[#556274]">with {r.staff_name}</p>}
+                      {(r.status === "fixed" || r.review_link_sent) && (
+                        <span className="mt-1 inline-flex rounded-full bg-[#ecfdf3] px-2.5 py-0.5 text-[11.5px] font-semibold text-[#067647]">
+                          {r.status === "fixed" ? `✓ Fixed${r.fixed_by_name ? ` by ${r.fixed_by_name}` : ""}` : "Google review link sent"}
+                        </span>
+                      )}
                     </div>
                     <div className="shrink-0 text-right">
                       <div className="text-sm font-semibold text-[#0A1528]">{r.stars ? starsText(r.stars) : "Not answered"}</div>

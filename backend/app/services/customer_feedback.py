@@ -473,6 +473,12 @@ async def handle_feedback_button(db, tenant_id: str, lead_id: str | None, phone:
         lead_id = lead_id or row.get("lead_id")
         if stars > UNHAPPY_MAX:
             await _say(db, tenant_id, lead_id, phone, await _io(_thanks_text, db, tenant_id, row))
+            if review_link(tenant_id):  # the thank-you carried the Google review link
+                try:
+                    await _io(lambda: db.table("customer_feedback").update({"review_link_sent": True})
+                              .eq("id", fid).eq("tenant_id", tenant_id).execute())
+                except Exception as e:
+                    logger.warning("feedback %s: review-sent mark not saved: %s", fid, e)
         else:
             await _say(db, tenant_id, lead_id, phone, "Sorry to hear that. What went wrong?")
             await _io(_ring_unhappy, db, tenant_id, row, stars)
