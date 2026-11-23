@@ -601,3 +601,15 @@ Shipped: Phase 1 (`3bec953a`), Phase 2 (`c9551e3c`), Phase 3 titles + Settings h
 - `lib/brand-guard.test.ts` fails: WhatsApp green `#25D366` in `deals/new-bill/page.tsx` (Keerthi), `conversation-list.tsx`, `site/HeroInbox.tsx`.
 - Roles page still says "Audit Log" in its own heading (`app/dashboard/roles/page.tsx`); the tab is now "Activity log".
 - Call-alerts badge moved to the Team row: a user with `team.manage` but not `team.view` no longer sees it.
+
+## Jothidar AI — books on every answer, a paid quality option (backlog, 2026-11-23)
+Today the 15 books (tier 2) are searched only when the main resource keeps nothing (kb/search.py step B), so a
+personal question the Rule Book covers in general ("Sani 7th la irundha kalyanam late aaguma?") never gets a
+book's detail. Kept that way on purpose: searching the books every time costs about +$0.0035 (≈ ₹0.30) and
++3 s per reply, almost all of it the book judge (measured on 20 live-path eval replies: $0.0075 / 9.0 s with
+books vs $0.0040 / 5.7 s main only) — about ₹300 more per 1,000 messages.
+If a client asks for higher quality, offer it as a per-character switch, cheapest first:
+- judge only the top 8 book candidates instead of 20 (about half the extra cost)
+- search the books too only for chart questions (marriage, job, dasa), not general ones
+- always search both, main resource ranked first
+Measure first: ~10 questions where the Rule Book has the rule and a book has the detail (≈ ₹5), before/after.

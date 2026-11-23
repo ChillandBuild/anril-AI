@@ -335,3 +335,30 @@ def test_a_full_card_logs_the_fact_it_could_not_save(db, llm, guru_chat, caplog)
     caplog.set_level(logging.WARNING)
     assert run(card.extract_and_apply("t1", JOTHIDAR, "priya", GURU_CHAT))["add"] == 0
     assert "memory card full" in caplog.text and "brother" not in caplog.text
+
+
+# --- chart guard: the app re-sends the chart, so memory never keeps chart facts or birth details -------
+
+GUARDED = {**JOTHIDAR, "chart_guard": True}
+CHART_TALK = [{"role": "user", "content": "En rasi Simmam, Guru Simmathil irukku. Born 19 Nov 2003 Madurai. "
+                                          "Kalyanam late aagudhu nu worry."}]
+CHART_OPS = '''[
+  {"op":"add","section":"profile","text":"rasi Simmam","quote":"En rasi Simmam"},
+  {"op":"add","section":"profile","text":"Guru in Simmam","quote":"Guru Simmathil irukku"},
+  {"op":"add","section":"profile","text":"born in Madurai","slot":"birth_place","quote":"Madurai"},
+  {"op":"add","section":"threads","text":"worried about a delayed marriage","quote":"Kalyanam late aagudhu nu worry"}]'''
+
+
+def test_chart_guard_saves_the_worry_not_the_chart_or_birth_details(db, llm):
+    llm["answers"].append(CHART_OPS)
+    done = run(card.extract_and_apply("t1", GUARDED, "karthik", CHART_TALK))
+    assert done["add"] == 1
+    assert [f["text"] for f in db.rows("companion_memory_facts")] == ["worried about a delayed marriage"]
+    sent = llm["calls"][0]["messages"][0]["content"]
+    assert "NEVER save, recap or note horoscope facts" in sent and "birth_date" not in sent
+
+
+def test_without_the_guard_chart_facts_are_saved_as_before(db, llm):
+    llm["answers"].append(CHART_OPS)
+    done = run(card.extract_and_apply("t1", JOTHIDAR, "karthik", CHART_TALK))
+    assert done["add"] == 4

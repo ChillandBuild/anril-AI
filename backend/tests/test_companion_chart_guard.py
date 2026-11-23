@@ -98,3 +98,30 @@ def test_the_porutham_button_is_not_a_handoff(env):
     env.state["replies"] = ["[mood: calm] [used: none] [tag: porutham] [button: porutham]\nPorutham paarkalaam."]
     reply(env.jothidar["id"], "Porutham paarkanum", reply_format=FMT)
     assert [entry[3] for entry in env.state["logged"]] == ["chat"]
+
+
+# --- an own-reading answer also points to the business's astrologer -------------------------------------
+
+def test_an_own_reading_answer_keeps_its_text_and_gets_the_astrologer_button(env):
+    from tests.test_companion_engine import FMT
+    env.state["kb_error"] = True   # no file answers -> basis "own"
+    env.state["replies"] = ["[mood: calm] [used: none] Naga dosham pothuvaa Rahu Kethu sambandham.\n"
+                            "[chips: Parigaaram? | Kovil?]"]
+    r = reply(env.jothidar["id"], "Naga dosham na enna?", reply_format=FMT)
+    assert r.basis == "own" and r.text == "Naga dosham pothuvaa Rahu Kethu sambandham."
+    assert r.button == "astrologer" and r.tag == "counted" and r.chips
+
+
+def test_an_answer_from_the_files_gets_no_added_button(env):
+    from tests.test_companion_engine import FMT
+    env.state["replies"] = ["[mood: calm] [used: 1] Guru 7th house la irukku."]
+    r = reply(env.jothidar["id"], "Kalyanam eppo?", reply_format=FMT)
+    assert r.basis != "own" and r.button is None
+
+
+def test_the_prompt_asks_for_the_businesss_own_handoff_line_after_an_own_answer():
+    from app.companion.platform_rules import OWN_REASONING_ALLOWED
+    from app.companion.prompt import own_reasoning_allowed
+    assert own_reasoning_allowed({}) == OWN_REASONING_ALLOWED
+    text = own_reasoning_allowed({"handoff_line": 'இதை நம்ம "AstroTamil" ஜோதிடர்கிட்ட கேளுங்க.'})
+    assert 'like: "இதை நம்ம AstroTamil ஜோதிடர்கிட்ட கேளுங்க."' in text

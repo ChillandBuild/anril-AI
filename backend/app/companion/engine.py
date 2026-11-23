@@ -637,7 +637,7 @@ def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, c
         return text, {"bubbles": None, "chips": None, "button": None, "tag": None}
     handed = _handed_off(basis, companion)
     shaped = finalize(read_format(text, fmt), fmt, small_talk=is_small_talk(kb), handed_off=handed,
-                      failed=not _has_text(raw, with_format=True), text=text,
+                      failed=not _has_text(raw, with_format=True), text=text, own=basis == "own",
                       fallback_text=handoff_line(companion) if handed else fallback_line(companion.get("language")))
     return "\n\n".join(shaped.bubbles), shaped._asdict()
 

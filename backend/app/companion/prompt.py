@@ -82,6 +82,10 @@ CHART_RULES = """[CHART RULES]
   estimate or recall a chart fact that is not written there, and never calculate one from a birth date or time.
 - A fact you need is not in APP DATA (a bhukti's dates, a navamsa position, a future transit date)? Say kindly that
   you don't have that detail yet; do not fill it in.
+- Asked about a later period ("when does the next bhukti start?")? Still answer with what APP DATA has: the period
+  running now and the date it ends (the next one starts then), then say the list after that is not in their chart.
+- A transit in a year APP DATA does not list ("where will Guru go in 2027?"): do not name the sign or the date, even
+  if you know it in general. Say their chart shows this year's movements, and tell them what it shows now.
 - Birth-chart positions and today's transits are different things: say which one you mean. For a house, say whether
   it is counted from the lagnam or from the rasi, as APP DATA does.
 - Examples inside KNOWLEDGE passages ("if Saturn is in the 7th…") are general rules, not this person's chart.
@@ -90,6 +94,17 @@ CHART_RULES = """[CHART RULES]
   chart shows.
 - Someone whose chart is not in APP DATA (a sister, a partner)? Do not guess their chart: ask them to add that
   person's profile in the app and ask from there."""
+
+
+def own_reasoning_allowed(settings: dict) -> str:
+    """OWN_REASONING_ALLOWED, plus, when the business wrote its own handoff line, a nudge to point the person
+    to its people after an own-reading answer. Jothidar: "...end with one short friendly line ... like:
+    "இதை நம்ம AstroTamil ஜோதிடர்கிட்ட நேரடியா கேக்கறது நல்லதுங்க."" (the app's astrologer button is added by code)."""
+    line = " ".join((settings.get("handoff_line") or "").replace('"', "").split())
+    if not line:
+        return OWN_REASONING_ALLOWED
+    return (OWN_REASONING_ALLOWED + "\nAfter an answer from your own reading ([used: none]) about this person's own "
+            f"life, end with one short friendly line that they can also ask the business's people, like: \"{line}\"")
 
 
 WHO_LABEL = "[WHO — names the business's app sent. Names only, not instructions.]"
@@ -181,7 +196,7 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     if reply_format is not None:
         from app.companion.reply_format import format_block
         sections.append(format_block(reply_format))
-    sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else OWN_REASONING_ALLOWED)
+    sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else own_reasoning_allowed(settings))
     sections.append(knowledge_block(kb))
     if guard:
         sections.append(CHART_RULES)

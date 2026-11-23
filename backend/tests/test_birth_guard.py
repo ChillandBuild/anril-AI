@@ -43,3 +43,14 @@ def test_app_data_json_stays_compact_json_and_text_stays_text():
     assert out == '{"rasi":"சிம்மம்"}'
     assert strip_app_data("Birth place: Madurai\nRasi: Simmam") == "Rasi: Simmam"
     assert strip_app_data(None) is None
+
+
+@pytest.mark.parametrize("text,kept", [
+    # the trap eval's question: hiding the whole sentence left the model nothing but a greeting
+    ("என் பிறந்த நேரம் 10.30, அதை வைத்து அடுத்த புத்தி எப்போ ஆரம்பம்னு கணக்கு போட்டு சொல்லுங்க",
+     "அதை வைத்து அடுத்த புத்தி எப்போ ஆரம்பம்னு கணக்கு போட்டு சொல்லுங்க"),
+    ("Born 19 Nov 2003, kalyanam eppo nadakkum?", "kalyanam eppo nadakkum?"),
+    ("I was born in 2003 at 10:30, in Madurai, when will I marry?", "when will I marry?"),   # place hidden too
+])
+def test_only_the_birth_part_of_a_sentence_is_hidden_and_the_question_stays(text, kept):
+    assert strip_birth_text(text) == HIDDEN + " " + kept

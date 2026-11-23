@@ -7,7 +7,7 @@ whose app sends the finished chart); every other business's prompt is untouched.
 Three shapes come in:
 - the app's chart as JSON  -> birth keys dropped:   {"dob": "19-11-2003", "rasi": "Simmam"} -> {"rasi": "Simmam"}
 - the app's chart as text  -> labelled lines dropped: "Birth time: 10:30 AM" -> (line gone); "Rasi: Simmam" stays
-- chat, memory notes       -> a sentence that gives birth details is hidden:
+- chat, memory notes       -> the part of a sentence that gives birth details is hidden:
       "I was born on 19 Nov 2003 at 10:30 AM in Madurai. Will I get a job?"
       -> "[birth details hidden] Will I get a job?"
   "என் பிறந்த நட்சத்திரம் உத்திரம்" stays: a birth star is part of the chart, not a birth detail.
@@ -48,11 +48,38 @@ _DETAIL = re.compile(
 _SENTENCE_END = re.compile(r"(?<=[.!?।])(\s+)")
 
 
+# A sentence splits into clauses at "," and ";" (not inside "9,9").
+_CLAUSE_END = re.compile(r"(?<=[,;])(\s+)")
+
+
+def _hide_clauses(sentence: str) -> str:
+    """Hides the clauses that give the birth details, keeps the rest of the sentence:
+    "என் பிறந்த நேரம் 10.30, அதை வைத்து அடுத்த புத்தி எப்போ?" -> "[birth details hidden] அதை வைத்து அடுத்த புத்தி எப்போ?"
+    (hiding the whole sentence left the model only "hi" to answer). A clause right after a hidden one is the
+    rest of the birth details ("…porandhen, Madurai la") when it is short or has a date/place cue, and is not
+    a question."""
+    parts = _CLAUSE_END.split(sentence)   # [clause, space, clause, space, ...]
+    if not any(_BIRTH_WORD.search(parts[i]) and _DETAIL.search(parts[i]) for i in range(0, len(parts), 2)):
+        return sentence
+    hidden_before = False
+    for i in range(0, len(parts), 2):
+        clause = parts[i]
+        own = bool(_BIRTH_WORD.search(clause) and _DETAIL.search(clause))
+        rest = (hidden_before and "?" not in clause
+                and (bool(_DETAIL.search(clause)) or len(clause.split()) <= 3))
+        hidden_before = own or rest
+        if hidden_before:
+            parts[i] = HIDDEN
+    # "[hidden], [hidden]." -> one marker; a marker keeps no trailing comma.
+    out = "".join(parts)
+    out = re.sub(re.escape(HIDDEN) + r"(?:[,;]?\s*" + re.escape(HIDDEN) + r")+", HIDDEN, out)
+    return re.sub(re.escape(HIDDEN) + r"\s*[,;]", HIDDEN, out)
+
+
 def _hide_sentences(line: str) -> str:
     parts = _SENTENCE_END.split(line)   # [sentence, space, sentence, space, ...]
     for i in range(0, len(parts), 2):
-        if _BIRTH_WORD.search(parts[i]) and _DETAIL.search(parts[i]):
-            parts[i] = HIDDEN
+        parts[i] = _hide_clauses(parts[i])
     return "".join(parts)
 
 

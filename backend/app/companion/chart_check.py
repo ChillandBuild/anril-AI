@@ -661,6 +661,17 @@ def _where(c: Chart, p: str, said: str) -> str:
     return f"reply says {said}; the chart has {p}: " + "; ".join(parts)
 
 
+def is_chart_fact(text: str | None) -> bool:
+    """True when a line states a chart fact: a planet with a sign or house ("Guru in Simmam", "Sani 8ல்"),
+    a rasi / lagnam ("Simma rasi", "lagnam Kanni") or a dasa / bhukti ("Rahu dasa"). "Works at Guru Tech" is
+    not one: a planet name alone is not enough. The memory step drops these for chart-guard characters."""
+    for clause in _CLAUSE_SPLIT.split(text or ""):
+        kinds = {m[0] for m in _mentions(clause)}
+        if kinds & {"R", "L", "d", "b", "H"} or ("p" in kinds and kinds & {"s", "h"}):
+            return True
+    return False
+
+
 def find_wrong(c: Chart, text: str) -> list[str]:
     """Reasons for every claim in the reply that the chart contradicts (unique, in order)."""
     return list(dict.fromkeys(r for status, r in find_claims(c, text) if status == "wrong"))

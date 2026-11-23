@@ -145,9 +145,11 @@ def read_format(text: str, fmt: ReplyFormat) -> Shaped:
 
 
 def finalize(shaped: Shaped, fmt: ReplyFormat, *, small_talk: bool, handed_off: bool, failed: bool,
-             fallback_text: str, text: str = "") -> Shaped:
+             fallback_text: str, text: str = "", own: bool = False) -> Shaped:
     """Code-side rules over what the model wrote. text: the reply read_format was given, used only when
-    no bubble came out of it (e.g. a lone '---')."""
+    no bubble came out of it (e.g. a lone '---'). own: the answer came from the model's own reading, not
+    the business's files -> it keeps its bubbles and chips and also gets the handoff button ("astrologer"),
+    unless the model chose a button itself."""
     if not failed and not shaped.bubbles:
         rest = strip_tags(text)
         if rest:
@@ -163,4 +165,7 @@ def finalize(shaped: Shaped, fmt: ReplyFormat, *, small_talk: bool, handed_off: 
     if shaped.button and tag != "counted":
         tag = shaped.button   # "[tag: ask_back] [button: helpline]" is a helpline reply: the button names its kind
     chips = shaped.chips if tag == "counted" and fmt.questions_left != 0 else []
-    return Shaped(shaped.bubbles, chips, shaped.button, tag)
+    button = shaped.button
+    if own and button is None and tag == "counted":
+        button = next((b.id for b in fmt.buttons if b.handoff), None)
+    return Shaped(shaped.bubbles, chips, button, tag)
