@@ -4,14 +4,38 @@ import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Plus, Search } from "lucide-react";
-import { propertiesApi, kindLine, priceRangeText, unitsText, type Property } from "@/lib/propertiesApi";
+import { propertiesApi, propertiesSummary, kindLine, priceRangeText, unitsText, type Property, type PropertyStats } from "@/lib/propertiesApi";
+import { formatRupees } from "@/components/deals/money";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { CatalogueTabs } from "../CatalogueTabs";
 
 /* 🏘 Properties (real estate): one card per property. A property is a catalogue item with real-estate details;
  * site visits are Bookings. Backend: routes/properties.py. */
 
-function Card({ p }: { p: Property }) {
+function Tiles() {
+  const { data } = useSWR("properties/summary", propertiesSummary);
+  if (!data) return null;
+  const tiles = [
+    { label: "Projects", value: data.projects, hint: `${data.units_left} units left` },
+    { label: "Site visits this week", value: data.visits_week, hint: `${data.visits_came} came · ${data.visits_to_come} to come` },
+    { label: "Hot buyers", value: data.hot_buyers, hint: "Hot leads who picked a property" },
+    { label: "Token paid", value: data.tokens, hint: data.tokens_paise != null ? `${formatRupees(data.tokens_paise)} in Orders & payments` : "paid orders with a property" },
+    { label: "Asked, not available", value: data.asked_not_available, hint: data.asked_top ? `most asked: ${data.asked_top}` : "last 30 days" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {tiles.map((t) => (
+        <div key={t.label} className="rounded-card border border-border bg-white px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold text-ink-muted">{t.label}</p>
+          <p className="text-2xl font-bold tabular-nums text-ink">{t.value}</p>
+          <p className="truncate text-xs text-ink-muted">{t.hint}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Card({ p, stats }: { p: Property; stats?: PropertyStats }) {
   const price = priceRangeText(p.price_min_paise, p.price_max_paise);
   const sold = p.units_left === 0;
   return (
@@ -28,7 +52,17 @@ function Card({ p }: { p: Property }) {
       </div>
       {price && <p className="mt-2 text-sm font-semibold text-ink">{price}</p>}
       <p className={sold ? "mt-1 text-xs font-semibold text-red-700" : "mt-1 text-xs text-ink-muted"}>{unitsText(p.units_left, p.units_total)}</p>
-      {p.rera_no && <p className="mt-1 text-xs text-ink-muted">RERA {p.rera_no}</p>}
+      <p className="mt-1 text-xs text-ink-muted">
+        {[stats?.brochure ? "📄 Brochure" : null, stats?.photos ? `🖼 ${stats.photos} photos` : null, p.map_url ? "📍 map" : null, p.rera_no ? `RERA ${p.rera_no}` : null]
+          .filter(Boolean).join(" · ") || "No brochure, photos or map yet"}
+      </p>
+      {stats && (
+        <p className="mt-2 flex gap-3 border-t border-border-subtle pt-2 text-xs text-ink-secondary">
+          <span><b className="tabular-nums text-ink">{stats.enquiries}</b> enquiries</span>
+          <span><b className="tabular-nums text-ink">{stats.visits}</b> site visits</span>
+          <span><b className="tabular-nums text-ink">{stats.tokens}</b> token</span>
+        </p>
+      )}
     </Link>
   );
 }
@@ -38,10 +72,12 @@ export default function PropertiesPage() {
   const canManage = role === "owner" || permissions.includes("catalog.manage");
   const [query, setQuery] = useState("");
   const { data, error, isLoading } = useSWR(["properties", query], () => propertiesApi.list(query.trim() || undefined));
+  const { data: summary } = useSWR("properties/summary", propertiesSummary);
 
   return (
     <div className="space-y-4">
       <CatalogueTabs />
+      <Tiles />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-prose text-sm text-ink-muted">The flats, villas and plots you sell. The AI agent asks budget, BHK, area and loan need, then offers a site visit.</p>
         {canManage && (
@@ -71,7 +107,7 @@ export default function PropertiesPage() {
       )}
       {data && data.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {data.map((p) => <Card key={p.id} p={p} />)}
+          {data.map((p) => <Card key={p.id} p={p} stats={summary?.per_property[p.id]} />)}
         </div>
       )}
 

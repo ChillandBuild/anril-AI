@@ -5,11 +5,12 @@ import useSWR from "swr";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { bookingsApi, type Booking, type BookingResource, type BookingSetup } from "@/lib/bookingsApi";
-import { FLAG_CLASS, HELD_HATCH_STYLE, STATUS_CLASS, STATUS_LABEL, bookingFlags, customerLabel, isOpen, sortByStart, summariseDay } from "./bookingsLogic";
+import { bookingsApi, type BookingResource, type BookingSetup } from "@/lib/bookingsApi";
+import { customerLabel, sortByStart, summariseDay } from "./bookingsLogic";
 import { addDays, dayLabel, formatDay, formatTime, istOf, todayIst } from "./bookingsTime";
 import { BookingSheet } from "./BookingSheet";
 import { DayTimeline, type MoveRequest } from "./DayTimeline";
+import { DayList, DayTiles, EmptyDay } from "./DayList";
 import { NewBookingDialog, type NewBookingPrefill } from "./NewBookingDialog";
 import { BTN_PRIMARY, BTN_SECONDARY, ConfirmSheet, DownloadListButton, Notice, errorText } from "./bookingsUi";
 
@@ -43,6 +44,7 @@ export function DayTab({
   const [moving, setMoving] = useState<MoveRequest | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
   const [sheetMode, setSheetMode] = useState<"view" | "move">("view");
+  const [layout, setLayout] = useState<"list" | "timeline">("list");
   const today = todayIst();
 
   // keepPreviousData shows yesterday's bookings while today's load. Only draw data that is for this date.
@@ -103,22 +105,44 @@ export function DayTab({
         {dayLabel(date, today) !== formatDay(date) && <span className="ml-2 text-sm font-semibold text-ink-muted">{formatDay(date)}</span>}
       </h2>
 
-      {view && (counts.came > 0 || counts.toCome > 0 || counts.noShow > 0) && (
-        <p className="text-sm text-ink-secondary">
-          <span className="font-bold tabular-nums text-ink">{counts.came}</span> came ·{" "}
-          <span className="font-bold tabular-nums text-ink">{counts.toCome}</span> to come ·{" "}
-          <span className="font-bold tabular-nums text-ink">{counts.noShow}</span> didn&apos;t come
-        </p>
-      )}
+      {view && counts.total + counts.noShow > 0 && <DayTiles bookings={bookings.filter((b) => istOf(b.start_at)?.date === date)} />}
 
       {canManage && !hasServices && <Notice tone="amber">Add a service in the Services &amp; timings tab before taking bookings.</Notice>}
       {error && !view && <Notice tone="red">Could not load this day. Try again in a moment.</Notice>}
 
       {view && resources.length === 0 && <Notice>No staff or chairs are set up yet. Add one in the By staff / chair tab.</Notice>}
 
-      {view && resources.length > 0 && (
+      {view && resources.length > 0 && bookings.length === 0 && (
+        <EmptyDay onNextDay={() => onDate(addDays(date, 1))} canManage={canManage && hasServices} onNew={() => setCreating({})} />
+      )}
+
+      {view && resources.length > 0 && bookings.length > 0 && (
         <>
-          <div className="hidden md:block">
+          <div className="flex justify-end">
+            <div role="tablist" aria-label="Day view" className="hidden rounded-xl border border-border bg-white p-0.5 md:inline-flex">
+              {(["list", "timeline"] as const).map((v) => (
+                <button key={v} type="button" role="tab" aria-selected={layout === v} onClick={() => setLayout(v)}
+                  className={cn("rounded-lg px-3 py-1 text-xs font-bold", layout === v ? "bg-ink text-white" : "text-ink-secondary hover:text-ink")}>
+                  {v === "list" ? "List" : "By staff"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={layout === "list" ? "" : "md:hidden"}>
+            <DayList
+              bookings={bookings}
+              resources={resources}
+              who={{ canManage, myResourceId: setup.my_resource_id }}
+              isToday={date === today}
+              canSeeMoney={canSeeMoney}
+              onOpen={(b) => {
+                setSheetMode("view");
+                onOpenId(b.id);
+              }}
+              onChanged={() => void mutate()}
+            />
+          </div>
+          <div className={layout === "timeline" ? "hidden md:block" : "hidden"}>
             <DayTimeline
               date={date}
               resources={resources}
@@ -131,21 +155,6 @@ export function DayTab({
               }}
               onNewAt={(r, startAt) => setCreating({ resourceId: r.id, startAt })}
               onMove={setMoving}
-            />
-          </div>
-          <div className="md:hidden">
-            <PhoneList
-              bookings={bookings}
-              resources={resources}
-              canManage={canManage}
-              onOpen={(b) => {
-                setSheetMode("view");
-                onOpenId(b.id);
-              }}
-              onMove={(b) => {
-                setSheetMode("move");
-                onOpenId(b.id);
-              }}
             />
           </div>
         </>
@@ -193,64 +202,3 @@ export function DayTab({
   );
 }
 
-function PhoneList({
-  bookings,
-  resources,
-  canManage,
-  onOpen,
-  onMove,
-}: {
-  bookings: Booking[];
-  resources: BookingResource[];
-  canManage: boolean;
-  onOpen: (b: Booking) => void;
-  onMove: (b: Booking) => void;
-}) {
-  if (bookings.length === 0) return <Notice>No bookings this day.</Notice>;
-  return (
-    <ul className="space-y-2">
-      {bookings.map((b) => {
-        const flags = bookingFlags(b);
-        const col = resources.find((r) => r.id === b.resource_id)?.name;
-        return (
-          <li
-            key={b.id}
-            className={cn("rounded-xl border bg-white p-3 shadow-sm", b.status === "cancelled" && "opacity-60", b.status === "held" && "opacity-80")}
-            style={b.status === "held" ? HELD_HATCH_STYLE : undefined}
-          >
-            <button type="button" onClick={() => onOpen(b)} className="block w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink">
-                    {formatTime(b.start_at)} · {customerLabel(b)}
-                  </p>
-                  <p className="truncate text-sm text-ink-secondary">
-                    {b.service_name}
-                    {col ? ` · ${col}` : ""}
-                  </p>
-                </div>
-                <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-xs font-bold", STATUS_CLASS[b.status])}>{STATUS_LABEL[b.status]}</span>
-              </div>
-              {flags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {flags.map((f) => (
-                    <span key={f.key} className={cn("rounded-full px-2 py-0.5 text-xs font-bold", FLAG_CLASS[f.tone])}>
-                      {f.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
-            {canManage && isOpen(b.status) && (
-              <div className="mt-2">
-                <button type="button" className={cn(BTN_SECONDARY, "min-h-9 py-1.5")} onClick={() => onMove(b)}>
-                  Move
-                </button>
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}

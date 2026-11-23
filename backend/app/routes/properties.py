@@ -60,6 +60,13 @@ def get_availability(ctx: dict = Depends(view)):
     return props.availability(get_supabase(), ctx["tenant_id"])
 
 
+@router.get("/summary")
+def get_summary(ctx: dict = Depends(view)):
+    """The five tiles and per-project enquiries / visits / tokens / media marks (Commerce > Properties)."""
+    from app.services import properties_summary
+    return properties_summary.summary(get_supabase(), ctx["tenant_id"], show_money=_money(ctx))
+
+
 @router.get("")
 def list_all(q: str | None = Query(None, max_length=120), ctx: dict = Depends(view)):
     return {"data": props.list_properties(get_supabase(), ctx["tenant_id"], show_money=_money(ctx), q=q)}

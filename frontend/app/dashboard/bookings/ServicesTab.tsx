@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { SwitchPill } from "@/components/ui/controls";
@@ -149,6 +150,15 @@ function ServiceEditor({ existing, setup, canSeeMoney, onClose, onSaved }: { exi
         }
       >
         <div className="space-y-4">
+          {!existing && (
+            <CataloguePicks
+              taken={setup.services.map((x) => x.name.trim().toLowerCase())}
+              onPick={(item) => {
+                setName(item.name);
+                if (canSeeMoney && typeof item.price_paise === "number") setPrice(paiseToRupeesText(item.price_paise));
+              }}
+            />
+          )}
           <Field label="Name" htmlFor="svc-name">
             <input id="svc-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} className={INPUT_CLS} placeholder="Haircut" />
           </Field>
@@ -213,5 +223,32 @@ function ServiceEditor({ existing, setup, canSeeMoney, onClose, onSaved }: { exi
         />
       )}
     </>
+  );
+}
+
+/** "or pick from Catalogue services": the Catalogue's service items not yet bookable, one tap fills name and price. */
+function CataloguePicks({ taken, onPick }: { taken: string[]; onPick: (item: { name: string; price_paise: number | null }) => void }) {
+  const [all, setAll] = useState<{ id: string; name: string; price_paise: number | null }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.catalog.listItems()
+      .then((rows) => live && setAll(rows.filter((i) => i.item_type === "service").map((i) => ({ id: i.id, name: i.name, price_paise: i.price_paise }))))
+      .catch(() => live && setAll([]));
+    return () => { live = false; };
+  }, []);
+  const items = (all ?? []).filter((i) => !taken.includes(i.name.trim().toLowerCase()));
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold text-ink-secondary">Or pick from your Catalogue services</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.slice(0, 12).map((i) => (
+          <button key={i.id} type="button" onClick={() => onPick(i)}
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-ink hover:border-primary hover:text-primary">
+            {i.name}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

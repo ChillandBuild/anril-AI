@@ -256,6 +256,42 @@ async def pay_part(plan_id: str, part_index: int, body: PayIn, ctx: dict = Depen
                                                method=body.method, by_user_id=ctx.get("user_id"))
 
 
+@router.get("/summary")
+def courses_summary(ctx: dict = Depends(view)):
+    """Courses & batches tiles: students, seats left this month, demo classes, fees due this week, waitlist."""
+    from app.services import course_fees
+    db = get_supabase()
+    with _errors():
+        courses = svc.list_courses(db, ctx["tenant_id"], show_money=False)
+    return course_fees.tiles(db, ctx["tenant_id"], courses, show_money=_money(ctx))
+
+
+@router.get("/fee-instalments")
+def fee_instalments(ctx: dict = Depends(money_view)):
+    """Fee instalments: every student with a fee plan, what is paid, what is next and when."""
+    from app.services import course_fees
+    return {"rows": course_fees.instalments(get_supabase(), ctx["tenant_id"])}
+
+
+@router.post("/fee-plans/{plan_id}/parts/{part_index}/pay-link")
+async def part_pay_link(plan_id: str, part_index: int, ctx: dict = Depends(money_manage)):
+    """A Razorpay link for what is still owed on this part, for staff to share (Fee instalments > Send pay link)."""
+    db = get_supabase()
+    with _errors():
+        if not svc.is_uuid(plan_id):
+            raise CourseError("Fee plan not found", 404)
+        plan = await asyncio.to_thread(fees.get_plan, db, ctx["tenant_id"], plan_id=plan_id)
+        if not plan or part_index < 0 or part_index >= len(plan.get("parts") or []):
+            raise CourseError("Fee plan not found", 404)
+        enrol = (db.table("batch_enrolments").select("phone,student_name").eq("tenant_id", ctx["tenant_id"])
+                 .eq("deal_id", plan["deal_id"]).limit(1).execute().data or [{}])[0]
+    link = await fees._part_link(db, ctx["tenant_id"], plan, part_index, "manual", enrol.get("phone") or "",
+                                 enrol.get("student_name") or "")
+    if not link:
+        raise HTTPException(status_code=400, detail="No pay link could be made. Is Razorpay connected, and is something still owed on this part?")
+    return {"url": link}
+
+
 @router.get("/receipts/{payment_id}")
 def get_receipt(payment_id: str, ctx: dict = Depends(money_view)):
     with _errors():

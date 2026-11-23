@@ -36,9 +36,9 @@ SITE_VISIT_TEMPLATES = {
     },
 }
 
-OUTCOMES = ("liked_thinking", "not_interested", "ready_to_book")
+OUTCOMES = ("liked_thinking", "not_interested", "ready_to_book", "token_paid")
 OUTCOME_LABEL = {"liked_thinking": "Liked it, thinking", "not_interested": "Not interested",
-                 "ready_to_book": "Ready to book"}
+                 "ready_to_book": "Ready to book", "token_paid": "Token paid"}
 LOAN_FOLLOWUP_AFTER = timedelta(days=2)
 LOAN_FOLLOWUP_EXPIRES = timedelta(days=5)   # a follow-up that could not go (template not approved) is dropped after this
 SEND_HOURS_IST = (10, 20)                   # the loan message goes only 10 AM - 8 PM IST

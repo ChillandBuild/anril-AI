@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookingsApi } from "@/lib/bookingsApi";
-import { summariseDay } from "./bookingsLogic";
+import { dayBlocks, summariseDay } from "./bookingsLogic";
 import { addDays, formatDay, mondayOf, todayIst } from "./bookingsTime";
 import { BTN_SECONDARY, DownloadListButton, Notice } from "./bookingsUi";
 
@@ -56,11 +56,30 @@ export function WeekTab({
       {error && !view && <Notice tone="red">Could not load this week. Try again in a moment.</Notice>}
       {!view && !error && <div className="h-40 animate-pulse rounded-2xl bg-border-subtle" aria-hidden />}
 
+      {view && (() => {
+        const week = view.days.map((d) => summariseDay(d.bookings));
+        const sum = (k: "total" | "came" | "toCome" | "noShow") => week.reduce((n, s) => n + s[k], 0);
+        return (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-ink-secondary">
+            <span><b className="tabular-nums text-ink">{sum("total")}</b> booked this week</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#12b76a]" aria-hidden /><b className="tabular-nums text-ink">{sum("came")}</b> came</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#6172f3]" aria-hidden /><b className="tabular-nums text-ink">{sum("toCome")}</b> to come</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#98a2b3]" aria-hidden /><b className="tabular-nums text-ink">{sum("noShow")}</b> didn&apos;t come</span>
+          </div>
+        );
+      })()}
+
       {view && (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           {view.days.map((d) => {
             const s = summariseDay(d.bookings);
             const isToday = d.date === today;
+            const closed = view.resources.length > 0 && view.resources.every((r) => dayBlocks(r.hours, d.date).length === 0);
+            const parts = [
+              { n: s.came, c: "#12b76a" },
+              { n: s.toCome, c: "#6172f3" },
+              { n: s.noShow, c: "#98a2b3" },
+            ].filter((p) => p.n > 0);
             return (
               <li key={d.date} className="min-w-0">
                 <button
@@ -72,8 +91,19 @@ export function WeekTab({
                   )}
                 >
                   <span className="font-label text-sm font-bold text-ink">{formatDay(d.date)}</span>
-                  <span className="font-display text-2xl font-extrabold tabular-nums text-ink">{s.total}</span>
-                  <span className="text-xs text-ink-muted">{s.total === 1 ? "booking" : "bookings"}</span>
+                  {closed && s.total === 0 ? (
+                    <span className="mt-2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-ink-muted">Closed: nobody works this day</span>
+                  ) : (
+                    <>
+                      <span className="font-display text-2xl font-extrabold tabular-nums text-ink">{s.total}</span>
+                      <span className="text-xs text-ink-muted">{s.total === 1 ? "booking" : "bookings"}</span>
+                    </>
+                  )}
+                  {parts.length > 0 && (
+                    <span className="flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+                      {parts.map((p) => <span key={p.c} style={{ flex: p.n, background: p.c }} />)}
+                    </span>
+                  )}
                   <ul className="mt-1 space-y-0.5">
                     {view.resources
                       .filter((r) => s.byResource[r.id])

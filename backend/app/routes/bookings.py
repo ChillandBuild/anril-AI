@@ -513,6 +513,66 @@ def no_show(booking_id: str, ctx: dict = Depends(view)):
     return _shape_all(db, ctx, [row])[0]
 
 
+class PickupIn(BaseModel):
+    pickup: str | None = Field(None, max_length=120)
+
+
+@router.get("/site-visits")
+def site_visits(ctx: dict = Depends(view)):
+    """Bookings > Site visits: the site-visit bookings from 2 days ago to 14 days ahead, with the property,
+    who shows them around and the pickup note. Telecallers see only their own column, as on the Day tab."""
+    from app.services import properties as props
+    db, tid = get_supabase(), ctx["tenant_id"]
+    svc = props.site_visit_service(db, tid, create=False)
+    if not svc:
+        return {"data": [], "service_ready": False}
+    resources = _visible(db, ctx)
+    names = {r["id"]: r.get("name") for r in resources}
+    today = bk._now().astimezone(bk.IST).date()
+    rows = bk.bookings_on(db, tid, today - timedelta(days=2), today + timedelta(days=14), list(names))
+    rows = [r for r in rows if r.get("service_id") == svc["id"]]
+    shaped = _shape_all(db, ctx, rows)
+    ids = [r["id"] for r in rows]
+    prop_of: dict[str, str] = {}
+    if ids:
+        links = (db.table("property_visits").select("booking_id,property_item_id").eq("tenant_id", tid)
+                 .in_("booking_id", ids).execute().data or [])
+        item_ids = list({l["property_item_id"] for l in links})
+        item_names = {i["id"]: i.get("name") for i in (db.table("catalog_items").select("id,name").eq("tenant_id", tid)
+                                                         .in_("id", item_ids).execute().data or [])} if item_ids else {}
+        prop_of = {l["booking_id"]: item_names.get(l["property_item_id"]) for l in links}
+    lead_ids = list({r["lead_id"] for r in rows if r.get("lead_id")})
+    segments = {l["id"]: l.get("segment") for l in (db.table("leads").select("id,segment").eq("tenant_id", tid)
+                                                     .in_("id", lead_ids).execute().data or [])} if lead_ids else {}
+    for b in shaped:
+        b["property_name"] = prop_of.get(b["id"])
+        b["shown_by"] = names.get(b.get("resource_id"))
+        b["segment"] = segments.get(b.get("lead_id"))
+    return {"data": shaped, "service_ready": True}
+
+
+@router.patch("/{booking_id}/pickup")
+def set_pickup(booking_id: str, body: PickupIn, ctx: dict = Depends(view)):
+    """Where to pick the buyer up for a site visit. Same people as Came / Didn't come."""
+    db = get_supabase()
+    with _errors():
+        _may_act(db, ctx, booking_id)
+    text = " ".join((body.pickup or "").split())[:120] or None
+    db.table("bookings").update({"pickup": text}).eq("id", booking_id).eq("tenant_id", ctx["tenant_id"]).execute()
+    return {"pickup": text}
+
+
+@router.post("/{booking_id}/rebook-message")
+async def rebook_message(booking_id: str, ctx: dict = Depends(view)):
+    """Didn't come, what next? > Send rebook message: "we missed you, pick another time" on WhatsApp
+    (plain text, inside the 24-hour window). Same people as Came / Didn't come."""
+    from app.services import booking_messages as bm
+    db = get_supabase()
+    with _errors():
+        await asyncio.to_thread(_may_act, db, ctx, booking_id)
+    return await bm.send_rebook(db, ctx["tenant_id"], booking_id)
+
+
 # ═══════════════════════════ public: the customer's link ═══════════════════════════
 
 def _gone() -> HTTPException:

@@ -350,7 +350,7 @@ def shape_many(db, tenant_id: str, rows: list[dict], services: dict[str, dict], 
             "advance_paid": bool(paid_map.get(row["id"], False)), "deal_id": row.get("deal_id"),
             "confirmed_at": row.get("confirmed_at"),
             "call_now": bool(row.get("call_now_at")) and not row.get("confirmed_at") and row.get("status") == "booked",
-            "note": row.get("note"), "visit_outcome": row.get("visit_outcome"),
+            "note": row.get("note"), "visit_outcome": row.get("visit_outcome"), "pickup": row.get("pickup"),
         }
         if show_money:
             out["advance_paise"] = advance

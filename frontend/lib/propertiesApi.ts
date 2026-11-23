@@ -140,3 +140,22 @@ export function unitsText(left: number | null | undefined, total: number | null 
   if (left === 0) return "Sold out";
   return total != null ? `${left} of ${total} left` : `${left} left`;
 }
+
+/** Commerce > Properties: the five tiles and the per-project numbers (GET /properties/summary). */
+export interface PropertyStats { enquiries: number; visits: number; tokens: number; photos: number; brochure: boolean }
+export interface PropertiesSummary {
+  projects: number;
+  units_left: number;
+  visits_week: number;
+  visits_came: number;
+  visits_to_come: number;
+  hot_buyers: number;
+  tokens: number;
+  /** Only for people who may see money. */
+  tokens_paise?: number;
+  asked_not_available: number;
+  asked_top: string | null;
+  per_property: Record<string, PropertyStats>;
+}
+
+export const propertiesSummary = () => apiFetch<PropertiesSummary>("/api/v1/properties/summary");

@@ -9,6 +9,7 @@ import { CatalogueTabs } from "../CatalogueTabs";
 import { BatchPanel } from "./BatchPanel";
 import { BatchSheet, CourseSheet } from "./CourseForms";
 import { FeeRemindersCard } from "./FeeRemindersCard";
+import { CourseTiles, FeeInstalments } from "./FeeInstalments";
 import { dayText, modeLabel, rupees, seatsText } from "./coursesLogic";
 
 const STATUS_CLS = { open: "bg-emerald-50 text-emerald-800", full: "bg-amber-50 text-amber-900", closed: "bg-slate-100 text-slate-700" } as const;
@@ -22,6 +23,7 @@ export default function CoursesPage() {
   const [batchSheet, setBatchSheet] = useState<{ course: Course; batch: Batch | null } | null>(null);
   const [open, setOpen] = useState<{ course: Course; batch: Batch } | null>(null);
   const [note, setNote] = useState("");
+  const [view, setView] = useState<"batches" | "fees">("batches");
 
   const canManage = can("catalog.manage");
   const money = Boolean(data?.can_see_money);
@@ -52,7 +54,19 @@ export default function CoursesPage() {
         ) : null}
       </div>
       {note ? <Notice>{note}</Notice> : null}
+      <CourseTiles money={money} />
+      {can("deals.view") ? (
+        <div role="tablist" aria-label="Courses view" className="inline-flex rounded-xl border border-[#e2e8f0] bg-white p-0.5">
+          {(["batches", "fees"] as const).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${view === v ? "bg-ink text-white" : "text-ink-secondary hover:text-ink"}`}>
+              {v === "batches" ? "Courses & batches" : "Fee instalments"}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {can("deals.view") ? <FeeRemindersCard canManage={can("deals.manage")} /> : null}
+      {view === "fees" && can("deals.view") ? <FeeInstalments canManage={can("deals.manage")} /> : null}
 
       {isLoading ? <div className="h-40 animate-pulse rounded-xl bg-surface-low" /> : null}
       {error ? <Notice tone="red">{errorText(error, "Could not load your courses. Try again.")}</Notice> : null}
@@ -63,7 +77,7 @@ export default function CoursesPage() {
         </div>
       ) : null}
 
-      <div className="space-y-3">
+      <div className={view === "fees" ? "hidden" : "space-y-3"}>
         {data?.courses.map((course) => (
           <section key={course.id} className="rounded-xl border border-[#e2e8f0] bg-white p-4">
             <div className="flex items-start justify-between gap-3">
@@ -86,8 +100,13 @@ export default function CoursesPage() {
                       <span className="block text-sm text-ink-secondary">
                         {[b.starts_on ? `Starts ${dayText(b.starts_on)}` : "", b.timing_text ?? "", modeLabel(b.mode)].filter(Boolean).join(" · ")}
                       </span>
-                      <span className="block text-sm text-ink-secondary">
+                      <span className="mt-1 flex items-center gap-2 text-sm text-ink-secondary">
+                        <span className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100" aria-hidden>
+                          <span className={`block h-full rounded-full ${b.status === "full" ? "bg-red-500" : "bg-primary"}`}
+                            style={{ width: `${b.seats_total ? Math.min(100, ((b.seats_filled + b.seats_waiting) / b.seats_total) * 100) : 0}%` }} />
+                        </span>
                         {seatsText(b)}{b.waitlist_count > 0 ? ` · ${b.waitlist_count} waiting` : ""}{money && b.fee_paise ? ` · ${rupees(b.fee_paise)}` : ""}
+                        {b.teacher_name ? ` · ${b.teacher_name}` : ""}
                       </span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_CLS[b.status]}`}>{b.status === "open" ? "Open" : b.status === "full" ? "Full" : "Closed"}</span>

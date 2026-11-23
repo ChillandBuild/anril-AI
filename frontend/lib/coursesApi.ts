@@ -158,8 +158,45 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 const id = encodeURIComponent;
 
+/** Courses & batches tiles (GET /courses/summary). Money only for people who may see it. */
+export interface CoursesSummary {
+  students: number;
+  batches: number;
+  seats_left_this_month: number;
+  waitlist: number;
+  full_batches: string[];
+  demo_week: number;
+  demo_joined: number;
+  fees_due_students: number;
+  fees_due_paise?: number;
+}
+
+/** One student on Fee instalments. */
+export interface FeeInstalment {
+  plan_id: string;
+  deal_id: string;
+  enrolment_id: string;
+  lead_id: string | null;
+  student_name: string | null;
+  phone: string | null;
+  course_name: string | null;
+  batch_name: string | null;
+  parts: number;
+  total_paise: number;
+  paid_paise: number;
+  next_index: number | null;
+  next_due: string | null;
+  next_paise: number;
+  status: "paid" | "late" | "due_soon" | "on_track";
+  days_late: number;
+}
+
 export const coursesApi = {
   list: () => apiFetch<CourseList>(BASE),
+  summary: () => apiFetch<CoursesSummary>(`${BASE}/summary`),
+  feeInstalments: () => apiFetch<{ rows: FeeInstalment[] }>(`${BASE}/fee-instalments`),
+  partPayLink: (planId: string, partIndex: number) =>
+    apiFetch<{ url: string }>(`${BASE}/fee-plans/${id(planId)}/parts/${partIndex}/pay-link`, json("POST")),
   createCourse: (body: { name: string; description?: string; price_paise?: number }) =>
     apiFetch<{ id: string; name: string }>(BASE, json("POST", body)),
   updateCourse: (courseId: string, body: { name?: string; description?: string | null; price_paise?: number }) =>

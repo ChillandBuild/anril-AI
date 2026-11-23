@@ -94,9 +94,14 @@ export interface Booking {
   advance_error?: string | null;
   /** Site visits only: how the visit went (set after Came). */
   visit_outcome?: VisitOutcome | null;
+  /** Site visits: where to pick the buyer up. */
+  pickup?: string | null;
 }
 
-export type VisitOutcome = "liked_thinking" | "ready_to_book" | "not_interested";
+/** Bookings > Site visits row. */
+export type SiteVisit = Booking & { property_name: string | null; shown_by: string | null; segment: string | null };
+
+export type VisitOutcome = "liked_thinking" | "ready_to_book" | "not_interested" | "token_paid";
 
 export type FreeRanges = Record<string, [string, string][]>;
 
@@ -204,6 +209,12 @@ export const bookingsApi = {
   visitOutcome: (id: string, outcome: VisitOutcome) =>
     apiFetch<{ visit_outcome: VisitOutcome; loan_followup_due_at: string | null }>(`${BASE}/${encodeURIComponent(id)}/visit-outcome`, json("POST", { outcome })),
   noShow: (id: string) => apiFetch<Booking>(`${BASE}/${encodeURIComponent(id)}/no-show`, json("POST")),
+  siteVisits: () => apiFetch<{ data: SiteVisit[]; service_ready: boolean }>(`${BASE}/site-visits`),
+  setPickup: (id: string, pickup: string) =>
+    apiFetch<{ pickup: string | null }>(`${BASE}/${encodeURIComponent(id)}/pickup`, json("PATCH", { pickup })),
+  /** Didn't come, what next? > "we missed you, pick another time" on WhatsApp (inside the 24-hour window). */
+  rebookMessage: (id: string) =>
+    apiFetch<{ sent: boolean; reason: string }>(`${BASE}/${encodeURIComponent(id)}/rebook-message`, json("POST")),
   /** The list for one day (end left out) or a week, as a file. Needs "Download lists". */
   exportCsv: async (start: string, end?: string) => {
     const res = await fetch(`${API_URL}${BASE}/export${q({ start, end })}`, { headers: await getAuthHeaders() });

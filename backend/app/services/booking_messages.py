@@ -930,3 +930,34 @@ def flag_call_now(db=None, now: datetime | None = None) -> int:
         except Exception as e:
             logger.warning("booking %s: flag call-now failed: %s", b.get("id"), e)
     return flagged
+
+
+# ───────────────────────────────────────────── didn't come: the rebook message (v9.2)
+
+def rebook_text(b: dict, link: str | None) -> str:
+    name = _first_name(b.get("customer_name"))
+    text = f"Hi {name}, we missed you for your {b.get('service_name') or 'booking'} today. Would you like another time?"
+    return text + (f" Pick one here: {link}" if link else " Reply here and we'll book it.")
+
+
+async def send_rebook(db, tenant_id: str, booking_id: str) -> dict:
+    """After Didn't come: "we missed you, pick another time" as plain text inside WhatsApp's 24-hour window.
+    {"sent": bool, "reason": str}. Never raises."""
+    try:
+        b = await _io(_load, db, tenant_id, booking_id)
+        if not b:
+            return {"sent": False, "reason": "not_found"}
+        if b.get("status") != "no_show":
+            return {"sent": False, "reason": "not_no_show"}
+        link = None
+        rows = (await _io(lambda: db.table("booking_settings").select("link_token, link_on").eq("tenant_id", tenant_id)
+                          .limit(1).execute())).data or []
+        if rows and rows[0].get("link_on") and rows[0].get("link_token"):
+            from app.services.booking_ai import booking_link_url
+            link = booking_link_url(rows[0]["link_token"])
+        sid, reason = await _deliver(db, tenant_id, b, text=rebook_text(b, link), template_key="update",
+                                     values=[], text_only=True)
+        return {"sent": bool(sid), "reason": reason}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("booking %s: rebook message failed: %s", booking_id, e)
+        return {"sent": False, "reason": "send_failed"}

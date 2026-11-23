@@ -106,6 +106,7 @@ export const VISIT_OUTCOMES: { value: VisitOutcome; label: string }[] = [
   { value: "liked_thinking", label: "Liked it, thinking" },
   { value: "ready_to_book", label: "Ready to book" },
   { value: "not_interested", label: "Not interested" },
+  { value: "token_paid", label: "Token paid" },
 ];
 export const LOAN_HELP_LINE = "We'll WhatsApp them about home-loan help in 2 days.";
 
