@@ -2267,3 +2267,8 @@ Backend: 27/27 `test_expert_handoff.py` (4 new), full suite 864/864 (same 2 pre-
 - **Own-reading answers** get the reply_format handoff button (code) and, from the prompt, the business's own `handoff_line` (only Jothidar has one with own reasoning on).
 - **Commits:** 3b12ba9a reply_format, 250c0312 chart guard, b0a7b54e follow-ups, a9d1b060 checker fixes from the live test. All pushed and deployed.
 - **Measured:** trap eval (16 trick questions × 2, guard on) 0 wrong chart facts sent, friendly 32/32; checker on 136 real replies: 1 flag, a real one ("Sani aatchi in Mithunam"). Live Playground test 23 Nov: gap opened ~1 s after an own answer; client answer saved → next ask answered "From Owner answers".
+
+## 2026-11-23 — Operator Console has its own login; consent page picks the login by connector (migration 331)
+- **Own cookie:** pages under `/operator` use the `sb-operator-auth-token` cookie (browser client, server layout, middleware refresh); the dashboard keeps the default one, so both can be signed in at once (`frontend/lib/supabase/operator.ts`, `client.ts`).
+- **Trap:** Supabase has ONE consent path (`/operator/oauth/consent`) for both connectors, and stamps an authorization with whichever login opens it first. So the consent page first asks the backend `GET /api/v1/claude/consent-app?authorization_id=` (no login; says admin/client/unknown) and only then opens the request with the matching login (`setLoginScope`). Without it, Reconnect on Anril AI used the admin login and showed "This login does not belong to an Anril client".
+- **331 `claude_authorization_client(text)`:** SECURITY DEFINER read of `auth.oauth_authorizations.client_id` for a pending, unexpired request; service_role only. Undo drops it. Applied 2026-11-23.

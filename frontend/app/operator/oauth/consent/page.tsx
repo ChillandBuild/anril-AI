@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, setLoginScope } from "@/lib/supabase/client";
+import { API_URL } from "@/lib/api";
 import { operatorFetch } from "@/lib/operator";
 import { AnrilLogo } from "@/components/logo";
 import {
@@ -45,6 +46,23 @@ async function consentKind(clientId: string): Promise<ConsentKind> {
   } catch (e) {
     if ((e as { status?: number }).status === 404) return { kind: "admin" };
     throw e;
+  }
+}
+
+/**
+ * Which connector is this request for? Asked BEFORE any login is used: Supabase stamps a request
+ * with whichever login opens it first, and this page can hold two (the operator's and a client
+ * owner's). Admin app -> operator login; client app -> dashboard login. null = could not tell.
+ */
+async function pickLogin(authorizationId: string): Promise<"admin" | "client" | "unknown" | null> {
+  try {
+    const res = await fetch(`${API_URL}${CLIENT_BASE}/consent-app?authorization_id=${encodeURIComponent(authorizationId)}`);
+    if (res.status === 404) return null; // a backend without the client connector: the admin app is the only one
+    if (!res.ok) throw new Error(`consent-app ${res.status}`);
+    const { kind } = (await res.json()) as { kind: "admin" | "client" | "unknown" };
+    return kind;
+  } catch {
+    throw new Error("Could not check which Claude connector this is. Reload the page to try again.");
   }
 }
 
@@ -106,6 +124,8 @@ export default function OAuthConsentPage({
     }
     setPhase({ name: "loading" });
     try {
+      const which = await pickLogin(authorizationId);
+      setLoginScope(which === "client" ? "dashboard" : which === "admin" ? "operator" : null);
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -177,6 +197,7 @@ export default function OAuthConsentPage({
 
   useEffect(() => {
     load();
+    return () => setLoginScope(null); // leaving this page: back to going by the address
   }, [load]);
 
   async function handleAllow() {

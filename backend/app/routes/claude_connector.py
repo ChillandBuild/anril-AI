@@ -4,7 +4,9 @@ Allow, the Settings page, the owner's off switch and the daily sending cap.
 These are the dashboard's own endpoints, called with a normal dashboard login. The connector's
 tools never call them. Spec: docs/specs/anril-client-mcp.md.
 """
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -13,6 +15,8 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.tenant import require_owner
 from app.services import client_claude
 from app.services.audit_log import record_audit_event
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,6 +27,29 @@ def _public_url() -> str:
     from app.client_mcp.server import public_url  # imported here: the MCP package loads only when used
 
     return public_url()
+
+
+@router.get("/consent-app")
+def consent_app(authorization_id: str = Query(min_length=1, max_length=200)):
+    """Which connector is this consent request for, before anyone has signed in to it?
+
+    Supabase stamps a request with whichever login opens it first, and the consent page can hold two
+    logins (the operator's and a client owner's). So it asks here first, then opens the request with
+    the right one. Needs no login and says only "admin", "client" or "unknown": never an app id.
+    """
+    try:
+        found = get_supabase().rpc("claude_authorization_client", {"p_authorization_id": authorization_id}).execute()
+    except Exception:
+        logger.exception("Consent app lookup failed")
+        raise HTTPException(status_code=503, detail="Could not check this request")
+    app_id = str(found.data) if found and found.data else ""
+    if not app_id:
+        return {"kind": "unknown"}
+    if settings.mcp_oauth_client_id and app_id == settings.mcp_oauth_client_id:
+        return {"kind": "admin"}
+    if app_id in client_claude.approved_client_ids():
+        return {"kind": "client"}
+    return {"kind": "unknown"}
 
 
 @router.get("/consent")
