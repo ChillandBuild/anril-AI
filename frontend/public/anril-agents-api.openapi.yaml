@@ -12,7 +12,7 @@ info:
     JSON in, JSON out, no streaming. Unknown body fields are refused (422).
     Typical reply time 4–10 s: use a 60 s timeout.
 servers:
-  - url: https://aira-ai-5tfr.onrender.com/api/v1/companion
+  - url: https://api.anrilaitech.com/api/v1/companion
 security:
   - secretKey: []
 paths:

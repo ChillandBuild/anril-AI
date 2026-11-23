@@ -11,7 +11,7 @@ variable ANRIL_COMPANION_KEY. Example for Jothidar AI (id 7c1e...):
 import os
 
 DEFAULT_WIDGET_ORIGIN = "https://www.anrilaitech.com"
-DEFAULT_API_BASE = "https://aira-ai-5tfr.onrender.com"
+DEFAULT_API_BASE = "https://api.anrilaitech.com"   # Render custom domain since 23 Nov 2026; onrender.com still answers
 
 
 def widget_origin() -> str:
