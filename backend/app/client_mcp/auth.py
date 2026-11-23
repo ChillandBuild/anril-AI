@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 def verify(token: str) -> AccessToken | None:
     claims = _verified_claims(token)
     if not claims:
-        return None
+        return None  # _verified_claims already logged why
     user_id, client_id = claims.get("sub"), claims.get("client_id")
     if not user_id or not client_id:
+        logger.info("Client MCP token refused: no client_id, so not issued to a connector")
         return None  # a normal dashboard login, not a connector
     if client_id not in client_claude.approved_client_ids():
         logger.warning("Client MCP token refused: app %s is not an approved client app", client_id)
@@ -41,6 +42,7 @@ def verify(token: str) -> AccessToken | None:
         return None
     connection = client_claude.find_active(db, seat["tenant_id"], user_id, client_id)
     if not connection:
+        logger.warning("Client MCP token refused: user %s has no active connection (switched off or replaced by a newer one)", str(user_id)[:8])
         return None
     return AccessToken(
         token=token,

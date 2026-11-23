@@ -122,7 +122,7 @@ export function AuthRoleProvider({ children }: { children: ReactNode }) {
             // the user, so sign them out and send them back to login instead.
             if (res.status === 403 && detail.startsWith("No tenant associated")) {
               clearRoleCache();
-              await supabase.auth.signOut();
+              await supabase.auth.signOut({ scope: "local" });
               window.location.href = "/login?reason=removed";
               return;
             }

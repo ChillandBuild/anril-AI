@@ -37,7 +37,7 @@ export function OperatorSidebar({ userEmail }: { userEmail: string }) {
 
   async function handleSignOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     router.push("/operator/login");
   }
 
