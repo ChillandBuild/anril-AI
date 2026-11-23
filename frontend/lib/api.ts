@@ -4208,6 +4208,15 @@ export const api = {
         `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}/leads${instantFormsQuery(params)}`,
       ),
     templates: () => apiFetch<{ data: InstantFormTemplateOption[] }>("/api/v1/instant-forms/templates"),
+    /** Send the ready-made hello message to WhatsApp for approval (does nothing if it is already there). */
+    setupHello: () =>
+      apiFetch<{ hello_template: InstantFormHello }>("/api/v1/instant-forms/hello-template", { method: "POST" }),
+    /** Turn the ready-made hello on or off for one form (it only goes to forms with no template of their own). */
+    setAutoHello: (formId: string, autoHello: boolean) =>
+      apiFetch<{ form_id: string; auto_hello: boolean }>(
+        `/api/v1/instant-forms/forms/${encodeURIComponent(formId)}`,
+        { method: "PATCH", body: JSON.stringify({ auto_hello: autoHello }) },
+      ),
     setTemplate: (
       formId: string, templateId: string | null, variables: InstantFormVariable[], audience: InstantFormAudience,
     ) =>
@@ -4770,13 +4779,26 @@ export interface InstantFormSummary extends InstantFormStats {
   past_ad_names?: string[];
   template_id: string | null;
   template_name: string | null;
+  /** The ready-made hello is allowed for this form (the per-form switch). */
+  auto_hello?: boolean;
+  /** New leads of this form get the ready-made hello right now (no template chosen, hello on and approved). */
+  uses_hello?: boolean;
   last_lead_at: string | null;
+}
+
+/** none = not set up, waiting = Meta is checking it, approved, rejected = Meta said no (send again). */
+export type InstantFormHelloStatus = "none" | "waiting" | "approved" | "rejected";
+
+export interface InstantFormHello {
+  status: InstantFormHelloStatus;
+  name: string;
 }
 
 export interface InstantFormsOverview {
   date_from: string;
   date_to: string;
   spend_available: boolean;
+  hello_template?: InstantFormHello;
   totals: InstantFormStats;
   forms: InstantFormSummary[];
 }
@@ -4803,6 +4825,8 @@ export interface InstantFormDetail {
   template_variables: InstantFormVariable[];
   /** Who gets the template: everyone who fills the form, or only those who agreed to WhatsApp. */
   template_audience: InstantFormAudience;
+  auto_hello?: boolean;
+  hello_template?: InstantFormHello;
   date_from: string;
   date_to: string;
   spend_available: boolean;
@@ -4813,6 +4837,8 @@ export type InstantFormTemplateStatus =
   | "pending" | "sending" | "sent" | "failed" | "no_template" | "no_phone" | "skipped_old" | "no_consent";
 
 export type InstantFormAudience = "everyone" | "consented";
+
+export type InstantFormDelivery = "delivered" | "read" | "failed" | "no_whatsapp";
 
 export interface InstantFormLead {
   id: string;
@@ -4835,6 +4861,10 @@ export interface InstantFormLead {
   template_status: InstantFormTemplateStatus;
   template_error: string | null;
   template_sent_at: string | null;
+  /** What WhatsApp said about the message we sent; null until a receipt arrives. */
+  delivery_status?: InstantFormDelivery | null;
+  /** When the person was put in Call IQ because they have no WhatsApp. */
+  sent_to_calling_at?: string | null;
   /** Ticked the form's consent checkbox (or said yes to a WhatsApp question); null = the form doesn't ask. */
   whatsapp_consent: boolean | null;
   replied: boolean;

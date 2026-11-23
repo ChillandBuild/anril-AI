@@ -20,6 +20,7 @@ import type {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
+import { deliveryLook } from "./instantFormsDelivery";
 import {
   FormStatusBadge,
   InstantFormStatCards,
@@ -158,6 +159,7 @@ function buildCsv(detail: InstantFormDetailData, leads: InstantFormLead[]): stri
     "Organic",
     "WhatsApp consent",
     "WhatsApp status",
+    "Delivery",
   ];
   const lines = leads.map((lead) => [
     dateTimeText(lead.meta_created_at),
@@ -171,6 +173,7 @@ function buildCsv(detail: InstantFormDetailData, leads: InstantFormLead[]): stri
     lead.is_organic ? "Yes" : "No",
     lead.whatsapp_consent === true ? "Yes" : lead.whatsapp_consent === false ? "No" : "Not asked",
     TEMPLATE_STATUS[lead.template_status]?.label ?? lead.template_status,
+    deliveryLook(lead.delivery_status, lead.sent_to_calling_at, lead.template_status)?.label ?? "",
   ]);
   return [header, ...lines].map((line) => line.map(csvCell).join(",")).join("\r\n");
 }
@@ -195,6 +198,7 @@ export function InstantFormDetail({ formId }: { formId: string }) {
   const [draft, setDraft] = useState<DraftVariable[]>([]);
   const [syncedKey, setSyncedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [togglingHello, setTogglingHello] = useState(false);
   const [audience, setAudience] = useState<InstantFormAudience>("everyone");
   const serverKey = detail ? JSON.stringify([detail.template_id, detail.template_variables, detail.template_audience]) : null;
   if (detail && serverKey !== syncedKey) {
@@ -247,6 +251,19 @@ export function InstantFormDetail({ formId }: { formId: string }) {
     setDateFrom(from);
     setDateTo(to);
     setPage(1);
+  }
+
+  async function handleToggleHello() {
+    if (!detail) return;
+    setTogglingHello(true);
+    try {
+      await api.instantForms.setAutoHello(formId, detail.auto_hello === false);
+      await mutateDetail();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setTogglingHello(false);
+    }
   }
 
   function pickTemplate(id: string) {
@@ -353,6 +370,39 @@ export function InstantFormDetail({ formId }: { formId: string }) {
                 ]}
               />
             </label>
+            {!templateId && detail && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="font-label text-xs font-bold text-[#0A1528]">Send the ready-made hello</p>
+                  <p className="mt-0.5 font-body text-xs leading-relaxed text-[#556274]">
+                    {detail.hello_template?.status === "approved"
+                      ? "A short thank-you goes out when no template is chosen."
+                      : detail.hello_template?.status === "waiting"
+                        ? "Meta is checking the hello. It starts by itself once approved."
+                        : "Set it up on the Instant forms page first."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={detail.auto_hello !== false}
+                  aria-label="Send the ready-made hello when no template is chosen"
+                  disabled={togglingHello}
+                  onClick={handleToggleHello}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-40",
+                    detail.auto_hello !== false ? "bg-primary" : "bg-[#cbd5e1]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                      detail.auto_hello !== false ? "translate-x-[18px]" : "translate-x-0.5",
+                    )}
+                  />
+                </button>
+              </div>
+            )}
             {templatesError && (
               <p className="font-body text-xs text-red-600">{errorMessage(templatesError)}</p>
             )}
@@ -536,6 +586,17 @@ export function InstantFormDetail({ formId }: { formId: string }) {
               </td>
               <td className="whitespace-nowrap px-4 py-3">
                 <TemplateStatusBadge status={lead.template_status} error={lead.template_error} />
+                {(() => {
+                  const look = deliveryLook(lead.delivery_status, lead.sent_to_calling_at, lead.template_status);
+                  return look ? (
+                    <span
+                      title={look.hint}
+                      className={cn("ml-1.5 inline-flex rounded-full px-2 py-0.5 font-label text-xs font-bold", look.className)}
+                    >
+                      {look.label}
+                    </span>
+                  ) : null;
+                })()}
                 {consentText(lead.whatsapp_consent) && (
                   <span
                     className={cn(

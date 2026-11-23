@@ -6,29 +6,44 @@ import { toast } from "sonner";
 import {
   BellOff,
   CalendarCheck,
+  CalendarX,
   IndianRupee,
   Megaphone,
   MessageCircle,
   Phone,
+  Plus,
   RefreshCw,
+  RotateCcw,
   ShoppingBag,
+  Star,
   UserPlus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { api, CustomerEvent, CustomerProfile } from "@/lib/api";
+import {
+  TIMELINE_CHIPS,
+  bookingStatusWords,
+  cleanTag,
+  describeTagResult,
+  eventMatchesChip,
+  parseTagInput,
+  refundMethodWords,
+  starsText,
+  tagsApi,
+  MAX_TAGS_PER_PERSON,
+  type BookingEventFields,
+  type ChipKey,
+  type CustomerProfileExtras,
+  type ExtraCustomerEvent,
+} from "@/lib/customersApi";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { cn } from "@/lib/utils";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 
-type ChipKey = "all" | "order" | "chat" | "call" | "broadcast";
-
-const CHIPS: { key: ChipKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "order", label: "Orders" },
-  { key: "chat", label: "Chats" },
-  { key: "call", label: "Calls" },
-  { key: "broadcast", label: "Broadcasts" },
-];
+/** The profile as the backend now sends it: new event kinds, extra totals and tags (all optional on an older backend). */
+type AnyEvent = CustomerEvent | ExtraCustomerEvent;
+type ProfileX = Omit<CustomerProfile, "timeline"> & CustomerProfileExtras & { timeline: AnyEvent[] };
 
 const SOURCE_LABELS: Partial<Record<string, string>> = {
   whatsapp: "WhatsApp",
@@ -119,7 +134,7 @@ interface DescribedEvent {
   detail: string;
 }
 
-function describeEvent(e: CustomerEvent): DescribedEvent {
+function describeEvent(e: AnyEvent): DescribedEvent {
   switch (e.kind) {
     case "order": {
       const amount = rupees(e.amount_paise);
@@ -161,12 +176,47 @@ function describeEvent(e: CustomerEvent): DescribedEvent {
         detail: joinParts([...common, e.by ? `by ${e.by}` : null, e.lost_reason ? `"${e.lost_reason}"` : null]),
       };
     }
-    case "booking":
+    case "booking": {
+      // From the bookings table: service, staff, time and status. The older "booked a visit" event has only for/note.
+      const b = e as BookingEventFields;
+      const status = bookingStatusWords(b.status);
+      const when = b.time ?? b.for;
       return {
         icon: CalendarCheck,
         tone: TONE.blue,
-        title: "Booked a visit",
-        detail: joinParts([e.for ? `For ${dateLabel(e.for)}` : null, e.note]),
+        title: b.service ? `Booking · ${b.service}${status && status !== "booked" ? ` · ${status}` : ""}` : "Booked a visit",
+        detail: joinParts([when ? `For ${dateLabel(when)}` : null, b.staff ? `with ${b.staff}` : null, b.note]),
+      };
+    }
+    case "refund": {
+      const method = refundMethodWords(e.method);
+      return {
+        icon: RotateCcw,
+        tone: TONE.amber,
+        title: `Refund ${e.amount_paise != null ? rupees(e.amount_paise) : ""}${method ? ` · ${method}` : ""}`.trim(),
+        detail: joinParts([e.number ? `Order #${e.number}` : null, e.by ? `by ${e.by}` : null]),
+      };
+    }
+    case "visit":
+      return {
+        icon: CalendarCheck,
+        tone: TONE.green,
+        title: `Visited${e.service ? ` · ${e.service}` : ""}`,
+        detail: joinParts([e.staff ? `with ${e.staff}` : null]),
+      };
+    case "no_show":
+      return {
+        icon: CalendarX,
+        tone: TONE.red,
+        title: `Didn't come${e.service ? ` · ${e.service}` : ""}`,
+        detail: joinParts([e.staff ? `booked with ${e.staff}` : null]),
+      };
+    case "feedback":
+      return {
+        icon: Star,
+        tone: e.stars != null && e.stars <= 3 ? TONE.red : TONE.green,
+        title: `Rated ${starsText(e.stars)}`,
+        detail: joinParts([e.reason ? `"${e.reason}"` : null, e.staff ? `with ${e.staff}` : null]),
       };
     case "chat": {
       const team = e.team;
@@ -256,16 +306,18 @@ export default function CustomerPage() {
 
   const routeParams = useParams<{ id: string }>();
   const leadId = routeParams?.id ?? null;
-  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [profile, setProfile] = useState<ProfileX | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ChipKey>("all");
   const [stopDialog, setStopDialog] = useState<"add" | "remove" | null>(null);
   const [stopBusy, setStopBusy] = useState(false);
+  const [tagInput, setTagInput] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!leadId) return;
     try {
-      setProfile(await api.customerProfile.get(leadId));
+      setProfile((await api.customerProfile.get(leadId)) as unknown as ProfileX);
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Unknown error");
@@ -280,7 +332,7 @@ export default function CustomerPage() {
 
   const timeline = useMemo(() => {
     if (!profile) return [];
-    return profile.timeline.filter((e) => filter === "all" || e.kind === filter);
+    return profile.timeline.filter((e) => eventMatchesChip(e.kind, filter));
   }, [profile, filter]);
 
   async function changeSaidStop(action: "add" | "remove") {
@@ -301,6 +353,21 @@ export default function CustomerPage() {
       toast.error(err instanceof Error ? err.message : "Could not update Said stop");
     } finally {
       setStopBusy(false);
+    }
+  }
+
+  async function changeTags(kind: "add" | "remove", tags: string[]) {
+    if (!leadId || tags.length === 0) return;
+    setTagBusy(true);
+    try {
+      const result = kind === "add" ? await tagsApi.add([leadId], tags) : await tagsApi.remove([leadId], tags);
+      if (kind === "add" && (result.skipped_limit ?? 0) > 0) toast.error(describeTagResult(kind, result));
+      setTagInput("");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change tags");
+    } finally {
+      setTagBusy(false);
     }
   }
 
@@ -365,6 +432,10 @@ export default function CustomerPage() {
   ];
 
   const chatDays = Object.entries(reached_on.chat_days).filter(([, n]) => n > 0);
+  // The four new totals show only when the backend sends them.
+  const t = profile.totals;
+  const extraTotals = t && ("refunds_paise" in t || "visits" in t || "no_shows" in t || "avg_stars" in t) ? t : null;
+  const tags = profile.tags ?? [];
 
   return (
     <div className="space-y-4">
@@ -449,6 +520,37 @@ export default function CustomerPage() {
         </div>
       </div>
 
+      {extraTotals && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <div className="text-xs font-semibold text-[#556274]">Refunds</div>
+            <div className="mt-1 text-xl font-bold text-[#0A1528]">{rupees(extraTotals.refunds_paise ?? 0)}</div>
+            <div className="mt-1 text-xs text-[#556274]">given back</div>
+          </div>
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <div className="text-xs font-semibold text-[#556274]">Visits</div>
+            <div className="mt-1 text-xl font-bold text-[#0A1528]">{extraTotals.visits ?? 0}</div>
+            <div className="mt-1 text-xs text-[#556274]">came to you</div>
+          </div>
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <div className="text-xs font-semibold text-[#556274]">No-shows</div>
+            <div className={cn("mt-1 text-xl font-bold", (extraTotals.no_shows ?? 0) > 0 ? "text-[#b42318]" : "text-[#0A1528]")}>
+              {extraTotals.no_shows ?? 0}
+            </div>
+            <div className="mt-1 text-xs text-[#556274]">booked, didn&apos;t come</div>
+          </div>
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <div className="text-xs font-semibold text-[#556274]">Average stars</div>
+            <div className="mt-1 text-xl font-bold text-[#0A1528]">
+              {extraTotals.avg_stars != null ? extraTotals.avg_stars.toFixed(1) : "—"}
+            </div>
+            <div className="mt-1 text-xs text-[#556274]">
+              {extraTotals.avg_stars != null ? "from their ratings" : "not rated yet"}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <section className="min-w-0 flex-1 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
@@ -457,7 +559,7 @@ export default function CustomerPage() {
               <span className="text-xs text-[#64748b]">newest first</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {CHIPS.map((chip) => {
+              {TIMELINE_CHIPS.map((chip) => {
                 const active = filter === chip.key;
                 return (
                   <button
@@ -539,6 +641,62 @@ export default function CustomerPage() {
                   <p className="text-xs text-[#64748b]">Not reached yet</p>
                 )}
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-bold text-[#0A1528]">Tags</h2>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {tags.length === 0 && <p className="text-xs text-[#556274]">No tags yet</p>}
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-2.5 pr-1.5 text-xs font-semibold text-slate-700"
+                >
+                  <Link href={`/dashboard/leads?tab=people&tag=${encodeURIComponent(tag)}`} className="hover:text-primary">
+                    {tag}
+                  </Link>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => void changeTags("remove", [tag])}
+                      disabled={tagBusy}
+                      aria-label={`Remove tag ${tag}`}
+                      className="rounded-full p-0.5 hover:bg-slate-200 disabled:opacity-50"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            {canManage && tags.length < MAX_TAGS_PER_PERSON && (
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void changeTags("add", parseTagInput(tagInput));
+                }}
+              >
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  maxLength={120}
+                  placeholder="Add a tag, e.g. VIP"
+                  aria-label="Add a tag"
+                  className="min-w-0 flex-1 rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  type="submit"
+                  disabled={tagBusy || !cleanTag(tagInput)}
+                  className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  <Plus size={12} aria-hidden="true" /> Add
+                </button>
+              </form>
+            )}
+            {canManage && tags.length >= MAX_TAGS_PER_PERSON && (
+              <p className="mt-2 text-xs text-[#556274]">{MAX_TAGS_PER_PERSON} tags is the most one person can have.</p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">

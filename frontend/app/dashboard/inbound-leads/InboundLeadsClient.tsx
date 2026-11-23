@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, InboundLead, InboundLeadFilters, InboundResult, InboundResultLabels, Lead, Message } from "@/lib/api";
 import { useInboundAds, useInboundLeads, useInboundLeadsSummary } from "@/hooks/useApi";
@@ -361,7 +362,9 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate font-display text-base font-bold text-[#0A1528]">{name}</h2>
+              <h2 className="truncate font-display text-base font-bold text-[#0A1528]">
+                <Link href={`/dashboard/leads/${leadId}`} title="Open this customer" className="hover:text-primary hover:underline">{name}</Link>
+              </h2>
               {row && <SegmentPill segment={row.segment} />}
             </div>
             <p className="mt-0.5 truncate text-xs text-[#64748b]">
@@ -540,9 +543,11 @@ function GoogleAdsLinkModal({ onClose }: { onClose: () => void }) {
 
 interface InboundLeadsClientProps {
   fallbackInboundLeads: { data: InboundLead[]; total: number; page: number; limit: number } | null;
+  /** From ?result= (Reports › Overview links here with "none"). */
+  initialResult?: InboundResult;
 }
 
-export function InboundLeadsClient({ fallbackInboundLeads }: InboundLeadsClientProps) {
+export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: InboundLeadsClientProps) {
   const router = useRouter();
   const [exporting, setExporting] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
@@ -554,7 +559,7 @@ export function InboundLeadsClient({ fallbackInboundLeads }: InboundLeadsClientP
   const [adId, setAdId] = useState("");
   const [added, setAdded] = useState("30");
   const [segment, setSegment] = useState<string | undefined>();
-  const [result, setResult] = useState<InboundResult | undefined>();
+  const [result, setResult] = useState<InboundResult | undefined>(initialResult);
   const [waiting, setWaiting] = useState(false);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);

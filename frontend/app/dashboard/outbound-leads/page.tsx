@@ -711,11 +711,12 @@ export default function OutboundLeadsPage() {
   const [aborting, setAborting] = useState(false);
 
   // Who the campaign goes to: an uploaded list, or a Customers group (Customers → Groups).
-  const [audience, setAudience] = useState<"list" | "group">("list");
+  // ?group=<id> (from Customers → Groups → Send a campaign) opens with that group picked.
+  const [audience, setAudience] = useState<"list" | "group">(searchParams.get("group") ? "group" : "list");
   const isGroup = audience === "group";
   const [groups, setGroups] = useState<CustomerGroup[] | null>(null);
   const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [groupId, setGroupId] = useState("");
+  const [groupId, setGroupId] = useState(searchParams.get("group") ?? "");
   const selectedGroup = groups?.find((g) => g.id === groupId) ?? null;
   // The confirm step's numbers: who is left out and why, who will get it, and Meta's charge.
   const [reachPreview, setReachPreview] = useState<ReachPreview | null>(null);

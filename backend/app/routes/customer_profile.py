@@ -165,8 +165,81 @@ def _groups(db, ctx: dict, lead: dict) -> list[dict]:
     return sorted(out, key=lambda g: g["name"].lower())
 
 
-def _timeline(lead: dict, orders: list[dict], chats: list[dict], calls: list[dict], broadcasts: list[dict]) -> list[dict]:
+def _refunds(db, tenant_id: str, orders: list[dict]) -> list[dict]:
+    """Money given back on this person's orders. Table missing -> []."""
+    ids = [str(d["id"]) for d in orders]
+    if not ids:
+        return []
+    try:
+        rows = (db.table("deal_refunds").select("id,deal_id,amount_paise,method,reason,status,created_at,created_by")
+                .eq("tenant_id", tenant_id).in_("deal_id", ids).execute()).data or []
+    except Exception as e:
+        logger.warning(f"Customer page: could not read refunds: {e}")
+        return []
+    numbers = {str(d["id"]): d.get("deal_number") for d in orders}
+    from app.routes.customer_groups import _creator_names
+
+    staff = _creator_names(db, tenant_id, [str(r["created_by"]) for r in rows if r.get("created_by")])
+    for r in rows:
+        r["number"] = numbers.get(str(r.get("deal_id")))
+        r["by"] = staff.get(str(r.get("created_by")))
+    return rows
+
+
+def _bookings(db, tenant_id: str, lead_id: str) -> list[dict]:
+    """This person's bookings with the service and staff names. Table missing -> []."""
+    try:
+        rows = (db.table("bookings").select("id,service_id,resource_id,start_at,status,came_at,cancelled_at,cancel_reason,note")
+                .eq("tenant_id", tenant_id).eq("lead_id", lead_id).execute()).data or []
+    except Exception as e:
+        logger.warning(f"Customer page: could not read bookings: {e}")
+        return []
+    services = _names(db, "booking_services", "name", tenant_id, {r.get("service_id") for r in rows})
+    staff = _names(db, "booking_resources", "name", tenant_id, {r.get("resource_id") for r in rows})
+    for r in rows:
+        r["service_name"] = services.get(str(r.get("service_id")))
+        r["staff_name"] = staff.get(str(r.get("resource_id")))
+    return rows
+
+
+def _feedback(db, tenant_id: str, lead_id: str) -> list[dict]:
+    """Star answers from this person. Table missing -> []."""
+    try:
+        rows = (db.table("customer_feedback").select("id,kind,stars,reason,staff_name,status,asked_at,answered_at")
+                .eq("tenant_id", tenant_id).eq("lead_id", lead_id).not_.is_("stars", "null").execute()).data or []
+    except Exception as e:
+        logger.warning(f"Customer page: could not read feedback: {e}")
+        return []
+    return rows
+
+
+def _more_events(refunds: list[dict], bookings: list[dict], feedback: list[dict]) -> list[dict]:
+    """Timeline events from the newer tables: refund, booking / visit / no_show, feedback."""
     events: list[dict] = []
+    for r in refunds:
+        if r.get("status") == "failed":
+            continue
+        events.append({"kind": "refund", "at": r.get("created_at"), "amount_paise": int(r.get("amount_paise") or 0),
+                       "method": r.get("method"), "reason": r.get("reason"), "number": r.get("number"),
+                       "by": r.get("by"), "status": r.get("status")})
+    for b in bookings:
+        status = b.get("status")
+        kind = "visit" if status == "came" else "no_show" if status == "no_show" else "booking"
+        at = (b.get("came_at") if status == "came" else b.get("cancelled_at") if status == "cancelled" else None) \
+            or b.get("start_at")
+        events.append({"kind": kind, "at": at, "time": b.get("start_at"), "for": b.get("start_at"), "note": b.get("note"),
+                       "service": b.get("service_name"),
+                       "staff": b.get("staff_name"), "status": status,
+                       "reason": b.get("cancel_reason") if status == "cancelled" else None})
+    for f in feedback:
+        events.append({"kind": "feedback", "at": f.get("answered_at") or f.get("asked_at"), "stars": f.get("stars"),
+                       "reason": f.get("reason"), "staff": f.get("staff_name"), "about": f.get("kind")})
+    return events
+
+
+def _timeline(lead: dict, orders: list[dict], chats: list[dict], calls: list[dict], broadcasts: list[dict],
+              more: list[dict] | None = None, has_booking_rows: bool = False) -> list[dict]:
+    events: list[dict] = list(more or [])
     for d in orders:
         stage = d.get("stage")
         at = (d.get("won_at") if stage == "won" else d.get("lost_at") if stage == "lost" else None) or d.get("created_at")
@@ -174,7 +247,7 @@ def _timeline(lead: dict, orders: list[dict], chats: list[dict], calls: list[dic
                        "amount_paise": int(d.get("total_paise") or 0), "items": d.get("items") or [],
                        "source": d.get("source"), "payment_method": d.get("payment_method"),
                        "by": d.get("sold_by_name"), "lost_reason": d.get("lost_reason")})
-    if lead.get("booked_at"):
+    if lead.get("booked_at") and not has_booking_rows:  # real bookings, when there are any, say it better
         events.append({"kind": "booking", "at": lead["booked_at"], "for": lead.get("booked_for"),
                        "note": lead.get("booking_note")})
     for c in chats:
@@ -206,6 +279,13 @@ def customer_profile(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
     chats = _chats(db, tenant_id, lead["id"])
     calls = _calls(db, tenant_id, lead["id"])
     broadcasts = _broadcasts(db, tenant_id, lead["id"])
+    refunds = _refunds(db, tenant_id, orders)
+    bookings = _bookings(db, tenant_id, lead["id"])
+    feedback = _feedback(db, tenant_id, lead["id"])
+    from app.services.lead_tags import tags_by_lead
+
+    tags = tags_by_lead(db, tenant_id, [lead["id"]]).get(str(lead["id"]), [])
+    stars = [int(f["stars"]) for f in feedback if f.get("stars")]
 
     won = [d for d in orders if d.get("stage") == "won"]
     waiting = [d for d in orders if d.get("stage") == "awaiting_payment"]
@@ -223,7 +303,9 @@ def customer_profile(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
             "source": lead.get("source"), "ad_name": lead.get("ad_name"), "created_at": lead.get("created_at"),
             "segment": lead.get("segment"), "score": lead.get("score"), "handled_by": handler,
             "ai_enabled": lead.get("ai_enabled") is not False,
+            "tags": tags,
         },
+        "tags": tags,
         "said_stop": {
             "on_list": bool(lead.get("opted_out")), "at": lead.get("opted_out_at"),
             "source": lead.get("opted_out_source"), "detail": lead.get("opted_out_detail"),
@@ -234,12 +316,17 @@ def customer_profile(lead_id: UUID, ctx: dict = Depends(require_leads_view)):
             "average_paise": spent // len(won) if won else 0,
             "last_bought_at": last_won,
             "to_pay_paise": sum(int(d.get("total_paise") or 0) for d in waiting), "orders_waiting": len(waiting),
+            "refunds_paise": sum(int(r.get("amount_paise") or 0) for r in refunds if r.get("status") == "done"),
+            "visits": sum(1 for b in bookings if b.get("status") == "came"),
+            "no_shows": sum(1 for b in bookings if b.get("status") == "no_show"),
+            "avg_stars": round(sum(stars) / len(stars), 1) if stars else None,
         },
         "reached_on": {
             "chat_days": channels, "calls": len(calls), "broadcasts": len(broadcasts),
             "store_bills": sum(1 for d in won if d.get("source") == "walk_in"),
         },
-        "timeline": _timeline(lead, orders, chats, calls, broadcasts),
+        "timeline": _timeline(lead, orders, chats, calls, broadcasts, _more_events(refunds, bookings, feedback),
+                              has_booking_rows=bool(bookings)),
         "notes": _notes(db, tenant_id, lead["id"]),
         "groups": _groups(db, ctx, lead),
     }

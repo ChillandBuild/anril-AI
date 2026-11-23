@@ -355,9 +355,55 @@ def delete_group(group_id: UUID, ctx: dict = Depends(require_leads_manage)):
     tenant_id = ctx["tenant_id"]
     gid = str(group_id)
     _group_or_404(db, tenant_id, gid)
+    # A follow-up aimed at this group would turn into "send to everybody" if the group vanished
+    # (the link is ON DELETE SET NULL), so the group stays until that follow-up is changed.
+    try:
+        in_use = (db.table("reengagement_steps").select("id").eq("tenant_id", tenant_id)
+                  .eq("target_group_id", gid).limit(1).execute()).data or []
+    except Exception:
+        in_use = []  # column not there yet: no follow-up can point at a group
+    if in_use:
+        raise HTTPException(status_code=409, detail="An auto-message is using this group. Change or delete that auto-message first.")
     # customer_group_members rows go with it (ON DELETE CASCADE).
     db.table("customer_groups").delete().eq("id", gid).eq("tenant_id", tenant_id).execute()
     return {"deleted": True}
+
+
+@router.post("/{group_id}/send-to-calling")
+def send_group_to_calling(group_id: UUID, ctx: dict = Depends(require_leads_manage)):
+    """Give this group's open people to callers (Call IQ > Leads to call). Same result line as All people:
+    {added, already, said_stop, bought, closed, not_found, no_callers, added_ids}."""
+    from app.services import customer_calling
+    from app.services.reach_audience import GroupNotFound, resolve_group
+
+    db = get_supabase()
+    gid = str(group_id)
+    _group_or_404(db, ctx["tenant_id"], gid)
+    try:
+        resolved = resolve_group(db, ctx, gid)
+    except GroupNotFound:
+        raise HTTPException(status_code=404, detail="Group not found")
+    # Calling is for everyone in the group, not only people WhatsApp can reach: the member list behind
+    # resolve_group hides people with no WhatsApp (bounced numbers, Instagram-only), and those are exactly
+    # who a caller should phone. A picked group reads its members straight from the table; send_to_calling
+    # itself sorts out Said stop, closed, bought and deleted people.
+    group = resolved["group"]
+    if group["kind"] == "picked":
+        rows = (db.table("customer_group_members").select("lead_id").eq("group_id", gid)
+                .eq("tenant_id", ctx["tenant_id"]).limit(customer_calling.MAX_PEOPLE).execute().data or [])
+        lead_ids = [str(r["lead_id"]) for r in rows]
+        return customer_calling.send_to_calling(db, ctx["tenant_id"], lead_ids, reason="group")
+    # A self-filling group: its rules are the Customers filters, which already hide bounced numbers.
+    from app.routes.leads import LeadFilters, _fetch_all, _filtered_leads_query
+    filters = LeadFilters(group_id=gid)
+    memo: dict = {}
+    live = (_fetch_all(lambda: _filtered_leads_query(db, ctx, filters, columns="id", memo=memo),
+                       order_by=("created_at", "id"))
+            if _filtered_leads_query(db, ctx, filters, columns="id", memo=memo) is not None else [])
+    result = customer_calling.send_to_calling(db, ctx["tenant_id"], [r["id"] for r in live], reason="group")
+    # That list leaves Said stop people out; count them so the line reads like the others.
+    result["said_stop"] = int(result.get("said_stop") or 0) + int(resolved.get("stopped") or 0)
+    return result
 
 
 @router.post("/{group_id}/members")

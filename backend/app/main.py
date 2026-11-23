@@ -37,6 +37,7 @@ from app.routes import brand_icon
 from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
 from app.routes import customer_profile
+from app.routes import reports as reports_routes, lead_tags, customer_feedback
 from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
@@ -483,6 +484,9 @@ app.include_router(leads.router, prefix="/api/v1/leads", tags=["leads"], depende
 app.include_router(customer_groups.router, prefix="/api/v1/customer-groups", tags=["customer-groups"], dependencies=_auth)
 app.include_router(said_stop_routes.router, prefix="/api/v1/said-stop", tags=["said-stop"], dependencies=_auth)
 app.include_router(customer_profile.router, prefix="/api/v1/customer-profile", tags=["customer-profile"], dependencies=_auth)
+app.include_router(lead_tags.router, prefix="/api/v1/lead-tags", tags=["lead-tags"], dependencies=_auth)
+app.include_router(customer_feedback.router, prefix="/api/v1/customer-feedback", tags=["customer-feedback"], dependencies=_auth)
+app.include_router(reports_routes.router, prefix="/api/v1/reports", tags=["reports"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 app.include_router(home.router, prefix="/api/v1/home", tags=["home"], dependencies=_auth)

@@ -47,6 +47,8 @@ RETRY_CLASS: dict[str, str] = {
     "booking-release-holds": "C",
     "booking-reminders": "C",
     "booking-call-now": "C",
+    "feedback-ask": "C",
+    "reports-monthly-bells": "C",
 }
 
 
@@ -104,7 +106,7 @@ def assignment_sweep(timestamp: int) -> None:
 
 # Class A: each lead's template is claimed pending -> sending, so a re-run or an
 # overlap with the live webhook never sends twice.
-@queue_app.periodic(cron="*/30 * * * *", periodic_id="instant-forms-catch-up")
+@queue_app.periodic(cron="*/10 * * * *", periodic_id="instant-forms-catch-up")
 @queue_app.task(name="instant-forms-catch-up", queue="messages")
 async def instant_forms_catch_up(timestamp: int) -> None:
     from app.services.meta_lead_forms import catch_up_all
@@ -408,3 +410,23 @@ def booking_call_now(timestamp: int) -> None:
     """No 'Yes, coming' an hour after the 2-hour reminder: flag the booking Call now, one bell."""
     from app.services.booking_messages import flag_call_now
     flag_call_now()
+
+
+# Customers › Feedback (v9.2 #17). Class C: it messages customers; the row is written before the send and
+# a unique index per order/booking means a re-run never asks twice. Only 10 AM-8 PM IST (checked inside).
+@queue_app.periodic(cron="*/15 * * * *", periodic_id="feedback-ask")
+@queue_app.task(name="feedback-ask", **_one_at_a_time("feedback-ask"), queue="messages")
+async def feedback_ask(timestamp: int) -> None:
+    """1 day after a delivered order or a booking marked Came: the 5-star message (only where Feedback is on)."""
+    from app.services.customer_feedback import ask_due_feedback
+    await ask_due_feedback()
+
+
+# Reports (v9.2 #16). Class C: one bell per owner per month (each function checks the date and its own
+# per-month marker), never two at once. 9 AM IST daily; only the 1st and the 5th do anything.
+@queue_app.periodic(cron=_daily_ist_as_utc_cron(9, 0), periodic_id="reports-monthly-bells")
+@queue_app.task(name="reports-monthly-bells", **_one_at_a_time("reports-monthly-bells"), queue="messages")
+def reports_monthly_bells(timestamp: int) -> None:
+    """1st: "Your report for last month". 5th: "Last month's accountant file is ready"."""
+    from app.services.reports_monthly import send_due_bells
+    send_due_bells()

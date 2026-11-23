@@ -516,6 +516,220 @@ def build_template_components(template: dict, values: list[str], name: str | Non
     return components
 
 
+# ── Ready-made hello (form_lead_hello) ──────────────────────────────────────
+
+HELLO_TEMPLATE = {
+    "name": "form_lead_hello",
+    "body": (
+        "Hi {{1}}, thanks for your interest in {{2}}. We got your details and will help you here on WhatsApp. "
+        "Reply to this message with any question."
+    ),
+    "examples": ["Priya", "Home loans"],
+}
+NO_WHATSAPP_CODE = 131026  # Meta: the number can't receive WhatsApp messages
+
+
+def _hello_row(db, tenant_id: str) -> dict | None:
+    """The tenant's form_lead_hello row on the current WhatsApp number, or None."""
+    rows = (
+        db.table("message_templates").select(_TEMPLATE_COLUMNS).eq("tenant_id", tenant_id)
+        .eq("name", HELLO_TEMPLATE["name"]).execute()
+    ).data or []
+    if not rows:
+        return None
+    waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
+    return next((r for r in rows if not waba_id or r.get("meta_waba_id") == waba_id), None)
+
+
+def hello_status(db, tenant_id: str) -> str | None:
+    """None (never submitted) | PENDING | APPROVED | REJECTED (Meta's word, upper case). Never raises."""
+    try:
+        row = _hello_row(db, tenant_id)
+    except Exception as exc:
+        logger.warning("instant forms: hello template status failed tenant=%s: %s", tenant_id, exc)
+        return None
+    return ((row.get("status") or "PENDING").upper()) if row else None
+
+
+def hello_template(db, tenant_id: str) -> dict | None:
+    """The approved form_lead_hello row, ready to send, or None."""
+    try:
+        row = _hello_row(db, tenant_id)
+    except Exception as exc:
+        logger.warning("instant forms: hello template lookup failed tenant=%s: %s", tenant_id, exc)
+        return None
+    if row and (row.get("status") or "").upper() == "APPROVED":
+        return row
+    return None
+
+
+async def submit_hello_template(db, tenant_id: str) -> dict:
+    """Send form_lead_hello (utility, English) to Meta through the Templates page's own path.
+    A no-op when it is already waiting or approved. Returns {"status": hello_status, "problem": str | None}."""
+    from fastapi import HTTPException
+    from app.routes.templates import CreateTemplate, create_template_record
+
+    problem = None
+    if hello_status(db, tenant_id) in (None, "REJECTED"):
+        try:
+            await create_template_record(
+                CreateTemplate(
+                    name=HELLO_TEMPLATE["name"], category="UTILITY", language="en",
+                    body_text=HELLO_TEMPLATE["body"], body_examples=HELLO_TEMPLATE["examples"],
+                ),
+                tenant_id,
+            )
+        except HTTPException as exc:
+            problem = str(exc.detail)
+        except Exception as exc:
+            logger.warning("instant forms: hello template did not submit tenant=%s: %s", tenant_id, exc)
+            problem = "The ready-made hello could not be sent to WhatsApp. Try again in a minute."
+    return {"status": hello_status(db, tenant_id), "problem": problem}
+
+
+_LINKISH = re.compile(r"://|www\.|@|\.[a-z]{2,}(/|$)|\d", re.IGNORECASE)
+
+
+def _safe_first_name(raw) -> str:
+    """A stranger types the name on the form, and it goes out from the shop's number: keep only a plain
+    first name (no links, emails, digits or domains), at most 30 characters; otherwise "there"."""
+    first = " ".join(str(raw or "").split()).split(" ")[0][:30]
+    if not first or _LINKISH.search(first) or not any(ch.isalpha() for ch in first):
+        return "there"
+    return first
+
+
+def _hello_values(row: dict, form_name: str, business_name: str) -> list[str]:
+    first = _safe_first_name(row.get("name"))
+    about = " ".join((form_name or business_name or "").split())[:60]
+    return [first, about or "our business"]
+
+
+def _business_name(db, tenant_id: str) -> str:
+    try:
+        rows = db.table("tenants").select("name").eq("id", tenant_id).limit(1).execute().data or []
+        return str((rows[0].get("name") if rows else "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _error_code(exc: Exception) -> int | None:
+    """Meta's numeric error code out of a failed send, if it carries one."""
+    detail = getattr(exc, "detail", None) or str(exc)
+    try:
+        payload = json.loads(detail) if isinstance(detail, str) else {}
+        code = ((payload or {}).get("error") or {}).get("code")
+        return int(code) if code is not None else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+# ── Delivery receipts and "no WhatsApp" call-back ───────────────────────────
+
+
+def _set_delivery(db, tenant_id: str, row_id: str, status: str) -> None:
+    """Best effort: a database without the delivery columns (migration 320) just skips it."""
+    try:
+        db.table("meta_form_leads").update({
+            "delivery_status": status, "delivery_updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", row_id).eq("tenant_id", tenant_id).execute()
+    except Exception as exc:
+        logger.warning("instant forms: delivery status not saved row=%s: %s", row_id, exc)
+
+
+def send_form_lead_to_calling(db, tenant_id: str, form_lead_id: str) -> bool:
+    """A form lead whose number has no WhatsApp goes to Call IQ, once. True when the person is now in
+    the calling queue (just added, or already with a caller). Never raises."""
+    from app.services import customer_calling
+
+    try:
+        rows = (
+            db.table("meta_form_leads").select("id,lead_id,form_id,sent_to_calling_at")
+            .eq("tenant_id", tenant_id).eq("id", form_lead_id).limit(1).execute()
+        ).data or []
+        if not rows or rows[0].get("sent_to_calling_at"):
+            return False
+        row = rows[0]
+        # Claim first, so two receipts at once cannot both queue the person.
+        claimed = (
+            db.table("meta_form_leads").update({"sent_to_calling_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", form_lead_id).eq("tenant_id", tenant_id).is_("sent_to_calling_at", "null").execute()
+        ).data
+        if not claimed:
+            return False
+
+        def release() -> None:
+            db.table("meta_form_leads").update({"sent_to_calling_at": None}).eq("id", form_lead_id).eq(
+                "tenant_id", tenant_id
+            ).execute()
+
+        lead_id = row.get("lead_id") or ensure_lead(db, tenant_id, form_lead_id)
+        if not lead_id:
+            release()
+            return False
+        try:
+            result = customer_calling.send_to_calling(db, tenant_id, [lead_id], reason="form_no_whatsapp")
+        except Exception:
+            release()  # a database blip must not leave them marked "sent to calling" but never queued
+            raise
+        if result.get("no_callers"):
+            release()  # nobody to call yet: a later receipt or Resend can try again
+            return False
+        if not (result.get("added") or result.get("already")):
+            return False  # said stop / bought / closed: nothing to call, and no point retrying
+        form = (
+            db.table("meta_lead_forms").select("name").eq("tenant_id", tenant_id).eq("form_id", row.get("form_id"))
+            .limit(1).execute()
+        ).data or [{}]
+        try:
+            db.table("lead_notes").insert({
+                "lead_id": lead_id, "tenant_id": tenant_id, "is_pinned": False, "structured": False,
+                "content": f"Call back: form lead, no WhatsApp (form {form[0].get('name') or 'form'})",
+            }).execute()
+        except Exception as exc:
+            logger.warning("instant forms: call-back note failed for lead %s: %s", lead_id, exc)
+        return True
+    except Exception as exc:
+        logger.warning("instant forms: send to calling failed tenant=%s row=%s: %s", tenant_id, form_lead_id, exc)
+        return False
+
+
+def apply_delivery_status(db, tenant_id: str, message_id: str, status: str, error_code: int | None) -> None:
+    """One WhatsApp receipt for a form template we sent. Never goes backwards (read > delivered; failed
+    only while neither); error 131026 means no WhatsApp on that number, so the person goes to calling.
+    Not a form template, or the delivery columns are missing: nothing happens. Never raises."""
+    try:
+        if not message_id or status not in ("delivered", "read", "failed"):
+            return
+        rows = (
+            db.table("meta_form_leads").select("id,delivery_status")
+            .eq("tenant_id", tenant_id).eq("template_message_id", message_id).limit(1).execute()
+        ).data or []
+        if not rows:
+            return
+        row = rows[0]
+        current = row.get("delivery_status")
+        no_whatsapp = status == "failed" and error_code == NO_WHATSAPP_CODE
+        if status == "read":
+            new = "read" if current != "read" else None
+        elif status == "delivered":
+            new = "delivered" if current not in ("read", "delivered") else None
+        elif current in ("read", "delivered"):
+            new = None
+        elif no_whatsapp:
+            new = "no_whatsapp" if current != "no_whatsapp" else None
+        else:
+            new = "failed" if current not in ("failed", "no_whatsapp") else None
+        if new:
+            db.table("meta_form_leads").update({
+                "delivery_status": new, "delivery_updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", row["id"]).eq("tenant_id", tenant_id).execute()
+        if no_whatsapp and current not in ("read", "delivered"):
+            send_form_lead_to_calling(db, tenant_id, row["id"])
+    except Exception as exc:
+        logger.warning("instant forms: delivery receipt ignored tenant=%s msg=%s: %s", tenant_id, message_id, exc)
+
+
 def _meta_error(exc: Exception) -> str:
     """Meta's own message out of a send failure, not the raw JSON."""
     detail = getattr(exc, "detail", None) or str(exc)
@@ -526,6 +740,25 @@ def _meta_error(exc: Exception) -> str:
     except (ValueError, AttributeError):
         pass
     return f"WhatsApp didn't send it: {str(detail)[:300]}"
+
+
+def _send_settings(db, tenant_id: str, form_id: str) -> dict:
+    """The form's send choices. auto_hello (migration 320) is read on its own, so a database
+    without that column still sends exactly as before (auto_hello unknown -> not False)."""
+    rows = (
+        db.table("meta_lead_forms").select("name,template_id,template_variables,template_audience")
+        .eq("tenant_id", tenant_id).eq("form_id", form_id).limit(1).execute()
+    ).data or [{}]
+    form = dict(rows[0])
+    try:
+        extra = (
+            db.table("meta_lead_forms").select("auto_hello").eq("tenant_id", tenant_id).eq("form_id", form_id)
+            .limit(1).execute()
+        ).data or [{}]
+        form["auto_hello"] = extra[0].get("auto_hello")
+    except Exception:
+        form["auto_hello"] = None
+    return form
 
 
 async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: bool = False) -> str:
@@ -551,30 +784,41 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: b
     if not manual and not instant_template_allowed(tenant_id, "instant_forms"):
         return finish("failed", template_error="Not sent: Instant templates were off in Settings > Auto-Reply. Use Resend to send it now.")
 
-    form = (
-        db.table("meta_lead_forms").select("template_id,template_variables,template_audience")
-        .eq("tenant_id", tenant_id).eq("form_id", row["form_id"]).limit(1).execute()
-    ).data or [{}]
-    template_id = form[0].get("template_id")
+    form = _send_settings(db, tenant_id, row["form_id"])
+    template_id = form.get("template_id")
+    hello = None
     if not template_id:
-        return finish("no_template")
+        # No template chosen: the ready-made hello goes out when the form allows it and Meta approved it.
+        hello = hello_template(db, tenant_id) if form.get("auto_hello") is not False else None
+        if not hello:
+            return finish("no_template")
     if not row.get("phone"):
         return finish("no_phone")
-    if not manual and form[0].get("template_audience") == AUDIENCE_CONSENTED and row.get("whatsapp_consent") is not True:
+    if not manual and form.get("template_audience") == AUDIENCE_CONSENTED and row.get("whatsapp_consent") is not True:
         return finish("no_consent", template_error=NO_CONSENT_NOTE)
     if row.get("lead_id"):
         lead = (
-            db.table("leads").select("opted_out").eq("id", row["lead_id"]).eq("tenant_id", tenant_id).limit(1).execute()
+            db.table("leads").select("opted_out,whatsapp_undeliverable").eq("id", row["lead_id"])
+            .eq("tenant_id", tenant_id).limit(1).execute()
         ).data or [{}]
         if lead[0].get("opted_out"):
             return finish("failed", template_error="This person opted out of WhatsApp messages.")
+        if lead[0].get("whatsapp_undeliverable"):
+            # Already known not to be on WhatsApp: don't try, ring them instead.
+            _set_delivery(db, tenant_id, form_lead_id, "no_whatsapp")
+            send_form_lead_to_calling(db, tenant_id, form_lead_id)
+            return finish("failed", template_error="This number isn't on WhatsApp. It was sent to calling.")
 
-    template = next((t for t in sendable_templates(db, tenant_id) if t["id"] == template_id), None)
-    if not template:
-        return finish("failed", template_error="The chosen template isn't approved on your WhatsApp number any more.")
-    values = template_values(
-        form[0].get("template_variables"), template_blanks(template), answers_map(row.get("answers")), row.get("name"),
-    )
+    if hello:
+        template = hello
+        values = _hello_values(row, form.get("name") or "", _business_name(db, tenant_id))
+    else:
+        template = next((t for t in sendable_templates(db, tenant_id) if t["id"] == template_id), None)
+        if not template:
+            return finish("failed", template_error="The chosen template isn't approved on your WhatsApp number any more.")
+        values = template_values(
+            form.get("template_variables"), template_blanks(template), answers_map(row.get("answers")), row.get("name"),
+        )
     try:
         response = await send_template_message(
             row["phone"], template["name"], template.get("language") or "en",
@@ -582,6 +826,10 @@ async def send_form_template(db, tenant_id: str, form_lead_id: str, *, manual: b
         )
     except Exception as exc:  # never let one send break the webhook/background job
         logger.warning("instant forms: template send failed tenant=%s row=%s: %s", tenant_id, form_lead_id, exc)
+        if _error_code(exc) == NO_WHATSAPP_CODE:
+            _set_delivery(db, tenant_id, form_lead_id, "no_whatsapp")
+            send_form_lead_to_calling(db, tenant_id, form_lead_id)
+            return finish("failed", template_error="This number isn't on WhatsApp. It was sent to calling.")
         return finish("failed", template_error=_meta_error(exc)[:500])
     message_id = ((response or {}).get("messages") or [{}])[0].get("id")
 
@@ -683,12 +931,40 @@ def import_history(tenant_id: str) -> int:
     return rows.count or 0
 
 
+STUCK_MIN_AGE = timedelta(minutes=2)  # younger rows are the live webhook's, still being sent
+STUCK_MAX_PER_RUN = 100
+
+
+def _stuck_pending(db, tenant_id: str) -> list[str]:
+    """Stored rows still 'pending' that the live webhook never finished (a worker died after storing
+    the lead): saved 2 minutes to 24 hours ago, oldest first, at most 100. Older rows stay as they are."""
+    now = datetime.now(timezone.utc)
+    rows = (
+        db.table("meta_form_leads").select("id").eq("tenant_id", tenant_id).eq("template_status", "pending")
+        .gte("created_at", (now - TEMPLATE_MAX_AGE).isoformat())
+        .lte("created_at", (now - STUCK_MIN_AGE).isoformat())
+        .order("created_at").limit(STUCK_MAX_PER_RUN).execute()
+    ).data or []
+    return [r["id"] for r in rows]
+
+
 async def catch_up(tenant_id: str) -> None:
-    """Pick up any lead from the last two days whose webhook never arrived."""
+    """Pick up any lead from the last two days whose webhook never arrived, and finish any stored lead
+    still waiting to be messaged. Safe every 10 minutes: send_form_template claims pending -> sending,
+    so the webhook and this job can never both send."""
     since = datetime.now(timezone.utc) - timedelta(days=2)
-    pending = await asyncio.to_thread(_pull, tenant_id, since, "catch_up")
     db = get_supabase()
-    for row_id in pending:
+    pending: list[str] = []
+    try:
+        pending = await asyncio.to_thread(_pull, tenant_id, since, "catch_up")
+    except Exception as exc:  # Meta unreachable: stored rows can still be finished
+        logger.warning("instant forms: catch-up pull failed tenant=%s: %s", tenant_id, exc)
+    try:
+        stuck = await asyncio.to_thread(_stuck_pending, db, tenant_id)
+    except Exception as exc:
+        logger.warning("instant forms: stuck-row lookup failed tenant=%s: %s", tenant_id, exc)
+        stuck = []
+    for row_id in dict.fromkeys([*pending, *stuck]):
         await send_form_template(db, tenant_id, row_id)
 
 

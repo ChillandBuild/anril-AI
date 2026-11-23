@@ -1,15 +1,29 @@
 "use client";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
-import { api, Lead, LeadFilters, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Star, Bookmark } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
+import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AssignButton } from "./AssignButton";
 import ReengagementBuilder from "./ReengagementBuilder";
-import { useLeadsPage, useLeadsSummary } from "@/hooks/useApi";
+import {
+  CAME_FROM_OPTIONS,
+  ADD_CALLER_HREF,
+  NO_CALLERS_TEXT,
+  callingApi,
+  describeCallingResult,
+  describeTagResult,
+  downloadLeadsCsv,
+  parseTagInput,
+  tagsApi,
+  useLeadsPageX,
+  useLeadsSummaryX,
+  type LeadFiltersX,
+  type LeadRow,
+  type TagCount,
+} from "@/lib/customersApi";
 import { useSearchParams, useRouter } from "next/navigation";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { FilterMenu, FilterMenuOption } from "./FilterMenu";
@@ -19,6 +33,7 @@ import { SendMessageModal } from "./SendMessageModal";
 import { SendTemplateModal } from "./SendTemplateModal";
 import { GroupsPanel, RuleChoices } from "./GroupsPanel";
 import { SaidStopPanel } from "./SaidStopPanel";
+import { FeedbackPanel } from "./FeedbackPanel";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 function NameCell({ lead, onUpdate, compact }: { lead: Lead; onUpdate: (l: Lead) => void; compact?: boolean }) {
@@ -172,6 +187,30 @@ function StatusCell({ lead }: { lead: Lead }) {
   );
 }
 
+/** The tags on a row, as small chips; clicking one filters the list to that tag. Shows 3, then +N. */
+function TagChips({ tags, onPick }: { tags?: string[]; onPick: (tag: string) => void }) {
+  if (!tags || tags.length === 0) return null;
+  const shown = tags.slice(0, 3);
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {shown.map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onPick(t)}
+          title={`Show everyone tagged ${t}`}
+          className="max-w-[110px] truncate rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+        >
+          {t}
+        </button>
+      ))}
+      {tags.length > shown.length && (
+        <span className="text-xs font-semibold text-[#556274]" title={tags.slice(3).join(", ")}>+{tags.length - shown.length}</span>
+      )}
+    </div>
+  );
+}
+
 function GroupsCell({ lead }: { lead: Lead }) {
   const groups = lead.groups ?? [];
   if (groups.length === 0) return <span className="text-xs text-[#64748b]">—</span>;
@@ -226,18 +265,6 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, ac
   );
 }
 
-function ComingSoonCard({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-[#e2e8f0] bg-white px-6 py-12 text-center shadow-sm">
-      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Icon size={20} />
-      </div>
-      <h2 className="mt-4 font-display text-lg font-bold text-[#0A1528]">{title}</h2>
-      <p className="mx-auto mt-1 max-w-md text-sm text-[#64748b]">{text}</p>
-    </div>
-  );
-}
-
 const fmtCount = (n: number | undefined) => (n === undefined ? "—" : n.toLocaleString("en-IN"));
 
 export function LeadsClient() {
@@ -285,6 +312,14 @@ export function LeadsClient() {
   const [changeSegmentPopoverOpen, setChangeSegmentPopoverOpen] = useState(false);
   const changeSegmentPopoverRef = useRef<HTMLDivElement>(null);
 
+  // Tags: every tag in use (for the Tag filter and the picker), and the bulk Tag popover
+  const [tagCounts, setTagCounts] = useState<TagCount[]>([]);
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const tagPopoverRef = useRef<HTMLDivElement>(null);
+  const [tagInput, setTagInput] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
+  const [callingBusy, setCallingBusy] = useState(false);
+
   // Re-engagement states
   const [wabaTemplates, setWabaTemplates] = useState<WabaTemplate[]>([]);
   const router = useRouter();
@@ -301,6 +336,15 @@ export function LeadsClient() {
   // Repeat buyers / Not back in 90 days cards, as a filter (?bought=repeat|quiet).
   const rawBought = searchParams.get("bought");
   const bought = rawBought === "repeat" || rawBought === "quiet" ? rawBought : undefined;
+  // Leads only / Came from / Tag live in the URL too, so Reports and other pages can link straight to them.
+  const onlyLeads = searchParams.get("only") === "leads";
+  const cameFrom = searchParams.get("came_from") || undefined;
+  const tagFilter = searchParams.get("tag") || undefined;
+  const setUrlParam = (key: string, value: string | undefined) =>
+    replaceLeadsUrl((params) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    });
   const toggleBought = (value: "repeat" | "quiet") =>
     replaceLeadsUrl((params) => {
       if (bought === value) params.delete("bought");
@@ -362,7 +406,7 @@ export function LeadsClient() {
   }
 
   // Filters shared by the list, the summary cards and the export, so the numbers always match the table.
-  const listFilters: LeadFilters = {
+  const listFilters: LeadFiltersX = {
     segment: segmentFilter,
     buyer: status === "BUYERS" ? true : undefined,
     group_id: groupId,
@@ -375,10 +419,13 @@ export function LeadsClient() {
     date_to: dateTo,
     assigned_to: assigned,
     reply_window: replyWindow,
+    only: onlyLeads ? "leads" : undefined,
+    came_from: cameFrom,
+    tag: tagFilter,
   };
 
   // SWR Hooks for page data
-  const { data: pageData, mutate: mutateList, isLoading } = useLeadsPage(
+  const { data: pageData, mutate: mutateList, isLoading } = useLeadsPageX(
     {
       ...listFilters,
       page,
@@ -387,12 +434,13 @@ export function LeadsClient() {
     },
     listEnabled
   );
-  const { data: summary, mutate: mutateSummary } = useLeadsSummary(listFilters, listEnabled);
+  const { data: summary, mutate: mutateSummary } = useLeadsSummaryX(listFilters, listEnabled);
 
-  const leads = pageData?.data ?? [];
+  const leads: LeadRow[] = pageData?.data ?? [];
   const totalLeads = pageData?.total ?? 0;
   const hasFilters = !!(
-    search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId || bought
+    search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId || bought ||
+    onlyLeads || cameFrom || tagFilter
   );
   const groupName = groups.find((g) => g.id === groupId)?.name ?? "Group";
   const statusValue = status === "ALL" ? "all" : status === "BUYERS" ? "buyers" : status;
@@ -414,7 +462,7 @@ export function LeadsClient() {
   useEffect(() => {
     setPage(1);
     setSelectedIds(new Set());
-  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort, status, groupId, bought]);
+  }, [search, sourceFilter, selectedCampaignId, selectedBroadcastId, dateFrom, dateTo, assigned, replyWindow, sort, status, groupId, bought, onlyLeads, cameFrom, tagFilter]);
 
   // Search debounce effect
   useEffect(() => {
@@ -430,6 +478,7 @@ export function LeadsClient() {
     api.inboundLeads.campaigns({ currentAccount: true }).then(setCampaigns).catch(() => {});
     api.broadcasts.history().then(setBroadcastHistory).catch(() => {});
     api.customerGroups.list().then(setGroups).catch(() => {});
+    tagsApi.list().then(setTagCounts).catch(() => {});
 
     // Fetch WABA templates
     getAuthHeaders().then(auth => {
@@ -453,6 +502,18 @@ export function LeadsClient() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [groupPopoverOpen]);
+
+  // Close the Tag popover on an outside click.
+  useEffect(() => {
+    if (!tagPopoverOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
+        setTagPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [tagPopoverOpen]);
 
   function openSendMessageModal() {
     const selectedLeads = leads.filter((l) => selectedIds.has(l.id));
@@ -517,7 +578,7 @@ export function LeadsClient() {
     if (!name) return;
     try {
       const group = await api.customerGroups.create(name, savedRule);
-      const left = [search && "the search", getDatePreset() === "custom" && "the custom dates", groupId && "the group filter"].filter(Boolean);
+      const left = [search && "the search", getDatePreset() === "custom" && "the custom dates", groupId && "the group filter", (onlyLeads || cameFrom || tagFilter) && "Leads only, Came from or Tag"].filter(Boolean);
       toast.success(
         `Saved "${group.name}": ${group.member_count} people today. It updates by itself.` +
           (left.length ? ` (${left.join(" and ")} isn't part of it.)` : ""),
@@ -582,6 +643,50 @@ export function LeadsClient() {
       await Promise.all([mutateList(), mutateSummary()]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to change segment");
+    }
+  }
+
+  /** Add or take off the typed tags for everyone ticked. */
+  async function bulkTag(kind: "add" | "remove") {
+    const tags = parseTagInput(tagInput);
+    if (tags.length === 0) {
+      toast.error("Type a tag first, or pick one below");
+      return;
+    }
+    const ids = Array.from(selectedIds);
+    setTagBusy(true);
+    try {
+      const result = kind === "add" ? await tagsApi.add(ids, tags) : await tagsApi.remove(ids, tags);
+      toast.success(describeTagResult(kind, result));
+      setTagInput("");
+      setTagPopoverOpen(false);
+      setSelectedIds(new Set());
+      await mutateList();
+      tagsApi.list().then(setTagCounts).catch(() => {});
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change tags");
+    } finally {
+      setTagBusy(false);
+    }
+  }
+
+  /** Put the ticked people on the calling list and say what happened to each kind. */
+  async function bulkSendToCalling() {
+    const ids = Array.from(selectedIds);
+    setCallingBusy(true);
+    try {
+      const result = await callingApi.sendPeople(ids);
+      if (result.no_callers) {
+        toast.error(NO_CALLERS_TEXT, { action: { label: "Open Team", onClick: () => router.push(ADD_CALLER_HREF) }, duration: 10000 });
+        return;
+      }
+      toast.success(describeCallingResult(result), { duration: 10000 });
+      setSelectedIds(new Set());
+      await mutateList();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send to calling");
+    } finally {
+      setCallingBusy(false);
     }
   }
 
@@ -700,7 +805,7 @@ export function LeadsClient() {
     setAssigned(undefined);
     setReplyWindow(undefined);
     replaceLeadsUrl((params) => {
-      for (const key of ["date_from", "date_to", "segment", "buyer", "group_id", "bought"]) params.delete(key);
+      for (const key of ["date_from", "date_to", "segment", "buyer", "group_id", "bought", "only", "came_from", "tag"]) params.delete(key);
     });
   }
 
@@ -758,13 +863,7 @@ export function LeadsClient() {
 
       {headerView === "said-stop" && <SaidStopPanel />}
 
-      {headerView === "feedback" && (
-        <ComingSoonCard
-          icon={Star}
-          title="Feedback"
-          text="Star ratings customers give after a purchase or visit will show here. This list is being built next."
-        />
-      )}
+      {headerView === "feedback" && <FeedbackPanel />}
 
       {headerView === "people" && pageView === "reengagement" && (
         <div className="space-y-6">
@@ -807,6 +906,7 @@ export function LeadsClient() {
             broadcastId={reengageTrigger === "broadcast" ? selectedBroadcastId : undefined}
             templates={wabaTemplates}
             canManage={canManageLeads}
+            initialGroupId={searchParams.get("group") || undefined}
           />
         </div>
       )}
@@ -1003,6 +1103,44 @@ export function LeadsClient() {
                 showValue={true}
               />
 
+              {/* Leads only: people who never bought. */}
+              <button
+                type="button"
+                aria-pressed={onlyLeads}
+                onClick={() => setUrlParam("only", onlyLeads ? undefined : "leads")}
+                title={onlyLeads ? "Showing people who never bought. Click to show everyone" : "Show only people who never bought"}
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors",
+                  onlyLeads ? "bg-primary text-white" : "border border-[#e2e8f0] bg-white text-[#0A1528] hover:border-slate-300",
+                )}
+              >
+                Leads only
+              </button>
+
+              <FilterMenu
+                label="Came from"
+                options={CAME_FROM_OPTIONS}
+                value={cameFrom ?? "all"}
+                onChange={(val) => setUrlParam("came_from", val && val !== "all" ? val : undefined)}
+                showValue={true}
+              />
+
+              {(tagCounts.length > 0 || tagFilter) && (
+                <FilterMenu
+                  label="Tag"
+                  options={[
+                    { value: "all", label: "All" },
+                    ...(tagFilter && !tagCounts.some((t) => t.tag.toLowerCase() === tagFilter.toLowerCase())
+                      ? [{ value: tagFilter, label: tagFilter }]
+                      : []),
+                    ...tagCounts.map((t) => ({ value: t.tag, label: t.count > 0 ? `${t.tag} (${t.count})` : t.tag })),
+                  ]}
+                  value={tagFilter ?? "all"}
+                  onChange={(val) => setUrlParam("tag", val && val !== "all" ? val : undefined)}
+                  showValue={true}
+                />
+              )}
+
               {groupId && (
                 <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary/10 py-1 pl-3 pr-1.5 text-xs font-bold text-primary">
                   Group: {groupName}
@@ -1089,7 +1227,7 @@ export function LeadsClient() {
                   <button
                     onClick={async () => {
                       try {
-                        await api.leads.exportLeads(listFilters);
+                        await downloadLeadsCsv(listFilters);
                         toast.success("Export downloaded");
                       } catch (err) {
                         toast.error(err instanceof Error ? err.message : "Export failed");
@@ -1202,6 +1340,83 @@ export function LeadsClient() {
                       </div>
                     )}
                   </div>
+                )}
+                {canManageLeads && (
+                  <div ref={tagPopoverRef} className="relative">
+                    <button
+                      onClick={() => setTagPopoverOpen(!tagPopoverOpen)}
+                      aria-expanded={tagPopoverOpen}
+                      className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <Tag size={12} />
+                      Tag
+                    </button>
+                    {tagPopoverOpen && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          bulkTag("add");
+                        }}
+                        className="absolute top-full left-0 mt-1 z-30 w-[280px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#e2e8f0] bg-white p-3 text-[#0A1528] shadow-lg"
+                      >
+                        <p className="text-xs font-bold">Tag {selectedIds.size} {selectedIds.size === 1 ? "person" : "people"}</p>
+                        <input
+                          autoFocus
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setTagPopoverOpen(false);
+                          }}
+                          maxLength={120}
+                          placeholder="Type a tag, e.g. VIP"
+                          aria-label="Tag"
+                          className="mt-2 w-full rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                        <p className="mt-1 text-xs text-[#556274]">Up to 30 letters. Use a comma for more than one. 10 tags at most per person.</p>
+                        {tagCounts.length > 0 && (
+                          <div className="mt-2 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                            {tagCounts.map((t) => (
+                              <button
+                                key={t.tag}
+                                type="button"
+                                onClick={() => setTagInput((cur) => parseTagInput(`${cur},${t.tag}`).join(", "))}
+                                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                              >
+                                {t.tag}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={tagBusy || !tagInput.trim()}
+                            className="flex-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                          >
+                            Add tag
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => bulkTag("remove")}
+                            disabled={tagBusy || !tagInput.trim()}
+                            className="flex-1 rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50 disabled:opacity-40"
+                          >
+                            Remove tag
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
+                {canManageLeads && (
+                  <button
+                    onClick={bulkSendToCalling}
+                    disabled={callingBusy}
+                    className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <PhoneForwarded size={12} />
+                    {callingBusy ? "Sending…" : "Send to calling"}
+                  </button>
                 )}
                 {canManageLeads && (
                   <button
@@ -1410,6 +1625,7 @@ export function LeadsClient() {
                                 {getSecondaryLine(lead) && (
                                   <div className="whitespace-nowrap text-xs text-[#64748b]">{getSecondaryLine(lead)}</div>
                                 )}
+                                <TagChips tags={lead.tags} onPick={(t) => setUrlParam("tag", t)} />
                               </div>
                             </div>
                           </td>
@@ -1507,6 +1723,9 @@ export function LeadsClient() {
                       />
                       <MobileRecordField label="Assigned" value={lead.assigned_to ? callers.find((c) => c.id === lead.assigned_to)?.name || "Caller" : "Unassigned"} />
                       <MobileRecordField label="Groups" value={<GroupsCell lead={lead} />} className="col-span-2" />
+                      {(lead.tags?.length ?? 0) > 0 && (
+                        <MobileRecordField label="Tags" value={<TagChips tags={lead.tags} onPick={(t) => setUrlParam("tag", t)} />} className="col-span-2" />
+                      )}
                     </MobileRecordGrid>
                     <div className="mt-4 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
                       <div>

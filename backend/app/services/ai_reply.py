@@ -1948,6 +1948,13 @@ def build_reply_system_prompt(
     # services/booking_ai.py; never raises, adds nothing when Bookings isn't set up.
     from app.services import booking_ai
     system_prompt += booking_ai.prompt_block(db, tenant_id)
+    # v9.2 #18: what this person already told us in a Meta Instant form, so the AI never asks it again.
+    # services/form_answers_ai.py; never raises, adds nothing for people who filled no form.
+    try:
+        from app.services import form_answers_ai
+        system_prompt += form_answers_ai.prompt_block(db, tenant_id, lead_id)
+    except Exception as e:  # the module is optional; a missing one must never stop a reply
+        logger.info("form answers block skipped for lead %s: %s", lead_id, type(e).__name__)
 
     # Last, so it is the freshest instruction when the model decides how to ask a question.
     from app.services.choices import PROMPT_BLOCK as _CHOICES_BLOCK

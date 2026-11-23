@@ -2,12 +2,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Check, Download, FolderPlus, Hand, Plus, RefreshCw, Users, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Download, FolderPlus, Hand, Megaphone, MessageSquareReply, PhoneForwarded, Plus, RefreshCw, Users, X } from "lucide-react";
 import { api, CustomerGroup, GroupRule, Lead } from "@/lib/api";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
+import {
+  ADD_CALLER_HREF,
+  NO_CALLERS_TEXT,
+  callingApi,
+  campaignHrefForGroup,
+  describeCallingResult,
+  followUpHrefForGroup,
+} from "@/lib/customersApi";
 
 /** Names the rule editor offers, loaded once by the Customers page. */
 export interface RuleChoices {
@@ -233,6 +242,9 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [preview, setPreview] = useState<{ groupId: string; people: Lead[]; total: number } | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const router = useRouter();
+  const [confirmCalling, setConfirmCalling] = useState(false);
+  const [callingBusy, setCallingBusy] = useState(false);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -342,6 +354,24 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
       toast.error(err instanceof Error ? err.message : "Could not download");
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function sendGroupToCalling() {
+    if (!selected) return;
+    setCallingBusy(true);
+    try {
+      const result = await callingApi.sendGroup(selected.id);
+      setConfirmCalling(false);
+      if (result.no_callers) {
+        toast.error(NO_CALLERS_TEXT, { action: { label: "Open Team", onClick: () => router.push(ADD_CALLER_HREF) }, duration: 10000 });
+      } else {
+        toast.success(describeCallingResult(result), { duration: 10000 });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send to calling");
+    } finally {
+      setCallingBusy(false);
     }
   }
 
@@ -495,12 +525,25 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
               <span className="font-medium text-[#64748b]">Excel</span>
             </button>
             )}
-            {[["Send a campaign", "Reach"], ["Send to calling list", "Call IQ"], ["Start an auto-message", "Engage"]].map(([label, mod]) => (
-              <div key={label} className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-dashed border-[#cbd5e1] bg-[#fbfcfd] px-3.5 text-xs font-bold text-[#64748b]">
-                <span>{label}</span>
-                <span className="font-medium">coming later · {mod}</span>
-              </div>
-            ))}
+            <Link href={campaignHrefForGroup(selected.id)}
+              className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-[#e2e8f0] px-3.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50">
+              <span className="flex items-center gap-2"><Megaphone size={14} /> Send a campaign</span>
+              <span className="font-medium text-[#556274]">Reach</span>
+            </Link>
+            {canManage && (
+              <button type="button" onClick={() => setConfirmCalling(true)} disabled={selected.member_count === 0}
+                className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-[#e2e8f0] px-3.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50 disabled:opacity-50">
+                <span className="flex items-center gap-2"><PhoneForwarded size={14} /> Send to calling</span>
+                <span className="font-medium text-[#556274]">Call IQ</span>
+              </button>
+            )}
+            {canManage && (
+              <Link href={followUpHrefForGroup(selected.id)}
+                className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-[#e2e8f0] px-3.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50">
+                <span className="flex items-center gap-2"><MessageSquareReply size={14} /> Start an auto-message</span>
+                <span className="font-medium text-[#556274]">Engage</span>
+              </Link>
+            )}
           </div>
           {canManage && (
             <div className="mt-4 flex gap-4 text-xs font-bold">
@@ -597,6 +640,18 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
         confirmLabel="Delete group"
         loading={deleteBusy}
         loadingLabel="Deleting…"
+      />
+
+      <ConfirmModal
+        open={confirmCalling}
+        onClose={() => setConfirmCalling(false)}
+        onConfirm={sendGroupToCalling}
+        title={`Send ${selected?.member_count.toLocaleString("en-IN") ?? 0} people to calling?`}
+        description={`Everyone in "${selected?.name ?? "this group"}" goes onto the calling list. People who said stop, already bought, or already have a caller are skipped.`}
+        tone="primary"
+        confirmLabel="Send to calling"
+        loading={callingBusy}
+        loadingLabel="Sending…"
       />
     </div>
   );

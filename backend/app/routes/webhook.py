@@ -360,6 +360,30 @@ async def _handle_booking_message(db, tenant_id: str, lead_id: str, phone: str, 
     return False
 
 
+def _button_payload(msg_type: str, msg: dict) -> str:
+    """A template quick-reply tap ("button" .payload) or an in-window reply button ("interactive" .button_reply.id)."""
+    if msg_type == "button":
+        return ((msg.get("button") or {}).get("payload") or "").strip()
+    if msg_type == "interactive":
+        return str(((msg.get("interactive") or {}).get("button_reply") or {}).get("id") or "").strip()
+    return ""
+
+
+async def _handle_feedback_message(db, tenant_id: str, lead_id: str, phone: str, msg_type: str, msg: dict, body: str) -> bool:
+    """v9.2 Customers › Feedback: a star tap (payload fb:<n>:<id>) or the "what went wrong" answer after 1–3 stars.
+    True = handled (already saved in the chat; NOT passed to the AI). Never raises."""
+    try:
+        from app.services import customer_feedback
+        payload = _button_payload(msg_type, msg)
+        if payload.startswith("fb:"):
+            return bool(await customer_feedback.handle_feedback_button(db, tenant_id, lead_id, phone, payload))
+        if msg_type == "text" and body:
+            return bool(await customer_feedback.handle_feedback_text(db, tenant_id, lead_id, phone, body))
+    except Exception as e:
+        logger.error(f"feedback message handling failed tenant={tenant_id}: {type(e).__name__}: {e}")
+    return False
+
+
 async def _process_inbound_message_background(
     lead_id: str,
     tenant_id: str,
@@ -709,6 +733,16 @@ def _apply_status_updates(db, tenant_id: str, statuses: list) -> None:
                             logger.warning(f"Failed to bump delivered_count for step {step_id}: {e}")
             except Exception as e:
                 logger.error(f"Failed to update message {message_id} status to {status}: {e}")
+            # v9.2 #18: a Meta Instant-form lead's welcome template. Delivered / read show on the form's
+            # leads table; 131026 (no WhatsApp on that number) hands the lead to Call IQ. Never raises.
+            try:
+                from app.services.meta_lead_forms import apply_delivery_status
+                first_err = (status_update.get("errors") or [{}])[0] or {}
+                code = first_err.get("code")
+                apply_delivery_status(db, tenant_id, message_id, status,
+                                      int(code) if str(code or "").isdigit() else None)
+            except Exception as e:
+                logger.warning(f"form lead delivery status skipped for {message_id}: {type(e).__name__}: {e}")
 
 
 @router.post("")
@@ -1330,6 +1364,8 @@ async def whatsapp_webhook(
                                 pass
 
                     if lead_id and await _handle_booking_message(db, tenant_id, lead_id, phone, msg_type, msg, body):
+                        continue
+                    if lead_id and await _handle_feedback_message(db, tenant_id, lead_id, phone, msg_type, msg, body):
                         continue
 
                     # Delegate state tracking, compaction, and reply to background task to avoid Meta timeout

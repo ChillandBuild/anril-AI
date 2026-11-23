@@ -206,6 +206,16 @@ export function BookingSheet({
           ))}
         </div>
         <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1.5 text-sm">
+          <dt className="text-ink-muted">Customer</dt>
+          <dd className="text-ink">
+            {booking.lead_id ? (
+              <Link href={`/dashboard/leads/${encodeURIComponent(booking.lead_id)}`} className="font-semibold text-primary-700 hover:underline">
+                {who}
+              </Link>
+            ) : (
+              who
+            )}
+          </dd>
           <dt className="text-ink-muted">When</dt>
           <dd className="font-semibold text-ink">{formatDateTime(booking.start_at)}</dd>
           <dt className="text-ink-muted">Service</dt>
