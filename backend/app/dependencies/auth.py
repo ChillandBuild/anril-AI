@@ -116,6 +116,29 @@ def _verify_remote(token: str) -> dict:
     raise _UPSTREAM
 
 
+def rate_limit_user_id(token: str) -> str | None:
+    """The user id for the app-wide rate limit, only when the token is already proven:
+    in the verified-token cache (get_current_user put it there after a real check), or
+    passing the local HS256 signature check. No network call and no logging -- this runs on
+    every request, and a made-up token must not buy its own bucket or flood the logs.
+    None = key on the client IP instead."""
+    if not token or len(token) > 4096 or token.count(".") != 2:  # not a JWT: skip the signature work
+        return None
+    cached = _get_cached_user(token)
+    if cached is not None:
+        return cached.get("user_id") or None
+    if not settings.supabase_jwt_secret:
+        return None
+    try:
+        claims = jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated")
+    except jwt.PyJWTError:
+        return None
+    if claims.get("client_id"):  # an OAuth client token: get_current_user refuses it
+        return None
+    sub = claims.get("sub")
+    return sub if isinstance(sub, str) and sub else None
+
+
 def _is_oauth_client_token(token: str) -> bool:
     """True for a token Supabase's OAuth server issued to a client app (it carries `client_id`).
     Read without checking the signature: this is only ever used to REFUSE a token."""
