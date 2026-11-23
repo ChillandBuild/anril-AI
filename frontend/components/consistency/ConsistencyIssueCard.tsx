@@ -94,7 +94,7 @@ export function ConsistencyIssueCard({ issue, access, selected, isLocked, onTogg
               disabled={!isIdle || fixReason !== null}
               aria-describedby={fixReason ? reasonId : undefined}
               onClick={() => run("fix", () => onFix(issue.id, draft))}
-              className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 font-label text-xs font-semibold text-white disabled:opacity-50 ${BUTTON_FOCUS}`}
+              className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-dark px-3 py-1.5 font-label text-xs font-semibold text-white disabled:opacity-50 ${BUTTON_FOCUS}`}
             >
               {busy === "fix" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               Apply
@@ -119,7 +119,7 @@ export function ConsistencyIssueCard({ issue, access, selected, isLocked, onTogg
               disabled={!isIdle || fixReason !== null}
               aria-describedby={fixReason ? reasonId : undefined}
               onClick={() => run("fix", () => onFix(issue.id, undefined))}
-              className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 font-label text-xs font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50 ${BUTTON_FOCUS}`}
+              className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-label text-xs font-semibold text-white transition hover:bg-primary-dark disabled:opacity-50 ${BUTTON_FOCUS}`}
             >
               {busy === "fix" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               Use suggestion

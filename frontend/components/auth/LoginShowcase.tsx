@@ -1,70 +1,71 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import s from "./LoginShowcase.module.css";
+import { useEffect, useMemo, useState } from "react";
+import { AnrilLogo } from "@/components/logo";
+import { LoginShaders } from "./LoginShaders";
+import s from "./login.module.css";
 
-type Bubble = { channel: string; text: string; done: string; hot?: boolean };
+type Who = "them" | "us";
+type Enquiry = { channel: string; dot: string; msgs: [Who, string][]; end: string };
 
-const BUBBLES: Bubble[] = [
+// Three made-up enquiries, one per channel, in the languages Anril replies in.
+const ENQUIRIES: Enquiry[] = [
   {
-    channel: "WhatsApp · Priya",
-    text: "Fees evvalavu? Weekend batch irukka?",
-    done: "Replied in 4s · Tanglish",
+    channel: "WhatsApp",
+    dot: "var(--teal-l)",
+    msgs: [
+      ["them", "Fees evvalavu? Weekend batch irukka?"],
+      ["us", "₹4,500 a month. Saturday and Sunday, 10 am. Shall I book a free demo class?"],
+      ["them", "Ok, Saturday book pannunga."],
+    ],
+    end: "Hot lead sent to a telecaller with the full chat",
   },
   {
-    channel: "Instagram · Arjun",
-    text: "Is the 2BHK near OMR still available? Can I visit Sunday?",
-    done: "Replied in 3s · visit booked",
-    hot: true,
+    channel: "Instagram",
+    dot: "#E1306C",
+    msgs: [
+      ["them", "Is the 2BHK near OMR still available? Can I visit Sunday?"],
+      ["us", "Yes, it is. Sunday 11 am or 4 pm. Which suits you?"],
+      ["them", "4 pm."],
+    ],
+    end: "Site visit booked for Sunday, 4 pm",
   },
   {
-    channel: "Facebook · Meena",
-    text: "நாளைக்கு appointment கிடைக்குமா?",
-    done: "Replied in 5s · Tamil",
-  },
-  {
-    channel: "WhatsApp · Karthik",
-    text: "Price for 50 pieces, delivery to Madurai?",
-    done: "Replied in 4s · quote sent",
+    channel: "Facebook",
+    dot: "#1877F2",
+    msgs: [
+      ["them", "Price for 50 pieces, delivery to Madurai?"],
+      ["us", "₹180 each, so ₹9,000. Free delivery to Madurai in 3 days."],
+      ["them", "Send the payment link."],
+    ],
+    end: "Payment link sent · ₹9,000",
   },
 ];
 
-// Transparent video needs a different format per engine: Safari only does alpha
-// in HEVC (.mov), everyone else in VP9 WebM, and Safari plays WebM but drops its
-// alpha, so pick one rather than listing both as <source>s.
-function isSafari() {
-  return /^((?!chrome|chromium|crios|android|edg).)*safari/i.test(
-    navigator.userAgent,
-  );
+type Frame = { ms: number; shown: number; typing: boolean; hot: boolean; done: boolean; fade: boolean };
+
+/** One enquiry as a list of frames: each message appears (Anril's after a typing bubble), then HOT, then the
+ *  hand-off line, then everything fades before the next enquiry. */
+function framesFor(e: Enquiry): Frame[] {
+  const f: Frame[] = [{ ms: 400, shown: 0, typing: false, hot: false, done: false, fade: false }];
+  e.msgs.forEach(([who], i) => {
+    if (who === "us") f.push({ ms: 1100, shown: i, typing: true, hot: false, done: false, fade: false });
+    f.push({ ms: who === "us" ? 900 : 1300, shown: i + 1, typing: false, hot: false, done: false, fade: false });
+  });
+  const n = e.msgs.length;
+  f.push({ ms: 500, shown: n, typing: false, hot: true, done: false, fade: false });
+  f.push({ ms: 3100, shown: n, typing: false, hot: true, done: true, fade: false });
+  f.push({ ms: 500, shown: n, typing: false, hot: true, done: true, fade: true });
+  return f;
 }
 
-// The login page's left side. Desktop only (the page mounts it at 1280px+, client
-// side), so phones never download the videos.
-//   peek:   Healy shuts its eyes (password field focused)
-//   flying: Tealy flies off with the message (signing in)
-//   width / height: layout size in px, before the page zooms it
-//   over / overX: how far Healy and Tealy stick out past the corners
-export default function LoginShowcase({
-  width,
-  height,
-  over,
-  overX,
-  peek,
-  flying,
-}: {
-  width: number;
-  height: number;
-  over: number;
-  overX: number;
-  peek: boolean;
-  flying: boolean;
-}) {
+/** The chat on the navy panel. Plays the enquiries in a loop; visitors who ask for reduced motion see the
+ *  first one finished and still. Decorative, so hidden from assistive tech. */
+function LiveChat() {
+  const [k, setK] = useState(0);
+  const [p, setP] = useState(0);
   const [still, setStill] = useState(false);
-  const [ext] = useState(() => (isSafari() ? "mov" : "webm"));
-  const type = ext === "mov" ? 'video/mp4; codecs="hvc1"' : "video/webm";
-  const [lean, setLean] = useState({ x: 0, y: 0 });
-  const tealyRef = useRef<HTMLVideoElement>(null);
-  const healyRef = useRef<HTMLVideoElement>(null);
+  const enquiry = ENQUIRIES[k];
+  const frames = useMemo(() => framesFor(enquiry), [enquiry]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -74,170 +75,87 @@ export default function LoginShowcase({
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  // Some browsers ignore the autoplay attribute until muted is set as a property.
   useEffect(() => {
     if (still) return;
-    for (const v of [tealyRef.current, healyRef.current]) {
-      if (!v) continue;
-      v.muted = true;
-      v.play().catch(() => {});
-    }
-  }, [still]);
+    const id = window.setTimeout(() => {
+      if (p + 1 < frames.length) setP(p + 1);
+      else {
+        setP(0);
+        setK((k + 1) % ENQUIRIES.length);
+      }
+    }, frames[p].ms);
+    return () => window.clearTimeout(id);
+  }, [still, p, k, frames]);
 
-  useEffect(() => {
-    if (still) return;
-    let frame = 0;
-    const onMove = (e: MouseEvent) => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        setLean({
-          x: (e.clientX / window.innerWidth) * 2 - 1,
-          y: (e.clientY / window.innerHeight) * 2 - 1,
-        });
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      cancelAnimationFrame(frame);
-    };
-  }, [still]);
-
-  const tealyLean = `translate(${lean.x * 18}px, ${lean.y * 12}px) rotate(${lean.x * 6}deg)`;
-  const healyLean = `translate(${lean.x * 10}px, ${lean.y * 8}px) rotate(${lean.x * 4}deg)`;
+  const f: Frame = still ? { ms: 0, shown: enquiry.msgs.length, typing: false, hot: true, done: true, fade: false } : frames[p];
 
   return (
-    <div
-      className={s.root}
-      style={
-        {
-          width,
-          height,
-          "--over": `${over}px`,
-          "--over-x": `${overX}px`,
-          "--rise": `${height - 100}px`,
-        } as React.CSSProperties
-      }
-    >
-      <div className={`${s.blob} ${s.blobTeal}`} aria-hidden="true" />
-      <div className={`${s.blob} ${s.blobCopper}`} aria-hidden="true" />
-
-      <div className={s.glass}>
-        <div className={s.copy}>
-          <h2>Every lead, answered in seconds.</h2>
-          <p>
-            From &ldquo;Fees evvalavu?&rdquo; to a booked visit. anril AI
-            handles the chat, you close the deal.
+    <div className={`${s.chat} ${f.fade ? s.fade : ""}`} aria-hidden="true">
+      <div className={s.chatTop}>
+        <i className={s.chDot} style={{ background: enquiry.dot }} />
+        {enquiry.channel}
+        <span className={`${s.hot} ${f.hot ? s.on : ""}`}>HOT</span>
+      </div>
+      <div className={s.msgs}>
+        {enquiry.msgs.slice(0, f.shown).map(([who, text]) => (
+          <p key={`${k}-${text}`} className={`${s.bub} ${who === "us" ? s.us : s.them}`}>
+            {text}
           </p>
-          <div className={s.chips}>
-            <span className={s.chip}>WhatsApp · Instagram · Facebook</span>
-            <span className={s.chip}>Tamil · Tanglish · English</span>
-            <span className={s.chip}>Hot-lead alerts</span>
-          </div>
-        </div>
-
-        <div className={s.feed} aria-hidden="true">
-          {BUBBLES.map((b, i) => (
-            <div
-              key={b.channel}
-              className={s.bub}
-              style={{ "--d": `${-4 * i}s` } as React.CSSProperties}
-            >
-              <div className={s.channel}>{b.channel}</div>
-              <p>{b.text}</p>
-              <div className={s.status}>
-                <span className={s.typing}>
-                  <span className={s.dots}>
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  Tealy is replying
-                </span>
-                <span className={s.done}>✓ {b.done}</span>
-              </div>
-              {b.hot && <span className={s.hot}>HOT LEAD</span>}
-            </div>
+        ))}
+        {f.typing && (
+          <p className={`${s.bub} ${s.us} ${s.typing}`}>
+            <i />
+            <i />
+            <i />
+          </p>
+        )}
+      </div>
+      <div className={`${s.handoff} ${f.done ? s.on : ""}`}>
+        <span>TC</span>
+        {enquiry.end}
+      </div>
+      <div className={s.chatFoot}>
+        <span>Example</span>
+        <span className={s.steps}>
+          {ENQUIRIES.map((e, i) => (
+            <i key={e.channel} className={i === k ? s.on : ""} />
           ))}
-        </div>
-
-        <div className={s.by}>
-          A product from <b>Bloom Matrix</b>
-        </div>
-      </div>
-
-      <span className={`${s.ping} ${s.pingReply}`} aria-hidden="true" />
-      <span className={`${s.ping} ${s.pingLead}`} aria-hidden="true" />
-
-      <div
-        className={`${s.char} ${s.healy}`}
-        style={{ transform: healyLean }}
-        aria-hidden="true"
-      >
-        <div className={s.point}>
-          <div className={`${s.media} ${peek ? s.shut : ""}`}>
-            {still ? (
-              <Image
-                src="/login/healy-poster.png"
-                alt=""
-                width={480}
-                height={480}
-                priority
-              />
-            ) : (
-              <video
-                ref={healyRef}
-                autoPlay
-                loop
-                muted
-                playsInline
-                poster="/login/healy-poster.png"
-              >
-                <source src={`/login/healy-alpha.${ext}`} type={type} />
-              </video>
-            )}
-            <Image
-              className={s.shutImg}
-              src="/login/healy-shut.png"
-              alt=""
-              width={480}
-              height={480}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={`${s.char} ${s.tealy}`}
-        style={{ transform: tealyLean }}
-        aria-hidden="true"
-      >
-        <div className={flying ? s.fly : s.deliver}>
-          <div className={s.media}>
-            {still ? (
-              <Image
-                src="/login/tealy-poster.png"
-                alt=""
-                width={480}
-                height={480}
-                priority
-              />
-            ) : (
-              <video
-                ref={tealyRef}
-                autoPlay
-                loop
-                muted
-                playsInline
-                poster="/login/tealy-poster.png"
-              >
-                <source src={`/login/tealy-alpha.${ext}`} type={type} />
-              </video>
-            )}
-          </div>
-        </div>
+        </span>
       </div>
     </div>
+  );
+}
+
+/** The login page's navy side: logo, headline, what Anril does, and the live chat. On narrow screens it
+ *  shrinks to a band with the logo and headline (CSS hides the rest, and the chat isn't mounted). */
+export default function LoginShowcase() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setWide(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return (
+    <aside className={s.panel}>
+      <LoginShaders variant="navy" />
+      <AnrilLogo height={30} className="text-white" />
+      <h2 className={s.title}>
+        Every enquiry answered.
+        <br />
+        <em>Every hot lead called.</em>
+      </h2>
+      <div className={s.facts}>
+        <span>Replies in ~4 s</span>
+        <span>Tamil · Tanglish · English</span>
+        <span>WhatsApp · Instagram · Facebook</span>
+      </div>
+      {wide && <LiveChat />}
+      <div className={s.by}>
+        A product from <b>Bloom Matrix</b>
+      </div>
+    </aside>
   );
 }

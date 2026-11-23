@@ -1,0 +1,471 @@
+/* Login page: a navy panel on the left (live chat over a light-teal halftone) and the home hero's moving
+   background on the right, with the sign-in form on frosted glass. Tokens match the public site
+   (components/site/site.module.css); buttons use the dashboard's flat teal. Below 1024px the navy panel
+   becomes a band above the form. */
+.page {
+  --navy: #0a1528;
+  --teal: #038285;
+  --teal-l: #3fbcbf;
+  --teal-d: #04585b;
+  --hero-bg: #f4f7f8;
+  --line: #d5dce6;
+  --muted: #566579;
+  --serif: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+  --sans: var(--font-manrope), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: var(--font-mono), ui-monospace, Consolas, monospace;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  background: var(--hero-bg);
+  color: var(--navy);
+  font-family: var(--sans);
+}
+
+/* ---------- shader layers ---------- */
+.gl,
+.glMesh,
+.glDither {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.glCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.9s var(--ease);
+}
+.glCanvas[data-on] {
+  opacity: 1;
+}
+.glLight .glDither {
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  -webkit-mask-image: radial-gradient(80% 80% at 55% 50%, #000 20%, transparent 85%);
+  mask-image: radial-gradient(80% 80% at 55% 50%, #000 20%, transparent 85%);
+}
+.glNavy .glDither {
+  opacity: 0.42;
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(70% 70% at 85% 20%, #000 10%, transparent 80%);
+  mask-image: radial-gradient(70% 70% at 85% 20%, #000 10%, transparent 80%);
+}
+
+/* ---------- navy panel ---------- */
+.panel {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: clamp(32px, 4vw, 48px) clamp(28px, 4.6vw, 72px) 32px;
+  background: var(--navy);
+  color: #fff;
+}
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+.panel > .gl {
+  position: absolute;
+  z-index: 0;
+}
+.title {
+  margin: 10px 0 0;
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: clamp(38px, 3.6vw, 56px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.title em {
+  font-style: normal;
+  color: var(--teal-l);
+}
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.facts span {
+  padding: 6px 11px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font: 500 12px var(--mono);
+  color: #c9d3de;
+}
+.by {
+  margin-top: auto;
+  font-size: 13px;
+  color: #9aa5b4;
+}
+.by b {
+  color: #fff;
+}
+
+/* ---------- live chat (dark glass, as on the home hero) ---------- */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 470px;
+  padding: 20px;
+  border-radius: 26px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  color: #f2f3f5;
+  font-size: 15px;
+}
+.chatTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #d5dae0;
+}
+.chDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.hot {
+  margin-left: auto;
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: #0fb7ba;
+  color: #03181f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.35s, transform 0.35s var(--ease);
+}
+.hot.on {
+  opacity: 1;
+  transform: none;
+  animation: pulseHot 2.4s ease-in-out infinite;
+}
+.msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 236px;
+}
+.bub {
+  margin: 0;
+  max-width: 80%;
+  padding: 11px 14px;
+  line-height: 1.4;
+  font-weight: 500;
+  animation: pop 0.45s var(--ease) both;
+}
+.them {
+  align-self: flex-start;
+  border-radius: 16px 16px 16px 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.us {
+  align-self: flex-end;
+  border-radius: 16px 16px 4px 16px;
+  background: linear-gradient(135deg, #0a9296, #067275);
+  color: #fff;
+}
+.typing {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 14px 16px;
+}
+.typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.4;
+  animation: blinkDot 1s infinite;
+}
+.typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.handoff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 13px;
+  font-weight: 500;
+  color: #e3e8ee;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s, transform 0.4s var(--ease);
+}
+.handoff.on {
+  opacity: 1;
+  transform: none;
+}
+.handoff span {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #12324a;
+  border: 1px solid rgba(15, 183, 186, 0.6);
+  color: #7deff2;
+  font-size: 11px;
+  font-weight: 800;
+}
+.fade .msgs,
+.fade .handoff,
+.fade .hot {
+  opacity: 0;
+  transition: opacity 0.45s;
+}
+.chatFoot {
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa5b4;
+}
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.steps i {
+  width: 18px;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 0.3s;
+}
+.steps i.on {
+  background: var(--teal-l);
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+@keyframes pulseHot {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(15, 183, 186, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(15, 183, 186, 0.95);
+  }
+}
+@keyframes blinkDot {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---------- form side ---------- */
+.side {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  /* What shows before the shaders start (and on Save-Data): the hero's plain gradient. */
+  background:
+    radial-gradient(52% 64% at 70% 58%, rgba(3, 130, 133, 0.14), rgba(3, 130, 133, 0) 72%),
+    radial-gradient(60% 50% at 12% 0%, #fff, rgba(255, 255, 255, 0) 70%),
+    var(--hero-bg);
+}
+.card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  padding: 36px 34px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: 0 40px 80px -30px rgba(10, 21, 40, 0.3), 0 8px 20px -10px rgba(10, 21, 40, 0.12), inset 0 1px 0 #fff;
+}
+.heading {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.headingSmall {
+  font-size: 32px;
+}
+.lead {
+  margin: 6px 0 24px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  height: 50px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 16px;
+  color: var(--navy);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+textarea.field {
+  height: auto;
+  padding: 12px 16px;
+  resize: vertical;
+}
+.field:focus-visible {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 4px rgba(3, 130, 133, 0.14);
+}
+.field::placeholder {
+  color: #7a889b;
+}
+.primary {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 99px;
+  background: var(--teal);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(3, 130, 133, 0.28);
+  transition: background 0.2s, transform 0.16s var(--ease);
+}
+.primary:hover {
+  background: var(--teal-d);
+}
+.primary:active {
+  transform: scale(0.98);
+}
+.primary:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+.alt {
+  width: 100%;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.alt:hover {
+  background: #f7fafa;
+}
+.primary:focus-visible,
+.alt:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a97a8;
+}
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e1e6ec;
+}
+
+/* ---------- narrow screens: navy band on top, form below ---------- */
+@media (max-width: 1023px) {
+  .page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .panel {
+    gap: 14px;
+    padding: 22px 20px 26px;
+  }
+  .title {
+    margin-top: 6px;
+    font-size: clamp(28px, 7vw, 40px);
+  }
+  .facts,
+  .by {
+    display: none;
+  }
+  .side {
+    align-items: flex-start;
+    padding: 24px 16px 40px;
+  }
+  .card {
+    padding: 26px 20px;
+    border-radius: 22px;
+  }
+  .heading {
+    font-size: 34px;
+  }
+  .headingSmall {
+    font-size: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bub,
+  .hot.on,
+  .typing i {
+    animation: none;
+  }
+  .glCanvas,
+  .hot,
+  .handoff,
+  .primary {
+    transition: none;
+  }
+}

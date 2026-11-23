@@ -176,7 +176,7 @@ export function ConsistencyPanel({ canManage, isOwner, onChanged, embedded = fal
           <button
             type="button"
             onClick={reload}
-            className="inline-flex min-h-9 items-center rounded-lg bg-ink px-3 font-label text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="inline-flex min-h-9 items-center rounded-lg bg-primary hover:bg-primary-dark px-3 font-label text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Reload
           </button>
@@ -262,7 +262,7 @@ export function ConsistencyPanel({ canManage, isOwner, onChanged, embedded = fal
               onClick={() => setSheet(action)}
               className={
                 action === "fix"
-                  ? "inline-flex min-h-9 items-center rounded-lg bg-ink px-3 font-label text-xs font-semibold text-white hover:bg-ink/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+                  ? "inline-flex min-h-9 items-center rounded-lg bg-primary px-3 font-label text-xs font-semibold text-white hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
                   : "inline-flex min-h-9 items-center rounded-lg border border-border bg-white px-3 font-label text-xs font-semibold text-ink-secondary hover:border-primary/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
               }
             >
