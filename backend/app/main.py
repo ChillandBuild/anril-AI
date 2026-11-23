@@ -38,6 +38,7 @@ from app.routes import customer_groups
 from app.routes import said_stop as said_stop_routes
 from app.routes import customer_profile
 from app.routes import reports as reports_routes, lead_tags, customer_feedback
+from app.routes import call_iq_reports, call_iq_settings, ai_setup, automations, password_help, first_setup
 from app.routes import otp as otp_routes
 from app.routes import lead_details_share
 from app.routes import scheduled_overview
@@ -487,6 +488,13 @@ app.include_router(customer_profile.router, prefix="/api/v1/customer-profile", t
 app.include_router(lead_tags.router, prefix="/api/v1/lead-tags", tags=["lead-tags"], dependencies=_auth)
 app.include_router(customer_feedback.router, prefix="/api/v1/customer-feedback", tags=["customer-feedback"], dependencies=_auth)
 app.include_router(reports_routes.router, prefix="/api/v1/reports", tags=["reports"], dependencies=_auth)
+app.include_router(call_iq_reports.router, prefix="/api/v1/call-iq", tags=["call-iq"], dependencies=_auth)
+app.include_router(call_iq_settings.router, prefix="/api/v1/call-iq-settings", tags=["call-iq"], dependencies=_auth)
+app.include_router(ai_setup.router, prefix="/api/v1/ai-setup", tags=["ai-setup"], dependencies=_auth)
+app.include_router(automations.router, prefix="/api/v1/automations", tags=["automations"], dependencies=_auth)
+# PUBLIC on purpose (the person cannot sign in): rate-limited inside the route, stores a request for the Anril team.
+app.include_router(password_help.router, prefix="/api/v1/password-help", tags=["password-help"])
+app.include_router(first_setup.router, prefix="/api/v1/first-setup", tags=["first-setup"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"], dependencies=_auth)
 app.include_router(home.router, prefix="/api/v1/home", tags=["home"], dependencies=_auth)
