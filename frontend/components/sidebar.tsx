@@ -10,27 +10,30 @@ import { createClient } from "@/lib/supabase/client";
 import { AnrilMarkRow } from "@/components/logo";
 import { activeSettingsItem, groupSettingsItems, isSettingsPath, settingsItemsFor, type SettingsNavItem } from "@/components/settingsNavigation";
 import { useBrainCount } from "@/hooks/useBrainCount";
+import { SidebarSection } from "@/components/nav/SidebarSection";
 import { NavCount, navCountLabel } from "@/components/nav/NavCount";
 import { ActiveIndicator } from "@/components/nav/ActiveIndicator";
 import { useSidebarRail } from "@/components/nav/useSidebarRail";
 import { useNavAccess } from "@/components/nav/useNavAccess";
 import { SidebarProductSwitch } from "@/components/nav/ProductSwitch";
 import {
-  NAV_ROWS,
-  dashboardEntry, leafHref,
+  NAV_MENU, NAV_SECTIONS,
+  dashboardEntry, leafHref, resolveOpenSection, sectionContainsPage, visibleEntries,
   type NavBadgeKey, type NavLeaf,
 } from "@/components/nav/navSections";
 
 // Styled to the v2 sidebar study: navy (--navy, #0A1528) with white labels
 // (--nav-label) and pale-teal icons. The active row's teal tint wipes in
 // (.nav-active in globals.css) as the shared teal square (ActiveIndicator)
-// lands on it. Every module is one flat row (no fold-out groups): its pages are
-// the tab bar under the page header (ModuleTabBar); the square lands in space
-// kept free at the row's right end.
+// lands on it. Rows inside an open section's box (.nav-children) are smaller,
+// their icons look carved into the box (.nav-carved) and light up teal on the
+// open page; the square lands in space kept free at the row's right end.
 const ROW =
   "group relative isolate z-[2] flex w-full items-center gap-3 rounded-lg text-left text-[var(--nav-label)] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary-400)]";
 const ROW_TOP = "min-h-10 p-2.5 text-[13px]";
+const ROW_NESTED = "min-h-[35px] gap-2.5 py-2.5 pr-2.5 text-[12px]";
 const ICON = "nav-icon shrink-0 text-[#d5f4f4]";
+const CARVED = "nav-carved shrink-0";
 
 function MainNavItem({
   href,
@@ -38,6 +41,7 @@ function MainNavItem({
   icon: Icon,
   label,
   count = 0,
+  nested = false,
 }: {
   href: string;
   active: boolean;
@@ -45,6 +49,7 @@ function MainNavItem({
   label: string;
   /** Waiting items (unanswered chats, call alerts), drawn on the icon's corner. */
   count?: number;
+  nested?: boolean;
 }) {
   const router = useRouter();
   return (
@@ -55,13 +60,13 @@ function MainNavItem({
       onMouseEnter={() => router.prefetch(href)}
       className={cn(
         ROW,
-        ROW_TOP,
+        nested ? cn(ROW_NESTED, "pr-7 pl-4") : ROW_TOP,
         active && "nav-active font-semibold",
       )}
     >
       {Icon && (
         <span className="relative flex shrink-0">
-          <Icon size={17} strokeWidth={1.6} className={ICON} aria-hidden="true" />
+          <Icon size={nested ? 15 : 17} strokeWidth={1.6} className={nested ? CARVED : ICON} aria-hidden="true" />
           <NavCount count={count} />
         </span>
       )}
@@ -107,6 +112,16 @@ function SidebarMenu() {
   // The logo's squares drop in on first show, then wave on each page change.
   const markAnim = useRef<{ path: string; cls: string } | null>(null);
   const fold = useSidebarRail(pathname);
+
+  // The section the user clicked open (null = all shut), for this page only:
+  // a new page reopens the section that holds it. One open at a time.
+  const [sectionChoice, setSectionChoice] = useState<{ path: string; key: string | null } | null>(null);
+  const openSection = resolveOpenSection(
+    sectionChoice?.path === pathname ? sectionChoice.key : undefined,
+    NAV_SECTIONS,
+    pathname,
+    tab,
+  );
 
   const fetchCount = useCallback(async () => {
     try {
@@ -168,13 +183,14 @@ function SidebarMenu() {
 
   const dashboard = dashboardEntry(access);
 
-  // Counts ride on the module rows: Chats, Anril Setup (Brain) and Call IQ (call alerts).
+  // Unseen call alerts ride on the Team row: its Needs attention list is where they are handled.
   const badgeCount = (key: NavBadgeKey | undefined) =>
     key === "conversations" ? inboxCount : key === "brain" ? (brainCount ?? 0) : key === "alerts" ? alertCount : 0;
 
-  const renderLeaf = (leaf: NavLeaf) => (
+  const renderLeaf = (leaf: NavLeaf, nested = false) => (
     <MainNavItem
       key={leaf.key}
+      nested={nested}
       href={leafHref(leaf, access)}
       active={leaf.isActive(pathname, tab)}
       icon={leaf.icon}
@@ -182,6 +198,35 @@ function SidebarMenu() {
       count={badgeCount(leaf.badge)}
     />
   );
+
+  const renderSection = (section: (typeof NAV_SECTIONS)[number]) => {
+    const entries = visibleEntries(section, access);
+    if (entries.length === 0) return null;
+    const holdsActive = sectionContainsPage(section, pathname, tab);
+    const open = openSection === section.key;
+    return (
+      <SidebarSection
+        key={section.key}
+        title={section.title}
+        icon={section.icon}
+        open={open}
+        holdsActive={holdsActive}
+        // What a menu heading shows on its icon while its rows are hidden.
+        count={entries.reduce((sum, entry) => sum + badgeCount(entry.badge), 0)}
+        onToggle={() => {
+          // On the folded strip a group icon peeks the menu with that group open.
+          if (fold.folded) {
+            fold.openPeek();
+            setSectionChoice({ path: pathname, key: section.key });
+            return;
+          }
+          setSectionChoice({ path: pathname, key: open ? null : section.key });
+        }}
+      >
+        {entries.map((entry) => renderLeaf(entry, true))}
+      </SidebarSection>
+    );
+  };
 
   if (markAnim.current?.path !== pathname) {
     markAnim.current = { path: pathname, cls: markAnim.current ? "anril-mark-wave" : "anril-mark-in" };
@@ -243,7 +288,11 @@ function SidebarMenu() {
               icon={LayoutDashboard}
               label={dashboard.label}
             />
-            {NAV_ROWS.map((leaf) => (leaf.visible(access) ? renderLeaf(leaf) : null))}
+            {NAV_MENU.map((item) =>
+              item.kind === "link"
+                ? item.leaf.visible(access) ? renderLeaf(item.leaf) : null
+                : renderSection(item.section),
+            )}
             <ActiveIndicator pathname={pageKey} />
           </GlowScroll>
         </>

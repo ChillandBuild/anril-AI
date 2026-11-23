@@ -12,8 +12,7 @@ import { AgentsMenu } from "@/components/agents/AgentsMenu";
 import { agentsRouteMeta } from "@/components/agents/agentsNav";
 import { productOf } from "@/components/nav/products";
 import { PageChips } from "@/components/nav/PageChips";
-import { ModuleTabBar } from "@/components/nav/ModuleTabBar";
-import { callIqRouteMeta, withModuleTitle } from "@/components/nav/navSections";
+import { callIqRouteMeta } from "@/components/nav/navSections";
 import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
@@ -526,13 +525,11 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
   // Notes' By Lead / All Notes switch is event-driven (NotesClient owns the
   // state), so it can't sit in HEADER_TABS; name the mode in the title here.
-  const { title: pageTitle, description } = isCallReview
+  const { title, description } = isCallReview
     ? { title: "Call reviews", description: "Every telecaller's calls, scores and notes, lead by lead." }
     : pathname === "/dashboard/notes"
     ? { ...meta, title: `${meta.title} / ${notesPageMode === "by_lead" ? "By Lead" : "All Notes"}` }
     : meta;
-  // "Module / Tab": the module's name goes in front of the page's own title (Engage / Auto-Messages, Call IQ / Team ...).
-  const title = withModuleTitle(pageTitle, pathname || "", tab);
 
   useEffect(() => {
     const updateTime = () => {
@@ -651,6 +648,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
 
         {/* Deals renders its own switch below, next to the New deal button. */}
         {headerTabs && pathname !== "/dashboard/deals" && <HeaderTabSwitch pathname={pathname} set={headerTabs} />}
+
+        <PageChips placement="header" />
 
         {pathname?.startsWith("/dashboard/meta-ads") && (
           <nav aria-label="Meta ads views" className="mr-2 hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex">
@@ -805,9 +804,8 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
         <ProfileMenu />
       </div>
     </header>
-    {/* The header is one fixed line, so the module tab bar and the chips under it sit in the page flow right below it. */}
-    <ModuleTabBar />
-    <PageChips />
+    {/* Phones: the header is one fixed line, so the chips sit in the page flow right under it. */}
+    <PageChips placement="strip" />
     </>
   );
 }

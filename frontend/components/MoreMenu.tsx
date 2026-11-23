@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import {
   BarChart2,
+  RadioTower,
   MessageSquare,
   BookOpen,
   Brain,
@@ -30,7 +31,6 @@ import {
   Zap,
   StickyNote,
   Users,
-  FileCheck, RadioTower, MessageSquareText, Coins, Phone,
   X, Truck, Wallet, GraduationCap, CalendarClock, QrCode, MousePointerClick } from "lucide-react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useSubscription } from "@/app/dashboard/contexts/SubscriptionContext";
@@ -238,45 +238,6 @@ export function getVisibleMoreItems(role: string | null, enabledFeatures: string
   });
 }
 
-/**
- * One flat drawer row: a whole module. Modules with several pages (WhatsApp,
- * Anril Setup, Engage, Anril OTP, Anril SMS, Commerce, Call IQ) take the module's
- * name and icon, like the desktop sidebar; Customers, Reach and Reports are one
- * page each and keep that page's own label and icon. The pages of a module are
- * its tab bar on the page itself, so the drawer does not list them.
- */
-export type MoreMenuModule = {
-  key: MoreMenuSection;
-  label: string;
-  icon: typeof Users;
-  /** Where the row opens: the first page of the module this user may open. */
-  href: string;
-  /** The module's visible pages, in order. */
-  items: MoreMenuItem[];
-};
-
-const MODULE_META: Partial<Record<MoreMenuSection, { label: string; icon: typeof Users }>> = {
-  whatsapp: { label: "WhatsApp", icon: FileCheck },
-  setup: { label: "Anril Setup", icon: Brain },
-  engage: { label: "Engage", icon: RadioTower },
-  otp: { label: "Anril OTP", icon: KeyRound },
-  sms: { label: "Anril SMS", icon: MessageSquareText },
-  commerce: { label: "Commerce", icon: Coins },
-  callIq: { label: "Call IQ", icon: Phone },
-};
-
-/** The drawer's rows for this user, flat, in menu order. Settings is not one of them: it is the box under the rows. */
-export function getVisibleMoreModules(role: string | null, enabledFeatures: string[], permissions: string[]): MoreMenuModule[] {
-  const visible = getVisibleMoreItems(role, enabledFeatures, permissions);
-  return MORE_SECTIONS.flatMap(({ key }) => {
-    if (key === "settings") return [];
-    const items = visible.filter((item) => item.section === key);
-    if (items.length === 0) return [];
-    const meta = MODULE_META[key] ?? { label: items[0].label, icon: items[0].icon };
-    return [{ key, label: meta.label, icon: meta.icon, href: items[0].href, items }];
-  });
-}
-
 function isPageActive(page: MoreMenuPage, pathname: string, tab: string) {
   if (page.activeWhen && !page.activeWhen(tab)) return false;
   const path = page.href.split("?")[0];
@@ -288,11 +249,6 @@ function isPageActive(page: MoreMenuPage, pathname: string, tab: string) {
 /** `tab` is the current ?tab= value ("" when none): Leads to call and Team split /dashboard/team and the Upload page by it. */
 export function isItemActive(item: MoreMenuItem, pathname: string, tab = "") {
   return item.pages.some((page) => isPageActive(page, pathname, tab));
-}
-
-/** A module row is active on any page of the module. */
-export function isModuleActive(module: MoreMenuModule, pathname: string, tab = "") {
-  return module.items.some((item) => isItemActive(item, pathname, tab));
 }
 
 // The drawer reads ?tab=, and its callers do not all sit inside a Suspense boundary, so it brings its own.
@@ -312,7 +268,6 @@ function MoreMenuDrawer() {
   const { purchasedFeatures } = useSubscription();
 
   const items = getVisibleMoreItems(role, enabledFeatures, permissions);
-  const modules = getVisibleMoreModules(role, enabledFeatures, permissions);
   // Same gate as the Knowledge Base entry: the entry is in `items` exactly when it is allowed.
   const brainCount = useBrainCount(items.some((item) => item.key === "brain"));
   // Each Settings row keeps the gate it had: settings pages need settings.view/manage, Team & roles
@@ -375,58 +330,71 @@ function MoreMenuDrawer() {
               </button>
             </div>
             <ProductSwitch onSwitch={() => setIsOpen(false)} />
-            {modules.length === 0 && settingsItems.length === 0 ? (
+            {items.length === 0 && settingsItems.length === 0 ? (
               <div className="rounded-xl border border-border-subtle bg-surface-low px-3 py-4 text-center font-body text-sm text-ink-muted">
                 No more sections are available for this account.
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                {modules.map((module) => {
-                  const Icon = module.icon;
-                  const active = isModuleActive(module, pathname, tab);
+                {MORE_SECTIONS.map((section) => {
+                  const sectionItems = items.filter((item) => item.section === section.key);
+                  const showSettings = section.key === "settings" && settingsItems.length > 0;
+                  if (sectionItems.length === 0 && !showSettings) return null;
                   return (
-                    <Link
-                      key={module.key}
-                      href={module.href}
-                      onClick={() => setIsOpen(false)}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-bold",
-                        active
-                          ? "border-primary-muted bg-primary-light text-primary"
-                          : "border-border-subtle bg-surface-low text-ink hover:border-border"
+                    <div key={section.key} className="flex flex-col gap-2">
+                      {section.title && (
+                        <div className="px-2 pt-1 pb-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                          {section.title}
+                        </div>
                       )}
-                    >
-                      <Icon size={17} />
-                      <span className="min-w-0 truncate">{module.label}</span>
-                      {module.key === "setup" && <BrainNavBadge count={brainCount} variant="menu" />}
-                    </Link>
+                      {sectionItems.map((item) => {
+                        const Icon = item.icon;
+                        const active = isItemActive(item, pathname, tab);
+                        return (
+                          <Link
+                            key={item.key}
+                            href={item.href}
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                              "flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-bold",
+                              active
+                                ? "border-primary-muted bg-primary-light text-primary"
+                                : "border-border-subtle bg-surface-low text-ink hover:border-border"
+                            )}
+                          >
+                            <Icon size={17} />
+                            <span className="min-w-0 truncate">{item.label}</span>
+                            {item.key === "brain" && <BrainNavBadge count={brainCount} variant="menu" />}
+                          </Link>
+                        );
+                      })}
+                      {showSettings && (
+                        <div className="mt-1 rounded-xl border border-border-subtle bg-surface-low p-2">
+                          <div className={cn(
+                            "flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm font-bold",
+                            settingsActive ? "text-primary" : "text-ink",
+                          )}>
+                            <Settings size={17} />
+                            <span>Settings</span>
+                          </div>
+                          <div className="mt-1 flex flex-col gap-1 border-l border-border pl-2">
+                            {settingsList.groups.map(({ group, items: groupItems }) => (
+                              <div key={group} className="pt-1.5 first:pt-0">
+                                <div className="px-2 pb-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                                  {group}
+                                </div>
+                                {groupItems.map(renderSettingsItem)}
+                              </div>
+                            ))}
+                            {settingsList.loose.length > 0 && (
+                              <div className="pt-1.5 first:pt-0">{settingsList.loose.map(renderSettingsItem)}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-                {settingsItems.length > 0 && (
-                  <div className="mt-1 rounded-xl border border-border-subtle bg-surface-low p-2">
-                    <div className={cn(
-                      "flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm font-bold",
-                      settingsActive ? "text-primary" : "text-ink",
-                    )}>
-                      <Settings size={17} />
-                      <span>Settings</span>
-                    </div>
-                    <div className="mt-1 flex flex-col gap-1 border-l border-border pl-2">
-                      {settingsList.groups.map(({ group, items: groupItems }) => (
-                        <div key={group} className="pt-1.5 first:pt-0">
-                          <div className="px-2 pb-0.5 font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-                            {group}
-                          </div>
-                          {groupItems.map(renderSettingsItem)}
-                        </div>
-                      ))}
-                      {settingsList.loose.length > 0 && (
-                        <div className="pt-1.5 first:pt-0">{settingsList.loose.map(renderSettingsItem)}</div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
