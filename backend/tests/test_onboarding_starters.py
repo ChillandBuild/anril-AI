@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies.auth import get_current_user
-from app.dependencies.tenant import get_tenant_id
+from app.dependencies.tenant import get_owner_tenant_id
 
 STARTER_ROW = {
     "key": "coaching",
@@ -48,7 +48,7 @@ class ApplyStarterRouteTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-1"}
-        app.dependency_overrides[get_tenant_id] = lambda: "tenant-1"
+        app.dependency_overrides[get_owner_tenant_id] = lambda: "tenant-1"  # onboarding writes are owner only
 
     def tearDown(self):
         app.dependency_overrides.clear()

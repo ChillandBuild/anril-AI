@@ -33,7 +33,7 @@ def test_voice_router_requires_tenant_id():
 
 def test_call_delete_is_tenant_scoped():
     source = read("app/routes/calls.py")
-    assert 'async def delete_call_log(call_log_id: str, ctx: dict = Depends(get_tenant_and_role))' in source
+    assert 'async def delete_call_log(call_log_id: str, ctx: dict = Depends(require_owner))' in source
     assert '.eq("tenant_id", ctx["tenant_id"])' in source
 
 
