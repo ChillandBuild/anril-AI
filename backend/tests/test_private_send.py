@@ -229,7 +229,8 @@ def env(monkeypatch):
     app.include_router(auto_messages.router, prefix="/api/v1/auto-messages")
     app.dependency_overrides[get_system_admin] = lambda: {"user_id": "admin-1"}
     app.dependency_overrides[auto_messages.require_auto_messages_view] = lambda: {"tenant_id": TENANT}
-    return SimpleNamespace(db=db, settings=settings, audit=audit, client=TestClient(app))
+    # Peer = Render's load balancer (private network), so the edge client-IP headers are believed.
+    return SimpleNamespace(db=db, settings=settings, audit=audit, client=TestClient(app, client=("10.0.0.1", 50000)))
 
 
 def _saved(env, key, tenant=TENANT):
