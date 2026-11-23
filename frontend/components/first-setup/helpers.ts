@@ -114,3 +114,30 @@ export function finishSetupCard(doneSteps: readonly string[] | null | undefined)
   const done = new Set((doneSteps ?? []).filter((s) => SETUP_STEP_KEYS.includes(s))).size;
   return { done, total: FIRST_SETUP_TOTAL, finished: done >= FIRST_SETUP_TOTAL, title: `Finish setup (${done} of ${FIRST_SETUP_TOTAL} done)` };
 }
+
+/** Setup step 5: "How do you want to use WhatsApp?" keep_phone = coexistence, anril_only = Cloud API. */
+export type WhatsAppUse = "keep_phone" | "anril_only";
+
+/** The Connect accounts page, told which of its two Meta buttons the owner picked. */
+export function connectLinkFor(use: WhatsAppUse): string {
+  return `/dashboard/settings/connect-channels?how=${use === "keep_phone" ? "keep-phone" : "anril-only"}`;
+}
+
+/** Reads ?how= back on the Connect accounts page. Anything else means no hint. */
+export function whatsAppUseFromQuery(how: string | null | undefined): WhatsAppUse | null {
+  if (how === "keep-phone") return "keep_phone";
+  if (how === "anril-only") return "anril_only";
+  return null;
+}
+
+/**
+ * Which Home setup card to show (screens 86, 73). "connect" = the owner moved past step 5 without
+ * connecting, so the card says "You skipped one step: connect your accounts". "progress" = the usual
+ * "Finish setup (n of 6 done)". "none" = all 6 done.
+ */
+export function homeSetupCardKind(doneSteps: readonly string[] | null | undefined, step: string | null | undefined): "none" | "connect" | "progress" {
+  const done = doneSteps ?? [];
+  if (finishSetupCard(done).finished) return "none";
+  const pastConnect = step === "ai" || SETUP_STEP_KEYS.filter((s) => s !== "connect").every((s) => done.includes(s));
+  return !done.includes("connect") && pastConnect ? "connect" : "progress";
+}

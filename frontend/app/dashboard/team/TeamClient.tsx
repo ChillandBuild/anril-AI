@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import useSWR from "swr";
 import { api, Caller, CallTeamsResponse, TeamMember } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -53,19 +54,10 @@ export function TeamClient({ fallbackTeam, fallbackCallers }: TeamClientProps) {
   // Unknown (still loading) resolves to false, so it can't flash in for SIM.
   const showWinners = showsEvaluation(teamData?.calling_provider);
 
-  const [showTelecallerHint, setShowTelecallerHint] = useState(true);
-  const [dismissingHint, setDismissingHint] = useState(false);
-
-  useEffect(() => {
-    const dismissTimer = setTimeout(() => setDismissingHint(true), 10000);
-    return () => clearTimeout(dismissTimer);
-  }, []);
-
-  useEffect(() => {
-    if (!dismissingHint) return;
-    const removeTimer = setTimeout(() => setShowTelecallerHint(false), 300);
-    return () => clearTimeout(removeTimer);
-  }, [dismissingHint]);
+  // Adding a person happens on the Roles page (Users tab), so the button needs the right to
+  // manage the team AND the right to create logins there. A Team leader has neither.
+  const canAddTelecaller =
+    !isLeader && (role === "owner" || (permissions.includes("team.manage") && permissions.includes("roles.manage")));
 
   if (roleLoading && !fallbackTeam) {
     return (
@@ -85,17 +77,11 @@ export function TeamClient({ fallbackTeam, fallbackCallers }: TeamClientProps) {
 
   return (
     <div className="min-w-0">
-      {showTelecallerHint && (
+      {canAddTelecaller && (
         <div className="mb-5 flex min-w-0 justify-end">
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2 font-body text-xs font-semibold text-amber-800 transition-opacity duration-300",
-              dismissingHint ? "opacity-0" : "opacity-100"
-            )}
-          >
-            <AlertCircle size={14} className="shrink-0" />
-            Add telecallers from Roles by assigning the Telecaller role.
-          </div>
+          <Link href="/dashboard/roles?tab=users&add=1" className="btn-primary">
+            <Plus size={14} /> Add a telecaller
+          </Link>
         </div>
       )}
 

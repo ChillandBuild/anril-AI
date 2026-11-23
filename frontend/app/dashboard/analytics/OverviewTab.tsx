@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import useSWR from "swr";
 import type { RangeValue } from "@/components/analytics/RangePicker";
 import type { ComparisonSelection } from "@/components/analytics/periodSelection";
 import { formatRupees, monthLabel, type OverviewReport, type SalesTarget } from "@/lib/reportsApi";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { propertiesApi } from "@/lib/propertiesApi";
 import { CompareTab } from "./CompareTab";
+import { orderOverviewCards } from "./overviewCardOrder";
 import { ReportFrame } from "./ReportFrame";
 import { Metric, MetricGrid, SectionCard } from "./reportsUi";
 
@@ -36,6 +40,13 @@ export function OverviewTab({
   comparison: ComparisonSelection;
   onMoneyHidden: (hidden: boolean) => void;
 }) {
+  // The business type only re-orders the cards. Someone who cannot read it, or a failed read, keeps today's order.
+  const { role, permissions } = useAuthRole();
+  const canReadType = role === "owner" || permissions.includes("catalog.view") || permissions.includes("catalog.manage");
+  const { data: business } = useSWR(canReadType ? "properties/availability" : null, propertiesApi.availability, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
   return (
     <div className="space-y-6">
       <ReportFrame<OverviewReport> tab="overview" query={query} csvTab="overview" onMoneyHidden={onMoneyHidden}>
@@ -66,7 +77,7 @@ export function OverviewTab({
             )}
             {data.cards?.length > 0 && (
               <MetricGrid>
-                {data.cards.slice(0, 6).map((c) => (
+                {orderOverviewCards(data.cards, business?.business_type).slice(0, 6).map((c) => (
                   <Metric
                     key={c.key}
                     statKey={c.key}

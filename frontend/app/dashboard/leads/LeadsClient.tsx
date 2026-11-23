@@ -2,7 +2,8 @@
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded } from "lucide-react";
+import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Users, Upload, QrCode } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { timeAgo, formatPhone } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
@@ -265,6 +266,36 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, ac
   );
 }
 
+// First day: no customers at all and nothing filtered. Says what shows here, why it is empty,
+// and gives the ways to fill it. Buttons only appear for people who may use those pages.
+function FirstDayEmpty({ canImport, canQr }: { canImport: boolean; canQr: boolean }) {
+  return (
+    <div className="flex flex-col items-center px-4 py-14 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Users size={28} />
+      </div>
+      <h3 className="mt-4 font-display text-lg font-bold text-ink">No customers yet</h3>
+      <p className="mt-2 max-w-md font-body text-sm text-[#556274]">
+        Everyone who messages you, books, calls or buys shows here by themselves, one line per phone number. You don&apos;t have to type anyone in.
+      </p>
+      {(canImport || canQr) && (
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          {canImport && (
+            <Link href="/dashboard/telecalling/upload" className="btn-primary">
+              <Upload size={14} /> Bring my old customer list (Excel)
+            </Link>
+          )}
+          {canQr && (
+            <Link href="/dashboard/qr-links" className="btn-secondary">
+              <QrCode size={14} /> Get my shop QR
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const fmtCount = (n: number | undefined) => (n === undefined ? "—" : n.toLocaleString("en-IN"));
 
 export function LeadsClient() {
@@ -272,6 +303,8 @@ export function LeadsClient() {
   const canManageLeads = role === "owner" || permissions.includes("leads.manage");
   // Sending a chat message needs the same right as replying in Conversations.
   const canReply = role === "owner" || permissions.includes("conversations.reply");
+  const canImportList = role === "owner" || permissions.includes("telecalling.upload");
+  const canGetQr = role === "owner" || permissions.includes("numbers.manage");
   const [refreshing, setRefreshing] = useState(false);
   const [callers, setCallers] = useState<Caller[]>([]);
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
@@ -442,6 +475,7 @@ export function LeadsClient() {
     search || sourceFilter !== "ALL" || dateFrom || dateTo || assigned || replyWindow || status !== "ALL" || groupId || bought ||
     onlyLeads || cameFrom || tagFilter
   );
+  const firstDay = totalLeads === 0 && !hasFilters;
   const groupName = groups.find((g) => g.id === groupId)?.name ?? "Group";
   const statusValue = status === "ALL" ? "all" : status === "BUYERS" ? "buyers" : status;
   const statusOptions: FilterMenuOption[] =
@@ -1497,6 +1531,8 @@ export function LeadsClient() {
             <div className="hidden md:block overflow-x-auto">
               {isLoading && !leads.length ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">Loading...</div>
+              ) : leads.length === 0 && firstDay ? (
+                <FirstDayEmpty canImport={canImportList} canQr={canGetQr} />
               ) : leads.length === 0 ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">
                   <p>No leads match these filters</p>
@@ -1690,6 +1726,8 @@ export function LeadsClient() {
             <div className="block md:hidden space-y-3 p-3">
               {isLoading && !leads.length ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">Loading...</div>
+              ) : leads.length === 0 && firstDay ? (
+                <FirstDayEmpty canImport={canImportList} canQr={canGetQr} />
               ) : leads.length === 0 ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">No leads match these filters</div>
               ) : (

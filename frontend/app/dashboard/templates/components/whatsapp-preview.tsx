@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FileText, Play, Phone, ExternalLink, Copy, MessageSquare, X } from "lucide-react";
+import { formatSegments } from "../template-format";
 
 type WhatsAppPreviewProps = {
   headerType?: 'NONE' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
@@ -25,21 +26,31 @@ type WhatsAppPreviewProps = {
 
 /* ── helpers ─────────────────────────────────────────────────── */
 
-function renderBody(text: string, samples?: Record<number, string>) {
+function renderVariables(text: string, samples: Record<number, string> | undefined, keyPrefix: string) {
   const parts = text.split(/(\{\{\d+\}\})/g);
   return parts.map((part, i) =>
     /\{\{\d+\}\}/.test(part) ? (
       <span
-        key={i}
+        key={`${keyPrefix}${i}`}
         className="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-semibold"
         style={{ background: "var(--primary-50)", color: "var(--primary-900)" }}
       >
         {samples?.[Number(part.slice(2, -2))]?.trim() || part}
       </span>
     ) : (
-      <span key={i}>{part}</span>
+      <span key={`${keyPrefix}${i}`}>{part}</span>
     ),
   );
+}
+
+// *bold* and _italic_ show the way WhatsApp shows them; variables inside still show their sample.
+function renderBody(text: string, samples?: Record<number, string>) {
+  return formatSegments(text).map((seg, i) => {
+    const inner = renderVariables(seg.text, samples, `${i}-`);
+    if (seg.kind === "bold") return <strong key={i}>{inner}</strong>;
+    if (seg.kind === "italic") return <em key={i}>{inner}</em>;
+    return <span key={i}>{inner}</span>;
+  });
 }
 
 function ButtonIcon({ type }: { type: string }) {

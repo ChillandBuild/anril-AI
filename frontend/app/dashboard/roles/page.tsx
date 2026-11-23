@@ -569,6 +569,16 @@ export default function RolesPage() {
     }
   }
 
+  // /dashboard/roles?tab=users&add=1 (the Call IQ Team "Add" button): jump straight to the
+  // Create User form. It is already empty and ready; this just brings it into view.
+  const wantsAdd = searchParams.get("add") === "1";
+  useEffect(() => {
+    if (!wantsAdd || roleLoading || loading || tab !== "users" || !canWrite) return;
+    const input = document.getElementById("create-user-name") as HTMLInputElement | null;
+    input?.scrollIntoView({ block: "center" });
+    input?.focus({ preventScroll: true });
+  }, [wantsAdd, roleLoading, loading, tab, canWrite]);
+
   if (roleLoading || loading) {
     return <AiraLoader inline />;
   }
@@ -886,7 +896,7 @@ export default function RolesPage() {
               <>
               <div className="relative">
                 <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" size={15} />
-                <input className="input" style={{ paddingLeft: "2.25rem" }} placeholder="Full name" value={userDraft.full_name} onChange={(e) => setUserDraft((d) => ({ ...d, full_name: e.target.value }))} required />
+                <input id="create-user-name" className="input" style={{ paddingLeft: "2.25rem" }} placeholder="Full name" value={userDraft.full_name} onChange={(e) => setUserDraft((d) => ({ ...d, full_name: e.target.value }))} required />
               </div>
               <div className="relative">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" size={15} />

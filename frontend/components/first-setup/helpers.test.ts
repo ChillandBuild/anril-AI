@@ -14,6 +14,9 @@ import {
   mustChangePassword,
   parseTries,
   pauseSecondsLeft,
+  connectLinkFor,
+  whatsAppUseFromQuery,
+  homeSetupCardKind,
 } from "./helpers";
 
 describe("login pause", () => {
@@ -116,5 +119,29 @@ describe("finishSetupCard", () => {
     expect(finishSetupCard(["business", "business", "nope"]).done).toBe(1);
     expect(finishSetupCard(["business", "items", "hours", "alerts", "connect", "ai"]).finished).toBe(true);
     expect(finishSetupCard(null).done).toBe(0);
+  });
+});
+
+describe("setup step 5: how to use WhatsApp", () => {
+  it("round-trips the choice through the Connect accounts link", () => {
+    expect(connectLinkFor("keep_phone")).toBe("/dashboard/settings/connect-channels?how=keep-phone");
+    expect(whatsAppUseFromQuery("keep-phone")).toBe("keep_phone");
+    expect(whatsAppUseFromQuery(new URL("http://x" + connectLinkFor("anril_only")).searchParams.get("how"))).toBe("anril_only");
+    expect(whatsAppUseFromQuery("other")).toBeNull();
+    expect(whatsAppUseFromQuery(null)).toBeNull();
+  });
+});
+
+describe("Home setup card", () => {
+  it("says 'connect your accounts' once the owner moved past step 5 without connecting", () => {
+    expect(homeSetupCardKind(["business", "items", "hours", "alerts", "ai"], "ai")).toBe("connect");
+    expect(homeSetupCardKind(["business"], "ai")).toBe("connect");
+    expect(homeSetupCardKind(["business", "items", "hours", "alerts", "ai"], "business")).toBe("connect");
+  });
+  it("shows the usual progress card before step 5, and nothing when all 6 are done", () => {
+    expect(homeSetupCardKind(["business"], "items")).toBe("progress");
+    expect(homeSetupCardKind([], null)).toBe("progress");
+    expect(homeSetupCardKind(["business", "items", "hours", "alerts", "connect"], "ai")).toBe("progress");
+    expect(homeSetupCardKind(["business", "items", "hours", "alerts", "connect", "ai"], "ai")).toBe("none");
   });
 });

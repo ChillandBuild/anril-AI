@@ -16,6 +16,7 @@ import MetaAssetPickerModal from "./MetaAssetPickerModal";
 import MetaChannelPickerModal from "./MetaChannelPickerModal";
 import DisconnectDialog from "./DisconnectDialog";
 import { AiraLoader } from "@/components/AiraLoader";
+import { whatsAppUseFromQuery, type WhatsAppUse } from "@/components/first-setup/helpers";
 
 export default function ConnectChannelsPanel({ canManage = true }: { canManage?: boolean }) {
   const [settings, setSettings] = useState<Setting[]>([]);
@@ -26,6 +27,15 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   const [webhookHealth, setWebhookHealth] = useState<WebhookHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  // First setup step 5 sends ?how=keep-phone|anril-only: point at the matching Meta button.
+  const [pickedUse, setPickedUse] = useState<WhatsAppUse | null>(null);
+  useEffect(() => {
+    try {
+      setPickedUse(whatsAppUseFromQuery(new URLSearchParams(window.location.search).get("how")));
+    } catch {
+      setPickedUse(null);
+    }
+  }, []);
 
   // Modal control
   const [selectedChannel, setSelectedChannel] = useState<ChannelConfig | null>(null);
@@ -253,6 +263,15 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6 -mt-1 sm:-mt-2">
+      {pickedUse && !metaConnected && (
+        <p className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 font-body text-sm text-ink">
+          {pickedUse === "keep_phone" ? (
+            <>You picked <strong>In Anril + keep my phone app</strong>. Tap <strong>WhatsApp Coexistence</strong> below.</>
+          ) : (
+            <>You picked <strong>Only in Anril</strong>. Tap <strong>Connect Meta Business</strong> below.</>
+          )}
+        </p>
+      )}
       {/* A per-card signup can fail before its picker exists — Meta granted nothing,
           or the code exchange was rejected — so that error needs a home up here. */}
       {(error || (channelSignup.error && !channelSignup.assets)) && (

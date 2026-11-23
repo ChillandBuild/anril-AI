@@ -6,6 +6,7 @@ import { FIRST_SETUP_STEPS, firstSetupApi, setAiAgentOn, type FirstSetupStep } f
 import { InterviewQuestionsForm, InterviewReview, StarterStep } from "./WorkspaceSteps";
 import type { InterviewDraft } from "@/lib/api";
 import { GSTIN_PATTERN, asksForGstin, gstTypeFor, type GstChoice } from "./helpers";
+import { ConnectStep } from "./ConnectStep";
 
 // The 6 first-setup steps. Every step can be skipped, "Finish later" is always on screen, and each
 // step saves through the screen that already owns that setting. Progress is remembered on the server,
@@ -137,8 +138,22 @@ function BusinessStep({ onNext }: { onNext: () => void }) {
   return <StarterStep onDone={() => setPart("gst")} onWantInterview={() => setPart("questions")} />;
 }
 
-function AiStep({ onNext }: { onNext: () => void }) {
+// What each step's tick says in the "Your setup" list on the last step.
+const SUMMARY: Record<Exclude<FirstSetupStep, "ai">, string> = {
+  business: "Business type",
+  items: "Catalogue",
+  hours: "Open hours",
+  alerts: "Who gets alerts",
+  connect: "WhatsApp and Instagram connected",
+};
+
+/**
+ * Step 6 (screen 85): try the AI agent in a test chat first, then switch it on. The switch unlocks after
+ * the owner has opened the test chat (or when the agent is already on), so nobody turns it on blind.
+ */
+function AiStep({ done, onNext }: { done: FirstSetupStep[]; onNext: () => void }) {
   const [on, setOn] = useState<boolean | null>(null);
+  const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,20 +173,42 @@ function AiStep({ onNext }: { onNext: () => void }) {
     setBusy(false);
   }
 
+  const canSwitch = tried || on === true;
+
   return (
     <div className={card}>
       <h1 className={heading}>{TITLES.ai}</h1>
-      <p className={sub}>
-        First send yourself a test message on WhatsApp and see how it answers. When you are happy, switch the AI agent on. You can switch it off any time in Settings.
-      </p>
+      <p className={sub}>It replies to your customers using your Catalogue and business details. Try it first: nothing is sent to anyone.</p>
       {error && <div className={errorBox}>{error}</div>}
-      {on ? (
-        <p className="rounded-xl bg-emerald-50 p-3 font-body text-sm text-emerald-800">Your AI agent is on.</p>
-      ) : (
-        <button type="button" onClick={turnOn} disabled={busy} className={outline}>
-          {busy ? "Switching on…" : "Switch on the AI agent"}
-        </button>
-      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-3">
+          <Link href="/dashboard/brain?section=test" target="_blank" rel="noopener" onClick={() => setTried(true)} className={`${outline} block`}>
+            💬 Try it in a test chat
+          </Link>
+          {on ? (
+            <p className="rounded-xl bg-emerald-50 p-3 font-body text-sm text-emerald-800">Your AI agent is on. You can take over any chat any time.</p>
+          ) : (
+            <>
+              <button type="button" onClick={turnOn} disabled={busy || !canSwitch} className={`${outline} disabled:cursor-not-allowed disabled:opacity-50`}>
+                {busy ? "Switching on…" : "Switch on the AI agent"}
+              </button>
+              {!canSwitch && <p className="font-body text-xs text-ink-secondary">Try the test chat first, then switch it on here.</p>}
+            </>
+          )}
+        </div>
+        <div className="rounded-2xl border border-border p-4">
+          <p className="mb-2 font-body text-sm font-semibold text-ink">Your setup</p>
+          <ul className="space-y-1.5 font-body text-sm">
+            {(Object.keys(SUMMARY) as (keyof typeof SUMMARY)[]).map((k) => (
+              <li key={k} className={done.includes(k) ? "text-ink" : "text-ink-secondary"}>
+                {done.includes(k) ? "✓ " : "○ "}
+                {SUMMARY[k]}
+                {!done.includes(k) && " · skipped"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
       <button type="button" onClick={onNext} className="btn-primary mt-4 w-full justify-center">
         Finish setup
       </button>
@@ -240,15 +277,8 @@ export function FirstSetupWizard({ onFinish }: { onFinish: () => void }) {
           onNext={() => move(true)}
         />
       )}
-      {step === "connect" && (
-        <LinkStep
-          title={TITLES.connect}
-          text="Connect your WhatsApp, Instagram and Facebook with one button. Meta's own charges are on top of your Anril plan. Razorpay is optional."
-          links={[{ href: "/dashboard/settings/connect-channels", label: "Connect my accounts" }]}
-          onNext={() => move(true)}
-        />
-      )}
-      {step === "ai" && <AiStep onNext={() => move(true)} />}
+      {step === "connect" && <ConnectStep onNext={() => move(true)} />}
+      {step === "ai" && <AiStep done={done} onNext={() => move(true)} />}
 
       <div className="mt-4 flex items-center justify-between">
         <button type="button" onClick={onFinish} className="font-body text-sm font-medium text-ink-muted hover:text-ink">
