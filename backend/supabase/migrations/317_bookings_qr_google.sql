@@ -98,6 +98,21 @@ CREATE TABLE IF NOT EXISTS public.booking_leave (
 );
 CREATE INDEX IF NOT EXISTS idx_booking_leave_resource ON public.booking_leave (tenant_id, resource_id, to_date);
 
+-- The old temple-booking table (devotee_name, rasi, nakshatram; migration 029) is still live
+-- because 130_drop_legacy_booking_artifacts was never applied. It had 0 rows and no code reads it
+-- (checked 2026-11-23). Drop it, its link column on lead_conversation_state and its trigger
+-- function, but ONLY when it is that old table, so re-running this file never touches real bookings.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'bookings' AND column_name = 'devotee_name') THEN
+    ALTER TABLE public.lead_conversation_state DROP CONSTRAINT IF EXISTS lead_conversation_state_booking_id_fkey;
+    ALTER TABLE public.lead_conversation_state DROP COLUMN IF EXISTS booking_id;
+    DROP TABLE public.bookings;
+    DROP FUNCTION IF EXISTS public.generate_booking_ref();
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.bookings (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id             uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
