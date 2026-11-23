@@ -79,17 +79,18 @@ def decorate(bill: dict, db, tenant_id: str, business: dict) -> dict:
     """Adds `brand` (always). The tax handling follows the ORDER's own stored bill_type (set when it was
     made), never the shop's GST setting today: a "gst" order always prints as the tax invoice it was, even
     if the shop has since gone composition. A "simple" order (made while the shop charged no tax) gets the
-    "Bill of supply" title when the shop is still a composition / unregistered shop, with every tax figure
-    zero. A regular shop's deliberate simple bill keeps its old look. Everything else is left alone."""
+    "Bill of supply" title when the shop is still a composition shop (an unregistered shop keeps "Bill"),
+    with every tax figure zero. A regular shop's deliberate simple bill keeps its old look. Everything else is left alone."""
     bill["brand"] = brand_block(db, tenant_id, business)
     if (bill.get("bill_type") or "gst") != "simple":
         return bill
     gst_type = business.get("gst_type") or "regular"
     if gst_type not in ("composition", "none"):
         return bill
-    bill["title"] = COMPOSITION_TITLE
     if gst_type == "composition":
+        bill["title"] = COMPOSITION_TITLE  # only a composition shop issues a "Bill of supply"
         bill["composition"] = True  # the PDF/picture add the composition note and show the shop's GSTIN
+    # An unregistered shop keeps the plain "Bill" title (no title key), with no tax figures.
     bill["gst_paise"] = bill["cgst_paise"] = bill["sgst_paise"] = bill["igst_paise"] = 0
     for line in bill.get("lines") or []:
         line["gst_rate"] = None

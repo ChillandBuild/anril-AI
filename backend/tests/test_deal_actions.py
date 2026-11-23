@@ -962,3 +962,5 @@ class TestPayFullNeverLeavesTwoLinks:
         assert row["payment_link"] == "https://rzp.io/l/advance" and row["razorpay_payment_link_id"] == "plink_adv"
         assert row["advance_paise"] == 100000
         assert "https://rzp.io/l/full" not in (out.quote_text or "")
+        # The kept link asks only the advance, so the text must say so (not "Pay here" next to the full total).
+        assert "Pay the advance here: https://rzp.io/l/advance" in (out.quote_text or "")

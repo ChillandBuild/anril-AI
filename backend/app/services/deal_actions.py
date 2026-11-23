@@ -821,7 +821,10 @@ async def _send_quote(ctx: DealContext, args: dict, turn: _Turn) -> str | None:
             except Exception:
                 logger.exception("Full-amount link for deal %s failed for lead %s", deal["id"], ctx.lead_id)
                 return _quote_failed(ctx, turn)
-            advance = 0
+            # Razorpay kept the advance link (it would not cancel it): the link still asks only the advance,
+            # so the text must say "Pay the advance here", not "Pay here" next to the full total.
+            if link != deal["payment_link"]:
+                advance = 0
         elif not deals._link_is_live(deal):
             # Never hand the customer a dead link: make a new one (the old one is cancelled).
             try:

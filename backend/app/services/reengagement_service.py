@@ -6,6 +6,7 @@ from app.services.ai_reply import send_whatsapp, get_last_send_error
 from app.services.automation_guards import ai_replies_allowed, lead_blocks_automated_outbound
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
+from app.services.reports_common import paged
 from app.services.send_reasons import REASON_TEXT, plain_reason
 from app.services.template_params import template_status
 
@@ -250,15 +251,14 @@ async def process_due_reengagements() -> int:
                 continue
 
             # Fetch recipients who received this broadcast
-            recipients_res = (
-                db.table("broadcast_recipients")
-                .select("lead_id, created_at, phone, name")
+            # Paged: one answer is capped at 1000 rows, so a bigger broadcast would silently lose the rest.
+            recipients = paged(
+                lambda: db.table("broadcast_recipients")
+                .select("id, lead_id, created_at, phone, name")
                 .eq("broadcast_id", broadcast_id)
                 .eq("tenant_id", tenant_id)
                 .eq("send_status", "sent")
-                .execute()
             )
-            recipients = recipients_res.data or []
             if not recipients:
                 continue
 
@@ -305,14 +305,19 @@ async def process_due_reengagements() -> int:
         elif step["type"] == "inbound":
             # B. Inbound lead-specific re-engagement (relative to last_inbound_at)
             # Find leads with last_inbound_at
-            leads_res = (
-                db.table("leads")
+            if not target_segments:
+                continue
+            # Only people quiet for at least the delay, in the step's segments, and every page of them:
+            # one answer is capped at 1000 rows, so a bigger business used to skip everyone past that.
+            cutoff = (now - timedelta(hours=delay_hours)).isoformat()
+            leads = paged(
+                lambda: db.table("leads")
                 .select("id, name, phone, last_inbound_phone_number_id, segment, last_inbound_at, source, ad_campaign_id, whatsapp_undeliverable, opted_out, blocked_at, converted_at")
                 .eq("tenant_id", tenant_id)
                 .not_.is_("last_inbound_at", "null")
-                .execute()
+                .lte("last_inbound_at", cutoff)
+                .in_("segment", list(target_segments))
             )
-            leads = leads_res.data or []
 
             # Filter by elapsed delay + segment/source in-memory first — no DB round-trip yet.
             due_leads = []

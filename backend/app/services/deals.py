@@ -435,6 +435,9 @@ async def create_deal(
     result = {"deal": deal, "items": items, "payment_link": None, "message_sent": False, "stock_warnings": []}
     if stage == "won":
         result["stock_warnings"] = _deduct_for_deal(tenant_id, deal["id"], created_by, db, direction=-1)
+        # An order created already paid (Record payment "paid now", a won wrap-up) sold its property units too.
+        from app.services import properties
+        properties.on_deal_paid(db, tenant_id, deal["id"])
     elif stage == "awaiting_payment" or send_link:
         # The AI's send_quote tool passes send_link=False: the link goes out in
         # its own reply text, so a second WhatsApp message would duplicate it.
