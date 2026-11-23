@@ -225,6 +225,7 @@ class ReportCardTests(_Base):
         self.assertEqual(card["chats"], 4)
         self.assertEqual(card["passed_to_person"], 1)
         self.assertEqual(card["handled_alone_pct"], 50)  # 2 of 4 answered with no handover
+        self.assertEqual(card["couldnt_answer"], 1)  # the one handover that was a missing answer
         self.assertEqual(card["wrong_answers"], 1)  # only "wrong"; rude/too long are tone, not wrong answers
         kinds = [f["kind"] for f in card["fix_these"]]
         self.assertEqual(kinds[:2], ["couldnt_answer", "wrong_answers"])
@@ -248,7 +249,13 @@ class ReportCardTests(_Base):
         self.as_role("owner", tenant="t-empty")
         card = self.client.get("/api/v1/ai-setup/report-card").json()
         self.assertEqual((card["chats"], card["handled_alone_pct"], card["wrong_answers"]), (0, None, 0))
+        self.assertEqual(card["couldnt_answer"], 0)
         self.assertEqual(card["fix_these"], [])
+
+    def test_couldnt_answer_is_zero_when_the_counts_are_missing(self):
+        with patch.object(svc, "_handled", return_value={"chats": 3, "handled_by_aira": 2, "handed_over": 1}):
+            card = svc.report_card(self.db, T, 30, sees_money=False)
+        self.assertEqual(card["couldnt_answer"], 0)
 
     def test_missing_feedback_table_does_not_crash(self):
         with patch.object(svc, "fetch_bounded", side_effect=Exception("42P01 relation does not exist")):

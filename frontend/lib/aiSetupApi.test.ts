@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { percentLabel, questionFromSearch, rupees, safeFixHref, sameQuestion, timesLabel } from "./aiSetupApi";
+import { percentLabel, questionFromSearch, rupees, safeFixHref, sameQuestion, splitChats, timesLabel } from "./aiSetupApi";
 
 describe("aiSetupApi helpers", () => {
   it("says how often a question was asked", () => {
@@ -28,5 +28,16 @@ describe("aiSetupApi helpers", () => {
   it("matches the same question ignoring case, punctuation and spaces", () => {
     expect(sameQuestion("Do you deliver?", "do  you DELIVER")).toBe(true);
     expect(sameQuestion("Price", "Prices")).toBe(false);
+  });
+});
+
+
+describe("splitChats", () => {
+  it("takes couldn't-answer chats out of the passed-to-person segment", () => {
+    expect(splitChats({ chats: 46, passed_to_person: 5, couldnt_answer: 2 })).toEqual({ alone: 41, person: 3, couldnt: 2 });
+  });
+  it("never goes below zero and treats a missing couldnt_answer as 0", () => {
+    expect(splitChats({ chats: 2, passed_to_person: 5 })).toEqual({ alone: 0, person: 2, couldnt: 0 });
+    expect(splitChats({ chats: 3, passed_to_person: 1, couldnt_answer: 4 })).toEqual({ alone: 2, person: 0, couldnt: 1 });
   });
 });

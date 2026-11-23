@@ -1,33 +1,25 @@
 "use client";
 import Link from "next/link";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 
-/** The frame the three Anril Setup pages share: who may look, a back link and the Test chat button. */
+/** The frame the three Anril Setup pages share: who may look, and the Test chat button. */
 export function useSetupAccess() {
   const { role, permissions, loading } = useAuthRole();
   const has = (p: string) => role === "owner" || permissions.includes(p);
   return { loading, canView: has("knowledge.view") || has("knowledge.manage"), canEdit: has("knowledge.manage"), has };
 }
 
-export function SetupShell({ title, intro, children, right }: { title: string; intro: string; children: ReactNode; right?: ReactNode }) {
+/** The page title and subtitle live in the app header. The body starts with one toolbar row: the page's own controls on the left, Test chat on the right. */
+export function SetupShell({ toolbar, children }: { toolbar?: ReactNode; children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-6 sm:px-6">
-      <Link href="/dashboard/brain" className="inline-flex min-h-9 items-center gap-1.5 font-label text-xs font-bold text-ink-secondary hover:text-ink">
-        <ArrowLeft size={14} aria-hidden /> Anril Setup
-      </Link>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-bold text-ink">{title}</h1>
-          <p className="mt-1 font-body text-sm text-ink-secondary">{intro}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {right}
-          <Link href="/dashboard/brain?section=test" className="btn-secondary min-h-9">
-            <MessageCircle size={14} aria-hidden /> Test chat
-          </Link>
-        </div>
+    <div className="w-full space-y-4 px-4 py-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">{toolbar}</div>
+        <Link href="/dashboard/brain?section=test" className="btn-secondary ml-auto min-h-9">
+          <MessageCircle size={14} aria-hidden /> Test chat
+        </Link>
       </div>
       {children}
     </div>

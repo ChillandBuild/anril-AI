@@ -403,13 +403,15 @@ def report_card(db, tenant_id: str, days: int, *, sees_money: bool, caller_id: s
     for f in feedback:
         reasons[f.get("reason") or "other"] = reasons.get(f.get("reason") or "other", 0) + 1
     questions = couldnt_answer(db, tenant_id, days, show_leads=False, caller_id=caller_id)
+    gap_chats = int(counts.get("knowledge_gaps") or 0)
     card = {
         "period": {"days": days, "from": period.start.isoformat(), "to": period.end.isoformat()},
         "chats": chats,
         "handled_alone_pct": round(alone * 100 / chats) if chats else None,
         "passed_to_person": int(counts.get("handed_over") or 0),
+        "couldnt_answer": gap_chats,
         "wrong_answers": reasons.get("wrong", 0),
-        "fix_these": fix_these(questions, reasons, int(counts.get("knowledge_gaps") or 0)),
+        "fix_these": fix_these(questions, reasons, gap_chats),
     }
     if sees_money:
         card["revenue_from_ai_paise"] = _ai_revenue(db, tenant_id, period)

@@ -16,6 +16,7 @@ export type ReportCard = {
   chats: number;
   handled_alone_pct: number | null;
   passed_to_person: number;
+  couldnt_answer?: number;
   wrong_answers: number;
   revenue_from_ai_paise?: number;
   money_hidden?: boolean;
@@ -86,4 +87,11 @@ export function questionFromSearch(search: string): string {
 export function sameQuestion(a: string, b: string): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[!-/:-@[-`{-~‘’“”…]/g, " ").replace(/\s+/g, " ").trim();
   return norm(a) === norm(b);
+}
+
+/** Chats split three ways. Couldn't-answer chats are a subset of the ones passed to a person, so they are taken out of that segment. */
+export function splitChats(card: Pick<ReportCard, "chats" | "passed_to_person" | "couldnt_answer">) {
+  const passed = Math.min(Math.max(card.passed_to_person, 0), card.chats);
+  const couldnt = Math.min(Math.max(card.couldnt_answer ?? 0, 0), passed);
+  return { alone: Math.max(card.chats - passed, 0), person: passed - couldnt, couldnt };
 }
