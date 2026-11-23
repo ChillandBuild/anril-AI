@@ -350,6 +350,9 @@ def _positions(rows) -> dict[str, str]:
     return out
 
 
+_LAGNA_ROW = re.compile(r"லக்னம்|லக்கினம்|லக்னா|lagn(?:a|am)?|ascendant|asc", re.I)
+
+
 def parse_chart_json(data: dict) -> Chart:
     c = Chart()
     ov = _get(data, "overview", "summary") or data
@@ -363,6 +366,10 @@ def parse_chart_json(data: dict) -> Chart:
                 if isinstance(v, str) and planet_name(k) and sign_name(v)}
     elif isinstance(nav, list):
         c.d9 = _positions(nav)
+        # [{"planet": "Lagnam", "rasi": "Magaram"}, {"planet": "Sun", ...}]: the lagnam row is the navamsa lagnam
+        for row in nav:
+            if _LAGNA_ROW.fullmatch(str(_get(row, "planet", "name", "graha") or "").strip()):
+                c.d9_lagna = sign_name(_get(row, "rasi", "sign", "rashi")) or c.d9_lagna
     goch = _get(data, "gocharam", "transit", "transits")
     if isinstance(goch, dict):
         c.transit = _positions(_get(goch, "planets_today", "planets", "today"))
@@ -640,12 +647,16 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
             first_p = next(i for i, m in enumerate(ms) if m[0] == "p")
             ms = [("s", m[1], m[2]) if m[0] == "R" and i > first_p else m for i, m in enumerate(ms)]
         skip = bool(_SKIP.search(clause))
+        navamsa = bool(_NAVAMSA.search(clause))
+        view = _navamsa_view(c) if navamsa else c   # houses, house signs and lords counted in the navamsa
         if not skip:
-            out += _rule_checks(c, clause, ms)
+            out += _rule_checks(view, clause, ms)
             out += _period_checks(c, clause, ms)
         if skip:
             continue
-        navamsa = bool(_NAVAMSA.search(clause))
+        if navamsa and not c.d9_lagna and any(m[0] in "hH" for m in ms):
+            out.append(("wrong", "the chart has no navamsa lagnam, so no navamsa house, house sign or house lord "
+                                 "can be named"))
         if not navamsa:
             out += _lagna_rasi_lord(c, clause)
         # "your rasi is Simmam" / "உங்கள் மகர லக்னம்"; checked even when the clause goes on to its lord
@@ -680,19 +691,35 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
             if target is None:
                 continue
             used.add(target)
-            kind, value, _ = ms[target]
-            for _, p, w in ms[a:b + 1]:
-                if _DATIVE.search(w):
-                    continue
-                if kind == "s":
-                    allowed = _allowed_signs(c, p, navamsa)
-                    if allowed:
-                        out.append(("ok", "") if value in allowed else ("wrong", _where(c, p, f"{p} in {value}")))
-                elif not navamsa and not dative and len({m[1] for m in ms if m[0] == "p"}) == 1:
-                    allowed = _allowed_houses(c, p)
-                    if allowed:
-                        out.append(("ok", "") if value in allowed else ("wrong", _where(c, p, f"{p} in house {value}")))
+            targets = [target]
+            # "நவாம்சத்துல 7ம் இடத்துல ... சனி கும்ப ராசியில": in the navamsa, the house before the planet too
+            if navamsa and target == b + 1 and a > 0 and ms[a - 1][0] == "h" and a - 1 not in used:
+                used.add(a - 1)
+                targets.append(a - 1)
+            for t in targets:
+                kind, value, _ = ms[t]
+                for _, p, w in ms[a:b + 1]:
+                    if _DATIVE.search(w):
+                        continue
+                    if kind == "s":
+                        allowed = _allowed_signs(c, p, navamsa)
+                        if allowed:
+                            out.append(("ok", "") if value in allowed else ("wrong", _where(c, p, f"{p} in {value}")))
+                    elif not dative and len({m[1] for m in ms if m[0] == "p"}) == 1:
+                        allowed = _allowed_houses(view, p)
+                        if allowed:
+                            out.append(("ok", "") if value in allowed else
+                                       ("wrong", f"reply says {p} in navamsa house {value}; the navamsa has {p} in "
+                                                 f"{c.d9[p]}, house {view.house_of(c.d9[p])} from the navamsa lagnam "
+                                                 f"{c.d9_lagna}") if navamsa else
+                                       ("wrong", _where(c, p, f"{p} in house {value}")))
     return out
+
+
+def _navamsa_view(c: Chart) -> Chart:
+    """The navamsa as a chart of its own: houses counted from the navamsa lagnam (no lagnam -> no houses),
+    so the house checks read "7ம் இடம்" in a navamsa sentence as the navamsa 7th."""
+    return Chart(lagna=c.d9_lagna, rasi=c.d9_lagna, d1=dict(c.d9))
 
 
 def _where(c: Chart, p: str, said: str) -> str:
@@ -726,4 +753,6 @@ def redo_note(wrong: list[str]) -> str:
     lines = "\n".join(f"- {w}" for w in wrong[:6])
     return ("Your last draft stated chart facts that are not in APP DATA:\n" + lines +
             "\nWrite the reply again. Use only the positions, houses and periods written in APP DATA. "
-            "If APP DATA does not give a fact, say you don't have it. Keep the same friendly tone.")
+            "If APP DATA does not give a fact, say you don't have it. Keep the same friendly tone.\n"
+            "The person never saw that draft: write as if answering for the first time. No sorry, no \"I missed\", "
+            "no mention of a correction or a mistake.")

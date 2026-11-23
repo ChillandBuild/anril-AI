@@ -160,3 +160,60 @@ def test_a_wrong_lagnam_with_its_lord_and_a_rasi_in_the_next_sentence_are_caught
 ])
 def test_lagna_lord_and_rasi_lord_claims(chart, reply, expect):
     assert len(find_wrong(chart, reply)) == expect, find_wrong(chart, reply)
+
+
+# --- navamsa houses (24 Nov). Navamsa signs below are test values in AstroTamil's shape, not Prem's real D9.
+NAV = {"lagnam": "Magaram", "Sun": "Mesham", "Moon": "Thulam", "Mars": "Kadagam", "Mercury": "Mithunam",
+       "Jupiter": "Dhanusu", "Venus": "Meenam", "Saturn": "Kumbam", "Rahu": "Viruchigam", "Ketu": "Rishabam"}
+
+
+def _with_navamsa(nav):
+    return parse_app_data(json.dumps(dict(CHART, navamsa=nav)))
+
+
+def test_a_lagnam_row_in_a_navamsa_list_is_the_navamsa_lagnam():
+    """An app may send the navamsa as rows, lagnam first. Before: the row was dropped and Jothidar was told
+    the navamsa lagnam is missing (live check 24 Nov: 1 of 2 marriage answers said so)."""
+    from app.companion.prompt import CHART_RULES, chart_rules
+    for first in ({"planet": "Lagnam", "rasi": "Magaram"}, {"name": "lagna", "sign": "மகரம்"},
+                  {"planet": "Ascendant", "rasi": "Capricorn"}):
+        rows = [first] + [{"planet": p, "rasi": s} for p, s in NAV.items() if p != "lagnam"]
+        c = _with_navamsa(rows)
+        assert c.d9_lagna == "மகரம்" and len(c.d9) == 9
+        assert chart_rules(json.dumps(dict(CHART, navamsa=rows))) == CHART_RULES
+
+
+@pytest.mark.parametrize("reply", [
+    # live 24 Nov, run 1: Sani is in Kumbam in the navamsa = the 2nd from a Magaram navamsa lagnam, not the 7th
+    "உங்க நவாம்சத்துல 7ம் இடமான களத்திர ஸ்தானத்தை பார்த்தா, அங்க சனி பகவான் கும்ப ராசியில இருக்கார்.",
+    "In your navamsa, Saturn sits in the 7th house.",
+    "In your navamsa the 7th house is Capricorn.",
+    "Unga navamsa-la 7th lord Sukkiran.",
+])
+def test_a_wrong_navamsa_house_is_caught(reply):
+    assert find_wrong(_with_navamsa(NAV), reply)
+
+
+@pytest.mark.parametrize("reply", [
+    "உங்க நவாம்சத்துல லக்னம் மகரம், 7ம் இடம் கடகம்.",
+    "உங்க நவாம்சத்துல 7ம் இடம் கடகம், அதோட அதிபதி சந்திரன் துலாத்துல இருக்கார்.",
+    "உங்க நவாம்சத்துல சனி 2ம் இடத்துல இருக்கார்.",
+    "In your navamsa, Venus is in the 3rd house, exalted in Meenam.",
+    "நவாம்சத்துல சுக்கிரன் உச்சம் பெற்று மீனத்துல இருக்கறது ரொம்ப நல்ல விஷயம்.",
+])
+def test_a_right_navamsa_house_is_not_flagged(reply):
+    assert find_wrong(_with_navamsa(NAV), reply) == []
+
+
+def test_without_a_navamsa_lagnam_any_navamsa_house_is_wrong_but_signs_are_fine():
+    c = _with_navamsa({p: s for p, s in NAV.items() if p != "lagnam"})
+    assert find_wrong(c, "In your navamsa the 7th house is Capricorn.")
+    assert find_wrong(c, "உங்க நவாம்சத்துல சனி 2ம் இடத்துல இருக்கார்.")
+    assert find_wrong(c, "நவாம்சத்துல சுக்கிரன் மீனத்துல இருக்கார்.") == []
+
+
+def test_the_redo_never_apologises_for_a_draft_the_person_never_saw():
+    """Live 24 Nov: after a redo the reply opened "மன்னிக்கவும், நவாம்சத்துல உங்க 7ம் இடமான கடக ராசியை
+    கவனிக்காம விட்டேன்" (sorry, I missed your navamsa 7th house), for a first draft nobody saw."""
+    note = redo_note(["reply says சனி in navamsa house 7"])
+    assert "never saw that draft" in note and "No sorry" in note
