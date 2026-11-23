@@ -1,6 +1,6 @@
 import { AnalyticsOverview } from "@/lib/api";
 
-const CHANNEL_LABELS: Record<string, string> = {
+export const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   instagram: "Instagram",
   facebook: "Facebook",

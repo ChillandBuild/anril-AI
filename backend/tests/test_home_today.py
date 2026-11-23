@@ -592,3 +592,135 @@ def test_feedback_missing_table_gives_no_box_and_no_list(stub_sources, monkeypat
     db = FakeDB({"deals": []}, errors={"customer_feedback": Exception("PGRST205 could not find the table")})
     out = h.compute_today(db, _ctx())
     assert "feedback_week" not in out["boxes"] and out["todays_feedback"] is None
+
+
+# ───────────────────────────────────────────────────────────── 7-day series (sparklines)
+# NOW is 23 Nov 10:00 IST, so the 7 IST days are 17..23 Nov (oldest first, last = today).
+
+def _lead(db, tenant, created_at, source="whatsapp", **extra):
+    return db.add("leads", **{"tenant_id": tenant, "source": source, "created_at": created_at, "deleted_at": None, **extra})
+
+
+def test_new_enquiries_series_buckets_per_ist_day_with_the_same_filters():
+    db = FakeSupabase()
+    _lead(db, "t1", "2026-11-23T08:00:00+05:30")                       # today
+    _lead(db, "t1", "2026-11-23T00:10:00+05:30")                       # today, just after IST midnight
+    _lead(db, "t1", "2026-11-22T23:50:00+05:30")                       # yesterday, just before midnight
+    _lead(db, "t1", "2026-11-20T12:00:00+05:30")                       # 3 days ago
+    _lead(db, "t1", "2026-11-17T00:00:00+05:30")                       # first day of the window
+    _lead(db, "t1", "2026-11-16T23:59:00+05:30")                       # one minute too old
+    _lead(db, "t2", "2026-11-23T08:00:00+05:30")                       # another client
+    _lead(db, "t1", "2026-11-23T08:00:00+05:30", deleted_at="2026-11-23T09:00:00+05:30")  # deleted
+    _lead(db, "t1", "2026-11-23T08:00:00+05:30", source="telecalling_upload")             # not an inbound source
+    box = h._box_new_enquiries(db, "t1", h._times(NOW))
+    assert box["series"] == [1, 0, 0, 1, 0, 1, 2]
+    assert box["value"] == 2 and box["unit"] == "count"        # the existing fields are unchanged
+    assert box["series"][-1] == box["value"]                   # last point = today's number
+
+
+def test_new_enquiries_series_pages_past_the_thousand_row_cap():
+    db = FakeSupabase()
+    for _ in range(1205):
+        _lead(db, "t1", "2026-11-23T08:00:00+05:30")
+    assert h._new_enquiries_series(db, "t1", h._times(NOW)) == [0, 0, 0, 0, 0, 0, 1205]
+
+
+def test_won_series_is_a_daily_count_not_month_to_date():
+    db = FakeSupabase()
+    _lead(db, "t1", "2026-10-01T10:00:00+05:30", converted_at="2026-11-23T11:00:00+05:30")   # old lead, won today
+    _lead(db, "t1", "2026-11-22T10:00:00+05:30", converted_at="2026-11-22T11:00:00+05:30")
+    _lead(db, "t1", "2026-11-22T10:00:00+05:30", converted_at="2026-11-22T15:00:00+05:30")
+    _lead(db, "t1", "2026-11-05T10:00:00+05:30", converted_at="2026-11-05T11:00:00+05:30")   # this month, outside the 7 days
+    _lead(db, "t1", "2026-11-18T10:00:00+05:30")                                              # not converted
+    _lead(db, "t2", "2026-11-22T10:00:00+05:30", converted_at="2026-11-22T11:00:00+05:30")   # another client
+    t = h._times(NOW)
+    assert h._won_series(db, "t1", t) == [0, 0, 0, 0, 0, 2, 1]
+    box = h._box_won_month(db, "t1", t)
+    assert box["series"] == [0, 0, 0, 0, 0, 2, 1]
+    assert box["value"] == 4 and box["sub"] == "bought this month"     # month-to-date value untouched
+
+
+def test_callbacks_series_counts_any_status_for_the_scheduled_day():
+    db = FakeSupabase()
+    job = lambda tenant, when, status="pending", cadence="callback": db.add(
+        "follow_up_jobs", tenant_id=tenant, cadence=cadence, status=status, scheduled_for=when)
+    job("t1", "2026-11-23T16:00:00+05:30")                   # due later today
+    job("t1", "2026-11-23T10:00:00+05:30", "done")           # done today: still counted
+    job("t1", "2026-11-21T10:00:00+05:30", "done")
+    job("t1", "2026-11-21T11:00:00+05:30", "pending")
+    job("t1", "2026-11-24T00:00:00+05:30")                   # tomorrow: not in the window
+    job("t1", "2026-11-16T23:00:00+05:30", "done")           # too old
+    job("t1", "2026-11-22T10:00:00+05:30", cadence="welcome")  # not a call-back
+    job("t2", "2026-11-22T10:00:00+05:30")                   # another client
+    box = h._box_callbacks(db, "t1", h._times(NOW))
+    assert box["series"] == [0, 0, 0, 0, 2, 0, 2]
+    assert box["value"] == 1 and box["sub"] == "calls to make today"   # value still counts pending only
+
+
+def test_money_series_is_per_day_payments_less_refunds_for_this_client_only():
+    db = FakeSupabase()
+    db.add("deal_payments", tenant_id="t1", amount_paise=100_000, paid_at="2026-11-23T09:00:00+05:30")
+    db.add("deal_payments", tenant_id="t1", amount_paise=50_000, paid_at="2026-11-21T23:30:00+05:30")
+    db.add("deal_payments", tenant_id="t1", amount_paise=70_000, paid_at="2026-11-21T00:30:00+05:30")
+    db.add("deal_payments", tenant_id="t1", amount_paise=9_999, paid_at="2026-11-16T23:00:00+05:30")   # too old
+    db.add("deal_payments", tenant_id="t2", amount_paise=8_888, paid_at="2026-11-23T09:00:00+05:30")   # another client
+    db.add("deal_refunds", tenant_id="t1", amount_paise=30_000, status="done", created_at="2026-11-23T10:00:00+05:30")
+    db.add("deal_refunds", tenant_id="t1", amount_paise=77_000, status="failed", created_at="2026-11-23T10:00:00+05:30")
+    assert h._money_series(db, "t1", h._times(NOW)) == [0, 0, 0, 0, 120_000, 0, 70_000]
+
+
+def _target_db(show_team=False):
+    import json
+    db = FakeSupabase()
+    db.add("app_settings", tenant_id="t1", key="sales_target",
+           value=json.dumps({"monthly_paise": 200_000_00, "months": {}, "show_team": show_team}))
+    db.add("deal_payments", tenant_id="t1", amount_paise=100_000, paid_at="2026-11-22T09:00:00+05:30")
+    db.add("deal_payments", tenant_id="t1", amount_paise=50_000, paid_at="2026-11-23T09:00:00+05:30")
+    db.add("deals", tenant_id="t1")
+    db.add("tenants", id="t1", enabled_features=[])
+    return db
+
+
+def test_target_box_gets_a_money_series_only_for_people_who_see_rupees(stub_sources):
+    out = h.compute_today(_target_db(show_team=True), _ctx(), NOW)
+    box = out["boxes"]["target_month"]
+    assert box["unit"] == "paise" and box["value"] == 150_000
+    assert box["series"] == [0, 0, 0, 0, 0, 100_000, 50_000]
+    # a team member without Orders view: only the %, and no rupee series
+    team = h.compute_today(_target_db(show_team=True), _ctx("staff", ["dashboard.view"]), NOW)
+    assert team["boxes"]["target_month"]["unit"] == "percent"
+    assert "series" not in team["boxes"]["target_month"]
+
+
+def test_set_a_target_box_and_hot_waiting_have_no_series(stub_sources):
+    out = h.compute_today(FakeDB(ALL_BOXES_DB), _ctx())
+    assert out["boxes"]["target_month"]["unit"] == "set_target" and "series" not in out["boxes"]["target_month"]
+    assert "series" not in out["boxes"]["hot_waiting"]
+
+
+def test_a_failing_series_leaves_the_box_as_it_was(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("db hiccup")
+    db = FakeSupabase()
+    _lead(db, "t1", "2026-11-23T08:00:00+05:30")
+    monkeypatch.setattr(h, "_new_enquiries_series", boom)
+    box = h._box_new_enquiries(db, "t1", h._times(NOW))
+    assert box == {"value": 1, "unit": "count", "sub": "0 Hot"}
+
+
+def test_series_is_reused_within_the_ttl_and_per_tenant():
+    from app.services import home_today as ht
+
+    calls = []
+
+    def fn():
+        calls.append(1)
+        return [1, 2, 3, 4, 5, 6, 7]
+
+    a = ht._with_series({}, "won series", fn, "t1", "2026-11-23")
+    b = ht._with_series({}, "won series", fn, "t1", "2026-11-23")
+    c = ht._with_series({}, "won series", fn, "t2", "2026-11-23")
+    assert a["series"] == b["series"] == c["series"] == [1, 2, 3, 4, 5, 6, 7]
+    assert len(calls) == 2  # t1 once, t2 once
+    ht._with_series({}, "won series", fn, "t1", "2026-11-24")
+    assert len(calls) == 3  # a new day is a new series

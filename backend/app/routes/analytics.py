@@ -682,6 +682,8 @@ async def telecalling_analytics(
             "caller_id": cid,
             "name": c.get("name"),
             "calls_today": c_calls_count,
+            # the team-wide connected_calls rule (manual_status "connected"), for this caller
+            "connected_today": sum(1 for l in caller_calls if l.get("manual_status") == "connected"),
             "total_minutes_today": c_talk_minutes_today,
             "conversion_rate": conv_rate,
             "connect_rate": c_connect_rate,
@@ -1097,6 +1099,23 @@ def _pct_trend(current: int, prior: int) -> float | None:
     return round((current - prior) / prior * 100)
 
 
+async def _couldnt_answer_today(db, tenant_id: str) -> int:
+    """Chats today (IST) handed to a person because the AI had no answer: the AI report card's own
+    "couldn't answer" count (ai_report_card_counts, knowledge_gaps), for today's range. The database function only:
+    its server-side fallback reads every message of the day, which the overview never does. 0 when it can't be counted."""
+    from app.services import ai_setup_report as report
+
+    def count() -> int:
+        counted = report._counts_in_database(db, tenant_id, report.period_for(1))
+        return int((counted or {}).get("knowledge_gaps") or 0)
+
+    try:
+        return await asyncio.to_thread(count)
+    except Exception as exc:
+        logger.warning("overview: couldn't-answer count unavailable: %s", exc)
+        return 0
+
+
 @router.get("/overview")
 async def overview_analytics(
     tenant_id: str = Depends(get_dashboard_analytics_tenant_id),
@@ -1160,6 +1179,9 @@ async def overview_analytics(
         "indiamart": 0, "justdial": 0,
         "website": 0, "api": 0, "store": 0, "meta_form": 0,
     }
+    # Leads created in the last 7 IST days (today included), same shape as the two above.
+    channel_breakdown_7d = {k: 0 for k in channel_breakdown}
+    week_first_iso_date = (today_ist_date - timedelta(days=6)).isoformat()
     converted_7d = 0
     converted_today = 0
     funnel_inquiries = 0
@@ -1194,6 +1216,8 @@ async def overview_analytics(
             channel_breakdown[src] += 1
             if is_today:
                 channel_breakdown_today[src] += 1
+            if week_first_iso_date <= created <= today_iso_date:
+                channel_breakdown_7d[src] += 1
         if lead.get("ad_campaign_id"):
             ad_attributed_leads += 1
             if is_today:
@@ -1319,7 +1343,7 @@ async def overview_analytics(
         - IST_OFFSET
     )
 
-    money_res, response_res, returning_res = await asyncio.gather(
+    money_res, response_res, returning_res, couldnt_answer_today = await asyncio.gather(
         execute_with_retry_async(
             db.rpc("analytics_period_money", {
                 "p_tenant_id": tenant_id,
@@ -1342,6 +1366,7 @@ async def overview_analytics(
                 "p_timezone": "Asia/Kolkata",
             })
         ),
+        _couldnt_answer_today(db, tenant_id),
     )
     money_rows = money_res.data or []
     response_rows = response_res.data or []
@@ -1386,6 +1411,8 @@ async def overview_analytics(
         "by_segment_today": by_segment_today,
         "channel_breakdown": channel_breakdown,
         "channel_breakdown_today": channel_breakdown_today,
+        "channel_breakdown_7d": channel_breakdown_7d,
+        "couldnt_answer_today": couldnt_answer_today,
         "total_leads": total_leads,
         "ad_attributed_leads": ad_attributed_leads,
         "ad_attributed_leads_today": ad_attributed_leads_today,

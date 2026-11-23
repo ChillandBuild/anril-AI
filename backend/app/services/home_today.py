@@ -18,6 +18,7 @@ Each source runs on its own: one that fails is logged and left out, never a 500.
 Who sees what: _has_permission AND "the client uses it" (see _gates).
 """
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from app.dependencies.tenant import _has_permission
@@ -73,6 +74,66 @@ def _times(now: datetime) -> dict:
         "tomorrow": today + timedelta(days=1),
         "month": today.replace(day=1),
     }
+
+
+# ───────────────────────────────────────────────────────────── 7-day series (sparklines)
+
+SERIES_DAYS = 7
+
+
+def _series_start(t: dict) -> datetime:
+    """IST midnight of the oldest of the 7 days (today included as the last one)."""
+    return t["today"] - timedelta(days=SERIES_DAYS - 1)
+
+
+def _day_counts(stamps, t: dict) -> list[int]:
+    """7 per-IST-day counts, oldest first, last = today. Stamps outside the 7 days are ignored."""
+    from app.services.customer_feedback import _parse
+    from app.services.orders import IST
+    start = _series_start(t).date()
+    out = [0] * SERIES_DAYS
+    for ts in stamps:
+        moment = _parse(ts)
+        if not moment:
+            continue
+        i = (moment.astimezone(IST).date() - start).days
+        if 0 <= i < SERIES_DAYS:
+            out[i] += 1
+    return out
+
+
+def _paged_stamps(make_query, column: str) -> list:
+    """Every `column` value of a query a page at a time (Supabase caps a response at 1000 rows)."""
+    from app.services.sales_target import _paged
+    return [r.get(column) for r in _paged(make_query, column)]
+
+
+# Home polls every 2 min per tab; a sparkline does not need that freshness, so each series is reused for a while.
+SERIES_TTL_SECONDS = 600
+_SERIES_CACHE: dict[tuple, tuple[float, list[int]]] = {}
+
+
+def _with_series(box: dict, name: str, fn, tenant_id: str | None = None, day=None) -> dict:
+    """Adds box["series"] when it can be worked out; a failure is logged and the box stays as it was."""
+    key = (tenant_id, name, str(day)) if tenant_id else None
+    hit = _SERIES_CACHE.get(key) if key else None
+    if hit and time.monotonic() - hit[0] < SERIES_TTL_SECONDS:
+        box["series"] = list(hit[1])
+        return box
+    got = _safe(name, fn, None)
+    if got is not None:
+        box["series"] = got
+        if key:
+            _SERIES_CACHE[key] = (time.monotonic(), list(got))
+    return box
+
+
+def _money_series(db, tenant_id: str, t: dict) -> list[int]:
+    """Money in per IST day (payments received less refunds given), the target box's own rule."""
+    from app.services.sales_target import money_in_by_day
+    by_day = money_in_by_day(db, tenant_id, _series_start(t), t["tomorrow"])
+    start = _series_start(t).date()
+    return [by_day.get((start + timedelta(days=i)).isoformat(), 0) for i in range(SERIES_DAYS)]
 
 
 # ───────────────────────────────────────────────────────────── gates (allowed AND used)
@@ -209,9 +270,19 @@ def _inbound_counts(db, tenant_id: str, t: dict) -> tuple[int, int]:
     )
 
 
+def _new_enquiries_series(db, tenant_id: str, t: dict) -> list[int]:
+    """The same filters as today's count, one IST day each for the last 7 days."""
+    from app.routes.inbound_leads import InboundFilters, _leads_query
+    since = _series_start(t).isoformat()
+    stamps = _paged_stamps(
+        lambda: _leads_query(db, "id, created_at", tenant_id, InboundFilters(date_from=since)), "created_at")
+    return _day_counts(stamps, t)
+
+
 def _box_new_enquiries(db, tenant_id: str, t: dict) -> dict:
     total, hot = _inbound_counts(db, tenant_id, t)
-    return {"value": total, "unit": "count", "sub": f"{hot} Hot"}
+    box = {"value": total, "unit": "count", "sub": f"{hot} Hot"}
+    return _with_series(box, "new enquiries series", lambda: _new_enquiries_series(db, tenant_id, t), tenant_id, t["today"])
 
 
 def _box_won_month(db, tenant_id: str, t: dict) -> dict:
@@ -221,7 +292,18 @@ def _box_won_month(db, tenant_id: str, t: dict) -> dict:
         _leads_query(db, "id", tenant_id, InboundFilters(), count="exact")
         .gte("converted_at", t["month"].isoformat()).limit(1).execute()
     )
-    return {"value": res.count or 0, "unit": "count", "sub": "bought this month"}
+    box = {"value": res.count or 0, "unit": "count", "sub": "bought this month"}
+    return _with_series(box, "won series", lambda: _won_series(db, tenant_id, t), tenant_id, t["today"])
+
+
+def _won_series(db, tenant_id: str, t: dict) -> list[int]:
+    """Leads marked converted on each of the last 7 IST days (a daily count, not month to date)."""
+    from app.routes.inbound_leads import InboundFilters, _leads_query
+    since = _series_start(t).isoformat()
+    stamps = _paged_stamps(
+        lambda: _leads_query(db, "id, converted_at", tenant_id, InboundFilters()).gte("converted_at", since),
+        "converted_at")
+    return _day_counts(stamps, t)
 
 
 def _box_callbacks(db, tenant_id: str, t: dict) -> dict:
@@ -232,7 +314,20 @@ def _box_callbacks(db, tenant_id: str, t: dict) -> dict:
         .gte("scheduled_for", t["today"].isoformat()).lt("scheduled_for", t["tomorrow"].isoformat())
         .limit(1).execute()
     )
-    return {"value": res.count or 0, "unit": "count", "sub": "calls to make today"}
+    box = {"value": res.count or 0, "unit": "count", "sub": "calls to make today"}
+    return _with_series(box, "callbacks series", lambda: _callbacks_series(db, tenant_id, t), tenant_id, t["today"])
+
+
+def _callbacks_series(db, tenant_id: str, t: dict) -> list[int]:
+    """Call-backs scheduled for each of the last 7 IST days, any status (pending or done)."""
+    stamps = _paged_stamps(
+        lambda: (
+            db.table("follow_up_jobs").select("id, scheduled_for").eq("tenant_id", tenant_id)
+            .eq("cadence", "callback")
+            .gte("scheduled_for", _series_start(t).isoformat()).lt("scheduled_for", t["tomorrow"].isoformat())
+        ),
+        "scheduled_for")
+    return _day_counts(stamps, t)
 
 
 def _box_ads(db, tenant_id: str) -> dict | None:
@@ -294,7 +389,7 @@ def _needs_you_count(db, ctx: dict, segments: str | None = None) -> int:
 
 
 def _waiting_list(db, ctx: dict) -> dict:
-    items = _needs_you_rows(db, ctx, 3)
+    items = _needs_you_rows(db, ctx, 6)
     return {
         "total": _needs_you_count(db, ctx),
         "items": [{k: i[k] for k in ("lead_id", "name", "segment", "last_message", "waiting_since")} for i in items],
@@ -496,6 +591,9 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
     from app.services import sales_target
     box = _safe("target", lambda: sales_target.home_box(db, ctx, t["now"]))
     if box is not _FAILED and box is not None:
+        # a trend line only for people who see rupees (unit paise); the % view and "set a target" get none
+        if box.get("unit") == "paise":
+            _with_series(box, "target series", lambda: _money_series(db, tenant_id, t), tenant_id, t["today"])
         boxes["target_month"] = box
 
     todays_bookings = None

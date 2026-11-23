@@ -182,9 +182,9 @@ def _paged(make_query, order_by: str = "id") -> list[dict]:
     return rows
 
 
-def money_in_by_month(db, tenant_id: str, since: datetime, until: datetime | None = None) -> dict[str, int]:
-    """IST month -> payments received (paid_at) less refunds given (created_at, not failed), the
-    same rule as Home's Money in. Months with nothing are left out."""
+def _money_events(db, tenant_id: str, since: datetime, until: datetime | None = None):
+    """(IST-aware moment, signed paise): each payment received (paid_at) as +, each refund given
+    (created_at, not failed) as -. Rows with an unreadable time are skipped."""
     def payments():
         q = db.table("deal_payments").select("amount_paise, paid_at").eq("tenant_id", tenant_id).gte("paid_at", since.isoformat())
         return q.lt("paid_at", until.isoformat()) if until else q
@@ -196,7 +196,6 @@ def money_in_by_month(db, tenant_id: str, since: datetime, until: datetime | Non
         )
         return q.lt("created_at", until.isoformat()) if until else q
 
-    totals: dict[str, int] = {}
     for rows, stamp, sign in ((_paged(payments, "paid_at"), "paid_at", 1), (_paged(refunds, "created_at"), "created_at", -1)):
         for r in rows:
             try:
@@ -205,8 +204,25 @@ def money_in_by_month(db, tenant_id: str, since: datetime, until: datetime | Non
                 continue
             if when.tzinfo is None:
                 continue
-            key = month_key(when)
-            totals[key] = totals.get(key, 0) + sign * int(r.get("amount_paise") or 0)
+            yield when, sign * int(r.get("amount_paise") or 0)
+
+
+def money_in_by_month(db, tenant_id: str, since: datetime, until: datetime | None = None) -> dict[str, int]:
+    """IST month -> payments received (paid_at) less refunds given (created_at, not failed), the
+    same rule as Home's Money in. Months with nothing are left out."""
+    totals: dict[str, int] = {}
+    for when, amount in _money_events(db, tenant_id, since, until):
+        key = month_key(when)
+        totals[key] = totals.get(key, 0) + amount
+    return totals
+
+
+def money_in_by_day(db, tenant_id: str, since: datetime, until: datetime | None = None) -> dict[str, int]:
+    """IST day (YYYY-MM-DD) -> money in, the same rule as money_in_by_month. Days with nothing are left out."""
+    totals: dict[str, int] = {}
+    for when, amount in _money_events(db, tenant_id, since, until):
+        key = when.astimezone(IST).date().isoformat()
+        totals[key] = totals.get(key, 0) + amount
     return totals
 
 

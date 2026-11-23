@@ -181,6 +181,69 @@ class AnalyticsOverviewTrendTests(unittest.TestCase):
         self.assertEqual(body["ad_attributed_leads_today"], 1)
         self.assertEqual(body["by_segment_today"], {"A": 1, "B": 1, "C": 0, "D": 0})
 
+    @patch("app.routes.analytics.get_supabase")
+    def test_channel_breakdown_7d_counts_the_last_seven_ist_days_only(self, mock_get_db):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        stamp = lambda days: (now - timedelta(days=days)).isoformat()
+        leads_rows = [
+            {"id": "l1", "created_at": stamp(0), "segment": "C", "source": "whatsapp",
+             "converted_at": None, "ad_campaign_id": None},
+            {"id": "l2", "created_at": stamp(6), "segment": "C", "source": "whatsapp",   # oldest day of the 7
+             "converted_at": None, "ad_campaign_id": None},
+            {"id": "l3", "created_at": stamp(3), "segment": "C", "source": "instagram",
+             "converted_at": None, "ad_campaign_id": None},
+            {"id": "l4", "created_at": stamp(7), "segment": "C", "source": "whatsapp",   # one day too old
+             "converted_at": None, "ad_campaign_id": None},
+            {"id": "l5", "created_at": stamp(30), "segment": "C", "source": "meta_form",
+             "converted_at": None, "ad_campaign_id": None},
+            {"id": "l6", "created_at": stamp(1), "segment": "C", "source": "not_a_channel",
+             "converted_at": None, "ad_campaign_id": None},
+        ]
+        self._mock_db(mock_get_db, leads_rows=leads_rows, prior_leads_rows=[], msgs_rows=[])
+
+        # same answer whichever range the page asked for: it is always the last 7 IST days
+        for rng in ("today", "7d", "30d"):
+            body = self.client.get(f"/api/v1/analytics/overview?range={rng}").json()
+            week = body["channel_breakdown_7d"]
+            self.assertEqual(set(week), set(body["channel_breakdown"]))
+            self.assertEqual(week["whatsapp"], 2)
+            self.assertEqual(week["instagram"], 1)
+            self.assertEqual(week["meta_form"], 0)
+            # the all-time and today fields are unchanged
+            self.assertEqual(body["channel_breakdown"]["whatsapp"], 3)
+            self.assertEqual(body["channel_breakdown_today"]["whatsapp"], 1)
+
+    @patch("app.services.ai_setup_report._counts_in_database")
+    @patch("app.routes.analytics.get_supabase")
+    def test_couldnt_answer_today_is_the_report_cards_gap_count_for_todays_range(self, mock_get_db, mock_counts):
+        mock_counts.return_value = {"chats": 9, "handled_by_aira": 5, "handed_over": 3, "knowledge_gaps": 4}
+        self._mock_db(mock_get_db, leads_rows=[], prior_leads_rows=[], msgs_rows=[])
+
+        body = self.client.get("/api/v1/analytics/overview?range=7d").json()
+
+        self.assertEqual(body["couldnt_answer_today"], 4)
+        _db, tenant_id, period = mock_counts.call_args.args
+        self.assertEqual(tenant_id, "tenant-1")
+        self.assertEqual(period.days, 1)                 # today alone, in IST
+        self.assertEqual(period.start, period.end)
+
+    @patch("app.services.ai_setup_report._counts_in_database", side_effect=RuntimeError("rpc down"))
+    @patch("app.routes.analytics.get_supabase")
+    def test_couldnt_answer_today_falls_back_to_zero_and_never_breaks_the_overview(self, mock_get_db, _mock_counts):
+        self._mock_db(mock_get_db, leads_rows=[], prior_leads_rows=[], msgs_rows=[])
+
+        res = self.client.get("/api/v1/analytics/overview?range=7d")
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["couldnt_answer_today"], 0)
+
+    @patch("app.services.ai_setup_report._counts_in_database", return_value=None)
+    @patch("app.routes.analytics.get_supabase")
+    def test_couldnt_answer_today_is_zero_when_the_database_function_is_missing(self, mock_get_db, _mock_counts):
+        self._mock_db(mock_get_db, leads_rows=[], prior_leads_rows=[], msgs_rows=[])
+        self.assertEqual(self.client.get("/api/v1/analytics/overview?range=7d").json()["couldnt_answer_today"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

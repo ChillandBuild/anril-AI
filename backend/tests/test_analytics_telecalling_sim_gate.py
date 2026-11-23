@@ -21,7 +21,7 @@ CALL_ROW = {
 }
 
 
-def _db():
+def _db(rows=(CALL_ROW,)):
     """One active caller, one scored call today for them; everything else
     (owner lookup, status logs, comparison window, RPC) is a bare MagicMock,
     which the route already tolerates by iterating/len'ing it as empty."""
@@ -39,7 +39,7 @@ def _db():
             call_counter["n"] += 1
             if call_counter["n"] == 1:
                 m = MagicMock()
-                m.select.return_value.eq.return_value.gte.return_value.execute.return_value = SimpleNamespace(data=[CALL_ROW])
+                m.select.return_value.eq.return_value.gte.return_value.execute.return_value = SimpleNamespace(data=list(rows))
                 return m
             return MagicMock()
         return MagicMock()
@@ -59,8 +59,8 @@ class TelecallingAnalyticsGateTests(unittest.TestCase):
     def tearDown(self):
         app.dependency_overrides.clear()
 
-    def _get(self, calling_provider):
-        with patch("app.routes.analytics.get_supabase", return_value=_db()), \
+    def _get(self, calling_provider, rows=(CALL_ROW,)):
+        with patch("app.routes.analytics.get_supabase", return_value=_db(rows)), \
              patch("app.routes.analytics.get_telecalling_config", return_value={"calling_provider": calling_provider}):
             return self.client.get("/api/v1/analytics/telecalling")
 
@@ -81,6 +81,26 @@ class TelecallingAnalyticsGateTests(unittest.TestCase):
         self.assertEqual(row["overall_score"], 82.0)
         self.assertEqual(row["scored_calls"], 1)
         self.assertEqual(body["quality_avg"], 82.0)
+
+    def test_per_caller_connected_today_uses_the_team_connected_rule(self):
+        other = lambda i, caller, status: {**CALL_ROW, "id": f"log{i}", "caller_id": caller, "manual_status": status}
+        rows = [
+            CALL_ROW,                                        # c1 connected
+            other(2, "c1", "connected"),                     # c1 connected
+            other(3, "c1", "not_picked"),                    # c1 not connected
+            other(4, "c1", None),                            # c1 no wrap-up yet
+            other(5, "c2", "connected"),                     # someone else's call
+        ]
+        body = self._get("telecmi", rows).json()
+        row = body["per_caller"][0]
+        self.assertEqual(row["calls_today"], 4)
+        self.assertEqual(row["connected_today"], 2)
+        # the team number counts every connected call in the window, the caller's share is a subset of it
+        self.assertEqual(body["connected_calls"], 3)
+
+    def test_connected_today_is_zero_for_a_caller_with_no_calls(self):
+        body = self._get("telecmi", rows=[]).json()
+        self.assertEqual(body["per_caller"][0]["connected_today"], 0)
 
 
 if __name__ == "__main__":

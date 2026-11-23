@@ -15,6 +15,16 @@ def _clear_brain_headline_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_home_series_cache():
+    """Home sparklines are cached per tenant and day in-process; tests reuse tenant ids."""
+    from app.services import home_today
+
+    home_today._SERIES_CACHE.clear()
+    yield
+    home_today._SERIES_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_live_astro_settings(monkeypatch):
     """"Is this tenant connected to AstroTamil?" is a settings read, which would reach the real
     database from any test that runs the deal flow. Default every test to "not connected"; a test

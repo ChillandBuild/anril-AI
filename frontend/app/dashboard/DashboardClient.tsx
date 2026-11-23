@@ -12,89 +12,10 @@ import Link from "next/link";
 import { useAuthRole } from "./contexts/AuthRoleContext";
 import { useSubscription } from "./contexts/SubscriptionContext";
 import { AiraLoader } from "@/components/AiraLoader";
-import { PipelinePulse } from "@/components/dashboard/PipelinePulse";
-import { AiWorkloadSection } from "@/components/dashboard/AiWorkloadSection";
-import { LeadSourceSection } from "@/components/dashboard/LeadSourceSection";
-import { TeamCallsSection } from "@/components/dashboard/TeamCallsSection";
-import { AdSpendSection } from "@/components/dashboard/AdSpendSection";
 import { isSmsOnly } from "@/lib/utils";
-import { KpiCard } from "@/components/kpi-card";
 import { TodayBlock } from "./home/TodayBlock";
+import { MoreDetails } from "./home/MoreDetails";
 import { FinishSetupCard } from "@/components/first-setup/FinishSetupCard";
-
-const SEGMENT_CONFIG: Record<"A" | "B" | "C" | "D", { label: string; bar: string }> = {
-  A: { label: "Hot", bar: "bg-emerald-500" },
-  B: { label: "Warm", bar: "bg-amber-500" },
-  C: { label: "Cold", bar: "bg-stone-400" },
-  D: { label: "Not Interested", bar: "bg-rose-400" },
-};
-
-function PipelineBar({ by_segment }: { by_segment: Record<"A" | "B" | "C" | "D", number> }) {
-  const counts = (["A", "B", "C", "D"] as const).map((s) => ({
-    seg: s,
-    count: by_segment?.[s] ?? 0,
-  }));
-  const total = counts.reduce((acc, c) => acc + c.count, 0);
-  // Matches the backend's UTC calendar day used to build by_segment_today,
-  // so the leads list this links to shows exactly what the card counted.
-  const today = new Date().toISOString().slice(0, 10);
-
-  return (
-    <div className="card rounded-xl p-6 md:p-7">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 className="font-display font-bold text-ink text-[18px]">
-            Pipeline Activity
-          </h2>
-          <p className="font-body text-xs text-ink-muted mt-1">
-            {total === 0 ? "No leads yet today" : `${total} leads categorized today`}
-          </p>
-        </div>
-      </div>
-
-      {total === 0 ? (
-        <div className="py-8 text-center font-body text-sm text-ink-muted">
-          No new leads today yet.
-        </div>
-      ) : (
-        <>
-          {/* Stacked bar chart */}
-          <div className="h-3 rounded-full overflow-hidden flex bg-surface-mid mb-6">
-            {counts.map(({ seg, count }) =>
-              count > 0 ? (
-                <div
-                  key={seg}
-                  className={SEGMENT_CONFIG[seg].bar}
-                  style={{ width: `${(count / total) * 100}%` }}
-                  title={`${SEGMENT_CONFIG[seg].label}: ${count}`}
-                />
-              ) : null,
-            )}
-          </div>
-
-          {/* Table list */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {counts.map(({ seg, count }) => {
-              const cfg = SEGMENT_CONFIG[seg];
-              const pct = total ? Math.round((count / total) * 100) : 0;
-              return (
-                <KpiCard
-                  key={seg}
-                  href={`/dashboard/leads?segment=${seg}&date_from=${today}&date_to=${today}`}
-                  stacked
-                  label={cfg.label}
-                  value={count}
-                  hint={`${pct}% of today's leads`}
-                  edge={cfg.bar}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 export function DashboardClient({ fallbackOverview }: { fallbackOverview: AnalyticsOverview | null }) {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
@@ -134,7 +55,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
   if (subStatus === "none" || subStatus === "pending_approval") {
     const isPending = subStatus === "pending_approval";
     return (
-      <div className="animate-slide-up space-y-6 max-w-4xl">
+      <div className="animate-slide-up space-y-6">
         <div className="card rounded-xl p-6 md:p-7 border border-border bg-gradient-to-br from-primary-light to-white shadow-sm">
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Sparkles size={24} />
@@ -201,25 +122,10 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
   }
 
   return (
-    <div className="dashboard-swiss space-y-8">
+    <div className="dashboard-swiss space-y-5">
       <FinishSetupCard />
       <TodayBlock />
-
-      <div className="space-y-8">
-        <h2 className="font-display text-[18px] font-bold text-ink">More details</h2>
-
-        <PipelinePulse overview={overview} />
-
-        <AiWorkloadSection overview={overview} />
-
-        <PipelineBar by_segment={overview.by_segment_today ?? { A: 0, B: 0, C: 0, D: 0 }} />
-
-        <LeadSourceSection overview={overview} />
-
-        {enabledFeatures.includes("telecalling") && <TeamCallsSection />}
-
-        <AdSpendSection />
-      </div>
+      <MoreDetails overview={overview} telecalling={enabledFeatures.includes("telecalling")} />
     </div>
   );
 }

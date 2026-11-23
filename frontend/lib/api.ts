@@ -1182,6 +1182,11 @@ export interface AnalyticsOverview {
   by_segment_today: Record<"A" | "B" | "C" | "D", number>;
   channel_breakdown: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
   channel_breakdown_today: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
+  /** Leads created in the last 7 IST days (today included), same shape as the two above. Optional so a
+   *  frontend deployed ahead of the backend falls back to today's breakdown. */
+  channel_breakdown_7d?: { whatsapp: number; instagram: number; facebook: number; telegram: number; upload: number; manual: number; indiamart?: number; justdial?: number; meta_form?: number; website?: number; api?: number; store?: number };
+  /** Chats today handed to a person because the AI had no answer (the AI report card's count). */
+  couldnt_answer_today?: number;
   total_leads: number;
   ad_attributed_leads: number;
   ad_attributed_leads_today: number;
@@ -1428,6 +1433,8 @@ export interface TelecallingAnalytics {
     caller_id: string;
     name: string;
     calls_today: number;
+    /** Today's calls marked connected (the team-wide connected rule). Optional: older backends omit it. */
+    connected_today?: number;
     /** Average score of the selected window's scored calls. Absent entirely
      *  for SIM clients -- they get no evaluation at all. */
     overall_score?: number | null;
@@ -2459,6 +2466,9 @@ export type HomeBox = {
   unit: "paise" | "count" | "stars" | string;
   sub?: string | null;
   href: string;
+  /** Last 7 IST days, oldest first, last = today. Sent only for boxes that have a real daily count
+   *  (new enquiries, follow-ups due, won, and the target box for people who see rupees). Absent = no line. */
+  series?: number[] | null;
 };
 export type HomeHotBar = {
   lead_id: string;
