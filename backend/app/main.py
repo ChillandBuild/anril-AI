@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse, Response
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware
-from slowapi.util import get_remote_address
 from app.dependencies.auth import get_current_user
 
 import os
@@ -23,6 +22,7 @@ from app.routes import call_review
 from app.routes import call_translate
 from app.routes import call_teams
 from app.routes.marketplace_intake import public_router as marketplace_public_router
+from app.routes.auto_messages import _client_ip
 from app.routes import marketplace_intake
 from app.routes import instant_forms
 from app.routes import whatsapp_form_designs
@@ -279,7 +279,9 @@ app = FastAPI(
 # Rate limiting. Webhook routes must always answer 200 even when throttled --
 # a 4xx here reads as delivery failure and triggers provider retry storms
 # (see .agents/context/security-checklist.md, hard check #2).
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+# Keyed like every per-route limit: the Cloudflare-set client IP. slowapi's get_remote_address
+# reads request.client.host, which uvicorn on Render fills from the caller-typed X-Forwarded-For.
+limiter = Limiter(key_func=_client_ip, default_limits=["200/minute"])
 app.state.limiter = limiter
 
 
