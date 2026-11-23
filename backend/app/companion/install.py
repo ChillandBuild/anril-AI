@@ -5,6 +5,8 @@ variable ANRIL_COMPANION_KEY. Example for Jothidar AI (id 7c1e...):
 - html:    the two script tags for their web page (widget in the corner);
 - python / node: the server function that signs a user id for the widget;
 - curl:    one server-to-server chat call, for apps that draw their own chat screen.
+- chat_python / chat_node / chat_php: the same /chat call as a ready function, for any backend
+  (Django, Flask, Express, Laravel...). The app keeps its own chat screen; one memory per user + profile.
 """
 import os
 
@@ -62,11 +64,103 @@ function companionSignature(userId) {
     curl = f"""curl -X POST {api}/api/v1/companion/chat \\
   -H "Authorization: Bearer $ANRIL_COMPANION_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{{"companion_id": "{cid}", "user_id": "48213", "message": "Vanakkam!"}}'"""
+  -d '{{"companion_id": "{cid}",
+       "user_id": "48213", "profile_id": "102",
+       "display_name": "Ravi", "profile_name": "Meena",
+       "timezone": "Asia/Kolkata",
+       "message": "Hello!",
+       "app_data": {{"plan": "Gold"}},
+       "reply_format": {{"buttons": [], "questions_left": null}}}}'"""
+    chat_python = f'''import os
+import requests   # pip install requests
+
+ANRIL_CHAT = "{api}/api/v1/companion/chat"
+COMPANION_ID = "{cid}"
+
+
+def ask_anril(user_id, message, profile_id=None, display_name=None, profile_name=None,
+              app_data=None, timezone="Asia/Kolkata", questions_left=None):
+    """Call on YOUR server for each message. Returns the reply: text, bubbles, chips, button, tag."""
+    body = {{
+        "companion_id": COMPANION_ID,
+        "user_id": str(user_id),                  # your login's id
+        "profile_id": str(profile_id) if profile_id is not None else None,   # the selected profile's row id
+        "display_name": display_name,             # who is typing
+        "profile_name": profile_name,             # whose profile app_data is about
+        "timezone": timezone,
+        "message": message,
+        "app_data": app_data,                     # that profile's data, every message (never stored)
+        "reply_format": {{"buttons": [], "questions_left": questions_left}},
+    }}
+    body = {{k: v for k, v in body.items() if v is not None}}
+    r = requests.post(ANRIL_CHAT, json=body, timeout=60,
+                      headers={{"Authorization": "Bearer " + os.environ["ANRIL_COMPANION_KEY"]}})
+    data = r.json()
+    if r.status_code != 200:   # {{"error", "code"}}: rate_limited, busy, invalid_key...
+        raise RuntimeError(f"Anril {{r.status_code}} {{data.get('code')}}")
+    return data'''
+    chat_node = f'''// Node 18+ (built-in fetch). Call on YOUR server for each message.
+const ANRIL_CHAT = "{api}/api/v1/companion/chat";
+const COMPANION_ID = "{cid}";
+
+async function askAnril({{ userId, message, profileId, displayName, profileName, appData,
+                          timezone = "Asia/Kolkata", questionsLeft = null }}) {{
+  const body = {{
+    companion_id: COMPANION_ID,
+    user_id: String(userId),                                  // your login's id
+    profile_id: profileId == null ? undefined : String(profileId),  // the selected profile's row id
+    display_name: displayName,                                // who is typing
+    profile_name: profileName,                                // whose profile appData is about
+    timezone,
+    message,
+    app_data: appData,                                        // that profile's data, every message
+    reply_format: {{ buttons: [], questions_left: questionsLeft }},
+  }};
+  const r = await fetch(ANRIL_CHAT, {{
+    method: "POST",
+    headers: {{ "Authorization": `Bearer ${{process.env.ANRIL_COMPANION_KEY}}`, "Content-Type": "application/json" }},
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
+  }});
+  const data = await r.json();
+  if (!r.ok) throw new Error(`Anril ${{r.status}} ${{data.code}}`);   // rate_limited, busy, invalid_key...
+  return data;   // text, bubbles, chips, button, tag
+}}'''
+    chat_php = f'''<?php
+// Call on YOUR server for each message (plain PHP or Laravel).
+function ask_anril($userId, $message, $profileId = null, $displayName = null, $profileName = null,
+                   $appData = null, $timezone = "Asia/Kolkata", $questionsLeft = null) {{
+    $body = array_filter([
+        "companion_id" => "{cid}",
+        "user_id" => (string) $userId,                                  // your login's id
+        "profile_id" => $profileId === null ? null : (string) $profileId,  // the selected profile's row id
+        "display_name" => $displayName,                                 // who is typing
+        "profile_name" => $profileName,                                 // whose profile $appData is about
+        "timezone" => $timezone,
+        "message" => $message,
+        "app_data" => $appData,                                         // that profile's data, every message
+        "reply_format" => ["buttons" => [], "questions_left" => $questionsLeft],
+    ], fn($v) => $v !== null);
+    $ch = curl_init("{api}/api/v1/companion/chat");
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ["Authorization: Bearer " . getenv("ANRIL_COMPANION_KEY"), "Content-Type: application/json"],
+        CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE),
+    ]);
+    $raw = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $data = json_decode($raw, true);
+    if ($status !== 200) throw new Exception("Anril $status " . ($data["code"] ?? ""));
+    return $data;   // text, bubbles, chips, button, tag
+}}'''
     return {
         "companion_id": cid,
         "status": companion.get("status"),
         "widget_script_url": script_url,
         "api_base": api,
-        "snippets": {"html": html, "python": python, "node": node, "curl": curl},
+        "snippets": {"html": html, "python": python, "node": node, "curl": curl,
+                     "chat_python": chat_python, "chat_node": chat_node, "chat_php": chat_php},
     }

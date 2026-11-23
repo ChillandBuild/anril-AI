@@ -5308,7 +5308,11 @@ export interface CompanionInstall {
   widget_script_url: string;
   api_base: string;
   has_active_key: boolean;
-  snippets: { html: string; python: string; node: string; curl: string };
+  /** html/python/node: the website widget and its signing code. curl/chat_*: the server-to-server /chat call. */
+  snippets: {
+    html: string; python: string; node: string; curl: string;
+    chat_python: string; chat_node: string; chat_php: string;
+  };
 }
 
 /** A tool the business's own app runs, e.g. a business's get_account. Sent with each message, never stored. */

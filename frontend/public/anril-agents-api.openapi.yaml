@@ -1,0 +1,222 @@
+openapi: 3.1.0
+info:
+  title: Anril Agents API (server to server)
+  version: "1.0"
+  description: |
+    Your server sends a user's message to one of your Anril agents (a character set up in
+    Anril → Agents) and gets the reply. The agent's persona, rules, books,
+    AI model and memory live in Anril: you do not send a system prompt, a model name or chat
+    history. Anril keeps one memory and history per (user_id, profile_id).
+
+    Call it from your server only. The secret key must never be in a mobile app or web page.
+    JSON in, JSON out, no streaming. Unknown body fields are refused (422).
+    Typical reply time 4–10 s: use a 60 s timeout.
+servers:
+  - url: https://aira-ai-5tfr.onrender.com/api/v1/companion
+security:
+  - secretKey: []
+paths:
+  /chat:
+    post:
+      summary: Send one user message, get the agent's reply
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+            example:
+              companion_id: "00000000-0000-0000-0000-000000000000"
+              user_id: "48213"
+              profile_id: "102"
+              display_name: "Ravi"
+              profile_name: "Meena"
+              timezone: "Asia/Kolkata"
+              message: "What does my plan include?"
+              app_data: { plan: "Gold", renews_on: "2026-12-31" }
+              reply_format:
+                buttons: [{ id: "expert", when: "the question needs a human expert", handoff: true }]
+                questions_left: 3
+      responses:
+        "200":
+          description: The reply (status "done"), or a tool request (status "tool_call") if you sent tools.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reply" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /chat/continue:
+    post:
+      summary: Send your tool results back (only if you use tools)
+      operationId: chatContinue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContinueRequest" }
+      responses:
+        "200":
+          description: The reply, or another tool request (at most 3 rounds).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reply" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /forget:
+    post:
+      summary: Wipe a deleted profile's (or a whole account's) chats and memories
+      description: |
+        With profile_id: just that profile. Without: the user and every profile of theirs.
+        forgotten=false means they never chatted; not an error. Safe to call twice.
+        Its own rate limit (600/min per business), separate from chat.
+      operationId: forget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForgetRequest" }
+            example: { user_id: "48213", profile_id: "104" }
+      responses:
+        "200":
+          description: Done.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [forgotten]
+                properties: { forgotten: { type: boolean } }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    secretKey:
+      type: http
+      scheme: bearer
+      description: 'Your secret key from Anril → Agents → Install, sent as "Authorization: Bearer acs_live_...".'
+  responses:
+    Error:
+      description: |
+        401 invalid_key · 404 companion_not_found, turn_expired · 409 companion_not_live ·
+        422 invalid_user_id, invalid_profile_id, empty_message, tools_invalid (or a field error) ·
+        429 rate_limited (Retry-After: 60) · 503 busy (Retry-After: 5), companion_not_configured
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Id:
+      type: string
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_.@:\\-]*$"
+    ChatRequest:
+      type: object
+      additionalProperties: false
+      required: [companion_id, user_id, message]
+      properties:
+        companion_id: { type: string, format: uuid, description: The agent's id (Anril → Agents → Install). }
+        user_id: { allOf: [{ $ref: "#/components/schemas/Id" }], maxLength: 128, description: Your login's id. }
+        profile_id: { allOf: [{ $ref: "#/components/schemas/Id" }], maxLength: 64, description: "The selected profile's row id: one memory per (user_id, profile_id). Never a list position, never reused." }
+        display_name: { type: string, maxLength: 100, description: Who the agent is talking to. }
+        profile_name: { type: string, maxLength: 100, description: Whose profile the app_data is about. }
+        timezone: { type: string, maxLength: 64, description: 'IANA zone, e.g. "Asia/Kolkata".' }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        app_data:
+          description: What you know about this profile (e.g. plan, orders, a horoscope JSON). Send with every message; never stored. Up to 12,000 characters.
+          oneOf: [{ type: string }, { type: object }]
+        reply_format: { $ref: "#/components/schemas/ReplyFormat" }
+        tools:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [name, description]
+            properties:
+              name: { type: string, pattern: "^[a-z][a-z0-9_]{0,39}$" }
+              description: { type: string, maxLength: 500 }
+              parameters: { type: object, description: JSON schema of the arguments. }
+    ReplyFormat:
+      type: object
+      additionalProperties: false
+      description: Opt in to bubbles, chips, a button and a tag in the reply.
+      properties:
+        buttons:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, when]
+            properties:
+              id: { type: string, pattern: "^[a-z][a-z0-9_]*$", maxLength: 32, description: "Not one of: counted, ask_back, greeting, off_topic, need_details, none, failed, handoff." }
+              when: { type: string, maxLength: 200, description: When the agent should show this button. }
+              handoff: { type: boolean, default: false, description: At most one; shown when the agent hands over to a human. }
+        questions_left: { type: [integer, "null"], minimum: 0, description: 0 = no follow-up chips. }
+    ContinueRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id, turn_id]
+      properties:
+        user_id: { type: string, maxLength: 128 }
+        profile_id: { type: string, maxLength: 64 }
+        turn_id: { type: string, format: uuid }
+        results:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [id]
+            properties:
+              id: { type: string, description: "The tool_calls[i].id you are answering." }
+              output: { description: Your tool's result (object or text). }
+    ForgetRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id]
+      properties:
+        user_id: { type: string, maxLength: 128 }
+        profile_id: { type: string, maxLength: 64 }
+    Reply:
+      type: object
+      properties:
+        status: { type: string, enum: [done, tool_call] }
+        text: { type: [string, "null"], description: The reply (the bubbles joined by a blank line). }
+        bubbles: { type: [array, "null"], items: { type: string }, description: 1–3 short chat bubbles (with reply_format). }
+        chips: { type: [array, "null"], items: { type: string }, description: 0 or 2 follow-up questions (with reply_format). }
+        button: { type: [string, "null"], description: One of your button ids, or null. }
+        tag:
+          type: [string, "null"]
+          description: '"counted" = a real answer (count it). ask_back, greeting, off_topic, need_details, a button id, handoff, failed = do not count. "failed" = the AI could not answer (text is a polite sorry line).'
+        mood: { type: [string, "null"] }
+        basis: { type: [string, "null"], enum: [primary, book, own, chat, null] }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              document: { type: string }
+              page_from: { type: integer }
+              page_to: { type: integer }
+        turn_id: { type: [string, "null"], description: With status tool_call; send it to /chat/continue within 2 minutes. }
+        tool_calls:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              args: { type: object }
+        conversation_id: { type: [string, "null"] }
+        message_id: { type: [string, "null"] }
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string }

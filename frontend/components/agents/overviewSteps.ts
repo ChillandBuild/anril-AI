@@ -4,7 +4,7 @@ export type SetupStep = { id: "live" | "key" | "seen"; title: string; detail: st
 
 /**
  * The three setup steps. Example: a business has Maya live and a key,
- * but no site call yet → steps 1 and 2 done, step 3 points at Install.
+ * but no app or site call yet → steps 1 and 2 done, step 3 points at Install.
  */
 export function setupSteps(o: CompanionOverview): SetupStep[] {
   return [
@@ -26,8 +26,8 @@ export function setupSteps(o: CompanionOverview): SetupStep[] {
     },
     {
       id: "seen",
-      title: "Seen on your site",
-      detail: o.key_last_used_at ? "Your site has called your character." : "Install the widget; this ticks on the first call.",
+      title: "Connected to your app or site",
+      detail: o.key_last_used_at ? "Your app or site has called your character." : "Connect it from Install; this ticks on the first call.",
       done: o.key_last_used_at !== null,
       href: "/dashboard/agents/install",
       action: "Install",

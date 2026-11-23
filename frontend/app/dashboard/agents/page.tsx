@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { companionsApi, type Companion, type CompanionInstall, type CompanionOverview } from "@/lib/api";
 import { CopyButton } from "@/components/agents/CodeBlock";
-import { installPrompt } from "@/components/agents/installPrompt";
+import { appPrompt } from "@/components/agents/installPrompt";
 import { setupSteps } from "@/components/agents/overviewSteps";
 import { CARD, ErrorNote, LoadingRows } from "@/components/agents/ui";
 
@@ -91,13 +91,16 @@ export default function AgentsOverviewPage() {
 
       <section className={cn(CARD, "flex flex-wrap items-center justify-between gap-3")} aria-labelledby="prompt-title">
         <div className="min-w-0">
-          <h2 id="prompt-title" className="text-sm font-semibold text-ink">Install with your AI coding tool</h2>
+          <h2 id="prompt-title" className="text-sm font-semibold text-ink">Connect with your AI coding tool</h2>
           <p className="text-sm text-ink-secondary">
-            {live ? `Copy a prompt that installs ${live.name} on your site. No secret in it.` : "Set a character Live to get its install prompt."}
+            {live
+              ? `Copy a prompt that connects ${live.name} to your own app's chat, from any backend. No secret in it.`
+              : "Set a character Live to get its setup prompt."}{" "}
+            <Link href="/dashboard/agents/install" className="font-medium text-primary hover:underline">Website chat bubble instead</Link>
           </p>
         </div>
         {live && install ? (
-          <CopyButton text={installPrompt(install, live.name)} label="Copy prompt" />
+          <CopyButton text={appPrompt(install, live.name)} label="Copy setup prompt" />
         ) : (
           <Link href="/dashboard/agents/install" className="text-sm font-medium text-primary hover:underline">Open Install</Link>
         )}

@@ -165,8 +165,11 @@ def test_install_gives_snippets_with_the_character_id_and_no_secret(env):
     assert r.status_code == 200
     info = r.json()
     assert info["has_active_key"] is True and info["widget_script_url"].endswith("/companion-widget.js")
-    assert set(info["snippets"]) == {"html", "python", "node", "curl"}
-    assert env.live["id"] in info["snippets"]["html"] and env.live["id"] in info["snippets"]["curl"]
+    assert set(info["snippets"]) == {"html", "python", "node", "curl", "chat_python", "chat_node", "chat_php"}
+    for name in ("html", "curl", "chat_python", "chat_node", "chat_php"):
+        assert env.live["id"] in info["snippets"][name]
+    for name in ("curl", "chat_python", "chat_node", "chat_php"):
+        assert "/api/v1/companion/chat" in info["snippets"][name] and "ANRIL_COMPANION_KEY" in info["snippets"][name]
     assert "acs_live_" in info["snippets"]["python"] and env.key not in json.dumps(info)
     assert env.client.get(f"{DASH}/{env.other['id']}/install").status_code == 404
 
@@ -185,6 +188,37 @@ def test_install_snippet_signature_matches_what_the_api_checks(env):
     r = env.client.post(f"{PUB}/widget/session", json={"companion_id": env.live["id"], "user_id": out["userId"],
                                                         "exp": out["exp"], "signature": out["signature"]})
     assert r.status_code == 200
+
+
+def test_install_chat_python_snippet_works_against_the_real_route(env):
+    """Run the own-app Python snippet as a client would paste it, with requests pointed at the test app."""
+    import os
+    import sys
+    import types
+    snippet = env.client.get(f"{DASH}/{env.live['id']}/install").json()["snippets"]["chat_python"]
+    seen = {}
+
+    def post(url, json=None, timeout=None, headers=None):
+        seen["url"], seen["timeout"] = url, timeout
+        return env.client.post(PUB + "/chat", json=json, headers=headers)
+    fake = types.ModuleType("requests")
+    fake.post = post
+    sys.modules["requests"], old = fake, sys.modules.get("requests")
+    os.environ["ANRIL_COMPANION_KEY"] = env.key
+    try:
+        ns: dict = {}
+        exec(snippet, ns)
+        reply = ns["ask_anril"]("48213", "Vanakkam", profile_id=102, display_name="Ravi",
+                                profile_name="Meena", app_data={"plan": "Gold"}, questions_left=3)
+    finally:
+        del os.environ["ANRIL_COMPANION_KEY"]
+        if old is None:
+            sys.modules.pop("requests", None)
+        else:
+            sys.modules["requests"] = old
+    assert seen["url"].endswith("/api/v1/companion/chat") and seen["timeout"] == 60
+    assert reply["status"] == "done" and reply["bubbles"] and reply["tag"]
+    assert {p["external_user_id"] for p in env.db.rows("companion_end_users")} == {"48213~102"}
 
 
 # --- public: server to server -----------------------------------------------------------------
