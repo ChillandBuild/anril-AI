@@ -121,6 +121,25 @@ CHART_RULES = """[CHART RULES]
   person's profile in the app and ask from there."""
 
 
+NAVAMSA_NO_LAGNAM = ("- APP DATA's navamsa gives each planet's navamsa sign but no navamsa lagnam. You may say which sign a "
+                     "planet sits in the navamsa. Never name a house inside the navamsa, or a navamsa house's sign or "
+                     "lord (\"the 7th house in your navamsa is...\"): without the navamsa lagnam nobody can count them. "
+                     "Asked about it, say the navamsa lagnam is not in their chart yet, then answer from the birth chart.")
+NO_NAVAMSA = ("- APP DATA has no navamsa. Never state a navamsa sign, house or lord. Asked about the navamsa, say it is not "
+              "in their chart yet, then answer from the birth chart.")
+
+
+def chart_rules(app_data: str | None) -> str:
+    """CHART_RULES plus a line for a navamsa the app sent without its lagnam, or did not send at all.
+    Live, 24 Nov: with the 9 planets' navamsa signs but no lagnam, "What does my navamsa say about marriage?"
+    got "in your navamsa, the 7th house is Capricorn" in 2 of 2 runs. A text that is not a chart adds nothing."""
+    from app.companion.chart_check import parse_app_data
+    chart = parse_app_data(app_data)
+    if chart.empty() or chart.d9_lagna:
+        return CHART_RULES
+    return CHART_RULES + "\n" + (NAVAMSA_NO_LAGNAM if chart.d9 else NO_NAVAMSA)
+
+
 PASTED_CHART = ("[The person pasted a horoscope here. It is not used: this person's own chart is the one in "
                 "APP DATA, and a pasted one may be someone else's.]")
 PASTED_CHART_LINES = 4   # lines that each state a chart fact
@@ -244,7 +263,7 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else own_reasoning_allowed(settings))
     sections.append(knowledge_block(kb))
     if guard:
-        sections.append(CHART_RULES)
+        sections.append(chart_rules(app_data))
     sections.append(MEMORY_LABEL + "\n" + (fence(memory_context or "") or "none"))
     if who:
         sections.append(who)

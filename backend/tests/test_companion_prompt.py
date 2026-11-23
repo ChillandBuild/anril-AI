@@ -202,3 +202,45 @@ def test_reply_language_is_the_last_section_and_replaces_the_character_language_
 def test_without_reply_language_the_prompt_is_unchanged():
     s = system(build_messages(JOTHIDAR, "calm", None, "", [], "hi"))
     assert "[REPLY LANGUAGE" not in s and "unless the user clearly writes in another language" in s
+
+
+# --- chart guard: a navamsa without its lagnam (live, 24 Nov: "the 7th house in your navamsa is Capricorn") ----
+
+from app.companion.prompt import CHART_RULES, NAVAMSA_NO_LAGNAM, NO_NAVAMSA  # noqa: E402
+
+CHART = {"overview": {"lagnam": "Magaram", "rasi": "Simmam"},
+         "planets": [{"planet": "Sun", "rasi": "Viruchigam"}, {"planet": "Moon", "rasi": "Simmam"}],
+         "navamsa": {"lagnam": "Kadagam", "Sun": "Mesham", "Venus": "Kadagam"}}
+
+
+def _guarded(app_data):
+    import json as _json
+    return system(build_messages({**JOTHIDAR, "chart_guard": True}, "calm", None, "", [], "Navamsa?",
+                                 app_data=_json.dumps(app_data) if isinstance(app_data, dict) else app_data))
+
+
+def test_a_navamsa_with_its_lagnam_adds_no_line():
+    s = _guarded(CHART)
+    assert CHART_RULES in s and NAVAMSA_NO_LAGNAM not in s and NO_NAVAMSA not in s
+
+
+def test_a_navamsa_without_its_lagnam_forbids_navamsa_houses():
+    nav = {k: v for k, v in CHART["navamsa"].items() if k != "lagnam"}
+    s = _guarded({**CHART, "navamsa": nav})
+    assert NAVAMSA_NO_LAGNAM in s and NO_NAVAMSA not in s
+
+
+def test_no_navamsa_at_all_forbids_any_navamsa_fact():
+    s = _guarded({k: v for k, v in CHART.items() if k != "navamsa"})
+    assert NO_NAVAMSA in s and NAVAMSA_NO_LAGNAM not in s
+
+
+def test_app_data_that_is_not_a_chart_adds_no_navamsa_line():
+    s = _guarded("plan: Gold, renews 30 Nov")
+    assert NAVAMSA_NO_LAGNAM not in s and NO_NAVAMSA not in s
+
+
+def test_without_the_chart_guard_there_are_no_chart_rules():
+    import json as _json
+    s = system(build_messages(JOTHIDAR, "calm", None, "", [], "hi", app_data=_json.dumps(CHART)))
+    assert "[CHART RULES]" not in s
