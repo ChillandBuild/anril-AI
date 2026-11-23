@@ -1,4 +1,10 @@
--- Undo 332: inbox_chat_rows back to its 272 body (no 'order_not_sent').
+-- 341_chats_order_not_sent.sql
+-- Written and applied live as 332_chats_order_not_sent (23 Nov 2026); renumbered to 341 because Prem's
+-- 332_setup_help_stale_handover_error_reports took 332 the same day. Same SQL; nothing to re-run.
+-- Chats > Filter > Waiting: "Order not sent" (v9.2 Chats). A chat whose customer has a paid order
+-- (stage 'won') that is not yet shipped or delivered and was not taken at the counter.
+-- Only inbox_chat_rows changes, and only by one new p_waiting branch; same arguments, so
+-- get_inbox_chats / get_inbox_counts pick it up unchanged. Undo: undo/341_chats_order_not_sent_undo.sql
 SET LOCAL lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.inbox_chat_rows(
@@ -135,6 +141,10 @@ AS $function$
           and f.last_inbound_at < now() - interval '1 hour')
       or ('payment_pending' = any(p_waiting) and exists (
             select 1 from deals d where d.lead_id = f.lead_id and d.tenant_id = p_tenant_id and d.stage = 'awaiting_payment'))
+      or ('order_not_sent' = any(p_waiting) and exists (
+            select 1 from deals d where d.lead_id = f.lead_id and d.tenant_id = p_tenant_id and d.stage = 'won'
+              and coalesce(d.delivery_status, '') not in ('shipped', 'delivered')
+              and d.handover is distinct from 'taken'))
     );
 $function$;
 

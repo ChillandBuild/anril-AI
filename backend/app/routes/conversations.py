@@ -21,7 +21,7 @@ _CHANNELS = {"whatsapp", "instagram", "facebook", "telegram"}
 _SEGMENTS = {"A", "B", "C", "D"}
 _RESULTS = {"none", "booked", "paid", "lost"}
 _CAME_FROM = {"meta_ads", "direct", "website", "indiamart", "justdial", "upload", "manual"}
-_WAITING = {"unread", "over_1h", "payment_pending", "order_not_sent"}  # order_not_sent needs migration 332
+_WAITING = {"unread", "over_1h", "payment_pending", "order_not_sent"}  # order_not_sent needs migration 341
 
 
 def _csv(value: str | None, allowed: set[str] | None = None, name: str = "") -> list[str] | None:

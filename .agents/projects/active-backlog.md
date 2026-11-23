@@ -20,10 +20,10 @@ host=github.com
 
 ## Active Backlog
 
-### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329 live; 330 NOT applied)
-- **Migration 330 (Courses tables) is not applied**: Prem declined it on 2026-11-23. The Courses tab stays hidden
-  until `course_batches` exists (properties.availability checks it). Apply 330, then education businesses see it.
-  The fee-reminders job (10:00 IST) does nothing until then.
+### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329, 330 live)
+- Migration 330 (Courses tables): its objects went live on 2026-11-23, but apply_migration was declined each time,
+  so the ledger row was inserted by hand (version 20261123081813) after checking every table, index, trigger and RLS.
+- Our "Order not sent" migration was renumbered 332 → 341 (Prem's 332_setup_help kept 332); ledger name updated too.
 - Courses: waitlist is not told when a seat frees; no pay link / UPI QR in fee reminders; AI cannot call
   join_waitlist / next_open_batch yet; turning AI Replies off also pauses fee reminders (master switch).
 - Properties: "liked, thinking → loan help after 2 days" not built; a cancelled order does not give units back;
