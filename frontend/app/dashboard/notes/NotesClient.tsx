@@ -19,7 +19,6 @@ import { useLeadsWithActivity, useNotes, useAllNotes } from "@/hooks/useApi";
 import { TickMark } from "@/components/ui/controls";
 import { AiraLoader } from "@/components/AiraLoader";
 import { SegmentBadge } from "@/components/segment-badge";
-import { moduleChromeStyle } from "@/lib/moduleChrome";
 
 type PageMode = "by_lead" | "all_notes";
 type ViewMode = "grid" | "list";
@@ -315,7 +314,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
       ) : (
         <div className="grid grid-cols-12 gap-4">
           {/* Left: lead list */}
-          <div className="col-span-4 bg-[#f8fafc] rounded-3xl p-5 shadow-sm border border-[#e2e8f0] flex flex-col" style={{ ...moduleChromeStyle({ tabs: true }), maxHeight: "calc(100vh - 160px - var(--module-chrome))" }}>
+          <div className="col-span-4 bg-[#f8fafc] rounded-3xl p-5 shadow-sm border border-[#e2e8f0] flex flex-col" style={{ maxHeight: "calc(100vh - 160px)" }}>
             <div className="relative mb-4 shrink-0">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
               <input
@@ -364,7 +363,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
           </div>
 
           {/* Right: lead notes */}
-          <div className="col-span-8 space-y-4 overflow-y-auto" style={{ ...moduleChromeStyle({ tabs: true }), maxHeight: "calc(100vh - 160px - var(--module-chrome))" }}>
+          <div className="col-span-8 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
             {!selected ? (
               <div className="flex flex-col items-center justify-center h-64 text-[#94a3b8] bg-[#f8fafc] rounded-3xl border border-[#e2e8f0]">
                 <StickyNote size={40} className="mb-3 opacity-30" />

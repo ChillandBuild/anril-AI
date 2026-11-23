@@ -15,7 +15,6 @@ import { hasReportContent } from "@/lib/call-report";
 import { TONE_CHIP, callResultKey, callResultLabel, callResultTone } from "@/lib/call-wrapup";
 import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
 import { AiraLoader } from "@/components/AiraLoader";
-import { moduleChromeStyle } from "@/lib/moduleChrome";
 import { callIdFromParam, fetchCallToReview, localDayOf } from "@/lib/callReviewLink";
 import { Select } from "@/components/ui/Select";
 
@@ -288,7 +287,7 @@ export default function CallReview() {
   const selectedCaller = callers.find((c) => c.id === callerId);
 
   return (
-    <div style={moduleChromeStyle({ tabs: true })} className="flex flex-col gap-3 pb-6 min-h-full lg:h-[calc(100vh_-_4rem_-_var(--module-chrome))] lg:min-h-0">
+    <div className="flex flex-col gap-3 pb-6 min-h-full lg:h-[calc(100vh-4rem)] lg:min-h-0">
       {/* Locked header: Filter bar + KPI Cards. On desktop the page is one fixed-height frame, so only the panes below scroll. */}
       <div className="sticky top-14 md:top-16 lg:static lg:shrink-0 z-20 space-y-2 pb-2 pt-2 bg-[#f8fafc]/95 backdrop-blur-md border-b border-[#f1f5f9]/60 px-2 sm:px-3 md:px-4">
         {/* Filter bar */}

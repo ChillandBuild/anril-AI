@@ -23,7 +23,6 @@ import {
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
-import { moduleChromeStyle } from "@/lib/moduleChrome";
 import { KpiCard } from "@/components/kpi-card";
 import { LANGUAGES, STATUS_COLORS } from "./types";
 import type { Template, TemplateUsage } from "./types";
@@ -338,7 +337,7 @@ export default function TemplatesPage() {
   const countRejected = templates.filter((t) => t.status === "REJECTED" || t.status === "PAUSED").length;
 
   return (
-    <div style={moduleChromeStyle({ tabs: true })} className="flex flex-col min-w-0 h-[calc(100dvh_-_11.5rem_-_var(--module-chrome))] md:h-[calc(100dvh_-_7.5rem_-_var(--module-chrome))] overflow-hidden">
+    <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
       {/* Top Locked Section: Stats, Actions & Filters */}
       <div className="shrink-0 space-y-4 pb-4">
         {/* Action Bar */}

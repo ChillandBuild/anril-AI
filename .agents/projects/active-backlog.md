@@ -35,7 +35,7 @@ host=github.com
 - Single-lead page: a telecaller can still open another telecaller's customer by URL (unchanged).
 - Call reviews `?call=` deep link opens only for team.manage (telecallers see another page).
 - Not visually checked: any of the new pages (Properties, Courses, Password help, Alerts locks, bill brand,
-  Payments switch, Finish setup card, tab-bar height fix).
+  Payments switch, Finish setup card). (The tab-bar height fix was undone with the tab bars on 2026-11-23.)
 
 - **Inbound leads v2 — later parts (Prem, 2026-11-18).** Built now: the list (Interest/Result chips, top cards, reply status, set result, came/paid from orders). **Still to build, in this order of ask:** (Q2, Prem: "later we need to build") **AI details per lead**: the AI agent picks budget / area / loan / visit date / what they want (mapped to the Catalogue) out of the chat and saves it on the customer, each marked "from chat" and editable; this also feeds the "What they want / Why lost / Customers" sub-tabs and business/city for chat leads (today only Instant forms and IndiaMART/JustDial fill business/city, via `leads.collected_data`). B, C, D were built 2026-11-18 (decisions/log.md). Left: a WhatsApp version of the 8 PM unmarked-bookings check (needs an approved day-closing template and an open-hours setting), a follow-up for exactly the people selected (today follow-ups are rules only), and per-lead tags (Prem said build tags later).
 
@@ -613,7 +613,7 @@ Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2
 
 ## v9.2 dashboard redesign — menu, left for last (2026-11-21)
 Shipped: Phase 1 (`3bec953a`), Phase 2 (`c9551e3c`), Phase 3 titles + Settings home (`f74a0aa7`), Call IQ reorganised (`c5d93dff`). Dropped by Prem: merging Anril OTP + Anril SMS, and the phone bar Today · Chats · Orders · More — do not re-propose.
-- **Step 6 — tab bars on every module (deferred by Prem, do LAST).** Approved-direction mockup: `docs/research/v92-tabbars-menu-mockup.html`. Sidebar becomes 13 flat rows (no fold-out groups); WhatsApp, Anril Setup, Engage, Anril OTP, Anril SMS, Commerce, Call IQ get a module tab bar (bold, teal underline) under the header; second-level chips under it (brief style: teal filled = on) take today's chips plus the header view switchers (Meta Ads views, Numbers, Knowledge, Orders, Catalogue). Titles "Module / Tab". Customers, Reach, Reports keep their header pills; Settings keeps its list; addresses unchanged; phone bar unchanged; drawer = flat module rows. Badges move to module rows (Chats, Anril Setup = Brain count, Call IQ = call alerts). Screens only.
+- **Step 6 — tab bars on every module: TRIED AND DROPPED by Prem (2026-11-23). Do NOT propose again.** Built as a flat 13-row menu + one tab bar per module under the header (96991d79); after seeing it Prem said "revert this, that would be better", reverted in e4595f58. The fold-out menu stays. Mockup kept only as a record: `docs/research/v92-tabbars-menu-mockup.html`.
 - None of the menu phases has been looked at logged in yet (tests/tsc/lint only). Check: Engage › Auto-Messages chips, Settings home cards, Call IQ › Calling › Dial a number (`/dashboard/telecalling/dial`).
 - `lib/brand-guard.test.ts` fails: WhatsApp green `#25D366` in `deals/new-bill/page.tsx` (Keerthi), `conversation-list.tsx`, `site/HeroInbox.tsx`.
 - Roles page still says "Audit Log" in its own heading (`app/dashboard/roles/page.tsx`); the tab is now "Activity log".
@@ -636,7 +636,7 @@ Measure first: ~10 questions where the Rule Book has the rule and a book has the
 - **Search failure = silent own answer:** a knowledge search that fails (RemoteProtocolError, 1 in 7 days) answers with no files and logs no gap. Low priority; a single retry in `kb/search.py` would cover it.
 - **Test data left on purpose:** the car-colour answer typed in Missing answers during the test is live in "Owner answers" (Prem: keep).
 
-## v9.2 Batches I–M + tab bars — shipped 2026-11-23 (723d0be2, 96991d79; migrations 321–325 applied)
+## v9.2 Batches I–M — shipped 2026-11-23 (723d0be2; migrations 321–325 applied). Tab bars (96991d79) were reverted in e4595f58.
 Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Call reviews page does not read `?call=<call_log_id>` yet (Call IQ Evaluation "Review call" links just open the page).
 - Hidden numbers: applied to next-lead, /initiate (cloud) and the lead list; NOT to lead detail (`GET /leads/{id}` has no ctx) or customer_profile. SIM callers always see numbers (the phone dialer needs them).
@@ -646,4 +646,3 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
 - Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
 - services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).
-- Tab bars: viewport-height pages (templates, telecalling AdminView/CallerView, notes) may now scroll slightly; check on screen.

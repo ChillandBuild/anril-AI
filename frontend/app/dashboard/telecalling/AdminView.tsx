@@ -17,7 +17,6 @@ import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { SegmentBadge } from "@/components/segment-badge";
 import { AiraLoader } from "@/components/AiraLoader";
-import { moduleChromeStyle } from "@/lib/moduleChrome";
 
 export default function AdminView({ fallbackData, readOnly = false }: { fallbackData?: AdminDashboardData; readOnly?: boolean }) {
   const searchParams = useSearchParams();
@@ -77,7 +76,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
   const selectedCallerName = callers.find((c) => c.id === selectedCallerId)?.name ?? "Admin (me)";
 
   return (
-    <div style={moduleChromeStyle({ tabs: true, chips: true })} className="flex min-h-[calc(100vh_-_8rem_-_var(--module-chrome))] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh_-_5.5rem_-_var(--module-chrome))] xl:min-h-0 xl:overflow-hidden">
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
       <div className="grid flex-1 grid-cols-1 gap-4 pb-4 xl:grid-cols-12 xl:min-h-0 xl:pb-0">
         {/* Left Side: Admin Queue (4/12) */}
         <div className="flex flex-col gap-5 pr-0 xl:col-span-4 xl:min-h-0 xl:pr-1">
