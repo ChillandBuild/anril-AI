@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { AiraLoader } from "@/components/AiraLoader";
 import { cn } from "@/lib/utils";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import {
   EVALUATION_PERIODS, callReviewHref, getEvaluation, scoreText, scoreTone,
   type EvaluationPeriod, type EvaluationPerson, type EvaluationResponse, type ScoreTone,
@@ -59,6 +60,9 @@ function PersonCard({ person }: { person: EvaluationPerson }) {
 export function EvaluationBoard() {
   const [period, setPeriod] = useState<EvaluationPeriod>("7d");
   const { data, err, loading, reload } = useCallIqData<EvaluationResponse>(() => getEvaluation(period), period);
+  // The Call review page (and the endpoints behind it) need team.manage; team.view alone would land on a page that can't load the call.
+  const { role, permissions } = useAuthRole();
+  const canReviewCalls = role === "owner" || permissions.includes("team.manage");
 
   return (
     <div className="space-y-4">
@@ -95,9 +99,11 @@ export function EvaluationBoard() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={cn("rounded-full px-2.5 py-1 font-label text-sm font-bold ring-1", TONE_STYLE[scoreTone(c.score)])}>{scoreText(c.score)}</span>
-                      <Link href={callReviewHref(c.call_log_id)} className="inline-flex min-h-10 items-center rounded-lg px-3 font-label text-sm font-bold text-primary underline hover:bg-black/5">
-                        Review call
-                      </Link>
+                      {canReviewCalls ? (
+                        <Link href={callReviewHref(c.call_log_id)} className="inline-flex min-h-10 items-center rounded-lg px-3 font-label text-sm font-bold text-primary underline hover:bg-black/5">
+                          Review call
+                        </Link>
+                      ) : null}
                     </div>
                   </li>
                 ))}

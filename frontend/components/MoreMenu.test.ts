@@ -225,3 +225,11 @@ describe("Settings box in the drawer", () => {
     expect(isSettingsPath("/dashboard/settings/inbox")).toBe(false);
   });
 });
+
+describe("AI report card is hidden from telecallers", () => {
+  const labels = (role: string) => getVisibleMoreItems(role, ALL_FEATURES, ["knowledge.view"]).map((r) => r.label);
+  it("shows for a manager and hides for the caller role", () => {
+    expect(labels("agent")).toContain("AI report card");
+    expect(labels("caller")).not.toContain("AI report card");
+  });
+});

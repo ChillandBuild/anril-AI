@@ -364,6 +364,11 @@ def _deal_total(tenant_id: str, lines: list[dict], db) -> int:
     return subtotal + tax
 
 
+def _charges_gst(tenant_id: str, db) -> bool:
+    from app.services.business_details import charges_gst
+    return charges_gst(tenant_id, db)
+
+
 def _insert_items(tenant_id: str, deal_id: str, lines: list[dict], db) -> list[dict]:
     rows = [{**li, "deal_id": deal_id, "tenant_id": tenant_id} for li in lines]
     return db.table("deal_items").insert(rows).execute().data or []
@@ -411,6 +416,8 @@ async def create_deal(
         "created_by": created_by,
         "intake_session_id": intake_session_id,
     }
+    if not _charges_gst(tenant_id, db):
+        row["bill_type"] = "simple"  # composition / unregistered: the order is born a Bill of supply (no tax)
     if stage == "won":
         row["won_at"] = _now_iso()
         row["payment_method"] = payment_method or "cash"
@@ -794,6 +801,7 @@ def upsert_quoted_deal(tenant_id: str, lead_id: str, line: dict, db=None) -> Non
         deal = db.table("deals").insert({
             "tenant_id": tenant_id, "lead_id": lead_id, "deal_number": _next_deal_number(db, tenant_id),
             "stage": "quoted", "source": "whatsapp", "total_paise": total,
+            **({"bill_type": "simple"} if not _charges_gst(tenant_id, db) else {}),
         }).execute().data[0]
         _insert_items(tenant_id, deal["id"], resolved, db)
     except Exception as e:

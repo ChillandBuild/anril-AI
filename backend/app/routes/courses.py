@@ -39,6 +39,14 @@ def _errors():
         yield
     except (CourseError, FeeError, BookingError) as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Migration 330 not applied yet: say so plainly instead of a 500.
+        text = str(e).lower()
+        if any(m in text for m in ("42p01", "pgrst205", "does not exist", "schema cache", "could not find the table")):
+            raise HTTPException(status_code=404, detail="Courses aren't set up for this business yet") from None
+        raise
 
 
 def _money(ctx: dict) -> bool:
@@ -113,8 +121,9 @@ class RemindersIn(BaseModel):
 
 @router.get("")
 def list_courses(ctx: dict = Depends(view)):
-    return {"courses": svc.list_courses(get_supabase(), ctx["tenant_id"], show_money=_money(ctx)),
-            "can_see_money": _money(ctx)}
+    with _errors():
+        courses = svc.list_courses(get_supabase(), ctx["tenant_id"], show_money=_money(ctx))
+    return {"courses": courses, "can_see_money": _money(ctx)}
 
 
 @router.post("")
@@ -161,9 +170,18 @@ def update_batch(batch_id: str, body: BatchIn, ctx: dict = Depends(manage)):
 
 @router.get("/batches/{batch_id}")
 def batch_detail(batch_id: str, ctx: dict = Depends(view)):
+    db = get_supabase()
     with _errors():
-        return svc.batch_detail(get_supabase(), ctx["tenant_id"], batch_id, show_money=_money(ctx),
-                                caller_id=_caller(ctx))
+        out = svc.batch_detail(db, ctx["tenant_id"], batch_id, show_money=_money(ctx), caller_id=_caller(ctx))
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, ctx["tenant_id"], ctx)  # fails closed for telecallers
+    if mask and isinstance(out, dict):
+        for key in ("students", "waitlist"):
+            for row in out.get(key) or []:
+                for field in ("phone", "parent_phone"):
+                    if row.get(field):
+                        row[field] = mask(row[field])
+    return out
 
 
 # ================================================================ students, waitlist

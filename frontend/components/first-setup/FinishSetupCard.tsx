@@ -17,7 +17,7 @@ export function FinishSetupCard() {
     let cancelled = false;
     firstSetupApi
       .progress()
-      .then((p) => !cancelled && setDoneSteps(p.done_steps ?? []))
+      .then((p) => !cancelled && setDoneSteps(p.already_live ? null : (p.done_steps ?? [])))
       .catch(() => {});
     return () => {
       cancelled = true;

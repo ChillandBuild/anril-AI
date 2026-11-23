@@ -6,7 +6,12 @@ export type FirstSetupStep = "business" | "items" | "hours" | "alerts" | "connec
 
 export const FIRST_SETUP_STEPS: FirstSetupStep[] = ["business", "items", "hours", "alerts", "connect", "ai"];
 
-export type FirstSetupProgress = { step: FirstSetupStep; done_steps: FirstSetupStep[] };
+export type FirstSetupProgress = {
+  step: FirstSetupStep;
+  done_steps: FirstSetupStep[];
+  /** Sent by the server only for a business that was live before first setup existed (no saved progress, has customers). */
+  already_live?: boolean;
+};
 
 export const firstSetupApi = {
   progress: () => apiFetch<FirstSetupProgress>("/api/v1/first-setup/progress"),

@@ -19,7 +19,7 @@ STATUS_WORDS = {
 HREFS = {
     "auto_message": "/dashboard/auto-messages",
     "scheduled_template": "/dashboard/scheduled-templates",
-    "reengagement": "/dashboard/follow-ups",
+    "reengagement": "/dashboard/settings/follow-ups",
     "feedback": "/dashboard/leads?tab=feedback",
     "evening_summary": "/dashboard/automations",
     "comeback_offer": "/dashboard/automations",

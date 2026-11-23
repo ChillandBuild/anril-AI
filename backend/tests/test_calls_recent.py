@@ -86,7 +86,7 @@ class RecentCallsTests(unittest.TestCase):
 
         self.client.get("/api/v1/calls/recent?caller_id=someone-else")
 
-        base.eq.assert_called_with("caller_id", "caller-1")
+        base.eq.assert_any_call("caller_id", "caller-1")  # later calls read the number-hiding rules
 
     @patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "telecmi"})
     @patch("app.routes.calls.get_supabase")

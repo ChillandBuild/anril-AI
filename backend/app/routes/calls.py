@@ -1143,7 +1143,8 @@ async def recent_calls(
         query = query.eq("caller_id", caller_id)
     rows = query.order("created_at", desc=True).limit(limit).execute()
     is_sim = get_telecalling_config(ctx["tenant_id"], db=db).get("calling_provider", "telecmi") == "sim_basic"
-    return {"data": strip_evaluation(mask_transcripts(rows.data), is_sim)}
+    data = _mask_nested_lead_phones(db, ctx, rows.data or [])
+    return {"data": strip_evaluation(mask_transcripts(data), is_sim)}
 
 
 @router.get("/recent-by-leads")
@@ -1287,16 +1288,28 @@ async def next_lead(
 
 def _mask_lead_phone(ctx: dict, payload):
     """Call IQ (v9.2 #21): when the business hides numbers, a cloud-calling telecaller sees 98•••••210.
-    The call itself is placed by lead id, so it still works. Any problem leaves the payload as it was."""
+    The call itself is placed by lead id, so it still works. A failed check hides the number (fails closed)."""
     if not isinstance(payload, dict) or not payload.get("phone"):
         return payload
-    try:
-        from app.services.call_rules import hides_numbers, mask_phone
-        if hides_numbers(get_supabase(), ctx["tenant_id"], ctx):
-            return {**payload, "phone": mask_phone(payload["phone"]), "phone_hidden": True}
-    except Exception as e:
-        logger.warning(f"next-lead: could not apply hidden numbers: {e}")
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(get_supabase(), ctx["tenant_id"], ctx)
+    if mask:
+        return {**payload, "phone": mask(payload["phone"]), "phone_hidden": True}
     return payload
+
+
+def _mask_nested_lead_phones(db, ctx: dict, rows: list[dict]) -> list[dict]:
+    """Call rows carry leads(name, phone); hide that number the same way the lead list does."""
+    if ctx.get("role") != "caller" or not rows:
+        return rows
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, ctx["tenant_id"], ctx)
+    if mask:
+        for r in rows:
+            lead = r.get("leads")
+            if isinstance(lead, dict) and lead.get("phone"):
+                r["leads"] = {**lead, "phone": mask(lead["phone"]), "phone_hidden": True}
+    return rows
 
 
 async def _next_lead_unmasked(caller_id: UUID | None, ctx: dict):
@@ -1530,7 +1543,7 @@ async def get_pending_wrapups(ctx: dict = Depends(get_tenant_and_role)):
         sim_q = sim_q.eq("caller_id", caller_id)
         other_q = other_q.eq("caller_id", caller_id)
 
-    rows = (sim_q.execute().data or []) + (other_q.execute().data or [])
+    rows = _mask_nested_lead_phones(db, ctx, (sim_q.execute().data or []) + (other_q.execute().data or []))
     is_sim = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi") == "sim_basic"
     return strip_evaluation(mask_transcripts(sorted(rows, key=lambda r: r.get("created_at") or "")), is_sim)
 

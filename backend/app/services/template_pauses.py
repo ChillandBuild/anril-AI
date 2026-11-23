@@ -3,7 +3,7 @@
 on_template_status_change() is called when Meta reports a template status change:
   REJECTED / PAUSED / DISABLED -> every automation using the template is switched off (when it has a switch here)
                                   and recorded in automation_pauses with the reason; the owner gets a bell alert.
-  APPROVED                     -> only what this log shows Anril paused is switched back on.
+  APPROVED / REINSTATED        -> only what this log shows Anril paused is switched back on.
 Any other status changes nothing. Returns how many automations were paused or resumed."""
 import logging
 from datetime import datetime, timezone
@@ -44,7 +44,7 @@ def on_template_status_change(db, tenant_id: str, template_name: str, status: st
     try:
         if status in PAUSE_STATUSES:
             return _pause(db, tenant_id, template_name, status)
-        if status == "APPROVED":
+        if status in ("APPROVED", "REINSTATED"):   # Meta's REINSTATED = approved again (templates.py maps it the same way)
             return _resume(db, tenant_id, template_name)
     except Exception as e:                        # a status update must never break the webhook that called us
         logger.error(f"automations: template {template_name} ({status}) not applied for {tenant_id}: {e}")
@@ -54,20 +54,28 @@ def on_template_status_change(db, tenant_id: str, template_name: str, status: st
 def _pause(db, tenant_id: str, template_name: str, status: str) -> int:
     already = open_pauses(db, tenant_id)
     paused: list[dict] = []
+    failed = 0
     for a in collect_automations(db, tenant_id):
-        if a.get("template_name") != template_name or a["key"] in already:
+        if a.get("template_name") != template_name:
             continue
+        open_row = already.get(a["key"])
+        if open_row and open_row.get("template_name") == template_name:
+            continue                              # this template's pause is already logged (webhook retry)
         if a["switchable"] and not a["on"]:
             continue                              # the owner already has it off: nothing to pause
-        switched = False
-        if a["switchable"]:
-            force_off(db, tenant_id, a["key"])
-            switched = True
-        db.table("automation_pauses").insert({
-            "tenant_id": tenant_id, "automation_key": a["key"], "automation_name": a["name"],
-            "template_name": template_name, "reason": f"{STATUS_WORDS[status]} ({status.lower()})", "switched_off": switched,
-        }).execute()
-        paused.append(a)
+        try:                                      # one automation failing must not drop the others or their bell
+            switched = False
+            if a["switchable"]:
+                force_off(db, tenant_id, a["key"])
+                switched = True
+            db.table("automation_pauses").insert({
+                "tenant_id": tenant_id, "automation_key": a["key"], "automation_name": a["name"],
+                "template_name": template_name, "reason": f"{STATUS_WORDS[status]} ({status.lower()})", "switched_off": switched,
+            }).execute()
+            paused.append(a)
+        except Exception as e:
+            failed += 1
+            logger.error(f"automations: {a['key']} not paused for template {template_name} ({tenant_id}): {e}")
     if paused:
         try:
             _bell_owners(db, tenant_id, template_name, status, [a["name"] for a in paused])

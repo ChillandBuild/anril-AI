@@ -7,6 +7,8 @@ Settings > Notifications form cannot wipe it when it saves). Quiet time lives in
 import json
 import logging
 
+from fastapi import HTTPException
+
 from app.services.notification_config import (
     QUIET_TIME_DEFAULT,
     effective_quiet_hours,
@@ -68,7 +70,8 @@ def alert_keys() -> list[str]:
     return [a["key"] for a in _CATALOG]
 
 
-def _read_recipients(db, tenant_id: str) -> dict:
+def _read_recipients(db, tenant_id: str, strict: bool = False) -> dict:
+    """Who gets what, as saved. strict=True raises on a read error (write paths: never save over what we could not read)."""
     try:
         row = (
             db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", RECIPIENTS_KEY)
@@ -79,8 +82,15 @@ def _read_recipients(db, tenant_id: str) -> dict:
             if isinstance(stored, dict):
                 return {k: [w for w in v if w in WHO_CHOICES] for k, v in stored.items() if isinstance(v, list)}
     except Exception as e:
+        if strict:
+            raise
         logger.warning(f"alerts: could not read who gets what for {tenant_id}: {e}")
     return {}
+
+
+def _cannot_save(e: Exception, tenant_id: str) -> HTTPException:
+    logger.warning(f"alerts: settings not read for {tenant_id}, nothing saved: {e}")
+    return HTTPException(status_code=503, detail="Could not read your saved alert settings, so nothing was changed. Please try again.")
 
 
 def quiet_time_view(cfg: dict) -> dict:
@@ -107,7 +117,8 @@ def list_alerts(db, tenant_id: str) -> dict:
             "key": a["key"],
             "label": a["label"],
             "area": a["area"],
-            "who": list(a["who"]) if who_is_fixed(a["key"]) else (recipients.get(a["key"]) or list(a["who"])),
+            # With no saved choice delivery_allowed lets everyone the app addresses through, so the list says "team".
+            "who": list(a["who"]) if who_is_fixed(a["key"]) else (recipients.get(a["key"]) or ["team"]),
             "who_fixed": who_is_fixed(a["key"]),
             "how": how,
             # An always-on alert shows as on and locked, whatever an older save says.
@@ -128,14 +139,20 @@ def set_alert(db, tenant_id: str, key: str, on: bool, who: list[str] | None = No
         clean = [w for w in dict.fromkeys(who) if w in WHO_CHOICES]
         if not clean or len(clean) != len(set(who)):
             raise ValueError("Pick who should get this alert: the owner, the whole team, or the person it belongs to.")
-        recipients = _read_recipients(db, tenant_id)
+        try:
+            recipients = _read_recipients(db, tenant_id, strict=True)
+        except Exception as e:
+            raise _cannot_save(e, tenant_id)
         recipients[key] = clean
         db.table("app_settings").upsert(
             {"tenant_id": tenant_id, "key": RECIPIENTS_KEY, "value": json.dumps(recipients), "is_secret": False},
             on_conflict="tenant_id,key",
         ).execute()
         invalidate_policy_cache(tenant_id)
-    cfg = get_notification_config(tenant_id, db=db)
+    try:
+        cfg = get_notification_config(tenant_id, db=db, strict=True)
+    except Exception as e:
+        raise _cannot_save(e, tenant_id)
     cfg["events"] = {**(cfg.get("events") or {}), key: bool(on)}
     save_notification_config(tenant_id, cfg, db=db)
     invalidate_policy_cache(tenant_id)
@@ -149,7 +166,10 @@ def set_quiet_time(db, tenant_id: str, on: bool, start_hour: int, end_hour: int)
             raise ValueError("Hours must be between 0 and 23.")
     if on and start_hour == end_hour:
         raise ValueError("Quiet time needs a start and an end that are different.")
-    cfg = get_notification_config(tenant_id, db=db)
+    try:
+        cfg = get_notification_config(tenant_id, db=db, strict=True)
+    except Exception as e:
+        raise _cannot_save(e, tenant_id)
     cfg["quiet_hours"] = {"enabled": bool(on), "start_hour": start_hour, "end_hour": end_hour}
     cfg["quiet_hours_unsaved"] = False
     save_notification_config(tenant_id, cfg, db=db)

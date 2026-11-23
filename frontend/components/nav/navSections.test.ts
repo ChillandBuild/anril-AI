@@ -740,3 +740,21 @@ describe("Call IQ titles", () => {
     expect(callIqRouteMeta("/dashboard", "")).toBeNull();
   });
 });
+
+describe("AI report card is hidden from telecallers (its endpoint refuses that role)", () => {
+  const row = leafByKey("ai-report-card");
+  const access = only(["knowledge.view"], { messagingOn: true });
+
+  it("shows for a manager with knowledge.view", () => {
+    expect(row.visible(access)).toBe(true);
+  });
+
+  it("hides for the caller role even with knowledge.view", () => {
+    expect(row.visible({ ...access, isCaller: true })).toBe(false);
+  });
+
+  it("buildNavAccess marks the caller role", () => {
+    const state = buildNavAccess({ role: "caller", permissions: ["knowledge.view"], enabledFeatures: ["inbound_messaging"], subStatus: "active" });
+    expect(row.visible(state.access)).toBe(false);
+  });
+});

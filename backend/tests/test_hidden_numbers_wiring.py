@@ -16,11 +16,12 @@ def test_lead_list_masks_for_cloud_caller_only():
     assert rows[0]["phone"] == "+919876543210"
 
 
-def test_lead_list_keeps_numbers_when_rules_cannot_be_read():
+def test_lead_list_hides_numbers_when_rules_cannot_be_read():
+    # Fails closed (audit 2026-11-23): a broken check never shows a telecaller full numbers.
     rows = [{"id": "1", "phone": "+919876543210"}]
     with patch("app.services.call_rules.hides_numbers", side_effect=RuntimeError("down")):
         leads._hide_numbers_for_caller(None, "t", {"role": "caller"}, rows)
-    assert rows[0]["phone"] == "+919876543210"
+    assert rows[0]["phone"] == "98•••••210"
 
 
 def test_next_lead_masks_and_keeps_none():

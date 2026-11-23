@@ -46,6 +46,8 @@ export type MoreMenuGate = {
   permissionAny?: string[];
   feature?: string;
   anyFeature?: string[];
+  /** Roles that never see this entry, whatever their permissions (the page's endpoint refuses them). */
+  hiddenForRoles?: string[];
 };
 
 export type MoreMenuSection =
@@ -127,7 +129,7 @@ export const MORE_ITEMS: MoreMenuItem[] = [
   { key: "qr-links", icon: QrCode, label: "QR & links", section: "whatsapp", pages: [{ href: "/dashboard/qr-links", permissionAny: ["numbers.view", "numbers.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "brain", icon: Brain, label: "Anril Brain", section: "setup", pages: [{ href: BRAIN_HREF, exact: true, permissionAny: ["brain.view"], anyFeature: MESSAGING_FEATURES }] },
   { key: "couldnt-answer", icon: MessageSquare, label: "Couldn't answer", section: "setup", pages: [{ href: "/dashboard/brain/couldnt-answer", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
-  { key: "ai-report-card", icon: ReceiptText, label: "AI report card", section: "setup", pages: [{ href: "/dashboard/brain/report-card", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
+  { key: "ai-report-card", icon: ReceiptText, label: "AI report card", section: "setup", pages: [{ href: "/dashboard/brain/report-card", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES, hiddenForRoles: ["caller"] }] },
   { key: "questions-scoring", icon: SlidersHorizontal, label: "Questions & scoring", section: "setup", pages: [{ href: "/dashboard/brain/scoring", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "knowledge", icon: BookOpen, label: "Knowledge Base", section: "setup", pages: [{ href: "/dashboard/knowledge", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
   { key: "teach", icon: GraduationCap, label: "Teach & offers", section: "setup", pages: [{ href: "/dashboard/teach", permissionAny: ["knowledge.view", "knowledge.manage"], anyFeature: MESSAGING_FEATURES }] },
@@ -214,6 +216,7 @@ export const MORE_ITEMS: MoreMenuItem[] = [
 ];
 
 function passesGate(gate: MoreMenuGate, role: string | null, enabledFeatures: string[], permissions: string[]) {
+  if (role && gate.hiddenForRoles?.includes(role)) return false;
   if (role !== "owner" && gate.permissionAny && !gate.permissionAny.some((permission) => permissions.includes(permission))) return false;
   if (gate.feature && !enabledFeatures.includes(gate.feature)) return false;
   if (gate.anyFeature && !gate.anyFeature.some((feature) => enabledFeatures.includes(feature))) return false;

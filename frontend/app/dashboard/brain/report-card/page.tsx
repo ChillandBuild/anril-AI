@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PeriodPicker } from "@/components/ai-setup/PeriodPicker";
 import { NoAccess, SetupShell, useSetupAccess } from "@/components/ai-setup/SetupShell";
+import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { aiSetupApi, percentLabel, rupees, safeFixHref, type Period, type ReportCard } from "@/lib/aiSetupApi";
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -17,19 +18,28 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
 
 export default function ReportCardPage() {
   const { loading: roleLoading, canView } = useSetupAccess();
+  const { role } = useAuthRole();
+  const isCaller = role === "caller"; // the endpoint answers 403 for telecallers
   const [period, setPeriod] = useState<Period>("30d");
   const [card, setCard] = useState<ReportCard | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!canView) return;
+    if (!canView || isCaller) return;
     let live = true;
     aiSetupApi.reportCard(period).then((c) => { if (live) { setCard(c); setFailed(false); } }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [canView, period]);
+  }, [canView, isCaller, period]);
 
   if (roleLoading) return <div className="m-6 min-h-[320px] animate-pulse rounded-2xl bg-border-subtle" />;
   if (!canView) return <NoAccess />;
+  if (isCaller) {
+    return (
+      <SetupShell title="AI report card" intro="How the AI agent did with your customers.">
+        <p className="rounded-xl bg-surface-low px-3 py-2 font-body text-sm text-ink-secondary">Not available for telecallers.</p>
+      </SetupShell>
+    );
+  }
 
   return (
     <SetupShell

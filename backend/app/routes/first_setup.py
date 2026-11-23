@@ -53,9 +53,31 @@ def read_progress(tenant_id: str, db=None) -> dict:
     return clean_progress(None, [])
 
 
+def _has_progress_row(tenant_id: str, db) -> bool:
+    try:
+        row = db.table("app_settings").select("value").eq("tenant_id", tenant_id).eq("key", SETTING_KEY).maybe_single().execute()
+        return bool(row and row.data)
+    except Exception:  # noqa: BLE001
+        return True  # cannot tell: treat as started, so no "already live" claim is made
+
+
+def _has_leads(tenant_id: str, db) -> bool:
+    try:
+        res = db.table("leads").select("id").eq("tenant_id", tenant_id).limit(1).execute()
+        return bool(res and res.data)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @router.get("/progress")
 def get_progress(ctx: dict = Depends(require_settings_manage)):
-    return read_progress(ctx["tenant_id"])
+    """A business that was already live before first setup existed has no progress row but has customers:
+    it gets already_live=true so Home does not show "Finish setup 0 of 6" forever. New businesses keep the old shape."""
+    db, tenant_id = get_supabase(), ctx["tenant_id"]
+    progress = read_progress(tenant_id, db)
+    if not progress["done_steps"] and not _has_progress_row(tenant_id, db) and _has_leads(tenant_id, db):
+        return {**progress, "already_live": True}
+    return progress
 
 
 @router.put("/progress")

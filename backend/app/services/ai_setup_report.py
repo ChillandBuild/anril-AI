@@ -75,7 +75,11 @@ def _preview(text: str) -> str:
 # ── Couldn't answer ───────────────────────────────────────────────────────────
 
 def _gap_handovers(db, tenant_id: str, since_iso: str, caller_id: str | None) -> list[dict]:
-    """Knowledge-gap handovers since since_iso, newest first, that nobody has answered yet."""
+    """Knowledge-gap handovers since since_iso, newest first, that nobody has answered yet.
+    caller_id None = everyone's; "" = a telecaller with no profile, who sees none."""
+    if caller_id == "":
+        return []
+
     def read(columns: str):
         q = (db.table("chat_handovers").select(columns).eq("tenant_id", tenant_id)
              .gte("opened_at", since_iso).order("opened_at", desc=True).limit(HANDOVER_CAP * 2))

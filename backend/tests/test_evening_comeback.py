@@ -36,7 +36,13 @@ def _waba():
 # ───────────────────────────────────────────────────────────── evening summary
 
 def test_rupees_use_indian_grouping():
-    assert [ev.rupees_text(p) for p in (0, 99, 12_345_00, 123_456_00, 12_34_56_700)] == ["0", "0", "12,345", "1,23,456", "12,34,567"]
+    assert [ev.rupees_text(p) for p in (0, 12_345_00, 123_456_00, 12_34_56_700)] == ["0", "12,345", "1,23,456", "12,34,567"]
+
+
+def test_rupees_under_one_rupee_keep_the_paise():
+    # Same rule as the other money helpers: whole rupees when exact, two decimals when not.
+    assert [ev.rupees_text(p) for p in (50, 99, 12_345_50, 100_00_050)] == ["0.50", "0.99", "12,345.50", "1,00,000.50"]
+    assert ev.template_values("S", {"money_paise": 50})[4] == "Money in today: ₹0.50."
 
 
 def test_values_with_and_without_money():
@@ -126,6 +132,7 @@ def test_no_owner_number_means_no_send():
 # ───────────────────────────────────────────────────────────── come-back offer
 
 def _customer(db, lid, *, bought_days_ago=90, **lead):
+    lead.setdefault("opt_in_source", "whatsapp_chat")
     db.add("leads", id=lid, tenant_id=T, name=f"Priya {lid}", phone=f"+91900000000{lid[-1]}", **lead)
     if bought_days_ago is not None:
         db.add("deals", tenant_id=T, lead_id=lid, stage="won",
@@ -190,11 +197,110 @@ def test_who_gets_an_offer():
     assert {l["id"] for l in co.find_candidates(db, T, DAYTIME)} == {"l1", "l9"}
 
 
-def test_failed_attempt_does_not_use_up_the_month():
+def test_failed_attempt_blocks_a_week_not_the_month():
     db = _ready()
     _customer(db, "l1")
+    _customer(db, "l2")
     db.add("comeback_offer_sends", tenant_id=T, lead_id="l1", status="failed", created_at=(DAYTIME - timedelta(days=1)).isoformat())
+    db.add("comeback_offer_sends", tenant_id=T, lead_id="l2", status="failed", created_at=(DAYTIME - timedelta(days=8)).isoformat())
+    assert [l["id"] for l in co.find_candidates(db, T, DAYTIME)] == ["l2"]
+
+
+def test_bad_numbers_do_not_starve_everyone_else():
+    db = _ready()
+    for i in range(3):
+        _customer(db, f"b{i}", bought_days_ago=300)             # oldest purchases, numbers Meta rejects
+    _customer(db, "g1", bought_days_ago=70)
+    with _waba(), patch.object(co, "MAX_PER_BUSINESS_PER_RUN", 3), \
+            patch("app.services.meta_cloud.send_template_message", new=AsyncMock(side_effect=RuntimeError("bad number"))):
+        assert co.send_comeback_offers(db, DAYTIME) == 0
+    ok = AsyncMock(return_value=OK)
+    with _waba(), patch.object(co, "MAX_PER_BUSINESS_PER_RUN", 3), patch("app.services.meta_cloud.send_template_message", new=ok):
+        assert co.send_comeback_offers(db, DAYTIME + timedelta(days=1)) == 1     # the good lead, not the 3 bad ones again
+    assert [r["lead_id"] for r in db.rows("comeback_offer_sends") if r["status"] == "sent"] == ["g1"]
+
+
+def test_timeout_after_send_keeps_the_claim_so_no_double_send():
+    import httpx
+    db = _ready()
+    _customer(db, "l1")
+    with _waba(), patch("app.services.meta_cloud.send_template_message",
+                        new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))):
+        assert co.send_comeback_offers(db, DAYTIME) == 0
+    assert db.rows("comeback_offer_sends")[0]["status"] == "sending"           # unknown outcome: stays "recent"
+    assert co.find_candidates(db, T, DAYTIME + timedelta(days=20)) == []
+    assert co.find_candidates(db, T, DAYTIME + timedelta(days=31))[0]["id"] == "l1"
+
+
+def test_leads_without_an_opt_in_source_are_skipped():
+    db = _ready()
+    _customer(db, "l1")
+    _customer(db, "l2", opt_in_source=None)
+    _customer(db, "l3", opt_in_source="  ")
     assert [l["id"] for l in co.find_candidates(db, T, DAYTIME)] == ["l1"]
+
+
+class _Cap1000:
+    """Like PostgREST: no request returns more than 1000 rows, whatever .limit() says."""
+    def __enter__(self):
+        from fake_supabase import _Query
+        self.q, self.orig = _Query, _Query.execute
+
+        def capped(query):
+            res = self.orig(query)
+            if isinstance(res.data, list):
+                res.data = res.data[:1000]
+            return res
+        _Query.execute = capped
+        return self
+
+    def __exit__(self, *a):
+        self.q.execute = self.orig
+
+
+def test_comeback_sees_the_latest_purchase_past_1000_rows():
+    db = _ready()
+    _customer(db, "l1", bought_days_ago=90)
+    for i in range(1005):                                      # 1005 other won deals (other leads) sit between
+        db.add("deals", tenant_id=T, lead_id=f"x{i}", stage="won", won_at=(DAYTIME - timedelta(days=5)).isoformat())
+    db.add("deals", tenant_id=T, lead_id="l1", stage="won", won_at=(DAYTIME - timedelta(days=10)).isoformat())
+    with _Cap1000():
+        assert co.find_candidates(db, T, DAYTIME) == []        # l1 bought 10 days ago: no offer
+
+
+def test_comeback_sees_every_recent_send_past_1000_rows():
+    db = _ready()
+    _customer(db, "l1")
+    for i in range(1005):
+        db.add("comeback_offer_sends", tenant_id=T, lead_id=f"x{i}", status="sent", created_at=(DAYTIME - timedelta(days=3)).isoformat())
+    db.add("comeback_offer_sends", tenant_id=T, lead_id="l1", status="sent", created_at=(DAYTIME - timedelta(days=3)).isoformat())
+    with _Cap1000():
+        assert co.find_candidates(db, T, DAYTIME) == []
+
+
+def test_evening_summary_counts_past_1000_rows():
+    db = _base()
+    today = "2026-11-23T05:00:00+00:00"
+    for i in range(1005):
+        db.add("messages", tenant_id=T, lead_id=f"c{i}", direction="inbound", created_at=today)
+        db.add("leads", tenant_id=T, created_at=today)
+        db.add("deals", tenant_id=T, stage="won", won_at=today)
+        db.add("deal_payments", tenant_id=T, amount_paise=100, paid_at=today)
+    with _Cap1000():
+        assert ev.build_summary(db, T, NOW) == {"chats": 1005, "new_leads": 1005, "orders": 1005, "money_paise": 100_500}
+
+
+def test_evening_money_is_net_of_refunds():
+    db = _base()
+    today, yday = "2026-11-23T05:00:00+00:00", "2026-11-22T05:00:00+00:00"
+    db.add("deal_payments", tenant_id=T, amount_paise=500_00, paid_at=today)
+    db.add("deal_refunds", tenant_id=T, amount_paise=120_00, status="done", created_at=today)
+    db.add("deal_refunds", tenant_id=T, amount_paise=50_00, status="failed", created_at=today)     # never paid out
+    db.add("deal_refunds", tenant_id=T, amount_paise=70_00, status="done", created_at=yday)        # another day
+    db.add("deal_refunds", tenant_id="t2", amount_paise=99_00, status="done", created_at=today)    # another business
+    assert ev.build_summary(db, T, NOW)["money_paise"] == 380_00
+    db.add("deal_refunds", tenant_id=T, amount_paise=380_00, status="done", created_at=today)
+    assert ev.build_summary(db, T, NOW)["money_paise"] == 0     # fully refunded day reads "No payments today."
 
 
 def test_sends_logs_and_never_twice_in_30_days():

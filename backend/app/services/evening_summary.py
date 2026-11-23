@@ -23,7 +23,7 @@ TEMPLATE_BODY = (
 TEMPLATE_EXAMPLES = ["Sri Stores", "24", "6", "3", "Money in today: ₹12,450."]
 SEND_HOUR_IST = 20
 IST = timezone(timedelta(hours=5, minutes=30))
-_PAGE = 10000
+_PAGE = 1000          # PostgREST returns at most 1000 rows a request, whatever .limit() says
 
 
 def get_settings(db, tenant_id: str) -> dict:
@@ -49,8 +49,16 @@ def save_on(db, tenant_id: str, on: bool) -> dict:
 
 
 def rupees_text(paise: int) -> str:
-    """12345600 paise -> '1,23,456' (Indian digit grouping, whole rupees)."""
-    n = max(0, int(paise)) // 100
+    """12345600 paise -> '1,23,456' (Indian digit grouping). Whole rupees when exact, two decimals when not
+    (50 paise -> '0.50'), the same rule as the other money helpers."""
+    paise = max(0, int(paise))
+    n = paise // 100
+    if paise % 100:
+        return f"{_group(n)}.{paise % 100:02d}"
+    return _group(n)
+
+
+def _group(n: int) -> str:
     s = str(n)
     if len(s) <= 3:
         return s
@@ -69,6 +77,21 @@ def _day_bounds(now: datetime) -> tuple[str, str]:
     return ist_day_bounds(now)
 
 
+def _paged(build) -> list[dict]:
+    """Every row of a query, past the 1000-row API cap. build() returns a fresh query; pages are ordered by id
+    so a page boundary never skips or repeats a row."""
+    out: list[dict] = []
+    while True:
+        rows = build().order("id").range(len(out), len(out) + _PAGE - 1).execute().data or []
+        out.extend(rows)
+        if len(rows) < _PAGE:
+            return out
+
+
+def _count(query) -> int:
+    return int(query.limit(1).execute().count or 0)
+
+
 def build_summary(db, tenant_id: str, now: datetime | None = None) -> dict:
     """Today's (IST) numbers. A part that cannot be read counts as 0 rather than stopping the message."""
     now = now or datetime.now(timezone.utc)
@@ -82,32 +105,32 @@ def build_summary(db, tenant_id: str, now: datetime | None = None) -> dict:
             return default
 
     def chats() -> int:
-        rows = (
+        rows = _paged(lambda: (
             db.table("messages").select("lead_id").eq("tenant_id", tenant_id).eq("direction", "inbound")
-            .gte("created_at", start).lt("created_at", end).limit(_PAGE).execute().data or []
-        )
+            .gte("created_at", start).lt("created_at", end)
+        ))
         return len({r["lead_id"] for r in rows if r.get("lead_id")})
 
     def new_leads() -> int:
-        rows = (
-            db.table("leads").select("id").eq("tenant_id", tenant_id)
-            .gte("created_at", start).lt("created_at", end).limit(_PAGE).execute().data or []
-        )
-        return len(rows)
+        return _count(db.table("leads").select("id", count="exact").eq("tenant_id", tenant_id)
+                      .gte("created_at", start).lt("created_at", end))
 
     def orders() -> int:
-        rows = (
-            db.table("deals").select("id").eq("tenant_id", tenant_id).eq("stage", "won")
-            .gte("won_at", start).lt("won_at", end).limit(_PAGE).execute().data or []
-        )
-        return len(rows)
+        return _count(db.table("deals").select("id", count="exact").eq("tenant_id", tenant_id).eq("stage", "won")
+                      .gte("won_at", start).lt("won_at", end))
 
     def money() -> int:
-        rows = (
+        """Payments in today less refunds given today (not failed), the same rule as Home's Money in."""
+        paid = _paged(lambda: (
             db.table("deal_payments").select("amount_paise").eq("tenant_id", tenant_id)
-            .gte("paid_at", start).lt("paid_at", end).limit(_PAGE).execute().data or []
-        )
-        return sum(int(r.get("amount_paise") or 0) for r in rows)
+            .gte("paid_at", start).lt("paid_at", end)
+        ))
+        refunded = _paged(lambda: (
+            db.table("deal_refunds").select("amount_paise").eq("tenant_id", tenant_id).neq("status", "failed")
+            .gte("created_at", start).lt("created_at", end)
+        ))
+        net = sum(int(r.get("amount_paise") or 0) for r in paid) - sum(int(r.get("amount_paise") or 0) for r in refunded)
+        return max(0, net)
 
     return {"chats": safe(chats), "new_leads": safe(new_leads), "orders": safe(orders), "money_paise": safe(money)}
 

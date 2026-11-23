@@ -33,6 +33,24 @@ def test_not_started_looks_empty(db):
     assert res.json() == {"step": "business", "done_steps": []}
 
 
+def test_live_business_with_no_progress_row_is_flagged_already_live(db):
+    db.add("leads", tenant_id="t-1", phone="+911")
+    res = _client(["settings.manage"]).get("/api/v1/first-setup/progress").json()
+    assert res == {"step": "business", "done_steps": [], "already_live": True}
+
+
+def test_new_business_without_customers_keeps_the_card(db):
+    db.add("leads", tenant_id="t-2", phone="+912")  # someone else's customer
+    assert "already_live" not in _client(["settings.manage"]).get("/api/v1/first-setup/progress").json()
+
+
+def test_saved_progress_is_never_flagged_already_live(db):
+    db.add("leads", tenant_id="t-1", phone="+911")
+    c = _client(["settings.manage"])
+    c.put("/api/v1/first-setup/progress", json={"step": "hours", "done_steps": []})
+    assert "already_live" not in c.get("/api/v1/first-setup/progress").json()
+
+
 def test_save_then_read_back(db):
     c = _client(["settings.manage"])
     put = c.put("/api/v1/first-setup/progress", json={"step": "connect", "done_steps": ["items", "business"]})

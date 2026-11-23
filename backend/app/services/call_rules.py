@@ -147,7 +147,19 @@ def hides_numbers(db, tenant_id: str, ctx: dict) -> bool:
     try:
         return effective_calling_mode(db, tenant_id, ctx.get("caller_id")) == "telecmi"
     except Exception:
-        return False
+        return True  # fail closed: the business hides numbers and we can't tell SIM from cloud
+
+
+def phone_mask_for(db, tenant_id: str, ctx: dict):
+    """mask_phone when this viewer must see 98•••••210, else None. Every list or file that carries a lead's
+    number uses this one check. It fails closed: a telecaller never sees full numbers because a check broke."""
+    if ctx.get("role") != "caller":
+        return None
+    try:
+        return mask_phone if hides_numbers(db, tenant_id, ctx) else None
+    except Exception as e:
+        logger.info("number hiding check failed for tenant %s, hiding: %s", tenant_id, e)
+        return mask_phone
 
 
 # ── SIM or cloud per person ─────────────────────────────────────────────────
@@ -260,13 +272,14 @@ def check_break_limits(db, now: datetime | None = None) -> int:
             continue  # this break was already reported
         try:
             name = c.get("name") or "A telecaller"
+            # Stamp first: if notifying crashes half way, the next 5-minute run must not bell this break again.
+            db.table("callers").update({"break_alert_sent_at": now.isoformat()}).eq("id", c["id"]).eq("tenant_id", tenant_id).execute()
             for user_id in admin_user_ids(db, tenant_id):
                 notify_user(
                     tenant_id, user_id, "break_too_long", "Long break",
                     f"{name} has been on break for {minutes} minutes (the limit is {limit}).",
                     db=db, push_url="/dashboard/telecalling",
                 )
-            db.table("callers").update({"break_alert_sent_at": now.isoformat()}).eq("id", c["id"]).eq("tenant_id", tenant_id).execute()
             sent += 1
         except Exception as e:
             logger.warning("break alert failed for caller %s: %s", c.get("id"), e)

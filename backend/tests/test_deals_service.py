@@ -131,6 +131,28 @@ async def test_walk_in_won_sale_snapshots_catalog_price_and_deducts_stock(db):
 
 
 @pytest.mark.asyncio
+async def test_a_deal_for_a_shop_that_charges_no_gst_is_born_a_simple_bill(db):
+    """Composition or unregistered shop: the order says so itself ('simple'), so it never prints as a tax invoice."""
+    with patch("app.services.business_details.charges_gst", return_value=False):
+        result = await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 1}], "whatsapp", "quoted", db=db)
+    assert result["deal"]["bill_type"] == "simple"
+    assert db.tables["deals"][0]["bill_type"] == "simple"
+
+
+@pytest.mark.asyncio
+async def test_a_deal_for_a_gst_shop_is_left_to_the_gst_default(db):
+    with patch("app.services.business_details.charges_gst", return_value=True):
+        result = await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 1}], "whatsapp", "quoted", db=db)
+    assert result["deal"].get("bill_type") in (None, "gst")
+
+
+def test_the_ai_quote_for_a_shop_that_charges_no_gst_is_a_simple_bill(db):
+    with patch("app.services.business_details.charges_gst", return_value=False):
+        deals.upsert_quoted_deal(TENANT, "lead-1", {"catalog_item_id": "earbuds", "name": "Earbuds", "qty": 1}, db=db)
+    assert db.tables["deals"][0]["bill_type"] == "simple"
+
+
+@pytest.mark.asyncio
 async def test_overselling_still_records_the_sale_but_warns(db):
     result = await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 5}], "walk_in", "won",
                                      payment_method="upi", db=db)

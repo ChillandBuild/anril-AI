@@ -661,19 +661,17 @@ async def list_leads(
 
 def _hide_numbers_for_caller(db, tenant_id: str, ctx: dict, leads: list[dict]) -> None:
     """Call IQ (v9.2 #21): a cloud-calling telecaller sees 98•••••210 when the business hides numbers.
-    Calls are placed by lead id, so dialing still works. Any problem leaves the numbers as they were."""
+    Calls are placed by lead id, so dialing still works. A failed check hides the numbers (fails closed)."""
     if ctx.get("role") != "caller" or not leads:
         return
-    try:
-        from app.services.call_rules import hides_numbers, mask_phone
-        if not hides_numbers(db, tenant_id, ctx):
-            return
-        for lead in leads:
-            if lead.get("phone"):
-                lead["phone"] = mask_phone(lead["phone"])
-                lead["phone_hidden"] = True
-    except Exception as e:
-        logger.warning(f"leads: could not apply hidden numbers for {tenant_id}: {e}")
+    from app.services.call_rules import phone_mask_for
+    mask = phone_mask_for(db, tenant_id, ctx)
+    if not mask:
+        return
+    for lead in leads:
+        if lead.get("phone"):
+            lead["phone"] = mask(lead["phone"])
+            lead["phone_hidden"] = True
 
 
 def _add_came_from(db, tenant_id: str, leads: list[dict]) -> None:
@@ -1113,6 +1111,7 @@ async def export_leads(
 
     fieldnames = ["Name", "Phone", "Status", "Interest", "Came from", "Ad", "Assigned to",
                   "Spent", "Groups", "Added", "Last message"]
+    _hide_numbers_for_caller(db, tenant_id, ctx, leads)  # the file follows the same rule as the screen
     rows = []
     for l in leads:
         lead_id = l["id"]
@@ -1193,6 +1192,7 @@ async def export_assigned_leads(
         campaign_map = {str(r["id"]): r for r in (campaign_recs.data or [])}
         
     # Generate rows
+    _hide_numbers_for_caller(db, tenant_id, ctx, leads)  # the file follows the same rule as the screen
     rows = []
     for l in leads:
         lead_id = l["id"]

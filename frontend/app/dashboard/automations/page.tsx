@@ -15,6 +15,8 @@ export default function AutomationsPage() {
   const has = (p: string) => role === "owner" || permissions.includes(p);
   const canView = has("settings.view") || has("templates.view");
   const canManage = has("settings.manage") || has("templates.manage");
+  // Sending the evening-summary template to WhatsApp (POST /automations/evening-summary/template) needs settings.manage alone.
+  const canSubmit = has("settings.manage");
 
   const { data, error, isLoading, mutate } = useSWR<AutomationList>(canView ? "automation-list" : null, () => automationsApi.list(), {
     refreshInterval: 60000,
@@ -74,7 +76,7 @@ export default function AutomationsPage() {
         <p className="font-body text-sm text-[#556274]">You have no automatic messages set up yet.</p>
       )}
 
-      <EveningSummaryCard canManage={canManage} onChanged={() => void mutate()} />
+      <EveningSummaryCard canManage={canManage} canSubmit={canSubmit} onChanged={() => void mutate()} />
       <ComebackOfferCard canManage={canManage} onChanged={() => void mutate()} />
     </div>
   );

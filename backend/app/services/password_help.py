@@ -7,6 +7,7 @@ public forms): 3 per identifier per hour, 10 per IP per hour; past a limit the r
 quietly dropped and the same reply is sent. Nothing here logs the identifier."""
 import hashlib
 import hmac
+import ipaddress
 import logging
 import os
 import re
@@ -62,6 +63,21 @@ def identifier_key(identifier: str) -> str:
     return digits[-10:] if len(digits) >= 10 else (digits or text)
 
 
+def ip_bucket(ip: str | None) -> str:
+    """The key one sender is limited by. IPv6 hands one home a whole /64, so a new address per
+    request must not mean a fresh allowance: limit the /64, not the single address."""
+    text = (ip or "").strip()
+    try:
+        addr = ipaddress.ip_address(text)
+    except ValueError:
+        return text or "unknown"
+    if addr.version == 6:
+        if addr.ipv4_mapped:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
 def submit_request(identifier: str, business_name: str | None, note: str | None, ip: str) -> bool:
     """Save one request. Returns True when a row was stored. Never raises: the caller answers
     the same way whether this stored, was limited, or failed (the table may not exist yet)."""
@@ -70,7 +86,7 @@ def submit_request(identifier: str, business_name: str | None, note: str | None,
         return False
     ident_key = _hash(identifier_key(ident))
     # Both limiters are checked every time, so one noisy address can't use up a person's turns.
-    ip_ok = _ip_limiter.allow(ip or "unknown")
+    ip_ok = _ip_limiter.allow(ip_bucket(ip))
     ident_ok = _identifier_limiter.allow(ident_key)
     if not (ip_ok and ident_ok):
         return False

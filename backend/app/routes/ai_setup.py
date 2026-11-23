@@ -30,7 +30,9 @@ def _days(period: str | None) -> int:
 
 def _caller_scope(ctx: dict) -> str | None:
     """Telecallers only ever see their own people."""
-    return ctx.get("caller_id") if ctx.get("role") == "caller" else None
+    if ctx.get("role") != "caller":
+        return None
+    return ctx.get("caller_id") or ""  # a telecaller with no profile sees nobody, never everybody
 
 
 def _run(fn):

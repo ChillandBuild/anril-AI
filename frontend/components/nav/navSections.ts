@@ -29,6 +29,8 @@ export interface NavAccess {
   telecallingPages: readonly string[];
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
+  /** True for the telecaller role. Optional so existing callers and fixtures need no change. */
+  isCaller?: boolean;
 }
 
 export type SectionKey =
@@ -493,7 +495,8 @@ const AI_REPORT_CARD: NavLeaf = {
   href: "/dashboard/brain/report-card",
   label: "AI report card",
   icon: ReceiptText,
-  visible: knowledgeVisible,
+  // The report card endpoint answers 403 for the caller role, so telecallers do not see the entry.
+  visible: (a) => knowledgeVisible(a) && !a.isCaller,
   isActive: (p) => p.startsWith("/dashboard/brain/report-card"),
 };
 

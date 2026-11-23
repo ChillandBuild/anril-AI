@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { SwitchPill } from "@/components/ui/controls";
 import { automationsApi, type EveningSummary } from "@/lib/automationsApi";
 
-export function EveningSummaryCard({ canManage, onChanged }: { canManage: boolean; onChanged: () => void }) {
+/** canManage: the on/off switch (settings.manage or templates.manage). canSubmit: sending the template to WhatsApp (the route needs settings.manage). */
+export function EveningSummaryCard({ canManage, canSubmit, onChanged }: { canManage: boolean; canSubmit: boolean; onChanged: () => void }) {
   const { data, mutate } = useSWR<EveningSummary>("evening-summary", () => automationsApi.eveningSummary());
   const [busy, setBusy] = useState(false);
 
@@ -55,7 +56,7 @@ export function EveningSummaryCard({ canManage, onChanged }: { canManage: boolea
           {data.note}. It will start by itself once WhatsApp says yes.
         </p>
       )}
-      {notSent && canManage && (
+      {notSent && canSubmit && (
         <button
           type="button"
           disabled={busy}

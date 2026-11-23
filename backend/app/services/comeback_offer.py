@@ -10,16 +10,19 @@ import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 
+import httpx
+
 from app.services.automation_store import (
     read_setting, settings_rows, template_status_of, write_setting,
 )
-from app.services.evening_summary import _run
+from app.services.evening_summary import _paged, _run
 
 logger = logging.getLogger(__name__)
 
 SETTING_KEY = "comeback_offer"
 QUIET_AFTER_PURCHASE = timedelta(days=60)
 ONE_OFFER_PER = timedelta(days=30)
+RETRY_AFTER_FAILED = timedelta(days=7)      # a failed attempt blocks the lead this long, so bad numbers cannot starve the cap
 SEND_HOURS_IST = (10, 20)
 MAX_PER_BUSINESS_PER_RUN = 100
 UNHAPPY_MAX_STARS = 3
@@ -114,10 +117,7 @@ def _parse(ts) -> datetime | None:
 
 def find_candidates(db, tenant_id: str, now: datetime) -> list[dict]:
     """Leads that should get an offer right now, oldest purchase first."""
-    won = (
-        db.table("deals").select("lead_id, won_at").eq("tenant_id", tenant_id).eq("stage", "won")
-        .limit(10000).execute().data or []
-    )
+    won = _paged(lambda: db.table("deals").select("lead_id, won_at").eq("tenant_id", tenant_id).eq("stage", "won"))
     last_bought: dict[str, datetime] = {}
     for d in won:
         at = _parse(d.get("won_at"))
@@ -129,19 +129,26 @@ def find_candidates(db, tenant_id: str, now: datetime) -> list[dict]:
         return []
 
     recent = {
-        r["lead_id"] for r in (
+        r["lead_id"] for r in _paged(lambda: (
             db.table("comeback_offer_sends").select("lead_id").eq("tenant_id", tenant_id)
             .in_("status", ["sending", "sent"]).gte("created_at", (now - ONE_OFFER_PER).isoformat())
-            .limit(10000).execute().data or []
-        )
+        ))
+    }
+    # A failed attempt (bad number, Meta said no) is not retried for a week, or the same oldest customers
+    # would be picked and fail every day while everyone behind them in the queue never gets an offer.
+    recent |= {
+        r["lead_id"] for r in _paged(lambda: (
+            db.table("comeback_offer_sends").select("lead_id").eq("tenant_id", tenant_id)
+            .eq("status", "failed").gte("created_at", (now - RETRY_AFTER_FAILED).isoformat())
+        ))
     }
     unhappy: set[str] = set()
     try:
         unhappy = {
-            r["lead_id"] for r in (
+            r["lead_id"] for r in _paged(lambda: (
                 db.table("customer_feedback").select("lead_id").eq("tenant_id", tenant_id)
-                .lte("stars", UNHAPPY_MAX_STARS).limit(10000).execute().data or []
-            ) if r.get("lead_id")
+                .lte("stars", UNHAPPY_MAX_STARS)
+            )) if r.get("lead_id")
         }
     except Exception as e:
         logger.warning(f"comeback: unhappy list not read for {tenant_id}: {e}")
@@ -152,12 +159,14 @@ def find_candidates(db, tenant_id: str, now: datetime) -> list[dict]:
     ids.sort(key=lambda i: last_bought[i])
     for start in range(0, len(ids), 200):
         rows = (
-            db.table("leads").select("id, name, phone, opted_out, blocked_at, do_not_call, whatsapp_undeliverable, archived_at")
+            db.table("leads").select("id, name, phone, opt_in_source, opted_out, blocked_at, do_not_call, whatsapp_undeliverable, archived_at")
             .eq("tenant_id", tenant_id).in_("id", ids[start:start + 200]).execute().data or []
         )
         for lead in rows:
             if lead_blocks_automated_outbound(lead) or lead.get("do_not_call") or lead.get("archived_at"):
                 continue
+            if not (lead.get("opt_in_source") or "").strip():
+                continue                      # no record of how they opted in: no marketing message
             out.append(lead)
     out.sort(key=lambda l: last_bought[l["id"]])
     return out
@@ -222,6 +231,17 @@ async def _send_all(db, tenant_id: str, template: dict, setting: dict, leads: li
                 }).execute()
             except Exception as e:
                 logger.warning(f"comeback: sent but not saved to the chat ({lead['id']}): {e}")
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            # Meta may have taken it before the call timed out. Leave the claim as "sending" (it counts for the
+            # full 30 days) so the customer is not sent a second offer tomorrow.
+            logger.warning(f"comeback: outcome unknown for {lead.get('id')} for {tenant_id}: {e!r}")
+            if claim:
+                try:
+                    db.table("comeback_offer_sends").update(
+                        {"error": "timed out, delivery unknown"}
+                    ).eq("id", claim["id"]).execute()
+                except Exception:
+                    pass
         except Exception as e:
             logger.warning(f"comeback: not sent to {lead.get('id')} for {tenant_id}: {e}")
             if claim:

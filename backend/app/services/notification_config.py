@@ -86,8 +86,12 @@ _NOTIFICATION_CONFIG_DEFAULT: dict = {
 }
 
 
-def get_notification_config(tenant_id: str, db=None) -> dict:
-    """Return notification_config from app_settings, deep-merged with defaults."""
+def get_notification_config(tenant_id: str, db=None, strict: bool = False) -> dict:
+    """Return notification_config from app_settings, deep-merged with defaults.
+
+    A read error gives the defaults, which is right for sending an alert. strict=True raises instead: use it on
+    every path that saves the result back, or a settings blip would overwrite the owner's real choices with defaults.
+    """
     db = db or get_supabase()
     merged = {
         **_NOTIFICATION_CONFIG_DEFAULT,
@@ -125,6 +129,8 @@ def get_notification_config(tenant_id: str, db=None) -> dict:
         # The settings were read fine and carry no quiet-time choice: the new default applies.
         merged["quiet_hours_unsaved"] = not saved_quiet
     except Exception as e:
+        if strict:
+            raise
         logger.warning(f"get_notification_config failed for {tenant_id}: {e}")
     return merged
 

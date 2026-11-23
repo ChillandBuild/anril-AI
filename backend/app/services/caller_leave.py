@@ -81,6 +81,9 @@ def move_leads_of_caller_on_leave(db, tenant_id: str, caller_id: str, now: datet
         return {"moved": 0, "to": [], "no_one_free": True}
     leads = _open_lead_rows(db, tenant_id, caller_id)
     if not leads:
+        # Nothing to move is still "handled": without the stamp start_due_leaves runs again every 5 minutes and
+        # bounces a lead an admin hands this person during the leave. Only no_one_free keeps retrying.
+        _mark_handled(db, tenant_id, caller_id)
         return {"moved": 0, "to": [], "no_one_free": False}
 
     me = db.table("callers").select("name").eq("id", caller_id).eq("tenant_id", tenant_id).maybe_single().execute()
@@ -110,12 +113,16 @@ def move_leads_of_caller_on_leave(db, tenant_id: str, caller_id: str, now: datet
             moved += len(done)
             counts.append({"name": target.get("name") or "Telecaller", "count": len(done)})
 
+    _mark_handled(db, tenant_id, caller_id)
+    return {"moved": moved, "to": counts, "no_one_free": False}
+
+
+def _mark_handled(db, tenant_id: str, caller_id: str) -> None:
     try:
         db.table("callers").update({"leave_leads_moved_at": datetime.now(timezone.utc).isoformat()}) \
             .eq("id", caller_id).eq("tenant_id", tenant_id).execute()
     except Exception as e:
         logger.warning("could not mark leave as handled for caller %s: %s", caller_id, e)
-    return {"moved": moved, "to": counts, "no_one_free": False}
 
 
 def _log_moves(db, tenant_id: str, leads: list[dict], target: dict, prev_id: str, prev_name: str | None) -> None:

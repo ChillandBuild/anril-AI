@@ -168,12 +168,37 @@ def test_a_shop_that_set_nothing_gets_empty_extras_and_the_old_title(db):
     assert "composition" not in bill and "title" not in bill and bill["gst_paise"] == 500  # tax untouched
 
 
-def test_a_composition_shop_prints_a_bill_of_supply_with_no_tax(db):
-    bill = bill_brand.decorate({"gst_paise": 500, "cgst_paise": 250, "sgst_paise": 250, "igst_paise": 0,
-                                "lines": [{"gst_rate": 5}, {"gst_rate": 18}]}, db, T, {"gst_type": "composition"})
+def test_a_simple_bill_from_a_composition_shop_prints_a_bill_of_supply_with_no_tax(db):
+    bill = bill_brand.decorate({"bill_type": "simple", "gst_paise": 0, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
+                                "lines": [{"gst_rate": None}, {"gst_rate": None}]}, db, T, {"gst_type": "composition"})
     assert bill["title"] == "Bill of supply" and bill["composition"] is True
     assert (bill["gst_paise"], bill["cgst_paise"], bill["sgst_paise"], bill["igst_paise"]) == (0, 0, 0, 0)
     assert [l["gst_rate"] for l in bill["lines"]] == [None, None]
+
+
+def test_a_simple_bill_from_an_unregistered_shop_prints_a_bill_of_supply(db):
+    bill = bill_brand.decorate({"bill_type": "simple", "gst_paise": 0, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
+                                "lines": [{"gst_rate": None}]}, db, T, {"gst_type": "none"})
+    assert bill["title"] == "Bill of supply"
+    assert "composition" not in bill  # the composition note is for composition shops only
+    assert bill["gst_paise"] == 0
+
+
+def test_a_simple_bill_from_a_regular_shop_keeps_its_old_look(db):
+    bill = bill_brand.decorate({"bill_type": "simple", "gst_paise": 0, "lines": [{"gst_rate": None}]}, db, T,
+                               {"gst_type": "regular"})
+    assert "title" not in bill and "composition" not in bill
+
+
+def test_an_old_gst_order_keeps_its_tax_after_the_shop_switches_to_composition(db):
+    """Scenario A: made as a tax invoice, reprinted after the shop went composition. The lines still add up."""
+    old = {"bill_type": "gst", "gst_paise": 500, "cgst_paise": 250, "sgst_paise": 250, "igst_paise": 0,
+           "lines": [{"gst_rate": 5}, {"gst_rate": 18}]}
+    for shop_type in ("composition", "none"):
+        bill = bill_brand.decorate({**old, "lines": [dict(l) for l in old["lines"]]}, db, T, {"gst_type": shop_type})
+        assert (bill["gst_paise"], bill["cgst_paise"], bill["sgst_paise"]) == (500, 250, 250)
+        assert [l["gst_rate"] for l in bill["lines"]] == [5, 18]
+        assert "title" not in bill and "composition" not in bill
 
 
 def test_the_brand_block_reads_the_shops_details(db):
@@ -196,8 +221,18 @@ def test_public_bill_carries_the_brand_and_a_composition_title(db):
     db.add("deal_items", tenant_id=T, deal_id="d1", name="Saree", variant_label=None, qty=1, unit_price_paise=1000, gst_rate=5)
     with patch("app.services.business_details.get_business_details", return_value={**FULL, "gst_type": "composition"}):
         bill = orders.public_bill(db, "tok_abcdefghijklmnopqr")
-    assert bill["title"] == "Bill of supply" and bill["gst_paise"] == 0
+    assert "title" not in bill and bill["gst_paise"] == 48  # made as a tax invoice: it still prints as one
     assert bill["brand"]["upi_id"] == "demo@okhdfc"
+
+
+def test_public_bill_of_a_simple_order_says_bill_of_supply_for_a_composition_shop(db):
+    _lead(db)
+    _deal(db, lead_id="L1", stage="won", bill_token="tok_abcdefghijklmnopqr", invoice_number="2026-27/0001",
+          total_paise=1000, paid_paise=1000, bill_type="simple", gst_paise=0)
+    db.add("deal_items", tenant_id=T, deal_id="d1", name="Saree", variant_label=None, qty=1, unit_price_paise=1000, gst_rate=5)
+    with patch("app.services.business_details.get_business_details", return_value={**FULL, "gst_type": "composition"}):
+        bill = orders.public_bill(db, "tok_abcdefghijklmnopqr")
+    assert bill["title"] == "Bill of supply" and bill["composition"] is True and bill["gst_paise"] == 0
 
 
 def test_the_picture_bill_draws_with_and_without_the_extras():
@@ -211,9 +246,10 @@ def test_the_picture_bill_draws_with_and_without_the_extras():
 
 def test_the_pdf_says_bill_of_supply_for_a_composition_shop():
     pytest.importorskip("fpdf")
-    bill = bill_files.sample_bill(bill_type="gst")
+    bill = bill_files.sample_bill(bill_type="simple")
     bill["brand"] = bill_brand.brand_block(None, T, {**FULL, "gst_type": "composition"})
     bill = bill_brand.decorate(bill, None, T, {**FULL, "gst_type": "composition"})
+    assert bill["title"] == "Bill of supply"
     pdf = bill_files.invoice_pdf(bill)
     assert pdf[:5] == b"%PDF-"
 
