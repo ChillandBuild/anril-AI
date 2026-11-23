@@ -13,6 +13,10 @@ round 3 goes without tools, so the AI has to answer.
 reply_format (optional, per request): the reply comes back as chat bubbles, chips, a button and a tag
 (reply_format.py). It rides in a paused tool turn's state, so the reply after the tools is shaped too.
 
+Chart guard (companions.chart_guard, astrology characters): the reply's chart claims are checked by code
+against the chart the app sent (chart_check.find_wrong). Wrong -> one redo with the wrong facts listed;
+still wrong -> the handoff line (basis "handoff"), never a reply with a made-up chart fact.
+
 Logs carry ids, timings and error types only, never message text.
 """
 import asyncio
@@ -21,7 +25,8 @@ import os
 import time
 import weakref
 
-from app.companion import memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion import chart_check, memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion.birth_guard import strip_app_data
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
@@ -245,6 +250,7 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
             state["prompt"] + extra, tools, int(turn["round"]) + 1, state.get("tool_log", []) + log,
             time.monotonic(), model=model, kb=KbResult.from_json(state.get("kb")),
             reply_format=ReplyFormat(**state["reply_format"]) if state.get("reply_format") else None,
+            app_data=state.get("app_data"),
         )
     finally:
         sem.release()
@@ -310,7 +316,8 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
         playground.problem(ai_reply.describe_llm_error(exc))
-    text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion, reply_format)
+    raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb, mood, model, reply_format)
+    text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion, reply_format, chart_failed)
     text, shape = _shape(text, raw, basis, kb, companion, reply_format)
     logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
                 int((time.monotonic() - started) * 1000))
@@ -359,7 +366,7 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
                             app_data=app_data, who=who, reply_format=reply_format)
     logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
-                             model=model, kb=kb, reply_format=reply_format)
+                             model=model, kb=kb, reply_format=reply_format, app_data=app_data)
 
 
 async def _no_kb() -> None:
@@ -463,10 +470,11 @@ def _mood(conversation: dict, companion: dict) -> str:
 async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversation: dict, user_message: str,
                       prompt: list[dict], tools: list[AppTool], round_no: int, tool_log: list[dict],
                       started: float, *, model: str | None = None, kb: KbResult | None = None,
-                      reply_format: ReplyFormat | None = None) -> CompanionReply:
+                      reply_format: ReplyFormat | None = None, app_data: str | None = None) -> CompanionReply:
     """One LLM round. Either pauses for app tools (status tool_call) or finishes the reply.
     kb: the passages in the prompt. It rides along (and into a paused turn's state) so the finished
-    reply can be checked against what was really supplied. reply_format rides along the same way."""
+    reply can be checked against what was really supplied. reply_format rides along the same way, and
+    app_data too (for the chart guard; kept only when the guard is on, birth details already removed)."""
     companion_id = companion["id"]
     use_tools = bool(tools) and round_no < MAX_ROUNDS
     llm_started = time.monotonic()
@@ -495,7 +503,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         extra, log = app_tools.round_messages(provider, raw or "", calls, [], known)
         return await _run_rounds(companion, provider, tenant_id, conversation, user_message,
                                  prompt + extra, tools, round_no + 1, tool_log + log, started, model=model, kb=kb,
-                                 reply_format=reply_format)
+                                 reply_format=reply_format, app_data=app_data)
     if calls:
         state = {"prompt": prompt, "calls": calls, "assistant_text": raw or "",
                  "user_message": user_message, "tool_log": tool_log}
@@ -505,6 +513,8 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             state["kb"] = kb.to_json()
         if reply_format is not None:
             state["reply_format"] = reply_format.model_dump()
+        if app_data and companion.get("chart_guard"):
+            state["app_data"] = strip_app_data(app_data)
         turn_id = await store.create_pending_turn(
             tenant_id, companion_id, conversation["id"], state, [t.model_dump() for t in tools], round_no)
         logger.info("companion %s: paused for %d tool call(s) on round %d (llm %dms)",
@@ -513,12 +523,60 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             status="tool_call", turn_id=turn_id, conversation_id=conversation["id"],
             tool_calls=[c for c in calls if c["name"] in known],
         )
+    raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb,
+                                           _mood(conversation, companion), model, reply_format)
     return await _finish(companion, tenant_id, conversation, user_message, raw, tool_log, started, llm_ms, kb,
-                         reply_format)
+                         reply_format, chart_failed)
+
+
+async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw: str | None,
+                       app_data: str | None, kb: KbResult | None, mood: str, model: str | None,
+                       reply_format: ReplyFormat | None) -> tuple[str | None, bool]:
+    """Chart guard, part 2: (raw reply to use, handed off?). Only for chart_guard characters with a chart
+    in app_data; small talk and an already handed-off reply are not checked.
+    Example: draft "Guru is in your 7th house" (chart: Guru in Simmam, house 8; today house 1 from rasi)
+    -> one redo with that fact listed -> "Guru is in Simmam, your 8th house..." -> sent. A redo that is
+    still wrong (or fails) -> (draft, True): the person gets the handoff line, not the wrong fact."""
+    if not companion.get("chart_guard") or not app_data or is_small_talk(kb) or not _has_text(raw):
+        return raw, False
+    chart = chart_check.parse_app_data(app_data)
+    if chart.empty():
+        return raw, False
+    basis = _read_reply(raw, mood, kb, companion, reply_format)[2]
+    if basis in (None, "chat") or _handed_off(basis, companion):   # a question back, or already the handoff line
+        return raw, False
+    wrong = chart_check.find_wrong(chart, _visible(raw))
+    if not wrong:
+        return raw, False
+    ov = playground.current()
+    if ov is not None:
+        ov.note(f"Chart check: {len(wrong)} wrong fact(s), redo: " + "; ".join(wrong[:3]))
+    redo = None
+    try:
+        redo = await ai_reply._llm_chat(
+            prompt + [{"role": "assistant", "content": raw}, {"role": "user", "content": chart_check.redo_note(wrong)}],
+            max_tokens=_max_tokens(companion), tenant_id=tenant_id, purpose=LLM_PURPOSE,
+            temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
+    except Exception as exc:
+        logger.warning("companion %s: chart redo failed (%s)", companion["id"], type(exc).__name__)
+    still = chart_check.find_wrong(chart, _visible(redo)) if _has_text(redo) else wrong
+    logger.info("companion %s: chart check wrong=%d redo=%s", companion["id"], len(wrong),
+                "handoff" if still else "ok")
+    if ov is not None:
+        ov.note("Chart check: redo passed" if not still else
+                f"Chart check: redo still wrong ({'; '.join(still[:3])}), sent the handoff line")
+    return (redo, False) if not still else (raw, True)
+
+
+def _visible(raw: str | None) -> str:
+    """The reply text the person would see: no working block, no [used]/[mood] or reply_format tags."""
+    text, _ = parse_used(split_working(raw)[0] or "", 0)
+    return strip_tags(parse_mood(text, "calm")[0])
 
 
 def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, companion: dict,
-                reply_format: ReplyFormat | None = None) -> tuple[str, str, str | None, list[dict]]:
+                reply_format: ReplyFormat | None = None,
+                chart_failed: bool = False) -> tuple[str, str, str | None, list[dict]]:
     """'[mood: calm] [used: 1] Sani 7th house la…' -> (text, mood, basis, sources), both tags removed.
     The label is decided by code from the passages really supplied. An empty reply becomes the
     fallback line with no label: it came from no book and from no reasoning.
@@ -527,7 +585,8 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, compan
     character's "own" answer becomes the handoff line; the label stays "own" so the gap is counted.
     A <working> block (working_step) is cut off first; the Playground shows it.
     reply_format: a reply the model tagged as anything but an answer ([tag: need_details], a button id, ...)
-    is "chat" too, so a Strict character's helpline or "use this button" reply is not swapped for the handoff line."""
+    is "chat" too, so a Strict character's helpline or "use this button" reply is not swapped for the handoff line.
+    chart_failed: the chart guard found wrong chart facts twice -> the handoff line, basis "handoff"."""
     raw, working = split_working(raw)
     ov = playground.current()
     if ov is not None:
@@ -540,6 +599,8 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, compan
     basis, sources = label_reply(kb, used)
     if basis == "own" and (said_talk(raw) or _not_an_answer(text, reply_format)):
         basis = "chat"
+    if chart_failed:
+        basis, sources = "handoff", []
     if _handed_off(basis, companion):
         text = handoff_line(companion)
     return text, mood, basis, sources
@@ -552,8 +613,9 @@ def _not_an_answer(text: str, fmt: ReplyFormat | None) -> bool:
 
 
 def _handed_off(basis: str | None, companion: dict) -> bool:
-    """A Strict character's own-reasoning answer: _read_reply swapped it for the handoff line."""
-    return basis == "own" and companion.get("own_reasoning") is False
+    """A Strict character's own-reasoning answer, or a reply the chart guard stopped: _read_reply swapped it
+    for the handoff line."""
+    return basis == "handoff" or (basis == "own" and companion.get("own_reasoning") is False)
 
 
 def _has_text(raw: str | None, with_format: bool = False) -> bool:
@@ -580,19 +642,28 @@ def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, c
     return "\n\n".join(shaped.bubbles), shaped._asdict()
 
 
+def _logged_basis(basis: str | None, shape: dict, fmt: ReplyFormat | None) -> str | None:
+    """The question log's label. The model choosing the handoff button (e.g. "astrologer") is a question
+    the files did not answer, so it is "handoff" (on the Missing answers list), not "chat"."""
+    if basis == "chat" and fmt is not None and shape.get("button") and any(
+            b.handoff and b.id == shape["button"] for b in fmt.buttons):
+        return "handoff"
+    return basis
+
+
 def _shown_basis(basis: str | None, companion: dict) -> str | None:
     """The label the person sees. A Strict character (own_reasoning off) answers "own" with the
     handoff line; showing "own reading" on that would be wrong. The
     question log still gets "own", so the owner's missing-answers list keeps counting it."""
-    return None if basis == "own" and companion.get("own_reasoning") is False else basis
+    return None if _handed_off(basis, companion) else basis
 
 
 async def _finish(companion: dict, tenant_id: str, conversation: dict, user_message: str, raw: str | None,
                   tool_log: list[dict], started: float, llm_ms: int, kb: KbResult | None = None,
-                  reply_format: ReplyFormat | None = None) -> CompanionReply:
+                  reply_format: ReplyFormat | None = None, chart_failed: bool = False) -> CompanionReply:
     companion_id = companion["id"]
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion,
-                                             reply_format)
+                                             reply_format, chart_failed)
     text, shape = _shape(text, raw, basis, kb, companion, reply_format)
     if not _has_text(raw, with_format=reply_format is not None):
         # The AI call failed (or came back empty): the person gets the sorry line, and nothing is saved,
@@ -621,7 +692,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
         # Background, never raises: the question log keeps only the topic, never the person or the message.
         # A Playground reply with changed search settings is left out: a stricter judge would log
         # "missing answers" and shortcut misses that live chat never had.
-        kb_learning.schedule_log(tenant_id, companion_id, kb, basis, sources)
+        kb_learning.schedule_log(tenant_id, companion_id, kb, _logged_basis(basis, shape, reply_format), sources)
 
     logger.info("companion %s: reply done (llm %dms, total %dms, basis %s)", companion_id, llm_ms,
                 int((time.monotonic() - started) * 1000), basis)

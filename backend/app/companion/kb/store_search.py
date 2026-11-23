@@ -32,7 +32,7 @@ _GAPS = "companion_kb_gaps"
 _COMPANIONS = "companions"
 
 _TOPIC_MAX = 500
-_BASES = ("primary", "book", "own")
+_BASES = ("primary", "book", "own", "handoff")   # handoff: migration 319
 _SHORTCUT_STATUSES = ("active", "retired", "removed_by_owner")
 _GAP_STATUSES = ("open", "dismissed", "covered")
 _SHORTCUT_PATCH = ("uses", "misses_in_row", "status")
@@ -307,7 +307,7 @@ async def get_gap(tenant_id: str, gap_id: str) -> dict | None:
 
 
 async def add_gap(tenant_id: str, row: dict) -> dict | None:
-    """Save a gap. row is learning.gap_for_group's result: {companion_id, topic, embedding,
+    """Save a gap. row is learning.gap_change's "add" row: {companion_id, topic, embedding,
     embedding_model, ask_count, last_asked_at}. None when the character is not this business's."""
     topic, companion_id = _topic(row.get("topic")), row.get("companion_id")
     if not topic or not companion_id or not await _owns_companion(tenant_id, companion_id):

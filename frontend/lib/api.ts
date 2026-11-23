@@ -5114,6 +5114,7 @@ export interface Companion {
   full_main_resource?: boolean;
   /** Think in a hidden working block before replying; visitors never see it, the Playground does. Missing = off. */
   working_step?: boolean;
+  chart_guard?: boolean;   // astrology: no birth details to the model, replies checked against the chart
   /** Knowledge tab Mixed (true): when no file covers the question, the character answers anyway and says it is its own reading. Strict (false): that answer is replaced by handoff_line. */
   own_reasoning?: boolean;
   /** What a Strict character says instead of an answer from no file, e.g. "இதற்கு நம் ஜோதிடரிடம் கேட்பது நல்லது.". Null = the generic line in its language. */
@@ -5478,7 +5479,7 @@ export const companionsApi = {
     apiFetch<{ app_data: string | null; profile_name: string | null }>(
       `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,
     ),
-  /** Save a test person's sample app data and whose profile it is; every Playground message as them sends both. Blank clears. 422 over 4,000 characters. */
+  /** Save a test person's sample app data and whose profile it is; every Playground message as them sends both. Blank clears. 422 over 12,000 characters. */
   saveTestPersonAppData: (externalUserId: string, appData: string, profileName: string) =>
     apiFetch<{ app_data: string | null; profile_name: string | null }>(
       `${COMPANIONS}/test-people/${encodeURIComponent(externalUserId)}/app-data`,

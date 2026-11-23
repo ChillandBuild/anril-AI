@@ -101,9 +101,9 @@ export function usedText(uses: number): string {
   return uses === 1 ? "Used 1 time" : `Used ${uses} times`;
 }
 
-/** "Asked 1 time this month", "Asked 6 times this month". */
+/** "Asked 1 time", "Asked 6 times" (every ask, from the first one). */
 export function askedText(count: number): string {
-  return count === 1 ? "Asked 1 time this month" : `Asked ${count} times this month`;
+  return count === 1 ? "Asked 1 time" : `Asked ${count} times`;
 }
 
 /** "p. 88" or "pp. 88-90" for a passage's page span. */

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { companionsApi, type TestPerson } from "@/lib/api";
 import { BTN_SECONDARY, INPUT } from "@/components/agents/ui";
 
-export const APP_DATA_MAX = 4000;   // = backend models.MAX_APP_DATA_CHARS
+export const APP_DATA_MAX = 12000;   // = backend models.MAX_APP_DATA_CHARS
 export const PROFILE_NAME_MAX = 100;   // = companion_end_users.profile_name check (migration 290)
 
 /** Fired after a save so the person chips show the new profile name. detail: { external_user_id, profile_name }. */

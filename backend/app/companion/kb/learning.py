@@ -3,7 +3,10 @@
 Two things are learned from the question log (topic and passage ids only, never a person or an answer):
 1. A shortcut: 3 similar book questions that all scored the same passage 3 -> next time, look at that
    passage first and skip the full search. The judge still checks it, so a wrong shortcut costs one lookup.
-2. A gap: a topic asked 5+ times in 30 days that no document answered (basis "own") -> shown to the owner.
+2. A gap: a question no document answered (basis "own", or "handoff" when it went to a person) -> on the
+   owner's Missing answers list right away (gap_change, on every such reply). The same topic again adds 1 to
+   its ask count; a covered gap asked again opens again (the owner's answer did not help); a dismissed one
+   stays dismissed. The nightly run only marks gaps covered once a document answers the topic.
 
 Worked example. Karthik, Meena and Arun ask about Sade Sati in other words. Each log row lists
 best=[{"document_id": "book3", "page_from": 88, "page_to": 88, "score": 3}]. group_questions puts them in one
@@ -27,12 +30,13 @@ GROUP_SIMILARITY = 0.88
 SHORTCUT_MIN_QUESTIONS = 3
 SHORTCUT_SCORE = 3
 MAX_SHORTCUT_RANGES = 3
-GAP_MIN_ASKS = 5
 GAP_WINDOW_DAYS = 30
 RETIRE_MISSES = 3
 LOG_KEEP_DAYS = 90
 
 _DOC_BASES = ("primary", "book")
+_GAP_BASES = ("own", "handoff")
+_LOGGED = _DOC_BASES + _GAP_BASES
 
 
 # ---- small helpers ----
@@ -185,31 +189,25 @@ def after_use(shortcut: dict, hit: bool) -> dict:
 
 # ---- gaps ----
 
-def _own_in_window(group: list[dict], now: datetime) -> list[dict]:
-    """Own-reasoning rows created in the last GAP_WINDOW_DAYS (day 30 counts, day 31 does not)."""
-    cutoff = now - timedelta(days=GAP_WINDOW_DAYS)
-    return [r for r in group
-            if r.get("basis") == "own" and (_parse_time(r.get("created_at")) or cutoff - timedelta(days=1)) >= cutoff]
-
-
-def _newest(rows: list[dict]) -> datetime:
-    return max(_parse_time(r.get("created_at")) for r in rows)
-
-
-def gap_for_group(group: list[dict], now: datetime) -> dict | None:
-    """A gap for a group, or None. Needs GAP_MIN_ASKS own-reasoning questions inside the window."""
-    asks = _own_in_window(group, now)
-    if len(asks) < GAP_MIN_ASKS:
+def gap_change(gaps: list[dict], companion_id, topic: str, embedding, embedding_model, now: datetime):
+    """What one unanswered question does to the gap list, as data:
+    ("add", row) | ("update", gap_id, patch) | None (a dismissed topic, or no vector to compare).
+    Example: "naga dosham remedy" with no gap near it -> ("add", {..., ask_count 1}); asked again by someone
+    else in other words (cosine 0.88+) -> ("update", g1, {"ask_count": 2, ...})."""
+    if not embedding:
         return None
-    first = _oldest_first(group)[0]
-    return {
-        "companion_id": first.get("companion_id"),
-        "topic": first.get("topic"),
-        "embedding": first.get("embedding"),
-        "embedding_model": first.get("embedding_model"),
-        "ask_count": len(asks),
-        "last_asked_at": _newest(asks).isoformat(),
-    }
+    known = _best_match(embedding, embedding_model, _for_companion(gaps, companion_id), GROUP_SIMILARITY)
+    stamp = now.isoformat()
+    if known is None:
+        return ("add", {"companion_id": companion_id, "topic": topic, "embedding": embedding,
+                        "embedding_model": embedding_model, "ask_count": 1, "last_asked_at": stamp})
+    if known.get("status") == "dismissed":
+        return None
+    patch = {"ask_count": (known.get("ask_count") if _is_int(known.get("ask_count")) else 0) + 1,
+             "last_asked_at": stamp}
+    if known.get("status") == "covered":
+        patch["status"] = "open"
+    return ("update", known["id"], patch)
 
 
 # ---- nightly plan ----
@@ -236,40 +234,17 @@ def _is_covered(g: dict, questions: list[dict], threshold: float = GROUP_SIMILAR
 
 
 def plan_nightly(questions: list[dict], shortcuts: list[dict], gaps: list[dict], now: datetime) -> dict:
-    """What the nightly run should write, as plain data. No database here; the caller applies it."""
+    """What the nightly run should write, as plain data. No database here; the caller applies it.
+    Gaps are opened and counted live (gap_change); here they are only marked covered."""
     covered = {g["id"] for g in gaps if g.get("status") == "open" and g.get("embedding")
                and _is_covered(g, questions)}
-    plan = {"new_shortcuts": [], "new_gaps": [], "gap_updates": [], "covered_gap_ids": sorted(covered)}
-    updates: dict = {}
+    plan = {"new_shortcuts": [], "covered_gap_ids": sorted(covered)}
     for group in group_questions(questions):
         first = group[0]
-        cid, model, centre = first.get("companion_id"), first.get("embedding_model"), first["embedding"]
-
         shortcut = shortcut_for_group(group)
-        if shortcut and not is_known_topic(centre, model, _for_companion(shortcuts, cid)):
+        if shortcut and not is_known_topic(first["embedding"], first.get("embedding_model"),
+                                           _for_companion(shortcuts, first.get("companion_id"))):
             plan["new_shortcuts"].append(shortcut)
-
-        asks = _own_in_window(group, now)
-        if not asks:
-            continue
-        known = _best_match(centre, model, _for_companion(gaps, cid), GROUP_SIMILARITY)
-        if known is None:
-            new_gap = gap_for_group(group, now)
-            if new_gap:
-                plan["new_gaps"].append(new_gap)
-        elif known.get("status") == "open" and known["id"] not in covered:
-            # The window moves every night, so the count is re-measured, not added to the old one.
-            # Two groups close to one gap add up.
-            old = updates.get(known["id"], {"ask_count": 0, "last_asked_at": None})
-            newest = _newest(asks)
-            last = max(filter(None, (_parse_time(old["last_asked_at"]), newest)))
-            updates[known["id"]] = {"ask_count": old["ask_count"] + len(asks), "last_asked_at": last.isoformat()}
-        # dismissed and covered gaps stay as they are: never re-opened
-
-    for gap_id, upd in updates.items():
-        row = next(g for g in gaps if g["id"] == gap_id)
-        if upd["ask_count"] != row.get("ask_count") or _parse_time(upd["last_asked_at"]) != _parse_time(row.get("last_asked_at")):
-            plan["gap_updates"].append({"id": gap_id, **upd})
     return plan
 
 
@@ -290,7 +265,7 @@ def schedule_log(tenant_id: str, companion_id: str, kb: KbResult, basis: str, so
     """Called after a reply is saved. Starts the log write in the background. Never raises.
     Small talk (basis "chat"), a failed search and a message with no safe topic are not logged."""
     try:
-        if basis not in _DOC_BASES + ("own",) or kb is None or kb.failed or not (kb.topic or "").strip():
+        if basis not in _LOGGED or kb is None or kb.failed or not (kb.topic or "").strip():
             return
         task = asyncio.get_running_loop().create_task(log_question(tenant_id, companion_id, kb, basis, sources))
         _tasks.add(task)
@@ -316,9 +291,11 @@ async def log_question(tenant_id: str, companion_id: str, kb: KbResult, basis: s
     """One log row for a question that needed the books, then the shortcut's hit or miss.
     Example: Divya's Sade Sati question, answered from Book 3 p. 88 through shortcut s1 -> row
     {topic "How long does Sade Sati last?", basis "book", best [{book3, 88, 88, 3}]} and s1 gets
-    uses + 1. The message itself and the person are never written. Never raises."""
+    uses + 1. An own/handoff answer also goes on the Missing answers list (gap_change).
+    The message itself and the person are never written. Never raises."""
+    embedding = None
     try:
-        if basis not in _DOC_BASES + ("own",) or kb.failed or not (kb.topic or "").strip():
+        if basis not in _LOGGED or kb.failed or not (kb.topic or "").strip():
             return
         embedding = list(kb.topic_embedding) if kb.topic_embedding else None
         if embedding is None:  # a turn resumed after an app tool lost the vector: make it again
@@ -328,6 +305,8 @@ async def log_question(tenant_id: str, companion_id: str, kb: KbResult, basis: s
             basis=basis, best=_best_from(kb, sources) if basis in _DOC_BASES else [])
     except Exception as exc:
         logger.warning("companion kb: question log write failed (%s)", type(exc).__name__)
+    if basis in _GAP_BASES and embedding:
+        await _flag_gap(tenant_id, companion_id, kb.topic, embedding)
     try:
         if kb.shortcut_id:
             shortcut = await store_search.get_shortcut(tenant_id, kb.shortcut_id)
@@ -337,12 +316,26 @@ async def log_question(tenant_id: str, companion_id: str, kb: KbResult, basis: s
         logger.warning("companion kb: shortcut outcome write failed (%s)", type(exc).__name__)
 
 
+async def _flag_gap(tenant_id: str, companion_id: str, topic: str, embedding: list[float]) -> None:
+    """Open or bump the gap for this topic now. Never raises. Two people asking a brand-new topic in the
+    same second can open it twice; the owner sees two rows with count 1 and can dismiss one."""
+    try:
+        gaps = await store_search.list_gaps(tenant_id, companion_id=companion_id)
+        change = gap_change(gaps, companion_id, topic, embedding, memory_embed.MODEL, datetime.now(timezone.utc))
+        if change and change[0] == "add":
+            await store_search.add_gap(tenant_id, change[1])
+        elif change:
+            await store_search.update_gap(tenant_id, change[1], change[2])
+    except Exception as exc:
+        logger.warning("companion kb: gap flag failed (%s)", type(exc).__name__)
+
+
 async def _learn_for_tenant(tenant_id: str, now: datetime) -> dict:
     """One business's nightly pass: read 30 days of questions, write what plan_nightly decides."""
     since = (now - timedelta(days=GAP_WINDOW_DAYS)).isoformat()
     questions = await store_search.list_questions(tenant_id, since)
     if not questions:
-        return {"new_shortcuts": 0, "new_gaps": 0, "gap_updates": 0, "covered": 0}
+        return {"new_shortcuts": 0, "covered": 0}
     # A deleted book takes its shortcuts with it; its old log entries must not bring one back.
     cited = {b.get("document_id") for q in questions for b in q.get("best") or [] if isinstance(b, dict)}
     alive = set()
@@ -354,14 +347,9 @@ async def _learn_for_tenant(tenant_id: str, now: datetime) -> dict:
 
     plan = plan_nightly(questions, await store_search.list_shortcuts(tenant_id),
                         await store_search.list_gaps(tenant_id), now)
-    done = {"new_shortcuts": 0, "new_gaps": 0, "gap_updates": 0, "covered": 0}
+    done = {"new_shortcuts": 0, "covered": 0}
     for row in plan["new_shortcuts"]:
         done["new_shortcuts"] += bool(await store_search.add_shortcut(tenant_id, row))
-    for row in plan["new_gaps"]:
-        done["new_gaps"] += bool(await store_search.add_gap(tenant_id, row))
-    for upd in plan["gap_updates"]:
-        patch = {"ask_count": upd["ask_count"], "last_asked_at": upd["last_asked_at"]}
-        done["gap_updates"] += bool(await store_search.update_gap(tenant_id, upd["id"], patch))
     for gap_id in plan["covered_gap_ids"]:
         done["covered"] += bool(await store_search.update_gap(tenant_id, gap_id, {"status": "covered"}))
     return done
@@ -371,8 +359,7 @@ async def run_nightly(now: datetime | None = None) -> dict:
     """The nightly learning job, for every business that has log rows. One business failing does
     not stop the others. Ends with the 90-day cleanup of the log. Returns counts. Never raises."""
     now = now or datetime.now(timezone.utc)
-    totals = {"tenants": 0, "failed_tenants": 0, "new_shortcuts": 0, "new_gaps": 0, "gap_updates": 0,
-              "covered": 0, "deleted_log_rows": 0}
+    totals = {"tenants": 0, "failed_tenants": 0, "new_shortcuts": 0, "covered": 0, "deleted_log_rows": 0}
     try:
         tenants = await store_search.tenants_with_questions()
     except Exception as exc:

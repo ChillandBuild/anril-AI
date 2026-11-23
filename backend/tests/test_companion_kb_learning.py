@@ -171,39 +171,40 @@ def test_known_topic_threshold_and_model():
     assert not L.is_known_topic(A, "m1", [])
 
 
-# ---- gap_for_group ----
+# ---- gap_change: every own/handoff answer goes on the list right away ----
 
 def own(id, days_ago, **kw):
     return q(id, basis="own", best=[], days_ago=days_ago, **kw)
 
 
-def test_gap_four_vs_five_asks():
-    assert L.gap_for_group([own(str(i), i + 1) for i in range(4)], NOW) is None
-    rows = [own(str(i), i + 1) for i in range(5)]
-    out = L.gap_for_group(rows, NOW)
-    assert out == {"companion_id": "c1", "topic": "topic 4", "embedding": A, "embedding_model": "m1",
-                   "ask_count": 5, "last_asked_at": iso(1)}
+def test_gap_new_topic_opens_with_one_ask():
+    assert L.gap_change([], "c1", "naga dosham remedy", A, "m1", NOW) == (
+        "add", {"companion_id": "c1", "topic": "naga dosham remedy", "embedding": A, "embedding_model": "m1",
+                "ask_count": 1, "last_asked_at": NOW.isoformat()})
 
 
-def test_gap_window_day_30_vs_31():
-    rows = [own(str(i), 30) for i in range(5)]
-    assert L.gap_for_group(rows, NOW)["ask_count"] == 5
-    rows = [own(str(i), 31) for i in range(4)] + [own("x", 30)]
-    assert L.gap_for_group(rows, NOW) is None
-    rows = [own(str(i), 31) for i in range(5)]
-    assert L.gap_for_group(rows, NOW) is None
+def test_gap_same_topic_again_adds_one():
+    assert L.gap_change([gap(ask_count=3)], "c1", "t", vec(0.95), "m1", NOW) == (
+        "update", "g1", {"ask_count": 4, "last_asked_at": NOW.isoformat()})
 
 
-def test_gap_counts_only_own_basis():
-    rows = [own(str(i), 1) for i in range(4)] + [q("b", basis="book")]
-    assert L.gap_for_group(rows, NOW) is None
+def test_gap_covered_topic_asked_again_opens_again():
+    assert L.gap_change([gap(status="covered", ask_count=2)], "c1", "t", A, "m1", NOW) == (
+        "update", "g1", {"ask_count": 3, "last_asked_at": NOW.isoformat(), "status": "open"})
 
 
-def test_gap_handles_z_suffix_and_naive_times():
-    rows = [own(str(i), 1) for i in range(5)]
-    rows[0]["created_at"] = "2026-11-10T12:00:00Z"
-    rows[1]["created_at"] = "2026-11-10T12:00:00"
-    assert L.gap_for_group(rows, NOW)["ask_count"] == 5
+def test_gap_dismissed_topic_stays_dismissed_and_no_vector_does_nothing():
+    assert L.gap_change([gap(status="dismissed")], "c1", "t", A, "m1", NOW) is None
+    assert L.gap_change([], "c1", "t", None, "m1", NOW) is None
+
+
+def test_gap_far_topic_other_character_or_model_opens_a_new_one():
+    for g in (gap(embedding=vec(0.87)), gap(cid="c2"), gap(model="m2")):
+        assert L.gap_change([g], "c1", "t", A, "m1", NOW)[0] == "add"
+
+
+def test_gap_missing_count_starts_from_zero():
+    assert L.gap_change([gap(ask_count=None)], "c1", "t", A, "m1", NOW)[2]["ask_count"] == 1
 
 
 # ---- nearest_shortcut ----
@@ -254,16 +255,15 @@ def five_own(prefix="o", **kw):
     return [own(f"{prefix}{i}", i + 1, **kw) for i in range(5)]
 
 
-def test_plan_creates_shortcut_and_gap():
+def test_plan_creates_shortcuts_only_gaps_are_live():
     plan = L.plan_nightly(three() + five_own(embedding=[0, 1, 0]), [], [], NOW)
     assert len(plan["new_shortcuts"]) == 1 and plan["new_shortcuts"][0]["document_id"] == "d1"
-    assert len(plan["new_gaps"]) == 1 and plan["new_gaps"][0]["ask_count"] == 5
-    assert plan["gap_updates"] == [] and plan["covered_gap_ids"] == []
+    assert plan == {"new_shortcuts": plan["new_shortcuts"], "covered_gap_ids": []}
 
 
 def test_plan_below_thresholds_creates_nothing():
     plan = L.plan_nightly([q("a"), q("b")] + [own(str(i), 1, embedding=[0, 1, 0]) for i in range(4)], [], [], NOW)
-    assert plan == {"new_shortcuts": [], "new_gaps": [], "gap_updates": [], "covered_gap_ids": []}
+    assert plan == {"new_shortcuts": [], "covered_gap_ids": []}
 
 
 def test_plan_owner_removed_shortcut_is_never_relearned():
@@ -277,11 +277,9 @@ def test_plan_existing_shortcut_of_other_companion_does_not_block():
     assert len(plan["new_shortcuts"]) == 1
 
 
-def test_plan_one_shortcut_and_gap_per_group():
-    rows = three() + three("b") + five_own() + five_own("p")
-    plan = L.plan_nightly(rows, [], [], NOW)
+def test_plan_one_shortcut_per_group():
+    plan = L.plan_nightly(three() + three("b") + five_own() + five_own("p"), [], [], NOW)
     assert len(plan["new_shortcuts"]) == 1
-    assert len(plan["new_gaps"]) == 1
 
 
 def test_plan_companions_are_planned_separately():
@@ -289,28 +287,9 @@ def test_plan_companions_are_planned_separately():
     assert sorted(s["companion_id"] for s in plan["new_shortcuts"]) == ["c1", "c2"]
 
 
-def test_plan_open_gap_is_updated_not_duplicated():
-    plan = L.plan_nightly(five_own() + [own("x", 0.5)], [], [gap(ask_count=5, last=2)], NOW)
-    assert plan["new_gaps"] == []
-    assert plan["gap_updates"] == [{"id": "g1", "ask_count": 6, "last_asked_at": iso(0.5)}]
-
-
-def test_plan_open_gap_unchanged_is_not_rewritten():
-    rows = five_own()
-    g = gap(ask_count=5, last=1)
-    plan = L.plan_nightly(rows, [], [g], NOW)
-    assert plan["gap_updates"] == []
-
-
-def test_plan_dismissed_or_covered_gap_is_not_reopened():
-    for status in ("dismissed", "covered"):
-        plan = L.plan_nightly(five_own(), [], [gap(status=status)], NOW)
-        assert plan["new_gaps"] == [] and plan["gap_updates"] == []
-
-
-def test_plan_gap_of_other_companion_does_not_block():
-    plan = L.plan_nightly(five_own(), [], [gap(cid="c2")], NOW)
-    assert len(plan["new_gaps"]) == 1
+def test_plan_never_rewrites_live_gap_counts():
+    plan = L.plan_nightly(five_own() + [own("x", 0.5)], [], [gap(ask_count=9, last=2)], NOW)
+    assert plan == {"new_shortcuts": [], "covered_gap_ids": []}
 
 
 def test_plan_open_gap_covered_by_later_book_answer():
@@ -331,11 +310,9 @@ def test_plan_gap_not_covered_by_earlier_own_or_dissimilar_questions():
     assert L.plan_nightly([q("late", days_ago=0.5)], [], [gap(status="dismissed")], NOW)["covered_gap_ids"] == []
 
 
-def test_plan_covered_gap_gets_no_update():
+def test_plan_covered_gap():
     rows = five_own() + [q("late", basis="book", days_ago=0.1)]
-    plan = L.plan_nightly(rows, [], [gap(last=1.5)], NOW)
-    assert plan["covered_gap_ids"] == ["g1"]
-    assert plan["gap_updates"] == []
+    assert L.plan_nightly(rows, [], [gap(last=1.5)], NOW)["covered_gap_ids"] == ["g1"]
 
 
 def test_plan_does_not_mutate_inputs():
@@ -501,16 +478,24 @@ def test_nightly_ignores_log_entries_of_a_deleted_book(ldb):
     assert ldb.rows("companion_kb_shortcuts") == []
 
 
-def test_nightly_opens_a_gap_updates_it_and_marks_it_covered(ldb):
-    for days in (5, 4, 3, 2, 1):
-        seed_question(ldb, basis="own", days_ago=days)
-    assert asyncio.run(L.run_nightly(NOW))["new_gaps"] == 1
+def test_an_own_answer_is_on_the_list_at_once_and_a_later_book_answer_covers_it(ldb):
+    asyncio.run(L.log_question(T1, "guru", kb_result(), "own", []))
     (g,) = ldb.rows("companion_kb_gaps")
-    assert g["status"] == "open" and g["ask_count"] == 5 and g["topic"] == TOPIC
-    seed_question(ldb, basis="own", days_ago=0.5)
-    assert asyncio.run(L.run_nightly(NOW))["gap_updates"] == 1 and g["ask_count"] == 6
+    assert g["status"] == "open" and g["ask_count"] == 1 and g["topic"] == TOPIC
+    asyncio.run(L.log_question(T1, "guru", kb_result(), "handoff", []))   # asked again, went to a person
+    assert len(ldb.rows("companion_kb_gaps")) == 1 and g["ask_count"] == 2
+    assert [r["basis"] for r in log_rows(ldb)] == ["own", "handoff"]
+    g["last_asked_at"] = iso(1)
     seed_question(ldb, basis="book", days_ago=0.1)                       # the owner added a book that answers it
-    assert asyncio.run(L.run_nightly(NOW))["covered"] == 1 and g["status"] == "covered"
+    out = asyncio.run(L.run_nightly(NOW))
+    assert out["covered"] == 1 and g["status"] == "covered" and g["ask_count"] == 2
+    asyncio.run(L.log_question(T1, "guru", kb_result(), "own", []))      # the answer did not help: open again
+    assert g["status"] == "open" and g["ask_count"] == 3
+
+
+def test_a_book_answer_opens_no_gap(ldb):
+    asyncio.run(L.log_question(T1, "guru", kb_result(), "book", SRC88))
+    assert ldb.rows("companion_kb_gaps") == []
 
 
 def test_nightly_deletes_log_rows_older_than_90_days_for_every_tenant(ldb):
@@ -535,6 +520,6 @@ def test_nightly_one_failing_tenant_does_not_stop_the_others(ldb, monkeypatch):
 
     monkeypatch.setattr(store_search, "list_questions", flaky)
     out = asyncio.run(L.run_nightly(NOW))
-    assert out["failed_tenants"] == 1 and out["tenants"] == 1 and out["new_gaps"] == 1
-    assert [g["tenant_id"] for g in ldb.rows("companion_kb_gaps")] == [T2]
+    assert out["failed_tenants"] == 1 and out["tenants"] == 1
+    assert ldb.rows("companion_kb_gaps") == []          # gaps open live now, never at night
     assert ldb.rows("companion_kb_shortcuts") == []

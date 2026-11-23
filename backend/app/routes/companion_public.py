@@ -114,7 +114,7 @@ class ServerChatIn(_Body):
     display_name: str | None = Field(None, max_length=100)
     timezone: Timezone = None
     tools: list[AppTool] = Field(default_factory=list, max_length=MAX_TOOLS)
-    app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 4,000 chars)
+    app_data: AppData = None   # what your app knows about this person (text or a JSON object, up to 12,000 chars)
     reply_format: ReplyFormat | None = None   # opt in to bubbles, chips, a button and a tag (reply_format.py)
 
 
