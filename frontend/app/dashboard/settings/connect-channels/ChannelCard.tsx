@@ -46,10 +46,8 @@ export default function ChannelCard({
   return (
     <article
       className={cn(
-        "flex min-h-[270px] flex-col justify-between rounded-3xl border bg-white p-5 transition-all duration-300",
-        viaGuided
-          ? "border-primary-300/90 bg-gradient-to-b from-[#fdfcff] to-white shadow-[0_0_18px_rgba(var(--primary-600-rgb),0.18),0_2px_8px_rgba(var(--primary-600-rgb),0.08)] ring-1 ring-primary-400/25 hover:-translate-y-0.5 hover:border-primary-500 hover:shadow-[0_0_28px_rgba(var(--primary-600-rgb),0.36)]"
-          : "border-primary-200/80 shadow-[0_0_15px_rgba(var(--primary-600-rgb),0.14),0_2px_6px_rgba(var(--primary-600-rgb),0.06)] ring-1 ring-primary-300/20 hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-[0_0_25px_rgba(var(--primary-600-rgb),0.32)]"
+        "flex min-h-[240px] flex-col justify-between rounded-2xl border bg-white p-5 shadow-card",
+        viaGuided ? "border-primary-300/90" : "border-border"
       )}
     >
       <div>

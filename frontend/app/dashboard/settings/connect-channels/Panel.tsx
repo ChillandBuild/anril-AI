@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle } from "lucide-react";
-import { API_URL, getAuthHeaders } from "@/lib/api";
+import { API_URL, api, getAuthHeaders } from "@/lib/api";
+import type { MarketplaceStatus } from "@/lib/api";
 import { fetchSettings, saveSettings, startRazorpayOAuth } from "./api";
 import { CHANNELS, META_CHANNELS, buildSettingsUpdates, hasUnsavedChanges, isChannelConfigured as channelIsConfigured, resolveConnectionSource } from "./channels";
 import type { ActivateResult, ChannelConfig, EmbeddedSignupTarget, SaveState, Setting, SettingsMap, WebhookHealth } from "./channels";
@@ -9,7 +10,9 @@ import { useMetaSignup } from "./useMetaSignup";
 import { useMetaChannelSignup } from "./useMetaChannelSignup";
 import { buildDisconnectTarget, disconnectChannel } from "./disconnect";
 import type { DisconnectTarget } from "./disconnect";
-import EmbeddedSection from "./EmbeddedSection";
+import ChannelsOverview from "./ChannelsOverview";
+import MarketplaceLeadsDialog from "./MarketplaceLeadsSection";
+import type { ProviderId } from "./MarketplaceLeadsSection";
 import ManualSection from "./ManualSection";
 import ChannelConfigModal from "./ChannelConfigModal";
 import MetaAssetPickerModal from "./MetaAssetPickerModal";
@@ -49,6 +52,15 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const [razorpayBusy, setRazorpayBusy] = useState(false);
+
+  // IndiaMART / JustDial live outside the settings table; their tile state comes from here.
+  const [marketplace, setMarketplace] = useState<Record<ProviderId, MarketplaceStatus> | null>(null);
+  const [marketplaceOpen, setMarketplaceOpen] = useState<ProviderId | null>(null);
+  const [marketplaceError, setMarketplaceError] = useState(false);
+  const loadMarketplace = useCallback(() => {
+    setMarketplaceError(false);
+    api.marketplace.status().then(setMarketplace).catch(() => { setMarketplace(null); setMarketplaceError(true); });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +102,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   useEffect(() => {
     load();
     loadHealth();
+    loadMarketplace();
     async function fetchTenantStatus() {
       try {
         const auth = await getAuthHeaders();
@@ -101,7 +114,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
       } catch {}
     }
     fetchTenantStatus();
-  }, [load, loadHealth]);
+  }, [load, loadHealth, loadMarketplace]);
 
   const meta = useMetaSignup({
     canManage,
@@ -262,61 +275,71 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
   const metaConnected = META_CHANNELS.some(c => isChannelConfigured(c));
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 -mt-1 sm:-mt-2">
+    <div className="w-full space-y-5">
       {pickedUse && !metaConnected && (
         <p className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 font-body text-sm text-ink">
           {pickedUse === "keep_phone" ? (
-            <>You picked <strong>In Anril + keep my phone app</strong>. Tap <strong>WhatsApp Coexistence</strong> below.</>
+            <>You picked <strong>In Anril + keep my phone app</strong>. Open the <strong>⋯</strong> menu on WhatsApp and tap <strong>WhatsApp Coexistence</strong>.</>
           ) : (
-            <>You picked <strong>Only in Anril</strong>. Tap <strong>Connect Meta Business</strong> below.</>
+            <>You picked <strong>Only in Anril</strong>. Tap <strong>Connect</strong> on WhatsApp below.</>
           )}
         </p>
       )}
       {/* A per-card signup can fail before its picker exists — Meta granted nothing,
           or the code exchange was rejected — so that error needs a home up here. */}
-      {(error || (channelSignup.error && !channelSignup.assets)) && (
+      {(error || meta.error && !meta.assets || (channelSignup.error && !channelSignup.assets)) && (
         <div className="flex items-center gap-2 rounded-2xl border border-red-100 bg-red-50 p-3.5 text-red-700">
           <AlertCircle size={15} />
-          <span className="font-body text-sm">{error || channelSignup.error}</span>
+          <span className="font-body text-sm">{error || (!meta.assets && meta.error) || channelSignup.error}</span>
         </div>
       )}
 
       {loading ? (
         <AiraLoader inline />
       ) : (
-        <div className="space-y-6">
-          <EmbeddedSection
-            settings={settings}
-            webhookHealth={webhookHealth}
-            healthLoading={healthLoading}
-            canManage={canManage}
-            isBusy={meta.isBusy}
-            error={meta.error}
-            isConnected={metaConnected}
-            activeMode={meta.activeMode}
-            busyTarget={busyTarget}
-            onConnect={meta.startStandard}
-            onConnectCoexistence={meta.startCoexistence}
-            onEmbeddedConnect={startEmbedded}
-            onRefreshHealth={loadHealth}
-            onManageChannel={openChannelModal}
-            onDisconnect={openDisconnect}
-            razorpayConnected={CHANNELS.some(c => c.id === "razorpay" && isChannelConfigured(c))}
-            razorpayBusy={razorpayBusy}
-            onRazorpayConnect={startRazorpayConnect}
-          />
-          <ManualSection
-            settings={settings}
-            webhookHealth={webhookHealth}
-            healthLoading={healthLoading}
-            canManage={canManage}
-            busyTarget={busyTarget}
-            onRefreshHealth={loadHealth}
-            onOpenChannel={openChannelModal}
-            onEmbeddedConnect={startEmbedded}
-            onDisconnectChannel={openDisconnect}
-          />
-        </div>
+        <ChannelsOverview
+          settings={settings}
+          webhookHealth={webhookHealth}
+          healthLoading={healthLoading}
+          canManage={canManage}
+          metaConnected={metaConnected}
+          metaBusy={meta.isBusy}
+          busyTarget={busyTarget}
+          marketplace={marketplace}
+          marketplaceError={marketplaceError}
+          razorpayBusy={razorpayBusy}
+          onRefreshHealth={loadHealth}
+          onManageChannel={openChannelModal}
+          onConnectMeta={meta.startStandard}
+          onConnectCoexistence={meta.startCoexistence}
+          onEmbeddedConnect={startEmbedded}
+          onDisconnect={openDisconnect}
+          onRazorpayConnect={startRazorpayConnect}
+          onOpenMarketplace={setMarketplaceOpen}
+          advanced={
+            <ManualSection
+              settings={settings}
+              webhookHealth={webhookHealth}
+              healthLoading={healthLoading}
+              canManage={canManage}
+              busyTarget={busyTarget}
+              onRefreshHealth={loadHealth}
+              onOpenChannel={openChannelModal}
+              onEmbeddedConnect={startEmbedded}
+              onDisconnectChannel={openDisconnect}
+            />
+          }
+        />
+      )}
+
+      {marketplaceOpen && (
+        <MarketplaceLeadsDialog
+          provider={marketplaceOpen}
+          canManage={canManage}
+          status={marketplace?.[marketplaceOpen] ?? null}
+          onChanged={loadMarketplace}
+          onClose={() => setMarketplaceOpen(null)}
+        />
       )}
 
       {meta.assets && (

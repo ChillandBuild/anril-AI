@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Eye, EyeOff, Copy, Check, RefreshCw } from "lucide-react";
@@ -80,52 +79,6 @@ export function HealthRefreshButton({ loading, onClick }: { loading: boolean; on
       <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
       Refresh health
     </button>
-  );
-}
-
-export function ZephyrCourier({
-  variant,
-  compact = false,
-  className = "",
-  imageClassName = "",
-}: {
-  variant: "embedded" | "manual";
-  compact?: boolean;
-  className?: string;
-  imageClassName?: string;
-}) {
-  const isEmbedded = variant === "embedded";
-
-  if (compact) {
-    return (
-      <div className={cn("relative h-44 w-44 sm:h-48 sm:w-48", className)}>
-        <Image
-          src={isEmbedded
-            ? "/illustrations/anril-zephyr-embedded-3d.png"
-            : "/illustrations/anril-zephyr-manual-3d.png"}
-          alt={isEmbedded ? "Zephyr courier delivering a message" : "Zephyr navigator planning a connection route"}
-          fill
-          sizes="220px"
-          className={cn("object-contain", imageClassName)}
-          unoptimized
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn("relative h-48 w-full sm:h-64", className)}>
-      <Image
-        src={isEmbedded
-          ? "/illustrations/anril-zephyr-embedded-3d.png"
-          : "/illustrations/anril-zephyr-manual-3d.png"}
-        alt={isEmbedded ? "Zephyr courier delivering a message" : "Zephyr navigator planning a connection route"}
-        fill
-        sizes="(min-width: 1024px) 300px, 150px"
-        className={cn("object-contain origin-right scale-[1.3] lg:scale-[1.5]", imageClassName)}
-        unoptimized
-      />
-    </div>
   );
 }
 

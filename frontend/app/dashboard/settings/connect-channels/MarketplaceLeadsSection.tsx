@@ -1,13 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, CircleDashed, FlaskConical, RefreshCw, Store } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FlaskConical, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
 import { API_URL, MarketplaceStatus, WabaTemplate, api, getAuthHeaders } from "@/lib/api";
-import { Fact, Facts, SettingsSection } from "../SettingsSection";
-import { CopyButton, timeAgo } from "./ui";
+import { CopyButton, Portal, timeAgo } from "./ui";
 
-type ProviderId = "indiamart" | "justdial";
+export type ProviderId = "indiamart" | "justdial";
 
 const PROVIDERS: { id: ProviderId; label: string; setup: string }[] = [
   {
@@ -254,60 +253,46 @@ function WelcomeTemplatePicker({ canManage }: { canManage: boolean }) {
   );
 }
 
-export default function MarketplaceLeadsSection({ canManage = true }: { canManage?: boolean }) {
-  const [status, setStatus] = useState<Record<ProviderId, MarketplaceStatus> | null>(null);
-
-  const loadStatus = useCallback(() => {
-    api.marketplace.status().then(setStatus).catch(() => setStatus(null));
-  }, []);
-
-  useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
-
-  const connectedCount = status ? PROVIDERS.filter((p) => status[p.id]?.connected).length : 0;
-
+export default function MarketplaceLeadsDialog({
+  provider,
+  canManage,
+  status,
+  onChanged,
+  onClose,
+}: {
+  provider: ProviderId;
+  canManage: boolean;
+  status: MarketplaceStatus | null;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const p = PROVIDERS.find((x) => x.id === provider) ?? PROVIDERS[0];
   return (
-    <SettingsSection
-      id="marketplace-leads"
-      icon={Store}
-      accent="sky"
-      title="IndiaMART & JustDial"
-      description="Buyers find you on these directories and send an enquiry. Connect them and every enquiry lands here as a lead in seconds — with what they asked for — gets your WhatsApp message, and goes to the top of the call list."
-      status={status ? { label: connectedCount ? `${connectedCount} connected` : "Not connected", tone: connectedCount ? "on" : "warn" } : undefined}
-      summary={
-        status ? (
-          <Facts>
-            {PROVIDERS.map((p) => {
-              const st = status[p.id];
-              return st?.connected ? (
-                <Fact key={p.id} icon={CheckCircle2}>
-                  {p.label} · {st.leads_this_month} {st.leads_this_month === 1 ? "lead" : "leads"} this month
-                </Fact>
-              ) : (
-                <Fact key={p.id} icon={CircleDashed}>
-                  {p.label} · not connected
-                </Fact>
-              );
-            })}
-          </Facts>
-        ) : undefined
-      }
-    >
-      <div className="space-y-4">
-        <WelcomeTemplatePicker canManage={canManage} />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {PROVIDERS.map((p) => (
-            <ProviderCard
-              key={p.id}
-              {...p}
-              canManage={canManage}
-              status={status?.[p.id] ?? null}
-              onChanged={loadStatus}
-            />
-          ))}
+    <Portal>
+      <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/45 p-4 backdrop-blur-[3px] animate-fade-in">
+        <div
+          role="dialog"
+          aria-label={`${p.label} lead link`}
+          className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-y-auto rounded-card bg-surface shadow-card ring-1 ring-[#c4c7c7]/20"
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-border-subtle p-6">
+            <div>
+              <h2 className="font-display text-lg font-bold text-ink">{p.label} lead link</h2>
+              <p className="mt-1 max-w-prose font-body text-xs text-ink-muted">
+                Buyers find you on {p.label} and send an enquiry. Every enquiry lands in Leads in seconds, gets your
+                WhatsApp message, and goes to the top of the call list.
+              </p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-on-surface-muted transition-colors hover:bg-surface-low hover:text-on-surface">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="space-y-4 p-6">
+            <ProviderCard {...p} canManage={canManage} status={status} onChanged={onChanged} />
+            <WelcomeTemplatePicker canManage={canManage} />
+          </div>
         </div>
       </div>
-    </SettingsSection>
+    </Portal>
   );
 }
