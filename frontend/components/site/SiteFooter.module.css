@@ -31,7 +31,7 @@
   .lead { flex-basis: 100%; }
   .cols { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
   .cols > div { min-width: 0; }
-  .cols > div:first-child { grid-row: span 2; }
+  .cols > div:nth-child(-n + 2) { grid-row: span 2; }
   .cols a { min-height: 40px; }
   .mark { max-width: 62%; }
   .base { gap: 0 20px; }

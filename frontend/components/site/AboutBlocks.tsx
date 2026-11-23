@@ -75,7 +75,7 @@ export function WhoIsBehind() {
   return (
     <section className={ui.band} id="team" aria-labelledby="who-h">
       <span className={`${ui.kicker} ${ui.num}`}>Who is behind Anril</span>
-      <h2 className={ui.secH} id="who-h">A software team in Coimbatore</h2>
+      <h2 className={ui.secH} id="who-h">A software team in India</h2>
       <div className={s.who}>
         <div className={s.whoPhoto} data-reveal>
           <Image src={office2} alt="Bright workspace with a green wall, shared desks and large windows at the Anril AI office in Coimbatore" sizes="(max-width: 860px) 100vw, 50vw" quality={75} />

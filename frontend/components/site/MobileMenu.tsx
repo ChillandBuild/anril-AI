@@ -48,7 +48,32 @@ export function MobileMenu({ open, onClose }: Props) {
               <Link prefetch={false} href={item.href} className={s.main} onClick={onClose}>
                 {item.label}
               </Link>
-              {item.children && (
+              {item.groups ? (
+                <>
+                  {item.groups.map((g) => (
+                    <div key={g.heading}>
+                      <p className={s.subH}>{g.heading}</p>
+                      <ul className={`${s.sub} ${s.one}`}>
+                        {g.links.map((child) => (
+                          <li key={child.href}>
+                            <Link prefetch={false} href={child.href} className={s.subLink} onClick={onClose}>
+                              {child.label}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                  {item.more && (
+                    <p className={s.subMore}>
+                      {item.more.line} ·{" "}
+                      <Link prefetch={false} href={item.more.link.href} onClick={onClose}>
+                        {item.more.link.label} →
+                      </Link>
+                    </p>
+                  )}
+                </>
+              ) : item.children && (
                 <ul className={s.sub}>
                   {item.children.map((child) => (
                     <li key={child.href}>

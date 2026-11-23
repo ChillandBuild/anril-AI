@@ -7,9 +7,9 @@
 // visitor. name and phone go on the lead; company and industry are kept as
 // `extra` on the send-log row.
 
-import { CONTACT_EMAIL, INDUSTRIES } from "./content";
+import { CONTACT_EMAIL, INDUSTRIES, MORE_INDUSTRIES } from "./content";
 
-export const INDUSTRY_OPTIONS: readonly string[] = [...INDUSTRIES.map((i) => i.name), "Other"];
+export const INDUSTRY_OPTIONS: readonly string[] = [...INDUSTRIES, ...MORE_INDUSTRIES].map((i) => i.name).concat("Other");
 
 export type DemoFields = { name: string; phone: string; company: string; industry: string };
 export type DemoErrors = Partial<Record<keyof DemoFields, string>>;

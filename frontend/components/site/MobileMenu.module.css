@@ -24,6 +24,11 @@
   font: 300 1.7rem/1.1 var(--serif); letter-spacing: -0.02em; text-decoration: none;
 }
 .sub { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding-bottom: 6px; }
+/* Industries: one column on the phone, in the same order as the laptop menu. */
+.one { grid-template-columns: 1fr; }
+.subH { margin: 10px 0 0; font: 600 0.72rem var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.subMore { margin: 4px 0 8px; font-size: 0.9rem; color: var(--body); }
+.subMore a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--navy); }
 .subLink {
   display: flex; align-items: center; min-height: 44px;
   color: var(--body); font-weight: 600; font-size: 0.95rem; text-decoration: none;

@@ -56,6 +56,20 @@
 .panel[hidden] { display: none; }
 .panelLink { display: flex; align-items: center; min-height: 44px; padding: 0 18px; text-decoration: none; }
 .panelLink:hover { background: var(--grey); }
+/* Industries: two headed columns, then a closing line. Opens from the item's left edge, so it is
+   pulled left to stay on screen under a right-hand header item. */
+.wide { left: -220px; width: min(600px, calc(100vw - 32px)); padding: 0; }
+.wide ul { margin: 0; padding: 0; list-style: none; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; padding: 8px 0; }
+.cols > div + div { border-left: 1px solid var(--line); }
+.colH { margin: 0; padding: 12px 18px 6px; font: 600 0.72rem var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.wide .panelLink { min-height: 40px; }
+.panelFoot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: center;
+  margin: 0; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--grey);
+}
+.panelFoot a { font-weight: 600; text-decoration: none; }
+.panelFoot a:hover { text-decoration: underline; }
 
 .actions { display: flex; align-items: center; gap: 16px; }
 .login, .cta {
@@ -85,8 +99,12 @@
   .login { display: inline-flex; }
   .menuBtn { display: inline-flex; }
 }
-@media (max-width: 640px) { .login { display: none; } }
-@media (max-width: 480px) { .cta { display: none; } }
+/* Phones: keep Sign in beside Menu; Book a demo moves into the menu, where it leads. */
+@media (max-width: 640px) {
+  .actions { gap: 8px; }
+  .cta { display: none; }
+  .login, .menuBtn { min-height: 44px; padding: 0 14px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .hdr, .hdr * { transition: none !important; }

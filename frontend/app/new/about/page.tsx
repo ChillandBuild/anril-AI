@@ -9,9 +9,9 @@ import { Frame, Kicker } from "@/components/site/primitives";
 import { JsonLd, breadcrumbSchema } from "@/components/site/schema";
 
 export const metadata: Metadata = {
-  title: { absolute: "About Anril AI – AI Sales Platform from Coimbatore" },
+  title: { absolute: "About Anril AI – AI Agent & Sales Platform for Businesses" },
   description:
-    "Anril AI is built by Bloom Matrix in Coimbatore, Tamil Nadu. One platform to reach customers, reply with AI, take payments and track calls.",
+    "Anril AI is built by Bloom Matrix, India. One platform to reply to every enquiry with AI, reach customers on WhatsApp, take payments and track calls.",
   alternates: { canonical: "/about" },
 };
 

@@ -6,7 +6,7 @@ import type { FaqEntry } from "./schema";
 export const HOME_FAQ: readonly FaqEntry[] = [
   {
     q: "What is Anril AI?",
-    a: "Anril AI is a business growth platform from Coimbatore. It sends WhatsApp campaigns, replies to customer enquiries with AI, scores leads as Hot, Warm or Cold, takes payments and orders, and tracks telecaller calls, all in one place.",
+    a: "Anril AI is a business growth platform from India, used by businesses in India and overseas. It sends WhatsApp campaigns, replies to customer enquiries with AI, scores leads as Hot, Warm or Cold, takes payments and orders, and tracks telecaller calls, all in one place.",
   },
   {
     q: "How much does Anril AI cost?",

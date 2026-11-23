@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { AnrilLogo } from "@/components/logo";
-import { CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, HOURS, LEGAL_LINKS, MAKER, NAV, OFFICE_LINE, PHONE, SOCIAL } from "./content";
+import { ALL_INDUSTRIES_LINK, CONTACT_EMAIL, DEMO_HREF, DEMO_LABEL, HOURS, INDUSTRY_GROUPS, LEGAL_LINKS, MAKER, NAV, OFFICE_LINE, PHONE, SOCIAL } from "./content";
 import s from "./SiteFooter.module.css";
 
 const PRODUCT = NAV.find((n) => n.label === "Products")?.children ?? [];
+/** The menu's "Most popular" industries, then the page with all of them. */
+const INDUSTRY_LINKS = [...INDUSTRY_GROUPS[0].links, { ...ALL_INDUSTRIES_LINK, label: `${ALL_INDUSTRIES_LINK.label} →` }];
 const COMPANY = [
   { label: "About", href: "/about" },
   { label: "Plans", href: "/pricing" },
@@ -30,6 +32,14 @@ export function SiteFooter() {
               <h2>Product</h2>
               <ul>
                 {PRODUCT.map((l) => (
+                  <li key={l.href}><Link prefetch={false} href={l.href}>{l.label}</Link></li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2>Industries</h2>
+              <ul>
+                {INDUSTRY_LINKS.map((l) => (
                   <li key={l.href}><Link prefetch={false} href={l.href}>{l.label}</Link></li>
                 ))}
               </ul>

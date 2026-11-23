@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Building2, Camera, Car, Factory, Globe, GraduationCap, Landmark, MessageCircle, MessagesSquare, Phone, Send, Sparkles, Stethoscope, type LucideIcon } from "lucide-react";
+import { BookOpen, Building2, Camera, Globe, GraduationCap, MessageCircle, MessagesSquare, Phone, Plane, Scissors, Send, ShoppingBag, Sparkles, Stethoscope, Store, type LucideIcon } from "lucide-react";
 import ui from "./site.module.css";
-import { CHANNELS, DEMO_HREF, DEMO_LABEL, INDUSTRIES, INDUSTRY_PAGE_PATHS } from "./content";
+import { CHANNELS, DEMO_HREF, DEMO_LABEL, INDUSTRIES, industryPath } from "./content";
 import { HOME_LEAD_ROWS, LeadsPreview } from "./LeadsPreview";
 import { MarqueePause } from "./MarqueePause";
 import { Eg, Kicker } from "./primitives";
@@ -78,14 +78,19 @@ export function ProductFacts() {
 
 const INDUSTRY_ICON: Record<string, LucideIcon> = {
   education: GraduationCap,
+  coaching: BookOpen,
+  "study-abroad": Plane,
   "real-estate": Building2,
   healthcare: Stethoscope,
-  automotive: Car,
-  manufacturing: Factory,
-  "financial-services": Landmark,
+  retail: Store,
+  d2c: ShoppingBag,
+  "salons-beauty": Scissors,
 };
 
-/** Seven tiles; hovering or focusing one shows an example question and reply from that trade. */
+/** The first eight "Most popular" industries, in the menu's order. */
+const HOME_TILES = INDUSTRIES.slice(0, 8);
+
+/** Eight tiles and a ninth for every other industry; hovering or focusing one shows an example question and reply from that trade. */
 export function IndustryList() {
   return (
     <section className={`${ui.band} ${s.ind}`} id="industries" aria-labelledby="ind-h">
@@ -94,13 +99,13 @@ export function IndustryList() {
       <p className={ui.lede}>Built for businesses in India and overseas that run on enquiries.</p>
       <Eg>Hover or tap a tile for an example conversation.</Eg>
       <ul className={s.tiles}>
-        {INDUSTRIES.map((i, idx) => {
+        {HOME_TILES.map((i, idx) => {
           const Icon = INDUSTRY_ICON[i.id] ?? Sparkles;
           return (
             <li key={i.id} data-reveal style={{ "--rd": `${idx * 60}ms` } as React.CSSProperties}>
-              <Link prefetch={false} href={INDUSTRY_PAGE_PATHS[i.id]} className={s.tile}>
+              <Link prefetch={false} href={industryPath(i.id)} className={s.tile}>
                 <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
-                <span className={s.tname}>{i.name}</span>
+                <span className={s.tname}>{i.short}</span>
                 <span className={s.peek} aria-hidden="true">
                   <span>
                     <span className={s.q}>{i.example}</span>
@@ -111,13 +116,13 @@ export function IndustryList() {
             </li>
           );
         })}
-        <li data-reveal style={{ "--rd": `${INDUSTRIES.length * 60}ms` } as React.CSSProperties}>
-          <Link prefetch={false} href="/industries#more" className={`${s.tile} ${s.more}`}>
+        <li data-reveal style={{ "--rd": `${HOME_TILES.length * 60}ms` } as React.CSSProperties}>
+          <Link prefetch={false} href="/industries" className={`${s.tile} ${s.more}`}>
             <Sparkles size={22} strokeWidth={1.6} aria-hidden="true" />
-            <span className={s.tname}>Any business</span>
+            <span className={s.tname}>20+ industries</span>
             <span className={s.peek} aria-hidden="true">
               <span>
-                <span className={s.q}>Retail, travel, events, home services, hospitality</span>
+                <span className={s.q}>Jewellery, travel, events, hotels, gyms, home services and more</span>
                 <span className={s.r}>If your customers ask before they buy, Anril AI answers them.</span>
               </span>
             </span>
@@ -133,7 +138,7 @@ const HOME_MODULES = [
   { name: "Reach", text: "Bulk WhatsApp campaigns with approved templates, contact segments, scheduling and reports." },
   { name: "Engage", text: "AI replies in Tanglish or any language, Hot/Warm/Cold lead scoring, follow-ups and human handover." },
   { name: "Commerce", text: "Razorpay payment links, orders from chats, catalogue, stock alerts and dispatch status." },
-  { name: "CallIQ", text: "Understands Tamil calls, records them and shows how each telecaller is performing." },
+  { name: "CallIQ", text: "Understands calls in Tamil, English or any language, records them and shows how each telecaller is performing." },
   { name: "Anril Attract", text: "A service: we run your Instagram and Facebook posts and Meta and Google ads, and the leads flow into Anril." },
 ] as const;
 

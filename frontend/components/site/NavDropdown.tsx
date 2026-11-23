@@ -53,15 +53,44 @@ export function NavDropdown({ item }: { item: NavItem }) {
       >
         <Chevron />
       </button>
-      <ul id={panelId} className={s.panel} hidden={!open}>
-        {item.children?.map((child) => (
-          <li key={child.href}>
-            <Link prefetch={false} href={child.href} className={s.panelLink} onClick={() => setOpen(false)}>
-              {child.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {item.groups ? (
+        <div id={panelId} className={`${s.panel} ${s.wide}`} hidden={!open}>
+          <div className={s.cols}>
+            {item.groups.map((g) => (
+              <div key={g.heading}>
+                <p className={s.colH}>{g.heading}</p>
+                <ul>
+                  {g.links.map((child) => (
+                    <li key={child.href}>
+                      <Link prefetch={false} href={child.href} className={s.panelLink} onClick={() => setOpen(false)}>
+                        {child.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          {item.more && (
+            <p className={s.panelFoot}>
+              <span>{item.more.line}</span>
+              <Link prefetch={false} href={item.more.link.href} onClick={() => setOpen(false)}>
+                {item.more.link.label} →
+              </Link>
+            </p>
+          )}
+        </div>
+      ) : (
+        <ul id={panelId} className={s.panel} hidden={!open}>
+          {item.children?.map((child) => (
+            <li key={child.href}>
+              <Link prefetch={false} href={child.href} className={s.panelLink} onClick={() => setOpen(false)}>
+                {child.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

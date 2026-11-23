@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   },
   metadataBase: new URL("https://www.anrilaitech.com"),
   description:
-    "Anril AI replies to every enquiry on WhatsApp, Instagram and Facebook, scores leads, takes payments and tracks calls. Built in Coimbatore.",
+    "Anril AI replies to every enquiry on WhatsApp, Instagram and Facebook, scores leads, takes payments and tracks calls. Built in India.",
   openGraph: {
     siteName: "Anril AI",
     type: "website",

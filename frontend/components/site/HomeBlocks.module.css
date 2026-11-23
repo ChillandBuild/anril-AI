@@ -38,8 +38,8 @@
 /* Industry tiles: a quiet card that opens to show one example conversation. */
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; padding: 0; list-style: none; background: var(--line); border: 1px solid var(--line); }
 .tiles > li { background: var(--white); min-width: 0; }
-/* Seven tiles: the last one is wide, so no row is ever short. */
-.tiles > li:last-child { grid-column: span 2; }
+/* Eight tiles fill whole rows; the ninth (20+ industries) takes a row of its own. */
+.tiles > li:last-child { grid-column: 1 / -1; }
 .tile {
   display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 150px;
   padding: 22px 20px; text-decoration: none; color: var(--navy);

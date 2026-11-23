@@ -188,7 +188,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     label: "Telecaller software",
     title: "Telecaller Software with Tamil Call Analysis | Anril CallIQ",
     description:
-      "Record every sales call, understand Tamil conversations and measure each telecaller's performance. Unlimited calls and recording. Built in Coimbatore.",
+      "Record every sales call, understand Tamil conversations and measure each telecaller's performance. Unlimited calls and recording.",
     h1: "Telecaller software that understands Tamil calls",
     opening:
       "Anril CallIQ records your team's sales calls, understands Tamil conversations, and shows how each telecaller is performing. Hot leads from WhatsApp go straight to a telecaller, so your team calls the right people first.",
@@ -267,7 +267,7 @@ export const PRODUCT_PAGES: readonly Landing[] = [
     label: "Social media and ads",
     title: "Done-for-You Social Media & Ads with Leads | Anril Attract",
     description:
-      "We run your Instagram and Facebook posts plus Meta and Google ads, and every lead goes straight into Anril's AI chat. Built in Coimbatore.",
+      "We run your Instagram and Facebook posts plus Meta and Google ads, and every lead goes straight into Anril's AI chat.",
     h1: "We bring the leads. Anril answers them.",
     opening:
       "Anril Attract is a done-for-you service: we create and post your Instagram and Facebook content and run your Meta and Google ads. Every lead lands in Anril's AI chat, which replies instantly and tells you who's ready to buy.",

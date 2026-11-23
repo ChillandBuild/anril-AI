@@ -31,46 +31,94 @@ export const DEMO_LABEL = "Book a demo";
 export const DEMO_HREF = "#demo";
 export const SIGN_IN_HREF = "/login";
 
-export type Industry = { id: string; name: string; asks: string; example: string; reply: string; outcome: string };
+export type Industry = {
+  id: string;
+  name: string;
+  /** Tile name on the home page. */
+  short: string;
+  asks: string;
+  example: string;
+  reply: string;
+  outcome: string;
+};
 
-// Illustrations of how a conversation could go in each trade, marked as examples on the page.
+// The 10 "Most popular" industries, in sales-priority order (22 Nov 2026 work order). Each has a big card
+// on /industries; the first eight are also the home page tiles. Illustrations, marked as examples on the page.
 export const INDUSTRIES: readonly Industry[] = [
   {
-    id: "education", name: "Education", asks: "Course fees, batch timings, admission dates and campus visits.",
+    id: "education", name: "Education", short: "Education", asks: "Course fees, batch timings, admission dates and campus visits.",
     example: "What are the fees for the weekend batch?",
     reply: "The weekend batch starts next month, on Saturday and Sunday mornings. I can share the fee details and book you a campus visit. Which day suits you?",
     outcome: "Marked hot after asking to visit, and sent to a counsellor to call.",
   },
   {
-    id: "real-estate", name: "Real estate", asks: "Prices, floor plans, site visits and home loans.",
+    id: "coaching", name: "Coaching and training institutes", short: "Coaching", asks: "Batch timings, fees, demo classes and online or offline classes.",
+    example: "Is there a weekend batch for NEET coaching? What are the fees?",
+    reply: "Yes, we have a weekend batch. I am sharing the fee details and brochure now. Would you like to attend a demo class?",
+    outcome: "Marked hot after asking for a demo class, and sent to a counsellor to call.",
+  },
+  {
+    id: "study-abroad", name: "Study abroad", short: "Study abroad", asks: "Countries, courses, test scores, intakes and budgets.",
+    example: "I want to do an MS in Canada. Is IELTS 6.5 enough?",
+    reply: "6.5 works for many courses. Which intake are you planning, and what is your budget?",
+    outcome: "Marked hot after sharing intake and budget, and sent to a counsellor to call.",
+  },
+  {
+    id: "real-estate", name: "Real estate", short: "Real estate", asks: "Prices, floor plans, site visits and home loans.",
     example: "Is the 2 BHK still available? Can I visit on Saturday?",
     reply: "Yes, 2 BHK homes are still available. Site visits on Saturday run from 10 am. Shall I book you a slot?",
     outcome: "Marked hot after booking a visit, and sent to a sales executive to call.",
   },
   {
-    id: "healthcare", name: "Healthcare", asks: "Doctor availability, appointment slots, costs and directions.",
+    id: "healthcare", name: "Healthcare", short: "Healthcare", asks: "Doctor availability, appointment slots, costs and directions.",
     example: "Is the doctor available tomorrow evening?",
     reply: "Yes, the doctor sees patients from 5 pm to 8 pm tomorrow. Would you like me to request a slot?",
     outcome: "Marked hot after asking for a slot, and passed to the front desk to confirm.",
   },
   {
-    id: "automotive", name: "Automotive", asks: "Test drives, on-road prices, exchange offers and service bookings.",
-    example: "What is the on-road price for the automatic?",
-    reply: "I can share the on-road price for the automatic in your city. Would you also like to book a test drive?",
-    outcome: "Marked hot after asking for a test drive, and sent to a sales executive to call.",
+    id: "retail", name: "Retail shops and boutiques", short: "Retail", asks: "Prices, stock, colours, delivery and shop timings.",
+    example: "What is the price of this saree? Is green available?",
+    reply: "Yes, green is in stock. Here is the price and more photos. Shall I send you the payment link?",
+    outcome: "Paid through the payment link in the chat, and the order was created.",
   },
   {
-    id: "manufacturing", name: "Manufacturing", asks: "Specifications, minimum order quantities, quotes and delivery times.",
-    example: "Can you quote for 500 units, delivered next month?",
-    reply: "Yes, we can quote for 500 units. Please share the specification, and our team will send the quote with a delivery date.",
-    outcome: "Marked hot after asking for a quote, and sent to the sales team to call.",
+    id: "d2c", name: "D2C brands and online sellers", short: "D2C", asks: "Prices, sizes, delivery times and order status.",
+    example: "What is the price? Is size M available?",
+    reply: "Yes, size M is in stock. Here is the price. Shall I send the payment link?",
+    outcome: "Paid through the payment link in the chat, and the order was created.",
   },
   {
-    id: "financial-services", name: "Financial services", asks: "Eligibility, interest rates, documents and call backs.",
-    example: "Am I eligible for a business loan? Please call me.",
-    reply: "I can help with that. What kind of business do you run, and how long has it been trading? A loan advisor will then call you.",
-    outcome: "Marked hot after asking for a call back, and sent to a loan advisor.",
+    id: "salons-beauty", name: "Salons, beauty and spas", short: "Salons", asks: "Service prices, appointment slots, bridal packages and offers.",
+    example: "How much is the bridal makeup package?",
+    reply: "Here are our bridal packages and photos of our work. What is the wedding date?",
+    outcome: "Sent to the team as a booking request once the wedding date was shared.",
   },
+  {
+    id: "jewellery", name: "Jewellery shops", short: "Jewellery", asks: "Designs, weights, today's rate, old gold exchange and store visits.",
+    example: "Please send bridal necklace designs. My budget is around 3 lakhs.",
+    reply: "Here are some bridal designs in that range. Would you like to visit the store?",
+    outcome: "Marked hot after asking to visit, and sent to the store team to call.",
+  },
+  {
+    id: "travel-tours", name: "Travel and tours", short: "Travel", asks: "Packages, itineraries, visas and prices for their dates.",
+    example: "How much is a 3-day Kerala package for 4 people?",
+    reply: "Here is our Kerala package and itinerary. Which dates are you planning?",
+    outcome: "Marked hot after sharing travel dates, and sent to a travel expert to call.",
+  },
+];
+
+/** The other 10 industries ("More industries" in the menu), as small cards on /industries. */
+export const MORE_INDUSTRIES: readonly { id: string; name: string; text: string }[] = [
+  { id: "events-weddings", name: "Events and weddings", text: "Shares past work photos and packages, asks date, venue and budget, and sends serious clients to your team." },
+  { id: "interiors-construction", name: "Interiors and construction", text: "Shares past work photos, asks size, budget and location, and sends serious clients to your team for a site visit." },
+  { id: "gyms-fitness", name: "Gyms and fitness", text: "Answers membership and timing questions, collects trial-visit requests, and follows up when someone goes quiet." },
+  { id: "hotels-resorts", name: "Hotels and resorts", text: "Answers room, rate and facility questions from your details, and sends booking requests to your front desk." },
+  { id: "automotive", name: "Automotive", text: "Replies to price, EMI and test-drive enquiries, collects model and budget, and sends hot buyers to sales." },
+  { id: "restaurants", name: "Restaurants and cloud kitchens", text: "Shares the menu, takes party and catering enquiries, and sends them to your team." },
+  { id: "home-services", name: "Home services and repairs", text: "Collects the problem, address and preferred time, and sends the job request to your team." },
+  { id: "financial-services", name: "Financial services", text: "Answers common loan and insurance questions, collects basic details, and sends serious leads to advisors." },
+  { id: "professional-services", name: "CA, law and consultants", text: "Answers common questions, collects the client’s need, and books a call with your team. Never gives legal or tax advice." },
+  { id: "manufacturing", name: "Manufacturing and B2B", text: "Replies to buyer enquiries, collects product, quantity and location, and passes qualified leads to sales." },
 ];
 
 /** The four modules, as described in the Anril AI pamphlet. */
@@ -119,22 +167,25 @@ export const MODULES: readonly Module[] = [
 export const CHANNELS = ["WhatsApp", "Instagram", "Facebook Messenger", "Telegram", "Web chat", "Phone calls"] as const;
 
 export type NavLink = { label: string; href: string };
-export type NavItem = NavLink & { children?: readonly NavLink[] };
+export type NavGroup = { heading: string; links: readonly NavLink[] };
+export type NavItem = NavLink & {
+  children?: readonly NavLink[];
+  /** A dropdown in headed columns; `children` then holds the same links in one list. */
+  groups?: readonly NavGroup[];
+  /** A closing line and link under a grouped dropdown. */
+  more?: { line: string; link: NavLink };
+};
 
-/** Every industry in INDUSTRIES has its own page (see industry-pages.ts). */
-export const INDUSTRY_PAGE_PATHS: Record<string, string> = Object.fromEntries(INDUSTRIES.map((i) => [i.id, `/industries/${i.id}`]));
+/** Every industry has its own page (see industry-pages.ts). */
+export const industryPath = (id: string) => `/industries/${id}`;
 
-/** The Industries menu, in the order agreed on 18 Nov 2026. Keep in step with industry-pages.ts. */
-const INDUSTRY_MENU: readonly NavLink[] = [
-  { label: "Education", href: "/industries/education" },
-  { label: "Study abroad", href: "/industries/study-abroad" },
-  { label: "Real estate", href: "/industries/real-estate" },
-  { label: "Healthcare", href: "/industries/healthcare" },
-  { label: "Automotive", href: "/industries/automotive" },
-  { label: "Manufacturing", href: "/industries/manufacturing" },
-  { label: "Financial services", href: "/industries/financial-services" },
-  { label: "D2C brands", href: "/industries/d2c" },
+/** The Industries menu: two columns, in the sales-priority order of the 22 Nov 2026 work order. Keep in step with industry-pages.ts. */
+export const INDUSTRY_GROUPS: readonly NavGroup[] = [
+  { heading: "Most popular", links: INDUSTRIES.map((i) => ({ label: i.name, href: industryPath(i.id) })) },
+  { heading: "More industries", links: MORE_INDUSTRIES.map((i) => ({ label: i.name, href: industryPath(i.id) })) },
 ];
+export const ALL_INDUSTRIES_LINK: NavLink = { label: "See all industries", href: "/industries" };
+export const INDUSTRIES_LINE = "20+ industries, one AI agent";
 
 export const NAV: readonly NavItem[] = [
   {
@@ -152,7 +203,13 @@ export const NAV: readonly NavItem[] = [
     ],
   },
   { label: "Plans", href: "/pricing" },
-  { label: "Industries", href: "/industries", children: INDUSTRY_MENU },
+  {
+    label: "Industries",
+    href: "/industries",
+    children: INDUSTRY_GROUPS.flatMap((g) => g.links),
+    groups: INDUSTRY_GROUPS,
+    more: { line: INDUSTRIES_LINE, link: ALL_INDUSTRIES_LINK },
+  },
   { label: "Blog", href: "/blog" },
   {
     label: "Company",
