@@ -156,7 +156,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
                 <button
                   onClick={cockpit.handleCallNext}
                   disabled={readOnly || cockpit.dialingNext || myStatus !== "active"}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl font-label text-xs font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-2xl font-label text-xs font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                   title="Call next hot lead in queue"
                 >
                   {cockpit.dialingNext ? <RefreshCw size={12} className="animate-spin mr-1" /> : <Sparkles size={12} className="mr-1 fill-white text-white" />}

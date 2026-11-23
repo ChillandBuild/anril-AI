@@ -27,7 +27,7 @@ export interface SendDetailsViewProps {
   onCancelScheduled?: (id: string) => void;
 }
 
-const SEND = "flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 disabled:opacity-50";
+const SEND = "flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary-dark disabled:opacity-50";
 
 /**
  * Presentational: a free message inside the 24 h window, or an approved template at any time.

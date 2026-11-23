@@ -304,7 +304,7 @@ export function DealDetailDrawer({ dealId, onClose, onChanged, canManage }: Deal
                           type="button"
                           onClick={handleMarkWon}
                           disabled={busy}
-                          className="flex-1 rounded-lg bg-emerald-600 py-1.5 font-label text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          className="flex-1 rounded-lg bg-primary py-1.5 font-label text-xs font-bold text-white hover:bg-primary-dark disabled:opacity-50"
                         >
                           Confirm won
                         </button>
@@ -321,7 +321,7 @@ export function DealDetailDrawer({ dealId, onClose, onChanged, canManage }: Deal
                     <button
                       type="button"
                       onClick={() => setShowWonForm(true)}
-                      className="w-full rounded-xl bg-emerald-600 py-2 font-label text-xs font-bold text-white hover:bg-emerald-700"
+                      className="w-full rounded-xl bg-primary py-2 font-label text-xs font-bold text-white hover:bg-primary-dark"
                     >
                       Mark won
                     </button>

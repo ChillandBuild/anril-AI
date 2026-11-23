@@ -160,7 +160,7 @@ export function ConsistencyBulkSheet({ action, issues, access, isBusy, onCancel,
             onClick={() => onConfirm(issues.filter((i) => ticked.has(i.id)).map((i) => i.id))}
             disabled={isBusy || count === 0}
             aria-describedby={count === 0 ? emptyReasonId : undefined}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-ink px-4 font-label text-xs font-semibold text-white hover:bg-ink/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-primary px-4 font-label text-xs font-semibold text-white hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
           >
             {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             {verb} {count}

@@ -374,7 +374,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
                 {/* Lead header */}
                 <div className="bg-gradient-to-r from-primary-light via-white to-white rounded-2xl border border-[#e2e8f0] p-5 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary to-primary-500 text-white flex items-center justify-center font-display text-base font-bold shrink-0 shadow-sm">
+                    <div className="w-11 h-11 rounded-2xl bg-primary text-white flex items-center justify-center font-display text-base font-bold shrink-0 shadow-sm">
                       {selected.name ? selected.name.charAt(0).toUpperCase() : <User size={18} />}
                     </div>
                     <div className="min-w-0">

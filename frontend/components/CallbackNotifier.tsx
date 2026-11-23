@@ -161,7 +161,7 @@ export function CallbackNotifier() {
               <button
                 onClick={() => handleCall(cb)}
                 disabled={callingId === cb.id}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] text-white font-label text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-950/20 disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary hover:bg-primary-dark active:scale-[0.98] text-white font-label text-xs font-bold rounded-xl transition-all shadow-md shadow-primary/30 disabled:opacity-50"
               >
                 <Phone size={13} className={callingId === cb.id ? "animate-bounce" : ""} />
                 {callingId === cb.id ? "Connecting..." : "Call Now"}

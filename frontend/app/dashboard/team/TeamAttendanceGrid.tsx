@@ -234,7 +234,7 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
               onClick={handleMarkHoliday}
               disabled={markingHoliday || !canManageTeam}
               title={canManageTeam ? "Mark holiday" : "Read-only role: holiday marking is disabled"}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 disabled:blur-[0.5px] font-label text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:blur-[0.5px] font-label text-xs font-semibold transition-colors"
             >
               {markingHoliday ? <Loader2 className="animate-spin" size={12} /> : <Sun size={12} />}
               Whole Team

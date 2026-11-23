@@ -42,7 +42,7 @@ function useDial() {
 
 function CallButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 font-label text-sm font-bold text-white hover:bg-emerald-700">
+    <button type="button" onClick={onClick} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 font-label text-sm font-bold text-white hover:bg-primary-dark">
       <Phone size={14} aria-hidden /> Call
     </button>
   );

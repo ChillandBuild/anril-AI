@@ -103,7 +103,7 @@ export default function MetaAssetPickerModal({
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-border-subtle bg-surface-low p-5">
             <button type="button" onClick={onDismiss} className="rounded-xl px-3 py-2 font-label text-sm font-semibold text-ink-muted hover:bg-white">Cancel</button>
-            <button type="button" onClick={onConfirm} disabled={!canManage || isBusy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 font-label text-sm font-bold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="button" onClick={onConfirm} disabled={!canManage || isBusy} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-label text-sm font-bold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">
               {isBusy ? <><Loader2 size={16} className="animate-spin" />Connecting…</> : <>Connect Meta Business <ArrowRight size={16} /></>}
             </button>
           </div>

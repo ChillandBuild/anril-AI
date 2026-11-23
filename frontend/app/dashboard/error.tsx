@@ -34,7 +34,7 @@ export default function DashboardError({
       </p>
       <button
         onClick={reset}
-        className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl font-label text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+        className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-2xl font-label text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
       >
         <RefreshCw size={15} />
         Try again

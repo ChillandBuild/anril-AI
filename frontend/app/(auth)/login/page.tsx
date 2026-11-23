@@ -1,11 +1,13 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import localFont from "next/font/local";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, X } from "lucide-react";
-import { AnrilLogo } from "@/components/logo";
 import LoginShowcase from "@/components/auth/LoginShowcase";
+import { LoginShaders } from "@/components/auth/LoginShaders";
 import a from "@/components/auth/auth.module.css";
+import L from "@/components/auth/login.module.css";
 import {
   NO_TRIES,
   addWrongTry,
@@ -22,6 +24,16 @@ import { requestPasswordHelp } from "@/lib/firstSetupApi";
 // Off until Google is set up in Google Cloud and enabled as a Supabase provider.
 // Calling signInWithOAuth before that lands people on a raw JSON error page.
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "true";
+
+// The public site's serif, for the two headlines. Same two static weights as components/site/SiteChrome.tsx.
+const newsreader = localFont({
+  src: [
+    { path: "../../fonts/newsreader-latin-300.woff2", weight: "300", style: "normal" },
+    { path: "../../fonts/newsreader-latin-400.woff2", weight: "400", style: "normal" },
+  ],
+  variable: "--font-newsreader",
+  display: "swap",
+});
 
 const REASONS: Record<string, string> = {
   removed:
@@ -69,19 +81,6 @@ export default function LoginPage() {
   const [tries, setTries] = useState<LoginTries>(NO_TRIES);
   const [now, setNow] = useState(() => Date.now());
   const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const [peek, setPeek] = useState(false);
-  const [wide, setWide] = useState(false);
-  const [size, setSize] = useState({
-    scale: 1,
-    w: 680,
-    h: 600,
-    over: 97,
-    overX: 97,
-  });
-  const [fitted, setFitted] = useState(false);
-  const [cardH, setCardH] = useState(0);
-  const [signinH, setSigninH] = useState(0);
-  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTries(readTries());
@@ -97,53 +96,6 @@ export default function LoginPage() {
     const reason = new URLSearchParams(window.location.search).get("reason");
     if (reason && Object.hasOwn(REASONS, reason)) setError(REASONS[reason]);
   }, []);
-
-  // The showcase only mounts on wide screens, so phones skip its videos entirely.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1280px)");
-    const sync = () => setWide(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  // The card sets the height and the showcase matches it. The reset view keeps
-  // the sign-in view's height so neither box jumps when switching.
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setCardH(el.offsetHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  useEffect(() => {
-    if (view === "signin" && cardH) setSigninH(cardH);
-  }, [view, cardH]);
-
-  // The showcase fills the width left beside the card (up to 1000px) at the
-  // card's height. It's laid out at about 600 tall and zoomed, so the type and
-  // Healy / Tealy keep their size whatever the width. On short windows Healy
-  // and Tealy tuck further into the corners so they stay on screen; Tealy also
-  // tucks in sideways to stay inside the 64px left gutter.
-  useEffect(() => {
-    if (!wide || !cardH) return;
-    const fit = () => {
-      const width = Math.min(1000, window.innerWidth - 420 - 48 - 128);
-      const scale = Math.min(cardH / 600, width / 640);
-      const room = (window.innerHeight - cardH) / 2 - 6;
-      setSize({
-        scale,
-        w: width / scale,
-        h: cardH / scale,
-        over: Math.min(97, Math.max(30, room / scale + 8)),
-        overX: Math.min(97, 64 / scale + 12),
-      });
-    };
-    fit();
-    setFitted(true);
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [wide, cardH]);
 
   function clearMessages() {
     setError(null);
@@ -243,298 +195,220 @@ export default function LoginPage() {
   }
 
   return (
-    <div className={`${a.page} flex flex-col`}>
-      {/* Below 1280px: soft colour behind the compact header */}
-      <div
-        className={`${a.blob} xl:hidden`}
-        style={{
-          left: -80,
-          top: -60,
-          width: 320,
-          height: 260,
-          background: "rgba(63,188,191,.4)",
-        }}
-        aria-hidden="true"
-      />
-      <div
-        className={`${a.blob} xl:hidden`}
-        style={{
-          right: -80,
-          top: 120,
-          width: 280,
-          height: 220,
-          background: "rgba(217,150,107,.28)",
-        }}
-        aria-hidden="true"
-      />
-
-      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-8 xl:px-16 xl:py-6">
-        <div className="flex w-full max-w-[420px] flex-col gap-5 xl:max-w-none xl:w-auto xl:flex-row xl:items-center xl:gap-12">
-          {/* The showcase slot is in the server HTML and sized by CSS alone
-              (same width rule as fit() above, same height as the card), so the
-              card is already in its final spot on the first frame. Only the
-              contents mount later, and they fade in inside the slot. */}
-          <div
-            className="hidden xl:block relative shrink-0 xl:self-stretch"
-            style={{ width: "min(1000px, calc(100vw - 596px))" }}
-          >
-            {wide && fitted && (
+    <div className={`${newsreader.variable} ${L.page}`}>
+      <LoginShowcase />
+      <main className={L.side}>
+        <LoginShaders variant="light" />
+        <div className={L.card}>
+            {(error || notice) && (
               <div
-                className="absolute left-0 top-0 origin-top-left"
-                style={{ transform: `scale(${size.scale})` }}
+                role={error ? "alert" : "status"}
+                className={`${error ? a.error : a.notice} ${a.banner}`}
               >
-                <LoginShowcase
-                  width={size.w}
-                  height={size.h}
-                  over={size.over}
-                  overX={size.overX}
-                  peek={peek}
-                  flying={loading && view === "signin"}
-                />
+                <span>{error ?? notice}</span>
+                <button
+                  type="button"
+                  className={a.bannerClose}
+                  onClick={clearMessages}
+                  aria-label="Dismiss"
+                >
+                  <X size={16} />
+                </button>
               </div>
             )}
-          </div>
-          <div className="xl:hidden">
-            <div className={a.glassHeader}>
-              <h2>Every lead, answered in seconds.</h2>
-              <p>
-                WhatsApp · Instagram · Facebook, in Tamil, Tanglish and English.
-              </p>
-            </div>
-          </div>
+            {view === "signin" ? (
+              <>
+                <h1 className={L.heading}>
+                  Welcome back
+                </h1>
+                <p className={L.lead}>
+                  Sign in to your workspace
+                </p>
 
-          <div ref={cardRef} className="xl:w-[420px] xl:shrink-0">
-            <div
-              className={a.card}
-              style={
-                view === "forgot" && signinH
-                  ? { minHeight: signinH }
-                  : undefined
-              }
-            >
-              {/* Messages float over the top of the card instead of pushing the
-                  form down, so the card (and the showcase that matches it)
-                  never changes size. */}
-              {(error || notice) && (
-                <div
-                  role={error ? "alert" : "status"}
-                  className={`${error ? a.error : a.notice} ${a.banner}`}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="email" className={a.label}>
+                      Email
+                    </label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        clearMessages();
+                      }}
+                      required
+                      inputMode="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      autoComplete="email"
+                      className={L.field}
+                      placeholder="you@company.com"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="password" className={a.label}>
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        className={`${a.link} mb-2`}
+                        onClick={() => {
+                          setPhoneOrEmail(email);
+                          switchView("forgot");
+                        }}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          clearMessages();
+                        }}
+                        required
+                        autoComplete="current-password"
+                        className={`${L.field} pr-12`}
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink transition-colors"
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading || secondsLeft > 0}
+                    className={L.primary}
+                  >
+                    {secondsLeft > 0
+                      ? `Too many tries. Wait ${formatCountdown(secondsLeft)}`
+                      : loading
+                        ? "Signing in…"
+                        : "Sign in"}
+                  </button>
+                </form>
+
+                <div className={L.or}>or</div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogle}
+                  className={L.alt}
                 >
-                  <span>{error ?? notice}</span>
+                  <GoogleIcon />
+                  Continue with Google
+                </button>
+
+                <div className="mt-5 text-center">
                   <button
                     type="button"
-                    className={a.bannerClose}
-                    onClick={clearMessages}
-                    aria-label="Dismiss"
+                    onClick={handlePasskeyLogin}
+                    disabled={passkeyLoading}
+                    className={a.link}
                   >
-                    <X size={16} />
+                    {passkeyLoading ? "Verifying…" : "Use a passkey instead"}
                   </button>
                 </div>
-              )}
-              <AnrilLogo height={30} className="text-ink mb-7" />
-              {view === "signin" ? (
-                <>
-                  <h1 className="text-[26px] font-extrabold tracking-tight">
-                    Welcome back
-                  </h1>
-                  <p className="mt-1 mb-6 text-[15px] text-ink-muted">
-                    Sign in to your workspace
-                  </p>
+              </>
+            ) : (
+              <>
+                <h1 className={`${L.heading} ${L.headingSmall}`}>
+                  Forgot your password?
+                </h1>
+                <p className={L.lead}>
+                  Send a request to the Anril team. They will check it is
+                  really you and give you a new password in person or on a
+                  call, Monday to Saturday, 10 to 6. We never send passwords
+                  by email or SMS. Team members: ask your owner to set a new
+                  password in Settings, Team &amp; roles.
+                </p>
 
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                      <label htmlFor="email" className={a.label}>
-                        Email
-                      </label>
-                      <input
-                        id="email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => {
-                          setEmail(e.target.value);
-                          clearMessages();
-                        }}
-                        required
-                        inputMode="email"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        autoComplete="email"
-                        className={a.field}
-                        placeholder="you@company.com"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <label htmlFor="password" className={a.label}>
-                          Password
-                        </label>
-                        <button
-                          type="button"
-                          className={`${a.link} mb-2`}
-                          onClick={() => {
-                            setPhoneOrEmail(email);
-                            switchView("forgot");
-                          }}
-                        >
-                          Forgot password?
-                        </button>
-                      </div>
-                      <div className="relative">
-                        <input
-                          id="password"
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => {
-                            setPassword(e.target.value);
-                            clearMessages();
-                          }}
-                          onFocus={() => setPeek(true)}
-                          onBlur={() => setPeek(false)}
-                          required
-                          autoComplete="current-password"
-                          className={`${a.field} pr-12`}
-                          placeholder="••••••••"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink transition-colors"
-                          aria-label={
-                            showPassword ? "Hide password" : "Show password"
-                          }
-                        >
-                          {showPassword ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={loading || secondsLeft > 0}
-                      className={a.primary}
-                    >
-                      {secondsLeft > 0
-                        ? `Too many tries. Wait ${formatCountdown(secondsLeft)}`
-                        : loading
-                          ? "Signing in…"
-                          : "Sign in"}
-                    </button>
-                  </form>
-
-                  <div className="flex items-center gap-3 my-5">
-                    <div className="h-px flex-1 bg-[#E4DFD3]" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                      or
-                    </span>
-                    <div className="h-px flex-1 bg-[#E4DFD3]" />
+                <form onSubmit={handleHelpRequest} className="space-y-4">
+                  <div>
+                    <label htmlFor="help-who" className={a.label}>
+                      Your login email and a phone number
+                    </label>
+                    <input
+                      id="help-who"
+                      type="text"
+                      value={phoneOrEmail}
+                      onChange={(e) => {
+                        setPhoneOrEmail(e.target.value);
+                        clearMessages();
+                      }}
+                      required
+                      maxLength={120}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      className={L.field}
+                      placeholder="you@shop.com, 98765 43210"
+                    />
                   </div>
+                  <div>
+                    <label htmlFor="help-business" className={a.label}>
+                      Business name (optional)
+                    </label>
+                    <input
+                      id="help-business"
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      maxLength={120}
+                      className={L.field}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="help-note" className={a.label}>
+                      Anything we should know (optional)
+                    </label>
+                    <textarea
+                      id="help-note"
+                      value={helpNote}
+                      onChange={(e) => setHelpNote(e.target.value)}
+                      maxLength={300}
+                      rows={2}
+                      className={L.field}
+                      placeholder="For example: best time to call you"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading || !phoneOrEmail.trim()}
+                    className={L.primary}
+                  >
+                    {loading ? "Sending…" : "Send request to Anril team"}
+                  </button>
+                </form>
 
+                <div className="mt-5 text-center">
                   <button
                     type="button"
-                    onClick={handleGoogle}
-                    className={a.alt}
+                    className={a.link}
+                    onClick={() => switchView("signin")}
                   >
-                    <GoogleIcon />
-                    Continue with Google
+                    Back to sign in
                   </button>
-
-                  <div className="mt-5 text-center">
-                    <button
-                      type="button"
-                      onClick={handlePasskeyLogin}
-                      disabled={passkeyLoading}
-                      className={a.link}
-                    >
-                      {passkeyLoading ? "Verifying…" : "Use a passkey instead"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h1 className="text-[26px] font-extrabold tracking-tight">
-                    Forgot your password?
-                  </h1>
-                  <p className="mt-1 mb-6 text-[15px] text-ink-muted">
-                    Send a request to the Anril team. They will check it is
-                    really you and give you a new password in person or on a
-                    call, Monday to Saturday, 10 to 6. We never send passwords
-                    by email or SMS. Team members: ask your owner to set a new
-                    password in Settings, Team &amp; roles.
-                  </p>
-
-                  <form onSubmit={handleHelpRequest} className="space-y-4">
-                    <div>
-                      <label htmlFor="help-who" className={a.label}>
-                        Your login email and a phone number
-                      </label>
-                      <input
-                        id="help-who"
-                        type="text"
-                        value={phoneOrEmail}
-                        onChange={(e) => {
-                          setPhoneOrEmail(e.target.value);
-                          clearMessages();
-                        }}
-                        required
-                        maxLength={120}
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        className={a.field}
-                        placeholder="you@shop.com, 98765 43210"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="help-business" className={a.label}>
-                        Business name (optional)
-                      </label>
-                      <input
-                        id="help-business"
-                        type="text"
-                        value={businessName}
-                        onChange={(e) => setBusinessName(e.target.value)}
-                        maxLength={120}
-                        className={a.field}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="help-note" className={a.label}>
-                        Anything we should know (optional)
-                      </label>
-                      <textarea
-                        id="help-note"
-                        value={helpNote}
-                        onChange={(e) => setHelpNote(e.target.value)}
-                        maxLength={300}
-                        rows={2}
-                        className={a.field}
-                        placeholder="For example: best time to call you"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={loading || !phoneOrEmail.trim()}
-                      className={a.primary}
-                    >
-                      {loading ? "Sending…" : "Send request to Anril team"}
-                    </button>
-                  </form>
-
-                  <div className="mt-5 text-center">
-                    <button
-                      type="button"
-                      className={a.link}
-                      onClick={() => switchView("signin")}
-                    >
-                      Back to sign in
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+                </div>
+              </>
+            )}
         </div>
       </main>
     </div>

@@ -288,7 +288,7 @@ export default function LeadDetailPanel({
               <button
                 onClick={() => dialWithGuard(selectedLead.id, selectedLead)}
                 disabled={readOnly || dialing === selectedLead.id}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-2xl font-label text-sm font-extrabold shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.45)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-2xl font-label text-sm font-extrabold shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
                 <Phone size={14} className="fill-white" />
                 {dialing === selectedLead.id ? "Dialing…" : "Call Lead"}

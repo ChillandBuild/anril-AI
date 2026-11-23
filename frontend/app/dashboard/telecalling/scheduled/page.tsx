@@ -410,7 +410,7 @@ export default function ScheduledCallsPage() {
                             <>
                               <button
                                 onClick={() => handleCallLead(cb)}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-label text-[10px] font-bold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                                className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-label text-[10px] font-bold transition-all shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
                               >
                                 <Phone size={12} className="fill-white text-white" /> Call
                               </button>
@@ -428,7 +428,7 @@ export default function ScheduledCallsPage() {
                           {!isAssignedToMe && isTakeoverEligible && (
                             <button
                               onClick={() => handleOpenTakeoverHandoff(cb)}
-                              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-primary-600 text-white rounded-xl font-label text-[10px] font-bold hover:from-primary-dark hover:to-primary-700 transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+                              className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-label text-[10px] font-bold transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
                             >
                               <Zap size={12} className="fill-white text-white" /> Claim
                             </button>
@@ -652,7 +652,7 @@ export default function ScheduledCallsPage() {
               <button
                 onClick={() => handleConfirmTakeover(handoffCallback)}
                 disabled={takeoverLoading}
-                className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-primary to-primary-600 text-white hover:from-primary-dark hover:to-primary-700 rounded-xl font-label text-[11px] font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-label text-[11px] font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
               >
                 {takeoverLoading ? (
                   <RefreshCw size={12} className="animate-spin" />
