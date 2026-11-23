@@ -588,7 +588,7 @@ Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2
 
 ## Jothidar AI quality — open after the 20 Nov eval
 - **Style:** half the replies are written Tamil ("இருக்கிறார்") in long blocks despite rule 3 + persona. Next try: 1–2 sample lines rewritten as short spoken 3-paragraph answers (the model copies samples more than rules).
-- **Recurring wrong fact:** "புதன் ஆட்சி in ரிஷபம்" (19 Nov and 20 Nov). Proposal for the last free rule slot (39/40): say ஆட்சி/உச்சம் only when APP DATA marks it ("சொந்த வீடு").
+- ~~Recurring wrong fact "புதன் ஆட்சி in ரிஷபம்"~~ — covered by code since 23 Nov: the chart guard checks ஆட்சி/உச்சம்/நீசம் claims and redoes the reply (rule slot 39/40 still free).
 - **Rule 18 vs AstroTamil's 17 Nov key:** rule 18 lets the 2nd house count for jobs, so a Mercury (2nd lord) bhukti job window passes the rule; AstroTamil's review says Mercury alone is not a job reason. Prem to decide; recommended: AstroTamil's review wins.
 - **Timing picks:** property chose Venus bhukti over Sun (4th lord) bhukti; govt job didn't name the Sun bhukti; "wait till 2029" didn't name the Rahu dasa.
 - **Eval gaps not built:** rule 27 (no disease names) check; transit-vs-natal method check.
@@ -613,3 +613,8 @@ If a client asks for higher quality, offer it as a per-character switch, cheapes
 - search the books too only for chart questions (marriage, job, dasa), not general ones
 - always search both, main resource ranked first
 Measure first: ~10 questions where the Rule Book has the rule and a book has the detail (≈ ₹5), before/after.
+
+## Jothidar AI — open after the 23 Nov live test
+- **Per-profile memory not live:** AstroTamil's app sends no `profile_id` on /chat, so one user's profiles share one memory. Their side: send `profile_id` (and `profile_name`) per chart. Ours is built and tested (`tests/test_companion_profiles.py`).
+- **Search failure = silent own answer:** a knowledge search that fails (RemoteProtocolError, 1 in 7 days) answers with no files and logs no gap. Low priority; a single retry in `kb/search.py` would cover it.
+- **Test data left on purpose:** the car-colour answer typed in Missing answers during the test is live in "Owner answers" (Prem: keep).
