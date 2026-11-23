@@ -1,11 +1,10 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient, setLoginScope } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/api";
 import { operatorFetch } from "@/lib/operator";
-import { AnrilLogo } from "@/components/logo";
+import { ConsentView, type Busy, type Connector, type Phase } from "@/components/claude-consent-views";
 import {
   consentLoginHref,
   isSafeRedirectUrl,
@@ -13,30 +12,15 @@ import {
   type ClaudeAccessAllowResponse,
   type ClaudeAccessResponse,
   type ClientClaudeStatus,
-  type ConsentDetails,
   type ConsentKind,
   type OperatorMe,
 } from "@/lib/claude-access";
 
-type Phase =
-  | { name: "loading" }
-  | { name: "missing" }
-  | { name: "signed_out" }
-  | { name: "not_admin"; email: string }
-  | { name: "ready"; details: Extract<ConsentDetails, { kind: "pending" }>; email: string }
-  | { name: "client_ready"; details: Extract<ConsentDetails, { kind: "pending" }>; email: string; business: string; dailyCap: number }
-  | { name: "client_refused"; why: string }
-  | { name: "continue"; redirectUrl: string; host: string }
-  | { name: "already_consented"; admin: boolean }
-  | { name: "cancelled" }
-  | { name: "done" }
-  | { name: "error"; message: string };
-
-type Busy = "allow" | "deny" | null;
-
 const OPERATOR_BASE = "/api/v1/operator";
 // Anril AI, the connector a client's owner adds to their own Claude app.
 const CLIENT_BASE = "/api/v1/claude";
+
+type WhichApp = "admin" | "client" | "unknown" | null;
 
 /** Which connector is this app? A backend without the client connector yet (404) means the
  *  only connector that exists is the admin one. */
@@ -54,7 +38,7 @@ async function consentKind(clientId: string): Promise<ConsentKind> {
  * with whichever login opens it first, and this page can hold two (the operator's and a client
  * owner's). Admin app -> operator login; client app -> dashboard login. null = could not tell.
  */
-async function pickLogin(authorizationId: string): Promise<"admin" | "client" | "unknown" | null> {
+async function pickLogin(authorizationId: string): Promise<WhichApp> {
   try {
     const res = await fetch(`${API_URL}${CLIENT_BASE}/consent-app?authorization_id=${encodeURIComponent(authorizationId)}`);
     if (res.status === 404) return null; // a backend without the client connector: the admin app is the only one
@@ -66,44 +50,43 @@ async function pickLogin(authorizationId: string): Promise<"admin" | "client" | 
   }
 }
 
-/** Our own switch for this login: the admin connection for a system admin, else their client's. */
-async function ourSwitch(): Promise<{ active: boolean; admin: boolean }> {
+/**
+ * Our own switch for this login. With a known connector only that connector's switch is read;
+ * with none, the admin one first, then the client's. Never throws: a failure means "off".
+ */
+async function ourSwitch(which: WhichApp): Promise<{ active: boolean; admin: boolean; clientId: string | null }> {
   let admin = false;
-  try {
-    const access = await operatorFetch<ClaudeAccessResponse>(`${OPERATOR_BASE}/claude-access`);
-    admin = true;
-    if (access.connection?.status === "active") return { active: true, admin };
-  } catch {
-    // not a system admin: fall through to the client check
+  if (which !== "client") {
+    try {
+      const access = await operatorFetch<ClaudeAccessResponse>(`${OPERATOR_BASE}/claude-access`);
+      admin = true;
+      if (access.connection?.status === "active") return { active: true, admin, clientId: null };
+    } catch {
+      // not a system admin: fall through to the client check
+    }
+    if (which === "admin") return { active: false, admin, clientId: null };
   }
   try {
     const mine = await operatorFetch<ClientClaudeStatus>(CLIENT_BASE);
-    return { active: mine.connections.some((c) => c.status === "active"), admin };
+    return { active: mine.connections.some((c) => c.status === "active"), admin, clientId: mine.oauth_client_id };
   } catch {
-    return { active: false, admin };
+    return { active: false, admin, clientId: null };
+  }
+}
+
+type MeResult = { ok: true; me: OperatorMe } | { ok: false; status?: number; error: unknown };
+
+/** Never rejects, so it can start early and be read later without an unhandled rejection. */
+async function fetchMe(): Promise<MeResult> {
+  try {
+    return { ok: true, me: await operatorFetch<OperatorMe>(`${OPERATOR_BASE}/me`) };
+  } catch (e) {
+    return { ok: false, status: (e as { status?: number }).status, error: e };
   }
 }
 
 function errorMessage(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
-}
-
-function Shell({ children, label = "Operator Console" }: { children: React.ReactNode; label?: string }) {
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-2">
-            <AnrilLogo className="h-7 w-auto text-ink" />
-          </div>
-          <p className="text-xs text-ink-muted mt-1.5 uppercase tracking-widest font-semibold font-label">
-            {label}
-          </p>
-        </div>
-        <div className="bg-white rounded-card shadow-card border border-border p-8">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 export default function OAuthConsentPage({
@@ -135,20 +118,39 @@ export default function OAuthConsentPage({
       }
       const email = session.user.email ?? "";
 
-      const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
+      // These are independent reads, so they run together instead of one after another. The switch
+      // and the admin check are only used on the paths that need them.
+      const [{ data, error }, mine, adminCheck] = await Promise.all([
+        supabase.auth.oauth.getAuthorizationDetails(authorizationId),
+        ourSwitch(which),
+        which === "admin" ? fetchMe() : Promise.resolve(null),
+      ]);
       if (error || !data) throw new Error(error?.message || "Could not load this request");
       const details = mapAuthorizationDetails(data);
+
       if (details.kind === "already_consented") {
         // Supabase already holds this person's approval and only hands back a redirect. Never
         // follow it on our own: a link someone else started would sign THEIR Claude in as this
         // person with no click. Offer it only while our own switch is on, and make them press
         // Continue. If the switch is off, stop: the redirect carries no client id to turn it on.
-        const mine = await ourSwitch();
+        const connector: Connector = which === "admin" || (which !== "client" && mine.admin) ? "admin" : "client";
         if (isSafeRedirectUrl(details.redirectUrl) && mine.active) {
-          setPhase({ name: "continue", redirectUrl: details.redirectUrl, host: new URL(details.redirectUrl).host });
+          let business: string | undefined;
+          if (connector === "client" && mine.clientId) {
+            try {
+              const k = await consentKind(mine.clientId);
+              if (k.kind === "client" && k.can_allow) business = k.business;
+            } catch {
+              // the card still works without the business name
+            }
+          }
+          setPhase({
+            name: "continue", redirectUrl: details.redirectUrl, host: new URL(details.redirectUrl).host,
+            connector, email, business,
+          });
           return;
         }
-        setPhase({ name: "already_consented", admin: mine.admin });
+        setPhase({ name: "already_consented", admin: connector === "admin" });
         return;
       }
 
@@ -170,22 +172,19 @@ export default function OAuthConsentPage({
       }
 
       // The admin app: only an Anril system admin may allow it.
-      let me: OperatorMe;
-      try {
-        me = await operatorFetch<OperatorMe>(`${OPERATOR_BASE}/me`);
-      } catch (e) {
-        const status = (e as { status?: number }).status;
-        if (status === 401) {
+      const result = adminCheck ?? (await fetchMe());
+      if (!result.ok) {
+        if (result.status === 401) {
           router.replace(consentLoginHref(authorizationId));
           return;
         }
-        if (status === 403) {
+        if (result.status === 403) {
           setPhase({ name: "not_admin", email });
           return;
         }
-        throw e;
+        throw result.error;
       }
-      if (!me.is_system_admin) {
+      if (!result.me.is_system_admin) {
         setPhase({ name: "not_admin", email });
         return;
       }
@@ -227,7 +226,12 @@ export default function OAuthConsentPage({
     }
   }
 
-  async function handleDeny() {
+  async function handleCancel() {
+    // Reconnect card: nothing is pending at Supabase, so closing the offer is all there is to do.
+    if (phase.name === "continue") {
+      setPhase({ name: "cancelled" });
+      return;
+    }
     if ((phase.name !== "ready" && phase.name !== "client_ready") || busy) return;
     setBusy("deny");
     setActionError(null);
@@ -245,271 +249,23 @@ export default function OAuthConsentPage({
     }
   }
 
-  if (phase.name === "loading") {
-    return (
-      <Shell>
-        <div className="animate-pulse space-y-3" aria-busy="true" aria-label="Loading">
-          <div className="h-5 bg-surface-mid rounded w-4/5" />
-          <div className="h-3 bg-surface-mid rounded w-3/5" />
-          <div className="h-3 bg-surface-mid rounded w-full mt-6" />
-          <div className="h-3 bg-surface-mid rounded w-full" />
-          <div className="h-3 bg-surface-mid rounded w-5/6" />
-          <div className="flex gap-3 pt-4">
-            <div className="h-10 bg-surface-mid rounded-xl flex-1" />
-            <div className="h-10 bg-surface-mid rounded-xl flex-1" />
-          </div>
-        </div>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "missing") {
-    return (
-      <Shell>
-        <h1 className="text-base font-bold text-ink font-display">Nothing to approve</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          This page opens from the Claude app when you connect it. Start from the Claude app, or go to{" "}
-          <Link href="/operator/mcp" className="text-primary hover:underline">
-            Operator Console → MCP
-          </Link>
-          .
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "signed_out") {
-    return (
-      <Shell label="Connect to Claude">
-        <h1 className="text-base font-bold text-ink font-display">Sign in to Anril first</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          Sign in to Anril in a new tab, then come back here and continue.
-        </p>
-        <a
-          href="/login"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 block w-full text-center bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-xl text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 font-display"
-        >
-          Sign in to Anril
-        </a>
-        <button
-          type="button"
-          onClick={load}
-          className="mt-3 w-full border border-border rounded-xl py-2.5 text-sm font-medium text-ink-secondary hover:bg-surface-mid transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 font-display"
-        >
-          I have signed in, continue
-        </button>
-        <p className="text-xs text-ink-muted mt-4 font-body">
-          Anril operator?{" "}
-          <Link href={consentLoginHref(authorizationId)} className="text-primary hover:underline">
-            Sign in to the Operator Console
-          </Link>
-          .
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "client_refused") {
-    return (
-      <Shell label="Anril AI">
-        <h1 className="text-base font-bold text-ink font-display">This account cannot connect Claude</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">{phase.why}</p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "not_admin") {
-    return (
-      <Shell>
-        <h1 className="text-base font-bold text-ink font-display">Only an Anril system admin can allow this</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          {phase.email ? `You are signed in as ${phase.email}, which is not a system admin.` : "You are not signed in as a system admin."}{" "}
-          Ask a system admin to connect Claude.
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "continue") {
+  function handleContinue() {
+    if (phase.name !== "continue") return;
     const { redirectUrl } = phase;
-    return (
-      <Shell label="Connect to Claude">
-        <h1 className="text-base font-bold text-ink font-display">Sign Claude in to Anril again?</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          You allowed Claude before, and it is asking to sign in again. Continue only if you started this yourself,
-          just now, in your own Claude app.
-        </p>
-        <p className="text-sm text-danger mt-2 font-body">
-          If someone sent you this link, close this page. Continuing would connect their Claude to your account.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setPhase({ name: "done" });
-            window.location.assign(redirectUrl);
-          }}
-          className="mt-4 w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-xl text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 font-display"
-        >
-          Continue to Claude
-        </button>
-        <p className="text-xs text-ink-muted mt-3 text-center font-body">You will go back to {phase.host}</p>
-      </Shell>
-    );
+    setPhase({ name: "done" });
+    window.location.assign(redirectUrl);
   }
 
-  if (phase.name === "already_consented" && !phase.admin) {
-    return (
-      <Shell label="Anril AI">
-        <h1 className="text-base font-bold text-ink font-display">Claude is switched off for your account</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          You allowed Claude before and then disconnected it. To connect again, open Anril → Settings → Anril AI
-          for Claude, press Clear old approval, then connect from the Claude app. If that does not work, ask your
-          Anril account manager.
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "already_consented") {
-    return (
-      <Shell>
-        <h1 className="text-base font-bold text-ink font-display">Claude is already approved</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">
-          Open{" "}
-          <Link href="/operator/mcp" className="text-primary hover:underline">
-            Operator Console → MCP
-          </Link>
-          . The connection is switched off there. Press Reset sign-in on that page, then connect again from the
-          Claude app to see the Allow screen.
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "cancelled") {
-    return (
-      <Shell>
-        <h1 className="text-base font-bold text-ink font-display">Cancelled</h1>
-        <p className="text-sm text-ink-secondary mt-2 font-body">Nothing was connected.</p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "done") {
-    return (
-      <Shell>
-        <p role="status" className="text-sm font-semibold text-success text-center font-body">
-          Connected. You can go back to Claude.
-        </p>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "error") {
-    return (
-      <Shell>
-        <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-body">
-          {phase.message}
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          className="mt-4 w-full border border-border rounded-xl py-2 text-sm font-medium text-ink-secondary hover:bg-surface-mid transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 font-display"
-        >
-          Try again
-        </button>
-      </Shell>
-    );
-  }
-
-  if (phase.name === "client_ready") {
-    return (
-      <Shell label="Anril AI">
-        <h1 className="text-base font-bold text-ink font-display">
-          {phase.details.clientName} wants to use your Anril account
-        </h1>
-        <p className="text-xs text-ink-muted mt-1 font-body">
-          Signed in as {phase.email} · owner of {phase.business}
-        </p>
-        <ul className="list-disc pl-[18px] my-4 space-y-1.5 text-sm text-ink-secondary font-body">
-          <li>Read your leads, phone numbers, chats, calls and broadcasts</li>
-          <li>Assign leads and add notes to them</li>
-          <li className="text-danger">
-            Send WhatsApp messages and template broadcasts to your customers, up to {phase.dailyCap.toLocaleString("en-IN")} a day
-          </li>
-        </ul>
-        <p className="text-xs text-ink-muted mb-4 font-body">
-          What Claude reads here (lead names, phone numbers and chats) is sent to Claude, which is run by Anthropic.
-          It cannot touch payments, your team, settings or any other business.
-        </p>
-        {actionError && (
-          <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-body">
-            {actionError}
-          </div>
-        )}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={handleDeny}
-            disabled={busy !== null}
-            className="flex-1 border border-border rounded-xl py-2.5 text-sm font-medium text-ink-secondary hover:bg-surface-mid transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 font-display"
-          >
-            {busy === "deny" ? "Cancelling..." : "Cancel"}
-          </button>
-          <button
-            type="button"
-            onClick={handleAllow}
-            disabled={busy !== null}
-            className="flex-1 bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 font-display"
-          >
-            {busy === "allow" ? "Allowing..." : "Allow"}
-          </button>
-        </div>
-        <p className="text-xs text-ink-muted mt-4 font-body">
-          You can switch this off, or change the daily limit, any time in Anril → Settings.
-        </p>
-      </Shell>
-    );
-  }
-
-  const { details, email } = phase;
   return (
-    <Shell>
-      <h1 className="text-base font-bold text-ink font-display">{details.clientName} wants to read Anril Operator data</h1>
-      <p className="text-xs text-ink-muted mt-1 font-body">Signed in as {email} · system admin</p>
-      <ul className="list-disc pl-[18px] my-4 space-y-1.5 text-sm text-ink-secondary font-body">
-        <li>Read every client&apos;s leads, phone numbers and chats</li>
-        <li>Read health, usage, AI spend and audit log</li>
-        <li className="text-danger">Cannot send, change or delete anything</li>
-      </ul>
-      {actionError && (
-        <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-body">
-          {actionError}
-        </div>
-      )}
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handleDeny}
-          disabled={busy !== null}
-          className="flex-1 border border-border rounded-xl py-2.5 text-sm font-medium text-ink-secondary hover:bg-surface-mid transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 font-display"
-        >
-          {busy === "deny" ? "Cancelling..." : "Cancel"}
-        </button>
-        <button
-          type="button"
-          onClick={handleAllow}
-          disabled={busy !== null}
-          className="flex-1 bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 font-display"
-        >
-          {busy === "allow" ? "Allowing..." : "Allow"}
-        </button>
-      </div>
-      <p className="text-xs text-ink-muted mt-4 font-body">
-        You can switch this off any time in Operator Console → MCP.
-      </p>
-    </Shell>
+    <ConsentView
+      phase={phase}
+      busy={busy}
+      actionError={actionError}
+      authorizationId={authorizationId}
+      onAllow={handleAllow}
+      onCancel={handleCancel}
+      onContinue={handleContinue}
+      onRetry={load}
+    />
   );
 }
