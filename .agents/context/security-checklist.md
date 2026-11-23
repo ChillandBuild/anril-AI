@@ -9,6 +9,7 @@ Read this when touching: auth, webhooks (WhatsApp/Instagram/Facebook/Telegram), 
 4. **Provider keys are per-tenant** — never add a platform-level fallback key for AI/WhatsApp/Voice providers (see stack-and-rules.md Provider Decisions). A shared fallback key is a tenant-isolation break, not just a config smell.
 5. **Call recordings** — Supabase Storage only, never local disk (invariant #5). Check any new recording-handling code doesn't write to `/tmp` or similar and forget to clean up.
 6. **Broadcast gate** — bulk-send must reject leads with null `opt_in_source`; DNC (`do_not_call`) and `opted_out` are separate flags, don't conflate.
+7. **Client IP = `_client_ip(request)` only** (`routes/auto_messages.py`) — for every per-IP rate limit, IP log or IP check. Never `request.client.host`, `X-Forwarded-For`, `True-Client-IP` or slowapi's `get_remote_address`. On Render, uvicorn replaces `request.client` with the leftmost X-Forwarded-For entry, which the caller types (proven live 2026-11-23: `X-Forwarded-For: 203.0.113.77` was logged as `203.0.113.77:0`). `_client_ip` reads `CF-Connecting-IP`, which Cloudflare overwrites and won't accept from a client (403, error 1000). Unit tests can't show this: prove any change to IP trust with a live spoofed-header request against Render (commits 8e5caa17, 75cc8944).
 
 ## Standard checklist (apply per OWASP-style categories — see skill `security-review` for full code patterns)
 - **Secrets**: env vars only, never in source; check `.env` files aren't committed before any commit.
