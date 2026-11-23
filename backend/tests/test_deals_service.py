@@ -465,3 +465,22 @@ def test_expire_deal_link_ignores_other_tenants_and_settled_deals():
     assert expire_deal_link("t1", other["id"], db=db) is False
     assert expire_deal_link("t1", won["id"], db=db) is False
     assert all(r["payment_link"] for r in db.rows("deals"))
+
+
+@pytest.mark.asyncio
+async def test_an_order_created_already_paid_takes_its_property_units(db):
+    """Record payment 'paid now' creates the order already won: its property units must come off too."""
+    seen = []
+    with patch("app.services.properties.on_deal_paid", side_effect=lambda _db, t, d: seen.append((t, d)) or 1):
+        result = await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 1}], "walk_in", "won",
+                                         payment_method="cash", db=db)
+    assert seen == [(TENANT, result["deal"]["id"])]
+
+
+@pytest.mark.asyncio
+async def test_a_quoted_order_takes_no_property_units_yet(db):
+    seen = []
+    with patch("app.services.properties.on_deal_paid", side_effect=lambda *a: seen.append(a) or 0), \
+         patch.object(deals, "send_payment_link"):
+        await deals.create_deal(TENANT, "lead-1", [{"catalog_item_id": "earbuds", "qty": 1}], "walk_in", "quoted", db=db)
+    assert seen == []

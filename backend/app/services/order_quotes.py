@@ -201,7 +201,9 @@ async def create_quote(db, tenant_id: str, data: dict, *, user_id: str | None = 
     shop_advance = order_advance(db, tenant_id, lines, total)
     advance = shop_advance if asked.get("kind") == "rule" else advance_for(total, rule)
     advance_note = None
-    if asked.get("kind") != "rule" and shop_rule["kind"] != "none" and advance != shop_advance:
+    # Logged whenever staff move away from "the rule" to a different amount, including a shop with no rule of
+    # its own whose items carry one (same as a counter bill).
+    if asked.get("kind") != "rule" and advance != shop_advance:
         advance_note = (f"Advance rule {rule_text(shop_rule)} ({_rupees(shop_advance)}). "
                         f"Staff changed it to {_rupees(advance)} for this order.")
     ready = data.get("ready_in_days")

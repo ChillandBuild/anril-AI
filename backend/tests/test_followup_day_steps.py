@@ -235,3 +235,30 @@ async def test_log_is_written_even_if_reason_column_is_missing(db, engine):
     with patch.object(db, "table", side_effect=table):
         await _run(_step(db), _lead(db), db, MON_NOON_IST)
     assert db.rows("reengagement_logs")[0]["status"] == "failed"
+
+
+# ---------------------------------------------------------------- every page of leads (bug: 1000-row cap)
+
+@pytest.mark.asyncio
+async def test_inbound_step_reaches_people_past_the_first_1000(db):
+    """A business with more than 1000 quiet leads used to have everyone past row 1000 skipped silently."""
+    db.max_rows = 1000
+    db.add("reengagement_steps", tenant_id=T, type="inbound", delay_hours=2, target_segments=["Hot"],
+           message_type="template", template_name="promo")
+    old = "2026-11-20T00:00:00+00:00"
+    for i in range(1205):
+        db.add("leads", tenant_id=T, name=f"L{i}", phone=f"91{i:08d}", segment="Hot", last_inbound_at=old)
+    db.add("leads", tenant_id=T, name="Cold", phone="9100", segment="Cold", last_inbound_at=old)
+    db.add("leads", tenant_id=T, name="Fresh", phone="9101", segment="Hot", last_inbound_at="2026-11-23T06:00:00+00:00")
+    seen = []
+
+    async def fake_send(_db, _t, lead, _step):
+        seen.append(lead["name"])
+        return True
+
+    with patch.object(svc, "get_supabase", return_value=db), patch.object(svc, "utcnow", return_value=MON_NOON_IST), \
+         patch.object(svc, "_send_reengagement", new=fake_send), \
+         patch.object(svc, "_already_processed_lead_ids", return_value=set(), create=True):
+        await svc.process_due_reengagements()
+    assert len(seen) == 1205
+    assert "Cold" not in seen and "Fresh" not in seen

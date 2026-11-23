@@ -176,10 +176,11 @@ def test_a_simple_bill_from_a_composition_shop_prints_a_bill_of_supply_with_no_t
     assert [l["gst_rate"] for l in bill["lines"]] == [None, None]
 
 
-def test_a_simple_bill_from_an_unregistered_shop_prints_a_bill_of_supply(db):
+def test_a_simple_bill_from_an_unregistered_shop_is_a_plain_bill(db):
+    """A "Bill of supply" is a GST document for registered (composition) shops; an unregistered shop issues a plain Bill."""
     bill = bill_brand.decorate({"bill_type": "simple", "gst_paise": 0, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
                                 "lines": [{"gst_rate": None}]}, db, T, {"gst_type": "none"})
-    assert bill["title"] == "Bill of supply"
+    assert "title" not in bill  # the page and PDF then say "Bill"
     assert "composition" not in bill  # the composition note is for composition shops only
     assert bill["gst_paise"] == 0
 

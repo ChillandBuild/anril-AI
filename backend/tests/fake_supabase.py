@@ -522,6 +522,9 @@ class _Query:
         rows = rows[self._offset:]
         if self._limit is not None:
             rows = rows[: self._limit]
+        cap = getattr(self.db, "max_rows", None)  # like PostgREST's 1000-row answer cap, when a test sets it
+        if cap is not None:
+            rows = rows[:cap]
         if self._single:
             return SimpleNamespace(data=rows[0] if rows else None, count=total)
         return SimpleNamespace(data=rows, count=total)

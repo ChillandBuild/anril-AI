@@ -645,7 +645,11 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 - Nothing emits a "number_disconnected" alert yet (key reserved in quiet-time allow list).
 - Password help: no operator-console screen for `GET /api/v1/password-help/requests` yet; first-login rule uses user_metadata (helper, not a wall); set PASSWORD_HELP_SALT on Render (falls back to the service key).
 - Evening summary needs template `anril_evening_summary` approved per business (Automations page has a Submit button).
+<<<<<<< HEAD
 - services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply" (Keerthi; note in docs/notes-for-keerthi/bill-prefix.md).
 
 ## Catalogue "Insights" tab — deferred (2026-11-23)
 - Every other commerce screen (Shop & godown, batches, barcodes, stock count, expenses, purchases gaps, staff per place, item advance + AI card) is built, live (309–315) and browser-checked. The user said to leave Insights for now. Nothing has been built for it.
+=======
+- ~~services/bill_files.py does not yet print logo, signature, UPI, bank, terms or "Bill of supply"~~ done in 1e4227b6 (bill_brand.py); UPI still prints as text, no QR.
+>>>>>>> 54ffe218832d5ef7b33065c0d1b200839eff33ea

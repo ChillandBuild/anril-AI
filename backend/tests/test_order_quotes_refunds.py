@@ -251,3 +251,15 @@ def test_the_accept_button_confirms_the_quote_instead_of_an_ai_reply():
             lead_id="L1", tenant_id=T, phone="+919840277889", body="Ask a question", msg_type="button",
             interactive_id=f"quote_ask:{DEAL}"))
     assert accepted.await_count == 1 and reply.await_count == 1  # Ask goes to the AI as a normal message
+
+
+def test_staff_changing_an_item_rule_advance_is_logged_even_when_the_shop_has_no_rule(db):
+    """Shop rule "none" but the item asks an advance: staff typing a different amount must still be logged."""
+    logged = []
+    with patch.object(quotes, "advance_rule", return_value={"kind": "none"}), \
+         patch.object(quotes, "order_advance", return_value=1000000), \
+         patch.object(orders, "log_advance_change", side_effect=lambda *a, **k: logged.append(k)), \
+         patch.object(orders, "notify", AsyncMock(return_value={"sent": True})):
+        run(quotes.create_quote(db, T, {"lead_id": "L1", "items": [{"catalog_item_id": "saree", "qty": 100}],
+                                        "advance": {"kind": "fixed", "value": 5000}}, send=False))
+    assert logged and logged[0]["from_paise"] == 1000000 and logged[0]["to_paise"] == 500000
