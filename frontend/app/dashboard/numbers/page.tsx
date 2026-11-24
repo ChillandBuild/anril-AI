@@ -954,31 +954,16 @@ function NumbersPageContent() {
             />
           )}
 
-          {/* ── Which number does what (read only: how the senders work today) ── */}
-          {!loading && visible.length > 0 && (
-            <NumberJobsPanel
-              jobs={jobs}
-              numbers={visible}
-              canManage={canManageNumbers}
-              onPick={async (job, numberId) => {
-                try {
-                  await numbersApi.pickSender(job, numberId);
-                  await reload();
-                  toast.success(numberId ? "Saved. That number sends this from now on." : "Saved. Back to Automatic.");
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Couldn't save the number");
-                }
-              }}
-            />
-          )}
-
+          {/* Wide screens: numbers on the left, "Which number does what" on the right.
+              Narrower: the three dropdowns sit in one strip above the numbers. */}
+          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_400px] 2xl:items-start">
           {/* ── Main Numbers Card ───────────────────────────────────────────── */}
           <div className="rounded-2xl bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 md:rounded-card md:p-8 space-y-6">
             {/* Control Bar: Title + Search + Filters + Sync */}
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between pb-2 border-b border-border/70">
-              <div className="flex items-center gap-3">
-                <h2 className="font-display text-xl font-bold text-on-surface">Sender Numbers</h2>
-                <span className="font-label text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="font-display text-xl font-bold text-on-surface whitespace-nowrap">Sender Numbers</h2>
+                <span className="whitespace-nowrap font-label text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
                   {visible.length} total
                 </span>
                 {!showTierGuide && (
@@ -987,7 +972,7 @@ function NumbersPageContent() {
                       setShowTierGuide(true);
                       setTierGuideOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-label font-bold text-primary bg-primary-50 hover:bg-primary-100 border border-primary-200/80 transition-colors"
+                    className="inline-flex whitespace-nowrap items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-label font-bold text-primary bg-primary-50 hover:bg-primary-100 border border-primary-200/80 transition-colors"
                     title="Re-open WhatsApp messaging limits and tier guide"
                   >
                     <Info size={12} />
@@ -1431,6 +1416,27 @@ function NumbersPageContent() {
                 })}
               </div>
               </>
+            )}
+          </div>
+
+            {/* ── Which number does what: a number for Reach, OTP codes and alerts ── */}
+            {!loading && visible.length > 0 && (
+            <div className="order-first 2xl:order-none 2xl:sticky 2xl:top-4">
+              <NumberJobsPanel
+                jobs={jobs}
+                numbers={visible}
+                canManage={canManageNumbers}
+                onPick={async (job, numberId) => {
+                  try {
+                    await numbersApi.pickSender(job, numberId);
+                    await reload();
+                    toast.success(numberId ? "Saved. That number sends this from now on." : "Saved. Back to Automatic.");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Couldn't save the number");
+                  }
+                }}
+              />
+            </div>
             )}
           </div>
         </>
