@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from app.db.supabase import get_supabase
 from app.services.actor import sender_fields
+from app.services.outbound_router import reply_number_for
 from app.dependencies.tenant import require_permission
 from app.services.meta_cloud import (
     download_media_from_meta,
@@ -68,7 +69,7 @@ async def send_media_to_lead(
     # --- Fetch lead ---
     lead = (
         db.table("leads")
-        .select("phone,source")
+        .select("phone,source,last_inbound_phone_number_id")
         .eq("id", str(lead_id))
         .eq("tenant_id", tenant_id)
         .maybe_single()
@@ -115,12 +116,18 @@ async def send_media_to_lead(
     if file_size == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    # This business's own credentials, from the number the customer wrote to (else the primary).
+    # The upload goes to the same number that sends it.
+    from_number = reply_number_for(db, tenant_id, lead.data.get("last_inbound_phone_number_id"))
+
     # --- Upload to Meta ---
     try:
         media_id = await upload_media_to_meta(
             file_bytes=file_bytes,
             mime_type=mime_type,
             filename=filename,
+            phone_number_id=from_number,
+            tenant_id=tenant_id,
         )
     except HTTPException:
         raise
@@ -136,6 +143,8 @@ async def send_media_to_lead(
             wa_type=wa_type,
             filename=filename if wa_type == "document" else None,
             caption=caption.strip() if caption else None,
+            phone_number_id=from_number,
+            tenant_id=tenant_id,
         )
     except HTTPException:
         raise

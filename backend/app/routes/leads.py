@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.config import settings
 from app.db.supabase import get_supabase
 from app.services.actor import actor_name, sender_fields
+from app.services.outbound_router import reply_number_for
 from app.services.call_evaluation import strip_evaluation
 from app.services.call_transcript import mask_transcripts
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, get_owner_tenant_id, require_permission
@@ -1607,7 +1608,7 @@ async def send_human_message(
         raise HTTPException(status_code=400, detail="Message is empty")
 
     db = get_supabase()
-    lead = db.table("leads").select("phone,source,ig_user_id,tg_user_id,fb_user_id,blocked_at").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
+    lead = db.table("leads").select("phone,source,ig_user_id,tg_user_id,fb_user_id,blocked_at,last_inbound_phone_number_id").eq("id", str(lead_id)).eq("tenant_id", tenant_id).maybe_single().execute()
     if not lead.data:
         raise HTTPException(status_code=404, detail="Lead not found")
     if lead.data.get("blocked_at"):
@@ -1642,7 +1643,9 @@ async def send_human_message(
         phone = lead.data.get("phone")
         if not phone:
             raise HTTPException(status_code=400, detail="Lead has no phone number")
-        sid = await send_whatsapp(phone, content, tenant_id=tenant_id)
+        # Same number the customer wrote to (their chat, their 24-hour window); else the primary.
+        from_number = reply_number_for(db, tenant_id, lead.data.get("last_inbound_phone_number_id"))
+        sid = await send_whatsapp(phone, content, tenant_id=tenant_id, phone_number_id=from_number)
 
     if not sid:
         meta_err = get_last_send_error() or "unknown error"
@@ -1783,7 +1786,9 @@ async def compose_new_message(
         except ShareError as e:
             raise HTTPException(status_code=400, detail=str(e))
     else:
-        sid = await send_whatsapp(phone, content, tenant_id=tenant_id)
+        known = db.table("leads").select("last_inbound_phone_number_id").eq("id", lead_id).eq("tenant_id", tenant_id).limit(1).execute().data or []
+        from_number = reply_number_for(db, tenant_id, (known[0] if known else {}).get("last_inbound_phone_number_id"))
+        sid = await send_whatsapp(phone, content, tenant_id=tenant_id, phone_number_id=from_number)
     if not sid:
         meta_err = get_last_send_error() or "unknown error"
         # Note: outside 24h window, freeform text fails — Meta requires templates

@@ -156,6 +156,29 @@ class SenderPicker:
         return ", ".join(self.used_numbers) or None
 
 
+def reply_number_for(db, tenant_id: str, last_inbound_phone_number_id: str | None) -> str | None:
+    """The number a staff reply should go from: the one the customer last wrote to, when it is
+    still one of this business's numbers. WhatsApp's 24-hour window is per number, and a reply
+    from another number opens a separate chat on the customer's phone. None = the primary
+    (meta_cloud falls back to meta_phone_number_id) -- for someone who never wrote in, or whose
+    number was removed. Checked against this tenant's own rows, so it can never pick another
+    business's number."""
+    if not last_inbound_phone_number_id:
+        return None
+    try:
+        rows = (
+            db.table("phone_numbers").select("id")
+            .eq("tenant_id", tenant_id)
+            .eq("meta_phone_number_id", last_inbound_phone_number_id)
+            .neq("status", "archived")
+            .limit(1).execute().data or []
+        )
+    except Exception as e:
+        logger.warning(f"reply_number_for: could not read numbers for tenant {tenant_id}: {e}")
+        return None
+    return last_inbound_phone_number_id if rows else None
+
+
 def _window_open(db, tenant_id: str, meta_phone_number_id: str, to_number: str) -> bool:
     """Did this person message this same number in the last 24 hours? Meta's
     window is per business number, so a chat with another of our numbers

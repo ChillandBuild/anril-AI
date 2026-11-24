@@ -93,7 +93,7 @@ class ComposeRouteTests(unittest.TestCase):
         with patch.object(leads_route, "send_whatsapp", AsyncMock(return_value="wamid.1")) as free_text:
             res = self.client.post("/api/v1/leads/compose", json={"phone": "+919811112222", "content": "Hello"})
         self.assertEqual(res.status_code, 200, res.text)
-        free_text.assert_awaited_once_with("+919811112222", "Hello", tenant_id="t1")
+        free_text.assert_awaited_once_with("+919811112222", "Hello", tenant_id="t1", phone_number_id=None)
 
     def test_templates_endpoint_needs_leads_manage(self):
         app.dependency_overrides[get_tenant_and_role] = lambda: {
