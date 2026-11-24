@@ -450,7 +450,7 @@ _BEING = re.compile(r"இருப்பது|அமர்வது|நிற�
 _NOT_NAVAMSA = re.compile(
     r"ராசி\s*(?:க்)?\s*கட்ட|ஜனன|ஜாதக|பிறந்த|பிறப்பு|கோசார|கோச்சார|பெயர்ச்சி|தசை|தசா|புத்தி|"
     r"\b(?:birth|rasi\s+chart|rasi\s+kattam|d1|jathag\w*|jaathag\w*|horoscope|gochar\w*|transit\w*|"
-    r"dasa\w*|dasha\w*|bhukti|bukthi|puthi)\b", re.I)
+    r"dasa\w*|dasha\w*|bhukti|bukthi|puthi|dosh\w*|mangal\w*|manglik|kuja)\b|தோஷ", re.I)   # dosham: always the birth chart
 _YOUR = re.compile(r"\b(?:your|unga|ungal|ungaloda|unnoda|un)\b|உங்கள்|உங்க|உன்|உனது|தங்கள்", re.I)
 _RASI_WORD = re.compile(r"^(?:ராசி|rasi|raasi|rashi|moon\s*sign)", re.I)
 _LAGNA_WORD = re.compile(r"^(?:லக்ன|lagn|ascendant)", re.I)
@@ -672,7 +672,8 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
         # paragraph was followed by "ஆனா, 7ம் இடத்துல கேது..." (still the navamsa). Needs the navamsa lagnam:
         # without it a house can only be a birth-chart house.
         named = bool(_NAVAMSA.search(clause))
-        carried = not named and nav_before and bool(c.d9_lagna) and not _NOT_NAVAMSA.search(clause)
+        carried = (not named and nav_before and bool(c.d9_lagna) and not _NOT_NAVAMSA.search(clause)
+                   and not _names_birth_lagna(c, clause))
         navamsa = nav_before = named or carried
         if not ms:
             continue
@@ -764,6 +765,17 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
                                                  f"{c.d9_lagna}") if navamsa else
                                        ("wrong", _where(c, p, f"{p} in house {value}")))
     return out
+
+
+def _names_birth_lagna(c: Chart, clause: str) -> bool:
+    """ "கும்ப லக்னத்துக்கு 2ம் இடம்" / "Kumbam lagnam": the birth lagnam named by its sign, so the clause is back in the
+    birth chart (live 24 Nov: after "not in navamsa", the lagnam reason was read as a navamsa house)."""
+    if not c.lagna or c.lagna == c.d9_lagna:
+        return False
+    words = [w for w in _WORD_SPLIT.split(clause) if w]
+    return any(sign_name(w) == c.lagna and ((i + 1 < len(words) and _LAGNA_WORD.match(words[i + 1]))
+                                            or (i > 0 and _LAGNA_WORD.match(words[i - 1])))
+               for i, w in enumerate(words))
 
 
 def _without_lord_places(clause: str, ms):

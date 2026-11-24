@@ -96,10 +96,19 @@ def _norm_key(key: str) -> str:
     return re.sub(r"[-\s.]+", "_", str(key).strip().lower())
 
 
+def _of_birth(value) -> bool:
+    """A block the app marks as the birth day's: AstroTamil's panchangam comes as {"of": "the birth day, not today",
+    "vaaram": ...} (24 Nov 2026). Its weekday and thithi are birth details, and read as today's they are wrong."""
+    return isinstance(value, dict) and any(
+        _norm_key(k) in ("of", "for") and isinstance(v, str) and _BIRTH_WORD.search(v) for k, v in value.items())
+
+
 def strip_birth_json(value):
-    """Drops birth keys at any depth; strings are cleaned like chat text. Lists and other values pass through."""
+    """Drops birth keys, and blocks marked as the birth day's, at any depth; strings are cleaned like chat text.
+    Lists and other values pass through."""
     if isinstance(value, dict):
-        return {k: strip_birth_json(v) for k, v in value.items() if not _BIRTH_KEY.match(_norm_key(k))}
+        return {k: strip_birth_json(v) for k, v in value.items()
+                if not _BIRTH_KEY.match(_norm_key(k)) and not _of_birth(v)}
     if isinstance(value, list):
         return [strip_birth_json(v) for v in value]
     if isinstance(value, str):

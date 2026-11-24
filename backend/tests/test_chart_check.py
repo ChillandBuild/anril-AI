@@ -247,6 +247,22 @@ def test_being_in_is_still_a_general_rule_when_it_is_about_no_one():
     assert find_wrong(_with_navamsa(NAV), "உங்க ஜாதகத்துல 7ம் இடத்தில் கேது இருப்பது தாமதம் தரும்")   # yours: Ketu is 10th
 
 
+def test_a_dosham_or_the_birth_lagnam_ends_the_navamsa_topic():
+    """Live 24 Nov, dosham with "cancelled ... not in navamsa": the reply said the navamsa, then went back to the
+    lagnam reason; that was read as a navamsa house, redone, and 2 of 9 answers became the handoff line."""
+    c = _with_navamsa(dict(NAV, lagnam="Rishabam"))      # navamsa lagnam differs from the birth one (Magaram)
+    assert find_wrong(c, "நவாம்சத்துல அந்த அமைப்பு இல்ல. மகர லக்னத்துக்கு 2ம் இடத்துல செவ்வாய் இருக்கார்.") == []
+    assert find_wrong(c, "நவாம்சத்துல செவ்வாய் வேற இடத்துல இருக்கார். செவ்வாய் 2ம் இடத்துல இருக்கிறது தோஷம்.") == []
+    assert find_wrong(c, "In the navamsa it is not there. Mars in the 2nd house gives mangal dosha.") == []
+    assert find_wrong(c, "நவாம்ச லக்னம் ரிஷபம். செவ்வாய் 2ம் இடத்துல இருக்கார்.")   # still the navamsa: Mars is the 3rd
+
+
+def test_the_chart_rules_say_a_cancelled_dosham_does_not_apply():
+    from app.companion.prompt import CHART_RULES
+    assert '"cancelled" = it was found in the chart but is cancelled, so it does not' in CHART_RULES
+    assert "never add a reason" in CHART_RULES
+
+
 def test_without_a_navamsa_lagnam_the_next_sentence_stays_the_birth_chart():
     c = _with_navamsa({p: s for p, s in NAV.items() if p != "lagnam"})
     assert find_wrong(c, "நவாம்சத்துல சுக்கிரன் மீனத்துல இருக்கார். கேது 10ம் இடத்துல இருக்கார்.") == []

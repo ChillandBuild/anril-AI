@@ -115,6 +115,11 @@ CHART_RULES = """[CHART RULES]
   show that move yet, and tell them what it shows now.
 - Birth-chart positions and today's transits are different things: say which one you mean. For a house, say whether
   it is counted from the lagnam or from the rasi, as APP DATA does.
+- A dosham in APP DATA is the app's verdict: give it, do not work it out again. Its "level" is the answer when there
+  is one: "full" or "partial" = they have it; "cancelled" = it was found in the chart but is cancelled, so it does not
+  apply; "none" = no dosham ("present": true only means a dosham place was found). Give APP DATA's reason, saying
+  only what it says: never add a reason, a house or a rule of your own. No reason in APP DATA: say what the app's
+  check found, give no reason, and if they ask why, say their astrologer can explain it.
 - Examples inside KNOWLEDGE passages ("if Saturn is in the 7th…") are general rules, not this person's chart.
 - ABOUT THIS USER and earlier messages may hold old chart claims: when they differ from APP DATA, APP DATA wins.
 - If the person states a chart fact that differs from APP DATA ("my lagnam is Kanni"), gently tell them what their

@@ -54,3 +54,16 @@ def test_app_data_json_stays_compact_json_and_text_stays_text():
 ])
 def test_only_the_birth_part_of_a_sentence_is_hidden_and_the_question_stays(text, kept):
     assert strip_birth_text(text) == HIDDEN + " " + kept
+
+
+def test_a_block_marked_as_the_birth_day_is_dropped():
+    """AstroTamil, 24 Nov 2026: "panchangam" was the birth day's (born Wednesday), sent next to today's date, so
+    "what is today's thithi?" would get the birth one. They now mark it; the block is a birth detail and goes."""
+    data = {"overview": {"rasi": "Rishabam", "today": "2026-11-24"},
+            "panchangam": {"of": "the birth day, not today", "thithi": "Pournami", "vaaram": "Wednesday"},
+            "gocharam": {"for_rasi": "Rishabam", "as_of": "2026-11-24T04:15:00+05:30"},
+            "today_panchangam": {"of": "today", "thithi": "Pradhamai"}}
+    out = strip_birth_json(data)
+    assert "panchangam" not in out
+    assert out["gocharam"] == data["gocharam"] and out["today_panchangam"] == data["today_panchangam"]
+    assert out["overview"] == data["overview"]
