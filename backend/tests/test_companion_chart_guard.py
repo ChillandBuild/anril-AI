@@ -5,6 +5,8 @@ Magaram lagnam; Simmam rasi)."""
 import asyncio
 import json
 
+import pytest
+
 from app.companion import engine
 from tests.test_chart_check import CHART
 from tests.test_companion_engine import env, reply  # noqa: F401  (env is a fixture)
@@ -154,3 +156,55 @@ def test_with_the_guard_off_a_pasted_chart_is_sent_as_before(env):
     env.state["replies"] = [RIGHT]
     reply(env.jothidar["id"], PASTED, app_data=APP_DATA)
     assert "Mesha Mesha" in json.dumps(env.state["llm"][0]["messages"], ensure_ascii=False)
+
+
+# --- the astrologer nudge (24 Nov, Playground App view): once, and only on readings ---------------------
+
+def test_with_the_apps_handoff_button_the_prompt_drops_the_handoff_line():
+    """Live: "my lagnam is Kanni, right?" ended with the line "ask our AstroTamil astrologer" as a bubble AND
+    the astrologer button under it. When the app has a hand-off button, the button is the nudge."""
+    from app.companion.prompt import own_reasoning_allowed
+    s = {"handoff_line": "இதை நம்ம AstroTamil ஜோதிடர்கிட்ட நேரடியா கேக்கறது நல்லதுங்க."}
+    with_button = own_reasoning_allowed(s, app_button=True)
+    assert "ஜோதிடர்கிட்ட" not in with_button and "button" in with_button
+    assert "ஜோதிடர்கிட்ட" in own_reasoning_allowed(s)   # no button (plain text, widget): the line stays
+
+
+def test_the_prompt_built_with_a_handoff_button_has_no_handoff_line(env):
+    from tests.test_companion_engine import FMT
+    next(c for c in env.db.rows("companions") if c["id"] == env.jothidar["id"])["handoff_line"] = "Ask our astrologer da."
+    env.state["replies"] = ["[mood: calm] [used: none] [tag: counted] [button: none] Simmam rasi.\n[chips: none]"] * 2
+    reply(env.jothidar["id"], "En rasi enna?", reply_format=FMT)
+    assert "Ask our astrologer da." not in env.state["llm"][0]["messages"][0]["content"]
+    reply(env.jothidar["id"], "En rasi enna?")   # no format, no button: the line is asked for
+    assert "Ask our astrologer da." in env.state["llm"][1]["messages"][0]["content"]
+
+
+@pytest.mark.parametrize("answer, button", [
+    # a chart fact or a correction: no astrologer button
+    ("[mood: calm] [used: none] [tag: counted] [button: none] உங்க ஜாதகப்படி உங்க லக்னம் மகரம் தான்.\n---\n"
+     "கன்னி லக்னம் இல்லைங்க, உங்க ஜாதகத்துல லக்னம் மகரம்னு தான் பதிவாகிருக்கு.\n[chips: a? | b?]", None),
+    ("[mood: calm] [used: none] [tag: counted] [button: none] Unga rasi Simmam, lagnam Magaram.\n[chips: a? | b?]", None),
+    # a reading: the button stays
+    ("[mood: calm] [used: none] [tag: counted] [button: none] 7ம் அதிபதி சந்திரன் 8ம் இடத்துல இருக்கார். இது "
+     "திருமணத்துல கொஞ்சம் தாமதத்தை காட்டலாம்.\n[chips: a? | b?]", "astrologer"),
+    ("[mood: calm] [used: none] [tag: counted] [button: none] Naga dosham pothuvaa Rahu Kethu sambandham.\n[chips: a? | b?]",
+     "astrologer"),
+])
+def test_the_astrologer_button_comes_with_readings_not_with_chart_facts(env, answer, button):
+    from tests.test_companion_engine import FMT
+    env.state["replies"] = [answer]
+    question = "En lagnam Kanni thaane?" if button is None else "Kalyanam eppo nadakkum?"
+    r = reply(env.jothidar["id"], question, reply_format=FMT)
+    assert r.basis == "own" and r.tag == "counted" and r.button == button
+
+
+@pytest.mark.parametrize("question, lookup", [
+    ("என் லக்னம் கன்னி தானே?", True), ("What is my lagnam and rasi?", True), ("இப்போ என்ன தசை நடக்குது?", True),
+    ("En natchathiram enna?", True),
+    ("When will I get married?", False), ("Rahu dasa nalla irukuma?", False), ("என் வேலை இந்த வருஷம் எப்படி இருக்கும்?", False),
+    ("Do I have sevvai dosham?", False), ("Hi", False),
+])
+def test_a_chart_lookup_is_told_apart_from_a_reading(question, lookup):
+    from app.companion.chart_check import is_chart_lookup
+    assert is_chart_lookup(question) is lookup

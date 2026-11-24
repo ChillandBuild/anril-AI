@@ -327,7 +327,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
         playground.problem(ai_reply.describe_llm_error(exc))
     raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb, mood, model, reply_format)
     text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion, reply_format, chart_failed)
-    text, shape = _shape(text, raw, basis, kb, companion, reply_format)
+    text, shape = _shape(text, raw, basis, kb, companion, reply_format, message)
     logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
                 int((time.monotonic() - started) * 1000))
     return CompanionReply(status="done", text=text, mood=new_mood, basis=_shown_basis(basis, companion),
@@ -639,7 +639,7 @@ def _has_text(raw: str | None, with_format: bool = False) -> bool:
 
 
 def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, companion: dict,
-           fmt: ReplyFormat | None) -> tuple[str, dict]:
+           fmt: ReplyFormat | None, question: str | None = None) -> tuple[str, dict]:
     """(text for CompanionReply.text and the saved chat, the four reply_format fields). No format: text as is,
     all four None. With one: text = the bubbles joined by a blank line, never a tag, separator or chip.
     Example: '[tag: counted] Guru 7th la.\n---\nNalla time.\n[chips: Eppo? | Velai?]' ->
@@ -647,8 +647,10 @@ def _shape(text: str, raw: str | None, basis: str | None, kb: KbResult | None, c
     if fmt is None:
         return text, {"bubbles": None, "chips": None, "button": None, "tag": None}
     handed = _handed_off(basis, companion)
+    # the astrologer button comes with an own reading, not with a chart lookup ("What is my lagnam?")
+    reading = basis == "own" and not chart_check.is_chart_lookup(question)
     shaped = finalize(read_format(text, fmt), fmt, small_talk=is_small_talk(kb), handed_off=handed,
-                      failed=not _has_text(raw, with_format=True), text=text, own=basis == "own",
+                      failed=not _has_text(raw, with_format=True), text=text, own=reading,
                       fallback_text=handoff_line(companion) if handed else fallback_line(line_language(companion)))
     return "\n\n".join(shaped.bubbles), shaped._asdict()
 
@@ -675,7 +677,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     companion_id = companion["id"]
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion,
                                              reply_format, chart_failed)
-    text, shape = _shape(text, raw, basis, kb, companion, reply_format)
+    text, shape = _shape(text, raw, basis, kb, companion, reply_format, user_message)
     if not _has_text(raw, with_format=reply_format is not None):
         # The AI call failed (or came back empty): the person gets the sorry line, and nothing is saved,
         # so it isn't counted toward the memory step and isn't read back as something the character said.

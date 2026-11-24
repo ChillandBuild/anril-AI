@@ -159,10 +159,16 @@ def hide_pasted_chart(text: str | None) -> str | None:
     return PASTED_CHART
 
 
-def own_reasoning_allowed(settings: dict) -> str:
+APP_BUTTON_NUDGE = ("The app shows its own button to the business's people under your answer, so never write a line "
+                    "sending them to the business's people or experts yourself.")
+
+
+def own_reasoning_allowed(settings: dict, app_button: bool = False) -> str:
     """OWN_REASONING_ALLOWED, plus, when the business wrote its own handoff line, a nudge to point the person
     to its people after an own-reading answer. Jothidar: "...end with one short friendly line ... like:
     "இதை நம்ம AstroTamil ஜோதிடர்கிட்ட நேரடியா கேக்கறது நல்லதுங்க."" (the app's astrologer button is added by code)."""
+    if app_button:   # live 24 Nov: the line as a bubble AND the astrologer button under it; the button is enough
+        return OWN_REASONING_ALLOWED + "\n" + APP_BUTTON_NUDGE
     line = " ".join((settings.get("handoff_line") or "").replace('"', "").split())
     if not line:
         return OWN_REASONING_ALLOWED
@@ -260,7 +266,9 @@ def build_messages(settings: Mapping, mood: str, kb: KbResult | None, memory_con
     if reply_format is not None:
         from app.companion.reply_format import format_block
         sections.append(format_block(reply_format))
-    sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False else own_reasoning_allowed(settings))
+    app_button = reply_format is not None and any(b.handoff for b in reply_format.buttons)
+    sections.append(OWN_REASONING_OFF if settings.get("own_reasoning") is False
+                    else own_reasoning_allowed(settings, app_button=app_button))
     sections.append(knowledge_block(kb))
     if guard:
         sections.append(chart_rules(app_data))

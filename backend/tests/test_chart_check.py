@@ -217,3 +217,18 @@ def test_the_redo_never_apologises_for_a_draft_the_person_never_saw():
     கவனிக்காம விட்டேன்" (sorry, I missed your navamsa 7th house), for a first draft nobody saw."""
     note = redo_note(["reply says சனி in navamsa house 7"])
     assert "never saw that draft" in note and "No sorry" in note
+
+
+@pytest.mark.parametrize("reply", [
+    # live 24 Nov, "What is my lagnam and rasi?": a right answer read as "rasi Magaram", redone, then swapped
+    "Unga lagnam Magaram, rasi Simmam.",
+    "உங்க ஜாதகப்படி லக்னம் மகரம் (Capricorn), ராசி சிம்மம் (Leo).",
+    "உங்க லக்னம் மகரம் ராசி, சந்திர ராசி சிம்மம்.",
+])
+def test_lagnam_then_rasi_in_one_sentence_is_not_a_wrong_rasi(chart, reply):
+    assert find_wrong(chart, reply) == []
+
+
+@pytest.mark.parametrize("reply", ["Unga lagnam Kanni, rasi Simmam.", "உங்க லக்னம் மகரம் (Capricorn), ராசி மகரம்."])
+def test_a_wrong_lagnam_or_rasi_in_that_shape_is_still_caught(chart, reply):
+    assert find_wrong(chart, reply)

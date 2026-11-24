@@ -471,13 +471,18 @@ def _mentions(clause: str) -> list[tuple[str, object, str]]:
         elif (s := sign_name(w)) and (re.search(r"(?:க்கு|ukku|kku)$", w)
                                      or re.match(r"(?:ராசிக்கு|லக்னத்துக்கு|லக்னத்திற்கு|rasikku|raasikku|lagnathukku)", nxt, re.I)):
             continue   # "சிம்ம ராசிக்கு 8ல் சனி": the sign is where the count starts, not where சனி sits
+        elif s and i > 0 and sign_name(words[i - 1]) == s:
+            continue   # "மகரம் (Capricorn)": the same sign again, in brackets
         elif s:
-            # "சிம்ம ராசி" (word after) or "your rasi is Kanni" (word before, maybe with "is" between)
+            # "சிம்ம ராசி" (word after) or "your rasi is Kanni" (word before, maybe with "is" between). The word
+            # before wins: "lagnam Magaram, rasi Simmam" is a Magaram lagnam, not a Magaram rasi (live 24 Nov:
+            # the guard threw away a right answer twice and sent the handoff line).
             before = ([x for x in words[max(0, i - 2):i] if x.lower() not in ("is", "=", "-")][-1:] or [""])[0]
             bare = re.fullmatch(r"(?:ராசி|rasi|raasi|rashi|லக்னம்|lagnam|lagna)", nxt, re.I)
-            if _RASI_WORD.fullmatch(before) or (bare and _RASI_WORD.match(nxt)):
+            lagna_before = re.fullmatch(r"(?:லக்னம்|lagnam|lagna|ascendant)", before, re.I)
+            if _RASI_WORD.fullmatch(before) or (bare and _RASI_WORD.match(nxt) and not lagna_before):
                 out.append(("R", s, w))
-            elif re.fullmatch(r"(?:லக்னம்|lagnam|lagna|ascendant)", before, re.I) or (bare and _LAGNA_WORD.match(nxt)):
+            elif lagna_before or (bare and _LAGNA_WORD.match(nxt)):
                 out.append(("L", s, w))
             else:
                 out.append(("s", s, w))
@@ -741,6 +746,25 @@ def is_chart_fact(text: str | None) -> bool:
         if kinds & {"R", "L", "d", "b", "H"} or ("p" in kinds and kinds & {"s", "h"}):
             return True
     return False
+
+
+# A chart lookup ("What is my lagnam?", "என் லக்னம் கன்னி தானே?", "இப்போ என்ன தசை?"): a chart word and no life topic.
+# Its answer is a fact from the chart, not a reading, so it gets no astrologer button (live 24 Nov: 5 of 6 did).
+_CHART_WORD = re.compile(r"லக்ன|லக்கின|ராசி|நட்சத்திர|நட்சத்ர|தசை|திசை|புத்தி|புக்தி|நவாம்ச|"
+                         r"\b(?:lagn|rasi|raasi|rashi|nakshat|natchat|natchathir|dasa|dasha|dhasa|thasai|bhukti|bukthi|"
+                         r"navams|ascendant|moon\s*sign|birth\s*star)", re.I)
+_LIFE_TOPIC = re.compile(r"கல்யாண|திருமண|வேலை|தொழில்|பணம்|பண\s|உடல்|ஆரோக்கிய|குழந்தை|வீடு|படிப்பு|தோஷ|பலன்|எப்ப|எப்போ|"
+                         r"நல்லதா|நல்லா|கெட்ட|பரிகார|எதிர்கால|"
+                         r"\b(?:marri|wedding|spouse|wife|husband|career|job|work|money|wealth|health|child|kid|house|home|"
+                         r"business|study|studies|exam|dosh|when|future|predict|good|bad|lucky|remed|parikar|"
+                         r"kalyan|kalyaan|velai|thozhil|panam|eppo|epo|palan|nallatha|nalla)", re.I)
+
+
+def is_chart_lookup(question: str | None) -> bool:
+    """True for a question that only asks what the chart says: "What is my lagnam and rasi?" -> True;
+    "When will I get married?" -> False; "Rahu dasa nalla irukuma?" -> False (asks for a reading)."""
+    q = question or ""
+    return bool(_CHART_WORD.search(q)) and not _LIFE_TOPIC.search(q)
 
 
 def find_wrong(c: Chart, text: str) -> list[str]:
