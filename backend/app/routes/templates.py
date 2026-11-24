@@ -313,8 +313,8 @@ async def bulk_check_templates(
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_templates_manage),
 ):
-    """Read an Excel file of simple templates and say, row by row, what is ready, what needs a fix
-    and what is already on the account. Nothing is sent."""
+    """Read an Excel file in the sample's layout and say, row by row, what is ready, what needs a fix
+    (and in which field) and what is already on the account. Nothing is sent."""
     if file.size is not None and file.size > _BULK_FILE_MAX_BYTES:
         raise HTTPException(status_code=422, detail="That file is too big. Upload an Excel file under 2 MB.")
     content = await file.read(_BULK_FILE_MAX_BYTES + 1)
@@ -333,13 +333,42 @@ class BulkSubmit(BaseModel):
     rows: list[dict]
 
 
+@router.get("/bulk/sample")
+async def bulk_sample_file(_ctx: dict = Depends(require_templates_manage)):
+    """The sample Excel file: the exact columns, two filled rows and dropdowns."""
+    from fastapi.responses import Response
+
+    content = await asyncio.to_thread(template_bulk.sample_workbook)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="sample_templates.xlsx"'},
+    )
+
+
+@router.post("/bulk/recheck")
+async def bulk_recheck_templates(
+    payload: BulkSubmit,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_templates_manage),
+):
+    """Check rows edited on the review screen again, without a new upload. Nothing is sent."""
+    if len(payload.rows) > template_bulk.MAX_ROWS:
+        raise HTTPException(status_code=422, detail=f"Check at most {template_bulk.MAX_ROWS} templates at a time.")
+    rows = [{**r, "row": r.get("row") or i} for i, r in enumerate(payload.rows, start=1)]
+    waba_id = get_setting("meta_waba_id", tenant_id=tenant_id)
+    verdicts = template_bulk.check_rows(rows, _bulk_existing(get_supabase(), tenant_id, waba_id))
+    return {"rows": verdicts, "counts": _bulk_counts(verdicts)}
+
+
 @router.post("/bulk/submit")
 async def bulk_submit_templates(
     payload: BulkSubmit,
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_templates_manage),
 ):
-    """Re-check the rows, then send the ready ones to Meta one by one through the same path as POST /."""
+    """Re-check the rows the owner ticked, then send the ready ones to Meta one by one through the same
+    path as POST /. Rows they removed on the review screen are simply not in the list."""
     if not payload.rows:
         raise HTTPException(status_code=422, detail="There are no templates to send.")
     if len(payload.rows) > template_bulk.MAX_ROWS:

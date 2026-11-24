@@ -34,19 +34,6 @@ export function downloadRows(templates: Template[], usage: TemplateUsage): strin
   ]);
 }
 
-export const SAMPLE_HEADER = ["name", "type", "language", "message", "sample values", "footer", "button text", "button link"];
-
-export const SAMPLE_ROWS: string[][] = [
-  [
-    "festival_offer", "Marketing", "English",
-    "Hi {{1}}, flat {{2}} off on all sarees this week at our shop.", "Priya, 20%", "Thank you", "Shop now", "https://example.com/shop",
-  ],
-  [
-    "order_ready", "Utility", "Tamil",
-    "வணக்கம் {{1}}, உங்கள் ஆர்டர் {{2}} தயாராக உள்ளது.", "Priya, D-1047", "", "", "",
-  ],
-];
-
 type Sheet = { header: string[]; rows: string[][]; widths: number[]; name: string; file: string };
 
 /** Writes one .xlsx in the browser with the xlsx library the page already uses. */
@@ -64,13 +51,6 @@ export async function saveSheet({ header, rows, widths, name, file }: Sheet): Pr
   XLSX.writeFile(wb, file);
 }
 
-export function saveSampleFile(): Promise<void> {
-  return saveSheet({
-    header: SAMPLE_HEADER, rows: SAMPLE_ROWS, widths: [30, 12, 12, 70, 28, 24, 20, 40],
-    name: "Templates", file: "sample_templates.xlsx",
-  });
-}
-
 export function saveAllTemplates(templates: Template[], usage: TemplateUsage): Promise<void> {
   return saveSheet({
     header: DOWNLOAD_HEADER, rows: downloadRows(templates, usage), widths: [40, 14, 12, 12, 70, 30, 40, 40, 60],
@@ -78,18 +58,28 @@ export function saveAllTemplates(templates: Template[], usage: TemplateUsage): P
   });
 }
 
-// ── the upload check (POST /api/v1/templates/bulk/check and /bulk/submit) ─────
+// ── the upload check (POST /api/v1/templates/bulk/check, /bulk/recheck, /bulk/submit) ─────
+// The sample file itself comes from GET /bulk/sample: it has Excel dropdowns the browser can't write.
+
+export type BulkButtonKind = "URL" | "PHONE_NUMBER" | "QUICK_REPLY";
+export type BulkButton = { type: BulkButtonKind | ""; text: string; value: string };
+export type BulkIssue = { field: string; text: string };
 
 export type BulkRow = {
   row: number;
   name: string;
   type: string | null;
   language: string | null;
-  message: string;
-  samples: string[];
+  header: string;
+  header_example: string;
+  body: string;
+  /** Example {{1}} .. {{5}}, always 5 long. */
+  examples: string[];
   footer: string;
-  button_text: string;
-  button_link: string;
+  buttons: BulkButton[];
+  /** Each problem with the field it belongs to (name, type, language, header, header_example, body,
+   * example_1..5, footer, button_1..3), so the review screen can mark that field. */
+  issues: BulkIssue[];
   problems: string[];
   status: "ready" | "need_fix" | "exists";
 };
@@ -97,6 +87,62 @@ export type BulkRow = {
 export type BulkCounts = { ready: number; need_fix: number; exists: number };
 
 export type BulkResult = { row: number; name: string; language: string | null; status: "sent" | "refused" | "skipped"; reason?: string };
+
+export const EXAMPLE_SLOTS = 5;
+export const BUTTON_SLOTS = 3;
+export const BUTTON_KINDS: { value: BulkButtonKind; label: string }[] = [
+  { value: "URL", label: "Link" },
+  { value: "PHONE_NUMBER", label: "Call" },
+  { value: "QUICK_REPLY", label: "Quick reply" },
+];
+
+/** The {{n}} numbers a text uses, in order. */
+export function variablesIn(text: string): number[] {
+  return Array.from(new Set(Array.from(text.matchAll(/\{\{(\d+)\}\}/g), (m) => Number(m[1])))).sort((a, b) => a - b);
+}
+
+/** The problems that belong to one field. */
+export function issuesFor(row: BulkRow, field: string): string[] {
+  return row.issues.filter((i) => i.field === field).map((i) => i.text);
+}
+
+/** Three button slots, filled from the row's buttons. */
+export function buttonSlots(row: BulkRow): BulkButton[] {
+  const given = row.buttons.slice(0, BUTTON_SLOTS);
+  return [...given, ...Array.from({ length: BUTTON_SLOTS - given.length }, () => ({ type: "" as const, text: "", value: "" }))];
+}
+
+/** What the review screen sends back to /bulk/recheck and /bulk/submit for one row. */
+export function rowForCheck(row: BulkRow) {
+  const examples = [...row.examples, ...Array(EXAMPLE_SLOTS).fill("")].slice(0, EXAMPLE_SLOTS);
+  return {
+    row: row.row,
+    name: row.name,
+    type: row.type ?? "",
+    language: row.language ?? "",
+    header: row.header,
+    header_example: row.header_example,
+    body: row.body,
+    examples,
+    footer: row.footer,
+    buttons: buttonSlots(row).filter((b) => b.type || b.text || b.value),
+  };
+}
+
+/** Props for the WhatsApp preview: header, body with the examples in place of {{n}}, footer, buttons. */
+export function previewOf(row: BulkRow) {
+  return {
+    headerType: (row.header ? "TEXT" : "NONE") as "TEXT" | "NONE",
+    headerText: row.header || undefined,
+    headerSample: row.header_example || undefined,
+    bodyText: row.body || " ",
+    bodySamples: Object.fromEntries(row.examples.map((v, i) => [i + 1, v]).filter(([, v]) => v)),
+    footerText: row.footer || undefined,
+    buttons: row.buttons
+      .filter((b) => b.type && b.text)
+      .map((b) => ({ type: b.type, text: b.text, url: b.type === "URL" ? b.value : undefined, phone: b.type === "PHONE_NUMBER" ? b.value : undefined })),
+  };
+}
 
 /** "4 ready · 2 need a fix · 1 already exists", leaving out the zeros. */
 export function countsText(c: BulkCounts): string {
