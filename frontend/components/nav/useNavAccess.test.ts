@@ -31,7 +31,7 @@ describe("buildNavAccess", () => {
     const ok = buildNavAccess({ ...base, enabledFeatures: features, permissions: ["telecalling.dialer"] });
     expect(ok.access.telecallingVisible).toBe(true);
     expect(ok.tcGroupItems.map((i) => i.href)).toEqual(["/dashboard/telecalling"]);
-    // The Call IQ rows read the allowed pages from here: Dial a number follows the Dialer page's entry.
+    // The Call IQ rows read the allowed pages from here.
     expect(ok.access.telecallingPages).toEqual(["/dashboard/telecalling"]);
     expect(buildNavAccess({ ...base, enabledFeatures: features, permissions: [] }).access.telecallingVisible).toBe(false);
     expect(buildNavAccess({ ...base, enabledFeatures: [], permissions: ["telecalling.dialer"] }).access.telecallingVisible).toBe(false);

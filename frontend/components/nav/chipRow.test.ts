@@ -81,12 +81,11 @@ describe("chipRowFor: Calling and Leads to call (query-aware)", () => {
     enabledFeatures: ["telecalling_sim", "telecalling.upload", "telecalling.dialer", "telecalling.scheduled", "telecalling.notes"],
     subStatus: "active",
   }).access;
-  const CALLING = ["Call from the queue", "Dial a number", "Scripts"];
+  const CALLING = ["Call from the queue", "Scripts"];
   const LEADS = ["Call lists", "Scheduled calls", "Uploads", "Who got which lead"];
 
   it.each([
     ["/dashboard/telecalling", "", CALLING, "/dashboard/telecalling"],
-    ["/dashboard/telecalling/dial", "", CALLING, "/dashboard/telecalling/dial"],
     ["/dashboard/telecalling/upload", "scripts", CALLING, "/dashboard/telecalling/upload?tab=scripts"],
     ["/dashboard/telecalling/upload", "", LEADS, "/dashboard/telecalling/upload"],
     ["/dashboard/telecalling/upload", "upload", LEADS, "/dashboard/telecalling/upload"],
@@ -103,11 +102,11 @@ describe("chipRowFor: Calling and Leads to call (query-aware)", () => {
     expect(chipRowFor("/dashboard/notes", telecalling, "")).toBeNull();
   });
 
-  it("a telecaller with only the dialer gets the queue and dial chips, with no Scripts chip", () => {
+  it("a telecaller with only the dialer has no Calling row (one chip: the queue)", () => {
     const dialer = buildNavAccess({
       role: "caller", permissions: ["telecalling.dialer"], enabledFeatures: ["telecalling_sim", "telecalling.dialer"], subStatus: "active",
     }).access;
-    expect(labels("/dashboard/telecalling", dialer)).toEqual(["Call from the queue", "Dial a number"]);
+    expect(chipRowFor("/dashboard/telecalling", dialer)).toBeNull();
   });
 
   it("a user with only the Upload gate has no Calling row (one chip), but Call lists and Uploads show", () => {

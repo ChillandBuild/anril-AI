@@ -5,7 +5,7 @@ import type { CallingCockpit } from "../lib/useCallingCockpit";
 
 /**
  * The "Manual Dial" panel: a numpad wired to the calling cockpit. Used inside the Dialer
- * (AdminView / CallerView tab) and on its own at /dashboard/telecalling/dial.
+ * (the AdminView / CallerView "Manual Dial" tab).
  */
 export default function ManualDialPanel({ cockpit, readOnly }: { cockpit: CallingCockpit; readOnly: boolean }) {
   return (

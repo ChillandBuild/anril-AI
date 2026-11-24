@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AlertCircle, ArrowLeft, Check, Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { rowForCheck, type BulkResult, type BulkRow } from "../template-excel";
@@ -344,16 +345,26 @@ export default function UploadTemplatesPage() {
         </div>
       )}
 
-      {canManage && rows && (
+      {canManage && (
         <div className="sticky bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#e7e2da] bg-white/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
           <p className="text-[13px] font-medium text-ink-secondary">
-            {sentCount
+            {!rows
+              ? "Choose your Excel file above. Nothing is sent to Meta until you press Send."
+              : sentCount
               ? `${sentCount} sent to Meta. Approvals usually come within minutes.`
               : toSend.length
                 ? `${toSend.length} ready to send. Fixed rows join automatically.`
                 : "Fix a row or tick one to send."}
           </p>
           <div className="flex w-full items-center gap-2 sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">
+            <Link
+              href="/dashboard/templates"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink transition hover:bg-surface-subtle"
+            >
+              <ArrowLeft size={15} aria-hidden="true" /> Back
+            </Link>
+            {rows && (
+            <>
             <label className={`inline-flex h-11 cursor-pointer items-center justify-center rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-subtle ${busy ? "pointer-events-none opacity-50" : ""}`}>
               Upload again
               {fileInput}
@@ -367,6 +378,8 @@ export default function UploadTemplatesPage() {
               {busy === "sending" && <Loader2 size={14} className="animate-spin" />}
               {busy === "sending" ? "Sending…" : `Send ${toSend.length} to Meta for approval`}
             </button>
+            </>
+            )}
           </div>
         </div>
       )}

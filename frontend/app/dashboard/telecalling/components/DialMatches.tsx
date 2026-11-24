@@ -5,7 +5,7 @@ import type { Lead } from "@/lib/api";
 import { SEGMENT_WORD, lookupCustomers, worthLooking, type DialMatch } from "../lib/dialLookup";
 import type { CallingCockpit } from "../lib/useCallingCockpit";
 
-/** Customers that match what is typed on the Dial a number pad. A card calls by customer, so a hidden number still works. */
+/** Customers that match what is typed on the Manual Dial pad. A card calls by customer, so a hidden number still works. */
 export default function DialMatches({ cockpit, readOnly }: { cockpit: CallingCockpit; readOnly: boolean }) {
   const text = cockpit.manualPhone;
   const [found, setFound] = useState<{ for: string; matches: DialMatch[] } | null>(null);

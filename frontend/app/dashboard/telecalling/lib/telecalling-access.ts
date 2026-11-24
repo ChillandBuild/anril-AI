@@ -1,7 +1,6 @@
 /**
  * Who may open the Dialer and who may place calls from it.
- * Shared by the Dialer page (TelecallingView) and the "Dial a number" page so the two
- * can never drift apart. Pure on purpose: no hooks, easy to test.
+ * Used by the Dialer page (TelecallingView). Pure on purpose: no hooks, easy to test.
  */
 export type TelecallingRole = "owner" | "caller" | null;
 

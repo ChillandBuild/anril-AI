@@ -379,7 +379,6 @@ const EXPENSES: NavLeaf = {
 };
 
 const TC_QUEUE = "/dashboard/telecalling";
-const TC_DIAL = "/dashboard/telecalling/dial";
 const TC_UPLOAD = "/dashboard/telecalling/upload";
 const TC_SCHEDULED = "/dashboard/telecalling/scheduled";
 const NOTES = "/dashboard/notes";
@@ -399,10 +398,9 @@ const uploadTab = (tab: string): "upload" | "history" | "scripts" =>
 /** A page at one exact address: no sub-pages, so /dashboard/telecalling does not also light up on /dashboard/telecalling/scheduled. */
 const exactPage = (p: string, href: string) => p === href || p === `${href}/`;
 
-/** Calling: work the queue, dial by hand, read the scripts. Dial follows the Dialer's gate, Scripts the Upload page's. */
+/** Calling: work the queue (its own tab dials by hand) and read the scripts. Scripts follow the Upload page's gate. */
 const CALLING_PAGES: readonly NavPage[] = [
   { key: "calling-queue", label: "Call from the queue", href: TC_QUEUE, visible: tcPageVisible(TC_QUEUE), isActive: (p) => exactPage(p, TC_QUEUE) },
-  { key: "calling-dial", label: "Dial a number", href: TC_DIAL, visible: tcPageVisible(TC_QUEUE), isActive: (p) => p === TC_DIAL || p.startsWith(`${TC_DIAL}/`) },
   {
     key: "calling-scripts", label: "Scripts", href: `${TC_UPLOAD}?tab=scripts`, visible: tcPageVisible(TC_UPLOAD),
     isActive: (p, tab = "") => exactPage(p, TC_UPLOAD) && uploadTab(tab) === "scripts",
@@ -692,7 +690,6 @@ export function chipSetFor(pathname: string, tab = ""): ChipSet | null {
 
 const CALL_IQ_META: Record<string, { title: string; description: string }> = {
   [TC_QUEUE]: { title: "Calling / Call from the queue", description: "Manage calls, callers, and lead queues in real time." },
-  [TC_DIAL]: { title: "Calling / Dial a number", description: "Call any number by hand, without adding it to a queue." },
   [TC_SCHEDULED]: { title: "Leads to call / Scheduled calls", description: "View and manage upcoming scheduled calls for leads." },
   [NOTES]: { title: "Call reviews", description: "Listen to calls, read the AI's marks and leave coaching notes." },
   "/dashboard/call-iq/live": { title: "Call IQ / Live", description: "Who is on a call, on a break, free or not logged in, right now." },

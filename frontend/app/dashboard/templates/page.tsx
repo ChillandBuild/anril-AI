@@ -357,9 +357,10 @@ export default function TemplatesPage() {
     { key: "PENDING", count: countPending, label: "Pending Review", mid: "Pending Review", short: "Pending", hint: "Meta is checking", tone: "text-[#b45309]", edge: "border-l-[#b45309]" },
     { key: NEEDS_FIX, count: countRejected, label: "Rejected / Paused", mid: "Rejected / Paused", short: "Rejected / Paused", hint: "see why and fix", tone: "text-[#c2410c]", edge: "border-l-[#dc2626]" },
   ];
-  // One tool in the toolbar: icon over its label, as tall as the summary cards
+  // One tool button: a small white capsule with a teal icon
   const toolBtn =
-    "flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2 font-label text-[12.5px] font-semibold text-ink transition-colors hover:bg-primary-50/60 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-[84px]";
+    "group inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#e4dfd7] bg-white px-3 font-label text-[12.5px] font-semibold text-ink shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary disabled:pointer-events-none disabled:opacity-50";
+  const toolIcon = "shrink-0 text-primary";
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("ALL");
@@ -376,7 +377,7 @@ export default function TemplatesPage() {
     <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
       {/* Top Locked Section: summary, actions & filters */}
       <div className="shrink-0 space-y-3 pb-3">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           {/* Summary cards: click one to show just those */}
           <div className="grid flex-1 grid-cols-3 gap-2 md:gap-3">
             {summary.map((s) => {
@@ -406,51 +407,47 @@ export default function TemplatesPage() {
             })}
           </div>
 
-          {/* Actions: one toolbar of tools, then Create Template, both as tall as the summary cards */}
-          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-stretch">
-              <div
-                role="group"
-                aria-label="Template tools"
-                className={`grid h-16 ${canManageTemplates ? "grid-cols-4" : "grid-cols-3"} divide-x divide-[#ece7df] overflow-hidden rounded-2xl border border-[#e2ddd5] bg-white shadow-sm sm:flex`}
+          {/* Actions: four tool chips, then Create Template, centred against the summary cards */}
+          <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
+            <div role="group" aria-label="Template tools" className="flex flex-nowrap items-center gap-1.5">
+              <button
+                onClick={handleSyncAll}
+                disabled={syncing || !canManageTemplates}
+                title={canManageTemplates
+                  ? `Get the latest templates and approvals from Meta${lastSynced ? ` (last synced ${timeAgo(lastSynced)})` : ""}`
+                  : "Read-only role: sync is disabled"}
+                className={toolBtn}
               >
-                <button
-                  onClick={handleSyncAll}
-                  disabled={syncing || !canManageTemplates}
-                  title={canManageTemplates
-                    ? `Get the latest templates and approvals from Meta${lastSynced ? ` (last synced ${timeAgo(lastSynced)})` : ""}`
-                    : "Read-only role: sync is disabled"}
-                  className={toolBtn}
-                >
-                  <RefreshCw size={18} className={`text-primary ${syncing ? "animate-spin" : ""}`} />
-                  {syncing ? "Syncing…" : "Sync"}
-                </button>
-                <Link href="/dashboard/templates/carousel" title="Make a carousel template" className={toolBtn}>
-                  <Layers size={18} className="text-primary" />
-                  Carousel
-                </Link>
-                <button
-                  onClick={() => saveAllTemplates(filteredTemplates, usage, hasFilters)}
-                  disabled={loading || filteredTemplates.length === 0}
-                  title={`Excel: download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""}`}
-                  className={toolBtn}
-                >
-                  <Download size={18} className="text-primary" />
-                  Excel
-                </button>
-                {canManageTemplates && (
-                  <Link href="/dashboard/templates/upload" title="Upload: make many templates at once from an Excel file" className={toolBtn}>
-                    <Upload size={18} className="text-primary" />
-                    Upload
-                  </Link>
-                )}
-              </div>
-              <Link
-                href="/dashboard/templates/new"
-                className="order-first flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-6 font-label text-[14px] font-bold text-white shadow-md shadow-primary-200 transition hover:bg-primary/90 sm:order-none sm:h-16"
-              >
-                <Plus size={18} strokeWidth={2.5} />
-                Create Template
+                <RefreshCw size={13} aria-hidden="true" className={`${toolIcon} ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
+              <Link href="/dashboard/templates/carousel" title="Make a carousel template" className={toolBtn}>
+                <Layers size={13} aria-hidden="true" className={toolIcon} />
+                Carousel
               </Link>
+              <button
+                onClick={() => saveAllTemplates(filteredTemplates, usage, hasFilters)}
+                disabled={loading || filteredTemplates.length === 0}
+                title={`Excel: download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""}`}
+                className={toolBtn}
+              >
+                <Download size={13} aria-hidden="true" className={toolIcon} />
+                Excel
+              </button>
+              {canManageTemplates && (
+                <Link href="/dashboard/templates/upload" title="Upload: make many templates at once from an Excel file" className={toolBtn}>
+                  <Upload size={13} aria-hidden="true" className={toolIcon} />
+                  Upload
+                </Link>
+              )}
+            </div>
+            <Link
+              href="/dashboard/templates/new"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-b from-[#06999c] to-[#037a7d] px-3.5 font-label text-[12.5px] font-bold text-white shadow-[0_4px_10px_-4px_rgba(3,130,133,0.5)] transition hover:shadow-[0_6px_14px_-4px_rgba(3,130,133,0.6)]"
+            >
+              <Plus size={14} strokeWidth={2.75} aria-hidden="true" />
+              Create Template
+            </Link>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AlertCircle,
+  ArrowLeft,
   Check,
   Copy,
   FileCode,
@@ -640,6 +641,12 @@ export default function NewTemplatePage() {
           </button>
         )}
         <div className="flex w-full items-center gap-2 sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">
+          <Link
+            href="/dashboard/templates"
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink transition hover:bg-surface-subtle"
+          >
+            <ArrowLeft size={15} aria-hidden="true" /> Back
+          </Link>
           <button
             type="button"
             onClick={handleSubmit}

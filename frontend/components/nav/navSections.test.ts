@@ -473,7 +473,6 @@ describe("sidebarFoldsOn", () => {
     "/dashboard/outbound-leads",
     "/dashboard/deals",
     "/dashboard/telecalling",
-    "/dashboard/telecalling/dial",
     "/dashboard/telecalling/upload",
     "/dashboard/telecalling/scheduled",
     "/dashboard/notes",
@@ -586,7 +585,6 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 
   const ACTIVE: Array<[string, string, string | null]> = [
     ["/dashboard/telecalling", "", "calling"],
-    ["/dashboard/telecalling/dial", "", "calling"],
     ["/dashboard/telecalling/upload", "scripts", "calling"],
     ["/dashboard/telecalling/upload", "", "leads-to-call"],
     ["/dashboard/telecalling/upload", "upload", "leads-to-call"],
@@ -613,7 +611,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 
   it("every old Call IQ address is one page of exactly one row and exactly one chip", () => {
     for (const href of [
-      "/dashboard/telecalling", "/dashboard/telecalling/dial",
+      "/dashboard/telecalling",
       "/dashboard/telecalling/upload", "/dashboard/telecalling/upload?tab=history", "/dashboard/telecalling/upload?tab=scripts",
       "/dashboard/telecalling/scheduled", "/dashboard/team?tab=log",
     ]) {
@@ -625,7 +623,6 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
   const CHIPS = {
     calling: [
       ["Call from the queue", "/dashboard/telecalling"],
-      ["Dial a number", "/dashboard/telecalling/dial"],
       ["Scripts", "/dashboard/telecalling/upload?tab=scripts"],
     ],
     leadsToCall: [
@@ -638,7 +635,6 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 
   it.each([
     ["/dashboard/telecalling", "", "calling"],
-    ["/dashboard/telecalling/dial", "", "calling"],
     ["/dashboard/telecalling/upload", "scripts", "calling"],
     ["/dashboard/telecalling/upload", "", "leadsToCall"],
     ["/dashboard/telecalling/upload", "history", "leadsToCall"],
@@ -660,7 +656,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
     const access = caller(["telecalling.dialer"]);
     expect(rowsShown(access)).toEqual(["calling"]);
     expect(leafHref(leafByKey("calling"), access)).toBe("/dashboard/telecalling");
-    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue", "Dial a number"]);
+    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue"]);
   });
 
   it("a user with only team.view sees Team and the Who got which lead path", () => {
@@ -691,7 +687,7 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
   it("a sub-feature the tenant did not buy hides its pages even when the permission is there", () => {
     const access = caller(["telecalling.dialer", "telecalling.upload"], ["telecalling_sim", "telecalling.dialer"]);
     expect(rowsShown(access)).toEqual(["calling"]);
-    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue", "Dial a number"]);
+    expect(CALLING_CHIPS(access)).toEqual(["Call from the queue"]);
   });
 
   it("without telecalling bought only the Team pages show; without an active subscription nothing does", () => {
@@ -714,7 +710,6 @@ describe("Call IQ reorganised: Calling, Leads to call, Call reviews, Team", () =
 describe("Call IQ titles", () => {
   it.each([
     ["/dashboard/telecalling", "", "Calling / Call from the queue"],
-    ["/dashboard/telecalling/dial", "", "Calling / Dial a number"],
     ["/dashboard/telecalling/upload", "scripts", "Calling / Scripts"],
     ["/dashboard/telecalling/upload", "", "Leads to call / Call lists"],
     ["/dashboard/telecalling/upload", "upload", "Leads to call / Call lists"],
