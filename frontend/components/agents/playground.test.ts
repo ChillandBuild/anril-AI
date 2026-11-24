@@ -28,6 +28,8 @@ import {
   suggestionsFor,
   toolNameError,
   usedLine,
+  followNewest,
+  memoryUsedText,
 } from "./playground";
 
 describe("formatToolCall", () => {
@@ -333,5 +335,20 @@ describe("usedLine", () => {
     expect(usedLine(undefined, "book", src, null)).toBe("From Main resource, p. 12");
     expect(usedLine(undefined, "chat", [], null)).toBe("");
     expect(usedLine(undefined, null, undefined, null)).toBe("");
+  });
+});
+
+describe("memoryUsedText", () => {
+  it("says what the reply drew on about the person", () => {
+    expect(memoryUsedText({ card_lines: 6, memory_hits: 2 }, "Vivek")).toBe("Its notes about Vivek + 2 past chats");
+    expect(memoryUsedText({ card_lines: 0, memory_hits: 1 }, "you")).toBe("1 past chat with you");
+    expect(memoryUsedText({ card_lines: 0, memory_hits: 0 }, "Vivek")).toBe("Nothing it remembers about Vivek yet");
+  });
+});
+
+describe("followNewest", () => {
+  it("keeps the drawer on the reply you opened, and a closed drawer closed", () => {
+    expect(followNewest("b2", "b4")).toBe("b2");
+    expect(followNewest(null, "b4")).toBeNull();
   });
 });

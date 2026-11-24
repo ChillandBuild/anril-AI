@@ -47,7 +47,7 @@ export function PromptBox({
 }) {
   return (
     <form
-      className="mx-auto w-full max-w-[720px] rounded-2xl border border-border bg-surface-mid"
+      className="mx-auto w-full max-w-[960px] rounded-2xl border border-border bg-surface-mid"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();

@@ -70,7 +70,7 @@ export function PlaygroundAdvanced({
 
   const name = character.name;
   return (
-    <section className="mx-auto mt-6 max-w-[720px] rounded-[14px] border border-border px-4 py-3.5" aria-label="Advanced">
+    <section className="mx-auto mt-6 max-w-[960px] rounded-[14px] border border-border px-4 py-3.5" aria-label="Advanced">
       <button
         type="button"
         id="pg-advanced-toggle"

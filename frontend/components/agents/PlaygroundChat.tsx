@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeftRight, Loader2, Smartphone, UserRound, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Loader2, PanelRightOpen, Smartphone, UserRound, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import {
@@ -20,17 +20,20 @@ import {
 } from "@/lib/api";
 import {
   chatErrorText,
+  followNewest,
   formatMs,
   formatToolCall,
   memoryStatusLine,
+  memoryUsedText,
   modelChoices,
   modelLabel,
   pairCompareReplies,
   parseToolOutput,
+  replySourceLine,
   saveMemoryResult,
+  sourceText,
   sourcesSetting,
   suggestionsFor,
-  usedLine,
 } from "@/components/agents/playground";
 import { CharacterSelect } from "@/components/agents/CharacterSelect";
 import { Hero, PromptBox, chipClass } from "@/components/agents/PlaygroundParts";
@@ -68,7 +71,7 @@ type PendingTools = { turnId: string; calls: CompanionToolCall[]; started: numbe
 type UseFor = "idle" | "confirm" | "saving";
 type SaveNote = { tone: "ok" | "info" | "error"; text: string; seeThem: boolean };
 
-const BAR = "mx-auto mt-2 flex max-w-[720px] flex-wrap items-center justify-between gap-2 rounded-[10px] px-2.5 py-2 text-[12.5px]";
+const BAR = "mx-auto mt-2 flex max-w-[960px] flex-wrap items-center justify-between gap-2 rounded-[10px] px-2.5 py-2 text-[12.5px]";
 const SMALL_BTN = "min-h-8 px-3 text-[12.5px]";
 const PERSON_KEY = "pg-person";
 
@@ -161,6 +164,9 @@ export function PlaygroundChat({
     rememberPerson(id);
   };
   const [epoch, setEpoch] = useState(0);   // bumped by Start over so the screen clears even though the id is the same
+  // The reply whose details drawer is open: "b4" (this session), "b4a"/"b4b" (a compare pair), "h2" (Earlier chat).
+  const [inspectKey, setInspectKey] = useState<string | null>(null);
+  useEffect(() => setInspectKey(null), [character.id, personId, epoch]);
   const you = people?.find((p) => p.is_you);
   const person: TestPerson | undefined = people?.find((p) => p.external_user_id === personId) ?? you;
   useEffect(() => onPerson?.(person), [person, onPerson]);
@@ -426,25 +432,54 @@ export function PlaygroundChat({
         </div>
       )}
       {savedModel && !trying && (
-        <p role="status" className="mx-auto mt-2 max-w-[720px] rounded-[10px] bg-green-100 px-2.5 py-2 text-[12.5px] text-success">
+        <p role="status" className="mx-auto mt-2 max-w-[960px] rounded-[10px] bg-green-100 px-2.5 py-2 text-[12.5px] text-success">
           Saved. {character.name} now answers with {savedModel}.
         </p>
       )}
       {compare && (
-        <p className="mx-auto mt-2 max-w-[720px] text-xs text-ink-muted">
+        <p className="mx-auto mt-2 max-w-[960px] text-xs text-ink-muted">
           Each reply comes twice: normal, and as if {character.name} had never met {person?.is_you === false ? person.name : "you"}.
         </p>
       )}
     </>
   );
 
+  const paired = pairCompareReplies(bubbles);
+  const lastPaired = paired[paired.length - 1];
+  const newestKey = !lastPaired ? null : Array.isArray(lastPaired) ? `b${paired.length - 1}a` : lastPaired.kind === "reply" ? `b${paired.length - 1}` : null;
+  useEffect(() => {
+    if (newestKey) setInspectKey((open) => followNewest(open, newestKey));
+  }, [newestKey]);
+  useEffect(() => {
+    if (!inspectKey) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setInspectKey(null);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [inspectKey]);
+  /** The reply (and its heading) behind a drawer key, or null once it is gone (Start over, another customer). */
+  const inspected = ((): { bubble: ReplyBubble; heading?: string } | null => {
+    if (!inspectKey) return null;
+    const m = /^([hb])(\d+)([ab])?$/.exec(inspectKey);
+    if (!m) return null;
+    const i = Number(m[2]);
+    if (m[1] === "h") return history[i]?.role === "assistant" ? { bubble: earlierReply(history[i]) } : null;
+    const item = paired[i];
+    if (Array.isArray(item)) return m[3] === "b" ? { bubble: item[1] as ReplyBubble, heading: "Without memory" } : { bubble: item[0] as ReplyBubble, heading: "With memory" };
+    return item?.kind === "reply" ? { bubble: item, heading: item.label } : null;
+  })();
+  const inspectProps = (key: string) => ({
+    inspecting: inspectKey === key,
+    onInspect: () => setInspectKey((open) => (open === key ? null : key)),
+  });
+
   return (
     // Started: a column exactly as tall as the screen below the top bar (56/64px), the page padding (16/24px) and the
     // card padding (18px), so the list scrolls, the input and the "Save now" line stay on screen, and Advanced
     // (after this column in the card) starts just below the screen: there when you scroll, out of the way when chatting.
-    <div className={cn(started && "flex h-[calc(100dvh-6.5rem)] min-h-[480px] flex-col md:h-[calc(100dvh-7.5rem)]")}>
+    // With a reply's details open, the drawer takes the right 320px and (on wide screens) the chat makes room for it.
+    <div className={cn(started && "relative flex h-[calc(100dvh-6.5rem)] min-h-[480px] flex-col md:h-[calc(100dvh-7.5rem)]", started && inspected && "lg:pr-[340px]")}>
       {started ? (
-        <div ref={listRef} className="mx-auto mb-2 mt-1 min-h-0 w-full max-w-[720px] flex-1 space-y-3 overflow-y-auto pr-1" aria-live="polite">
+        <div ref={listRef} className="mx-auto mb-2 mt-1 min-h-0 w-full max-w-[960px] flex-1 space-y-3 overflow-y-auto pr-1" aria-live="polite">
           {history.length > 0 && (
             <div className="flex items-center gap-2 text-[11.5px] text-ink-muted" role="separator" aria-label="Earlier chat">
               <span className="h-px flex-1 bg-border-subtle" />
@@ -456,15 +491,15 @@ export function PlaygroundChat({
             m.role === "user" ? (
               <UserBubble key={`h${i}`} text={m.text} />
             ) : (
-              <ReplyView key={`h${i}`} bubble={earlierReply(m)} techLines={techLines} personName={personName} />
+              <ReplyView key={`h${i}`} bubble={earlierReply(m)} {...inspectProps(`h${i}`)} />
             ),
           )}
-          {pairCompareReplies(bubbles).map((b, i) =>
+          {paired.map((b, i) =>
             Array.isArray(b) ? (
               <div key={i} className="grid gap-3 sm:grid-cols-2">
                 {/* pairCompareReplies only pairs two replies */}
-                <ReplyView bubble={b[0] as ReplyBubble} heading="With memory" full techLines={techLines} personName={personName} />
-                <ReplyView bubble={b[1] as ReplyBubble} heading="Without memory" full techLines={techLines} personName={personName} />
+                <ReplyView bubble={b[0] as ReplyBubble} heading="With memory" full {...inspectProps(`b${i}a`)} />
+                <ReplyView bubble={b[1] as ReplyBubble} heading="Without memory" full {...inspectProps(`b${i}b`)} />
               </div>
             ) : b.kind === "user" ? (
               <UserBubble key={i} text={b.text} />
@@ -473,8 +508,7 @@ export function PlaygroundChat({
                 key={i}
                 bubble={b}
                 heading={b.label}
-                techLines={techLines}
-                personName={personName}
+                {...inspectProps(`b${i}`)}
                 onRetry={canRetry && b === last ? retryLast : undefined}
                 onChip={b === last && !busy && !pending ? (c) => void send(c) : undefined}
               />
@@ -489,6 +523,16 @@ export function PlaygroundChat({
         </div>
       ) : (
         <Hero title={`See what ${character.name} can do`} />
+      )}
+      {started && inspected && (
+        <ReplyDetails
+          bubble={inspected.bubble}
+          heading={inspected.heading}
+          personName={personName}
+          modelName={inspected.bubble.model ? modelLabel(models, inspected.bubble.model) : null}
+          techLines={techLines}
+          onClose={() => setInspectKey(null)}
+        />
       )}
 
       {started && <div className="shrink-0">{notes}</div>}
@@ -572,10 +616,10 @@ export function PlaygroundChat({
             </>
           }
         />
-        {peopleError && <p role="alert" className="mx-auto mt-2 max-w-[720px] text-xs text-danger">{peopleError}</p>}
+        {peopleError && <p role="alert" className="mx-auto mt-2 max-w-[960px] text-xs text-danger">{peopleError}</p>}
 
         {status && (
-          <p className="mx-auto mt-2 flex max-w-[720px] flex-wrap items-center justify-center gap-x-1.5 text-center text-xs text-ink-muted">
+          <p className="mx-auto mt-2 flex max-w-[960px] flex-wrap items-center justify-center gap-x-1.5 text-center text-xs text-ink-muted">
             <span>{status.text}</span>
             {status.canSave && (
               <>
@@ -590,7 +634,7 @@ export function PlaygroundChat({
         {saveNote && (
           <p
             role={saveNote.tone === "error" ? "alert" : "status"}
-            className={cn("mx-auto mt-1.5 max-w-[720px] text-center text-xs", saveNote.tone === "ok" ? "text-success" : saveNote.tone === "error" ? "text-danger" : "text-ink-secondary")}
+            className={cn("mx-auto mt-1.5 max-w-[960px] text-center text-xs", saveNote.tone === "ok" ? "text-success" : saveNote.tone === "error" ? "text-danger" : "text-ink-secondary")}
           >
             {saveNote.text}{" "}
             {saveNote.seeThem && (
@@ -605,7 +649,7 @@ export function PlaygroundChat({
       {!started && notes}
 
       {!started && (
-        <div className="mx-auto mt-3.5 flex max-w-[720px] flex-wrap gap-1.5">
+        <div className="mx-auto mt-3.5 flex max-w-[960px] flex-wrap gap-1.5">
           {suggestions.map((s) => (
             <button
               key={s}
@@ -633,40 +677,46 @@ function UserBubble({ text }: { text: string }) {
 }
 
 /**
- * One answer: the text, a plain "Used:" line (what it drew on), and mood / model / time with "Try again".
- * Example: "Used: Its notes about Meena · From Main resource, p. 12". The grey "what was searched" lines
- * show only when "Show technical lines" is on in Advanced. A saved reply (`earlier`) shows its mood only.
+ * One answer: the text (or the app's bubbles), an owner-only problem note, and "Details" / "Try again".
+ * What it drew on, its tone, model, time and search steps live in the details drawer (ReplyDetails):
+ * click the reply or "Details" to open it. The reply being inspected gets a teal ring.
  */
 function ReplyView({
   bubble: b,
   heading,
   full,
-  techLines,
-  personName,
+  inspecting,
+  onInspect,
   onRetry,
   onChip,
 }: {
   bubble: ReplyBubble;
   heading?: string;
   full?: boolean;
-  techLines: boolean;
-  /** The test customer's name; null = the owner. */
-  personName: string | null;
+  /** Its details are open in the drawer. */
+  inspecting: boolean;
+  onInspect: () => void;
   /** Given only for the newest reply of this session. */
   onRetry?: () => void;
   /** App view: tapping a chip sends it. Given only for the newest reply, so older chips are greyed out. */
   onChip?: (chip: string) => void;
 }) {
-  const used = usedLine(b.used, b.basis, b.sources, personName);
-  const meta = (b.earlier ? [b.mood] : [b.mood, b.model, formatMs(b.ms)]).filter(Boolean).join(" · ");
+  // A click on the text opens the drawer, unless the owner was selecting text to copy.
+  const openUnlessSelecting = () => {
+    if (!window.getSelection()?.toString()) onInspect();
+  };
   return (
     <div className={cn("min-w-0 space-y-1.5", full ? "w-full" : "max-w-[85%]")}>
       {heading && <div className="text-xs font-medium text-ink-secondary">{heading}</div>}
-      {b.app ? (
-        <AppReply app={b.app} onChip={onChip} />
-      ) : (
-        <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">{b.text}</div>
-      )}
+      <div className={cn("rounded-2xl transition-shadow", inspecting && "ring-2 ring-primary/40 ring-offset-2")}>
+        {b.app ? (
+          <AppReply app={b.app} onChip={onChip} />
+        ) : (
+          <div onClick={openUnlessSelecting} className="cursor-pointer whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">
+            {b.text}
+          </div>
+        )}
+      </div>
       {b.problem && (
         <div role="alert" className="flex gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-900">
           <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0" />
@@ -675,35 +725,105 @@ function ReplyView({
           </span>
         </div>
       )}
-      {used && (
-        <div className="px-1 text-xs text-ink-secondary">
-          <span className="font-semibold">Used:</span> {used}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-3 px-1 text-[11.5px]">
+        <button
+          type="button"
+          onClick={onInspect}
+          aria-expanded={inspecting}
+          className={cn("inline-flex items-center gap-1 font-medium hover:underline", inspecting ? "text-primary" : "text-ink-muted hover:text-primary")}
+        >
+          <PanelRightOpen size={12} aria-hidden="true" /> Details
+        </button>
+        {onRetry && (
+          <button type="button" onClick={onRetry} className="font-medium text-primary hover:underline">
+            Try again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The drawer for one reply. Example for Jothidar answering "When will I get married?":
+ * From your files: 00 AstroTamil AI Rule Book v2.6, pp. 1-2 · About you: Its notes about you · Tone: calm ·
+ * Model: Gemini 3.1 Flash Lite · Time: 1.4 s, then its hidden working and what was searched (owner-only).
+ * An Earlier chat reply kept only its files and tone, so the drawer says the rest wasn't saved.
+ */
+function ReplyDetails({
+  bubble: b,
+  heading,
+  personName,
+  modelName,
+  techLines,
+  onClose,
+}: {
+  bubble: ReplyBubble;
+  heading?: string;
+  personName: string | null;
+  modelName: string | null;
+  /** "Show technical lines" in Advanced: the search steps start open. */
+  techLines: boolean;
+  onClose: () => void;
+}) {
+  const who = personName ?? "you";
+  const files =
+    b.sources && b.sources.length > 0 && (b.basis === "primary" || b.basis === "book")
+      ? b.sources.map(sourceText)
+      : [replySourceLine(b.basis, b.sources) || "Nothing from your files"];
+  const rows: [string, string | null][] = [
+    [`About ${who}`, b.used ? memoryUsedText(b.used, who) : null],
+    ["Tone", b.mood],
+    ["Model", modelName],
+    ["Time", b.earlier || !b.ms ? null : formatMs(b.ms)],
+  ];
+  return (
+    <aside
+      aria-label="Reply details"
+      className="absolute inset-y-0 right-0 z-20 flex w-full max-w-[320px] flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-4 text-sm shadow-lg"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-semibold text-ink">{heading ?? "This reply"}</h3>
+        <button type="button" onClick={onClose} aria-label="Close details" className="grid h-7 w-7 place-items-center rounded-lg text-ink-muted hover:bg-surface-mid hover:text-ink">
+          <X size={15} aria-hidden="true" />
+        </button>
+      </div>
+      <div>
+        <div className="mb-1 text-xs font-medium text-ink-secondary">From your files</div>
+        <ul className="space-y-0.5 text-ink">
+          {files.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      </div>
+      <dl className="space-y-2">
+        {rows
+          .filter(([, v]) => v)
+          .map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-3">
+              <dt className="shrink-0 text-ink-secondary">{k}</dt>
+              <dd className="text-right text-ink">{v}</dd>
+            </div>
+          ))}
+      </dl>
+      {b.earlier && <p className="text-xs text-ink-muted">A reply from Earlier chat keeps only its files and tone. Model, time and what it remembered weren&apos;t saved.</p>}
       {b.working && (
         <details className="rounded-lg border border-border bg-surface-mid px-2.5 py-1.5 text-xs text-ink-secondary">
           <summary className="cursor-pointer font-semibold text-ink">Working (only you see this)</summary>
           <p className="mt-1 whitespace-pre-wrap">{b.working}</p>
         </details>
       )}
-      {techLines && b.trace.length > 0 && (
-        <ul aria-label="What was searched" className="space-y-0.5 border-l-2 border-primary/20 pl-2 text-xs text-ink-secondary">
-          {b.trace.map((line, i) => (
-            <li key={i}>{line}</li>
-          ))}
-        </ul>
+      {b.trace.length > 0 && (
+        <details open={techLines} className="text-xs text-ink-secondary">
+          <summary className="cursor-pointer font-semibold text-ink">What was searched</summary>
+          <ul className="mt-1 space-y-0.5 border-l-2 border-primary/20 pl-2">
+            {b.trace.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        </details>
       )}
-      {(meta || onRetry) && (
-        <div className="flex flex-wrap items-center gap-x-2 px-1 text-[11px] text-ink-muted">
-          {meta && <span>{meta}</span>}
-          {onRetry && (
-            <button type="button" onClick={onRetry} className="text-[11.5px] font-medium text-primary hover:underline">
-              Try again
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+    </aside>
   );
 }
 
@@ -760,7 +880,7 @@ function AppViewBar({ prefs, onLeft, onButton }: { prefs: AppViewPrefs; onLeft: 
   useEffect(() => setDraft(prefs.button), [prefs.button]);
   const valid = !!cleanButtonId(draft);
   return (
-    <div className="mx-auto mb-2 flex w-full max-w-[720px] shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[10px] bg-primary/5 px-2.5 py-1.5 text-[12.5px] text-ink-secondary">
+    <div className="mx-auto mb-2 flex w-full max-w-[960px] shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[10px] bg-primary/5 px-2.5 py-1.5 text-[12.5px] text-ink-secondary">
       <span className="inline-flex items-center gap-1.5 text-ink">
         <Smartphone size={13} aria-hidden="true" /> App view: replies come as your app gets them
       </span>

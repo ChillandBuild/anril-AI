@@ -83,18 +83,32 @@ export function usedLine(
 ): string {
   const files = replySourceLine(basis, sources);
   if (!used) return files;
-  const who = personName ?? "you";
+  return `${memoryUsedText(used, personName ?? "you")} · ${files || "Not from your files"}`;
+}
+
+/**
+ * What a reply drew on about the person, in words. { card_lines: 6, memory_hits: 2 }, "Vivek" ->
+ * "Its notes about Vivek + 2 past chats"; nothing -> "Nothing it remembers about Vivek yet".
+ */
+export function memoryUsedText(used: NonNullable<CompanionReply["used"]>, who: string): string {
   const { card_lines: card, memory_hits: hits } = used;
   const chats = `${hits} past ${hits === 1 ? "chat" : "chats"}`;
-  const memory =
-    card > 0 && hits > 0
-      ? `Its notes about ${who} + ${chats}`
-      : card > 0
-        ? `Its notes about ${who}`
-        : hits > 0
-          ? `${chats} with ${who}`
-          : `Nothing it remembers about ${who} yet`;
-  return `${memory} · ${files || "Not from your files"}`;
+  if (card > 0 && hits > 0) return `Its notes about ${who} + ${chats}`;
+  if (card > 0) return `Its notes about ${who}`;
+  if (hits > 0) return `${chats} with ${who}`;
+  return `Nothing it remembers about ${who} yet`;
+}
+
+/**
+ * Which reply the details drawer shows after a new reply lands. `open` = the reply being inspected
+ * (null = drawer closed); `newest` = the reply that just arrived. Keys look like "b4" (a reply this session),
+ * "b4a" / "b4b" (a "Compare without memory" pair) and "h2" (Earlier chat).
+ * For now the drawer stays on the reply you opened: drawer on "b2", "b4" arrives -> still "b2"; closed stays closed.
+ * To make it follow new replies instead, return `open === null ? null : newest`.
+ */
+export function followNewest(open: string | null, newest: string | null): string | null {
+  void newest; // kept in the signature so switching to "follow" touches only this function
+  return open;
 }
 
 // ---------------------------------------------------------------------------
