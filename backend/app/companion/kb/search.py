@@ -7,7 +7,8 @@ Flow (T13), with the shortcut step of T28:
     step A   -> main resource (tier 1): top 8 candidates, plus the pages of the nearest learned
                 shortcut. The judge scores them all in one call. Keep up to 3 that pass.
     shortcut -> no main-resource passage passed, but a shortcut page did: keep it, skip step B
-    step B   -> other books (tier 2): top 20 candidates, judge, keep up to 4
+    step B   -> other books (tier 2): top 20 candidates, judge, keep up to 4. The search (not the judge)
+                runs beside step A, so a question the main resource can't answer doesn't wait for it
     else     -> no passages (the reply says so, or uses the character's own reasoning)
 
 Worked example. Priya asks Guru "7th house la sani irundha kalyanam late aaguma?". Step A finds
@@ -154,6 +155,13 @@ def _record(step: str, passages: list[Passage], scores: list[int | None], kept: 
             "score": s, "meaning": (ov.kb_scores.get(p.id) or {}).get("meaning"), "kept": p.id in kept_ids})
 
 
+def _quiet(task: asyncio.Task) -> None:
+    """Read a dropped early search's error, so asyncio does not log "exception was never retrieved".
+    An error the reply needed still reaches it: `await early_books` raises it as before."""
+    if not task.cancelled():
+        task.exception()
+
+
 def join_chunks(texts: list[str]) -> str:
     """One book's passages, in reading order, as one text with the shared overlap written once.
     Example: ["... Saturn in the 7th delays", "the 7th delays marriage until ..."] ->
@@ -225,29 +233,37 @@ async def _search(tenant_id: str, collection_id: str, message: str, history: lis
                     sum(len(p.text) for p in whole), len(books), len(kept))
         return KbResult(passages=tuple(whole) + tuple(kept), **found)
 
-    # Step A: the main resource, plus the shortcut's pages, in one judge call.
-    main = await candidates(tenant_id, collection_id, TIER_MAIN, rw, STEP_A_CANDIDATES, vectors=vectors)
-    shortcut, shortcut_passages = await _shortcut(tenant_id, collection_id, companion_id, topic_vector,
-                                                  {p.id for p in main})
-    judged = main + shortcut_passages
-    scores = await _judge(tenant_id, question, judged)
-    if scores is None:
-        return KbResult(failed=True)
-    kept_main = _passing(main, scores[:len(main)], STEP_A_KEEP)
-    kept_shortcut = _passing(shortcut_passages, scores[len(main):], STEP_B_KEEP)
-    _record("main", main, scores[:len(main)], kept_main)
-    _record("shortcut", shortcut_passages, scores[len(main):], kept_shortcut)
-    playground.note(f"Knowledge: main files {len(main)} candidates, kept {len(kept_main)}")
-    tried = dict(shortcut_id=shortcut["id"] if shortcut else None, shortcut_hit=bool(kept_shortcut))
-    logger.info("companion kb: step A candidates=%d kept=%d shortcut_passages=%d shortcut_kept=%d",
-                len(main), len(kept_main), len(shortcut_passages), len(kept_shortcut))
-    if kept_main or kept_shortcut:
-        return KbResult(passages=tuple(kept_main or kept_shortcut), **found, **tried)
+    # Step B's search needs only the queries, so it starts now, beside step A. It is judged only when step A
+    # keeps nothing, and dropped otherwise: the same candidates as searching after step A, without the wait.
+    early_books = asyncio.create_task(
+        candidates(tenant_id, collection_id, TIER_BOOKS, rw, STEP_B_CANDIDATES, vectors=vectors))
+    early_books.add_done_callback(_quiet)
+    try:
+        # Step A: the main resource, plus the shortcut's pages, in one judge call.
+        main = await candidates(tenant_id, collection_id, TIER_MAIN, rw, STEP_A_CANDIDATES, vectors=vectors)
+        shortcut, shortcut_passages = await _shortcut(tenant_id, collection_id, companion_id, topic_vector,
+                                                      {p.id for p in main})
+        judged = main + shortcut_passages
+        scores = await _judge(tenant_id, question, judged)
+        if scores is None:
+            return KbResult(failed=True)
+        kept_main = _passing(main, scores[:len(main)], STEP_A_KEEP)
+        kept_shortcut = _passing(shortcut_passages, scores[len(main):], STEP_B_KEEP)
+        _record("main", main, scores[:len(main)], kept_main)
+        _record("shortcut", shortcut_passages, scores[len(main):], kept_shortcut)
+        playground.note(f"Knowledge: main files {len(main)} candidates, kept {len(kept_main)}")
+        tried = dict(shortcut_id=shortcut["id"] if shortcut else None, shortcut_hit=bool(kept_shortcut))
+        logger.info("companion kb: step A candidates=%d kept=%d shortcut_passages=%d shortcut_kept=%d",
+                    len(main), len(kept_main), len(shortcut_passages), len(kept_shortcut))
+        if kept_main or kept_shortcut:
+            return KbResult(passages=tuple(kept_main or kept_shortcut), **found, **tried)
+        book_candidates = await early_books
+    finally:
+        early_books.cancel()   # no-op when it finished; stops it when step A answered or broke
 
     # Step B: the other books. A shortcut passage the judge just turned down is not asked about again.
     turned_down = {p.id for p in shortcut_passages}
-    books = [p for p in await candidates(tenant_id, collection_id, TIER_BOOKS, rw, STEP_B_CANDIDATES,
-                                         vectors=vectors) if p.id not in turned_down]
+    books = [p for p in book_candidates if p.id not in turned_down]
     scores = await _judge(tenant_id, question, books)
     if scores is None:
         return KbResult(failed=True)

@@ -121,7 +121,7 @@ def test_step_a_hit_returns_the_main_resource_and_skips_step_b(fx):
     assert [(p.id, p.document_title, p.tier, p.page_from, p.score) for p in kb.passages] == [
         ("m12", "Main resource", 1, 12, 3)]
     assert kb.needs_docs and not kb.failed and kb.topic == SATURN.topic_query
-    assert fx.tiers == [1] and fx.judge_calls == [["m12"]]
+    assert sorted(fx.tiers) == [1, 2] and fx.judge_calls == [["m12"]]   # books searched early, never judged
 
 
 def test_step_a_miss_runs_step_b_and_keeps_the_best_scores_first(fx):
@@ -130,14 +130,14 @@ def test_step_a_miss_runs_step_b_and_keeps_the_best_scores_first(fx):
     kb = ask("sadesati evlo naal?")
     assert [(p.id, p.score) for p in kb.passages] == [("b88", 3), ("b87", 2)]
     assert all(p.tier == 2 and p.document_title == "Book 3" for p in kb.passages)
-    assert fx.tiers == [1, 2] and len(fx.judge_calls) == 2
+    assert sorted(fx.tiers) == [1, 2] and len(fx.judge_calls) == 2
 
 
 def test_nothing_passes_gives_no_passages_but_still_a_documents_question(fx):
     fx.scores = {"m12": 1, "b90": 1}
     kb = ask()
     assert kb.passages == () and kb.needs_docs is True and kb.failed is False
-    assert kb.topic == SATURN.topic_query and fx.tiers == [1, 2]
+    assert kb.topic == SATURN.topic_query and sorted(fx.tiers) == [1, 2]
 
 
 def test_step_limits_keep_3_from_the_main_resource_and_4_from_books(fx):
@@ -155,10 +155,10 @@ def test_step_limits_keep_3_from_the_main_resource_and_4_from_books(fx):
 def test_a_failed_judge_uses_no_passages_and_marks_the_result_failed(fx):
     fx.scores, fx.judge_fails_on = {"m12": 3}, 1
     assert ask() == KbResult(failed=True)
-    assert fx.tiers == [1]                                   # an unchecked step A does not fall through to books
+    assert len(fx.judge_calls) == 1                          # an unchecked step A does not fall through to books
     fx.tiers.clear(), fx.judge_calls.clear()
     fx.scores, fx.judge_fails_on = {"b90": 3}, 2             # step A judged fine, step B's judge broke
-    assert ask() == KbResult(failed=True) and fx.tiers == [1, 2]
+    assert ask() == KbResult(failed=True) and sorted(fx.tiers) == [1, 2]
 
 
 def test_another_tenants_collection_returns_nothing(fx):
@@ -222,7 +222,7 @@ def test_a_shortcut_hit_is_judged_with_step_a_and_skips_step_b(fx):
     kb = ask("sadesati epo mudiyum?", companion_id="guru")
     assert [(p.id, p.page_from, p.score) for p in kb.passages] == [("b88", 88, 3)]
     assert kb.shortcut_id == sid and kb.shortcut_hit is True
-    assert fx.tiers == [1] and fx.judge_calls == [["m12", "b87", "b88"]]         # one judge call, no extra
+    assert fx.judge_calls == [["m12", "b87", "b88"]]                             # one judge call, no extra
 
 
 def test_the_trap_a_shortcut_page_below_the_pass_mark_is_dropped_and_step_b_runs(fx):
@@ -232,7 +232,7 @@ def test_the_trap_a_shortcut_page_below_the_pass_mark_is_dropped_and_step_b_runs
     kb = ask("ashtama sani na enna?", companion_id="guru")
     assert [p.id for p in kb.passages] == ["b90"]                                 # never the Sade Sati page
     assert kb.shortcut_id == sid and kb.shortcut_hit is False
-    assert fx.tiers == [1, 2] and fx.judge_calls == [["m12", "b87", "b88"], ["b90"]]
+    assert sorted(fx.tiers) == [1, 2] and fx.judge_calls == [["m12", "b87", "b88"], ["b90"]]
 
 
 def test_the_main_resource_still_wins_over_a_passing_shortcut(fx):
@@ -240,14 +240,14 @@ def test_the_main_resource_still_wins_over_a_passing_shortcut(fx):
     fx.rewrite_result = SADE_SATI
     fx.scores = {"m12": 2, "b88": 3}
     kb = ask(companion_id="guru")
-    assert [p.id for p in kb.passages] == ["m12"] and kb.shortcut_hit is True and fx.tiers == [1]
+    assert [p.id for p in kb.passages] == ["m12"] and kb.shortcut_hit is True and len(fx.judge_calls) == 1
 
 
 def test_shortcuts_are_off_without_a_character_and_for_retired_or_far_topics(fx):
     fx.rewrite_result = SADE_SATI
     fx.scores = {"b88": 3}
     add_shortcut(fx)
-    assert ask().shortcut_id is None and fx.tiers == [1, 2]                       # no companion_id
+    assert ask().shortcut_id is None and sorted(fx.tiers) == [1, 2]                       # no companion_id
     fx.db.rows("companion_kb_shortcuts")[0]["status"] = "retired"
     assert ask(companion_id="guru").shortcut_id is None
     fx.db.rows("companion_kb_shortcuts")[0].update(status="active", embedding=[0.0, 1.0, 0.0])
@@ -345,3 +345,58 @@ def test_live_search_ignores_settings_outside_the_playground(fx):
     with playground.use(playground.Overrides(judge_min=0)):
         pass                                                              # set and reset
     assert ask().passages == () and playground.current() is None
+
+
+# --- the other books' search runs beside step A (reply speed, 2026-11-24) -----------------------------------
+
+def _break_books(fx, how):
+    real = fx.db.rpc_handlers["match_companion_kb_chunks"]
+
+    def handler(params):
+        if params["p_tier"] == 2:
+            return how(params)
+        return real(params)
+    fx.db.rpc_handlers["match_companion_kb_chunks"] = handler
+
+
+def test_a_broken_early_book_search_does_not_spoil_a_step_a_answer(fx):
+    def boom(params):
+        raise RuntimeError("database down")
+    _break_books(fx, boom)
+    fx.scores = {"m12": 3}
+    kb = ask()
+    assert [p.id for p in kb.passages] == ["m12"] and not kb.failed
+
+
+def test_a_broken_early_book_search_still_fails_a_question_that_needs_the_books(fx):
+    def boom(params):
+        raise RuntimeError("database down")
+    _break_books(fx, boom)
+    fx.scores = {"m12": 1}
+    assert ask() == KbResult(failed=True) and len(fx.judge_calls) == 1
+
+
+def test_a_slow_early_book_search_does_not_hold_a_step_a_answer(fx):
+    import time
+
+    def slow(params):
+        time.sleep(0.6)
+        return []
+    _break_books(fx, slow)
+    fx.scores = {"m12": 3}
+
+    async def timed():
+        started = time.monotonic()
+        kb = await search.search(A, "c1", "sani 7th house?")
+        return kb, time.monotonic() - started
+    kb, took = run(timed())
+    assert [p.id for p in kb.passages] == ["m12"] and took < 0.4
+
+
+def test_step_b_gets_the_same_candidates_as_searching_after_step_a(fx):
+    """The early search is the same call with the same queries: step B judges exactly what it judged before."""
+    fx.rewrite_result = SADE_SATI
+    fx.scores = {"m12": 1, "b87": 2, "b88": 3}
+    ask("sadesati evlo naal?")
+    after_a = run(search.candidates(A, "c1", search.TIER_BOOKS, SADE_SATI, search.STEP_B_CANDIDATES))
+    assert fx.judge_calls[1] == [p.id for p in after_a]
