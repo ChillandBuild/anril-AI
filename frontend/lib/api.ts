@@ -5395,6 +5395,17 @@ export interface CompanionReply {
   problem?: string | null;
   /** What the reply drew on about the person (test chat only). Example: { memory_hits: 2, card_lines: 6 }. */
   used?: { memory_hits: number; card_lines: number };
+  /** Only when reply_format was sent (an app, or the Playground's App view); null otherwise. */
+  bubbles?: string[] | null;
+  chips?: string[] | null;
+  button?: string | null;
+  tag?: string | null;
+}
+
+/** What an app sends on /chat to get bubbles, chips, a button and a tag. Example: {buttons: [{id: "astrologer", ...}], questions_left: 3}. */
+export interface CompanionReplyFormat {
+  buttons: { id: string; when: string; handoff?: boolean }[];
+  questions_left?: number;
 }
 
 /** One saved line of a test customer's chat with a character, oldest first. Old replies carry no trace, time or model. */
@@ -5632,6 +5643,8 @@ export const companionsApi = {
       test_person?: string;
       /** "Try again": the server deletes the newest question + answer, then answers the same message again. */
       retry?: boolean;
+      /** App view: the reply comes back as the client's app gets it. */
+      reply_format?: CompanionReplyFormat;
     } = {},
   ) =>
     apiFetch<CompanionReply>(`${COMPANIONS}/${id}/test-chat`, {

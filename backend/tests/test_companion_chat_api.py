@@ -586,3 +586,15 @@ def test_usage_page_shows_only_this_business_and_hides_unknown_ids(env, monkeypa
     assert body["daily"] == [{"date": "2026-11-23", "count": 3,
                               "by_companion": {env.live["id"]: 2, "unknown": 1}}]
     assert env.other["id"] not in str(body)
+
+
+def test_playground_app_view_gets_the_reply_as_the_app_does(env):
+    """Playground "App view": the same reply_format an app sends on /chat, so the owner sees bubbles, chips,
+    the button and the tag. Without it the Playground stays plain text."""
+    url = f"{DASH}/{env.live['id']}/test-chat"
+    body = env.client.post(url, json={"message": "Vanakkam", "reply_format": FORMAT}).json()
+    assert (body["bubbles"], body["chips"], body["button"], body["tag"]) == (["Vanakkam Karthik!"], [], None, "counted")
+    plain = env.client.post(url, json={"message": "Vanakkam"}).json()
+    assert plain["bubbles"] is None and plain["tag"] is None
+    assert env.client.post(url, json={"message": "Vanakkam", "reply_format": {"buttons": [
+        {"id": "counted", "when": "x"}]}}).status_code == 422

@@ -20,6 +20,7 @@ from app.companion import (engine, install, keys, memory, memory_card, memory_re
                            playground, playground_people, store)
 from app.companion.kb import search as kb_search, store as kb_store
 from app.companion.models import AppData, AppTool, CompanionSettings, CompanionUpdate, MemoryScopeIn, ToolResult
+from app.companion.reply_format import ReplyFormat
 from app.companion.tools import MAX_TOOLS, ToolsInvalid
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_permission
@@ -430,6 +431,10 @@ class TestChatIn(BaseModel):
     settings: PlaygroundSettings | None = None        # Playground settings panel; None = live behaviour
     test_person: str | None = Field(None, min_length=1, max_length=200)  # a test customer's id; None = "You"
     retry: bool = False   # "Try again": the newest question + answer are replaced by this new answer
+    # App view: the reply comes back as the client's app gets it (bubbles, chips, a button, a tag), with the same
+    # reply_format an app sends on /chat, e.g. {"buttons": [{"id": "astrologer", "when": "...", "handoff": true}],
+    # "questions_left": 3}. None = plain text, as before.
+    reply_format: ReplyFormat | None = None
 
 
 class ContinueIn(BaseModel):
@@ -489,7 +494,8 @@ async def test_chat(companion_id: UUID, payload: TestChatIn, ctx: dict = Depends
                 str(companion_id), tenant_id, person_id, message,
                 tools=payload.tools if payload.use_memory else [], model=payload.model, use_memory=payload.use_memory,
                 app_data=(before or {}).get("test_app_data") or None,
-                display_name=(before or {}).get("display_name"), profile_name=(before or {}).get("profile_name"))
+                display_name=(before or {}).get("display_name"), profile_name=(before or {}).get("profile_name"),
+                reply_format=payload.reply_format)
     except _EXPECTED as exc:
         raise _http_error(exc)
     companion = await store.get_companion(tenant_id, str(companion_id)) or {}

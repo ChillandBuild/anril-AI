@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeftRight, Loader2, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Loader2, Smartphone, UserRound, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import {
@@ -37,6 +37,7 @@ import { Hero, PromptBox, chipClass } from "@/components/agents/PlaygroundParts"
 import { TestPersonChips, useTestPeople } from "@/components/agents/TestPersonChips";
 import { PROFILE_SAVED_EVENT } from "@/components/agents/AppDataBox";
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT } from "@/components/agents/ui";
+import { APP_VIEW_DEFAULTS, type AppViewPrefs, appViewFormat, appViewLine, cleanButtonId, loadAppView, nextQuestionsLeft, saveAppView } from "@/components/agents/appView";
 
 type ReplyBubble = {
   kind: "reply";
@@ -55,6 +56,8 @@ type ReplyBubble = {
   earlier?: boolean;
   /** Why the AI call failed (owner-only), e.g. "Your Google AI Studio credits are used up...". */
   problem?: string | null;
+  /** App view: the reply as the client's app got it, and the questions left before and after it. */
+  app?: { bubbles: string[]; chips: string[]; button: string | null; tag: string | null; before: number; after: number };
 };
 type Bubble = { kind: "user"; text: string } | ReplyBubble | { kind: "error"; text: string };
 
@@ -137,6 +140,16 @@ export function PlaygroundChat({
   const [useForError, setUseForError] = useState("");
   const [savedModel, setSavedModel] = useState("");
   const [compare, setCompare] = useState(false);
+  // App view: replies come back as the client's app gets them (bubbles, chips, the button). Remembered per character.
+  const [appView, setAppViewState] = useState<AppViewPrefs>(APP_VIEW_DEFAULTS);   // read after mount: no hydration mismatch
+  useEffect(() => setAppViewState(loadAppView(character.id)), [character.id]);
+  const setAppView = (change: Partial<AppViewPrefs>) =>
+    setAppViewState((v) => {
+      const next = { ...v, ...change };
+      saveAppView(character.id, next);
+      return next;
+    });
+  const appSent = useRef<number | null>(null);   // questions left when the App view message went out; null = plain
   const listRef = useRef<HTMLDivElement>(null);
 
   // Who the owner is testing as. null = You.
@@ -248,6 +261,17 @@ export function PlaygroundChat({
     trace: [...priorTrace, ...(reply.trace ?? [])],
     working: reply.working ?? null,
     problem: reply.problem ?? null,
+    app:
+      !label && reply.status === "done" && reply.bubbles && appSent.current !== null
+        ? {
+            bubbles: reply.bubbles,
+            chips: reply.chips ?? [],
+            button: reply.button ?? null,
+            tag: reply.tag ?? null,
+            before: appSent.current,
+            after: nextQuestionsLeft(appSent.current, reply.tag),
+          }
+        : undefined,
   });
 
   /** `priorTrace` = trace lines from the paused turn this reply continues. */
@@ -262,7 +286,9 @@ export function PlaygroundChat({
       return;
     }
     setPending(null);
-    setBubbles((b) => [...b, toBubble(reply, started, undefined, priorTrace)]);
+    const bubble = toBubble(reply, started, undefined, priorTrace);
+    if (bubble.app) setAppView({ left: bubble.app.after });   // the app counts the question only on "counted"
+    setBubbles((b) => [...b, bubble]);
   };
 
   const trying = pick !== null && pick !== character.model;
@@ -284,8 +310,10 @@ export function PlaygroundChat({
       test_person: person && !person.is_you ? person.external_user_id : undefined,
     };
     // Compare: the same message again, without memory, in parallel. Shown beside the first, labelled.
+    appSent.current = appView.on ? appView.left : null;
+    const replyFormat = appView.on ? { reply_format: appViewFormat(appView.button, appView.left) } : {};
     const [main, bare] = await Promise.allSettled([
-      companionsApi.testChat(character.id, message, { ...base, tools, ...(retry ? { retry: true } : {}) }),
+      companionsApi.testChat(character.id, message, { ...base, tools, ...replyFormat, ...(retry ? { retry: true } : {}) }),
       compare && !retry ? companionsApi.testChat(character.id, message, { ...base, use_memory: false }) : Promise.resolve(null),
     ]);
     if (activeKey.current !== forKey) return;   // the owner switched character or person meanwhile
@@ -448,6 +476,7 @@ export function PlaygroundChat({
                 techLines={techLines}
                 personName={personName}
                 onRetry={canRetry && b === last ? retryLast : undefined}
+                onChip={b === last && !busy && !pending ? (c) => void send(c) : undefined}
               />
             ) : (
               <div key={i} role="alert" className="max-w-[85%] rounded-xl border border-danger/20 bg-danger/5 px-3.5 py-2 text-sm text-danger">
@@ -463,6 +492,13 @@ export function PlaygroundChat({
       )}
 
       {started && <div className="shrink-0">{notes}</div>}
+      {appView.on && (
+        <AppViewBar
+          prefs={appView}
+          onLeft={(left) => setAppView({ left })}
+          onButton={(button) => setAppView({ button })}
+        />
+      )}
       <div className="shrink-0">
         <PromptBox
           id="playground-message"
@@ -499,6 +535,15 @@ export function PlaygroundChat({
                 className={chipClass(compare)}
               >
                 <ArrowLeftRight size={13} aria-hidden="true" /> Compare without memory
+              </button>
+              <button
+                type="button"
+                aria-pressed={appView.on}
+                onClick={() => setAppView({ on: !appView.on })}
+                title="Show replies the way your app gets them: bubbles, tappable follow-up questions and your button"
+                className={chipClass(appView.on)}
+              >
+                <Smartphone size={13} aria-hidden="true" /> App view
               </button>
             </>
           }
@@ -599,6 +644,7 @@ function ReplyView({
   techLines,
   personName,
   onRetry,
+  onChip,
 }: {
   bubble: ReplyBubble;
   heading?: string;
@@ -608,13 +654,19 @@ function ReplyView({
   personName: string | null;
   /** Given only for the newest reply of this session. */
   onRetry?: () => void;
+  /** App view: tapping a chip sends it. Given only for the newest reply, so older chips are greyed out. */
+  onChip?: (chip: string) => void;
 }) {
   const used = usedLine(b.used, b.basis, b.sources, personName);
   const meta = (b.earlier ? [b.mood] : [b.mood, b.model, formatMs(b.ms)]).filter(Boolean).join(" · ");
   return (
     <div className={cn("min-w-0 space-y-1.5", full ? "w-full" : "max-w-[85%]")}>
       {heading && <div className="text-xs font-medium text-ink-secondary">{heading}</div>}
-      <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">{b.text}</div>
+      {b.app ? (
+        <AppReply app={b.app} onChip={onChip} />
+      ) : (
+        <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">{b.text}</div>
+      )}
       {b.problem && (
         <div role="alert" className="flex gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-900">
           <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0" />
@@ -651,6 +703,89 @@ function ReplyView({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * App view: each bubble on its own, the chips as tappable questions, the app's button, and a grey line with the tag
+ * and the questions left. Example: 2 bubbles, chips "When will I marry?" / "Do I have sevvai dosham?", button astrologer.
+ */
+function AppReply({ app, onChip }: { app: NonNullable<ReplyBubble["app"]>; onChip?: (chip: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      {app.bubbles.map((text, i) => (
+        <div key={i} className="w-fit max-w-full whitespace-pre-wrap rounded-2xl rounded-bl-md bg-surface-mid px-3.5 py-2 text-sm text-ink">
+          {text}
+        </div>
+      ))}
+      {app.chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" aria-label="Follow-up questions">
+          {app.chips.map((c) => (
+            <button
+              key={c}
+              type="button"
+              disabled={!onChip}
+              onClick={() => onChip?.(c)}
+              className="rounded-full border border-border bg-white px-3 py-1 text-[12.5px] text-ink transition-colors hover:bg-surface-mid disabled:cursor-default disabled:text-ink-muted disabled:hover:bg-white"
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+      {app.button && (
+        <span
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink"
+          title={`Your app shows its own button here (button: "${app.button}")`}
+        >
+          <UserRound size={13} aria-hidden="true" /> {app.button}
+        </span>
+      )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-ink-muted">
+        {app.tag && (
+          <span className={cn("rounded-md px-1.5 py-px", app.tag === "counted" ? "bg-green-100 text-success" : "bg-surface-mid text-ink-secondary")}>
+            {app.tag}
+          </span>
+        )}
+        <span>{appViewLine(app, app.before, app.after)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The App view settings: questions left (what the app sends) and the id of the app's hand-off button. */
+function AppViewBar({ prefs, onLeft, onButton }: { prefs: AppViewPrefs; onLeft: (n: number) => void; onButton: (id: string) => void }) {
+  const [draft, setDraft] = useState(prefs.button);
+  useEffect(() => setDraft(prefs.button), [prefs.button]);
+  const valid = !!cleanButtonId(draft);
+  return (
+    <div className="mx-auto mb-2 flex w-full max-w-[720px] shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[10px] bg-primary/5 px-2.5 py-1.5 text-[12.5px] text-ink-secondary">
+      <span className="inline-flex items-center gap-1.5 text-ink">
+        <Smartphone size={13} aria-hidden="true" /> App view: replies come as your app gets them
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        Questions left
+        <button type="button" aria-label="One question less" onClick={() => onLeft(Math.max(0, prefs.left - 1))} className={cn(chipClass(), "h-6 px-2")}>
+          −
+        </button>
+        <b className="min-w-4 text-center text-ink" aria-live="polite">{prefs.left}</b>
+        <button type="button" aria-label="One question more" onClick={() => onLeft(Math.min(99, prefs.left + 1))} className={cn(chipClass(), "h-6 px-2")}>
+          +
+        </button>
+      </span>
+      <label className="inline-flex items-center gap-1.5">
+        Button
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => onButton(cleanButtonId(draft) || prefs.button)}
+          maxLength={32}
+          aria-invalid={!valid}
+          className={cn(INPUT, "h-6 w-32 px-2 py-0 text-xs", !valid && "border-danger")}
+        />
+      </label>
+      {!valid && <span className="text-xs text-danger">Use lowercase letters, digits or _, like astrologer</span>}
     </div>
   );
 }
