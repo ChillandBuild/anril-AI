@@ -141,13 +141,12 @@ export function NotificationBell() {
       {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex items-center justify-center w-[34px] h-[34px] rounded-full transition-transform hover:scale-105 group"
-        style={{ background: "var(--primary-400)" }}
+        className="relative flex items-center justify-center w-[34px] h-[34px] rounded-full bg-primary-50 ring-1 ring-inset ring-primary-200 transition hover:scale-105 hover:bg-primary-100 group"
         title="Alerts"
         aria-label={totalUnread > 0 ? `Alerts, ${totalUnread} new` : "Alerts"}
         aria-expanded={isOpen}
       >
-        <Bell size={16} className="text-[#0A1528]" />
+        <Bell size={16} className="text-primary" />
         {totalUnread > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 bg-[#f0643f] text-white text-[10px] font-black rounded-full flex items-center justify-center ring-4 ring-white shadow-sm animate-bounce-short">
             {totalUnread > 99 ? "99+" : totalUnread}
