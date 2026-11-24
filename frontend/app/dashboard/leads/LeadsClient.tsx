@@ -5,6 +5,7 @@ import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, Waba
 import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Pagination } from "@/components/ui/Pagination";
 import { timeAgo, formatPhone } from "@/lib/utils";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { AssignButton } from "./AssignButton";
@@ -1851,83 +1852,7 @@ export function LeadsClient() {
 
             {/* Pagination */}
             {!isLoading && leads.length > 0 && (
-              <div className="flex items-center justify-between border-t border-[#f1f5f9] px-4 py-3">
-                <div className="text-xs text-[#64748b]">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalLeads)} of {totalLeads} {listName}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPage(Math.max(1, page - 1))}
-                    disabled={page === 1}
-                    className="px-2 py-1.5 text-xs font-bold text-[#0A1528] hover:opacity-70 disabled:opacity-40"
-                  >
-                    ‹ Prev
-                  </button>
-                  <div className="flex gap-1">
-                    {(() => {
-                      const totalPages = Math.ceil(totalLeads / PAGE_SIZE);
-                      const maxPages = 5;
-                      const pages: (number | string)[] = [];
-                      const range = Math.ceil(maxPages / 2);
-
-                      // Always include page 1
-                      pages.push(1);
-
-                      // Add pages around current page
-                      for (let i = Math.max(2, page - range); i <= Math.min(totalPages - 1, page + range); i++) {
-                        pages.push(i);
-                      }
-
-                      // Always include last page
-                      if (totalPages > 1 && !pages.includes(totalPages)) {
-                        pages.push(totalPages);
-                      }
-
-                      // Add ellipsis where needed
-                      const renderedPages: (number | string)[] = [];
-                      for (let i = 0; i < pages.length; i++) {
-                        if (i > 0 && (pages[i] as number) - (pages[i - 1] as number) > 1) {
-                          if (renderedPages[renderedPages.length - 1] !== "...") {
-                            renderedPages.push("...");
-                          }
-                        }
-                        renderedPages.push(pages[i]);
-                      }
-
-                      return renderedPages.map((pageNum, idx) => {
-                        if (pageNum === "...") {
-                          return (
-                            <span key={`dots-${idx}`} className="px-1 text-[#64748b]">
-                              ...
-                            </span>
-                          );
-                        }
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => setPage(pageNum as number)}
-                            className={cn(
-                              "h-8 min-w-8 rounded-lg border text-xs font-bold transition-colors",
-                              pageNum === page
-                                ? "bg-primary text-white border-primary"
-                                : "border-[#e2e8f0] text-[#0A1528] hover:border-primary hover:text-primary"
-                            )}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      });
-                    })()}
-                  </div>
-                  <button
-                    onClick={() => setPage(Math.min(Math.ceil(totalLeads / PAGE_SIZE), page + 1))}
-                    disabled={page === Math.ceil(totalLeads / PAGE_SIZE)}
-                    className="px-2 py-1.5 text-xs font-bold text-[#0A1528] hover:opacity-70 disabled:opacity-40"
-                  >
-                    Next ›
-                  </button>
-                </div>
-              </div>
+              <Pagination page={page} total={totalLeads} pageSize={PAGE_SIZE} onPageChange={setPage} noun={listName} />
             )}
           </div>
         </div>

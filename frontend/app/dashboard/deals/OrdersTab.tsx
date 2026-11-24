@@ -10,6 +10,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { OrderSettingsDialog } from "./orders/OrderSettingsDialog";
 import { api, type OrderChip, type OrderRow, type OrdersPage, type RemindAllResult } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { DeliveryBadge, PaymentBadge, reportSend, rupees, whenShort } from "./orders/orderUi";
 
@@ -100,6 +101,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
   useEffect(() => setBulk(null), [chip, channel, days]); // counts belong to the filters they were made for
 
   const rows = data?.data ?? [];
+  const orderPages = usePagedList(rows, `${chip}|${channel}|${days}|${search.trim()}`);
   const counts = data?.counts;
   const cards = data?.cards;
   const period = periodText(days);
@@ -316,7 +318,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f1f5f9]">
-                {rows.map((row) => (
+                {orderPages.pageItems.map((row) => (
                   <tr key={row.id} onClick={() => router.push(`/dashboard/deals/orders/${row.id}`)}
                     className={cn("group cursor-pointer transition-colors hover:bg-[#f8fafc]", row.payment === "waiting" && "bg-amber-50/40")}>
                     <td className="px-4 py-3">
@@ -352,8 +354,11 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           </div>
         )}
         {rows.length > 0 && (
+          <Pagination page={orderPages.page} total={orderPages.total} onPageChange={orderPages.setPage} noun="orders" />
+        )}
+        {rows.length > 0 && (
           <div className="flex items-center justify-between gap-2 border-t border-[#eef2f6] px-4 py-2.5 text-[11px] text-[#64748b]">
-            <span>Showing {rows.length} {rows.length === 1 ? "order" : "orders"} · {period}</span>
+            <span>{period}</span>
             <Link href="/dashboard/deals?tab=insights" className="inline-flex items-center gap-1 font-bold text-primary-700 hover:text-primary-900">
               <Download size={12} /> Monthly file for your auditor: Insights
             </Link>

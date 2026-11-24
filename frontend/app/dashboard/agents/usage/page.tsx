@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { companionsApi, type AgentUsage } from "@/lib/api";
 import { byCharacter, cycleBars, meter, rupees, shortDate } from "@/components/agents/usageView";
 import { CARD, ErrorNote, LoadingRows } from "@/components/agents/ui";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 const TONE_BAR = { ok: "bg-primary", near: "bg-warning", over: "bg-danger" } as const;
 const TONE_TEXT = { ok: "text-ink-secondary", near: "text-warning", over: "text-danger" } as const;
@@ -22,6 +23,7 @@ export default function AgentUsagePage() {
       .catch((e: Error) => setError(e.message || "Could not load usage."));
   }, []);
   useEffect(load, [load]);
+  const characterPages = usePagedList(usage ? byCharacter(usage) : []);
 
   if (error) return <div className="p-4 sm:p-6"><ErrorNote message={error} onRetry={load} /></div>;
   if (!usage) return <div className="p-4 sm:p-6"><LoadingRows rows={4} /></div>;
@@ -29,7 +31,7 @@ export default function AgentUsagePage() {
   const m = meter(usage.used, usage.included);
   const bars = cycleBars(usage);
   const max = Math.max(1, ...bars.map((b) => b.count));
-  const characters = byCharacter(usage);
+  const characters = characterPages.pageItems;
   const cycle = `${shortDate(usage.period_start)}${usage.period_end ? ` – renews ${shortDate(usage.period_end)}` : ""}`;
 
   return (
@@ -114,6 +116,7 @@ export default function AgentUsagePage() {
             ))}
           </ul>
         )}
+        <Pagination page={characterPages.page} total={characterPages.total} onPageChange={characterPages.setPage} noun="characters" className="mt-2 border-t-0 px-0 py-2" />
         {usage.capped && <p className="mt-2 text-xs text-ink-muted">The chart shows the latest 20,000 replies.</p>}
       </section>
     </div>

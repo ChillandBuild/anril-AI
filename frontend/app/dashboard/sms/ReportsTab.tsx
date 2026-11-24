@@ -8,8 +8,10 @@ import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import { api, type SmsCampaign, type SmsMessageFilters, type SmsReportSummary } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
-import { CampaignDetail, Pager } from "./CampaignDetail";
+import { CampaignDetail } from "./CampaignDetail";
 import { summarize } from "./DashboardCards";
 import {
   MESSAGE_STATUSES,
@@ -37,7 +39,6 @@ import { useSms } from "./SmsShell";
 import { Badge, Btn, Card, Empty, Field, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-const PAGE = 50;
 const LOGS_DAYS = 3;
 const heading = "text-xs font-bold uppercase tracking-wider text-[#64748b]";
 
@@ -284,7 +285,7 @@ function Messages({ range }: { range: { from: string; to: string } }) {
   const [exporting, setExporting] = useState(false);
   const filters: SmsMessageFilters = { from: range.from, to: range.to, status: status || undefined, search: query || undefined };
 
-  const { data, error, isLoading, mutate } = useSWR(["sms:messages", filters, offset], () => api.sms.messages({ ...filters, limit: PAGE, offset }), {
+  const { data, error, isLoading, mutate } = useSWR(["sms:messages", filters, offset], () => api.sms.messages({ ...filters, limit: PAGE_SIZE, offset }), {
     keepPreviousData: true,
     revalidateOnFocus: false,
     refreshInterval: (current) => (current?.messages.some((m) => ["queued", "sending", "submitted", "unknown"].includes(m.status)) ? 10_000 : 0),
@@ -395,7 +396,7 @@ function Messages({ range }: { range: { from: string; to: string } }) {
               </MobileRecordCard>
             ))}
           </div>
-          <Pager offset={offset} limit={PAGE} total={data?.total ?? 0} onOffset={setOffset} />
+          <Pagination page={Math.floor(offset / PAGE_SIZE) + 1} total={data?.total ?? 0} onPageChange={(p) => setOffset((p - 1) * PAGE_SIZE)} noun="messages" />
         </>
       )}
     </Card>

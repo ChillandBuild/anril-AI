@@ -9,6 +9,7 @@ import { anyReading, docState, docStateLabel, failedPagesText, pagesText } from 
 import { CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
 import { usePolling } from "@/components/agents/collectionUi";
 import { bookHref, processingBooks, recentBooks } from "@/components/agents/uploadQueue";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 export default function AgentsUploadPage() {
   // useSearchParams needs a Suspense boundary so the page can still be built ahead of time.
@@ -99,6 +100,7 @@ function UploadPage() {
 
 function ProcessingList({ docs, error, onRetry }: { docs: KbDocument[] | null; error: string; onRetry: () => void }) {
   const rows = docs ? processingBooks(docs) : [];
+  const processingPages = usePagedList(rows);
   return (
     <section className={CARD} aria-labelledby="processing-title">
       <h2 id="processing-title" className="mb-3 text-sm font-semibold text-ink">
@@ -115,7 +117,7 @@ function ProcessingList({ docs, error, onRetry }: { docs: KbDocument[] | null; e
         <p className="text-sm text-ink-secondary">Nothing is being read right now. Drop a file on the left to start.</p>
       ) : (
         <ul className="space-y-3">
-          {rows.map((d) => {
+          {processingPages.pageItems.map((d) => {
             const pct = d.page_count > 0 ? Math.round((100 * (d.pages_ok + d.pages_failed)) / d.page_count) : 0;
             return (
               <li key={d.id} className="text-sm">
@@ -141,12 +143,14 @@ function ProcessingList({ docs, error, onRetry }: { docs: KbDocument[] | null; e
           })}
         </ul>
       )}
+      <Pagination page={processingPages.page} total={processingPages.total} onPageChange={processingPages.setPage} noun="documents" className="-mx-5 -mb-5 mt-4 px-5" />
     </section>
   );
 }
 
 function RecentList({ docs, error, onRetry }: { docs: KbDocument[] | null; error: string; onRetry: () => void }) {
   const rows = docs ? recentBooks(docs) : [];
+  const recentPages = usePagedList(rows);
   return (
     <section className={`${CARD} p-0`} aria-labelledby="recent-title">
       <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-4">
@@ -166,7 +170,7 @@ function RecentList({ docs, error, onRetry }: { docs: KbDocument[] | null; error
           <p className="text-sm text-ink-secondary">No files yet. Drop a file above, pick a collection and press Import.</p>
         ) : (
           <ul className="divide-y divide-border-subtle">
-            {rows.map((d) => {
+            {recentPages.pageItems.map((d) => {
               const state = docState(d);
               const gaps = failedPagesText(d.failed_pages);
               const note = state === "gaps" || state === "failed" ? [gaps, d.error].filter(Boolean).join(". ") : "";
@@ -200,6 +204,9 @@ function RecentList({ docs, error, onRetry }: { docs: KbDocument[] | null; error
               );
             })}
           </ul>
+        )}
+        {!error && docs !== null && (
+          <Pagination page={recentPages.page} total={recentPages.total} onPageChange={recentPages.setPage} noun="documents" className="-mx-5 -mb-5 px-5" />
         )}
       </div>
     </section>

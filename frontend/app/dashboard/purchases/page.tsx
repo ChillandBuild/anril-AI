@@ -11,6 +11,7 @@ import type { SupplierPayMethod, SupplierRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { usePurchaseOrders, useStockIns, useSuppliers } from "@/hooks/useApi";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { StatCard } from "../catalog/ItemsTab";
@@ -55,6 +56,7 @@ function ErrorBox({ onRetry }: { onRetry: () => void }) {
 function OrdersTab({ canManage, canTemplates }: { canManage: boolean; canTemplates: boolean }) {
   const { data, error, mutate } = usePurchaseOrders();
   const [submitting, setSubmitting] = useState(false);
+  const paged = usePagedList(data?.orders ?? []);
   if (error) return <ErrorBox onRetry={() => mutate()} />;
   if (!data) return <AiraLoader inline className="min-h-[40vh]" />;
 
@@ -148,7 +150,7 @@ function OrdersTab({ canManage, canTemplates }: { canManage: boolean; canTemplat
             {data.orders.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-10 text-center text-ink-muted">No purchase orders yet.</td></tr>
             )}
-            {data.orders.map((po) => {
+            {paged.pageItems.map((po) => {
               const open = ["sent", "confirmed", "part_received"].includes(po.status);
               return (
                 <tr key={po.id} className="border-b border-border-subtle last:border-b-0">
@@ -182,6 +184,7 @@ function OrdersTab({ canManage, canTemplates }: { canManage: boolean; canTemplat
             })}
           </tbody>
         </table>
+        <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="orders" />
       </div>
       <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm text-ink">
         🔗 &ldquo;Goods came&rdquo; opens the order with what you asked for, so you only tick what arrived. Stock, cost price and
@@ -197,6 +200,7 @@ function StockInTab({ canManage }: { canManage: boolean }) {
   const { data, error, mutate } = useStockIns();
   const [month, setMonth] = useState(todayIso().slice(0, 7));
   const [downloading, setDownloading] = useState(false);
+  const paged = usePagedList(data?.data ?? [], month);
   if (error) return <ErrorBox onRetry={() => mutate()} />;
 
   async function download() {
@@ -251,7 +255,7 @@ function StockInTab({ canManage }: { canManage: boolean }) {
               {data.data.length === 0 && (
                 <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">Nothing came in yet. Tap “Stock in” when goods arrive.</td></tr>
               )}
-              {data.data.map((row) => (
+              {paged.pageItems.map((row) => (
                 <tr key={row.id} className="border-b border-border-subtle last:border-b-0">
                   <td className="px-4 py-3 text-ink">{shortDate(row.bill_date)}</td>
                   <td className="px-3 py-3 font-semibold text-ink">{row.supplier_name || "—"}</td>
@@ -268,6 +272,7 @@ function StockInTab({ canManage }: { canManage: boolean }) {
               ))}
             </tbody>
           </table>
+          <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="entries" />
         </div>
       )}
     </>
@@ -287,6 +292,7 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
   const [view, setView] = useState<"suppliers" | "corrections">("suppliers");
   const [adding, setAdding] = useState(false);
   const [paying, setPaying] = useState<string | null>(null);
+  const paged = usePagedList(data?.suppliers ?? []);
   if (error) return <ErrorBox onRetry={() => mutate()} />;
   if (!data) return <AiraLoader inline className="min-h-[40vh]" />;
 
@@ -354,7 +360,7 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
             {data.suppliers.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">No suppliers yet. Add one, or they are added when you stock in.</td></tr>
             )}
-            {data.suppliers.map((row) => (
+            {paged.pageItems.map((row) => (
               <tr key={row.id} className="border-b border-border-subtle align-top last:border-b-0">
                 <td className="px-4 py-3">
                   <p className="font-bold text-ink">{row.name}</p>
@@ -390,6 +396,7 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
             ))}
           </tbody>
         </table>
+        <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="suppliers" />
       </div>
       <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm text-ink">
         Reorder opens WhatsApp on your phone with the list of low-stock items for that supplier.
@@ -406,6 +413,7 @@ const CORRECTION_LABEL: Record<string, string> = {
 /* Every stock change that isn't a sale, a purchase or a move: corrections, counts, write-offs, returns. */
 function StockCorrections() {
   const { data, error, mutate } = useSWR("stock/corrections", () => api.catalog.stockCorrections());
+  const paged = usePagedList(data?.data ?? []);
   if (error) return <ErrorBox onRetry={() => mutate()} />;
   if (!data) return <AiraLoader inline className="min-h-[30vh]" />;
   return (
@@ -425,7 +433,7 @@ function StockCorrections() {
           {data.data.length === 0 && (
             <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">No corrections yet. Counts, write-offs and corrected stock show here.</td></tr>
           )}
-          {data.data.map((r, i) => (
+          {paged.pageItems.map((r, i) => (
             <tr key={`${r.at}-${i}`} className="border-b border-border-subtle last:border-b-0">
               <td className="px-4 py-3 font-semibold text-ink">{r.name}{r.variant_label ? ` · ${r.variant_label}` : ""}</td>
               <td className={cn("px-3 py-3 font-bold tabular-nums", r.delta < 0 ? "text-rose-700" : "text-emerald-700")}>{r.delta > 0 ? `+${r.delta}` : r.delta}</td>
@@ -437,6 +445,7 @@ function StockCorrections() {
           ))}
         </tbody>
       </table>
+      <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="corrections" />
     </div>
   );
 }

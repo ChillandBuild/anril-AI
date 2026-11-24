@@ -18,6 +18,7 @@ import { TickMark } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, type ReachOfferDraft } from "./ReachOfferBox";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { CampaignResultsDrawer } from "./CampaignResultsDrawer";
 import { SCHEDULE_HOURS_NOTE, dripTimeProblem, scheduleProblem } from "./reachSchedule";
 
@@ -986,7 +987,10 @@ export default function OutboundLeadsPage() {
       (historyStatusFilter === "clean" && item.failed === 0);
     return matchesSearch && matchesFilter;
   });
-  
+  const historyPages = usePagedList(filteredHistory, `${historySearch}|${historyStatusFilter}`);
+  const tagPages = usePagedList(filteredTagsList, tagsSearch);
+  const optedOutPages = usePagedList(optedOutList);
+
   // Re-count delivery metrics live from the DB, then refresh the list in place.
   // Silent (no full-list spinner) so cards update without flicker.
   const refreshHistory = useCallback(async () => {
@@ -3252,7 +3256,7 @@ export default function OutboundLeadsPage() {
             <div>
               {/* Mobile View */}
               <div className="space-y-3 p-4 md:hidden">
-                {filteredTagsList.map((tag) => {
+                {tagPages.pageItems.map((tag) => {
                   const s = tagStats[tag.id];
                   const style = getTagStyle(tag.color);
                   return (
@@ -3308,7 +3312,7 @@ export default function OutboundLeadsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-primary-100/40">
-                    {filteredTagsList.map((tag) => {
+                    {tagPages.pageItems.map((tag) => {
                       const s = tagStats[tag.id];
                       const style = getTagStyle(tag.color);
                       return (
@@ -3341,6 +3345,7 @@ export default function OutboundLeadsPage() {
               </div>
             </div>
           )}
+          <Pagination page={tagPages.page} total={tagPages.total} onPageChange={tagPages.setPage} noun="tags" />
         </div>
       )}
 
@@ -3375,7 +3380,7 @@ export default function OutboundLeadsPage() {
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {optedOutList.map((lead) => (
+              {optedOutPages.pageItems.map((lead) => (
                 <div key={`${lead.lead_id}:${lead.tag_id ?? ""}`} className="flex flex-wrap items-center gap-3 p-4 md:px-8">
                   <div className="min-w-[160px]">
                     <p className="font-display text-sm font-semibold text-gray-900">{lead.name || "—"}</p>
@@ -3405,6 +3410,7 @@ export default function OutboundLeadsPage() {
               ))}
             </div>
           )}
+          <Pagination page={optedOutPages.page} total={optedOutPages.total} onPageChange={optedOutPages.setPage} noun="people" />
         </div>
       )}
 
@@ -3500,7 +3506,7 @@ export default function OutboundLeadsPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {filteredHistory.map((item, i) => (
+            {historyPages.pageItems.map((item, i) => (
               <div key={i} className="p-4 first:pt-4 last:pb-4 md:p-6">
                 {/* Campaign Info Bar */}
                 <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gray-100 flex-wrap xl:flex-nowrap">
@@ -3776,6 +3782,7 @@ export default function OutboundLeadsPage() {
             ))}
           </div>
         )}
+        <Pagination page={historyPages.page} total={historyPages.total} onPageChange={historyPages.setPage} noun="broadcasts" />
       </div>
       )}
       {resultsFor && <CampaignResultsDrawer broadcastId={resultsFor.id} title={resultsFor.title} onClose={() => setResultsFor(null)} />}

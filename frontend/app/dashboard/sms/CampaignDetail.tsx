@@ -6,6 +6,8 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { Pagination } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { api, type SmsMessageStatus } from "@/lib/api";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import {
@@ -32,7 +34,6 @@ import { MessageStatus, messageTime } from "./MessageStatus";
 import { Badge, Btn, Card, CardHeader, Empty, Field, LoadError, Notice, Skeleton, TableWrap, tdCls, thCls, inputCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-const PAGE = 50;
 
 export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: () => void; onChanged: () => void }) {
   const { canManage } = usePerm();
@@ -53,7 +54,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
   const live = campaignNeedsUpdates(campaign.data);
   const messages = useSWR(
     ["sms:campaign-messages", id, status, offset],
-    () => api.sms.messages({ campaign_id: id, status: status || undefined, limit: PAGE, offset }),
+    () => api.sms.messages({ campaign_id: id, status: status || undefined, limit: PAGE_SIZE, offset }),
     { keepPreviousData: true, refreshInterval: live ? 10_000 : 0 },
   );
 
@@ -286,7 +287,7 @@ export function CampaignDetail({ id, onBack, onChanged }: { id: string; onBack: 
                 </MobileRecordCard>
               ))}
             </div>
-            <Pager offset={offset} limit={PAGE} total={total} onOffset={setOffset} />
+            <Pagination page={Math.floor(offset / PAGE_SIZE) + 1} total={total} onPageChange={(p) => setOffset((p - 1) * PAGE_SIZE)} noun="messages" />
           </>
         )}
       </Card>
@@ -329,23 +330,3 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
   );
 }
 
-export function Pager({ offset, limit, total, onOffset }: { offset: number; limit: number; total: number; onOffset: (o: number) => void }) {
-  if (total <= limit) return null;
-  const from = offset + 1;
-  const to = Math.min(offset + limit, total);
-  return (
-    <div className="flex items-center justify-between gap-2 border-t border-[#f1f5f9] px-4 py-3 text-xs text-[#64748b]">
-      <span>
-        {formatCount(from)}–{formatCount(to)} of {formatCount(total)}
-      </span>
-      <div className="flex gap-2">
-        <Btn variant="outline" className="h-8 text-xs" disabled={offset <= 0} onClick={() => onOffset(Math.max(0, offset - limit))}>
-          Previous
-        </Btn>
-        <Btn variant="outline" className="h-8 text-xs" disabled={offset + limit >= total} onClick={() => onOffset(offset + limit)}>
-          Next
-        </Btn>
-      </div>
-    </div>
-  );
-}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, ExternalLink, Lightbulb, MessageSquareQuote, Users } from "lucide-react";
 import { api, type AdPerformanceRow, type InboundResultLabels } from "@/lib/api";
 import { useAdPeople } from "@/hooks/useApi";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,7 +15,6 @@ import { cn } from "@/lib/utils";
  */
 
 const DEFAULT_LABELS: InboundResultLabels = { booked: "Booked", paid: "Came / Paid", lost: "Lost" };
-const PEOPLE_PAGE = 50;
 
 function countText(value: number) {
   return Math.round(value).toLocaleString("en-IN");
@@ -106,9 +106,9 @@ function PeopleList({ row, dateFrom, dateTo, labels }: {
   labels: InboundResultLabels;
 }) {
   const router = useRouter();
-  const [shown, setShown] = useState(PEOPLE_PAGE);
   const { data, error, mutate } = useAdPeople(row.ad_creative_id, { date_from: dateFrom, date_to: dateTo });
   const people = data?.data ?? [];
+  const peoplePages = usePagedList(people, `${row.ad_creative_id}|${dateFrom}|${dateTo}`);
 
   if (error) {
     return (
@@ -139,7 +139,7 @@ function PeopleList({ row, dateFrom, dateTo, labels }: {
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-mid/70">
       <ul className="divide-y divide-surface-mid/50">
-        {people.slice(0, shown).map((person) => {
+        {peoplePages.pageItems.map((person) => {
           const segment = SEGMENTS[person.segment ?? ""];
           const result = person.result === "none" ? null : labels[person.result];
           return (
@@ -168,12 +168,8 @@ function PeopleList({ row, dateFrom, dateTo, labels }: {
           );
         })}
       </ul>
-      {people.length > shown && (
-        <button type="button" onClick={() => setShown((n) => n + PEOPLE_PAGE)}
-          className="w-full border-t border-surface-mid/50 py-2.5 font-label text-xs font-bold text-primary-700 hover:bg-surface-low/60">
-          Show more ({countText(people.length - shown)} left)
-        </button>
-      )}
+      <Pagination page={peoplePages.page} total={peoplePages.total} onPageChange={peoplePages.setPage} noun="people" />
+
     </div>
   );
 }

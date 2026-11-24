@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -329,6 +330,11 @@ export default function TemplatesPage() {
     { ...NO_FILTERS, search: searchQuery, category: selectedCategory, status: selectedStatus, language: selectedLanguage, usedIn: selectedUsedIn },
     usage,
   );
+  // Only the List view pages; Cards shows every template.
+  const templatePages = usePagedList(
+    filteredTemplates,
+    `${searchQuery}|${selectedCategory}|${selectedStatus}|${selectedLanguage}|${selectedUsedIn}`,
+  );
   const languageChoices = languageOptions(templates);
   const usedInChoices = usedInOptions(usage);
 
@@ -351,8 +357,9 @@ export default function TemplatesPage() {
     { key: "PENDING", count: countPending, label: "Pending Review", mid: "Pending Review", short: "Pending", hint: "Meta is checking", tone: "text-[#b45309]", edge: "border-l-[#b45309]" },
     { key: NEEDS_FIX, count: countRejected, label: "Rejected / Paused", mid: "Rejected / Paused", short: "Rejected / Paused", hint: "see why and fix", tone: "text-[#c2410c]", edge: "border-l-[#dc2626]" },
   ];
+  // One tool in the toolbar: icon over its label, as tall as the summary cards
   const toolBtn =
-    "flex h-11 min-w-0 items-center justify-center gap-1.5 px-2 font-label text-[13px] font-semibold text-ink transition-colors hover:bg-primary-50/60 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-50 sm:gap-2 sm:px-4";
+    "flex min-w-0 flex-col items-center justify-center gap-1 px-2 py-2 font-label text-[12.5px] font-semibold text-ink transition-colors hover:bg-primary-50/60 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-[84px]";
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("ALL");
@@ -369,7 +376,7 @@ export default function TemplatesPage() {
     <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
       {/* Top Locked Section: summary, actions & filters */}
       <div className="shrink-0 space-y-3 pb-3">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
           {/* Summary cards: click one to show just those */}
           <div className="grid flex-1 grid-cols-3 gap-2 md:gap-3">
             {summary.map((s) => {
@@ -380,7 +387,7 @@ export default function TemplatesPage() {
                   type="button"
                   onClick={() => setSelectedStatus(active ? "ALL" : s.key)}
                   aria-pressed={active}
-                  className={`flex min-w-0 items-center gap-2 rounded-2xl border border-l-4 bg-white px-2.5 py-2 text-left shadow-sm transition-all hover:shadow-md md:gap-3 md:px-4 md:py-2.5 ${s.edge} ${
+                  className={`flex h-16 min-w-0 items-center gap-2 rounded-2xl border border-l-4 bg-white px-2.5 text-left shadow-sm transition-all hover:shadow-md md:gap-3 md:px-4 ${s.edge} ${
                     active ? "border-primary-300 ring-2 ring-primary-100" : "border-[#e7e2da]"
                   }`}
                 >
@@ -390,8 +397,7 @@ export default function TemplatesPage() {
                   <span className="min-w-0 leading-tight">
                     <span className="block font-label text-[12.5px] font-bold text-ink md:truncate md:text-[15px]">
                       <span className="md:hidden">{s.short}</span>
-                      <span className="hidden md:inline 2xl:hidden">{s.mid}</span>
-                      <span className="hidden 2xl:inline">{s.label}</span>
+                      <span className="hidden md:inline">{s.mid}</span>
                     </span>
                     <span className="hidden truncate text-[12.5px] text-ink-muted md:block">{s.hint}</span>
                   </span>
@@ -400,54 +406,51 @@ export default function TemplatesPage() {
             })}
           </div>
 
-          {/* Actions: one toolbar of tools, then Create Template */}
-          <div className="flex shrink-0 flex-col gap-1.5 xl:items-end">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {/* Actions: one toolbar of tools, then Create Template, both as tall as the summary cards */}
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-stretch">
               <div
                 role="group"
                 aria-label="Template tools"
-                className={`grid ${canManageTemplates ? "grid-cols-4" : "grid-cols-3"} divide-x divide-[#ece7df] overflow-hidden rounded-xl border border-[#e2ddd5] bg-white shadow-sm sm:flex`}
+                className={`grid h-16 ${canManageTemplates ? "grid-cols-4" : "grid-cols-3"} divide-x divide-[#ece7df] overflow-hidden rounded-2xl border border-[#e2ddd5] bg-white shadow-sm sm:flex`}
               >
                 <button
                   onClick={handleSyncAll}
                   disabled={syncing || !canManageTemplates}
-                  title={canManageTemplates ? "Get the latest templates and approvals from Meta" : "Read-only role: sync is disabled"}
+                  title={canManageTemplates
+                    ? `Get the latest templates and approvals from Meta${lastSynced ? ` (last synced ${timeAgo(lastSynced)})` : ""}`
+                    : "Read-only role: sync is disabled"}
                   className={toolBtn}
                 >
-                  <RefreshCw size={15} className={`text-primary ${syncing ? "animate-spin" : ""}`} />
+                  <RefreshCw size={18} className={`text-primary ${syncing ? "animate-spin" : ""}`} />
                   {syncing ? "Syncing…" : "Sync"}
                 </button>
                 <Link href="/dashboard/templates/carousel" title="Make a carousel template" className={toolBtn}>
-                  <Layers size={15} className="text-primary" />
+                  <Layers size={18} className="text-primary" />
                   Carousel
                 </Link>
                 <button
                   onClick={() => saveAllTemplates(filteredTemplates, usage, hasFilters)}
                   disabled={loading || filteredTemplates.length === 0}
-                  title={`Download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""} as an Excel file`}
+                  title={`Excel: download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""}`}
                   className={toolBtn}
                 >
-                  <Download size={15} className="text-primary" />
+                  <Download size={18} className="text-primary" />
                   Excel
                 </button>
                 {canManageTemplates && (
-                  <Link href="/dashboard/templates/upload" title="Upload many templates from an Excel file" className={toolBtn}>
-                    <Upload size={15} className="text-primary" />
+                  <Link href="/dashboard/templates/upload" title="Upload: make many templates at once from an Excel file" className={toolBtn}>
+                    <Upload size={18} className="text-primary" />
                     Upload
                   </Link>
                 )}
               </div>
               <Link
                 href="/dashboard/templates/new"
-                className="order-first flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 font-label text-[13.5px] font-bold text-white shadow-md shadow-primary-200 transition hover:bg-primary/90 sm:order-none"
+                className="order-first flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-6 font-label text-[14px] font-bold text-white shadow-md shadow-primary-200 transition hover:bg-primary/90 sm:order-none sm:h-16"
               >
-                <Plus size={16} strokeWidth={2.5} />
+                <Plus size={18} strokeWidth={2.5} />
                 Create Template
               </Link>
-            </div>
-            <p className="hidden text-[12px] text-ink-muted md:block xl:text-right">
-              {lastSynced ? `Synced with Meta ${timeAgo(lastSynced)}` : "Meta updates approvals here as they happen"} · Excel = download what you see · Upload = many at once
-            </p>
           </div>
         </div>
 
@@ -469,6 +472,7 @@ export default function TemplatesPage() {
                 <span className="block font-label text-[14px] font-bold text-ink">Filter Results</span>
                 <span className="block text-[12px] text-ink-muted">
                   {loading ? "Loading…" : `${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"}`}
+                  {!loading && lastSynced && <span className="hidden 2xl:inline"> · synced {timeAgo(lastSynced)}</span>}
                 </span>
               </div>
             </div>
@@ -657,7 +661,7 @@ export default function TemplatesPage() {
         /* Table View */
         <div className="bg-white border border-border-subtle rounded-2xl overflow-hidden shadow-sm">
           <div className="space-y-3 p-3 md:hidden">
-            {filteredTemplates.map((t) => {
+            {templatePages.pageItems.map((t) => {
               const statusColors = STATUS_COLORS[t.status] || { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400" };
               return (
                 <div key={t.id} className="rounded-2xl border border-border-subtle bg-white p-4 shadow-sm" onClick={() => setSelectedTemplate(t)}>
@@ -702,7 +706,7 @@ export default function TemplatesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle text-xs">
-                {filteredTemplates.map((t) => {
+                {templatePages.pageItems.map((t) => {
                   const statusColors = STATUS_COLORS[t.status] || { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400" };
                   return (
                     <tr
@@ -783,6 +787,12 @@ export default function TemplatesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={templatePages.page}
+            total={templatePages.total}
+            onPageChange={templatePages.setPage}
+            noun="templates"
+          />
         </div>
       )}
       </div>

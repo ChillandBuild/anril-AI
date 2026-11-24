@@ -17,6 +17,7 @@ import { saveNote } from "@/app/dashboard/telecalling/lib/notes-api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { callIdFromParam, fetchCallToReview, localDayOf } from "@/lib/callReviewLink";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 type Preset = "today" | "7" | "30" | "custom";
 type Tab = "all" | "called" | "notes" | "uncalled" | "review";
@@ -263,6 +264,7 @@ export default function CallReview() {
   const activeTab = tabs.some((t) => t.id === tab) ? tab : "all";
   const visible = searched.filter((r) => inTab(r, activeTab));
   const selected = visible.find((r) => r.id === selectedId) ?? null;
+  const leadPages = usePagedList(visible, `${preset}|${from}|${to}|${callerId}|${search}|${scoreBand}|${segment}|${activeTab}`);
 
   // Totals follow the filter bar exactly (telecaller, dates, search); the tabs only narrow the list.
   const kpi = useMemo(() => {
@@ -452,7 +454,7 @@ export default function CallReview() {
                 <p className="font-label text-xs text-[#94a3b8] mt-1">Try a wider date range, another telecaller or another tab.</p>
               </div>
             ) : (
-              visible.map((r) => (
+              leadPages.pageItems.map((r) => (
                 <button
                   key={r.id}
                   onClick={() => setSelectedId(r.id)}
@@ -485,6 +487,7 @@ export default function CallReview() {
                 </button>
               ))
             )}
+            <Pagination page={leadPages.page} total={leadPages.total} onPageChange={leadPages.setPage} noun="people" />
           </div>
         </aside>
 

@@ -9,6 +9,7 @@ import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { BackInStockLanguage, StockAskRow, StockAsks } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useStockAsks } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
@@ -45,6 +46,7 @@ export function StockAsksTab({ canManage, canSubmitTemplate, toolbarSlot }: {
   const [downloading, setDownloading] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [sending, setSending] = useState<string | null>(null);
+  const paged = usePagedList(data?.rows ?? []);
 
   async function download() {
     setDownloading(true);
@@ -135,7 +137,7 @@ export function StockAsksTab({ canManage, canSubmitTemplate, toolbarSlot }: {
                 Nobody has asked for anything out of stock in the last {DAYS} days.
               </td></tr>
             )}
-            {data?.rows.map((row) => {
+            {paged.pageItems.map((row) => {
               const key = rowKey(row);
               return (
                 <tr key={key} className="border-b border-border-subtle last:border-b-0">
@@ -176,6 +178,7 @@ export function StockAsksTab({ canManage, canSubmitTemplate, toolbarSlot }: {
             })}
           </tbody>
         </table>
+        <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="asks" />
       </div>
 
       <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm leading-relaxed text-ink">

@@ -17,6 +17,7 @@ import {
   walletKindTone,
 } from "./helpers";
 import { Badge, Btn, Card, CardHeader, Empty, LoadError, Skeleton, TableWrap, tdCls, thCls } from "./ui";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 function downloadCsv(csv: string) {
   const url = window.URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -62,6 +63,7 @@ function PlanCard({ items, loaded }: { items: Parameters<typeof planSummary>[1];
 export function BalanceTab() {
   const history = useSWR("sms:wallet-history", () => api.sms.walletHistory(HISTORY_LIMIT), { revalidateOnFocus: false });
   const items = history.data?.items ?? [];
+  const paged = usePagedList(items);
 
   return (
     <div className="space-y-4">
@@ -94,7 +96,7 @@ export function BalanceTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f1f5f9]">
-                {items.map((item, i) => (
+                {paged.pageItems.map((item, i) => (
                   <tr key={`${item.at}-${i}`}>
                     <td className={`${tdCls} whitespace-nowrap`}>{formatIst(item.at)}</td>
                     <td className={tdCls}>
@@ -110,6 +112,9 @@ export function BalanceTab() {
               </tbody>
             </table>
           </TableWrap>
+        )}
+        {items.length > 0 && (
+          <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="entries" />
         )}
       </Card>
     </div>

@@ -10,6 +10,7 @@ import { MobileRecordCard, MobileRecordHeader, MobileRecordGrid } from "@/compon
 import { cn } from "@/lib/utils";
 import { FilterMenu, type FilterMenuOption } from "./FilterMenu";
 import { DONT_CALL_LABEL, isDontCallRow, looksLikePhone, saidStopApi } from "@/lib/customersApi";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 const TZ = "Asia/Kolkata";
 
@@ -313,6 +314,7 @@ export function SaidStopPanel() {
       (term === "" || (p.name ?? "").toLowerCase().includes(term) || (p.phone ?? "").includes(term))
   );
   const filtering = term !== "" || (how !== undefined && how !== "all");
+  const personPages = usePagedList(visible, `${term}|${how ?? ""}`);
 
   const weekParts = summary
     ? SOURCE_ORDER.filter((k) => (summary.this_week_by_source[k] ?? 0) > 0).map(
@@ -450,7 +452,7 @@ export function SaidStopPanel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {visible.map((p) => {
+                        {personPages.pageItems.map((p) => {
                           const hasName = Boolean(p.name?.trim());
                           return (
                             <tr key={p.id} className="border-t border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]">
@@ -493,7 +495,7 @@ export function SaidStopPanel() {
 
                   {/* Phone cards */}
                   <div className="block space-y-3 p-3 md:hidden">
-                    {visible.map((p) => {
+                    {personPages.pageItems.map((p) => {
                       const hasName = Boolean(p.name?.trim());
                       return (
                         <MobileRecordCard key={p.id}>
@@ -532,6 +534,7 @@ export function SaidStopPanel() {
                       );
                     })}
                   </div>
+                  <Pagination page={personPages.page} total={personPages.total} onPageChange={personPages.setPage} noun="people" />
                 </>
               )}
             </div>

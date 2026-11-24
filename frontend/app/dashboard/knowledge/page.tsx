@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import {
   Search, Plus, Trash2, XCircle,
   Upload, FileText, Loader2, AlertCircle,
@@ -505,6 +506,7 @@ export default function KnowledgePage() {
       return true;
     });
   }, [documents, search, statusFilter, campaignFilter, categoryFilter, tagMap]);
+  const docPages = usePagedList(filteredDocs, `${search}|${categoryFilter}|${statusFilter}|${campaignFilter}`);
 
   if (roleLoading) {
     return (
@@ -1517,7 +1519,7 @@ export default function KnowledgePage() {
                 {/* Below md, a 6-column table forces sideways scrolling to reach
                     Status/Actions, so phones get stacked cards instead. */}
                 <div className="md:hidden divide-y divide-surface-mid/60">
-                  {filteredDocs.map((doc) => renderDocRow(doc))}
+                  {docPages.pageItems.map((doc) => renderDocRow(doc))}
                 </div>
 
                 <div className="hidden md:block overflow-x-auto">
@@ -1533,7 +1535,7 @@ export default function KnowledgePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-mid/60">
-                    {filteredDocs.map((doc) => {
+                    {docPages.pageItems.map((doc) => {
                       const meta = getFileTypeMeta(doc.file_type, doc.name);
                       const campaignTag = doc.campaign_tag_id ? tagMap.get(doc.campaign_tag_id) : null;
 
@@ -1654,6 +1656,10 @@ export default function KnowledgePage() {
                 </table>
                 </div>
               </>
+            )}
+            {/* Only the list view pages; cards show every document. */}
+            {viewMode !== "grid" && (
+              <Pagination page={docPages.page} total={docPages.total} onPageChange={docPages.setPage} noun="documents" />
             )}
           </div>
 

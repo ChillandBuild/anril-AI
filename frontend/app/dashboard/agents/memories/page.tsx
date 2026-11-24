@@ -7,9 +7,10 @@ import { companionsApi, type CompanionPerson } from "@/lib/api";
 import { CharacterSelect, useCharacters } from "@/components/agents/CharacterSelect";
 import { personLabel } from "@/components/agents/playground";
 import { PersonMemory } from "@/components/agents/PersonMemory";
-import { BTN_SECONDARY, CARD, ErrorNote, INPUT, LoadingRows, formatDate } from "@/components/agents/ui";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
+import { CARD, ErrorNote, INPUT, LoadingRows, formatDate } from "@/components/agents/ui";
 
-const PAGE = 25;
 
 export default function MemoriesPage() {
   const { characters, selected, select, error: listError } = useCharacters();
@@ -35,7 +36,7 @@ export default function MemoriesPage() {
     setError("");
     setPeople(null);
     companionsApi
-      .people(selected.id, { q: search, limit: PAGE, offset })
+      .people(selected.id, { q: search, limit: PAGE_SIZE, offset })
       .then((r) => {
         setPeople(r.people);
         setTotal(r.total);
@@ -101,15 +102,7 @@ export default function MemoriesPage() {
                   </li>
                 ))}
               </ul>
-              {total > PAGE && (
-                <div className="flex items-center justify-between border-t border-border-subtle px-4 py-2 text-xs text-ink-muted">
-                  <span>{offset + 1}–{Math.min(offset + PAGE, total)} of {total}</span>
-                  <span className="flex gap-1">
-                    <button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))} className={cn(BTN_SECONDARY, "min-h-7 px-2 text-xs")}>Previous</button>
-                    <button type="button" disabled={offset + PAGE >= total} onClick={() => setOffset(offset + PAGE)} className={cn(BTN_SECONDARY, "min-h-7 px-2 text-xs")}>Next</button>
-                  </span>
-                </div>
-              )}
+              <Pagination page={Math.floor(offset / PAGE_SIZE) + 1} total={total} onPageChange={(p) => setOffset((p - 1) * PAGE_SIZE)} noun="people" />
             </>
           )}
         </section>

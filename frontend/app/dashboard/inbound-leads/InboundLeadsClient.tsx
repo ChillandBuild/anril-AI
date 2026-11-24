@@ -10,6 +10,8 @@ import {
   CalendarCheck, ChevronLeft, ChevronRight, Bot, UserRound, AlertCircle, Inbox, Receipt, Pencil, Undo2, Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
 import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
 import { FilterMenu, FilterMenuOption } from "@/app/dashboard/leads/FilterMenu";
@@ -25,7 +27,6 @@ import { SendTemplateAudience } from "./SendTemplateAudience";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 50;
 const TZ = "Asia/Kolkata";
 
 const CHANNEL_DOT: Record<string, string> = {
@@ -649,7 +650,6 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
   const total = data?.total ?? 0;
   const loading = !data && !error;
   const ads = adsData ?? [];
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilters = !!(search || source !== "all" || origin !== "all" || adId || added !== "30" || tag !== "all" || segment || result || waiting);
 
   function clearFilters() {
@@ -975,25 +975,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
                 ))}
             </ul>
 
-            {/* Pages */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f1f5f9] px-4 py-3">
-              <p className="text-xs text-[#64748b]">
-                {total > 0 ? `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString("en-IN")}` : ""}
-              </p>
-              {pages > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => setPage(page - 1)} disabled={page <= 1} aria-label="Previous page"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e2e8f0] text-[#0A1528] hover:bg-slate-50 disabled:opacity-40">
-                    <ChevronLeft size={14} />
-                  </button>
-                  <span className="px-1 text-xs font-semibold text-[#334155]">Page {page} of {pages}</span>
-                  <button type="button" onClick={() => setPage(page + 1)} disabled={page >= pages} aria-label="Next page"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e2e8f0] text-[#0A1528] hover:bg-slate-50 disabled:opacity-40">
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
+            <Pagination page={page} total={total} onPageChange={setPage} noun="people" />
           </>
         )}
       </div>

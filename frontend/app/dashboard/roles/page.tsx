@@ -36,6 +36,8 @@ import { formatRupees } from "@/lib/reportsApi";
 import { KpiCard } from "@/components/kpi-card";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { AiraLoader } from "@/components/AiraLoader";
 
@@ -309,7 +311,7 @@ export default function RolesPage() {
     let active = true;
     setAuditLoading(true);
     api.rbac.auditLog({
-      page: auditPage, person: auditPerson || undefined, type: auditType || undefined,
+      page: auditPage, limit: PAGE_SIZE, person: auditPerson || undefined, type: auditType || undefined,
       date_from: auditFrom || undefined, date_to: auditTo || undefined,
     }).then((res) => {
       if (!active) return;
@@ -1166,13 +1168,7 @@ export default function RolesPage() {
               })}
             </div>
           )}
-          {auditTotal > 50 && (
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button type="button" className="btn-secondary px-3" disabled={auditPage <= 1} onClick={() => setAuditPage((p) => p - 1)}>Prev</button>
-              <span className="font-body text-xs text-ink-muted">Page {auditPage}</span>
-              <button type="button" className="btn-secondary px-3" disabled={auditPage * 50 >= auditTotal} onClick={() => setAuditPage((p) => p + 1)}>Next</button>
-            </div>
-          )}
+          <Pagination page={auditPage} total={auditTotal} onPageChange={setAuditPage} noun="entries" className="mt-4 px-0" />
         </div>
       )}
 

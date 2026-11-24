@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Loader2, Plus, Printer, Search, Sparkles, Upload } from "lucide-react";
 import { api, CatalogItem, CatalogVariantGroup } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { ItemThumb } from "./ItemThumb";
 import { MetaCatalogueBar } from "./MetaCatalogueBar";
 import { formatPaise, isLow, stockValuePaise } from "./money";
@@ -159,6 +160,8 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
     }
   }), [items, filter]);
 
+  const paged = usePagedList(shown, `${query}|${filter}`);
+
   async function handleReindex() {
     setIsReindexing(true);
     try {
@@ -280,7 +283,7 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
                 {items.length === 0 ? "No items yet. Tap “Add item” to add your first one." : "Nothing here."}
               </td></tr>
             )}
-            {!isLoading && shown.map((item) => {
+            {!isLoading && paged.pageItems.map((item) => {
               const value = stockValuePaise(item);
               const href = `/dashboard/catalog/items/${item.id}`;
               return (
@@ -319,6 +322,7 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
             })}
           </tbody>
         </table>
+        <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="items" />
       </div>
       <p className="text-xs text-ink-muted">
         Tap an item to see and correct the stock of each size and colour. Stock goes down by itself with every bill.

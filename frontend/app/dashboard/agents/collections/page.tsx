@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { BTN_PRIMARY, BTN_ROW_DANGER, CARD, ErrorNote, LoadingRows } from "@/components/agents/ui";
 import { booksText, canDeleteCollection, collectionHref, collectionPagesText, readByText } from "@/components/agents/collectionRows";
 import { BTN_ROW, ConfirmDialog, EmptyNote, NameDialog, errorText, useListHeading } from "@/components/agents/collectionUi";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 type Dialog = { kind: "create" } | { kind: "rename"; collection: KbCollection } | { kind: "delete"; collection: KbCollection } | null;
 
@@ -16,6 +17,7 @@ export default function CollectionsPage() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [status, setStatus] = useState("");
   const { heading, focusHeading } = useListHeading("Collections", 2);
+  const collectionPages = usePagedList(collections ?? []);
 
   const load = useCallback(() => {
     setError("");
@@ -61,7 +63,7 @@ export default function CollectionsPage() {
       ) : collections ? (
         <section className={`${CARD} p-0`} aria-label="Your collections">
           <ul className="divide-y divide-border-subtle">
-            {collections.map((c) => {
+            {collectionPages.pageItems.map((c) => {
               const canDelete = canDeleteCollection(c);
               const hintId = `delete-hint-${c.id}`;
               return (
@@ -103,6 +105,7 @@ export default function CollectionsPage() {
               );
             })}
           </ul>
+          <Pagination page={collectionPages.page} total={collectionPages.total} onPageChange={collectionPages.setPage} noun="collections" />
         </section>
       ) : null}
 

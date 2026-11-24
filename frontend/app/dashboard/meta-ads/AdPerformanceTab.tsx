@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { AiraLoader } from "@/components/AiraLoader";
 import { api, AdPerformanceRow, AdTrackingCodeResponse, TrackedAd } from "@/lib/api";
 import {
@@ -742,6 +743,7 @@ export function AdPerformanceTab() {
     rows.map((row) => row.meta_ad_id).filter(Boolean),
   );
   const tableRows = useMemo(() => groupRows(rows, level, levelReach?.reach), [rows, level, levelReach]);
+  const adPages = usePagedList(tableRows, `${search}|${deliveryStatus}|${campaignId}|${adsetId}|${creativeId}|${dateFrom}|${dateTo}|${level}`);
   const [singular, plural] = LEVEL_NOUNS[level];
   const showingLabel = isLoading
     ? "Loading…"
@@ -784,6 +786,18 @@ export function AdPerformanceTab() {
     }
     return Array.from(byCampaign.entries());
   }, [trackedData, manageQuery]);
+  // The manage panel pages the ads flat, then regroups each page by campaign.
+  const trackedAds = useMemo(() => trackedGroups.flatMap(([, ads]) => ads), [trackedGroups]);
+  const trackedPages = usePagedList(trackedAds, manageQuery);
+  const trackedPageGroups = useMemo(() => {
+    const byCampaign = new Map<string, TrackedAd[]>();
+    for (const ad of trackedPages.pageItems) {
+      const list = byCampaign.get(ad.campaign_name) ?? [];
+      list.push(ad);
+      byCampaign.set(ad.campaign_name, list);
+    }
+    return Array.from(byCampaign.entries());
+  }, [trackedPages.pageItems]);
 
   const campaignNames = useMemo(
     () => new Map((filters?.campaigns ?? []).map((campaign) => [campaign.id, campaign.name])),
@@ -1187,7 +1201,7 @@ export function AdPerformanceTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f1f5f9]">
-                  {tableRows.map((item) => {
+                  {adPages.pageItems.map((item) => {
                     const { row } = item;
                     // Ads removed in Ads Manager stay in the table -- their spend is
                     // real and still counts toward the totals -- but recede visually.
@@ -1263,6 +1277,7 @@ export function AdPerformanceTab() {
               </table>
             </div>
           )}
+          <Pagination page={adPages.page} total={adPages.total} onPageChange={adPages.setPage} noun={plural} />
         </div>
       </section>
 
@@ -1441,7 +1456,7 @@ export function AdPerformanceTab() {
                   {trackedData.data.length === 0 ? "No messaging ads yet. Run Sync now first." : "No ads match that search."}
                 </p>
               ) : (
-                trackedGroups.map(([campaign, ads]) => (
+                trackedPageGroups.map(([campaign, ads]) => (
                   <section key={campaign} className="mb-5">
                     <p className="mb-2 font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">{campaign}</p>
                     <ul className="divide-y divide-surface-mid/50 overflow-hidden rounded-2xl border border-surface-mid/70">
@@ -1480,6 +1495,9 @@ export function AdPerformanceTab() {
                     </ul>
                   </section>
                 ))
+              )}
+              {trackedGroups.length > 0 && (
+                <Pagination page={trackedPages.page} total={trackedPages.total} onPageChange={trackedPages.setPage} noun="ads" className="mt-2 rounded-2xl border border-surface-mid/70 bg-white px-3 py-2.5" />
               )}
             </div>
           </aside>

@@ -19,6 +19,8 @@ import type {
   InstantFormVariable,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
 import { deliveryLook } from "./instantFormsDelivery";
 import {
@@ -34,7 +36,6 @@ import {
   localDate,
 } from "./instantFormsShared";
 
-const PAGE_SIZE = 50;
 const EXPORT_PAGE_SIZE = 500;
 const MAX_FIXED_TEXT = 200;
 /** Answers to these get their own columns; every other question gets one of its own. */
@@ -242,9 +243,6 @@ export function InstantFormDetail({ formId }: { formId: string }) {
     limit: PAGE_SIZE,
   });
   const total = leads?.total ?? 0;
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const to = Math.min(page * PAGE_SIZE, total);
   const questionColumns = (detail?.questions ?? []).filter((question) => !STANDARD_KEYS.has(question.key));
 
   function changeRange(from: string, to: string) {
@@ -770,30 +768,7 @@ export function InstantFormDetail({ formId }: { formId: string }) {
               )}
             </div>
 
-            {leads && total > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eef2f6] px-4 py-3">
-                <span className="font-body text-[11px] text-[#64748b]">{`Showing ${from}–${to} of ${total}`}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
-                    disabled={page <= 1}
-                    className={TOOLBAR_BUTTON}
-                  >
-                    Previous
-                  </button>
-                  <span className="font-label text-[11px] font-bold tabular-nums text-[#475569]">{`${page} / ${lastPage}`}</span>
-                  <button
-                    type="button"
-                    onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
-                    disabled={page >= lastPage}
-                    className={TOOLBAR_BUTTON}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
+            {leads && <Pagination page={page} total={total} onPageChange={setPage} noun="people" />}
           </section>
         </>
       )}

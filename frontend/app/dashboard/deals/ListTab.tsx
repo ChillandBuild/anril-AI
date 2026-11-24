@@ -12,8 +12,9 @@ import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHead
 import { cn, timeAgo, formatPhone } from "@/lib/utils";
 import { getDealTags } from "@/lib/deal-tags";
 import { shortRupees, PAYMENT_LABEL } from "@/lib/deal-filters";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
 
-const PAGE_SIZE = 50;
 const BRAND_COLORS = ["#038285", "#0A1528", "#6366f1", "#b45309", "#be123c", "#047857"];
 
 function getColorForLead(leadId: string): string {
@@ -90,20 +91,6 @@ export async function fetchAllDeals(filters: DealFilters, sort: DealSort, dir: "
   }
 }
 
-/** Page numbers to show: first, last, and a window around the current page, with gaps as "...". */
-function pageNumbers(page: number, totalPages: number): (number | "...")[] {
-  const pages: number[] = [];
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || Math.abs(i - page) <= 2) pages.push(i);
-  }
-  const out: (number | "...")[] = [];
-  pages.forEach((p, idx) => {
-    if (idx > 0 && p - pages[idx - 1] > 1) out.push("...");
-    out.push(p);
-  });
-  return out;
-}
-
 export function ListTab({
   filters,
   sort,
@@ -170,7 +157,6 @@ export function ListTab({
   const deals = data?.data ?? [];
   const selectedDeals = deals.filter((d) => selectedIds.has(d.id));
   const selectedTotal = selectedDeals.reduce((sum, d) => sum + d.total_paise, 0);
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   function toggleOne(id: string, next: boolean) {
     const ids = new Set(selectedIds);
@@ -418,55 +404,7 @@ export function ListTab({
         ))}
       </div>
 
-      {/* Pagination */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f1f5f9] px-4 py-3">
-        <div className="text-xs text-[#64748b]">
-          Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, data!.total)} of {data!.total} deals
-        </div>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onPageChange(page - 1)}
-              disabled={page === 1}
-              className="px-2 py-1.5 text-xs font-bold text-[#0A1528] hover:opacity-70 disabled:opacity-40"
-            >
-              ‹ Prev
-            </button>
-            <div className="flex gap-1">
-              {pageNumbers(page, totalPages).map((p, idx) =>
-                p === "..." ? (
-                  <span key={`dots-${idx}`} className="px-1 text-[#64748b]">
-                    ...
-                  </span>
-                ) : (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => onPageChange(p)}
-                    className={cn(
-                      "h-8 min-w-8 rounded-lg border text-xs font-bold transition-colors",
-                      p === page
-                        ? "border-primary bg-primary text-white"
-                        : "border-[#e2e8f0] text-[#0A1528] hover:border-primary hover:text-primary"
-                    )}
-                  >
-                    {p}
-                  </button>
-                )
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => onPageChange(page + 1)}
-              disabled={page >= totalPages}
-              className="px-2 py-1.5 text-xs font-bold text-[#0A1528] hover:opacity-70 disabled:opacity-40"
-            >
-              Next ›
-            </button>
-          </div>
-        )}
-      </div>
+      <Pagination page={page} total={data!.total} onPageChange={onPageChange} noun="deals" />
     </div>
   );
 }

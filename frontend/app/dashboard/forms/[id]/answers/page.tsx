@@ -7,12 +7,12 @@ import { toast } from "sonner";
 import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { WaFormResponseRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Pagination } from "@/components/ui/Pagination";
 import { AiraLoader } from "@/components/AiraLoader";
 import { useWhatsappForm, useWhatsappFormResponses } from "@/hooks/useApi";
 import { CatalogueTabs } from "../../../catalog/CatalogueTabs";
 import { SectionLoadGate } from "../../../settings/SettingsSection";
 
-const PAGE_SIZE = 50;
 
 const OUTCOME: Record<WaFormResponseRow["outcome"], { label: string; cls: string }> = {
   saved: { label: "Saved", cls: "bg-emerald-50 text-emerald-700" },
@@ -56,7 +56,6 @@ export default function FormAnswersPage() {
   }
 
   const total = data?.total ?? 0;
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="w-full space-y-5 pb-28">
@@ -124,15 +123,7 @@ export default function FormAnswersPage() {
         </div>
       )}
 
-      {lastPage > 1 && (
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            className="rounded-lg px-3 py-1.5 font-label text-xs font-semibold ring-1 ring-surface-mid disabled:opacity-40">Previous</button>
-          <span className="font-body text-xs text-ink-muted tabular-nums">{page} / {lastPage}</span>
-          <button type="button" onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage}
-            className="rounded-lg px-3 py-1.5 font-label text-xs font-semibold ring-1 ring-surface-mid disabled:opacity-40">Next</button>
-        </div>
-      )}
+      <Pagination page={page} total={total} onPageChange={setPage} noun="answers" className="rounded-2xl border border-border-subtle bg-white shadow-sm" />
     </div>
   );
 }

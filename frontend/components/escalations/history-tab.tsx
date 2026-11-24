@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Info, MessageSquare, RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { formatDateTime, formatDuration } from "@/lib/utils";
@@ -14,8 +14,8 @@ import {
 
 import { ChannelCell, DurationCell, LeadCell, PersonCell, TableEmpty, TableSkeleton, TriggerChip } from "@/components/escalations/atoms";
 import { CheckTick } from "@/components/ui/controls";
-
-const PAGE_SIZE = 25;
+import { Pagination } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 
 interface HistoryTabProps {
   onOpenChat: (leadId: string) => void;
@@ -46,7 +46,9 @@ export function HistoryTab({
   const [stats, setStats] = useState<HistoryStats>(EMPTY_HISTORY_STATS);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  // Only the newest request may write to the list (a filter can change while one is in flight).
+  const requestId = useRef(0);
   const [error, setError] = useState(false);
   const [debounced, setDebounced] = useState("");
 
@@ -55,52 +57,36 @@ export function HistoryTab({
     return () => clearTimeout(handle);
   }, [search]);
 
+  // Any filter change goes back to page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debounced, resolver, reason]);
+
   const load = useCallback(async () => {
+    const id = ++requestId.current;
     try {
-      const page = await fetchHistory({
+      const res = await fetchHistory({
         limit: PAGE_SIZE,
-        offset: 0,
+        offset: (page - 1) * PAGE_SIZE,
         q: debounced || undefined,
         resolver: resolver || undefined,
         reason: reason || undefined,
       });
-      setRows(page.data);
-      setTotal(page.total);
-      setStats(page.stats);
+      if (id !== requestId.current) return;
+      setRows(res.data);
+      setTotal(res.total);
+      setStats(res.stats);
       setError(false);
     } catch {
-      setError(true);
+      if (id === requestId.current) setError(true);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  }, [debounced, resolver, reason]);
+  }, [debounced, resolver, reason, page]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  async function loadMore() {
-    if (loadingMore || rows.length >= total) return;
-    setLoadingMore(true);
-    try {
-      const page = await fetchHistory({
-        limit: PAGE_SIZE,
-        offset: rows.length,
-        q: debounced || undefined,
-        resolver: resolver || undefined,
-        reason: reason || undefined,
-      });
-      setRows((prev) => {
-        const seen = new Set(prev.map((r) => r.id));
-        return [...prev, ...page.data.filter((r) => !seen.has(r.id))];
-      });
-      setTotal(page.total);
-    } catch {
-      toast.error("Couldn't load more history");
-    } finally {
-      setLoadingMore(false);
-    }
-  }
 
   async function handleReopen(row: ResolvedHandover) {
     if (!canReply) return;
@@ -262,21 +248,7 @@ export function HistoryTab({
                 )}
               </table>
             </div>
-          </div>
-
-          <div className="flex shrink-0 items-center justify-between gap-4 px-6 py-4">
-            <p className="font-body text-[11.5px] text-ink-muted">
-              Showing {rows.length} of {total}
-            </p>
-            {rows.length < total && (
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="h-[34px] rounded-lg border border-border bg-surface px-4 font-label text-[11.5px] font-bold text-ink transition-colors hover:border-ink-muted disabled:opacity-50"
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            )}
+            <Pagination page={page} total={total} onPageChange={setPage} noun="chats" />
           </div>
 
           {hasUnattributed && (

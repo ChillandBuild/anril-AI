@@ -4001,9 +4001,10 @@ export const api = {
       apiFetch<{ deleted: boolean }>(`/api/v1/rbac/users/${userId}`, {
         method: "DELETE",
       }),
-    auditLog: (params?: { page?: number; date_from?: string; date_to?: string; person?: string; type?: string }) => {
+    auditLog: (params?: { page?: number; limit?: number; date_from?: string; date_to?: string; person?: string; type?: string }) => {
       const qs = new URLSearchParams();
       if (params?.page) qs.set("page", String(params.page));
+      if (params?.limit) qs.set("limit", String(params.limit));
       if (params?.date_from) qs.set("date_from", params.date_from);
       if (params?.date_to) qs.set("date_to", params.date_to);
       if (params?.person) qs.set("person", params.person);

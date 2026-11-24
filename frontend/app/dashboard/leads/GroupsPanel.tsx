@@ -9,6 +9,7 @@ import { useAuthRole } from "../contexts/AuthRoleContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import {
   ADD_CALLER_HREF,
   NO_CALLERS_TEXT,
@@ -439,6 +440,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
   );
 
   const isEmpty = groups !== null && groups.length === 0;
+  const groupPages = usePagedList(groups ?? []);
   const previewForSelected = preview && selected && preview.groupId === selected.id ? preview : null;
 
   // ---------- right panel ----------
@@ -658,7 +660,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
                 <li className="hidden grid-cols-[minmax(0,1fr)_120px_80px_120px] gap-3 bg-[#f8fafc] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#64748b] md:grid">
                   <span>Group</span><span>Type</span><span>People</span><span>Made by</span>
                 </li>
-                {groups.map((g) => (
+                {groupPages.pageItems.map((g) => (
                   <li key={g.id}>
                     <button type="button" onClick={() => pick(g.id)} aria-pressed={g.id === selectedId && !draft}
                       className={cn(
@@ -682,6 +684,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
                 ))}
               </ul>
             )}
+            <Pagination page={groupPages.page} total={groupPages.total} onPageChange={groupPages.setPage} noun="groups" />
           </div>
           <div className="xl:w-[400px] xl:shrink-0">{panel}</div>
         </div>

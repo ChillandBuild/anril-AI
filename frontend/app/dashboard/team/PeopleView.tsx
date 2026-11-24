@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Check, Loader2, X } from "lucide-react";
 import { api, API_URL, getAuthHeaders, type Caller } from "@/lib/api";
 import { cn, istTodayIso } from "@/lib/utils";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import TeamAttendanceGrid from "./TeamAttendanceGrid";
 import ShiftHoursCard from "./ShiftHoursCard";
@@ -113,6 +114,7 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
   }
 
   const shown = people.filter((c) => !teamFilter || c.team_id === teamFilter);
+  const peoplePages = usePagedList(shown, teamFilter ?? "");
   const selected = people.find((c) => c.id === selectedId) ?? null;
   const today = istTodayIso();
 
@@ -151,7 +153,7 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
                 </tr>
               </thead>
               <tbody>
-                {shown.map((c) => {
+                {peoplePages.pageItems.map((c) => {
                   const shift = effectiveShift(shiftConfig, c);
                   const target = targets[c.id] ?? c.target ?? 0;
                   const isSelected = selectedId === c.id;
@@ -202,6 +204,9 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
             </table>
           </div>
         )}
+        {shown.length > 0 ? (
+          <Pagination page={peoplePages.page} total={peoplePages.total} onPageChange={peoplePages.setPage} noun="people" className="mt-3" />
+        ) : null}
       </section>
 
       {callingProvider === "sim_basic" && role === "owner" ? <FeedbackOversight /> : null}

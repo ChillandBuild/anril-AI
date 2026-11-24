@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type { BatchBucket, StockBatch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useBatches } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
@@ -38,6 +39,7 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
   const shown = useMemo(() => (data?.batches ?? []).filter((b) =>
     (filter === "all" || (filter === "returnable" ? b.returnable : b.bucket === filter))
     && (!supplier || b.supplier === supplier)), [data, filter, supplier]);
+  const paged = usePagedList(shown, `${filter}|${supplier}`);
 
   const cards = data?.cards;
   // No Orders access: the API sends no cost or value, so the cards and the Value column are left out.
@@ -130,9 +132,10 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
                     {data.batches.length ? "No batch matches this filter." : "No batch has stock right now."}
                   </td></tr>
                 )}
-                {shown.map((b) => <BatchRow key={b.id} batch={b} canManage={canManage} noMoney={noMoney} onChanged={() => mutate()} />)}
+                {paged.pageItems.map((b) => <BatchRow key={b.id} batch={b} canManage={canManage} noMoney={noMoney} onChanged={() => mutate()} />)}
               </tbody>
             </table>
+            <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="batches" />
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">

@@ -24,6 +24,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useAllAdsTotalReach, useAllMetaAds, useMetaFieldCatalog, useReachByLevel } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import type { AllAdsParams, AllAdsRow, MetaField } from "@/lib/api";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { buildAllAdsCsv, computeTotals, fieldsToFetch, totalExplanation } from "./allAdsReport";
 import { HoverTip } from "./HoverTip";
@@ -332,6 +333,7 @@ export function AllAdsTab() {
     () => groupRows(filteredRows, level, columnFields, levelReach?.reach),
     [filteredRows, level, columnFields, levelReach],
   );
+  const adPages = usePagedList(tableRows, `${search}|${typeFilter}|${campaignFilter}|${adsetFilter}|${adFilter}|${level}|${breakdown ?? ""}`);
   const groupCount = new Set(tableRows.map((row) => row.groupKey)).size;
   const reachShown = columnFields.some((field) => field.key === "reach" || field.key === "frequency");
   const showReachNote = reachShown && (totals.reachEstimated || tableRows.some((row) => row.reachEstimated));
@@ -446,7 +448,7 @@ export function AllAdsTab() {
     let previous = "";
     return (
       <tbody className="divide-y divide-[#f1f5f9]">
-        {tableRows.map((row) => {
+        {adPages.pageItems.map((row) => {
           // With a breakdown, one ad (or group) produces several rows; name it once.
           const isFirst = row.groupKey !== previous;
           previous = row.groupKey;
@@ -710,6 +712,9 @@ export function AllAdsTab() {
             </div>
           )}
         </div>
+        {!emptyState && (
+          <Pagination page={adPages.page} total={adPages.total} onPageChange={adPages.setPage} noun={plural} />
+        )}
       </section>
     </div>
   );

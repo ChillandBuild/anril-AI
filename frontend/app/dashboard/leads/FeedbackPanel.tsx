@@ -9,6 +9,8 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { SwitchPill } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { feedbackRowTarget, HIGHLIGHT_MS, recentRowId, unhappyRowId } from "./feedbackHighlight";
 import {
   averageText,
@@ -135,18 +137,29 @@ export function FeedbackPanel() {
     void loadReport();
   }, [loadReport]);
 
+  const recentPages = usePagedList(report?.recent ?? [], days);
+  const setRecentPage = recentPages.setPage;
+
   useEffect(() => {
     if (!report || !fb || handledFb.current === fb) return;
     handledFb.current = fb; // once per link, so "Mark fixed" reloading the report does not re-highlight
     const target = feedbackRowTarget(report, fb);
     if (!target) return;
-    const el = document.getElementById(target);
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-    setHighlightId(target);
-    highlightTimer.current = window.setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
-  }, [report, fb]);
+    // Recent shows 25 a page: open the page that holds the row first, then scroll once it is drawn.
+    if (target === recentRowId(fb.trim())) {
+      const idx = report.recent.findIndex((r) => r.id === fb.trim());
+      if (idx >= 0) setRecentPage(Math.floor(idx / PAGE_SIZE) + 1);
+    }
+    const frame = window.setTimeout(() => {
+      const el = document.getElementById(target);
+      if (!el) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      setHighlightId(target);
+      highlightTimer.current = window.setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    }, 50);
+    return () => window.clearTimeout(frame);
+  }, [report, fb, setRecentPage]);
 
   useEffect(() => () => window.clearTimeout(highlightTimer.current), []);
 
@@ -451,7 +464,7 @@ export function FeedbackPanel() {
               <p className="mt-3 text-sm text-[#556274]">No ratings in this time yet.</p>
             ) : (
               <ul className="mt-2 divide-y divide-[#eef2f6]">
-                {report.recent.map((r) => (
+                {recentPages.pageItems.map((r) => (
                   <li
                     key={r.id}
                     id={recentRowId(r.id)}
@@ -484,6 +497,7 @@ export function FeedbackPanel() {
                 ))}
               </ul>
             )}
+            <Pagination page={recentPages.page} total={recentPages.total} onPageChange={recentPages.setPage} noun="entries" className="-mx-5 -mb-5 mt-3 px-5" />
           </section>
         </>
       )}

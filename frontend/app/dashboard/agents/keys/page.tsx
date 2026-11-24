@@ -5,6 +5,7 @@ import { companionsApi, type CompanionApiKey } from "@/lib/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CopyButton } from "@/components/agents/CodeBlock";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 /**
  * Secret keys for the business's server. Example: a business creates a key,
@@ -19,6 +20,7 @@ export default function KeysPage() {
   const [newKey, setNewKey] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<CompanionApiKey | null>(null);
   const [revokeBusy, setRevokeBusy] = useState(false);
+  const keyPages = usePagedList(keys ?? []);
 
   const load = useCallback(() => {
     setError("");
@@ -114,7 +116,7 @@ export default function KeysPage() {
               </tr>
             </thead>
             <tbody>
-              {keys.map((k) => (
+              {keyPages.pageItems.map((k) => (
                 <tr key={k.id} className="border-b border-border-subtle last:border-0">
                   <td className="px-5 py-3 font-mono text-xs text-ink">{k.key_prefix}…</td>
                   <td className="px-5 py-3">
@@ -133,6 +135,7 @@ export default function KeysPage() {
               ))}
             </tbody>
           </table>
+          <Pagination page={keyPages.page} total={keyPages.total} onPageChange={keyPages.setPage} noun="keys" />
         </div>
       ) : null}
 

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PeriodPicker } from "@/components/ai-setup/PeriodPicker";
 import { NoAccess, SetupShell, useSetupAccess } from "@/components/ai-setup/SetupShell";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { aiSetupApi, questionFromSearch, sameQuestion, type CouldntAnswerRow, type Period } from "@/lib/aiSetupApi";
 
 const FIELD =
@@ -104,6 +105,7 @@ export default function CouldntAnswerPage() {
   const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [answered, setAnswered] = useState(0);
+  const questionPages = usePagedList(rows ?? [], period);
 
   const load = useCallback(async () => {
     try {
@@ -165,7 +167,7 @@ export default function CouldntAnswerPage() {
         <div className="flex flex-wrap items-start gap-4">
           <nav className="card flex min-w-0 flex-[2_1_360px] flex-col gap-1 !p-2" aria-label="Questions">
             <p className="px-2.5 py-1.5 font-body text-xs text-ink-secondary">Most asked first</p>
-            {rows.map((row) => {
+            {questionPages.pageItems.map((row) => {
               const on = row.question === current.question;
               return (
                 <button key={row.question} type="button" aria-pressed={on} onClick={() => setSelected(row.question)}
@@ -181,6 +183,7 @@ export default function CouldntAnswerPage() {
                 </button>
               );
             })}
+            <Pagination page={questionPages.page} total={questionPages.total} onPageChange={questionPages.setPage} noun="questions" className="px-2.5" />
           </nav>
           <AnswerPane key={current.question} row={current} canEdit={canEdit} onSaved={onSaved} />
         </div>

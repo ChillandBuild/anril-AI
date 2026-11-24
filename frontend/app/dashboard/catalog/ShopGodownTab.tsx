@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type { StockMove, StockOverview, StockPlace, StockPlaceCard, StockPlaceKind, StockPlaceLine } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useStockOverview } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
@@ -50,6 +51,7 @@ export function ShopGodownTab({ canManage, toolbarSlot }: { canManage: boolean; 
     const q = query.trim().toLowerCase();
     return (data?.lines ?? []).filter((li) => !q || lineName(li).toLowerCase().includes(q));
   }, [data, query]);
+  const paged = usePagedList(shown, query);
 
   function openMove(line?: StockPlaceLine) {
     if (!places.length) return;
@@ -144,7 +146,7 @@ export function ShopGodownTab({ canManage, toolbarSlot }: { canManage: boolean; 
                         {data.lines.length ? "No item matches that search." : "No items track stock yet. Add stock to an item to see it here."}
                       </td></tr>
                     )}
-                    {shown.map((line) => (
+                    {paged.pageItems.map((line) => (
                       <tr key={line.key} className="border-b border-border-subtle last:border-b-0">
                         <td className="px-4 py-3">
                           <Link href={`/dashboard/catalog/items/${line.item_id}`} className="font-bold text-ink hover:underline">{lineName(line)}</Link>
@@ -175,6 +177,7 @@ export function ShopGodownTab({ canManage, toolbarSlot }: { canManage: boolean; 
                     ))}
                   </tbody>
                 </table>
+                <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="items" />
               </div>
             </div>
 

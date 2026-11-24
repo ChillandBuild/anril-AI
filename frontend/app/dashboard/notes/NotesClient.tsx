@@ -17,6 +17,7 @@ import {
 } from "./components/shared";
 import { useLeadsWithActivity, useNotes, useAllNotes } from "@/hooks/useApi";
 import { TickMark } from "@/components/ui/controls";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { AiraLoader } from "@/components/AiraLoader";
 import { SegmentBadge } from "@/components/segment-badge";
 
@@ -229,6 +230,10 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
     return true;
   });
 
+  const leadPages = usePagedList(sortedLeads, search);
+  const leadNotePages = usePagedList(filteredLeadNotes, `${selected?.id ?? ""}|${filterTag ?? ""}`);
+  const allNotePages = usePagedList(filteredAllNotes, `${boardSearch}|${boardTag ?? ""}|${boardSegment ?? ""}|${boardPinnedOnly}`);
+
   const editProps = (note: Note | NoteWithLead) => ({
     isEditing: editingId === note.id,
     editContent, editPinned, editTags, saving,
@@ -305,10 +310,14 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredAllNotes.map((note) => (
+              {allNotePages.pageItems.map((note) => (
                 <NoteCard key={note.id} note={note} view="list" showLead {...editProps(note)} onLeadClick={() => goToLead(note.lead_id)} />
               ))}
             </div>
+          )}
+          {/* Only the list view pages; cards show every note. */}
+          {viewMode === "list" && (
+            <Pagination page={allNotePages.page} total={allNotePages.total} onPageChange={allNotePages.setPage} noun="notes" className="rounded-2xl border border-[#e2e8f0] bg-white" />
           )}
         </div>
       ) : (
@@ -328,7 +337,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
               {!leadsLoading && sortedLeads.length === 0 && (
                 <p className="font-body text-sm text-[#94a3b8] px-2">No leads found.</p>
               )}
-              {sortedLeads.map((lead) => (
+              {leadPages.pageItems.map((lead) => (
                 <button
                   key={lead.id}
                   onClick={() => setSelected(lead)}
@@ -360,6 +369,7 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
                 </button>
               ))}
             </div>
+            <Pagination page={leadPages.page} total={leadPages.total} onPageChange={leadPages.setPage} noun="people" className="mt-3 shrink-0 rounded-xl border border-[#e2e8f0] bg-white px-3" />
           </div>
 
           {/* Right: lead notes */}
@@ -464,11 +474,12 @@ export function NotesClient({ fallbackLeads }: { fallbackLeads: { data: Lead[] }
                         </p>
                       ) : (
                         <div>
-                          {filteredLeadNotes.map((note, i) => (
-                            <TimelineItem key={note.id} color={dotColorFor(note)} isLast={i === filteredLeadNotes.length - 1}>
+                          {leadNotePages.pageItems.map((note, i) => (
+                            <TimelineItem key={note.id} color={dotColorFor(note)} isLast={i === leadNotePages.pageItems.length - 1}>
                               <NoteCard note={note} view="list" {...editProps(note)} />
                             </TimelineItem>
                           ))}
+                          <Pagination page={leadNotePages.page} total={leadNotePages.total} onPageChange={leadNotePages.setPage} noun="notes" className="mt-2 rounded-xl border border-[#e2e8f0] bg-white px-3" />
                         </div>
                       )}
                     </div>

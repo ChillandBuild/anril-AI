@@ -9,6 +9,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import {
   api,
   type ScheduledBulkResult,
@@ -330,6 +331,15 @@ export function ScheduledTemplatesClient() {
   blocks.sort((a, b) => a.at - b.at);
   const batchCount = blocks.filter((b) => b.kind === "batch").length;
   const singleCount = blocks.length - batchCount;
+
+  // One page list across the broadcast rows and the batch/single blocks. A batch counts as one row.
+  const listEntries = [
+    ...visibleBroadcasts.map((b) => ({ kind: "broadcast" as const, b })),
+    ...blocks.map((block) => ({ kind: "block" as const, block })),
+  ];
+  const listPages = usePagedList(listEntries, `${tab}|${query}|${typeFilter}|${byFilter}|${whenFilter}`);
+  const pageBroadcasts = listPages.pageItems.flatMap((e) => (e.kind === "broadcast" ? [e.b] : []));
+  const pageBlocks = listPages.pageItems.flatMap((e) => (e.kind === "block" ? [e.block] : []));
 
   // Selection: only waiting messages and broadcasts the user may change.
   const selectableKeys = new Set<string>();
@@ -949,17 +959,17 @@ export function ScheduledTemplatesClient() {
               <div className="text-right">Action</div>
             </div>
 
-            {visibleBroadcasts.length > 0 && (
+            {pageBroadcasts.length > 0 && (
               <>
                 <div className="flex items-center gap-2.5 bg-[#f1f5f9] px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-[#64748b]">
                   Broadcasts
                   <span className="text-xs font-semibold normal-case tracking-normal">{visibleBroadcasts.length} from Outbound Leads</span>
                 </div>
-                {visibleBroadcasts.map((b) => renderBroadcastRow(b))}
+                {pageBroadcasts.map((b) => renderBroadcastRow(b))}
               </>
             )}
 
-            {blocks.length > 0 && (
+            {pageBlocks.length > 0 && (
               <>
                 <div className="flex items-center gap-2.5 bg-[#f1f5f9] px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-[#64748b]">
                   Batches and single messages
@@ -967,7 +977,7 @@ export function ScheduledTemplatesClient() {
                     {batchCount} batch{batchCount === 1 ? "" : "es"} · {singleCount} single
                   </span>
                 </div>
-                {blocks.map((block) =>
+                {pageBlocks.map((block) =>
                   block.kind === "single"
                     ? renderTemplateRow(block.row, false)
                     : renderBatch(block.id, block.label, block.rows),
@@ -975,15 +985,17 @@ export function ScheduledTemplatesClient() {
               </>
             )}
           </div>
+          <Pagination page={listPages.page} total={listPages.total} onPageChange={listPages.setPage} noun="messages" />
         </div>
 
         <div className="space-y-3 p-3 md:hidden">
-          {visibleBroadcasts.map((b) => renderBroadcastCard(b))}
-          {blocks.map((block) =>
+          {pageBroadcasts.map((b) => renderBroadcastCard(b))}
+          {pageBlocks.map((block) =>
             block.kind === "single"
               ? renderTemplateCard(block.row)
               : renderBatchCard(block.id, block.label, block.rows),
           )}
+          <Pagination page={listPages.page} total={listPages.total} onPageChange={listPages.setPage} noun="messages" className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm" />
         </div>
       </>
     );

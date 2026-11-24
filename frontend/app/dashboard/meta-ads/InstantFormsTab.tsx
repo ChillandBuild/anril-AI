@@ -10,6 +10,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useInstantFormsOverview, useInstantFormsStatus } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import type { InstantFormHelloStatus, InstantFormRange, InstantFormSummary } from "@/lib/api";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { LeadsDownloadButton } from "./LeadsDownloadButton";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
@@ -219,6 +220,8 @@ export function InstantFormsTab() {
   const { data: overview, error: overviewError, mutate: mutateOverview } = useInstantFormsOverview(
     showOverview ? range : null,
   );
+
+  const formPages = usePagedList(overview?.forms ?? [], `${dateFrom}|${dateTo}`);
 
   async function handleTurnOn() {
     setTurningOn(true);
@@ -442,7 +445,7 @@ export function InstantFormsTab() {
                     </thead>
                     <tbody className="divide-y divide-[#f1f5f9]">
                       {overview
-                        ? overview.forms.map((form) => (
+                        ? formPages.pageItems.map((form) => (
                             <FormRow
                               key={form.form_id}
                               form={form}
@@ -466,6 +469,7 @@ export function InstantFormsTab() {
                   </table>
                 </div>
               )}
+              <Pagination page={formPages.page} total={formPages.total} onPageChange={formPages.setPage} noun="forms" />
             </section>
           </>
         )}

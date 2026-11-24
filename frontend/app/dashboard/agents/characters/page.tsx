@@ -8,6 +8,7 @@ import { LANGUAGE_LABEL, nextDraftName } from "@/components/agents/characterForm
 import { CharacterDeleteDialog, type DeleteChoice } from "@/components/agents/CharacterDeleteDialog";
 import { Tabs } from "@/components/agents/collectionUi";
 import { BTN_PRIMARY, BTN_ROW_DANGER, BTN_SECONDARY, CARD, ErrorNote, LoadingRows, StatusPill } from "@/components/agents/ui";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 
 type View = "active" | "archived";
 const VIEWS: { id: View; label: string }[] = [
@@ -38,6 +39,7 @@ function Characters() {
   const [target, setTarget] = useState<Companion | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const characterPages = usePagedList(characters ?? [], view);
 
   const load = useCallback(() => {
     setError("");
@@ -143,7 +145,7 @@ function Characters() {
                       </tr>
                     </thead>
                     <tbody>
-                      {characters.map((c) => (
+                      {characterPages.pageItems.map((c) => (
                         <tr key={c.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-mid/60">
                           <td className="px-3 py-3">
                             <Link href={`/dashboard/agents/characters/${c.id}`} className="font-medium text-ink hover:text-primary hover:underline">
@@ -189,6 +191,7 @@ function Characters() {
                   </table>
                 </div>
               ) : null}
+              <Pagination page={characterPages.page} total={characterPages.total} onPageChange={characterPages.setPage} noun="characters" className="-mx-4 -mb-4" />
             </div>
           )}
         </Tabs>

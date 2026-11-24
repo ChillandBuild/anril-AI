@@ -33,6 +33,7 @@ import {
 
 import { fetchNotes } from "@/app/dashboard/telecalling/lib/notes-api";
 import type { NotesResponse } from "@/app/dashboard/telecalling/types";
+import { PAGE_SIZE } from "@/lib/pagination";
 
 // Shared SWR defaults: cache + revalidate on focus/reconnect, dedupe bursts.
 // No global polling — pages opt in via refreshInterval where freshness matters.
@@ -408,7 +409,7 @@ export function useWhatsappForm(id: string | null) {
 }
 
 export function useWhatsappFormResponses(id: string | null, page: number) {
-  return useSWR(id ? `whatsapp-forms/responses:${id}:${page}` : null, () => api.whatsappForms.responses(id!, page), defaultConfig);
+  return useSWR(id ? `whatsapp-forms/responses:${id}:${page}` : null, () => api.whatsappForms.responses(id!, page, PAGE_SIZE), defaultConfig);
 }
 
 export function useLeadFormAnswers(leadId: string | null) {

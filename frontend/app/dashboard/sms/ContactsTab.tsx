@@ -10,15 +10,15 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { api, type SmsContactGroup } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
-import { Pager } from "./CampaignDetail";
 import { AddContactPanel, PastePanel, UploadPanel } from "./ContactPanels";
 import { GroupsPanel } from "./GroupsPanel";
 import { SEND_PREFILL_KEY, formatCount, friendlyError, parseContactsSub } from "./helpers";
 import { Badge, Btn, Card, Empty, Field, LoadError, Modal, Skeleton, TableWrap, inputCls, tdCls, thCls } from "./ui";
 import { usePerm } from "./usePerm";
 
-const PAGE = 50;
 const API_CHUNK = 1000;
 
 function chunks<T>(items: T[]): T[][] {
@@ -83,7 +83,7 @@ function ContactsPanel({ toolbarSlot }: { toolbarSlot: HTMLElement | null }) {
   const groups = useSWR("sms:contact-groups", () => api.sms.contactGroups(), { revalidateOnFocus: false });
   const contacts = useSWR(
     ["sms:contacts", query, groupId, offset],
-    () => api.sms.contacts({ search: query || undefined, group_id: groupId || undefined, limit: PAGE, offset }),
+    () => api.sms.contacts({ search: query || undefined, group_id: groupId || undefined, limit: PAGE_SIZE, offset }),
     { keepPreviousData: true, revalidateOnFocus: false },
   );
 
@@ -296,7 +296,7 @@ function ContactsPanel({ toolbarSlot }: { toolbarSlot: HTMLElement | null }) {
               </tbody>
             </table>
           </TableWrap>
-          <Pager offset={offset} limit={PAGE} total={total} onOffset={setOffset} />
+          <Pagination page={Math.floor(offset / PAGE_SIZE) + 1} total={total} onPageChange={(p) => setOffset((p - 1) * PAGE_SIZE)} noun="contacts" />
         </>
       )}
 

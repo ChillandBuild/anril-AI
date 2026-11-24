@@ -5,6 +5,7 @@ import { companionKbApi, type KbDocument } from "@/lib/api";
 import { BTN_PRIMARY, BTN_ROW_DANGER, ErrorNote, LoadingRows } from "./ui";
 import { anyReading, docState, docStateLabel, fileSizeText, pagesText } from "./knowledgeRows";
 import { bookHref, importHref, needsRetry, problemText, sortBooks, tierToggle } from "./collectionRows";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import {
   BTN_ROW,
   ConfirmDialog,
@@ -46,6 +47,7 @@ export function BookList({ collectionId }: { collectionId: string }) {
   useEffect(load, [load]);
 
   usePolling(fetchDocs, docs !== null && anyReading(docs));
+  const bookPages = usePagedList(docs ? sortBooks(docs) : []);
 
   const markBusy = (id: string, on: boolean) =>
     setBusyIds((prev) => {
@@ -117,7 +119,7 @@ export function BookList({ collectionId }: { collectionId: string }) {
         {status}
       </p>
       <ul className="divide-y divide-border-subtle">
-        {sortBooks(docs).map((doc) => {
+        {bookPages.pageItems.map((doc) => {
           const state = docState(doc);
           const problem = problemText(doc);
           const toggle = tierToggle(doc.tier);
@@ -174,6 +176,7 @@ export function BookList({ collectionId }: { collectionId: string }) {
           );
         })}
       </ul>
+      <Pagination page={bookPages.page} total={bookPages.total} onPageChange={bookPages.setPage} noun="documents" />
       {docs.length >= BOOK_LIMIT && <p className="px-5 py-3 text-sm text-ink-secondary">Showing the newest {BOOK_LIMIT} files.</p>}
 
       {deleting && (

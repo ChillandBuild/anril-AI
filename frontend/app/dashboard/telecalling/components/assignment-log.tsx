@@ -5,6 +5,8 @@ import { Select } from "@/components/ui/Select";
 import { Download, RefreshCw, ArrowRight, ClipboardList } from "lucide-react";
 import { api, Caller, AssignmentLogEntry, AssignmentLogSummary } from "@/lib/api";
 import { formatPhone, timeAgo } from "@/lib/utils";
+import { PAGE_SIZE } from "@/lib/pagination";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { assignmentReasonLabel } from "../lib/assignmentReason";
 
@@ -16,7 +18,6 @@ const SEGMENT_STYLE: Record<string, string> = {
   D: "bg-gray-100 text-gray-500 border-gray-200",
 };
 
-const PAGE_SIZE = 50;
 
 export default function AssignmentLog({ callers }: { callers: Caller[] }) {
   const [entries, setEntries] = useState<AssignmentLogEntry[]>([]);
@@ -74,7 +75,6 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const callerSummaryRows = summary
     ? Object.entries(summary.by_caller).map(([id, value]) => (
         typeof value === "number"
@@ -227,17 +227,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
       </div>
 
       {/* Pagination */}
-      {total > PAGE_SIZE && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="font-body text-xs text-on-surface-muted">{total} total · page {page}/{totalPages}</span>
-          <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1.5 rounded-lg border border-surface-mid font-label text-sm disabled:opacity-40 hover:border-primary/40">Prev</button>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded-lg border border-surface-mid font-label text-sm disabled:opacity-40 hover:border-primary/40">Next</button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} total={total} onPageChange={setPage} noun="entries" className="mt-4 rounded-2xl border border-border-subtle bg-white shadow-sm" />
     </div>
   );
 }

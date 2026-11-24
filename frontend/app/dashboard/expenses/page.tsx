@@ -8,6 +8,7 @@ import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { ExpenseCategory, ExpenseMethod, ExpenseRepeat, ExpensesMonth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
+import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 
 /* Expenses (backend services/expenses.py, migration 313): what the business spends, so profit is real.
@@ -188,6 +189,7 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
 }) {
   const [confirm, setConfirm] = useState<string | null>(null);
   const repeats = new Map(data.repeats.map((r) => [r.id, r]));
+  const expenseRows = usePagedList(data.expenses, data.month_label);
 
   async function remove(id: string) {
     try {
@@ -225,7 +227,7 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
         </thead>
         <tbody>
           {empty && <tr><td colSpan={6} className="px-4 py-10 text-center text-ink-muted">Nothing spent in {data.month_label} yet.</td></tr>}
-          {data.expenses.map((e) => {
+          {expenseRows.pageItems.map((e) => {
             const rep = e.repeat_id ? repeats.get(e.repeat_id) : undefined;
             return (
               <tr key={e.id} className="border-b border-border-subtle last:border-b-0">
@@ -269,6 +271,7 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
           ))}
         </tbody>
       </table>
+      <Pagination page={expenseRows.page} total={expenseRows.total} onPageChange={expenseRows.setPage} noun="expenses" />
     </div>
   );
 }

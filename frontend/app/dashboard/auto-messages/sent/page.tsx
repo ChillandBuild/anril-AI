@@ -3,11 +3,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { api, type AutoMessageSentRow } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
+import { PAGE_SIZE } from "@/lib/pagination";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { formatWhen, ghostBtn, focusRing, tapArea } from "../shared";
 import { RANGES, SENT_STATUS, notSentBanner } from "./sentText";
 
-const PAGE = 50;
 const TH = "px-3 py-2 text-left sm:px-4 font-label text-xs font-bold uppercase tracking-wide text-ink-secondary";
 
 function Pill({ status }: { status: AutoMessageSentRow["status"] }) {
@@ -44,9 +45,9 @@ export default function SentPage() {
   const [onlyNotSent, setOnlyNotSent] = useState(false);
   const [rows, setRows] = useState<AutoMessageSentRow[] | null>(null);
   const [todayNotSent, setTodayNotSent] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [error, setError] = useState<"load" | "more" | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState<"load" | null>(null);
   // Only the newest request may write to the list (filters can change while one is in flight).
   const requestId = useRef(0);
 
@@ -55,36 +56,19 @@ export default function SentPage() {
     setRows(null);
     setError(null);
     try {
-      const page = await api.autoMessages.sent({ days, onlyNotSent, limit: PAGE, offset: 0 });
+      const res = await api.autoMessages.sent({ days, onlyNotSent, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
       if (id !== requestId.current) return;
-      setRows(page.rows);
-      setTodayNotSent(page.today_not_sent);
-      setHasMore(page.has_more);
+      setRows(res.rows);
+      setTodayNotSent(res.today_not_sent);
+      setTotal(res.total);
     } catch {
       if (id === requestId.current) setError("load");
     }
-  }, [days, onlyNotSent]);
+  }, [days, onlyNotSent, page]);
 
   useEffect(() => {
     if (!loading && canView) void loadFirst();
   }, [loading, canView, loadFirst]);
-
-  async function showMore() {
-    if (!rows) return;
-    const id = requestId.current;
-    setLoadingMore(true);
-    setError(null);
-    try {
-      const page = await api.autoMessages.sent({ days, onlyNotSent, limit: PAGE, offset: rows.length });
-      if (id !== requestId.current) return;
-      setRows((prev) => [...(prev ?? []), ...page.rows]);
-      setHasMore(page.has_more);
-    } catch {
-      if (id === requestId.current) setError("more");
-    } finally {
-      setLoadingMore(false);
-    }
-  }
 
   if (loading) return <div className="m-6 min-h-[320px] animate-pulse rounded-2xl bg-border-subtle" />;
   if (!canView) {
@@ -112,7 +96,10 @@ export default function SentPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2" role="group" aria-label="Time range">
           {RANGES.map((r) => (
-            <button key={r.days} type="button" aria-pressed={days === r.days} onClick={() => setDays(r.days)} className={chip(days === r.days)}>
+            <button key={r.days} type="button" aria-pressed={days === r.days} onClick={() => {
+                setPage(1);
+                setDays(r.days);
+              }} className={chip(days === r.days)}>
               {r.label}
             </button>
           ))}
@@ -121,7 +108,10 @@ export default function SentPage() {
           <input
             type="checkbox"
             checked={onlyNotSent}
-            onChange={(e) => setOnlyNotSent(e.target.checked)}
+            onChange={(e) => {
+              setPage(1);
+              setOnlyNotSent(e.target.checked);
+            }}
             className="h-4 w-4 rounded border-border accent-primary"
           />
           Show only not sent
@@ -191,18 +181,7 @@ export default function SentPage() {
           </>
         )}
 
-        {rows !== null && hasMore && error !== "load" && (
-          <div className="flex flex-col items-center gap-2 border-t border-border-subtle px-4 py-3">
-            <button type="button" onClick={() => void showMore()} disabled={loadingMore} className={ghostBtn}>
-              {loadingMore ? "Loading…" : "Show more"}
-            </button>
-            {error === "more" && (
-              <p role="alert" className="font-body text-xs font-semibold text-danger">
-                Couldn&apos;t load more. Try again.
-              </p>
-            )}
-          </div>
-        )}
+        {rows !== null && error !== "load" && <Pagination page={page} total={total} onPageChange={setPage} noun="messages" />}
       </section>
     </div>
   );
