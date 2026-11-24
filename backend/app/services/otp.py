@@ -37,6 +37,7 @@ from app.config import settings as app_config
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.services import bulk9_client
+from app.services.number_jobs import sender_for
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +505,7 @@ async def _send_whatsapp(db, tenant_id: str, row: dict, code: str, cfg: dict, *,
             row["phone"], cfg["wa_template_name"], cfg["wa_template_language"],
             components=_wa_components(code), tenant_id=tenant_id,
             skip_blocked_check=True,  # the client's website login, not a chat: never blocked
+            phone_number_id=sender_for(db, tenant_id, "otp"),  # picked in WhatsApp > Numbers, else Main
         )
         wamid = ((res.get("messages") or [{}])[0] or {}).get("id")
         patch = {"whatsapp_status": "sent", "whatsapp_message_id": wamid}

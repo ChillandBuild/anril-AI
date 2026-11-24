@@ -6,6 +6,8 @@ The planner schedules send_evening_summaries(db) at 20:00 IST. A business gets a
 (last_sent_on in its setting), so a re-run or retry never sends twice."""
 import asyncio
 import logging
+
+from app.services.number_jobs import sender_for
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
@@ -186,6 +188,7 @@ def send_one(db, tenant_id: str, setting: dict, now: datetime) -> bool:
         resp = _run(send_template_message(
             phone, template["name"], template.get("language") or "en", components=components,
             tenant_id=tenant_id, skip_blocked_check=True,      # to the business's own owner, not a customer
+            phone_number_id=sender_for(db, tenant_id, "alerts"),  # an alert to the owner: picked number, else Main
         ))
     except Exception as e:
         logger.warning(f"evening summary: not sent for {tenant_id}: {e}")

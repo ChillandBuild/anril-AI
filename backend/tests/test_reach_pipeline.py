@@ -42,7 +42,7 @@ def day_time_iso(days: int, hour_ist: int = 11) -> str:
 
 
 class _Picker:
-    def __init__(self, tenant_id):
+    def __init__(self, tenant_id, **_kw):
         self.sent = []
 
     def next(self):

@@ -1,4 +1,5 @@
-"""v9.2 WhatsApp > Numbers: the Extra role, Make main moves the default sender, which number does what."""
+"""WhatsApp > Numbers: Main or Standby only (Extra removed, migration 348), Make main moves the default
+sender, which number does what."""
 import sys
 import unittest
 from pathlib import Path
@@ -15,13 +16,13 @@ from app.services import outbound_router
 from tests.fake_supabase import FakeSupabase
 
 T = "t1"
-MAIN, STANDBY, EXTRA = ("11111111-1111-4111-8111-11111111111" + c for c in "123")
+MAIN, STANDBY, OTHER = ("11111111-1111-4111-8111-11111111111" + c for c in "123")
 
 
 class NumberRolesTests(unittest.TestCase):
     def setUp(self):
         self.db = FakeSupabase()
-        for nid, role, meta in ((MAIN, "primary", "m1"), (STANDBY, "standby", "m2"), (EXTRA, "extra", "m3")):
+        for nid, role, meta in ((MAIN, "primary", "m1"), (STANDBY, "standby", "m2"), (OTHER, "standby", "m3")):
             self.db.add("phone_numbers", id=nid, tenant_id=T, role=role, status="active", meta_phone_number_id=meta,
                         meta_status="CONNECTED", paused_outbound=False, quality_rating="green")
         self.db.add("app_settings", tenant_id=T, key="meta_phone_number_id", value="m1")
@@ -39,7 +40,7 @@ class NumberRolesTests(unittest.TestCase):
         p = patch("app.config_dynamic.invalidate_cache")
         p.start()
         self.addCleanup(p.stop)
-        p = patch.object(number_routes, "get_unlocked_number_ids", return_value={MAIN, STANDBY, EXTRA})
+        p = patch.object(number_routes, "get_unlocked_number_ids", return_value={MAIN, STANDBY, OTHER})
         p.start()
         self.addCleanup(p.stop)
 
@@ -56,28 +57,30 @@ class NumberRolesTests(unittest.TestCase):
         setting = next(r for r in self.db.rows("app_settings") if r["key"] == "meta_phone_number_id")
         self.assertEqual(setting["value"], "m2")
 
-    def test_roles_are_main_standby_or_extra_and_main_cannot_be_demoted_directly(self):
+    def test_roles_are_main_or_standby_and_main_cannot_be_demoted_directly(self):
         self.assertEqual(self.client.patch(f"/api/v1/numbers/{STANDBY}", json={"role": "boss"}).status_code, 400)
-        self.assertEqual(self.client.patch(f"/api/v1/numbers/{MAIN}", json={"role": "extra"}).status_code, 400)
-        self.assertEqual(self.client.patch(f"/api/v1/numbers/{STANDBY}", json={"role": "extra"}).status_code, 200)
-        self.assertEqual(self.role(STANDBY), "extra")
+        self.assertEqual(self.client.patch(f"/api/v1/numbers/{STANDBY}", json={"role": "extra"}).status_code, 400)
+        self.assertEqual(self.client.patch(f"/api/v1/numbers/{MAIN}", json={"role": "standby"}).status_code, 400)
+        self.assertEqual(self.role(STANDBY), "standby")
 
     def test_list_says_which_number_does_what(self):
         with patch.object(number_routes, "load_usage", side_effect=Exception("no rpc")):
             body = self.client.get("/api/v1/numbers/").json()
         self.assertEqual(body["jobs"]["main_id"], MAIN)
         self.assertEqual(body["jobs"]["default_sender_id"], MAIN)
-        self.assertEqual(body["jobs"]["reach_ids"], [MAIN, STANDBY] if body["data"][0]["id"] == MAIN else body["jobs"]["reach_ids"])
-        self.assertNotIn(EXTRA, body["jobs"]["reach_ids"])
+        self.assertEqual(set(body["jobs"]["reach_ids"]), {MAIN, STANDBY, OTHER})
+        self.assertEqual(set(body["jobs"]["picks"]), {"alerts", "otp", "reach"})
+        self.assertIn("reach_block", body["data"][0])
+        self.assertIn("send_block", body["data"][0])
 
-    def test_extra_numbers_never_send_campaigns(self):
+    def test_campaigns_use_main_first_then_every_standby(self):
         rows = [r for r in self.db.rows("phone_numbers")]
         with patch.object(outbound_router, "can_broadcast", return_value=True), \
              patch.object(outbound_router, "broadcast_cap", return_value=100), \
              patch.object(outbound_router, "portfolio_limit", return_value=1000):
-            picked = outbound_router._eligible(rows, {}, {MAIN, STANDBY, EXTRA}, outbound_router.Usage())
-        self.assertNotIn(EXTRA, [r["id"] for r in picked])
+            picked = outbound_router._eligible(rows, {}, {MAIN, STANDBY, OTHER}, outbound_router.Usage())
         self.assertEqual(picked[0]["id"], MAIN)
+        self.assertEqual({r["id"] for r in picked}, {MAIN, STANDBY, OTHER})
 
 
 if __name__ == "__main__":

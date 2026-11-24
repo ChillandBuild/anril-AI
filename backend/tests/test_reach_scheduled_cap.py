@@ -17,7 +17,7 @@ T1, T2 = "tenant-1", "tenant-2"
 
 
 class _Picker:
-    def __init__(self, tenant_id): pass
+    def __init__(self, tenant_id, **_kw): pass
     def next(self): return {"id": "n1", "meta_phone_number_id": "pn1"}
     async def record_sent(self, sender): pass
     def numbers_used_label(self): return "+910000000000"

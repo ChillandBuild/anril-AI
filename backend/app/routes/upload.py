@@ -855,7 +855,7 @@ async def _execute_immediate_send(
     recipient_rows = []
     aborted = False
     deferred_leads: list = []
-    picker = SenderPicker(tenant_id)
+    picker = SenderPicker(tenant_id, job="reach")
     idx = 0
     # v9.2 #118: who got it so far, for the push-back check (stop when >2% of 100+ say stop).
     pushback_stopped = False

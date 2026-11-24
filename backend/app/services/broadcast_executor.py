@@ -91,7 +91,7 @@ async def execute_broadcast(row: dict) -> dict:
         # failover mid-broadcast moves the rest to the new primary, and once
         # every number is at today's cap -- or none may broadcast (Red with no
         # standby) -- the remainder waits for tomorrow instead of failing.
-        picker = SenderPicker(tenant_id)
+        picker = SenderPicker(tenant_id, job="reach")
         if picker.next() is None:
             _defer_send(db, row_id, tenant_id, "no_sender_available")
             return {"sent": 0, "failed": 0, "deferred": True}

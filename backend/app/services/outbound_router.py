@@ -68,8 +68,6 @@ def _eligible(rows: list[dict], sent_now: dict[str, int], unlocked_ids: set[str]
         return []
     out = []
     for r in rows:
-        if r.get("role") == "extra":  # an Extra number is kept out of campaigns (migration 346)
-            continue
         if not can_broadcast(r, now, unlocked_ids):
             continue
         used = usage.per_number.get(r["id"], 0) + sent_now.get(r["id"], 0)
@@ -111,8 +109,11 @@ class SenderPicker:
     against the caps as it goes, and re-reads the pool every few sends so a
     failover mid-broadcast moves the rest to the new primary."""
 
-    def __init__(self, tenant_id: str):
+    def __init__(self, tenant_id: str, job: str | None = None):
         self.tenant_id = tenant_id
+        # job="reach": Reach campaigns, which follow the number picked for them in
+        # WhatsApp > Numbers (services/number_jobs.py). Other senders use the whole pool.
+        self.job = job
         self._db = get_supabase()
         self._rows: list[dict] = []
         self._unlocked: set[str] = set()
@@ -124,6 +125,11 @@ class SenderPicker:
     def _refresh(self) -> None:
         self._rows = _load_rows(self._db, self.tenant_id)
         self._unlocked = get_unlocked_number_ids(self._db, self.tenant_id)
+        if self.job == "reach":
+            from app.services.number_jobs import reach_pin
+            pin = reach_pin(self._db, self.tenant_id, self._rows, datetime.now(timezone.utc), self._unlocked)
+            if pin:
+                self._rows = [pin]
         self._usage = load_usage(self._db, self.tenant_id)
         self._sent_since_refresh = {}
 

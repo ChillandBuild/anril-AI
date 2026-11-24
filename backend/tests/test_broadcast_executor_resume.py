@@ -172,7 +172,7 @@ class _FixedPicker:
     """Always picks the one test number (sender choice is covered in
     test_number_failover.py)."""
 
-    def __init__(self, _tenant_id):
+    def __init__(self, _tenant_id, **_kw):
         pass
 
     def next(self):

@@ -408,7 +408,7 @@ async def test_scheduled_broadcast_with_no_sender_waits_for_tomorrow_instead_of_
     from app.services import broadcast_executor
 
     class _NoSender:
-        def __init__(self, _t):
+        def __init__(self, _t, **_kw):
             pass
 
         def next(self):

@@ -17,7 +17,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
 
-import { NumberJobsPanel, type NumberJobs } from "./NumberJobsPanel";
+import { NumberJobsPanel, type NumberJobs, type PickJob } from "./NumberJobsPanel";
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type QualityRating = "green" | "yellow" | "red";
@@ -44,7 +44,7 @@ type PhoneNumber = {
   provider: "meta_cloud";
   number: string;
   display_name: string;
-  role: "primary" | "standby" | "extra" | "archived";
+  role: "primary" | "standby" | "archived";
   status: "active" | "warming" | "restricted" | "archived";
   quality_rating: QualityRating | null;
   messaging_tier: number | null;
@@ -58,6 +58,9 @@ type PhoneNumber = {
   warm_up_started_at?: string | null;
   rested_since?: string | null;
   health?: NumberHealth;
+  /** Why it can't be picked for Reach / for alerts and OTP right now (null = it can). */
+  reach_block?: string | null;
+  send_block?: string | null;
 };
 
 const QUALITY_COLOR: Record<QualityRating, string> = {
@@ -538,6 +541,11 @@ const numbersApi = {
     }),
   // display_name is deliberately absent: Meta owns it (verified_name), and sync
   // overwrites whatever is in the row, so a local rename would silently revert.
+  pickSender: (job: PickJob, numberId: string | null) =>
+    apiFetch<{ job: PickJob; number_id: string | null }>("/api/v1/numbers/senders", {
+      method: "PUT",
+      body: JSON.stringify({ job, number_id: numberId }),
+    }),
   update: (id: string, data: Partial<Pick<PhoneNumber, "role" | "status" | "paused_outbound">>) =>
     apiFetch<PhoneNumber>(`/api/v1/numbers/${id}`, {
       method: "PATCH",
@@ -572,7 +580,7 @@ function NumbersPageContent() {
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "primary" | "standby" | "extra" | "paused">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "primary" | "standby" | "paused">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Tier guide banner state (auto-dismisses after 15s)
@@ -701,7 +709,6 @@ function NumbersPageContent() {
       }
       if (roleFilter === "primary") return num.role === "primary";
       if (roleFilter === "standby") return num.role === "standby";
-      if (roleFilter === "extra") return num.role === "extra";
       if (roleFilter === "paused") return num.paused_outbound;
       return true;
     });
@@ -731,17 +738,6 @@ function NumbersPageContent() {
       await numbersApi.update(id, { role: "primary" });
       await reload();
       toast.success("Set as primary number");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Update failed");
-    }
-  }
-
-  async function handleSetRole(num: PhoneNumber, role: "standby" | "extra") {
-    if (!canManageNumbers) return;
-    try {
-      await numbersApi.update(num.id, { role });
-      await reload();
-      toast.success(role === "extra" ? "Now Extra: it replies, but sends no campaigns and never takes over" : "Now Standby: it takes over if the Main number stops");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed");
     }
@@ -959,7 +955,22 @@ function NumbersPageContent() {
           )}
 
           {/* ── Which number does what (read only: how the senders work today) ── */}
-          {!loading && visible.length > 0 && <NumberJobsPanel jobs={jobs} numbers={visible} />}
+          {!loading && visible.length > 0 && (
+            <NumberJobsPanel
+              jobs={jobs}
+              numbers={visible}
+              canManage={canManageNumbers}
+              onPick={async (job, numberId) => {
+                try {
+                  await numbersApi.pickSender(job, numberId);
+                  await reload();
+                  toast.success(numberId ? "Saved. That number sends this from now on." : "Saved. Back to Automatic.");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Couldn't save the number");
+                }
+              }}
+            />
+          )}
 
           {/* ── Main Numbers Card ───────────────────────────────────────────── */}
           <div className="rounded-2xl bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 md:rounded-card md:p-8 space-y-6">
@@ -1012,7 +1023,6 @@ function NumbersPageContent() {
                     { key: "all", label: "All" },
                     { key: "primary", label: "Primary" },
                     { key: "standby", label: "Standby" },
-                    { key: "extra", label: "Extra" },
                     { key: "paused", label: "Paused" },
                   ].map((tab) => (
                     <button
@@ -1147,7 +1157,7 @@ function NumbersPageContent() {
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-label text-[11px] font-semibold bg-surface-mid/80 text-on-surface-muted border border-border">
-                                  {num.role === "extra" ? "Extra · no campaigns" : "Standby Failover"}
+                                  Standby Failover
                                 </span>
                               )}
 
@@ -1294,19 +1304,6 @@ function NumbersPageContent() {
                               >
                                 <Star size={12} className="fill-primary-600/30" />
                                 <span>Set Primary</span>
-                              </button>
-                            )}
-
-                            {/* Standby <-> Extra */}
-                            {canManageNumbers && (num.role === "standby" || num.role === "extra") && (
-                              <button
-                                onClick={() => handleSetRole(num, num.role === "extra" ? "standby" : "extra")}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-surface hover:bg-surface-low text-on-surface font-label text-xs font-bold transition-all shadow-2xs"
-                                title={num.role === "extra"
-                                  ? "Standby: sends campaigns with Main and takes over if Main stops"
-                                  : "Extra: replies to whoever writes to it, but sends no campaigns and never takes over"}
-                              >
-                                <span>{num.role === "extra" ? "Make standby" : "Make extra"}</span>
                               </button>
                             )}
 

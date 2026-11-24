@@ -10,6 +10,8 @@ from app.services.number_health import health, is_meta_connected, portfolio_limi
 from app.services.outbound_router import Usage, load_usage
 from app.services.number_sync import sync_one_number, sync_tenant_numbers
 from app.services.numbers_pool import get_unlocked_number_ids, numbers_pool_limit
+from app.services import number_jobs
+from app.config_dynamic import invalidate_cache
 
 logger = logging.getLogger(__name__)
 require_numbers_read = require_permission("numbers.view")
@@ -23,6 +25,11 @@ class CreatePhoneNumber(BaseModel):
     number: str
     display_name: str
     meta_phone_number_id: str | None = None
+
+
+class SenderPick(BaseModel):
+    job: str  # number_jobs.SENDER_JOBS: alerts | otp | reach
+    number_id: str | None = None  # None = Automatic
 
 
 class UpdatePhoneNumber(BaseModel):
@@ -39,9 +46,8 @@ _numbers_pool_limit = numbers_pool_limit
 
 # Must match phone_numbers_status_check in supabase/migrations/009_phone_numbers_incidents.sql
 _VALID_PHONE_NUMBER_STATUSES = frozenset({"active", "warming", "restricted", "archived"})
-# Roles a person can pick (migration 346). Extra: replies to whoever writes, but no campaigns and
-# never takes over from Main. "archived" is set by the system only.
-_PICKABLE_ROLES = frozenset({"primary", "standby", "extra"})
+# Roles a person can pick. "archived" is set by the system only.
+_PICKABLE_ROLES = frozenset({"primary", "standby"})
 
 
 @router.get("/")
@@ -80,12 +86,15 @@ def _pool_response(db, tenant_id: str, rows: list[dict]) -> dict:
             **row,
             "locked": row.get("status") != "archived" and row["id"] not in unlocked_ids,
             "health": _health(row, now, usage),
+            # Why it can't be picked in "Which number does what" (None = it can)
+            "reach_block": number_jobs.reach_block_reason(row, now, unlocked_ids, usage.per_number.get(row["id"], 0)),
+            "send_block": number_jobs.send_block_reason(row),
         }
         for row in rows
     ]
     active_rows = [r for r in rows if r.get("status") != "archived"]
     return {
-        "jobs": _jobs(db, tenant_id, active_rows),
+        "jobs": {**_jobs(db, tenant_id, active_rows), "picks": _picks(tenant_id)},
         "data": data,
         "numbers_pool": {
             "limit": numbers_pool_limit(db, tenant_id),
@@ -100,7 +109,8 @@ def _pool_response(db, tenant_id: str, rows: list[dict]) -> dict:
 def _jobs(db, tenant_id: str, rows: list[dict]) -> dict:
     """Which number does what today, as the senders actually work (read only):
     replies go from the number the customer wrote to; Reach uses Main first, then Standby numbers
-    with room (never Extra); OTP, bills, order updates and alerts use the default sender."""
+    with room, unless a number is picked for it; OTP and alerts use their picked number, else the
+    default sender; bills and order updates always use the default sender."""
     try:
         got = (db.table("app_settings").select("value").eq("tenant_id", tenant_id)
                .eq("key", "meta_phone_number_id").limit(1).execute().data or [])
@@ -114,6 +124,52 @@ def _jobs(db, tenant_id: str, rows: list[dict]) -> dict:
         "main_id": main["id"] if main else None,
         "reach_ids": [r["id"] for r in rows if r.get("role") in ("primary", "standby") and not r.get("paused_outbound")],
     }
+
+
+def _picks(tenant_id: str) -> dict:
+    """The number picked for each pinnable job (phone_numbers.id), or None for Automatic."""
+    out = {}
+    for job in number_jobs.SENDER_JOBS:
+        try:
+            out[job] = number_jobs.picked_number_id(tenant_id, job)
+        except Exception:
+            out[job] = None
+    return out
+
+
+@router.put("/senders")
+async def set_sender(
+    payload: SenderPick,
+    tenant_id: str = Depends(get_tenant_id),
+    _ctx: dict = Depends(require_numbers_manage),
+):
+    """Pick the number for staff alerts, OTP codes or Reach campaigns (None = Automatic)."""
+    if payload.job not in number_jobs.SENDER_JOBS:
+        raise HTTPException(status_code=400, detail="Only alerts, OTP codes and Reach campaigns can use a picked number.")
+    db = get_supabase()
+    key = number_jobs.setting_key(payload.job)
+    if payload.number_id is None:
+        db.table("app_settings").delete().eq("tenant_id", tenant_id).eq("key", key).execute()
+    else:
+        rows = (db.table("phone_numbers").select("*").eq("tenant_id", tenant_id)
+                .eq("id", payload.number_id).neq("status", "archived").limit(1).execute().data or [])
+        if not rows:
+            raise HTTPException(status_code=404, detail="That number isn't one of yours.")
+        row = rows[0]
+        if payload.job == "reach":
+            usage = _usage_or_empty(db, tenant_id)
+            why = number_jobs.reach_block_reason(
+                row, datetime.now(timezone.utc), get_unlocked_number_ids(db, tenant_id), usage.per_number.get(row["id"], 0))
+        else:
+            why = number_jobs.send_block_reason(row)
+        if why:
+            raise HTTPException(status_code=400, detail=f"This number can't be picked right now: {why}.")
+        db.table("app_settings").upsert(
+            {"tenant_id": tenant_id, "key": key, "value": row["id"], "is_secret": False, "updated_at": "now()"},
+            on_conflict="tenant_id,key",
+        ).execute()
+    invalidate_cache(key)
+    return {"job": payload.job, "number_id": payload.number_id}
 
 
 @router.post("/")
@@ -185,7 +241,7 @@ async def update_phone_number(
     _ctx: dict = Depends(require_numbers_manage),
 ):
     if payload.role is not None and payload.role not in _PICKABLE_ROLES:
-        raise HTTPException(status_code=400, detail="A number can be Main, Standby or Extra.")
+        raise HTTPException(status_code=400, detail="A number can be Main or Standby.")
     if payload.status is not None and payload.status not in _VALID_PHONE_NUMBER_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -193,7 +249,7 @@ async def update_phone_number(
         )
 
     db = get_supabase()
-    if payload.role in ("standby", "extra"):
+    if payload.role == "standby":
         current = (db.table("phone_numbers").select("role").eq("id", str(number_id)).eq("tenant_id", tenant_id)
                    .limit(1).execute().data or [])
         if current and current[0].get("role") == "primary":

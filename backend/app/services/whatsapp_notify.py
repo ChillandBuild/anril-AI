@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.db.supabase import get_supabase
 from app.services.meta_cloud import send_template_message
+from app.services.number_jobs import sender_for
 from app.services.notification_config import get_notification_config
 from app.services.template_fields import AlertFields, build_body_components, chat_link
 
@@ -295,6 +296,7 @@ async def _dispatch_alerts(
     lead_id: str,
 ) -> None:
     db = get_supabase()
+    from_number = sender_for(db, tenant_id, "alerts")  # picked in WhatsApp > Numbers, else Main
     for phone in recipient_phones:
         try:
             await send_template_message(
@@ -304,6 +306,7 @@ async def _dispatch_alerts(
                 components=components,
                 tenant_id=tenant_id,
                 skip_blocked_check=True,  # goes to the business's own staff numbers, not the customer
+                phone_number_id=from_number,
             )
         except Exception as e:
             logger.exception("WhatsApp admin alert failed to %s for lead %s", phone, lead_id)
