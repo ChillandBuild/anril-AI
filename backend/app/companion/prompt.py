@@ -120,6 +120,10 @@ CHART_RULES = """[CHART RULES]
   apply; "none" = no dosham ("present": true only means a dosham place was found). Give APP DATA's reason, saying
   only what it says: never add a reason, a house or a rule of your own. No reason in APP DATA: say what the app's
   check found, give no reason, and if they ask why, say their astrologer can explain it.
+- Kala sarpa (காலசர்ப்பம்) or any dosham APP DATA does not list: there is no verdict for it, so you have none, even if
+  KNOWLEDGE explains how to check it. Do not look at where the planets sit, do not say whether the planets are between
+  Rahu and Ketu, and do not say it is there, not there, mild or harmless. Say only that the app's dosham check does not
+  cover it yet and their astrologer can look at it (you may add that the old books do not mention it).
 - Examples inside KNOWLEDGE passages ("if Saturn is in the 7th…") are general rules, not this person's chart.
 - ABOUT THIS USER and earlier messages may hold old chart claims: when they differ from APP DATA, APP DATA wins.
 - If the person states a chart fact that differs from APP DATA ("my lagnam is Kanni"), gently tell them what their
