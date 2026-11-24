@@ -41,6 +41,7 @@ import { prefillFromTemplate, takePrefill } from "../template-prefill";
 import type { TemplatePrefill } from "../template-prefill";
 import AiWriter from "../components/ai-writer";
 import CopyPicker from "../components/copy-picker";
+import Section, { ChecklistCard } from "../components/builder-section";
 
 type Category = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 type HeaderKind = "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
@@ -57,35 +58,6 @@ const HEADER_KINDS: { value: HeaderKind; label: string }[] = [
   { value: "VIDEO", label: "Video" },
   { value: "DOCUMENT", label: "Document" },
 ];
-
-/** A section card with its number, or a green tick once nothing in it needs fixing. */
-function Section({
-  n, title, hint, done, active = false, children, className = "",
-}: {
-  n: number; title: string; hint?: string; done: boolean; active?: boolean; children: React.ReactNode; className?: string;
-}) {
-  return (
-    <section
-      className={`rounded-2xl border bg-white p-5 shadow-sm md:p-6 ${
-        active ? "border-primary-300 ring-4 ring-primary-50" : "border-[#e7e2da]"
-      } ${className}`}
-    >
-      <div className="mb-4 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${
-            done ? "bg-emerald-50 text-emerald-600" : "bg-primary text-white"
-          }`}
-          aria-hidden="true"
-        >
-          {done ? <Check size={15} strokeWidth={3} /> : n}
-        </span>
-        <h2 className="font-display text-base font-bold text-ink">{title}</h2>
-        {hint && <span className="text-[12.5px] text-ink-muted">{hint}</span>}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 export default function NewTemplatePage() {
   const router = useRouter();
@@ -425,16 +397,23 @@ export default function NewTemplatePage() {
                       role="radio"
                       aria-checked={on}
                       onClick={() => selectCategory(c.value)}
-                      className={`min-w-0 rounded-xl border p-3.5 text-left transition ${
+                      className={`flex min-w-0 flex-col rounded-xl border p-3.5 text-left transition ${
                         on ? "border-primary bg-primary-50/50 ring-2 ring-primary-100" : "border-[#e2ddd5] bg-white hover:border-primary-200"
                       }`}
                     >
                       <span className="flex items-center gap-2 whitespace-nowrap text-sm font-bold text-ink">
-                        <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${on ? "border-[4.5px] border-primary" : "border-[1.5px] border-[#9aa3b2]"}`} aria-hidden="true" />
+                        <span
+                          className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full transition ${
+                            on ? "bg-primary text-white" : "border-[1.5px] border-[#b6bdc8] bg-white"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {on && <Check size={11} strokeWidth={3.5} />}
+                        </span>
                         {c.label}
                       </span>
                       <span className="mt-1 block text-[12px] leading-snug text-ink-muted">{c.description}</span>
-                      <span className={`mt-1.5 block text-[12px] font-bold ${CATEGORY_COST[c.value].cls}`}>{CATEGORY_COST[c.value].text}</span>
+                      <span className={`mt-auto block pt-1.5 text-[12px] font-bold ${CATEGORY_COST[c.value].cls}`}>{CATEGORY_COST[c.value].text}</span>
                     </button>
                   );
                 })}
@@ -651,17 +630,7 @@ export default function NewTemplatePage() {
             }))}
           />
 
-          <section className="rounded-2xl border border-[#e7e2da] bg-white p-4">
-            <h3 className="mb-2.5 text-sm font-bold text-ink">Check before sending to Meta</h3>
-            <ul className="grid gap-1.5 text-[12.5px] font-medium sm:grid-cols-2 xl:grid-cols-1">
-              {checks.map((c) => (
-                <li key={c.text} className={`flex items-center gap-1.5 ${c.ok ? "text-emerald-700" : "text-ink-muted"}`}>
-                  {c.ok ? <Check size={13} strokeWidth={3} aria-hidden="true" /> : <span className="h-3 w-3 rounded-full border-[1.5px] border-current" aria-hidden="true" />}
-                  {c.text}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <ChecklistCard checks={checks} />
           <p className="text-[12.5px] leading-relaxed text-ink-muted">
             Templates are shared by all your numbers. After Meta approves one, you can use it in Chats, Reach, Auto-Messages and Commerce.
           </p>
