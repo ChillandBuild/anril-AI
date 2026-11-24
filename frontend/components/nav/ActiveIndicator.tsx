@@ -105,9 +105,21 @@ export function ActiveIndicator({ pathname }: { pathname: string }) {
     mutations.observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-expanded"] });
     // Folding or peeking the sidebar moves the square between a group and its row.
     if (aside) mutations.observe(aside, { attributes: true, attributeFilter: ["data-rail", "data-peek"] });
+    // The scroll box keeps its own size while the menu inside it grows or
+    // shrinks (a section's rows arriving late, a section closing), so watch
+    // every row too. Otherwise the square stays where the row used to be, and
+    // left below the last row it stretches the menu into empty scroll space.
     const resize = new ResizeObserver(() => place(false));
-    resize.observe(box);
+    const watchRows = () => {
+      resize.disconnect();
+      resize.observe(box);
+      Array.from(box.children).forEach((c) => { if (c !== square) resize.observe(c); });
+    };
+    watchRows();
+    const rows = new MutationObserver(watchRows);
+    rows.observe(box, { childList: true });
     return () => {
+      rows.disconnect();
       cancelAnimationFrame(frame);
       mutations.disconnect();
       resize.disconnect();

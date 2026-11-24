@@ -408,7 +408,7 @@ export default function TemplatesPage() {
           </div>
 
           {/* Actions: four tool chips, then Create Template, centred against the summary cards */}
-          <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
+          <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] sm:justify-end">
             <div role="group" aria-label="Template tools" className="flex flex-nowrap items-center gap-1.5">
               <button
                 onClick={handleSyncAll}
@@ -443,7 +443,7 @@ export default function TemplatesPage() {
             </div>
             <Link
               href="/dashboard/templates/new"
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-b from-[#06999c] to-[#037a7d] px-3.5 font-label text-[12.5px] font-bold text-white shadow-[0_4px_10px_-4px_rgba(3,130,133,0.5)] transition hover:shadow-[0_6px_14px_-4px_rgba(3,130,133,0.6)]"
+              className="order-first inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full sm:order-none bg-gradient-to-b from-[#06999c] to-[#037a7d] px-3.5 font-label text-[12.5px] font-bold text-white shadow-[0_4px_10px_-4px_rgba(3,130,133,0.5)] transition hover:shadow-[0_6px_14px_-4px_rgba(3,130,133,0.6)]"
             >
               <Plus size={14} strokeWidth={2.75} aria-hidden="true" />
               Create Template
