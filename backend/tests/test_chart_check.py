@@ -232,3 +232,53 @@ def test_lagnam_then_rasi_in_one_sentence_is_not_a_wrong_rasi(chart, reply):
 @pytest.mark.parametrize("reply", ["Unga lagnam Kanni, rasi Simmam.", "உங்க லக்னம் மகரம் (Capricorn), ராசி மகரம்."])
 def test_a_wrong_lagnam_or_rasi_in_that_shape_is_still_caught(chart, reply):
     assert find_wrong(chart, reply)
+
+
+# --- AstroTamil's real app_data (24 Nov): ISO dates and the full bhukti list of the running dasa
+ISO_CHART = {
+    "overview": {"lagnam": "Kumbam (Aquarius)", "rasi": "Rishabam (Taurus)"},
+    "planets": [{"planet": "Saturn", "rasi": "Dhanusu"}, {"planet": "Moon", "rasi": "Rishabam"}],
+    "dasa": {
+        "now": {"dasa": "Rahu", "from": "2008-12-10", "to": "2026-12-11",
+                "bhukti": "Mars", "bhukti_from": "2025-11-22", "bhukti_to": "2026-12-11"},
+        "next_bhukti": ["Jupiter", "2026-12-11", "2029-01-28"],
+        "all": [["Mars", "2001-12-10", "2008-12-10"], ["Rahu", "2008-12-10", "2026-12-11"],
+                ["Jupiter", "2026-12-11", "2042-12-11"], ["Saturn", "2042-12-11", "2061-12-10"]],
+        "bhuktis_of_this_dasa": [["Moon", "2024-05-23", "2025-11-22"], ["Mars", "2025-11-22", "2026-12-11"]],
+    },
+}
+
+
+def test_iso_dates_and_the_bhukti_lists_are_read():
+    """Before: '2008-12-10' was not a date to us, so the dasa and bhukti were invisible to the guard."""
+    c = parse_app_data(json.dumps(ISO_CHART))
+    assert (c.dasa.planet, c.dasa.start.isoformat(), c.dasa.end.isoformat()) == ("ராகு", "2008-12-10", "2026-12-11")
+    assert len(c.dasas) == 4 and c.next_dasa.planet == "குரு"
+    assert [b.planet for b in c.bhuktis] == ["செவ்வாய்", "குரு"]   # the running one first, then the next
+    assert c.bhuktis[1].end.isoformat() == "2029-01-28"
+
+
+@pytest.mark.parametrize("reply", ["Ippo ungalukku Sani dasai nadakkuthu.", "இப்போ சனி புத்தி நடக்குது."])
+def test_a_wrong_running_period_is_caught_with_iso_dates(reply):
+    assert find_wrong(parse_app_data(json.dumps(ISO_CHART)), reply)
+
+
+def test_the_right_running_period_is_not_flagged_with_iso_dates():
+    c = parse_app_data(json.dumps(ISO_CHART))
+    assert find_wrong(c, "இப்போ ராகு தசை, செவ்வாய் புத்தி நடக்குது.") == []
+    assert find_wrong(c, "குரு புத்தி 2027-ல நடக்கும்.") == []
+
+
+def test_now_and_the_next_dasa_in_one_sentence_is_not_flagged():
+    """Live 24 Nov (AstroTamil's real chart): "the Rahu dasa running now ends Dec 2026, after that Guru dasa
+    starts" was flagged "the running dasa is Rahu, not Guru" once ISO dates made the dasa visible."""
+    c = parse_app_data(json.dumps(ISO_CHART))
+    assert find_wrong(c, "இப்போ நடக்குற ராகு தசை, செவ்வாய் புத்தி டிசம்பர் 2026-ல் முடியுது, "
+                         "அதன்பிறகு குரு தசை ஆரம்பிக்கிறது.") == []
+    assert find_wrong(c, "இப்போ குரு தசை நடக்குது.")   # a wrong "now" alone is still caught
+
+
+def test_a_moves_list_under_another_name_is_read():
+    data = dict(ISO_CHART, gocharam={"month_readings": {"readings": [
+        {"planet": "Saturn", "moves": ["Meenam -> Mesham, Jun 2027"]}]}})
+    assert parse_app_data(json.dumps(data)).moves["சனி"] == {"மீனம்", "மேஷம்"}

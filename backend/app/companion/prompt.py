@@ -109,8 +109,10 @@ CHART_RULES = """[CHART RULES]
   you don't have that detail yet; do not fill it in.
 - Asked about a later period ("when does the next bhukti start?")? Still answer with what APP DATA has: the period
   running now and the date it ends (the next one starts then), then say the list after that is not in their chart.
-- A transit in a year APP DATA does not list ("where will Guru go in 2027?"): do not name the sign or the date, even
-  if you know it in general. Say their chart shows this year's movements, and tell them what it shows now.
+- A planet move APP DATA lists (gocharam's month readings, like "Meenam -> Mesham, Jun 2027") is in their chart,
+  whatever its year and whatever the list is called: give that sign and date. A move APP DATA does not list ("where
+  will Guru go in 2030?"): do not name the sign or the date, even if you know it in general. Say their chart does not
+  show that move yet, and tell them what it shows now.
 - Birth-chart positions and today's transits are different things: say which one you mean. For a house, say whether
   it is counted from the lagnam or from the rasi, as APP DATA does.
 - Examples inside KNOWLEDGE passages ("if Saturn is in the 7th…") are general rules, not this person's chart.

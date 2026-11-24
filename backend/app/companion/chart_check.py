@@ -324,6 +324,11 @@ _MON = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "j
 def _loose_date(value) -> date | None:
     """'23 Jun 2026' / 'Jun 2044' / '2026' / '23-06-2026' -> a date (missing day/month = 1)."""
     v = str(value or "").strip().lower()
+    if m := re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})(?:t.*)?", v):   # ISO, as AstroTamil sends: "2008-12-10"
+        try:
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        except ValueError:
+            return None
     if m := re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", v):
         return date(int(m[3]), int(m[2]), int(m[1]))
     if m := re.fullmatch(r"(?:(\d{1,2})\s+)?([a-z]{3})[a-z]*\.?\s+(\d{4})", v):
@@ -376,7 +381,7 @@ def parse_chart_json(data: dict) -> Chart:
         readings = _get(_get(goch, "month_readings") or {}, "readings") or []
         for r in readings if isinstance(readings, list) else []:
             p = planet_name(_get(r, "planet"))
-            for move in _get(r, "moves_this_year") or []:
+            for move in _get(r, "moves_this_year", "moves", "upcoming_moves") or []:
                 for name in re.findall(r"[A-Za-z஀-௿]+", str(move)):
                     if p and sign_name(name):
                         c.moves.setdefault(p, set()).add(sign_name(name))
@@ -394,6 +399,14 @@ def parse_chart_json(data: dict) -> Chart:
         c.next_dasa = later[0] if later else None
     if (b := planet_name(_get(now, "bhukti"))) and (bs := _loose_date(_get(now, "bhukti_from"))):
         c.bhuktis.append(Period(b, bs, _loose_date(_get(now, "bhukti_to"))))
+        # the next ones, when the app lists them: "next_bhukti": [p, from, to] and/or
+        # "bhuktis_of_this_dasa": [[p, from, to], ...] (the past ones there are left out)
+        rows = [_get(dasa, "next_bhukti")] + list(_get(dasa, "bhuktis_of_this_dasa", "bhuktis") or [])
+        for row in rows:
+            if isinstance(row, (list, tuple)) and len(row) >= 3 and (p := planet_name(row[0])) \
+                    and (start := _loose_date(row[1])) and start > bs \
+                    and not any(x.planet == p and x.start == start for x in c.bhuktis):
+                c.bhuktis.append(Period(p, start, _loose_date(row[2])))
     return c
 
 
@@ -571,13 +584,18 @@ def _allowed_houses(c: Chart, p: str) -> set[int]:
 
 def _period_checks(c: Chart, clause: str, ms) -> list[tuple[str, str]]:
     out = []
+    # "இப்போ நடக்குற ராகு தசை ... முடியுது, அதன்பிறகு குரு தசை": a clause that names the running period is
+    # right about "now"; the other period in it is the next one, not a wrong "now".
+    said = {(k, p) for k, p, _ in ms}
     for kind, p, _ in ms:
-        if kind == "d" and _NOW.search(clause) and c.dasa:
-            out.append(("ok", "") if p == c.dasa.planet else
-                       ("wrong", f"the running dasa is {c.dasa.planet} தசை, not {p} தசை"))
-        if kind == "b" and _NOW.search(clause) and c.bhuktis:
-            out.append(("ok", "") if p == c.bhuktis[0].planet else
-                       ("wrong", f"the running bhukti is {c.bhuktis[0].planet} புத்தி, not {p} புத்தி"))
+        if kind == "d" and _NOW.search(clause) and c.dasa and ("d", c.dasa.planet) not in said:
+            out.append(("wrong", f"the running dasa is {c.dasa.planet} தசை, not {p} தசை"))
+        elif kind == "d" and _NOW.search(clause) and c.dasa:
+            out.append(("ok", ""))
+        if kind == "b" and _NOW.search(clause) and c.bhuktis and ("b", c.bhuktis[0].planet) not in said:
+            out.append(("wrong", f"the running bhukti is {c.bhuktis[0].planet} புத்தி, not {p} புத்தி"))
+        elif kind == "b" and _NOW.search(clause) and c.bhuktis:
+            out.append(("ok", ""))
     years = [int(y) for y in re.findall(r"(?<!\d)((?:19|20|21)\d{2})(?!\d)", clause)]
     periods = []
     for kind, p, _ in ms:
