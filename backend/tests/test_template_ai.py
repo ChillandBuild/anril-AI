@@ -1,5 +1,5 @@
 # backend/tests/test_template_ai.py
-"""Write with AI inside Create Template: three different drafts on a key Anril sets per client."""
+"""Write with AI inside Create Template: three different drafts on the business's own Gemini key."""
 import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -57,10 +57,12 @@ def _draft_kwargs(**over):
             "style": "friendly", "goal": "clicks", "business_description": None, "tenant_id": "t1", **over}
 
 
-def test_key_is_stored_as_a_secret():
+def test_it_uses_the_businesss_own_gemini_key():
     from app.config_dynamic import SECRET_SETTING_KEYS
 
-    assert template_ai.TEMPLATE_AI_KEY in SECRET_SETTING_KEYS
+    assert template_ai.AI_KEY == "gemini_api_key"
+    assert template_ai.AI_KEY in SECRET_SETTING_KEYS
+    assert "template_ai_api_key" not in SECRET_SETTING_KEYS  # the separate key is gone
 
 
 def test_clean_draft_makes_the_ai_output_safe_for_the_builder():
@@ -162,7 +164,7 @@ async def test_ai_draft_reads_this_tenants_key_and_description_and_saves_nothing
 
     def fake_setting(key, **kw):
         reads.append((key, kw.get("tenant_id")))
-        return {"template_ai_api_key": "template-key-123456789", "business_description": "Saree shop"}.get(key)
+        return {"gemini_api_key": "template-key-123456789", "business_description": "Saree shop"}.get(key)
 
     db = MagicMock()
     draft = AsyncMock(return_value=[{"name": "x", "body_text": "Hi {{1}}, thanks.", "problems": []}])
@@ -172,7 +174,7 @@ async def test_ai_draft_reads_this_tenants_key_and_description_and_saves_nothing
         out = await ai_draft_template(
             TemplateAiDraftPayload(idea="thank customers", language="ta", style="formal", goal="replies"), tenant_id="t1", _ctx={})
     assert out["drafts"][0]["name"] == "x"
-    assert set(reads) == {("template_ai_api_key", "t1"), ("business_description", "t1")}
+    assert set(reads) == {("gemini_api_key", "t1"), ("business_description", "t1")}
     kw = draft.await_args.kwargs
     assert (kw["api_key"], kw["business_description"], kw["style"], kw["goal"]) == ("template-key-123456789", "Saree shop", "formal", "replies")
     db.table.assert_not_called()
@@ -202,18 +204,18 @@ async def test_ai_status_says_only_whether_it_is_on():
     assert out == {"enabled": True}
 
 
-def test_a_business_cannot_set_or_read_the_key():
-    from app.routes import app_settings, templates
+def test_the_key_is_never_set_or_read_through_templates():
+    from app.routes import templates
 
     paths = {(r.path, m) for r in templates.router.routes for m in r.methods}
     assert ("/ai-key", "PUT") not in paths and ("/ai-key", "DELETE") not in paths and ("/ai-key", "GET") not in paths
     for path, method in (("/ai-status", "GET"), ("/ai-draft", "POST")):
         route = next(r for r in templates.router.routes if r.path == path and method in r.methods)
         assert templates.require_templates_manage in [d.call for d in route.dependant.dependencies], path
-    assert '"template_ai_api_key" in payload.updates' in inspect.getsource(app_settings.update_settings)
 
 
-def test_operator_console_shows_whether_the_template_key_is_set():
-    from app.routes import operator
+def test_no_separate_template_key_is_left_anywhere():
+    from app.routes import app_settings, operator
 
-    assert '"ai_template": cred_status(["template_ai_api_key"])' in inspect.getsource(operator.client_config)
+    assert "template_ai_api_key" not in inspect.getsource(operator.client_config)
+    assert "template_ai_api_key" not in inspect.getsource(app_settings.update_settings)

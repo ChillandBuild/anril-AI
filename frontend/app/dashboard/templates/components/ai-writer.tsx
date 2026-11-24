@@ -242,7 +242,7 @@ export default function AiWriter({
           {enabled === false ? (
             <p className="flex items-start gap-2 rounded-xl border border-[#e7e2da] bg-[#faf8f5] px-3.5 py-3 text-[13px] text-[#475569]">
               <AlertCircle size={15} className="mt-0.5 shrink-0 text-ink-muted" />
-              Write with AI isn&apos;t switched on for your account yet. Ask Anril support to turn it on. You can still fill in the form below yourself.
+              Write with AI needs your Gemini AI key, which isn&apos;t added yet. Ask Anril support to add it. You can still fill in the form below yourself.
             </p>
           ) : (
             <div className="space-y-4">

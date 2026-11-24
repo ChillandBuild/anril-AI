@@ -237,8 +237,8 @@ async def templates_usage(tenant_id: str = Depends(get_tenant_id)):
     return {"data": template_usage.build_usage(db, tenant_id, rows)}
 
 
-# ── Write with AI (inside Create Template). Its key, template_ai_api_key, is set per client by
-#    Anril in the operator console; a business can only see whether it is switched on. ──
+# ── Write with AI (inside Create Template). Runs on the business's own Gemini key (gemini_api_key),
+#    the one its AI replies use; Anril sets it per client in the operator console. ──
 
 class TemplateAiDraftPayload(BaseModel):
     idea: str
@@ -250,8 +250,8 @@ class TemplateAiDraftPayload(BaseModel):
 
 @router.get("/ai-status")
 async def template_ai_status(tenant_id: str = Depends(get_tenant_id), _ctx: dict = Depends(require_templates_manage)):
-    """Whether Write with AI is switched on for this business. Nothing about the key itself."""
-    return {"enabled": bool(get_setting(template_ai.TEMPLATE_AI_KEY, tenant_id=tenant_id))}
+    """Whether Write with AI can run: the business has a Gemini key. Nothing about the key itself."""
+    return {"enabled": bool(get_setting(template_ai.AI_KEY, tenant_id=tenant_id))}
 
 
 @router.post("/ai-draft")
@@ -276,7 +276,7 @@ async def ai_draft_template(
         raise HTTPException(status_code=400, detail="Pick one of the listed languages.")
     if payload.style not in template_ai.STYLES or payload.goal not in template_ai.GOALS:
         raise HTTPException(status_code=400, detail="Pick a style and a goal from the list.")
-    api_key = get_setting(template_ai.TEMPLATE_AI_KEY, tenant_id=tenant_id)
+    api_key = get_setting(template_ai.AI_KEY, tenant_id=tenant_id)
     if not api_key:
         raise HTTPException(status_code=400, detail={"code": "template_ai_off", "message": template_ai.NO_KEY_MESSAGE})
     try:

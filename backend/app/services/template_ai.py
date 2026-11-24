@@ -6,9 +6,8 @@ teardown found weak there: their three drafts read alike (ours each take a diffe
 nothing checks Meta's rules (ours checks each draft), and the AI knows nothing about the shop
 (ours reads the business description from Anril Setup).
 
-It runs on its own key, `template_ai_api_key`, never the business's main `gemini_api_key`. The
-key is set per client by Anril in the operator console (Client -> Config -> AI Integrations); a
-business can't set or read it.
+It runs on the business's own Gemini key, `gemini_api_key` (the same one its AI replies use), set
+per client by Anril in the operator console (Client -> Config -> AI Integrations).
 
 Nothing here saves a template or talks to Meta. The drafts go back to the builder, where the owner
 picks one, edits it and submits it themselves.
@@ -33,12 +32,12 @@ from app.services.gemini_client import (
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_AI_KEY = "template_ai_api_key"
+AI_KEY = "gemini_api_key"  # the business's own Gemini key, shared with AI replies
 DRAFT_MODEL = "gemini-3.5-flash-lite"
 DRAFT_COUNT = 3
 
-NO_KEY_MESSAGE = "Write with AI isn't switched on for your account yet. Ask Anril support to turn it on."
-KEY_REFUSED_MESSAGE = "Google refused the Write with AI key. Ask Anril support to check it."
+NO_KEY_MESSAGE = "Write with AI needs your Gemini AI key, which isn't added yet. Ask Anril support to add it."
+KEY_REFUSED_MESSAGE = "Google refused your Gemini AI key. Ask Anril support to check it."
 
 LANGUAGE_NAMES = {
     "en": "English", "en_US": "English (US)", "en_IN": "English (India)", "hi": "Hindi",
@@ -81,7 +80,7 @@ def _google_says(exc: httpx.HTTPStatusError) -> str:
     except Exception:
         body = ""
     if code == 402 or "prepayment" in body or "credits are depleted" in body or "billing" in body:
-        return "The Write with AI key has no Google credits left. Ask Anril support to top it up."
+        return "Your Gemini AI key has no Google credits left. Ask Anril support to top it up."
     if code in (401, 403) or (code == 400 and ("api key" in body or "api_key" in body)):
         return KEY_REFUSED_MESSAGE
     if code == 429:

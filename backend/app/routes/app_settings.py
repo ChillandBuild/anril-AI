@@ -478,9 +478,6 @@ async def update_settings(
         raise HTTPException(status_code=400, detail="Razorpay connection details are set by Connect with Razorpay only.")
     if any(_operator_only(k) for k in payload.updates):
         raise HTTPException(status_code=403, detail="SMS settings are managed by Anril")
-    if "template_ai_api_key" in payload.updates:
-        # Set per client by Anril in the operator console (Client -> Config -> AI Integrations) only.
-        raise HTTPException(status_code=403, detail="The Write with AI key is set by Anril support.")
     if "ai_reply_model" in payload.updates:
         from app.services.ai_reply import REPLY_MODELS
         if payload.updates["ai_reply_model"] not in REPLY_MODELS:

@@ -45,7 +45,6 @@ SECRET_SETTING_KEYS = frozenset({
     "auto_messages_ingest_token",
     "bulk9_api_key",
     "bulk9_webhook_secret",
-    "template_ai_api_key",
 })
 
 
