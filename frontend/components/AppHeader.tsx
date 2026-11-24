@@ -439,19 +439,19 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname === "/dashboard/templates/new") {
     return {
-      title: "Create Message Template",
+      title: "Templates / Create Template",
       description: "Design a new WhatsApp message template.",
     };
   }
   if (pathname === "/dashboard/templates/upload") {
     return {
-      title: "Upload Templates",
+      title: "Templates / Upload",
       description: "Make many templates from one Excel file. Check, fix and send them to Meta together.",
     };
   }
   if (pathname === "/dashboard/templates/carousel") {
     return {
-      title: "New Carousel Template",
+      title: "Templates / Carousel",
       description: "Design a new WhatsApp carousel message template.",
     };
   }

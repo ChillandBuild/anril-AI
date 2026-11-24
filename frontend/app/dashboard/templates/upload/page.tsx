@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { AlertCircle, ArrowLeft, Check, Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { rowForCheck, type BulkResult, type BulkRow } from "../template-excel";
@@ -193,14 +192,6 @@ export default function UploadTemplatesPage() {
 
   return (
     <div className="w-full pb-28">
-      <div className="mb-4">
-        <Link
-          href="/dashboard/templates"
-          className="inline-flex items-center gap-2 rounded-xl border border-[#e2e8f0] px-3 py-1.5 font-label text-sm font-semibold text-[#0A1528]/80 transition-all hover:bg-[#f1f5f9] hover:text-[#0A1528]"
-        >
-          <ArrowLeft size={14} /> Back to Templates
-        </Link>
-      </div>
 
       {error && (
         <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">

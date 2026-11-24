@@ -351,8 +351,8 @@ export default function TemplatesPage() {
     { key: "PENDING", count: countPending, label: "Pending Review", mid: "Pending Review", short: "Pending", hint: "Meta is checking", tone: "text-[#b45309]", edge: "border-l-[#b45309]" },
     { key: NEEDS_FIX, count: countRejected, label: "Rejected / Paused", mid: "Rejected / Paused", short: "Rejected / Paused", hint: "see why and fix", tone: "text-[#c2410c]", edge: "border-l-[#dc2626]" },
   ];
-  const ghostBtn =
-    "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3.5 font-label text-[13px] font-semibold text-ink shadow-sm transition-colors hover:bg-[#f8fafc] disabled:opacity-50";
+  const toolBtn =
+    "flex h-11 min-w-0 items-center justify-center gap-1.5 px-2 font-label text-[13px] font-semibold text-ink transition-colors hover:bg-primary-50/60 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-50 sm:gap-2 sm:px-4";
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("ALL");
@@ -369,7 +369,7 @@ export default function TemplatesPage() {
     <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
       {/* Top Locked Section: summary, actions & filters */}
       <div className="shrink-0 space-y-3 pb-3">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           {/* Summary cards: click one to show just those */}
           <div className="grid flex-1 grid-cols-3 gap-2 md:gap-3">
             {summary.map((s) => {
@@ -400,47 +400,48 @@ export default function TemplatesPage() {
             })}
           </div>
 
-          {/* Actions */}
+          {/* Actions: one toolbar of tools, then Create Template */}
           <div className="flex shrink-0 flex-col gap-1.5 xl:items-end">
-            <div className="grid grid-cols-6 gap-2 md:flex md:flex-wrap md:items-center">
-              <button
-                onClick={handleSyncAll}
-                disabled={syncing || !canManageTemplates}
-                title={canManageTemplates ? "Get the latest templates and approvals from Meta" : "Read-only role: sync is disabled"}
-                className={`${ghostBtn} col-span-2`}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div
+                role="group"
+                aria-label="Template tools"
+                className={`grid ${canManageTemplates ? "grid-cols-4" : "grid-cols-3"} divide-x divide-[#ece7df] overflow-hidden rounded-xl border border-[#e2ddd5] bg-white shadow-sm sm:flex`}
               >
-                <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-                {syncing ? "Syncing…" : "Sync"}
-              </button>
-              <Link href="/dashboard/templates/carousel" className={`${ghostBtn} col-span-2`}>
-                <Layers size={14} />
-                Carousel
-              </Link>
-              <button
-                onClick={() => saveAllTemplates(filteredTemplates, usage, hasFilters)}
-                disabled={loading || filteredTemplates.length === 0}
-                title={`Download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""} as an Excel file`}
-                className={`${ghostBtn} col-span-2`}
-              >
-                <Download size={14} />
-                Excel
-              </button>
-              {canManageTemplates && (
-                // Many templates from Excel. Write with AI lives inside Create Template.
-                <Link
-                  href="/dashboard/templates/upload"
-                  title="Upload many templates from an Excel file"
-                  className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}
+                <button
+                  onClick={handleSyncAll}
+                  disabled={syncing || !canManageTemplates}
+                  title={canManageTemplates ? "Get the latest templates and approvals from Meta" : "Read-only role: sync is disabled"}
+                  className={toolBtn}
                 >
-                  <Upload size={14} />
-                  Upload
+                  <RefreshCw size={15} className={`text-primary ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Syncing…" : "Sync"}
+                </button>
+                <Link href="/dashboard/templates/carousel" title="Make a carousel template" className={toolBtn}>
+                  <Layers size={15} className="text-primary" />
+                  Carousel
                 </Link>
-              )}
+                <button
+                  onClick={() => saveAllTemplates(filteredTemplates, usage, hasFilters)}
+                  disabled={loading || filteredTemplates.length === 0}
+                  title={`Download the ${filteredTemplates.length} template${filteredTemplates.length === 1 ? "" : "s"} shown${hasFilters ? " (with your filters)" : ""} as an Excel file`}
+                  className={toolBtn}
+                >
+                  <Download size={15} className="text-primary" />
+                  Excel
+                </button>
+                {canManageTemplates && (
+                  <Link href="/dashboard/templates/upload" title="Upload many templates from an Excel file" className={toolBtn}>
+                    <Upload size={15} className="text-primary" />
+                    Upload
+                  </Link>
+                )}
+              </div>
               <Link
                 href="/dashboard/templates/new"
-                className={`order-first ${canManageTemplates ? "col-span-3" : "col-span-6"} flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 md:order-none font-label text-[13px] font-semibold text-white shadow-md shadow-primary-200 transition-colors hover:bg-primary/90`}
+                className="order-first flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 font-label text-[13.5px] font-bold text-white shadow-md shadow-primary-200 transition hover:bg-primary/90 sm:order-none"
               >
-                <Plus size={15} />
+                <Plus size={16} strokeWidth={2.5} />
                 Create Template
               </Link>
             </div>

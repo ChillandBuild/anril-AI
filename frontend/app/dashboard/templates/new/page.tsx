@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
   Copy,
   FileCode,
@@ -285,14 +284,6 @@ export default function NewTemplatePage() {
 
   return (
     <div className="w-full pb-28">
-      <div className="mb-4">
-        <Link
-          href="/dashboard/templates"
-          className="inline-flex items-center gap-2 rounded-xl border border-[#e2e8f0] px-3 py-1.5 font-label text-sm font-semibold text-[#0A1528]/80 transition-all hover:bg-[#f1f5f9] hover:text-[#0A1528]"
-        >
-          <ArrowLeft size={14} /> Back to Templates
-        </Link>
-      </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         {/* ── Left: the whole form on one page ── */}
@@ -649,10 +640,6 @@ export default function NewTemplatePage() {
           </button>
         )}
         <div className="flex w-full items-center gap-2 sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">
-          {/* On a phone the "Back to Templates" link at the top is enough */}
-          <Link href="/dashboard/templates" className="hidden h-11 items-center rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-subtle sm:inline-flex">
-            Back to Templates
-          </Link>
           <button
             type="button"
             onClick={handleSubmit}
