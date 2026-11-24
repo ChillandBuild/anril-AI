@@ -49,7 +49,7 @@ def test_a_main_resource_over_the_limit_falls_back_to_the_normal_search(fx, monk
     monkeypatch.setattr(search, "MAX_WHOLE_MAIN_CHARS", 10)
     fx.scores = {"m12": 3}
     kb = ask(full_main=True)
-    assert [p.id for p in kb.passages] == ["m12"] and fx.tiers == [1]
+    assert [p.id for p in kb.passages] == ["m12"] and len(fx.judge_calls) == 1
 
 
 def test_off_by_default(fx):  # noqa: F811

@@ -169,6 +169,61 @@ def _model_kw(companion: dict, model: str | None, kb: KbResult | None = None) ->
     return {"model": character_model(companion), "fallback": True}
 
 
+# Backup call: Google sometimes sits on one reply for 15 s or more while the next identical call takes 1.5 s.
+# After HEDGE_AFTER_SECONDS with no answer, the SAME call (same prompt, model, settings) goes out once more
+# and the first one back with text is used; the other is dropped. At most MAX_BACKUPS backups are out at
+# once across this server, so a Google slowdown does not double every call while it lasts.
+HEDGE_AFTER_SECONDS = 6.0
+MAX_BACKUPS = 2
+_backups_out = 0
+
+
+async def _chat(companion: dict, tenant_id: str, prompt: list[dict], model: str | None,
+                kb: KbResult | None) -> str | None:
+    """ai_reply._llm_chat for one reply, with the backup call above. Raises what _llm_chat raises when
+    every call failed. Example: call 1 has not answered at 6 s -> call 2 goes out, answers at 7.4 s ->
+    call 2's text is used, call 1 is cancelled."""
+    global _backups_out
+
+    def call():
+        task = asyncio.create_task(ai_reply._llm_chat(
+            prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id, purpose=LLM_PURPOSE,
+            temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb)))
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())   # a dropped call's error is not logged as lost
+        return task
+
+    first = call()
+    try:
+        done, _ = await asyncio.wait({first}, timeout=HEDGE_AFTER_SECONDS)
+    except asyncio.CancelledError:   # the reply itself was cancelled: don't leave the call running
+        first.cancel()
+        raise
+    if done or _backups_out >= MAX_BACKUPS:
+        return await first
+    _backups_out += 1
+    calls = [first, call()]
+    try:
+        pending, empty, error = set(calls), None, None
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                if task.exception() is not None:
+                    error = task.exception()
+                elif (task.result() or "").strip():
+                    logger.info("companion %s: backup call sent, call %d answered first",
+                                companion["id"], calls.index(task) + 1)
+                    return task.result()
+                else:
+                    empty = task.result()   # no text: wait for the other call before settling for this
+        if empty is not None or error is None:
+            return empty
+        raise error
+    finally:
+        _backups_out -= 1
+        for task in calls:
+            task.cancel()   # no-op for a finished call
+
+
 async def _live_companion(tenant_id: str, companion_id: str, require_live: bool = False,
                           model: str | None = None) -> tuple[dict, str]:
     """The character, checked usable, plus the LLM provider name (of the Playground's picked model,
@@ -320,8 +375,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
                             reply_format=reply_format)
     raw = None
     try:
-        raw = await ai_reply._llm_chat(prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id,
-                                       purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
+        raw = await _chat(companion, tenant_id, prompt, model, kb)
     except Exception as exc:
         logger.warning("companion %s: LLM call failed without memory (%s)", companion["id"], type(exc).__name__)
         playground.problem(ai_reply.describe_llm_error(exc))
@@ -343,15 +397,16 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     person = await store.find_or_create_end_user(tenant_id, external_user_id, display_name, timezone_name,
                                                  profile_name=profile_name)
     who = who_block(person.get("display_name"), person.get("profile_name"))   # the saved names, not just this message's
-    conversation = await store.open_conversation(
-        tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm")
     memory = _provider(companion)
 
     # History is read before this message is saved, so the prompt doesn't carry it twice. It is read
     # first because the book search needs it: "and what about Rahu?" only makes sense with the turn before.
-    history = await store.recent_messages(tenant_id, companion_id, person["id"],
-                                          limit=companion.get("history_messages") or HISTORY_LIMIT,
-                                          after=person.get("chat_read_after"))
+    # The conversation and the history need only the person, not each other, so they are read together.
+    conversation, history = await asyncio.gather(
+        store.open_conversation(tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm"),
+        store.recent_messages(tenant_id, companion_id, person["id"],
+                              limit=companion.get("history_messages") or HISTORY_LIMIT,
+                              after=person.get("chat_read_after")))
     ov = playground.current()   # None on the live path
     agentic = ov is not None and ov.mode == "agentic"
     with_kb = ov is None or (not agentic and ov.sources != "memories")
@@ -496,10 +551,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             )
             calls = app_tools.normalize_calls(raw_calls)
         else:
-            raw = await ai_reply._llm_chat(
-                prompt, max_tokens=_max_tokens(companion), tenant_id=tenant_id,
-                purpose=LLM_PURPOSE, temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb),
-            )
+            raw = await _chat(companion, tenant_id, prompt, model, kb)
     except Exception as exc:
         logger.warning("companion %s: LLM call failed on round %d (%s)", companion_id, round_no, type(exc).__name__)
         playground.problem(ai_reply.describe_llm_error(exc))
@@ -564,10 +616,8 @@ async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw:
         ov.note(f"Chart check: {len(wrong)} wrong fact(s), redo: " + "; ".join(wrong[:3]))
     redo = None
     try:
-        redo = await ai_reply._llm_chat(
-            prompt + [{"role": "assistant", "content": raw}, {"role": "user", "content": chart_check.redo_note(wrong)}],
-            max_tokens=_max_tokens(companion), tenant_id=tenant_id, purpose=LLM_PURPOSE,
-            temperature=LLM_TEMPERATURE, **_model_kw(companion, model, kb))
+        redo = await _chat(companion, tenant_id, prompt + [
+            {"role": "assistant", "content": raw}, {"role": "user", "content": chart_check.redo_note(wrong)}], model, kb)
     except Exception as exc:
         logger.warning("companion %s: chart redo failed (%s)", companion["id"], type(exc).__name__)
     still = chart_check.find_wrong(chart, _visible(redo)) if _has_text(redo) else wrong
