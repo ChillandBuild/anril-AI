@@ -101,8 +101,8 @@ export function NewPersonInput({
   );
 }
 
-/** "You" or the typed name, plus whose profile they ask about: "You · K Prem", "Meena". */
-const personText = (p: TestPerson) => `${p.is_you ? "You" : p.name}${p.profile_name ? ` · ${p.profile_name}` : ""}`;
+/** "You", or the typed name plus whose profile they ask about: "Vivek · Karthik", "Meena". You is always just "You". */
+const personText = (p: TestPerson) => (p.is_you ? "You" : `${p.name}${p.profile_name ? ` · ${p.profile_name}` : ""}`);
 
 /**
  * "chatting as [● Meena ⌄]  ...  Start over" in the picker bar. The pill opens a menu (upward, since the

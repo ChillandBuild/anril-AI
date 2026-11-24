@@ -52,6 +52,14 @@ describe("TestPersonChips (closed)", () => {
     expect(html).not.toContain("Delete ");
   });
 
+  it("calls You just You, even with a profile name saved", () => {
+    const you = renderToStaticMarkup(
+      <TestPersonChips people={people} max={10} selectedId="you" characterName="Jothidar AI" onPick={() => {}} onCreated={() => {}} onStartedOver={() => {}} onDeleted={() => {}} />,
+    );
+    expect(you).toContain(">You</span>");
+    expect(you).not.toContain("K Prem");
+  });
+
   it("keeps Start over on the same line", () => {
     expect(html).toContain("Start over");
   });
