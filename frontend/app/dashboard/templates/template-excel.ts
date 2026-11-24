@@ -51,10 +51,11 @@ export async function saveSheet({ header, rows, widths, name, file }: Sheet): Pr
   XLSX.writeFile(wb, file);
 }
 
-export function saveAllTemplates(templates: Template[], usage: TemplateUsage): Promise<void> {
+/** The templates given (the Templates page passes what its filters show), one row each. */
+export function saveAllTemplates(templates: Template[], usage: TemplateUsage, filtered = false): Promise<void> {
   return saveSheet({
     header: DOWNLOAD_HEADER, rows: downloadRows(templates, usage), widths: [40, 14, 12, 12, 70, 30, 40, 40, 60],
-    name: "Templates", file: `whatsapp-templates-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    name: "Templates", file: `whatsapp-templates-${filtered ? "filtered-" : ""}${new Date().toISOString().slice(0, 10)}.xlsx`,
   });
 }
 

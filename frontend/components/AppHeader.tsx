@@ -443,6 +443,12 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
       description: "Design a new WhatsApp message template.",
     };
   }
+  if (pathname === "/dashboard/templates/upload") {
+    return {
+      title: "Upload Templates",
+      description: "Make many templates from one Excel file. Check, fix and send them to Meta together.",
+    };
+  }
   if (pathname === "/dashboard/templates/carousel") {
     return {
       title: "New Carousel Template",
