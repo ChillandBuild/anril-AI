@@ -959,11 +959,11 @@ function NumbersPageContent() {
           <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_400px] 2xl:items-start">
           {/* ── Main Numbers Card ───────────────────────────────────────────── */}
           <div className="rounded-2xl bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 md:rounded-card md:p-8 space-y-6">
-            {/* Control Bar: Title + Search + Filters + Sync */}
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between pb-2 border-b border-border/70">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="font-display text-xl font-bold text-on-surface whitespace-nowrap">Sender Numbers</h2>
-                <span className="whitespace-nowrap font-label text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+            {/* Control Bar: title, search, filters and Sync on one line (wraps on a phone) */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-border/70 pb-4 lg:flex-nowrap">
+              <div className="flex shrink-0 items-center gap-2.5">
+                <h2 className="whitespace-nowrap font-display text-xl font-bold text-on-surface">Sender Numbers</h2>
+                <span className="whitespace-nowrap rounded-full bg-primary/10 px-2.5 py-0.5 font-label text-xs font-bold text-primary">
                   {visible.length} total
                 </span>
                 {!showTierGuide && (
@@ -972,72 +972,71 @@ function NumbersPageContent() {
                       setShowTierGuide(true);
                       setTierGuideOpen(true);
                     }}
-                    className="inline-flex whitespace-nowrap items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-label font-bold text-primary bg-primary-50 hover:bg-primary-100 border border-primary-200/80 transition-colors"
-                    title="Re-open WhatsApp messaging limits and tier guide"
+                    aria-label="Limits guide"
+                    title="Limits guide: how WhatsApp's messaging limits work"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary-200/80 bg-primary-50 text-primary transition-colors hover:bg-primary-100"
                   >
-                    <Info size={12} />
-                    <span>Limits Guide</span>
+                    <Info size={14} />
                   </button>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Search Box */}
-                <div className="relative min-w-[220px]">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-muted" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search name or number…"
-                    className="w-full pl-9 pr-8 py-2 bg-surface-low border border-border/80 rounded-xl font-body text-xs text-on-surface placeholder:text-on-surface-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-muted hover:text-on-surface text-xs"
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-1 p-1 bg-surface-low rounded-xl border border-border/70">
-                  {[
-                    { key: "all", label: "All" },
-                    { key: "primary", label: "Primary" },
-                    { key: "standby", label: "Standby" },
-                    { key: "paused", label: "Paused" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.key}
-                      onClick={() => setRoleFilter(tab.key as typeof roleFilter)}
-                      className={cn(
-                        "px-3 py-1 rounded-lg font-label text-xs font-bold transition-colors",
-                        roleFilter === tab.key
-                          ? "bg-white text-primary shadow-2xs"
-                          : "text-on-surface-muted hover:text-on-surface"
-                      )}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Sync from Meta CTA */}
-                {canManageNumbers && (
+              {/* Search Box */}
+              <div className="relative order-last w-full min-w-[140px] flex-1 lg:order-none lg:w-auto">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-muted" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search name or number…"
+                  aria-label="Search numbers"
+                  className="h-10 w-full rounded-xl border border-border/80 bg-surface-low pl-9 pr-8 font-body text-[13px] text-on-surface transition-all placeholder:text-on-surface-muted/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                {searchQuery && (
                   <button
-                    onClick={handleSyncAllMeta}
-                    disabled={syncingAll}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary-dark rounded-xl font-label text-xs font-bold shadow-sm transition-all disabled:opacity-50"
-                    title="Discover and sync all numbers from your connected Meta WhatsApp Business account"
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-on-surface-muted hover:text-on-surface"
                   >
-                    <RefreshCw size={13} className={syncingAll ? "animate-spin" : ""} />
-                    <span>{syncingAll ? "Syncing Meta…" : "Sync from Meta"}</span>
+                    <X size={13} />
                   </button>
                 )}
               </div>
+
+              {/* Filter Pills */}
+              <div className="flex h-10 shrink-0 items-center gap-0.5 rounded-xl border border-border/70 bg-surface-low p-1" role="group" aria-label="Show">
+                {[
+                  { key: "all", label: "All" },
+                  { key: "primary", label: "Primary" },
+                  { key: "standby", label: "Standby" },
+                  { key: "paused", label: "Paused" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setRoleFilter(tab.key as typeof roleFilter)}
+                    aria-pressed={roleFilter === tab.key}
+                    className={cn(
+                      "h-full whitespace-nowrap rounded-lg px-2.5 font-label text-xs font-bold transition-colors",
+                      roleFilter === tab.key ? "bg-white text-primary shadow-2xs" : "text-on-surface-muted hover:text-on-surface"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sync from Meta */}
+              {canManageNumbers && (
+                <button
+                  onClick={handleSyncAllMeta}
+                  disabled={syncingAll}
+                  className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-primary px-4 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary-dark disabled:opacity-50"
+                  title="Sync from Meta: find and sync every number on your connected WhatsApp Business account"
+                >
+                  <RefreshCw size={13} className={syncingAll ? "animate-spin" : ""} />
+                  <span>{syncingAll ? "Syncing…" : "Sync"}</span>
+                </button>
+              )}
             </div>
 
             {/* List / Cards */}
