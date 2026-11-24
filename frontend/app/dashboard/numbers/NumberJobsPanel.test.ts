@@ -29,16 +29,16 @@ describe("pickState", () => {
 describe("pickOptions", () => {
   it("starts with Automatic and greys out numbers that can't do the job, with the reason", () => {
     const opts = pickOptions("reach", auto, [main, standby, red]);
-    expect(opts[0]).toMatchObject({ value: "auto", label: "⭐ Main + backup" });
+    expect(opts[0]).toMatchObject({ value: "auto", text: "Automatic" });
     const r = opts.find((o) => o.value === "r")!;
     expect(r.disabled).toBe(true);
-    expect(String(r.label)).toContain("Rated red by Meta");
+    expect(r.text).toContain("Rated red by Meta");
     expect(opts.find((o) => o.value === "s")!.disabled).toBe(false);
   });
 
   it("lets a red number carry OTP codes and alerts", () => {
     const opts = pickOptions("otp", auto, [main, standby, red]);
-    expect(opts[0].label).toBe("⭐ Main · 88088");
+    expect(opts[0].value).toBe("auto");
     expect(opts.find((o) => o.value === "r")!.disabled).toBe(false);
   });
 });

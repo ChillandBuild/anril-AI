@@ -12,7 +12,7 @@ import {
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { usePolling } from "@/hooks/usePolling";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { KpiCard } from "@/components/kpi-card";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
@@ -1111,8 +1111,8 @@ function NumbersPageContent() {
                         num.locked ? "border-amber-300 bg-amber-50/20" : "border-border/80"
                       )}
                     >
-                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-                        {/* Left: Phone Avatar + Details + Badges */}
+                      <div className="flex flex-col gap-4">
+                        {/* Top: Phone Avatar + Details + Badges */}
                         <div className="flex items-start gap-4 min-w-0">
                           {/* WhatsApp Phone Icon */}
                           <div className={cn(
@@ -1126,7 +1126,7 @@ function NumbersPageContent() {
 
                           <div className="min-w-0 flex-1 space-y-1.5">
                             {/* Line 1: Meta-approved display name (read-only — changed in WhatsApp Manager, pulled in by Sync) */}
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 [&>span]:whitespace-nowrap">
                               <h3
                                 className="font-display text-base font-bold text-on-surface truncate min-w-0"
                                 title={`${num.display_name} — display name is set in Meta WhatsApp Manager and pulled in by Sync`}
@@ -1204,9 +1204,9 @@ function NumbersPageContent() {
                             </div>
 
                             {/* Line 2: Phone number with copy button + Provider info */}
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-on-surface-muted">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono font-bold text-on-surface">{num.number}</span>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-muted">
+                              <div className="flex items-center gap-1 whitespace-nowrap">
+                                <span className="font-mono text-[13px] font-bold text-on-surface">{formatPhone(num.number)}</span>
                                 <button
                                   onClick={() => handleCopyNumber(num.id, num.number)}
                                   className="p-1 rounded hover:bg-surface-low text-on-surface-muted hover:text-on-surface transition-colors"
@@ -1216,28 +1216,23 @@ function NumbersPageContent() {
                                 </button>
                               </div>
 
-                              <span className="text-border">•</span>
-
-                              <span className="font-label text-[11px] text-on-surface-muted">
+                              <span className="whitespace-nowrap font-label text-[11px] text-on-surface-muted">
                                 {num.messaging_tier !== null ? getTierLabel(num.messaging_tier) : "Limit not reported yet"}
                               </span>
 
                               {num.meta_phone_number_id && (
-                                <>
-                                  <span className="text-border">•</span>
-                                  <span className="font-mono text-[10px] text-on-surface-muted/80 bg-surface-low px-1.5 py-0.5 rounded border border-border/60">
-                                    ID: {num.meta_phone_number_id}
-                                  </span>
-                                </>
+                                <span className="whitespace-nowrap font-mono text-[10px] text-on-surface-muted/80 bg-surface-low px-1.5 py-0.5 rounded border border-border/60">
+                                  ID {num.meta_phone_number_id}
+                                </span>
                               )}
                             </div>
                           </div>
                         </div>
 
                         {/* Center/Right: Capacity Meter + Action Toolbar */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-5 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-border/60">
+                        <div className="flex flex-col gap-4 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
                           {/* Send Meter */}
-                          <div className="min-w-[170px] space-y-1.5">
+                          <div className="w-full space-y-1.5 sm:max-w-[280px]">
                             <div className="flex items-center justify-between text-xs">
                               <span className="font-label text-[11px] font-bold text-on-surface-muted">
                                 {num.health?.state === "warming" ? "Warm-up limit" : "Daily Limit"}
@@ -1274,7 +1269,7 @@ function NumbersPageContent() {
                           </div>
 
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end [&>button]:whitespace-nowrap">
                             {/* Set as Primary button */}
                             {canManageNumbers && num.role !== "primary" && num.role !== "archived" && (
                               <button
