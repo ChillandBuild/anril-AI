@@ -102,7 +102,7 @@ export default function MetaChannelPickerModal({
               type="button"
               onClick={onConfirm}
               disabled={!canManage || isBusy || !selectedId}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-[var(--primary-950)] to-primary px-4 py-2.5 font-label text-sm font-bold text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary hover:bg-primary-dark px-4 py-2.5 font-label text-sm font-bold text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isBusy ? <><Loader2 size={16} className="animate-spin" />Connecting…</> : <>{copy.cta} <ArrowRight size={16} /></>}
             </button>

@@ -405,7 +405,7 @@ export default function OrderPage() {
                       ))}
                     </div>
                     <button type="button" onClick={recordPayment} disabled={!!busy}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1528] px-3 py-1.5 font-label text-xs font-bold text-white disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-dark px-3 py-1.5 font-label text-xs font-bold text-white disabled:opacity-50">
                       {busy === "pay" && <Loader2 size={12} className="animate-spin" />} Save
                     </button>
                   </div>

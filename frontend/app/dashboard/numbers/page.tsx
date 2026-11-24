@@ -1035,7 +1035,7 @@ function NumbersPageContent() {
                   <button
                     onClick={handleSyncAllMeta}
                     disabled={syncingAll}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[var(--primary-950)] via-[var(--primary-800)] to-[var(--primary-600)] text-white hover:opacity-95 rounded-xl font-label text-xs font-bold shadow-sm transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary-dark rounded-xl font-label text-xs font-bold shadow-sm transition-all disabled:opacity-50"
                     title="Discover and sync all numbers from your connected Meta WhatsApp Business account"
                   >
                     <RefreshCw size={13} className={syncingAll ? "animate-spin" : ""} />

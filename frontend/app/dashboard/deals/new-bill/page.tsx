@@ -626,7 +626,7 @@ export default function NewBillPage() {
       {/* Phones: the bill is below the items, so keep the total in reach. */}
       {lines.length > 0 && (
         <a href="#the-bill"
-          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-[#0A1528] px-4 py-3 font-label text-sm font-bold text-white shadow-xl lg:hidden">
+          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-primary px-4 py-3 font-label text-sm font-bold text-white shadow-xl lg:hidden">
           <span>{lines.reduce((a, l) => a + l.qty, 0)} {lines.reduce((a, l) => a + l.qty, 0) === 1 ? "item" : "items"} · {rupees(totals.total_paise)}</span>
           <span>Go to bill ↓</span>
         </a>

@@ -579,7 +579,7 @@ export default function TemplatesPage() {
                     onClick={() => setViewMode(v.mode)}
                     aria-pressed={viewMode === v.mode}
                     className={`flex h-full items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-colors ${
-                      viewMode === v.mode ? "bg-[#0A1528] text-white" : "text-ink hover:bg-[#f8fafc]"
+                      viewMode === v.mode ? "bg-primary text-white" : "text-ink hover:bg-[#f8fafc]"
                     }`}
                   >
                     <v.icon size={13} />
@@ -928,7 +928,7 @@ export default function TemplatesPage() {
                     setSelectedTemplate(null);
                     router.push(`/dashboard/templates/${selectedTemplate.id}`);
                   }}
-                  className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700"
+                  className="btn-primary text-xs"
                 >
                   {selectedTemplate.status === "APPROVED" ? "Edit" : "Edit and Resubmit"}
                 </button>

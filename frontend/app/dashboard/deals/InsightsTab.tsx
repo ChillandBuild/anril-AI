@@ -378,7 +378,7 @@ export function InsightsTab() {
             aria-pressed={sources.length === 0}
             className={cn(
               "rounded-full border px-3 py-1.5 text-xs font-bold transition-colors",
-              sources.length === 0 ? "border-[#0A1528] bg-[#0A1528] text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
+              sources.length === 0 ? "border-primary bg-primary text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
             )}
           >
             All sources
@@ -393,7 +393,7 @@ export function InsightsTab() {
                 aria-pressed={on}
                 className={cn(
                   "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors",
-                  on ? "border-[#0A1528] bg-[#0A1528] text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
+                  on ? "border-primary bg-primary text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
                 )}
               >
                 <i className="h-[7px] w-[7px] rounded-[3px]" style={{ background: SOURCE_COLOR[s] }} />

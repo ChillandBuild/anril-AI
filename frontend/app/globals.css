@@ -197,7 +197,7 @@ canvas {
     box-shadow: none;
   }
   .btn-primary:disabled:hover {
-    background: linear-gradient(135deg, var(--primary-900), var(--primary-800));
+    background: var(--primary-800);
   }
 
   /* Button — teal outline secondary */
@@ -232,11 +232,12 @@ canvas {
     border-color: var(--primary-muted);
   }
 
-  /* Universal style for elements using bg-primary acting as interactive buttons/links */
+  /* Universal style for elements using bg-primary acting as interactive buttons/links.
+     Flat teal, no gradient: every action button in the dashboard is one colour (#038285, hover #04585B). */
   button.bg-primary,
   label.bg-primary,
   a.bg-primary {
-    background: linear-gradient(135deg, var(--primary-900), var(--primary-800)) !important;
+    background: var(--primary) !important;
     color: white !important;
     border: none !important;
     transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease !important;
@@ -262,7 +263,7 @@ canvas {
   }
   button.bg-primary:disabled:hover,
   button.bg-primary[disabled]:hover {
-    background: linear-gradient(135deg, var(--primary-900), var(--primary-800)) !important;
+    background: var(--primary) !important;
     transform: none !important;
     box-shadow: none !important;
   }

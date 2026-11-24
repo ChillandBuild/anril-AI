@@ -570,7 +570,7 @@ export default function CustomerPage() {
                     onClick={() => setFilter(chip.key)}
                     className={cn(
                       "rounded-full px-2.5 py-1 text-xs font-semibold",
-                      active ? "bg-[#0A1528] text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                      active ? "bg-primary text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
                     )}
                   >
                     {chip.label}

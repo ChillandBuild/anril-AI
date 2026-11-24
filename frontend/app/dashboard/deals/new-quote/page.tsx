@@ -254,7 +254,7 @@ export default function NewQuotePage() {
                   <span className="flex rounded-lg border border-[#e2e8f0] p-0.5">
                     {(["percent", "rupees"] as const).map((k) => (
                       <button key={k} type="button" onClick={() => setDiscountKind(k)}
-                        className={cn("rounded-md px-2 py-0.5 font-label text-[11px] font-bold", discountKind === k ? "bg-[#0A1528] text-white" : "text-[#64748b]")}>
+                        className={cn("rounded-md px-2 py-0.5 font-label text-[11px] font-bold", discountKind === k ? "bg-primary text-white" : "text-[#64748b]")}>
                         {k === "percent" ? "%" : "₹"}
                       </button>
                     ))}

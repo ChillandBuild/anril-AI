@@ -73,7 +73,7 @@ export default function NumpadDialer({ value, onChange, onDial, dialing, disable
         <button
           onClick={onDial}
           disabled={disabled || dialing || !value.trim() || /[a-z]/i.test(value)}
-          className="col-span-3 mt-1 py-3.5 bg-gradient-to-r from-[var(--primary-800)] to-[var(--primary-600)] hover:from-[var(--primary-800)] hover:to-[var(--primary-700)] text-white rounded-2xl flex items-center justify-center gap-2 font-display text-sm font-extrabold shadow-[0_4px_12px_rgba(var(--primary-500-rgb),0.25)] hover:shadow-[0_6px_16px_rgba(var(--primary-500-rgb),0.4)] disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99]"
+          className="col-span-3 mt-1 py-3.5 bg-primary hover:bg-primary-dark text-white rounded-2xl flex items-center justify-center gap-2 font-display text-sm font-extrabold shadow-[0_4px_12px_rgba(var(--primary-500-rgb),0.25)] hover:shadow-[0_6px_16px_rgba(var(--primary-500-rgb),0.4)] disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99]"
         >
           <Phone size={14} className="fill-white" />
           {dialing ? "Dialing..." : "Call Now"}

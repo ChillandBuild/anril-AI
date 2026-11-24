@@ -267,7 +267,7 @@ export default function DayClosingPage() {
                     <input value={spentBy} onChange={(e) => setSpentBy(e.target.value)} placeholder="Who (optional)" aria-label="Who spent it" maxLength={60}
                       className="h-9 min-w-0 flex-1 rounded-lg border border-[#e2e8f0] px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200" />
                     <button type="button" onClick={addExpense} disabled={!!busy}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#0A1528] px-3 font-label text-xs font-bold text-white disabled:opacity-50">
+                      className="inline-flex items-center gap-1 rounded-lg bg-primary hover:bg-primary-dark px-3 font-label text-xs font-bold text-white disabled:opacity-50">
                       {busy === "expense" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
                     </button>
                   </div>

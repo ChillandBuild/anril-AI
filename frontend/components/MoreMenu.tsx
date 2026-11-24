@@ -307,7 +307,7 @@ function MoreMenuDrawer() {
         onClick={() => setIsOpen(true)}
         aria-label="More"
         className="flex h-[34px] w-[34px] items-center justify-center rounded-full text-white transition-transform hover:scale-105"
-        style={{ background: "linear-gradient(135deg, var(--primary-950), var(--primary-800))" }}
+        style={{ background: "var(--primary)" }}
       >
         <Menu size={16} />
       </button>

@@ -20,7 +20,7 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
       <button
         type="button"
         onClick={reset}
-        className="mt-6 rounded-2xl bg-[#0A1528] px-6 py-3 text-sm font-bold text-white"
+        className="mt-6 rounded-2xl bg-primary hover:bg-primary-dark px-6 py-3 text-sm font-bold text-white"
       >
         Try again
       </button>

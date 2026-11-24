@@ -93,7 +93,7 @@ export default function ChannelCard({
               type="button"
               onClick={onEmbeddedConnect}
               disabled={!canManage || embeddedBusy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-[var(--primary-950)] to-primary px-2.5 py-1.5 font-label text-[10px] font-bold text-white shadow-[0_4px_12px_rgba(var(--primary-800-rgb),0.22)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-dark px-2.5 py-1.5 font-label text-[10px] font-bold text-white shadow-[0_4px_12px_rgba(var(--primary-800-rgb),0.22)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {embeddedBusy
                 ? <><Loader2 size={12} className="animate-spin" /> Opening…</>

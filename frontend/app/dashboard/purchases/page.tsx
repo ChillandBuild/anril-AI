@@ -325,14 +325,14 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
       </div>
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={() => setView("suppliers")} aria-pressed={view === "suppliers"}
-          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "suppliers" ? "bg-[#0A1528] text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
+          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "suppliers" ? "bg-primary text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
           Suppliers · {data.suppliers.length}
         </button>
         <Link href="/dashboard/purchases?tab=stock-in" className="inline-flex h-9 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-low">
           Stock-in history
         </Link>
         <button type="button" onClick={() => setView("corrections")} aria-pressed={view === "corrections"}
-          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "corrections" ? "bg-[#0A1528] text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
+          className={cn("h-9 rounded-full px-4 text-sm font-semibold", view === "corrections" ? "bg-primary text-white" : "border border-border bg-white text-ink hover:bg-surface-low")}>
           Stock corrections
         </button>
       </div>

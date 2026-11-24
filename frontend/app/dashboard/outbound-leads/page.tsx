@@ -3059,7 +3059,7 @@ export default function OutboundLeadsPage() {
                     "flex h-8 items-center gap-1.5 px-3 rounded-lg font-label text-xs font-bold transition-all",
                     showCreateTag
                       ? "bg-primary-100 border border-primary-200 text-[var(--primary-800)] hover:bg-primary-200/70"
-                      : "bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95"
+                      : "bg-primary hover:bg-primary-dark text-white shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95"
                   )}
                 >
                   {showCreateTag ? (
@@ -3151,7 +3151,7 @@ export default function OutboundLeadsPage() {
                       onClick={handleCreateTag}
                       disabled={creatingTag || !newTagName.trim() || !canManageOutbound}
                       title={canManageOutbound ? "Create tag" : "Read-only role: saving is disabled"}
-                      className="h-8 px-3 rounded-lg bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white font-label text-xs font-bold shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95 disabled:opacity-40 flex items-center gap-1.5 transition-all shrink-0"
+                      className="h-8 px-3 rounded-lg bg-primary hover:bg-primary-dark text-white font-label text-xs font-bold shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95 disabled:opacity-40 flex items-center gap-1.5 transition-all shrink-0"
                     >
                       {creatingTag && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                       <span>Create Tag</span>
@@ -3208,7 +3208,7 @@ export default function OutboundLeadsPage() {
                     <button
                       type="button"
                       onClick={() => setShowCreateTag(true)}
-                      className="flex h-8 items-center gap-1.5 px-3.5 rounded-lg bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white font-label text-xs font-bold shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95 transition-all hover:scale-[1.02]"
+                      className="flex h-8 items-center gap-1.5 px-3.5 rounded-lg bg-primary hover:bg-primary-dark text-white font-label text-xs font-bold shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)] hover:opacity-95 transition-all hover:scale-[1.02]"
                     >
                       <Plus size={14} />
                       <span>Create Your First Tag</span>
@@ -3441,7 +3441,7 @@ export default function OutboundLeadsPage() {
                 </div>
                 <button
                   onClick={downloadHistoryCsv}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white rounded-lg font-label text-xs font-semibold hover:opacity-95 transition-all shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)]"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-label text-xs font-semibold hover:opacity-95 transition-all shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)]"
                 >
                   <Download size={12} />
                   Broadcast History
@@ -3454,7 +3454,7 @@ export default function OutboundLeadsPage() {
                       className={cn(
                         "px-2.5 py-1.5 font-label text-xs font-semibold transition-all",
                         historyStatusFilter === f
-                          ? "bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white font-bold shadow-xs"
+                          ? "bg-primary hover:bg-primary-dark text-white font-bold shadow-xs"
                           : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                       )}
                     >

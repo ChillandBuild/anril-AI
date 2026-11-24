@@ -200,7 +200,7 @@ export function SaveButton({
         state === "saved"
           ? "cursor-default bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
           : active
-          ? "bg-gradient-to-br from-[var(--primary-950)] to-primary text-white shadow-[0_6px_16px_-8px_rgba(var(--primary-800-rgb),0.7)] hover:shadow-[0_10px_22px_-8px_rgba(var(--primary-800-rgb),0.75)] hover:brightness-110 active:scale-[0.98]"
+          ? "bg-primary hover:bg-primary-dark text-white shadow-[0_6px_16px_-8px_rgba(var(--primary-800-rgb),0.7)] hover:shadow-[0_10px_22px_-8px_rgba(var(--primary-800-rgb),0.75)] hover:brightness-110 active:scale-[0.98]"
           : "cursor-default bg-surface-subtle text-ink-muted ring-1 ring-inset ring-border/70"
       )}
     >

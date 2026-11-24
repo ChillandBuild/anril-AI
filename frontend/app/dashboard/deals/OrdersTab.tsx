@@ -234,7 +234,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
               <button key={c.key} type="button" onClick={() => setChip(c.key)} aria-pressed={chip === c.key}
                 className={cn(
                   "whitespace-nowrap rounded-full border px-3 py-1.5 font-label text-xs font-bold transition-colors",
-                  chip === c.key ? "border-[#0A1528] bg-[#0A1528] text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300",
+                  chip === c.key ? "border-primary bg-primary text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300",
                 )}>
                 {c.label}{counts ? <span className={cn("ml-1.5 tabular-nums", chip === c.key ? "text-white/80" : "text-[#94a3b8]")}>{counts[c.key]}</span> : null}
               </button>

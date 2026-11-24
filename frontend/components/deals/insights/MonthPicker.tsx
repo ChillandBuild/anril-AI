@@ -136,7 +136,7 @@ function YearPanel({
                 }}
                 className={cn(
                   "relative rounded-lg py-2 text-xs font-bold tabular-nums transition-colors",
-                  y === year ? "bg-[#0A1528] text-white" : "text-[#0A1528] hover:bg-slate-50"
+                  y === year ? "bg-primary text-white" : "text-[#0A1528] hover:bg-slate-50"
                 )}
               >
                 {y}

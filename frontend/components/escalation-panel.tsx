@@ -456,7 +456,7 @@ export function EscalationPanel({
                   className={cn(
                     "inline-flex h-8 items-center rounded-xl border px-3 font-label text-xs font-semibold transition-all shadow-xs",
                     quickFilter === f.key
-                      ? "bg-gradient-to-r from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)] text-white border-transparent"
+                      ? "bg-primary hover:bg-primary-dark text-white border-transparent"
                       : "border-primary-100/80 bg-white text-gray-600 hover:border-primary-200 hover:bg-primary-50/50"
                   )}
                 >
