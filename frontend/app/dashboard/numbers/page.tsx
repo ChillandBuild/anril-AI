@@ -1123,7 +1123,7 @@ function NumbersPageContent() {
                           <div className={cn(
                             "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs",
                             num.role === "primary"
-                              ? "bg-gradient-to-br from-primary-600 to-[var(--primary-950)] text-white ring-2 ring-primary/20"
+                              ? "bg-primary text-white ring-2 ring-primary/20"
                               : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                           )}>
                             <Phone size={22} />

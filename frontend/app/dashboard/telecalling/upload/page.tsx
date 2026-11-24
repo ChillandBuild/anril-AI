@@ -335,7 +335,7 @@ function StepIndicator({ current }: { current: number }) {
             )}
             <div className={cn(
               "relative z-10 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all",
-              done ? "bg-gradient-to-br from-[var(--primary-950)] to-primary text-white shadow-sm" : active ? "bg-gradient-to-br from-[var(--primary-950)] to-primary text-white ring-4 ring-primary/20 shadow-md" : "bg-surface text-on-surface-muted border-2 border-surface-mid"
+              done ? "bg-primary text-white shadow-sm" : active ? "bg-primary text-white ring-4 ring-primary/20 shadow-md" : "bg-surface text-on-surface-muted border-2 border-surface-mid"
             )}>
               {done ? <Check size={16} /> : step}
             </div>

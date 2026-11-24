@@ -18,7 +18,7 @@ export function StatCard({ label, value, sub, accent, tone }: StatCardProps) {
           ? "border-transparent text-white"
           : cn("bg-surface", tone ?? "border-t-primary-500")
       )}
-      style={accent ? { background: "linear-gradient(135deg, var(--primary-950), var(--primary-800))" } : {}}
+      style={accent ? { background: "var(--primary)" } : {}}
     >
       <p className={cn(
         "stat-label mb-2",

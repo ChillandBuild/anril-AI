@@ -116,7 +116,7 @@ export function ProfileClient({
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-amber-500/10 to-transparent rounded-full translate-y-1/2 -translate-x-1/4" />
 
           <div className="relative flex items-center gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[var(--primary-950)] to-primary flex items-center justify-center shadow-lg shadow-primary/25">
+            <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
               <span className="font-display text-3xl font-bold text-white">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">

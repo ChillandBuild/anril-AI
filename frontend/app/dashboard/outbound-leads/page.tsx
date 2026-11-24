@@ -342,7 +342,7 @@ function StepIndicator({ current }: { current: number }) {
               <div className={`absolute top-5 right-1/2 w-full h-0.5 -translate-y-1/2 transition-colors ${step <= current ? "bg-primary" : "bg-surface-mid"}`} />
             )}
             <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors
-              ${done ? "bg-gradient-to-br from-[var(--primary-950)] to-primary text-white shadow-sm" : active ? "bg-gradient-to-br from-[var(--primary-950)] to-primary text-white ring-4 ring-primary/20 shadow-md" : "bg-surface text-on-surface-muted border-2 border-surface-mid"}`}>
+              ${done ? "bg-primary text-white shadow-sm" : active ? "bg-primary text-white ring-4 ring-primary/20 shadow-md" : "bg-surface text-on-surface-muted border-2 border-surface-mid"}`}>
               {done ? <Check size={16} /> : step}
             </div>
             <span className={`mt-2 font-label text-[10px] text-center whitespace-nowrap md:text-xs ${active ? "text-primary font-semibold" : done ? "text-primary/50" : "text-on-surface-muted"}`}>
@@ -3080,7 +3080,7 @@ export default function OutboundLeadsPage() {
             <div className="border-b border-primary-100/80 bg-gradient-to-br from-primary-50/50 via-white to-primary-50/30 p-4 md:px-8 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 mb-2.5">
-                  <div className="w-1.5 h-3 rounded-full bg-gradient-to-b from-[#3b0f79] via-[var(--primary-800)] to-[var(--primary-600)]" />
+                  <div className="w-1.5 h-3 rounded-full bg-primary" />
                   <p className="font-label text-[11px] font-bold uppercase tracking-wider text-[var(--primary-800)]">Create New Tag</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2.5 items-end">
