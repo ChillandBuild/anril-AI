@@ -35,7 +35,6 @@ import ExcelPanel from "./components/excel-panel";
 import TemplateNotes from "./components/template-notes";
 import TemplateCard from "./components/template-card";
 import TemplateRow from "./components/template-row";
-import AiDraftDialog from "./components/ai-draft-dialog";
 import WhatsAppPreview from "./components/whatsapp-preview";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import AiraId from "./components/aira-id";
@@ -86,7 +85,6 @@ export default function TemplatesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [excelOpen, setExcelOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
@@ -438,10 +436,10 @@ export default function TemplatesPage() {
                 Excel
               </button>
               {canManageTemplates && (
-                <button onClick={() => setAiOpen(true)} className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}>
+                <Link href="/dashboard/templates/new?ai=1" className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}>
                   <Sparkles size={14} />
                   Write with AI
-                </button>
+                </Link>
               )}
               <Link
                 href="/dashboard/templates/new"
@@ -617,7 +615,7 @@ export default function TemplatesPage() {
                 <button onClick={handleSyncAll} disabled={!canManageTemplates} className="btn-ghost text-sm disabled:opacity-40">Sync from Meta</button>
                 {canManageTemplates && (
                   <>
-                    <button onClick={() => setAiOpen(true)} className="btn-ghost text-sm inline-flex items-center gap-1.5"><Sparkles size={14} /> Write with AI</button>
+                    <Link href="/dashboard/templates/new?ai=1" className="btn-ghost text-sm inline-flex items-center gap-1.5"><Sparkles size={14} /> Write with AI</Link>
                     <Link href="/dashboard/templates/new" className="btn-primary text-sm px-5 py-2">Create Template</Link>
                   </>
                 )}
@@ -800,15 +798,6 @@ export default function TemplatesPage() {
         canManage={canManageTemplates}
         loadAll={loadAllForExcel}
         onSubmitted={loadTemplates}
-      />
-
-      <AiDraftDialog
-        open={aiOpen}
-        onClose={() => setAiOpen(false)}
-        onDrafted={(p) => {
-          setAiOpen(false);
-          openBuilderWith(p);
-        }}
       />
 
       {/* ── View Detail Drawer/Modal ─────────────────────────────────────────── */}

@@ -32,14 +32,19 @@ type MediaRecommendationSettingKey = "ai_media_recommendations_enabled" | "catal
 
 type ReplyModelId = "google/gemini-3.1-flash-lite" | "google/gemini-3.5-flash-lite" | "google/gemini-3.8-flash";
 
-type AiProviderKey = "gemini" | "jina";
+type AiProviderKey = "gemini" | "jina" | "template";
 
 // Replies run on Gemini only; Jina does knowledge-base and catalog search. Each needs its
 // own API key per client -- there is no platform-wide fallback key. (Same model list as
 // REPLY_MODELS in backend/app/services/ai_reply.py.)
-const AI_PROVIDERS: { key: AiProviderKey; label: string; credKey: string; settingKey: string }[] = [
+// "Template writer" is a separate Gemini key just for Write with AI in Create Template, so that
+// feature is switched on and billed per client apart from replies (services/template_ai.py).
+const AI_PROVIDERS: { key: AiProviderKey; label: string; credKey: string; settingKey: string; note?: string }[] = [
   { key: "gemini", label: "Gemini", credKey: "ai_gemini", settingKey: "gemini_api_key" },
-  { key: "jina", label: "Jina", credKey: "ai_jina", settingKey: "jina_api_key" },
+  { key: "jina", label: "Jina", credKey: "ai_jina", settingKey: "jina_api_key",
+    note: "Used for knowledge-base and catalog search embeddings — no reply model choice for this provider." },
+  { key: "template", label: "Template writer (Gemini)", credKey: "ai_template", settingKey: "template_ai_api_key",
+    note: "Turns on Write with AI in Templates → Create Template for this client. A separate Gemini key from replies, so its cost is kept apart. Without it the client sees “ask Anril support to turn it on”." },
 ];
 
 const REPLY_MODELS: { id: ReplyModelId; label: string; provider: AiProviderKey; desc: string }[] = [
@@ -176,7 +181,7 @@ const CRED_LABELS: Record<string, string> = {
 // compatibility but shown elsewhere instead of the generic Messaging Channels grid --
 // per-provider AI keys render inside the AI Integrations section, and telecalling status
 // is already covered by the Calling Provider card above.
-const CRED_KEYS_HANDLED_ELSEWHERE = new Set(["ai", "ai_gemini", "ai_jina", "telecalling"]);
+const CRED_KEYS_HANDLED_ELSEWHERE = new Set(["ai", "ai_gemini", "ai_jina", "ai_template", "telecalling"]);
 
 function statusBadge(status: string) {
   switch (status) {
@@ -217,7 +222,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
   const [voiceReplySaving, setVoiceReplySaving] = useState(false);
   const [voiceSettingSaving, setVoiceSettingSaving] = useState<VoiceSettingKey | null>(null);
   const [mediaRecommendationSaving, setMediaRecommendationSaving] = useState<MediaRecommendationSettingKey | null>(null);
-  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<AiProviderKey, string>>({ gemini: "", jina: "" });
+  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<AiProviderKey, string>>({ gemini: "", jina: "", template: "" });
   const [apiKeySaving, setApiKeySaving] = useState<AiProviderKey | null>(null);
   const [replyModelSaving, setReplyModelSaving] = useState<ReplyModelId | null>(null);
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
@@ -1163,9 +1168,7 @@ export function ConfigView({ tenantId }: { tenantId: string }) {
                   </p>
                 )}
                 {models.length === 0 ? (
-                  <p className="text-xs leading-relaxed text-ink-muted">
-                    Used for knowledge-base and catalog search embeddings — no reply model choice for this provider.
-                  </p>
+                  <p className="text-xs leading-relaxed text-ink-muted">{providerMeta.note}</p>
                 ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                   {models.map((option) => {

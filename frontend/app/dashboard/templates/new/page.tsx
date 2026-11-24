@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -37,6 +37,8 @@ import PlaceholderGuide from "../components/placeholder-guide";
 import WhatsAppPreview from "../components/whatsapp-preview";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { takePrefill } from "../template-prefill";
+import type { TemplatePrefill } from "../template-prefill";
+import AiWriter from "../components/ai-writer";
 
 export default function NewTemplatePage() {
   const router = useRouter();
@@ -70,11 +72,11 @@ export default function NewTemplatePage() {
   // Buttons State
   const [buttons, setButtons] = useState<Button[]>([]);
 
-  // Opened from "Copy", "Change to Utility" or "Write with AI" on the Templates page: start filled in
+  // Filled in from "Copy" / "Change to Utility" on the Templates page, or from a Write with AI draft
   const [prefillSource, setPrefillSource] = useState("");
-  useEffect(() => {
-    const p = takePrefill();
-    if (!p) return;
+  const [aiOpen, setAiOpen] = useState(false);
+  const formTop = useRef<HTMLDivElement>(null);
+  function applyPrefill(p: TemplatePrefill) {
     setName(p.name);
     setCategory(p.category);
     setLanguage(p.language);
@@ -83,7 +85,15 @@ export default function NewTemplatePage() {
     setBodyText(p.bodyText);
     setFooterText(p.footerText);
     setButtons(p.buttons);
+    setBodySamples({});
+    setHeaderSample("");
     setPrefillSource(p.source);
+  }
+  useEffect(() => {
+    const p = takePrefill();
+    if (p) applyPrefill(p);
+    // "Write with AI" on the Templates page opens this page with the AI box open
+    setAiOpen(new URLSearchParams(window.location.search).get("ai") === "1");
   }, []);
 
   const generatedName = name
@@ -264,7 +274,21 @@ export default function NewTemplatePage() {
         </Link>
       </div>
 
+      {canManageTemplates && (
+        <AiWriter
+          defaultOpen={aiOpen}
+          language={language}
+          onUse={(p) => {
+            applyPrefill({ ...p, source: "Draft added below. Check each step and add samples for any {{ }}, then submit it to Meta." });
+            setCurrentStep(1);
+            setError(null);
+            setTimeout(() => formTop.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+          }}
+        />
+      )}
+
       {/* Stepper progress */}
+      <div ref={formTop} className="scroll-mt-4" />
       <div className="mb-8 p-5 bg-white rounded-2xl border border-border-subtle shadow-sm flex items-center justify-between">
         {[
           { step: 1, label: "Template Info" },

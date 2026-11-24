@@ -23,7 +23,7 @@ from app.services.meta_cloud import (
 )
 from app.services import template_ai, template_bulk, template_fields, template_media, template_rules, template_usage
 from app.config import settings as env_settings
-from app.config_dynamic import get_setting, invalidate_cache
+from app.config_dynamic import get_setting
 from app.services.meta_webhook_verify import verify_meta_signature
 from app.services.template_edit_limits import (
     blocked_message,
@@ -237,61 +237,21 @@ async def templates_usage(tenant_id: str = Depends(get_tenant_id)):
     return {"data": template_usage.build_usage(db, tenant_id, rows)}
 
 
-# ── Write with AI: its own key (template_ai_api_key), set here by whoever manages templates ──
-
-class TemplateAiKeyPayload(BaseModel):
-    api_key: str
-
+# ── Write with AI (inside Create Template). Its key, template_ai_api_key, is set per client by
+#    Anril in the operator console; a business can only see whether it is switched on. ──
 
 class TemplateAiDraftPayload(BaseModel):
     idea: str
     category: Optional[str] = None  # MARKETING | UTILITY; None = the AI picks
     language: str = "en"
+    style: str = "friendly"  # template_ai.STYLES
+    goal: str = "clicks"  # template_ai.GOALS
 
 
-def _template_ai_key_status(tenant_id: str) -> dict:
-    value = get_setting(template_ai.TEMPLATE_AI_KEY, tenant_id=tenant_id)
-    return {"is_set": bool(value), "display_value": template_ai.mask_key(value)}
-
-
-@router.get("/ai-key")
-async def get_template_ai_key(tenant_id: str = Depends(get_tenant_id), _ctx: dict = Depends(require_templates_manage)):
-    """Whether Write with AI has a key, masked. The key itself never leaves the server."""
-    return _template_ai_key_status(tenant_id)
-
-
-@router.put("/ai-key")
-async def set_template_ai_key(
-    payload: TemplateAiKeyPayload,
-    tenant_id: str = Depends(get_tenant_id),
-    _ctx: dict = Depends(require_templates_manage),
-):
-    """Checks the key with Google, then stores it as this business's secret."""
-    api_key = payload.api_key.strip()
-    if len(api_key) < 20 or len(api_key) > 200 or any(c.isspace() for c in api_key):
-        raise HTTPException(status_code=400, detail="That doesn't look like an AI key. Copy the whole key from ai.studio and paste it here.")
-    try:
-        await template_ai.check_key(api_key)
-    except template_ai.TemplateAiError as e:
-        raise HTTPException(status_code=e.status, detail=str(e))
-    get_supabase().table("app_settings").upsert({
-        "tenant_id": tenant_id,
-        "key": template_ai.TEMPLATE_AI_KEY,
-        "value": api_key,
-        "is_secret": True,
-        "updated_at": "now()",
-    }, on_conflict="tenant_id,key").execute()
-    invalidate_cache(template_ai.TEMPLATE_AI_KEY)
-    logger.info("template AI key saved for tenant %s", tenant_id)
-    return _template_ai_key_status(tenant_id)
-
-
-@router.delete("/ai-key")
-async def remove_template_ai_key(tenant_id: str = Depends(get_tenant_id), _ctx: dict = Depends(require_templates_manage)):
-    get_supabase().table("app_settings").delete().eq("tenant_id", tenant_id).eq("key", template_ai.TEMPLATE_AI_KEY).execute()
-    invalidate_cache(template_ai.TEMPLATE_AI_KEY)
-    logger.info("template AI key removed for tenant %s", tenant_id)
-    return {"is_set": False, "display_value": ""}
+@router.get("/ai-status")
+async def template_ai_status(tenant_id: str = Depends(get_tenant_id), _ctx: dict = Depends(require_templates_manage)):
+    """Whether Write with AI is switched on for this business. Nothing about the key itself."""
+    return {"enabled": bool(get_setting(template_ai.TEMPLATE_AI_KEY, tenant_id=tenant_id))}
 
 
 @router.post("/ai-draft")
@@ -300,29 +260,35 @@ async def ai_draft_template(
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_templates_manage),
 ):
-    """A draft template from the owner's own words. Saves nothing and sends nothing to Meta:
-    the browser opens it in the Create Template builder for the owner to check and submit."""
+    """Three draft templates from the owner's own words. Saves nothing and sends nothing to Meta:
+    the owner picks one in the Create Template builder, edits it and submits it."""
     idea = payload.idea.strip()
     if len(idea) < 8:
         raise HTTPException(status_code=400, detail="Say a little more about the message, for example who it is for and what it should say.")
-    if len(idea) > 600:
-        raise HTTPException(status_code=400, detail="Keep the description under 600 letters.")
+    if len(idea) > 1024:
+        raise HTTPException(status_code=400, detail="Keep the description under 1,024 letters.")
     category = (payload.category or "").upper() or None
     if category == "AUTHENTICATION":
-        raise HTTPException(status_code=400, detail="Login-code templates use Meta's fixed wording. Pick Authentication in Create Template instead.")
+        raise HTTPException(status_code=400, detail="Login-code templates use Meta's fixed wording. Pick Authentication below instead.")
     if category and category not in template_ai.DRAFT_CATEGORIES:
         raise HTTPException(status_code=400, detail="Invalid category")
     if payload.language not in _SUPPORTED_TEMPLATE_LANGUAGES:
         raise HTTPException(status_code=400, detail="Pick one of the listed languages.")
+    if payload.style not in template_ai.STYLES or payload.goal not in template_ai.GOALS:
+        raise HTTPException(status_code=400, detail="Pick a style and a goal from the list.")
     api_key = get_setting(template_ai.TEMPLATE_AI_KEY, tenant_id=tenant_id)
     if not api_key:
-        raise HTTPException(status_code=400, detail={"code": "template_ai_key_missing", "message": template_ai.NO_KEY_MESSAGE})
+        raise HTTPException(status_code=400, detail={"code": "template_ai_off", "message": template_ai.NO_KEY_MESSAGE})
     try:
-        return await template_ai.draft_template(
-            api_key=api_key, idea=idea, category=category, language=payload.language, tenant_id=tenant_id,
+        drafts = await template_ai.draft_templates(
+            api_key=api_key, idea=idea, category=category, language=payload.language,
+            style=payload.style, goal=payload.goal,
+            business_description=get_setting("business_description", tenant_id=tenant_id),
+            tenant_id=tenant_id,
         )
     except template_ai.TemplateAiError as e:
         raise HTTPException(status_code=e.status, detail=str(e))
+    return {"drafts": drafts}
 
 
 def _bulk_existing(db, tenant_id: str, waba_id: str | None) -> list[dict]:

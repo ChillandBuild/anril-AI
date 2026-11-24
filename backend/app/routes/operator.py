@@ -1395,6 +1395,7 @@ def client_config(tenant_id: str, _admin: dict = Depends(get_system_admin)):
             "ai": cred_status(["gemini_api_key"]),
             "ai_gemini": cred_status(["gemini_api_key"]),
             "ai_jina": cred_status(["jina_api_key"]),
+            "ai_template": cred_status(["template_ai_api_key"]),
             "telegram": cred_status(["telegram_bot_token"]),
             "instagram": cred_status(["instagram_page_id", "instagram_access_token"]),
             "facebook": cred_status(["facebook_page_id", "facebook_access_token"]),

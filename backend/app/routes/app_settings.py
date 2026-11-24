@@ -479,8 +479,8 @@ async def update_settings(
     if any(_operator_only(k) for k in payload.updates):
         raise HTTPException(status_code=403, detail="SMS settings are managed by Anril")
     if "template_ai_api_key" in payload.updates:
-        # Checked with Google and gated on templates.manage: PUT /api/v1/templates/ai-key only.
-        raise HTTPException(status_code=400, detail="Set the Write with AI key on the Templates page.")
+        # Set per client by Anril in the operator console (Client -> Config -> AI Integrations) only.
+        raise HTTPException(status_code=403, detail="The Write with AI key is set by Anril support.")
     if "ai_reply_model" in payload.updates:
         from app.services.ai_reply import REPLY_MODELS
         if payload.updates["ai_reply_model"] not in REPLY_MODELS:
