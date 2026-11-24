@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { Lock, Trash2 } from "lucide-react";
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Lock, Maximize2, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   companionsApi,
@@ -287,37 +287,115 @@ function DiaryRow({
   );
 }
 
+type ViewBox = { x: number; y: number; w: number; h: number };
+const MAX_ZOOM = 4;
+const MIN_ZOOM = 0.5;
+const ZOOM_STEP = 1.25;
+
 function FactGraph({ name, facts }: { name: string; facts: CompanionMemoryFact[] }) {
-  const { nodes, edges, size } = layoutMemoryGraph(name, facts);
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const short = (text: string) => (text.length > 22 ? `${text.slice(0, 21)}…` : text);
+  const { nodes, edges, width, height } = useMemo(() => layoutMemoryGraph(name, facts), [name, facts]);
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const home = useMemo<ViewBox>(() => ({ x: 0, y: 0, w: width, h: height }), [width, height]);
+  const [box, setBox] = useState<ViewBox>(home);
+  useEffect(() => setBox(home), [home]);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const drag = useRef<{ px: number; py: number; box: ViewBox } | null>(null);
+  const zoom = width / box.w;
+
+  // Zoom around a point given as a fraction of the visible area (default: its centre).
+  const zoomBy = useCallback(
+    (factor: number, fx = 0.5, fy = 0.5) =>
+      setBox((b) => {
+        const w = Math.min(width / MIN_ZOOM, Math.max(width / MAX_ZOOM, b.w / factor));
+        const h = (w * height) / width;
+        return { x: b.x + fx * (b.w - w), y: b.y + fy * (b.h - h), w, h };
+      }),
+    [width, height],
+  );
+
+  // Trackpad pinch (and Ctrl/⌘ + scroll) zooms at the cursor; a plain scroll still scrolls the page.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const r = svg.getBoundingClientRect();
+      zoomBy(Math.exp(-e.deltaY * 0.01), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [zoomBy]);
+
+  const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    drag.current = { px: e.clientX, py: e.clientY, box };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setBox({ ...d.box, x: d.box.x - ((e.clientX - d.px) * d.box.w) / r.width, y: d.box.y - ((e.clientY - d.py) * d.box.h) / r.height });
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+
+  const zoomButton = "rounded-lg p-1.5 text-ink-muted hover:bg-slate-100 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
   return (
-    <svg viewBox={`-60 -10 ${size + 120} ${size + 20}`} role="img" aria-label={`Memory graph for ${name}: ${facts.length} facts`} className="mx-auto w-full max-w-xl">
-      {edges.map((e) => {
-        const a = byId.get(e.from)!;
-        const b = byId.get(e.to)!;
-        return <line key={`${e.from}-${e.to}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#cbd5e1" strokeWidth={1} />;
-      })}
-      {nodes.map((n) => (
-        <g key={n.id}>
-          <title>{n.label}</title>
-          <circle
-            cx={n.x}
-            cy={n.y}
-            r={n.kind === "person" ? 22 : n.kind === "section" ? 14 : 5}
-            fill={n.kind === "person" ? "#038285" : n.kind === "section" ? "#e6f4f4" : n.closed ? "#cbd5e1" : "#2fb3b6"}
-            stroke={n.kind === "section" ? "#038285" : "none"}
-          />
-          <text
-            x={n.x}
-            y={n.kind === "fact" ? n.y + 15 : n.y + (n.kind === "person" ? 36 : 28)}
-            textAnchor="middle"
-            className={n.kind === "fact" ? "fill-slate-500 text-[9px]" : "fill-slate-800 text-[11px] font-semibold"}
-          >
-            {n.kind === "fact" ? short(n.label) : n.label}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-1">
+        <button type="button" onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={zoom <= MIN_ZOOM + 1e-6} aria-label="Zoom out" className={zoomButton}>
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <span className="w-11 text-center text-xs tabular-nums text-ink-muted" aria-live="polite">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button type="button" onClick={() => zoomBy(ZOOM_STEP)} disabled={zoom >= MAX_ZOOM - 1e-6} aria-label="Zoom in" className={zoomButton}>
+          <ZoomIn className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => setBox(home)} aria-label="Fit whole graph" className={zoomButton}>
+          <Maximize2 className="h-4 w-4" />
+        </button>
+      </div>
+      <svg
+        ref={svgRef}
+        viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+        role="img"
+        aria-label={`Memory graph for ${name}: ${facts.length} facts. Drag to move, pinch or Ctrl + scroll to zoom.`}
+        className="mx-auto block w-full max-w-3xl cursor-grab select-none active:cursor-grabbing"
+        // Zoomed in: a finger drag pans the graph. At normal size: vertical swipes still scroll the page.
+        style={{ touchAction: zoom > 1 ? "none" : "pan-y" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        {edges.map((e) => {
+          const a = byId.get(e.from)!;
+          const b = byId.get(e.to)!;
+          // Fact links leave from the section circle's outer edge so they curve clear of the section's label.
+          const sx = a.kind === "section" ? a.x + Math.sign(b.x - a.x) * 14 : a.x;
+          const mx = (sx + b.x) / 2;
+          return <path key={`${e.from}-${e.to}`} d={`M${sx},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`} fill="none" stroke="#cbd5e1" strokeWidth={1} />;
+        })}
+        {nodes.map((n) => (
+          <g key={n.id}>
+            <title>{n.label}</title>
+            <circle
+              cx={n.x}
+              cy={n.y}
+              r={n.kind === "person" ? 22 : n.kind === "section" ? 14 : 5}
+              fill={n.kind === "person" ? "#038285" : n.kind === "section" ? "#e6f4f4" : n.closed ? "#cbd5e1" : "#2fb3b6"}
+              stroke={n.kind === "section" ? "#038285" : "none"}
+            />
+            <text x={n.lx} y={n.ly} textAnchor={n.anchor} className={n.kind === "fact" ? "fill-slate-500 text-[9px]" : "fill-slate-800 text-[11px] font-semibold"}>
+              {n.text}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
   );
 }
