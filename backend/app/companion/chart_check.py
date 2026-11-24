@@ -439,8 +439,18 @@ _LORD = re.compile(r"அதிபதி|athipathi|adhipathi|\blord\b|\bruler\b",
 # A lord word that names the planet as lord ("7ம் அதிபதி சந்திரன்", "Sani is the 6th lord"), not
 # "10ம் அதிபதியுடன்" (with the 10th lord).
 _LORD_EXACT = re.compile(r"^(?:அதிபதி|அதிபதியான|அதிபதியாக|அதிபதியாகிய|athipathi|adhipathi|lord|ruler)$", re.I)
+_OWNER = re.compile(r"\S*(?:குரிய|உரிய)$")    # "7ம் இடத்துக்குரிய செவ்வாய்": Mars owns the 7th, it does not sit there
+_IN_LAGNA = re.compile(r"லக்னத்(?:துல|தில்|திலே|திலேயே|துலயே|துலேயே)|lagnath(?:ula|il|ile)", re.I)
+_FROM = re.compile(r"இருந்து|இருந்த|லிருந்து|irundh?u|irunth?u|from", re.I)   # "லக்னத்தில் இருந்து 7ம்": a count
+_LORD_OF = re.compile(r"\b(?:lord|ruler)\b|அதிபதி|athipathi|adhipathi|குரிய|உரிய|நாதன்|நாதர்", re.I)
 _ITS = re.compile(r"அதோட|அதன்|அதனுடைய|அதற்கு|\b(?:its|athoda|adhoda|athan|adhan)\b", re.I)
 _NAVAMSA = re.compile(r"நவாம்ச|navams|navamsam|\bd9\b", re.I)
+_BEING = re.compile(r"இருப்பது|அமர்வது|நிற்பது|\b(?:irukkuradh?u|irupp?adh?u)\b", re.I)
+# Words that end a navamsa topic: the birth chart named again, today's sky, or the dasa (read in the birth chart)
+_NOT_NAVAMSA = re.compile(
+    r"ராசி\s*(?:க்)?\s*கட்ட|ஜனன|ஜாதக|பிறந்த|பிறப்பு|கோசார|கோச்சார|பெயர்ச்சி|தசை|தசா|புத்தி|"
+    r"\b(?:birth|rasi\s+chart|rasi\s+kattam|d1|jathag\w*|jaathag\w*|horoscope|gochar\w*|transit\w*|"
+    r"dasa\w*|dasha\w*|bhukti|bukthi|puthi)\b", re.I)
 _YOUR = re.compile(r"\b(?:your|unga|ungal|ungaloda|unnoda|un)\b|உங்கள்|உங்க|உன்|உனது|தங்கள்", re.I)
 _RASI_WORD = re.compile(r"^(?:ராசி|rasi|raasi|rashi|moon\s*sign)", re.I)
 _LAGNA_WORD = re.compile(r"^(?:லக்ன|lagn|ascendant)", re.I)
@@ -499,13 +509,17 @@ def _mentions(clause: str) -> list[tuple[str, object, str]]:
                 out.append(("L", s, w))
             else:
                 out.append(("s", s, w))
-        elif (_LORD_EXACT.match(nxt) or (_HOUSE_WORD.match(nxt) and i + 2 < len(words) and _LORD_EXACT.match(words[i + 2]))) \
+        elif (_LORD_EXACT.match(nxt) or _OWNER.match(nxt)
+              or (_HOUSE_WORD.match(nxt) and i + 2 < len(words) and _LORD_EXACT.match(words[i + 2]))) \
                 and (_NUM.fullmatch(w) or w.lower() in _ORD_WORDS):
             n = int(_NUM.fullmatch(w)[1]) if _NUM.fullmatch(w) else _ORD_WORDS[w.lower()]
             if 1 <= n <= 12:
                 out.append(("H", n, w))           # "7ம் அதிபதி": the 7th lord
         elif (h := _house(w, nxt)) is not None:
             out.append(("h", h, w))
+        elif (_IN_LAGNA.fullmatch(w) or (re.fullmatch(r"lagnam?|ascendant", w, re.I) and "in" in
+                                          [x.lower() for x in words[max(0, i - 2):i]])) and not _FROM.match(nxt):
+            out.append(("h", 1, w))               # "செவ்வாய் லக்னத்துல இருக்கார்" / "Mars sits in your lagna"
     return out
 
 
@@ -647,12 +661,19 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
     """Every chart claim the code can read in a reply -> [("ok" | "wrong", reason)]. Empty chart -> []."""
     if c.empty() or not text:
         return []
-    out, last_house, your_before = [], None, False
+    out, last_house, your_before, nav_before = [], None, False, False
     for clause in _CLAUSE_SPLIT.split(text):
         ms = _mentions(clause)
         # "உங்கள் ஜாதகத்தில் லக்னம் மேஷம். ராசி ரிஷபம்." -> the second clause is still about "your" chart
         your = bool(_YOUR.search(clause)) or (your_before and bool(ms) and ms[0][0] in "RL")
         your_before = your
+        # "நவாம்சத்துல லக்னம் ரிஷபம். ஆனா 7ம் இடத்துல கேது" -> the second clause is still the navamsa, until the
+        # birth chart, today's sky or the dasa is named. A new paragraph does not end it: live 24 Nov, a navamsa
+        # paragraph was followed by "ஆனா, 7ம் இடத்துல கேது..." (still the navamsa). Needs the navamsa lagnam:
+        # without it a house can only be a birth-chart house.
+        named = bool(_NAVAMSA.search(clause))
+        carried = not named and nav_before and bool(c.d9_lagna) and not _NOT_NAVAMSA.search(clause)
+        navamsa = nav_before = named or carried
         if not ms:
             continue
         # "6ம் இடம் மிதுனத்தில். அதோட அதிபதி சனி" -> "its lord" is the 6th lord
@@ -669,8 +690,9 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
             # planet and any lagnam stay the person's ("லக்னம் மேஷம், அதன் அதிபதி செவ்வாய்").
             first_p = next(i for i, m in enumerate(ms) if m[0] == "p")
             ms = [("s", m[1], m[2]) if m[0] == "R" and i > first_p else m for i, m in enumerate(ms)]
-        skip = bool(_SKIP.search(clause))
-        navamsa = bool(_NAVAMSA.search(clause))
+        # "நவாம்ச 7ம் இடத்தில் கேது இருப்பது சவால்": "being in" is a general rule only when the clause is about
+        # no one; about "your" chart or the navamsa it is a claim (live 24 Nov, 1 of 4 runs got through)
+        skip = bool(_SKIP.search(_BEING.sub(" ", clause) if your or navamsa else clause))
         view = _navamsa_view(c) if navamsa else c   # houses, house signs and lords counted in the navamsa
         if not skip:
             out += _rule_checks(view, clause, ms)
@@ -687,11 +709,16 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
         if your:
             for kind, s, _ in ms:
                 actual = c.rasi if kind == "R" else (c.d9_lagna if navamsa else c.lagna) if kind == "L" else None
+                # a lagnam in a carried clause may be either lagnam: "லக்னம் கும்பம்" restates the birth one
                 if kind in "RL" and actual:
-                    out.append(("ok", "") if s == actual else
+                    out.append(("ok", "") if s == actual or (carried and kind == "L" and s == c.lagna) else
                                ("wrong", f"the {'rasi' if kind == 'R' else 'lagnam'} is {actual}, not {s}"))
-        if _LORD.search(clause) or any(re.search(p, clause, re.I) for p in _DIGNITY.values()):
+        if any(re.search(p, clause, re.I) for p in _DIGNITY.values()):
             continue
+        if _LORD.search(clause) or _OWNER.search(clause):
+            # "7ம் அதிபதி செவ்வாய் 1ம் இடத்துல" was never checked: any lord word skipped the clause. Now only the
+            # house or sign the lord word belongs to is left out ("கடக ராசிக்கு அதிபதி சந்திரன்" is not சந்திரன் in கடகம்)
+            ms = _without_lord_places(clause, ms)
         # planet groups: "Sun, Mercury and Venus in Viruchigam" -> one group of 3
         dative = any(k == "p" and _DATIVE.search(w) for k, _, w in ms)
         groups, i = [], 0
@@ -737,6 +764,27 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
                                                  f"{c.d9_lagna}") if navamsa else
                                        ("wrong", _where(c, p, f"{p} in house {value}")))
     return out
+
+
+def _without_lord_places(clause: str, ms):
+    """Drop a house or sign that a lord word belongs to: one with a lord word between it and the next planet
+    ("7ம் இடமான கடக ராசிக்கு அதிபதி சந்திரன்"), or right after "lord of" ("lord of the 7th house, Venus")."""
+    spans, pos = [], 0
+    for m in ms:
+        at = clause.find(m[2], pos)
+        at = pos if at < 0 else at
+        spans.append((at, at + len(m[2])))
+        pos = spans[-1][1]
+    keep = []
+    for i, m in enumerate(ms):
+        if m[0] in "hs":
+            j = next((k for k in range(i + 1, len(ms)) if ms[k][0] == "p"), None)
+            after = clause[spans[i][1]:spans[j][0]] if j is not None else ""
+            before = clause[spans[i - 1][1] if i else 0:spans[i][0]]
+            if _LORD_OF.search(after) or re.search(r"\blord\s+of\b", before, re.I):
+                continue
+        keep.append(m)
+    return keep
 
 
 def _navamsa_view(c: Chart) -> Chart:

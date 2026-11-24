@@ -131,14 +131,32 @@ NO_NAVAMSA = ("- APP DATA has no navamsa. Never state a navamsa sign, house or l
               "in their chart yet, then answer from the birth chart.")
 
 
+def navamsa_houses(chart) -> str:
+    """The navamsa houses, counted by code. Live, 24 Nov, AstroTamil's real chart (navamsa lagnam Rishabam): Ketu is
+    in Simmam in both charts, and 3 of 5 marriage answers put it in the navamsa 7th (its birth-chart house)."""
+    from app.companion.chart_check import SIGN_LORD, SIGNS
+    lagna = chart.d9_lagna
+    house = lambda sign: (SIGNS.index(sign) - SIGNS.index(lagna)) % 12 + 1
+    planets = ", ".join(f"{p} {house(s)} ({s})" for p, s in chart.d9.items() if s in SIGNS)
+    signs = ", ".join(f"{h} {SIGNS[(SIGNS.index(lagna) + h - 1) % 12]} (lord {SIGN_LORD[SIGNS[(SIGNS.index(lagna) + h - 1) % 12]]})"
+                      for h in range(1, 13))
+    return (f"- Navamsa houses, counted for you from the navamsa lagnam {lagna}. Planets: {planets}. "
+            f"House signs: {signs}. In the navamsa use only these: never count a navamsa house yourself, and never "
+            "carry a birth-chart house into the navamsa. Name the chart whenever you switch (\"in your navamsa...\", "
+            "\"in your birth chart...\").")
+
+
 def chart_rules(app_data: str | None) -> str:
-    """CHART_RULES plus a line for a navamsa the app sent without its lagnam, or did not send at all.
-    Live, 24 Nov: with the 9 planets' navamsa signs but no lagnam, "What does my navamsa say about marriage?"
-    got "in your navamsa, the 7th house is Capricorn" in 2 of 2 runs. A text that is not a chart adds nothing."""
+    """CHART_RULES plus a line for the navamsa: its houses counted by code, or what to do when the app sent it without
+    its lagnam, or not at all. Live, 24 Nov: with the 9 planets' navamsa signs but no lagnam, "What does my navamsa say
+    about marriage?" got "in your navamsa, the 7th house is Capricorn" in 2 of 2 runs. A text that is not a chart adds
+    nothing."""
     from app.companion.chart_check import parse_app_data
     chart = parse_app_data(app_data)
-    if chart.empty() or chart.d9_lagna:
+    if chart.empty():
         return CHART_RULES
+    if chart.d9_lagna:
+        return CHART_RULES + "\n" + navamsa_houses(chart)
     return CHART_RULES + "\n" + (NAVAMSA_NO_LAGNAM if chart.d9 else NO_NAVAMSA)
 
 

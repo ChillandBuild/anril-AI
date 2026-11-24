@@ -180,7 +180,8 @@ def test_a_lagnam_row_in_a_navamsa_list_is_the_navamsa_lagnam():
         rows = [first] + [{"planet": p, "rasi": s} for p, s in NAV.items() if p != "lagnam"]
         c = _with_navamsa(rows)
         assert c.d9_lagna == "மகரம்" and len(c.d9) == 9
-        assert chart_rules(json.dumps(dict(CHART, navamsa=rows))) == CHART_RULES
+        rules = chart_rules(json.dumps(dict(CHART, navamsa=rows)))
+        assert rules.startswith(CHART_RULES) and "navamsa lagnam மகரம்" in rules and "no navamsa lagnam" not in rules
 
 
 @pytest.mark.parametrize("reply", [
@@ -210,6 +211,76 @@ def test_without_a_navamsa_lagnam_any_navamsa_house_is_wrong_but_signs_are_fine(
     assert find_wrong(c, "In your navamsa the 7th house is Capricorn.")
     assert find_wrong(c, "உங்க நவாம்சத்துல சனி 2ம் இடத்துல இருக்கார்.")
     assert find_wrong(c, "நவாம்சத்துல சுக்கிரன் மீனத்துல இருக்கார்.") == []
+
+
+@pytest.mark.parametrize("reply", [
+    # live 24 Nov, AstroTamil's real chart: the navamsa word in one clause, "7ம் இடத்துல கேது" in the next.
+    # Checked as the birth chart (where Ketu IS in the 7th there), so it passed; in the navamsa Ketu is the 4th.
+    # Here: birth Ketu is the 10th, navamsa Ketu (Rishabam) the 5th from a Magaram navamsa lagnam.
+    "உங்க நவாம்சத்துல லக்னம் மகரமா இருக்கு, அதோட அதிபதி சனி 2ம் இடமான கும்பத்துல இருக்கார். "
+    "இது ஒரு நல்ல அமைப்புதான், ஆனா 10ம் இடத்துல கேது இருக்கிறதுனால கருத்து வேறுபாடுகள் வரலாம்.",
+    "உங்க நவாம்சத்துல லக்னம் மகரம். கேது 10ம் இடத்துல இருக்கார்.",
+    "In your navamsa, Venus is exalted in Meenam. Ketu sits in the 10th house.",
+    "நவாம்சக் கட்டத்தைப் பார்ப்போம். கேது 10ம் இடத்துல இருக்கார்.",
+    # live 24 Nov: the next paragraph opened "ஆனா, 7ம் இடத்துல கேது..." -- still the navamsa
+    "நவாம்சத்துல சனி 2ம் இடத்துல இருக்கார்.\n\nஆனா, 10ம் இடத்துல கேது இருக்கறது ஒரு சவால்.",
+    # live 24 Nov: "being in" (இருப்பது) was read as a general rule, though the clause names the navamsa
+    "இருப்பினும், நவாம்ச 10ம் இடத்தில் கேது இருப்பது சில நேரங்களில் கருத்து வேறுபாடுகளைத் தரலாம்.",
+    "உங்க நவாம்சத்துல லக்னம் மகரம். ஆனா 10ம் இடத்துல கேது இருப்பது சவால்.",
+])
+def test_a_navamsa_house_in_the_sentence_after_the_navamsa_word_is_checked_in_the_navamsa(reply):
+    assert find_wrong(_with_navamsa(NAV), reply)
+
+
+@pytest.mark.parametrize("reply", [
+    "உங்க நவாம்சத்துல லக்னம் மகரம். கேது 5ம் இடத்துல இருக்கார்.",                          # right, carried
+    "நவாம்சத்துல சனி 2ம் இடத்துல. உங்க ராசி கட்டத்துல கேது 10ம் இடத்துல இருக்கார்.",      # back to the birth chart
+    "In your navamsa, Saturn is in the 2nd house. In your birth chart, Ketu is in the 10th house.",
+    "நவாம்சத்துல சனி 2ம் இடத்துல. இப்போ ராகு தசை நடக்குது, ராகு 4ம் இடத்துல இருக்கார்.",  # the dasa is birth chart
+])
+def test_the_navamsa_topic_ends_at_the_birth_chart_or_the_dasa(reply):
+    assert find_wrong(_with_navamsa(NAV), reply) == []
+
+
+def test_being_in_is_still_a_general_rule_when_it_is_about_no_one():
+    assert find_wrong(_with_navamsa(NAV), "7ம் இடத்தில் கேது இருப்பது திருமணத்தை தாமதப்படுத்தும்") == []
+    assert find_wrong(_with_navamsa(NAV), "உங்க ஜாதகத்துல 7ம் இடத்தில் கேது இருப்பது தாமதம் தரும்")   # yours: Ketu is 10th
+
+
+def test_without_a_navamsa_lagnam_the_next_sentence_stays_the_birth_chart():
+    c = _with_navamsa({p: s for p, s in NAV.items() if p != "lagnam"})
+    assert find_wrong(c, "நவாம்சத்துல சுக்கிரன் மீனத்துல இருக்கார். கேது 10ம் இடத்துல இருக்கார்.") == []
+
+
+@pytest.mark.parametrize("reply,wrong", [
+    # live 24 Nov, real chart: "its lord Mars sits in your navamsa lagnam itself (Rishabam)" -- Mars is the 6th.
+    # Any clause with a lord word was skipped, and "in the lagnam" was not read as the 1st house.
+    ("உங்க நவாம்ச லக்னம் மகரம். இதோட அதிபதி சனி உங்க நவாம்ச லக்னத்திலேயே இருக்கார்.", True),   # navamsa சனி: 2nd
+    ("நவாம்சத்துல 7ம் அதிபதி சந்திரன் 1ம் இடத்துல இருக்கார்.", True),                             # navamsa சந்திரன்: 10th
+    ("Your 7th lord Moon sits in the 5th house.", True),                                           # birth சந்திரன்: 8th
+    ("சனி லக்னத்துல இருக்கார்.", True),                                                          # birth சனி: 6th
+    ("லக்னாதிபதி சனி 7ம் இடத்துல இருக்கார்.", True),
+    # the house a lord word belongs to is not where the planet sits
+    ("நவாம்சத்துல 7ம் இடத்துக்குரிய சந்திரன் 10ம் இடமான துலாத்துல இருக்கார்.", False),           # live: read as சந்திரன் in 7
+    ("நவாம்சத்துல 7ம் அதிபதி சந்திரன் 10ம் இடத்துல இருக்கார்.", False),
+    ("Your 7th lord Moon sits in the 8th house.", False),
+    ("Lord of your 7th house, the Moon, sits in the 8th house.", False),
+    ("7ம் இடமான கடக ராசிக்கு அதிபதி சந்திரன்.", False),
+    ("லக்னத்தில் இருந்து 7ம் இடம் கடகம்.", False),                                              # "from the lagnam": a count
+    ("லக்னாதிபதி சனி 6ம் இடத்துல இருக்கார்.", False),
+    # live 21 Nov (lang eval): a list of what to look at, not where Mars sits
+    ("To see about buying a house, we look at the 4th house, its lord, and the planet Mars, which represents land.", False),
+])
+def test_where_a_lord_sits_is_checked(reply, wrong):
+    assert bool(find_wrong(_with_navamsa(NAV), reply)) == wrong, find_wrong(_with_navamsa(NAV), reply)
+
+
+def test_the_navamsa_houses_are_counted_for_jothidar():
+    """Live 24 Nov: Ketu sat in Simmam in both charts and 3 of 5 answers put it in the navamsa 7th (its birth house)."""
+    from app.companion.prompt import chart_rules
+    rules = chart_rules(json.dumps(dict(CHART, navamsa=NAV)))
+    assert "கேது 5 (ரிஷபம்)" in rules and "சனி 2 (கும்பம்)" in rules     # from a Magaram navamsa lagnam
+    assert "7 கடகம் (lord சந்திரன்)" in rules and "12 தனுசு (lord குரு)" in rules
 
 
 def test_the_redo_never_apologises_for_a_draft_the_person_never_saw():
