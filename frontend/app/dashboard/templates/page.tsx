@@ -11,7 +11,7 @@ import {
   LayoutGrid,
   List,
   ChevronDown,
-  Sparkles,
+  Upload,
   Shuffle,
   Trash2,
   Eye,
@@ -84,7 +84,8 @@ export default function TemplatesPage() {
   // Sync / Action states
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [excelOpen, setExcelOpen] = useState(false);
+  // Which Excel screen is open: Upload (many templates) or Excel (download all); null = closed
+  const [excelOpen, setExcelOpen] = useState<null | "upload" | "download">(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
@@ -431,15 +432,20 @@ export default function TemplatesPage() {
                 <Layers size={14} />
                 Carousel
               </Link>
-              <button onClick={() => setExcelOpen(true)} title="Upload many templates, or download all of them, as Excel" className={`${ghostBtn} col-span-2`}>
+              <button onClick={() => setExcelOpen("download")} title="Download all your templates as an Excel file" className={`${ghostBtn} col-span-2`}>
                 <Download size={14} />
                 Excel
               </button>
               {canManageTemplates && (
-                <Link href="/dashboard/templates/new?ai=1" className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}>
-                  <Sparkles size={14} />
-                  Write with AI
-                </Link>
+                // Many templates from Excel. Write with AI lives inside Create Template.
+                <button
+                  onClick={() => setExcelOpen("upload")}
+                  title="Upload many templates from an Excel file"
+                  className={`${ghostBtn} order-first col-span-3 border-primary-200 text-primary hover:bg-primary-50 md:order-none`}
+                >
+                  <Upload size={14} />
+                  Upload
+                </button>
               )}
               <Link
                 href="/dashboard/templates/new"
@@ -450,7 +456,7 @@ export default function TemplatesPage() {
               </Link>
             </div>
             <p className="hidden text-[12px] text-ink-muted md:block xl:text-right">
-              {lastSynced ? `Synced with Meta ${timeAgo(lastSynced)}` : "Meta updates approvals here as they happen"} · Excel = upload many or download all
+              {lastSynced ? `Synced with Meta ${timeAgo(lastSynced)}` : "Meta updates approvals here as they happen"} · Excel = download all · Upload = many at once
             </p>
           </div>
         </div>
@@ -615,7 +621,7 @@ export default function TemplatesPage() {
                 <button onClick={handleSyncAll} disabled={!canManageTemplates} className="btn-ghost text-sm disabled:opacity-40">Sync from Meta</button>
                 {canManageTemplates && (
                   <>
-                    <Link href="/dashboard/templates/new?ai=1" className="btn-ghost text-sm inline-flex items-center gap-1.5"><Sparkles size={14} /> Write with AI</Link>
+                    <button onClick={() => setExcelOpen("upload")} className="btn-ghost text-sm inline-flex items-center gap-1.5"><Upload size={14} /> Upload from Excel</button>
                     <Link href="/dashboard/templates/new" className="btn-primary text-sm px-5 py-2">Create Template</Link>
                   </>
                 )}
@@ -792,8 +798,9 @@ export default function TemplatesPage() {
       </div>
 
       <ExcelPanel
-        open={excelOpen}
-        onClose={() => setExcelOpen(false)}
+        open={excelOpen !== null}
+        startTab={excelOpen ?? "upload"}
+        onClose={() => setExcelOpen(null)}
         totalCount={templates.length}
         canManage={canManageTemplates}
         loadAll={loadAllForExcel}

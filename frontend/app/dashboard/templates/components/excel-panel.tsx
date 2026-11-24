@@ -9,6 +9,8 @@ import { RowEditor, RowList, type RowFilter } from "./bulk-review";
 
 type Props = {
   open: boolean;
+  /** The tab it opens on: the Templates page's Upload button opens Upload many, its Excel button Download all. */
+  startTab: "upload" | "download";
   onClose: () => void;
   totalCount: number;
   canManage: boolean;
@@ -45,8 +47,9 @@ const FILTERS: { key: RowFilter; label: string; cls: string }[] = [
   { key: "removed", label: "removed", cls: "bg-slate-100 text-slate-600" },
 ];
 
-export default function ExcelPanel({ open, onClose, totalCount, canManage, loadAll, onSubmitted }: Props) {
-  const [tab, setTab] = useState<"upload" | "download">("upload");
+export default function ExcelPanel({ open, startTab, onClose, totalCount, canManage, loadAll, onSubmitted }: Props) {
+  const [tab, setTab] = useState<"upload" | "download">(startTab);
+  useEffect(() => { if (open) setTab(startTab); }, [open, startTab]);
   const [busy, setBusy] = useState<"" | "checking" | "sending" | "download">("");
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
