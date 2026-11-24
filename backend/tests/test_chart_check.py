@@ -262,7 +262,8 @@ def test_the_chart_rules_say_a_cancelled_dosham_does_not_apply():
     assert '"cancelled" = it was found in the chart but is cancelled, so it does not' in CHART_RULES
     assert "never add a reason" in CHART_RULES
     # live 24 Nov: kala sarpa is not sent; asked, Jothidar worked it out itself and once got it wrong (0/2)
-    assert "do not say whether the planets are between" in CHART_RULES
+    assert "even if KNOWLEDGE explains how to check it" in CHART_RULES
+    assert "When the dosham list does have it (kala_sarpa or any other), give it like the others." in CHART_RULES
 
 
 def test_without_a_navamsa_lagnam_the_next_sentence_stays_the_birth_chart():
