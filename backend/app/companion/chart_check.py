@@ -445,6 +445,10 @@ _FROM = re.compile(r"இருந்து|இருந்த|லிருந்
 _LORD_OF = re.compile(r"\b(?:lord|ruler)\b|அதிபதி|athipathi|adhipathi|குரிய|உரிய|நாதன்|நாதர்", re.I)
 _ITS = re.compile(r"அதோட|அதன்|அதனுடைய|அதற்கு|\b(?:its|athoda|adhoda|athan|adhan)\b", re.I)
 _NAVAMSA = re.compile(r"நவாம்ச|navams|navamsam|\bd9\b", re.I)
+# "7ம் இடத்துல எந்த கிரகமும் இல்ல" / "the 7th house is empty"; cond = a conditional ("...இல்லைன்னா")
+_EMPTY = re.compile(
+    r"(?:எந்த\s*(?:ஒரு\s*)?கிரகமும்|கிரகம்\s*எதுவும்|ஒரு\s*கிரகமும்)\s*(?:இல்லை|இல்ல|கிடையாது)(?P<cond>ன்னா|யென்றால்|யெனில்|ன்னாலும்|என்றால்)?|"
+    r"காலியா|காலியாக|வெறுமையா|\bno\s+planets?\b|\bempty\b|\bvacant\b|\bunoccupied\b", re.I)
 _BEING = re.compile(r"இருப்பது|அமர்வது|நிற்பது|\b(?:irukkuradh?u|irupp?adh?u)\b", re.I)
 # Words that end a navamsa topic: the birth chart named again, today's sky, or the dasa (read in the birth chart)
 _NOT_NAVAMSA = re.compile(
@@ -695,6 +699,8 @@ def find_claims(c: Chart, text: str) -> list[tuple[str, str]]:
         # no one; about "your" chart or the navamsa it is a claim (live 24 Nov, 1 of 4 runs got through)
         skip = bool(_SKIP.search(_BEING.sub(" ", clause) if your or navamsa else clause))
         view = _navamsa_view(c) if navamsa else c   # houses, house signs and lords counted in the navamsa
+        if (n := _empty_house(clause, ms)) is not None and not (navamsa and not c.d9_lagna):
+            out.append(_check_empty(c, view, navamsa, n))   # live 24 Nov: "navamsa 7th has no planet" (Venus is)
         if not skip:
             out += _rule_checks(view, clause, ms)
             out += _period_checks(c, clause, ms)
@@ -778,15 +784,61 @@ def _names_birth_lagna(c: Chart, clause: str) -> bool:
                for i, w in enumerate(words))
 
 
-def _without_lord_places(clause: str, ms):
-    """Drop a house or sign that a lord word belongs to: one with a lord word between it and the next planet
-    ("7ம் இடமான கடக ராசிக்கு அதிபதி சந்திரன்"), or right after "lord of" ("lord of the 7th house, Venus")."""
+def _spans(clause: str, ms) -> list[tuple[int, int]]:
+    """Where each mention's word sits in the clause, in order."""
     spans, pos = [], 0
     for m in ms:
         at = clause.find(m[2], pos)
         at = pos if at < 0 else at
         spans.append((at, at + len(m[2])))
         pos = spans[-1][1]
+    return spans
+
+
+def _empty_house(clause: str, ms) -> int | None:
+    """The house a reply calls empty ("7ம் இடத்துல எந்த கிரகமும் இல்ல", "no planet in the 7th house"): the house
+    mention right before the phrase, or right after it, with no planet in between. None for a general or
+    conditional clause ("...இல்லைன்னா", "if there is no planet...")."""
+    m = _EMPTY.search(clause)
+    if not m or m.group("cond") or _SKIP.search(clause[:m.start()] + " " + clause[m.end():]):
+        return None
+    spans = _spans(clause, ms)
+    clear = lambda a, b: not any(x[0] == "p" and a <= sp[0] < b for x, sp in zip(ms, spans))
+    hs = [i for i, x in enumerate(ms) if x[0] == "h"]
+    before = [i for i in hs if spans[i][1] <= m.start()]
+    after = [i for i in hs if spans[i][0] >= m.end()]
+    if before and clear(spans[before[-1]][1], m.start()):
+        return ms[before[-1]][1]
+    if after and clear(m.end(), spans[after[0]][0]):
+        return ms[after[0]][1]
+    return None
+
+
+def _check_empty(c: Chart, view: Chart, navamsa: bool, n: int) -> tuple[str, str]:
+    """An "empty house" claim. Navamsa: from the navamsa lagnam. Birth chart: it passes if the house is empty
+    counted from the lagnam, from the rasi, or in today's sky from the rasi (as the house checks do)."""
+    on = lambda table, sign: [p for p, s in table.items() if s == sign]
+    if navamsa:
+        sign = view.house_sign(n)
+        who = on(c.d9, sign) if sign else []
+        return ("ok", "") if not who else (
+            "wrong", f"reply says navamsa house {n} has no planet; the navamsa has {', '.join(who)} there "
+                     f"({sign}, house {n} from the navamsa lagnam {c.d9_lagna})")
+    options = []
+    if c.lagna:
+        options.append(on(c.d1, c.house_sign(n)))
+    if c.rasi:
+        options += [on(c.d1, c.house_sign(n, "rasi")), on(c.transit, c.house_sign(n, "rasi"))]
+    if not options or not all(options):
+        return ("ok", "")
+    return ("wrong", f"reply says house {n} has no planet; the chart has {', '.join(options[0])} in house {n} "
+                     f"from lagnam ({c.house_sign(n)})")
+
+
+def _without_lord_places(clause: str, ms):
+    """Drop a house or sign that a lord word belongs to: one with a lord word between it and the next planet
+    ("7ம் இடமான கடக ராசிக்கு அதிபதி சந்திரன்"), or right after "lord of" ("lord of the 7th house, Venus")."""
+    spans = _spans(clause, ms)
     keep = []
     for i, m in enumerate(ms):
         if m[0] in "hs":

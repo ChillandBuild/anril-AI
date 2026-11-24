@@ -294,6 +294,25 @@ def test_where_a_lord_sits_is_checked(reply, wrong):
     assert bool(find_wrong(_with_navamsa(NAV), reply)) == wrong, find_wrong(_with_navamsa(NAV), reply)
 
 
+@pytest.mark.parametrize("reply,wrong", [
+    # live 24 Nov, AstroTamil's real chart: "உங்க நவாம்ச 7ம் இடத்துல எந்த கிரகமும் இல்ல" -- Venus is there.
+    # The checker read only "planet X in house N", never "house N is empty". Here: navamsa Mars is the 7th.
+    ("உங்க நவாம்ச 7ம் இடத்துல எந்த கிரகமும் இல்ல, அந்த இடத்தோட அதிபதி சந்திரன்.", True),
+    ("In your navamsa, there is no planet in the 7th house.", True),
+    ("உங்க நவாம்சத்துல 7ம் இடம் காலியா இருக்கு.", True),
+    ("உங்க 4ம் இடத்துல எந்த கிரகமும் இல்ல.", True),     # birth: Rahu (lagnam), Sun (rasi, and today)
+    # right: really empty
+    ("உங்க நவாம்ச 8ம் இடம் காலியா இருக்கு.", False),
+    ("Your navamsa 9th house is empty.", False),
+    ("உங்க 7ம் இடத்துல எந்த கிரகமும் இல்லை.", False),   # birth Kadagam from Magaram: empty
+    # general or conditional: not a claim
+    ("7ம் இடத்துல எந்த கிரகமும் இல்லைன்னா, 7ம் அதிபதியை பார்க்கணும்.", False),
+    ("If there is no planet in the 4th house, look at its lord.", False),
+])
+def test_an_empty_house_claim_is_checked(reply, wrong):
+    assert bool(find_wrong(_with_navamsa(NAV), reply)) == wrong, find_wrong(_with_navamsa(NAV), reply)
+
+
 def test_the_navamsa_houses_are_counted_for_jothidar():
     """Live 24 Nov: Ketu sat in Simmam in both charts and 3 of 5 answers put it in the navamsa 7th (its birth house)."""
     from app.companion.prompt import chart_rules
