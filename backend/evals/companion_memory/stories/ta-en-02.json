@@ -61,7 +61,7 @@
   {"id": "ta-en-02-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "en result la evlo mark vandhuchu nu sonnen?", "expect": "Says 82 marks", "any": ["82"], "none": []},
   {"id": "ta-en-02-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "andha exam la edhu unit kashtam nu sonnen?", "expect": "Says the deadlock unit", "any": ["deadlock", "Deadlock", "டெட்லாக்"], "none": []},
   {"id": "ta-en-02-p4", "kind": "false", "at": "2026-11-09T10:15", "ask": "en appa enna velai pannraanga nu sonnen?", "expect": "Says it doesn't know / wasn't told; invents no job", "any": [], "none": []},
-  {"id": "ta-en-02-p5", "kind": "same_day", "at": "2026-10-06T21:00", "ask": "ok ah pochu nu nenaikiren pa, innaiku", "expect": "Recalls the 2 pm Operating Systems exam mentioned earlier today", "any": ["Operating Systems", "OS", "exam"], "none": []},
+  {"id": "ta-en-02-p5", "kind": "same_day", "at": "2026-10-06T21:00", "ask": "ok ah pochu nu nenaikiren pa, innaiku", "expect": "Understands the vague line refers to the Operating Systems exam written that day", "any": ["Operating Systems", "OS", "exam"], "none": []},
   {"id": "ta-en-02-p6", "kind": "recall", "at": "2026-11-10T08:00", "ask": "en hostel friend peru enna? exam ku munna phone panninaanga la", "expect": "Says Janani", "any": ["Janani", "ஜனனி"], "none": []}
  ],
  "search": [

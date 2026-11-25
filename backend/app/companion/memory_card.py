@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.companion import alerts, chart_check, store
+from app.companion import alerts, chart_check, store, trace
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -954,6 +954,10 @@ class MemoryCard:
         if card_off:   # nothing from the card reaches the prompt, so search hits are not deduped against it
             card, recap, diary = "", "", ""
         recap, diary, found, dropped = fit_memory(card, recap, diary, hits, today)
+        trace.note(card_lines=len([ln for ln in card.splitlines() if ln.strip()]), facts_left_out=left_out,
+                   hits=len(hits), small_talk=bool(small_talk), memory_cleaning=bool(cleaning),
+                   dropped_earlier_today=dropped.get("earlier today", 0),
+                   dropped_old_chats=dropped.get("old chats", 0), dropped_recent_days=dropped.get("recent days", 0))
         if dropped:   # never silent: what gave way, and how much
             logger.info("companion %s: memory over %d characters, left out %s", companion_id, JOINT_CAP,
                         ", ".join(f"{n} line(s) of {name}" for name, n in dropped.items()))

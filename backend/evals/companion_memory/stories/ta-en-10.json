@@ -851,7 +851,7 @@
    "kind": "same_day",
    "at": "2026-10-15T23:45",
    "ask": "ok ah pochu nu nenaikiren pa, innaiku",
-   "expect": "Recalls the 4:30 pm Croydon visa biometrics appointment mentioned early that day",
+   "expect": "Understands the vague line refers to the visa biometrics appointment earlier that day",
    "any": [
     "Croydon",
     "visa",

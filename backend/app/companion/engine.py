@@ -25,7 +25,8 @@ import os
 import time
 import weakref
 
-from app.companion import chart_check, memory_card, memory_refresh, memory_search, playground, store, tools as app_tools
+from app.companion import (chart_check, memory_card, memory_refresh, memory_search, playground, store, trace,
+                           tools as app_tools)
 from app.companion.birth_guard import strip_app_data
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
@@ -272,6 +273,7 @@ async def reply(
     reply_language: the language the app wants this reply in ("en", "English"); None = the character's own."""
     tools = tools or []
     app_tools.validate_tools(tools)
+    trace.start()
     companion, provider = await _live_companion(tenant_id, companion_id, require_live, model)
     companion = with_reply_language(companion, reply_language)
     sem = await _take_slot(companion_id)
@@ -290,6 +292,7 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
     """Finishes a turn paused for app-run tools. The turn is consumed: a turn_id works once.
     The load slot is taken first, so a busy moment doesn't use up the turn.
     external_user_id (public API): the turn must belong to this person, else TurnExpired."""
+    trace.start()   # a resumed turn starts a fresh trace: its first half's memory numbers are not kept
     sem = await _take_slot(f"turn {turn_id}")
     try:
         turn = await store.take_pending_turn(tenant_id, turn_id)
@@ -428,7 +431,10 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
                               memory_context, mood, tools, started, model, ov, app_data, who, reply_format)
     prompt = build_messages(companion, mood, kb, memory_context, history, message, _person_today(companion, person),
                             app_data=app_data, who=who, reply_format=reply_format)
-    logger.info("companion %s: prompt ready (prep %dms)", companion_id, int((time.monotonic() - started) * 1000))
+    prep_ms = int((time.monotonic() - started) * 1000)
+    logger.info("companion %s: prompt ready (prep %dms)", companion_id, prep_ms)
+    trace.note(prep_ms=prep_ms, passages=len(kb.passages) if kb else 0, kb_failed=bool(kb and kb.failed),
+               kb_small_talk=is_small_talk(kb), shortcut_hit=bool(kb and kb.shortcut_hit))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb, reply_format=reply_format, app_data=app_data)
 
@@ -540,6 +546,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
     reply can be checked against what was really supplied. reply_format rides along the same way, and
     app_data too (for the chart guard; kept only when the guard is on, birth details already removed)."""
     companion_id = companion["id"]
+    trace.note(rounds=round_no)
     use_tools = bool(tools) and round_no < MAX_ROUNDS
     llm_started = time.monotonic()
     raw, calls = None, []
@@ -623,6 +630,7 @@ async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw:
     still = chart_check.find_wrong(chart, _visible(redo)) if _has_text(redo) else wrong
     logger.info("companion %s: chart check wrong=%d redo=%s", companion["id"], len(wrong),
                 "handoff" if still else "ok")
+    trace.note(chart_wrong=len(wrong), chart_redo="handoff" if still else "ok")
     if ov is not None:
         ov.note("Chart check: redo passed" if not still else
                 f"Chart check: redo still wrong ({'; '.join(still[:3])}), sent the handoff line")
@@ -757,8 +765,12 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
         # "missing answers" and shortcut misses that live chat never had.
         kb_learning.schedule_log(tenant_id, companion_id, kb, _logged_basis(basis, shape, reply_format), sources)
 
-    logger.info("companion %s: reply done (llm %dms, total %dms, basis %s)", companion_id, llm_ms,
-                int((time.monotonic() - started) * 1000), basis)
+    total_ms = int((time.monotonic() - started) * 1000)
+    logger.info("companion %s: reply done (llm %dms, total %dms, basis %s)", companion_id, llm_ms, total_ms, basis)
+    if playground.current() is None:   # live replies only: a Playground test is not a customer's reply
+        trace.note(tool_calls=len(tool_log))
+        trace.schedule(tenant_id, companion_id, saved["id"], basis=_logged_basis(basis, shape, reply_format),
+                       model=character_model(companion), llm_ms=llm_ms, total_ms=total_ms)
     return CompanionReply(
         status="done", text=text, mood=mood, conversation_id=conversation["id"], message_id=saved["id"],
         basis=shown, sources=[{k: s[k] for k in ("document", "page_from", "page_to")} for s in sources], **shape,

@@ -11,12 +11,12 @@ Only live characters answer here (drafts are tested in the dashboard). Every err
 {"error": "...", "code": "..."}. Logs carry ids and codes, never message text.
 
 Rate limits (in-process, like private_send): 120/min per IP before any DB lookup, 600/min per
-business, 20/min per person.
+business, 20/min per person. /feedback and /widget/feedback have their own 60/min per person.
 """
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request
@@ -48,6 +48,9 @@ _person_limiter = _SlidingWindow(PERSON_PER_MINUTE, 60)
 # /forget has its own budget: a client's bulk delete job must not use up live chat's limits (or hit them).
 FORGET_PER_MINUTE = 600
 _forget_limiter = _SlidingWindow(FORGET_PER_MINUTE, 60)
+# Thumbs up/down has its own budget, so rating replies never uses up a person's chat limit.
+FEEDBACK_PER_MINUTE = 60
+_feedback_limiter = _SlidingWindow(FEEDBACK_PER_MINUTE, 60)
 _NO_STORE = {"Cache-Control": "no-store"}
 _last_touch: dict[str, float] = {}
 
@@ -136,6 +139,16 @@ class ServerForgetIn(_Body):
     profile_id: str | None = ProfileId   # given: just this profile; left out: the user and every profile
 
 
+Rating = Literal["up", "down", "none"]   # "none" takes the rating back
+
+
+class ServerFeedbackIn(_Body):
+    user_id: str = UserId
+    profile_id: str | None = ProfileId
+    message_id: UUID          # the "message_id" the chat reply came with
+    rating: Rating
+
+
 class WidgetAuthIn(_Body):
     companion_id: UUID
     user_id: str = UserId
@@ -158,6 +171,11 @@ class WidgetChatIn(WidgetAuthIn):
 class WidgetContinueIn(WidgetAuthIn):
     turn_id: UUID
     results: list[ToolResult] = Field(default_factory=list, max_length=MAX_TOOLS)
+
+
+class WidgetFeedbackIn(WidgetAuthIn):
+    message_id: UUID
+    rating: Rating
 
 
 # --- who is calling ---------------------------------------------------------------------------
@@ -353,6 +371,42 @@ async def server_forget(body: ServerForgetIn, request: Request):
     return await _run(call, "forget", log)
 
 
+async def _rate_reply(tenant_id: str, user_id: str, profile_id: str | None, message_id: UUID, rating: str,
+                      companion_id: str | None = None) -> dict:
+    """Thumbs up/down on one reply. The reply must be an assistant message in THIS person's own chat
+    (and, from the widget, with the character the widget was signed for); anything else is one and the
+    same 404, so a caller can't learn which message ids exist. Stores the rating only, never text."""
+    person_key = _valid_person(user_id, profile_id)
+    # Person first, then the business-wide budget: a leaked key cycling user ids still hits a ceiling.
+    if not _feedback_limiter.allow(f"{tenant_id}:{user_id}") or not _tenant_limiter.allow(tenant_id):
+        raise _RATE
+    missing = ApiError(404, "reply_not_found", "That reply was not found for this user.")
+    try:
+        person = await store.find_end_user(tenant_id, person_key)
+        message = person and await store.find_reply_for_feedback(tenant_id, str(message_id), person["id"])
+        if not message or (companion_id and message["companion_id"] != companion_id):
+            raise missing
+        await store.set_reply_feedback(tenant_id, message, rating)
+    except ApiError:
+        raise
+    except Exception as exc:
+        logger.warning("companion public api: feedback failed (%s)", type(exc).__name__)
+        raise ApiError(503, "busy", "Couldn't save the rating. Try again in a few seconds.",
+                       {"Retry-After": "5"}) from exc
+    return {"message_id": str(message_id), "rating": rating}
+
+
+@public_router.post("/feedback")
+async def server_feedback(body: ServerFeedbackIn, request: Request):
+    """{"user_id", "profile_id"?, "message_id", "rating": "up" | "down" | "none"} → {"message_id", "rating"}.
+    Karthik taps thumbs-down under a Jothidar AI reply: send that reply's message_id with "down". A second
+    call changes the rating; "none" takes it back. Not written to the request log (it is not a chat call)."""
+    async def call():
+        tenant_id = await _server_tenant(request)
+        return await _rate_reply(tenant_id, body.user_id, body.profile_id, body.message_id, body.rating)
+    return await _run(call, "feedback", {})
+
+
 def _audit_api_forget(tenant_id: str, end_user_id: str, key: dict) -> None:
     """Same action as the dashboard's forget; the actor is the key (its row id, from find_active_api_key's
     "id, tenant_id"), not a login."""
@@ -422,3 +476,13 @@ async def widget_continue(body: WidgetContinueIn, request: Request):
                                              external_user_id=person_key, require_live=True)
         return result.model_dump()
     return await _run(call, "widget_continue", log)
+
+
+@public_router.post("/widget/feedback")
+async def widget_feedback(body: WidgetFeedbackIn, request: Request):
+    """Thumbs up/down from the web widget; the reply must be from the character the widget was signed for."""
+    async def call():
+        tenant_id = await _widget_tenant(request, body)
+        return await _rate_reply(tenant_id, body.user_id, body.profile_id, body.message_id, body.rating,
+                                 companion_id=str(body.companion_id))
+    return await _run(call, "widget_feedback", {})

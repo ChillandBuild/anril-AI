@@ -23,7 +23,7 @@ import time as _time
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from evals.companion_memory import sim, stories as story_files
+from evals.companion_memory import history, sim, stories as story_files
 
 TENANT = "eba3ed94-277c-430f-a992-19bbe855e2f4"   # Astro Tamil: its keys and reply model
 UTC = timezone.utc
@@ -442,7 +442,7 @@ def summarize(stories, replays, bake, probes) -> dict:
 
 def markdown(summary: dict, probes: list[dict]) -> str:
     b = summary["bakeoff"]
-    lines = ["# Companion memory eval, 2026-11-10", "",
+    lines = [f"# Companion memory eval, {summary.get('date', 'undated')} (commit {summary.get('commit', 'unknown')})", "",
              "Synthetic people replayed through the real memory code on an in-memory DB (no DB latency in the "
              "numbers). Reply and judge: Astro Tamil's reply model. Search queries embedded alone (no earlier "
              "messages).", "", "## Search bake-off (hit@5 / MRR@20)", "",
@@ -487,6 +487,7 @@ async def main() -> None:
     parser.add_argument("--model", default="", help="force the probe model instead of the bake-off winner")
     parser.add_argument("--memory-mode", choices=("auto", "agentic"), default="auto",
                         help="agentic: the model calls search_memory when it decides to (Playground mode)")
+    parser.add_argument("--note", default="", help="a few words kept with this run's line in results/history.csv")
     args = parser.parse_args()
     global MEMORY_MODE
     MEMORY_MODE = args.memory_mode
@@ -516,6 +517,7 @@ async def main() -> None:
     summary["probe_model"] = model
     summary["memory_mode"] = MEMORY_MODE
     summary["agentic_searched"] = sum(1 for p in probes if p.get("searched"))
+    summary["date"], summary["commit"] = date.today().isoformat(), history.commit()
     summary["floors_used"] = {"vector": memory_search.VECTOR_FLOOR, "trigram": memory_search.TRIGRAM_FLOOR,
                               "fusion": memory_search.FUSION}
     suffix = "" if MEMORY_MODE == "auto" else "-agentic"
@@ -525,6 +527,12 @@ async def main() -> None:
     report = RESULTS / ("latest.md" if MEMORY_MODE == "auto" else "agentic.md")
     report.write_text(markdown(summary, probes), encoding="utf-8")
     print(f"done in {_time.monotonic() - t0:.0f}s; report {report}", flush=True)
+    if args.only:
+        print("history: partial run (--only), not recorded", flush=True)
+    else:   # one line per full run, so the next change can be judged against this one
+        line = history.row(summary, summary["date"], summary["commit"], args.note)
+        print(history.verdict(history.last_run(MEMORY_MODE), line), flush=True)
+        history.append(line)
 
 
 if __name__ == "__main__":

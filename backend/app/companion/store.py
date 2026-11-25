@@ -695,6 +695,83 @@ async def log_request(row: dict) -> None:
     await asyncio.to_thread(_q)
 
 
+async def save_reply_trace(row: dict) -> None:
+    """One saved live reply: what went into it (trace.py). Numbers and fixed words only, never text."""
+    def _q():
+        get_supabase().table("companion_reply_trace").insert(row).execute()
+    await asyncio.to_thread(_q)
+
+
+FEEDBACK_RATINGS = {"up": 1, "down": -1}
+QUALITY_DOWN_PAGE = 50       # newest thumbs-down replies listed with their trace
+
+
+async def find_reply_for_feedback(tenant_id: str, message_id: str, end_user_id: str) -> dict | None:
+    """The reply a person may rate: an assistant message of this business, in THIS person's own chat.
+    Anything else (a user message, another person's reply, another business's id) is None."""
+    def _q():
+        return (get_supabase().table("companion_messages").select("id, companion_id, end_user_id, role")
+                .eq("tenant_id", tenant_id).eq("id", message_id).eq("end_user_id", end_user_id)
+                .eq("role", "assistant").limit(1).execute().data)
+    rows = await asyncio.to_thread(_q)
+    return rows[0] if rows else None
+
+
+async def set_reply_feedback(tenant_id: str, message: dict, rating: str) -> None:
+    """Karthik taps thumbs-down on a reply -> one row (message, -1). Tapping again changes that row;
+    "none" removes it. One row per reply, never any text."""
+    def _q():
+        db = get_supabase()
+        if rating == "none":
+            (db.table("companion_reply_feedback").delete()
+             .eq("tenant_id", tenant_id).eq("message_id", message["id"]).execute())
+            return
+        db.table("companion_reply_feedback").upsert({
+            "tenant_id": tenant_id, "companion_id": message["companion_id"], "message_id": message["id"],
+            "end_user_id": message["end_user_id"], "rating": FEEDBACK_RATINGS[rating], "updated_at": _now(),
+        }, on_conflict="message_id").execute()
+    await asyncio.to_thread(_q)
+
+
+async def reply_quality(tenant_id: str, companion_id: str, days: int = 7) -> dict:
+    """One character's quality numbers for the last `days` days. No message text anywhere.
+    Example -> {"days": 7, "replies": 240, "up": 31, "down": 9, "down_share": 0.225,
+                "down_replies": [{"message_id": "...", "rated_at": "...", "basis": "own", "llm_ms": 1900,
+                                  "total_ms": 2400, "model": "...", "detail": {"hits": 0, "passages": 3}}]}
+    replies = live replies traced; down_share = down / (up + down), None when nobody rated.
+    down_replies: the newest 50 thumbs-down, each with what went into that reply (None when not traced)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    def _q():
+        db = get_supabase()
+        traced = (db.table("companion_reply_trace").select("id", count="exact")
+                  .eq("tenant_id", tenant_id).eq("companion_id", companion_id).gte("created_at", since)
+                  .limit(1).execute())
+        rated = (db.table("companion_reply_feedback").select("message_id, rating, updated_at")
+                 .eq("tenant_id", tenant_id).eq("companion_id", companion_id).gte("updated_at", since)
+                 .order("updated_at", desc=True).limit(REQUEST_LOG_SCAN).execute().data or [])
+        down_ids = [r["message_id"] for r in rated if r["rating"] < 0][:QUALITY_DOWN_PAGE]
+        traces = []
+        if down_ids:
+            traces = (db.table("companion_reply_trace")
+                      .select("message_id, basis, model, llm_ms, total_ms, detail")
+                      .eq("tenant_id", tenant_id).in_("message_id", down_ids).execute().data or [])
+        return traced.count or 0, rated, traces
+    replies, rated, traces = await asyncio.to_thread(_q)
+
+    by_message = {t["message_id"]: t for t in traces}
+    up = sum(r["rating"] > 0 for r in rated)
+    down_rows = [r for r in rated if r["rating"] < 0]
+    blank = {"basis": None, "model": None, "llm_ms": None, "total_ms": None, "detail": None}
+    return {
+        "days": days, "replies": replies, "up": up, "down": len(down_rows),
+        "down_share": round(len(down_rows) / (up + len(down_rows)), 3) if rated else None,
+        "down_replies": [{"message_id": r["message_id"], "rated_at": r["updated_at"],
+                          **{k: by_message.get(r["message_id"], blank).get(k) for k in blank}}
+                         for r in down_rows[:QUALITY_DOWN_PAGE]],
+    }
+
+
 AGENT_REPLY_METRIC = "agent_reply"   # tenant_usage_counters metric (migration 342)
 
 

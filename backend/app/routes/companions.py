@@ -534,6 +534,18 @@ async def _readable_character(tenant_id: str, companion_id: UUID) -> dict:
     return row
 
 
+@router.get("/{companion_id}/quality")
+async def reply_quality(companion_id: UUID, days: int = Query(7, ge=1, le=30),
+                        ctx: dict = Depends(require_companions_manage)):
+    """How this character's live replies are doing: replies traced, thumbs up/down, and for each of the
+    newest 50 thumbs-down what went into that reply (numbers only, no message text).
+    Example: Jothidar AI, 7 days -> 240 replies, 31 up, 9 down; 6 of the 9 had "hits": 0."""
+    tenant_id = ctx["tenant_id"]
+    if not await store.get_companion(tenant_id, str(companion_id)):
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return await store.reply_quality(tenant_id, str(companion_id), days)
+
+
 @router.get("/{companion_id}/people")
 async def list_people(companion_id: UUID, q: str = Query("", max_length=100),
                       limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0, le=100_000),

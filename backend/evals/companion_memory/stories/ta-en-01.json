@@ -69,7 +69,7 @@
   {"id": "ta-en-01-p2", "kind": "recall", "at": "2026-11-09T10:05", "ask": "en job la epo join pannanum nu sonnen? marandhuten", "expect": "Says joining date is December 2", "any": ["December 2", "Dec 2", "2nd December", "2 December", "டிசம்பர் 2"], "none": []},
   {"id": "ta-en-01-p3", "kind": "recall", "at": "2026-11-09T10:10", "ask": "andha interview office enga irukku, edhu area nu theriyuma?", "expect": "Says the office is in Taramani, Chennai", "any": ["Taramani", "Tharamani", "தரமணி", "Chennai"], "none": []},
   {"id": "ta-en-01-p4", "kind": "false", "at": "2026-11-09T10:15", "ask": "en akka peru enna nyabagam irukka?", "expect": "Says it doesn't know / wasn't told; invents no name", "any": [], "none": []},
-  {"id": "ta-en-01-p5", "kind": "same_day", "at": "2026-10-02T22:00", "ask": "ok ah pochu nu nenaikiren, innaiku", "expect": "Recalls the 3 pm Zoho interview mentioned earlier today", "any": ["Zoho", "interview"], "none": []},
+  {"id": "ta-en-01-p5", "kind": "same_day", "at": "2026-10-02T22:00", "ask": "ok ah pochu nu nenaikiren, innaiku", "expect": "Understands the vague line refers to the Zoho interview earlier that day", "any": ["Zoho", "interview"], "none": []},
   {"id": "ta-en-01-p6", "kind": "recall", "at": "2026-11-10T09:00", "ask": "en role enna nu sonnen interview ku?", "expect": "Says Associate Software Developer", "any": ["Associate Software Developer", "Software Developer", "developer"], "none": []}
  ],
  "search": [

@@ -1,0 +1,2 @@
+date,commit,memory_mode,probe_model,probes,passed,recall_n,recall_passed,invented,errors,unjudged,memory_ms_p95,en_passed,en_probes,ta_passed,ta_probes,ta-en_passed,ta-en_probes,note
+2026-11-10,unknown,auto,gemini,180,167,125,117,3,,,1219.6,54,60,55,60,58,60,from latest.md; measured before the review fixes
