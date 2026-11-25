@@ -1,5 +1,8 @@
+import { isPhoneFormula } from "@/lib/csvPhone";
+
 /** A cell that a spreadsheet could run as a formula gets a leading apostrophe. Phone numbers (+91 98765 43210) stay as they are. */
 function safeCell(value: string): string {
+  if (isPhoneFormula(value)) return value;
   if (/^[=@\t\r]/.test(value) || /^[+-](?![\d\s]+$)/.test(value)) return `'${value}`;
   return value;
 }

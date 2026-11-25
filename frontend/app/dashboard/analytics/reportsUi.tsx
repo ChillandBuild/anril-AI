@@ -236,7 +236,7 @@ export function PeopleSheet({ request, query, onClose }: { request: PeopleReques
 
   if (!request) return null;
   return (
-    <div data-print-hide className="fixed inset-0 z-50 flex justify-end">
+    <div data-print-hide className="fixed inset-0 z-dialog flex justify-end">
       <button type="button" aria-label="Close" className="absolute inset-0 bg-black/30" onClick={onClose} tabIndex={-1} />
       <aside role="dialog" aria-modal="true" aria-label={request.title} className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-surface-mid p-4">

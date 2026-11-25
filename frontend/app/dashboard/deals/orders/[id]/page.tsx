@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -109,6 +109,13 @@ export default function OrderPage() {
   const [trackOpen, setTrackOpen] = useState(search.get("focus") === "tracking");
   const [courier, setCourier] = useState("");
   const [tracking, setTracking] = useState("");
+
+  // Arriving with ?focus=payment: bring the Payments panel into view once the order has loaded.
+  const paymentsRef = useRef<HTMLDivElement>(null);
+  const orderLoaded = !!order;
+  useEffect(() => {
+    if (orderLoaded && search.get("focus") === "payment") paymentsRef.current?.scrollIntoView({ block: "start" });
+  }, [orderLoaded, search]);
 
   useEffect(() => {
     if (order && !payAmount) setPayAmount(String(order.balance_paise / 100));
@@ -342,6 +349,7 @@ export default function OrderPage() {
             </dl>
           </Panel>
 
+          <div ref={paymentsRef} className="scroll-mt-20">
           <Panel title="Payments">
             {o.payments.length === 0 ? (
               <p className="text-xs text-on-surface-muted">Nothing paid yet.</p>
@@ -421,6 +429,7 @@ export default function OrderPage() {
               <p key={i} className="mt-1 text-xs text-on-surface-muted">{advanceChangeText(c)}</p>
             ))}
           </Panel>
+          </div>
 
           {(o.stage !== "lost" || o.refundable_paise > 0) && (
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-white px-4 py-3 text-xs">

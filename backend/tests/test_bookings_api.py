@@ -852,7 +852,7 @@ def test_export_day_columns_and_activity_log(env):
     res, rows = _export(env, DOWNLOADER, "?start=2026-11-24")
     assert res.status_code == 200 and res.headers["content-disposition"].endswith("bookings_2026-11-24.csv")
     assert len(rows) == 1 and rows[0]["code"] == "BK-0001" and rows[0]["status"] == "Came"
-    assert rows[0]["date"] == "2026-11-24" and rows[0]["time"] == "10:00" and rows[0]["phone"] == "+919876543210"
+    assert rows[0]["date"] == "2026-11-24" and rows[0]["time"] == "10:00" and rows[0]["phone"] == '="+919876543210"'
     assert rows[0]["customer"].startswith("'=")                   # never runs as a formula
     assert "advance_amount_rupees" not in rows[0]                 # no deals.view
     log = [r for r in env.db.rows("app_audit_logs") if r.get("action") == "leads.download"]

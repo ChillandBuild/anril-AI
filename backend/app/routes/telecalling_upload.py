@@ -16,7 +16,7 @@ from app.services.assignment import add_upload_pending, assign_upload_batch, get
 from app.services.assignment_rules import get_channel_rules
 from app.services.audit_log import record_audit_event
 from app.services.call_rules import phone_mask_for
-from app.services.reports_common import chunks, paged
+from app.services.reports_common import chunks, paged, phone_cell
 from app.services.call_team_scope import is_team_leader, scoped_caller_ids
 from app.services.call_wrapup import CLOSED_LEAD_STATUSES
 from app.services.download_gate import log_download, require_download
@@ -489,6 +489,8 @@ async def download_assignment_csv(
                 for row in rows[1:]:
                     raw_phone = row[phone_idx] if phone_idx >= 0 and phone_idx < len(row) else ""
                     norm_phone = _normalize_phone(raw_phone)
+                    if 0 <= phone_idx < len(row) and raw_phone and not raw_phone.startswith('="'):
+                        row[phone_idx] = phone_cell(raw_phone)  # Excel shows the full number; not twice if it came back already wrapped
                     caller_name = phone_to_caller.get(norm_phone or "") or "Unassigned"
                     row.append(caller_name)
 
@@ -513,7 +515,7 @@ async def download_assignment_csv(
     writer.writeheader()
     for row in snapshot:
         writer.writerow({
-            "phone": row.get("phone", ""),
+            "phone": phone_cell(row.get("phone")),
             "name": row.get("name", ""),
             "caller_name": row.get("caller_name", ""),
             "caller_id": row.get("caller_id", ""),

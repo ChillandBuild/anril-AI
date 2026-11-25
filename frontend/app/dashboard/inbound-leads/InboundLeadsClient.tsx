@@ -383,7 +383,7 @@ function LeadDrawer({ leadId, row, team, onClose, onChanged }: {
 
   // Portaled to <body> so no transformed parent can shift or clip the overlay.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end bg-[#0A1528]/30" onClick={onClose}>
+    <div className="fixed inset-0 z-dialog flex justify-end bg-[#0A1528]/30" onClick={onClose}>
       <aside role="dialog" aria-modal="true" aria-label={`${name}: details`}
         className="flex h-full w-full max-w-[600px] flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start gap-3 border-b border-[#e2e8f0] p-4">

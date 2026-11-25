@@ -135,7 +135,7 @@ class IntakeCsvRouteTests(unittest.TestCase):
         self.assertIn("text/csv", res.headers["content-type"])
         body = res.text
         self.assertIn("Lead,Phone,Status,Package,Amount charged,Subtotal,GST,Submitted,Paid at,Date of Birth", body)
-        self.assertIn("Cheran,+918056110957,paid,Basic,10.00,10.00,0.00", body)
+        self.assertIn('Cheran,"=""+918056110957""",paid,Basic,10.00,10.00,0.00', body)
 
 
 if __name__ == "__main__":

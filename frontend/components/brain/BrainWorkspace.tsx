@@ -34,7 +34,7 @@ export function BrainWorkspace({ sections, activeId, onSelect }: {
   return (
     <div className="grid min-w-0 gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
       <nav aria-label="Anril Brain sections" className="min-w-0">
-        <div className="flex flex-wrap gap-2 lg:flex-col lg:gap-1">
+        <div className="flex flex-nowrap gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:flex-wrap lg:gap-1 lg:overflow-visible">
           {sections.map((section) => {
             const selected = section.id === active.id;
             return (
@@ -45,7 +45,7 @@ export function BrainWorkspace({ sections, activeId, onSelect }: {
                 aria-controls={`${instanceId}-${section.id}`}
                 onClick={() => select(section.id)}
                 className={cn(
-                  "flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left font-label text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  "flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 text-left font-label text-xs transition-colors lg:h-auto lg:min-h-11 lg:shrink lg:whitespace-normal lg:py-2 lg:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   selected ? "bg-primary text-white" : "text-ink-secondary hover:bg-surface-mid hover:text-ink",
                 )}
               >

@@ -13,7 +13,7 @@ const LOOKUP_DELAY_MS = 300;
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={title}>
       <div className="w-full max-w-md space-y-4 rounded-3xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h3 className="font-display text-sm font-extrabold text-[#13284A]">{title}</h3>

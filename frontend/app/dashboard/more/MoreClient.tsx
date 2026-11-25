@@ -70,6 +70,7 @@ export function MoreClient() {
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
+      <div className="sticky top-14 md:top-16 z-20 -mx-3 bg-background px-3 pb-2 pt-1 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:p-0">
       <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3.5 text-ink-muted focus-within:border-primary-300">
         <Search size={16} aria-hidden className="shrink-0" />
         <span className="sr-only">Find a page</span>
@@ -91,6 +92,7 @@ export function MoreClient() {
           </button>
         )}
       </label>
+      </div>
 
       {!q && (
         <section aria-label="Your account" className="flex flex-col gap-3 rounded-3xl bg-navy p-4 text-white">

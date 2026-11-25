@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.routes.sms import _safe_filename, _sms_error, manage_no_key, view_no_key
 from app.services import sms_campaigns as camp, sms_contacts as svc
+from app.services.reports_common import phone_cell
 
 router = APIRouter()
 
@@ -201,7 +202,7 @@ async def export_group(group_id: str, ctx: dict = Depends(view_no_key)):
     w.writerow(["Name", "Mobile", *(_csv_cell(k) for k in keys), "Added"])
     for r in rows:
         fields = r.get("fields") or {}
-        w.writerow([_csv_cell(r.get("name")), _csv_cell(r["phone"]), *(_csv_cell(fields.get(k)) for k in keys),
+        w.writerow([_csv_cell(r.get("name")), phone_cell(r["phone"]), *(_csv_cell(fields.get(k)) for k in keys),
                     r.get("created_at") or ""])
     safe = re.sub(r"[^A-Za-z0-9 _-]", "", group.get("name") or "")[:60].strip() or "group"
     return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",

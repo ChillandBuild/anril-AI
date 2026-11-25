@@ -346,7 +346,7 @@ export default function UploadTemplatesPage() {
       )}
 
       {canManage && (
-        <div className="sticky bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#e7e2da] bg-white/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
+        <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px))] lg:bottom-0 z-20 -mx-3 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#e7e2da] bg-white/95 px-4 py-3 backdrop-blur sm:-mx-4 md:-mx-6 md:px-6">
           <p className="text-[13px] font-medium text-ink-secondary">
             {!rows
               ? "Choose your Excel file above. Nothing is sent to Meta until you press Send."
@@ -359,7 +359,7 @@ export default function UploadTemplatesPage() {
           <div className="flex w-full items-center gap-2 sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">
             <Link
               href="/dashboard/templates"
-              className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink transition hover:bg-surface-subtle"
+              className="hidden md:inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#ddd8cf] bg-white px-4 text-sm font-semibold text-ink transition hover:bg-surface-subtle"
             >
               <ArrowLeft size={15} aria-hidden="true" /> Back
             </Link>

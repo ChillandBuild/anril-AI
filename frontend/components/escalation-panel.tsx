@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Download, Loader2, MessageSquare, Search, UserCog, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDuration, secondsSince } from "@/lib/utils";
+import { phoneCell } from "@/lib/csvPhone";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { usePolling } from "@/hooks/usePolling";
 import {
@@ -296,7 +297,7 @@ export function EscalationPanel({
 
   const ACTIVE_COLUMNS: CsvColumn<Handover>[] = [
     { header: "Name", value: (h) => h.leads?.name },
-    { header: "Phone", value: (h) => h.leads?.phone },
+    { header: "Phone", value: (h) => phoneCell(h.leads?.phone) },
     { header: "Channel", value: (h) => channelLabel(h.leads?.source) },
     { header: "Interest", value: (h) => segmentLabel(h.leads?.segment) },
     { header: "Why it needs you", value: (h) => h.reason },
@@ -305,7 +306,7 @@ export function EscalationPanel({
   ];
   const HISTORY_COLUMNS: CsvColumn<ResolvedHandover>[] = [
     { header: "Name", value: (h) => h.leads?.name },
-    { header: "Phone", value: (h) => h.leads?.phone },
+    { header: "Phone", value: (h) => phoneCell(h.leads?.phone) },
     { header: "Channel", value: (h) => channelLabel(h.leads?.source) },
     { header: "Interest", value: (h) => segmentLabel(h.leads?.segment) },
     { header: "Why it needed you", value: (h) => h.reason },

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/AppToaster";
 import { PwaRegistrar } from "@/components/PwaRegistrar";
 import { TEXT_SIZE_INIT_SCRIPT } from "@/lib/textSize";
 import "./globals.css";
@@ -97,7 +97,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         {children}
-        <Toaster position="top-right" richColors closeButton />
+        <AppToaster />
         <PwaRegistrar />
       </body>
     </html>

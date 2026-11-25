@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { MessageSquarePlus, X } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 
@@ -40,7 +41,8 @@ export function FeedbackModal({ open, onClose }: { open: boolean; onClose: () =>
     onClose();
   }
 
-  return (
+  // Drawn on <body>: the header that opens this modal is fixed, so an inline overlay sat under the bottom bar.
+  const overlay = (
     <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-card bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-start justify-between">
@@ -89,4 +91,5 @@ export function FeedbackModal({ open, onClose }: { open: boolean; onClose: () =>
       </div>
     </div>
   );
+  return typeof document === "undefined" ? null : createPortal(overlay, document.body);
 }

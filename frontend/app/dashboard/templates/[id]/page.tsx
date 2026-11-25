@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -42,6 +42,7 @@ import { useAuthRole } from "../../contexts/AuthRoleContext";
 export default function TemplateDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { role, permissions } = useAuthRole();
   const canManageTemplates = role === "owner" || permissions.includes("templates.manage");
   const templateId = params.id as string;
@@ -53,7 +54,7 @@ export default function TemplateDetailsPage() {
   const [deleting, setDeleting] = useState(false);
 
   // Edit Mode state
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(searchParams.get("edit") === "1");
   const [saving, setSaving] = useState(false);
   const [bodyText, setBodyText] = useState("");
   const [headerType, setHeaderType] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
@@ -106,6 +107,8 @@ export default function TemplateDetailsPage() {
       const match = data.data.find((t: Template) => t.id === templateId);
       if (!match) throw new Error("Template not found");
       setTemplate(match);
+      // ?edit=1 opens straight in the editor, but only when Meta allows an edit right now.
+      if (match.status === "APPROVED" && match.edit_allowance && !match.edit_allowance.allowed) setEditMode(false);
 
       // Populate edit states
       setBodyText(match.body_text || "");

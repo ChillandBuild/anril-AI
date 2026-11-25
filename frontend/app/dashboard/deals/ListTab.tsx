@@ -13,6 +13,7 @@ import { cn, timeAgo, formatPhone } from "@/lib/utils";
 import { getDealTags } from "@/lib/deal-tags";
 import { shortRupees, PAYMENT_LABEL } from "@/lib/deal-filters";
 import { PAGE_SIZE } from "@/lib/pagination";
+import { phoneCell } from "@/lib/csvPhone";
 import { Pagination } from "@/components/ui/Pagination";
 
 const BRAND_COLORS = ["#038285", "#0A1528", "#6366f1", "#b45309", "#be123c", "#047857"];
@@ -60,7 +61,7 @@ export function downloadDealsCsv(deals: DealSummary[], filename: string) {
       [
         csvCell(deal.deal_label),
         csvCell(deal.lead.name || ""),
-        csvCell(deal.lead.phone || ""),
+        csvCell(phoneCell(deal.lead.phone)),
         csvCell(deal.item_summary),
         deal.stage,
         deal.source,

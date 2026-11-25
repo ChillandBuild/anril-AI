@@ -15,7 +15,7 @@ import io
 from datetime import datetime, timezone
 
 from app.services.call_wrapup import CLOSED_LEAD_STATUSES
-from app.services.reports_common import safe_cell
+from app.services.reports_common import phone_cell, safe_cell
 
 REASON_LABEL = {
     "bad_number": "Bad number",
@@ -59,7 +59,7 @@ def csv_text(rows: list[dict], mask=None) -> str:
         phone = r.get("phone") or ""
         if mask and phone:
             phone = mask(phone)
-        writer.writerow([r.get("row", ""), safe_cell(phone), safe_cell(r.get("name") or ""),
+        writer.writerow([r.get("row", ""), phone_cell(phone), safe_cell(r.get("name") or ""),
                          REASON_LABEL.get(r.get("reason"), r.get("reason") or "")])
     return out.getvalue()
 

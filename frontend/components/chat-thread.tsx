@@ -1,6 +1,6 @@
 "use client";
 import { toast } from "sonner";
-import { Fragment, memo, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, Lead, Message } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { cn, formatPhone } from "@/lib/utils";
@@ -263,6 +263,7 @@ export function ChatThread({
   onBack,
   detailsOpen = false,
   onToggleDetails,
+  phoneDetails,
 }: {
   lead: Lead;
   /** Teammates, for the assign dropdown and Record payment's Sold by. */
@@ -272,7 +273,11 @@ export function ChatThread({
   onBack?: () => void;
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
+  /** The customer panel, shown in a full-screen sheet on phones (below lg). */
+  phoneDetails?: ReactNode;
 }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const refocusRef = useRef(false);
   const { role, permissions, callerId } = useAuthRole();
   const masterAiEnabled = useMasterAiEnabled();
   const canReplyToConversations = role === "owner" || permissions.includes("conversations.reply");
@@ -520,6 +525,8 @@ export function ChatThread({
   async function sendReply() {
     const text = draft.trim();
     if (!canReplyToConversations || replyLocked || current.blocked_at || !text || sending) return;
+    // The box is disabled while sending, which drops focus; remember it to restore (keeps the phone keyboard up).
+    const hadFocus = document.activeElement === textareaRef.current;
     setSending(true);
     setSendError(null);
     // Answering a chat the AI handed over is the moment to teach it (owner only).
@@ -533,10 +540,19 @@ export function ChatThread({
       });
       setDraft("");
       if (answeringHandover) void offerTeach();
+      refocusRef.current = hadFocus;
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Send failed");
     } finally { setSending(false); }
   }
+
+  // Once the box is enabled again after a send, put the cursor back (keeps the phone keyboard up).
+  useEffect(() => {
+    if (!sending && refocusRef.current) {
+      refocusRef.current = false;
+      textareaRef.current?.focus();
+    }
+  }, [sending]);
 
   async function sendMedia() {
     if (!canReplyToConversations || !selectedFile || sending) return;
@@ -636,9 +652,56 @@ export function ChatThread({
     return `${Math.max(1, minsLeft)}m`;
   })();
 
+  // One "Assigned to" dropdown, used in the header (md and up) and in the phone details sheet.
+  const assignSelect = (
+    <Select
+      size="sm"
+      value={current.assigned_to ?? ""}
+      onChange={(v) => void assignTo(v)}
+      disabled={role !== "owner" || assigning}
+      aria-label="Assigned to"
+      className="rounded-xl"
+      options={[
+        { value: "", text: "Unassigned", label: <span className="flex items-center gap-1.5 text-[#64748b]"><UserRound size={13} />Unassigned</span> },
+        ...team.map((t) => ({ value: t.value, text: t.label, label: <span className="flex items-center gap-1.5"><UserRound size={13} className="text-primary" />{t.label}</span> })),
+        ...(current.assigned_to && !team.some((t) => t.value === current.assigned_to)
+          ? [{ value: current.assigned_to, text: "A teammate", label: <span className="flex items-center gap-1.5"><UserRound size={13} />A teammate</span> }]
+          : []),
+      ]}
+    />
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 min-w-0">
+      {/* Customer details sheet: full screen below lg, same panel as the desktop side panel. */}
+      {sheetOpen && phoneDetails && (
+        <div className="fixed inset-0 z-dialog flex flex-col bg-white lg:hidden">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#e2e8f0] pl-4 pr-1">
+            <p className="font-display text-[15px] font-bold text-[#0A1528]">Customer</p>
+            <button
+              type="button"
+              onClick={() => setSheetOpen(false)}
+              aria-label="Close"
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-[#64748b] hover:bg-slate-100"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 border-b border-[#e2e8f0] px-4 py-2">
+            <span className="text-[12.5px] font-semibold text-[#334155]">Handled by</span>
+            <div className="min-w-0 flex-1" title={role === "owner" ? undefined : "Only the owner can change who handles a chat"}>
+              {assignSelect}
+            </div>
+          </div>
+          {/* The panel is w-80 with its own header; here it fills the sheet and the sheet's bar replaces its header. */}
+          <div
+            className="min-h-0 flex-1 [&>div]:!w-full [&>div]:border-l-0 [&>div>div:first-child]:hidden"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            {phoneDetails}
+          </div>
+        </div>
+      )}
       {/* Header */}
       {/* Same 68px band as the chat list header and the customer panel header. */}
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[#e2e8f0] bg-white px-2 md:h-[68px] md:gap-3 md:px-5">
@@ -708,21 +771,7 @@ export function ChatThread({
             className="hidden w-[132px] shrink-0 md:block"
             title={role === "owner" ? "Who handles this chat" : "Only the owner can change who handles a chat"}
           >
-            <Select
-              size="sm"
-              value={current.assigned_to ?? ""}
-              onChange={(v) => void assignTo(v)}
-              disabled={role !== "owner" || assigning}
-              aria-label="Assigned to"
-              className="rounded-xl"
-              options={[
-                { value: "", text: "Unassigned", label: <span className="flex items-center gap-1.5 text-[#64748b]"><UserRound size={13} />Unassigned</span> },
-                ...team.map((t) => ({ value: t.value, text: t.label, label: <span className="flex items-center gap-1.5"><UserRound size={13} className="text-primary" />{t.label}</span> })),
-                ...(current.assigned_to && !team.some((t) => t.value === current.assigned_to)
-                  ? [{ value: current.assigned_to, text: "A teammate", label: <span className="flex items-center gap-1.5"><UserRound size={13} />A teammate</span> }]
-                  : []),
-              ]}
-            />
+            {assignSelect}
           </div>
 
           {/* AI agent switch */}
@@ -749,6 +798,19 @@ export function ChatThread({
               )}
             >
               {detailsOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+            </button>
+          )}
+
+          {/* Customer details sheet (phones and tablets, where the side panel is hidden) */}
+          {phoneDetails && (
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="Customer details"
+              title="Customer details"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#64748b] hover:bg-slate-100 hover:text-[#0A1528] lg:hidden"
+            >
+              <PanelRightOpen size={18} />
             </button>
           )}
 
@@ -1088,7 +1150,8 @@ export function ChatThread({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
+                  // Touch keyboards: Enter is a new line and the Send button sends.
+                  if (e.key === "Enter" && !e.shiftKey && !window.matchMedia("(pointer: coarse)").matches) { e.preventDefault(); sendReply(); }
                 }}
                 rows={1}
                 disabled={!canReplyToConversations || replyLocked || sending}
@@ -1146,6 +1209,7 @@ export function ChatThread({
 
               <button
                 onClick={sendReply}
+                onMouseDown={(e) => e.preventDefault()}
                 disabled={!canReplyToConversations || sending || !draft.trim()}
                 title={canReplyToConversations ? "Send message" : "You have read-only access to conversations"}
                 aria-label="Send message"

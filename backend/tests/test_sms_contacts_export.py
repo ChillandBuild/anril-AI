@@ -48,8 +48,8 @@ async def test_export_header_rows_extra_fields_and_only_this_group(db):
     assert lines[0] == "Name,Mobile,city,plan,Added"
     assert len(lines) == 3
     body = "\n".join(lines[1:])
-    assert "Ravi,9876543210,Chennai,gold," in body
-    assert "Asha,9123456780,Madurai,," in body
+    assert 'Ravi,"=""9876543210""",Chennai,gold,' in body
+    assert 'Asha,"=""9123456780""",Madurai,,' in body
     assert "9000000001" not in body and "9000000002" not in body and "9000000003" not in body
     assert resp.media_type == "text/csv; charset=utf-8"
     assert resp.headers["content-disposition"] == 'attachment; filename="VIP Clients.csv"'
@@ -61,7 +61,7 @@ async def test_export_neutralises_formulas(db):
     _contact(db, "9876543210", [g], "=SUM(A1)", {"note": "@cmd", "x": "+1", "y": "-2"})
     lines = _lines(await routes.export_group(g, ctx=CTX_A))
     assert lines[0] == "Name,Mobile,note,x,y,Added"
-    assert lines[1].startswith("'=SUM(A1),9876543210,'@cmd,'+1,'-2,")
+    assert lines[1].startswith("'=SUM(A1)," + '"=""9876543210"""' + ",'@cmd,'+1,'-2,")
 
 
 @pytest.mark.asyncio

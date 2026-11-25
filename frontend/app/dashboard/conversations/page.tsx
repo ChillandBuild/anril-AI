@@ -12,6 +12,7 @@ import { formatPhone } from "@/lib/utils";
 import { GROUPS_PAGE, fromChatsBody, saveChatsAsGroup, savedGroupMessage } from "@/components/chats/saveAsGroup";
 import { createClient } from "@/lib/supabase/client";
 import { usePolling } from "@/hooks/usePolling";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { toast } from "sonner";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import {
@@ -137,6 +138,10 @@ export default function ConversationsPage() {
   // "lead_id" too: WhatsApp alerts already sent to owners (template_fields.chat_link) and push links use it.
   const deepLinkLeadId = searchParams.get("lead") ?? searchParams.get("lead_id");
   const deepLinked = useRef(false);
+  const isPhone = useIsPhone();
+  // True while the open chat is tied to a ?lead= URL; pushedRef: this page added that history entry.
+  const urlOpenRef = useRef(false);
+  const pushedRef = useRef(false);
 
   const fetchEscalationCount = useCallback(async () => {
     try {
@@ -240,8 +245,35 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (!deepLinkLeadId || deepLinked.current) return;
     deepLinked.current = true;
+    urlOpenRef.current = true;
     selectLeadById(deepLinkLeadId);
   }, [deepLinkLeadId, selectLeadById]);
+
+  // Phone back gesture: an open chat has a ?lead= history entry, so Back returns to the list.
+  // When the param goes away (Back pressed), close the chat.
+  // Only reacts when the param goes from set to missing, so the render between pushState and the
+  // param arriving never closes a chat that was just opened.
+  const prevParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const hadParam = prevParamRef.current !== null;
+    prevParamRef.current = deepLinkLeadId;
+    if (hadParam && isPhone && selected && urlOpenRef.current && !deepLinkLeadId) {
+      urlOpenRef.current = false;
+      pushedRef.current = false;
+      setSelected(null);
+    }
+  }, [isPhone, selected, deepLinkLeadId]);
+
+  // Leaves the open chat. Uses Back when this page pushed the entry, else just clears ?lead=.
+  function closeChat() {
+    if (isPhone && pushedRef.current) {
+      router.back();
+    } else if (isPhone && urlOpenRef.current) {
+      window.history.replaceState(null, "", window.location.pathname);
+    } else {
+      setSelected(null);
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem("lead_details_open", String(detailsOpen));
@@ -258,6 +290,14 @@ export default function ConversationsPage() {
   }
 
   function handleSelect(lead: Lead) {
+    if (isPhone && !selected) {
+      // Native pushState: Next 14.1+ syncs it into useSearchParams without a reload or a server fetch.
+      const params = new URLSearchParams(window.location.search);
+      params.set("lead", lead.id);
+      window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
+      urlOpenRef.current = true;
+      pushedRef.current = true;
+    }
     setSelected(lead);
     markSeen(lead);
   }
@@ -417,14 +457,24 @@ export default function ConversationsPage() {
         <ChatThread
           lead={selected}
           team={team}
-          onBack={() => setSelected(null)}
+          onBack={closeChat}
           onDeleted={(id) => {
             setLeads((prev) => prev.filter((l) => l.id !== id));
-            setSelected(null);
+            closeChat();
           }}
           onLeadUpdate={handleLeadUpdate}
           detailsOpen={detailsOpen}
           onToggleDetails={() => setDetailsOpen((open) => !open)}
+          phoneDetails={
+            isPhone ? (
+              <LeadDetailsPanel
+                lead={selected}
+                team={team}
+                onCollapse={() => {}}
+                onLeadUpdate={handleLeadUpdate}
+              />
+            ) : undefined
+          }
         />
       ) : (
         <div className="hidden flex-1 md:flex">

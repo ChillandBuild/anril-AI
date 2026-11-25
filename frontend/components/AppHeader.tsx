@@ -1,9 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
-import { ChevronsDownUp, ChevronsUpDown, Clock, LayoutGrid, List, Plus, ScrollText, ShieldCheck, Users } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Clock, LayoutGrid, List, Plus } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { ProfileMenu } from "@/components/ProfileMenu";
@@ -11,6 +10,7 @@ import { AgentsMenu } from "@/components/agents/AgentsMenu";
 import { agentsRouteMeta } from "@/components/agents/agentsNav";
 import { productOf } from "@/components/nav/products";
 import { PageChips } from "@/components/nav/PageChips";
+import { HEADER_TABS, activeHeaderTab, phoneHeaderTabs, type HeaderTabSet } from "@/components/nav/headerTabs";
 import { callIqRouteMeta } from "@/components/nav/navSections";
 import { AnrilWordmark } from "@/components/logo";
 import { api, API_URL, getAuthHeaders } from "@/lib/api";
@@ -87,122 +87,39 @@ const SMS_TITLES: Record<string, { title: string; description: string }> = {
   developer: { title: "Dev API", description: "Send SMS from your own software with your API key." },
 };
 
-/* ------------------------------------------------------------------ *
- * Header tabs
- *
- * Pages whose views switch with ?tab= pills in this header. One entry drives
- * both the pills and the title: the header always reads "<Page> / <tab>", the
- * way Meta Ads does. Adding a tab, or a new tabbed page, only needs an entry
- * here; never hand-write the pills or the "/ tab" part of the title.
- * The first tab is the default view and has no ?tab= in its URL.
- *
- * Route-based tabs (each tab is its own URL) can't use this map: give each
- * route its own "<Page> / <tab>" title in getBaseRouteMetadata (see Meta Ads
- * and Catalogue).
- * ------------------------------------------------------------------ */
-
-type HeaderTab = { value: string; label: string; icon?: LucideIcon };
-type HeaderTabSet = {
-  tabs: HeaderTab[];
-  /** Old ?tab= values that still open a tab. */
-  aliases?: Record<string, string>;
-  /** Write ?tab= for the first tab too (these pages read it literally). */
-  explicitDefault?: boolean;
-  /** Tighter pills, for sets with many tabs. */
-  compact?: boolean;
-};
-
-const HEADER_TABS: Record<string, HeaderTabSet> = {
-  "/dashboard/outbound-leads": {
-    explicitDefault: true,
-    tabs: [
-      { value: "upload", label: "Broadcast Message" },
-      { value: "history", label: "Broadcast History" },
-      { value: "tags", label: "Tags" },
-      { value: "opted-out", label: "Opted-Out" },
-    ],
-  },
-  "/dashboard/numbers": {
-    tabs: [
-      { value: "pool", label: "Active Pool" },
-      { value: "activity", label: "Activity Log" },
-    ],
-  },
-  // Documents (RAG) is the default landing tab (2026-09-20). `?tab=ai-tune` is
-  // an old link that still opens the Description.
-  "/dashboard/knowledge": {
-    aliases: { "ai-tune": "description" },
-    tabs: [
-      { value: "documents", label: "Documents (RAG)" },
-      { value: "description", label: "Description" },
-    ],
-  },
-  "/dashboard/analytics": {
-    compact: true,
-    tabs: [
-      { value: "overview", label: "Overview" },
-      { value: "channels", label: "Channels" },
-      { value: "inbound", label: "Inbound" },
-      { value: "templates", label: "Templates" },
-    ],
-  },
-  "/dashboard/purchases": {
-    tabs: [
-      { value: "orders", label: "Purchase orders" },
-      { value: "stock-in", label: "Stock in" },
-      { value: "suppliers", label: "Suppliers" },
-    ],
-  },
-  // "Form answers" is hidden unless form intake is on (see AppHeader).
-  "/dashboard/deals": {
-    tabs: [
-      { value: "deals", label: "Orders" },
-      { value: "insights", label: "Insights" },
-      { value: "forms", label: "Form answers" },
-    ],
-  },
-  "/dashboard/roles": {
-    tabs: [
-      { value: "roles", label: "Roles", icon: ShieldCheck },
-      { value: "users", label: "Users", icon: Users },
-      { value: "audit", label: "Activity log", icon: ScrollText },
-    ],
-  },
-  // Customers. Old links say tab=leads (All people) or tab=reengagement (Follow-ups).
-  "/dashboard/leads": {
-    aliases: { reengagement: "follow-ups", leads: "people" },
-    tabs: [
-      { value: "people", label: "All people" },
-      { value: "groups", label: "Groups" },
-      { value: "said-stop", label: "Said stop" },
-      { value: "feedback", label: "Feedback" },
-      { value: "follow-ups", label: "Follow-ups" },
-    ],
-  },
-};
-
-function activeHeaderTab(set: HeaderTabSet, tabParam: string): HeaderTab {
-  const value = set.aliases?.[tabParam] ?? tabParam;
-  return set.tabs.find((t) => t.value === value) ?? set.tabs[0];
-}
 
 function HeaderTabSwitch({
   pathname,
   set,
   hidden = [],
   className = "mr-2",
+  placement = "header",
 }: {
   pathname: string;
   set: HeaderTabSet;
   hidden?: string[];
   className?: string;
+  /** "header": pills in the tablet/desktop header. "strip": the phone row under the header, scrolling sideways. */
+  placement?: "header" | "strip";
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const active = activeHeaderTab(set, searchParams.get("tab") || "");
+  const isStrip = placement === "strip";
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (isStrip) activeRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [isStrip, active.value]);
 
-  return (
-    <div className={cn("hidden gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1 md:flex", className)}>
+  const pills = (
+    <div
+      className={cn(
+        "gap-1 rounded-2xl bg-[#e2e8f0]/60 p-1",
+        isStrip
+          ? "flex w-max max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : cn("hidden md:flex", className),
+      )}
+    >
       {set.tabs
         .filter((t) => !hidden.includes(t.value))
         .map((t) => {
@@ -211,6 +128,7 @@ function HeaderTabSwitch({
           return (
             <button
               key={t.value}
+              ref={isActive ? activeRef : undefined}
               type="button"
               aria-pressed={isActive}
               onClick={() => {
@@ -222,7 +140,7 @@ function HeaderTabSwitch({
               }}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-xl py-1.5 font-label text-xs font-bold transition-all",
-                set.compact ? "px-2.5 xl:px-3" : "px-3",
+                isStrip ? "shrink-0 whitespace-nowrap px-3" : set.compact ? "px-2.5 xl:px-3" : "px-3",
                 isActive ? "bg-white text-primary shadow-sm" : "text-[#475569] hover:text-[#13284A]"
               )}
             >
@@ -232,6 +150,14 @@ function HeaderTabSwitch({
           );
         })}
     </div>
+  );
+
+  if (!isStrip) return pills;
+  // Phones: the header is one fixed line, so the tabs sit in the page flow right under it (like PageChips).
+  return (
+    <nav aria-label="Page tabs" className="min-w-0 px-3 pt-3 sm:px-4 md:hidden">
+      {pills}
+    </nav>
   );
 }
 
@@ -583,6 +509,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
   const isCallReview = pathname === "/dashboard/notes" && (role === "owner" || permissions.includes("team.manage"));
   const tab = searchParams.get("tab") || "";
   const headerTabs = HEADER_TABS[pathname || ""];
+  const phoneTabs = phoneHeaderTabs(pathname || "");
   const [callingProvider, setCallingProvider] = useState<"telecmi" | "sim_basic">("telecmi");
 
   // Deals: "Form answers" tab only shows when form intake is switched on
@@ -876,6 +803,7 @@ export function AppHeader({ onOpenCalendar }: { onOpenCalendar: () => void }) {
     </header>
     {/* Phones: the header is one fixed line, so the chips sit in the page flow right under it. */}
     <PageChips placement="strip" />
+    {phoneTabs && <HeaderTabSwitch pathname={pathname || ""} set={phoneTabs} placement="strip" />}
     </>
   );
 }

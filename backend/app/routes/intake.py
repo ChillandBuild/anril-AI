@@ -33,6 +33,7 @@ from app.services.intake import (
 )
 from app.services.intake_copy import compose_payment_receipt, gst_receipt_line
 from app.services.intake_csv import FIXED_HEADERS, build_csv_headers, build_csv_row
+from app.services.reports_common import phone_cell
 from app.services.payment_razorpay import verify_webhook_signature
 
 logger = logging.getLogger(__name__)
@@ -184,7 +185,9 @@ def export_intake_sessions_csv(
     writer = csv.writer(buffer)
     writer.writerow(FIXED_HEADERS + [label for _, label in headers])
     for row in rows:
-        writer.writerow(build_csv_row(row, field_keys))
+        cells = build_csv_row(row, field_keys)
+        cells[1] = phone_cell(cells[1])  # the Phone column (FIXED_HEADERS[1])
+        writer.writerow(cells)
     buffer.seek(0)
 
     return Response(

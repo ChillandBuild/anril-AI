@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -323,6 +323,14 @@ export default function RolesPage() {
     });
     return () => { active = false; };
   }, [tab, auditPage, auditPerson, auditType, auditFrom, auditTo, canView]);
+
+  // Phone: the editor sits below the list, so bring it into view when a role or person is picked.
+  const editorRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!editingRoleId && !editingUserId && !editingOwner) return;
+    if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+    editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editingRoleId, editingUserId, editingOwner]);
 
   function startRole(role: ClientRole) {
     setEditingRoleId(role.id);
@@ -771,7 +779,7 @@ export default function RolesPage() {
             </div>
           </aside>
 
-          <form onSubmit={saveRole} className="card flex min-h-0 flex-col overflow-hidden rounded-3xl p-0 xl:h-full">
+          <form ref={editorRef} onSubmit={saveRole} className="card flex min-h-0 flex-col overflow-hidden rounded-3xl p-0 xl:h-full">
             <div className="shrink-0 border-b border-border-subtle bg-gradient-to-br from-surface-subtle via-white to-primary-light/20 px-5 py-3 sm:px-6">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -897,7 +905,7 @@ export default function RolesPage() {
       ) : tab === "users" ? (
         <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
           {canWrite && (
-          <form onSubmit={saveUser} className="card rounded-3xl space-y-4">
+          <form ref={editorRef} onSubmit={saveUser} className="card rounded-3xl space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-base font-bold text-ink">

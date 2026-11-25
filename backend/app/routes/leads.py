@@ -13,6 +13,7 @@ from app.db.supabase import get_supabase
 from app.services.actor import actor_name, sender_fields
 from app.services.outbound_router import reply_number_for
 from app.services.call_evaluation import strip_evaluation
+from app.services.reports_common import phone_cell
 from app.services.call_transcript import mask_transcripts
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, get_owner_tenant_id, require_permission
 from app.models.schemas import Lead, LeadUpdate, LeadWithMessages, Message, PaginatedResponse
@@ -1147,7 +1148,7 @@ async def export_leads(
         spent = (facts["per_lead"].get(lead_id) or {}).get("spent_paise", 0)
         rows.append({
             "Name": l.get("name") or "",
-            "Phone": l.get("phone") or "",
+            "Phone": phone_cell(l.get("phone")),
             "Status": "Buyer" if lead_id in facts["buyers"] else "Lead",
             "Interest": INTEREST_LABELS.get(l.get("segment"), ""),
             "Came from": l.get("source") or "",
@@ -1240,7 +1241,7 @@ async def export_assigned_leads(
         
         rows.append({
             "name": l.get("name") or "",
-            "phone": l.get("phone") or "",
+            "phone": phone_cell(l.get("phone")),
             "type": lead_type,
             "broadcast_id": broadcast_id,
             "template_name": template_name,

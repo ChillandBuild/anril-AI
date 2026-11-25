@@ -19,6 +19,7 @@ from app.services.growth import get_or_create_campaign, record_stage_event, sync
 from app.services.meta_cloud import send_template_message
 from app.services.broadcast_executor import next_send_time
 from app.services import reach_audience, reach_results, reports_campaigns
+from app.services.reports_common import phone_cell
 from app.services.outbound_router import SenderPicker, get_best_number
 from app.services.template_params import HEADER_COLS, body_parameters, header_components, template_status
 from app.services.segmentation import new_lead_score_and_segment
@@ -2200,7 +2201,7 @@ def _classify_broadcast_outcomes(
                 skipped_blocked += 1
             continue
 
-        def _add_failure(reason: str, fail_reason: str | None, opted_out_at: str | None) -> None:
+        def _add_failure(reason: str, fail_reason: str | None, opted_out_at: str | None, detail: str = "") -> None:
             if phone and phone not in seen_phones:
                 seen_phones.add(phone)
                 failures.append({
@@ -2209,7 +2210,7 @@ def _classify_broadcast_outcomes(
                     "name": name,
                     "reason": reason,
                     "fail_reason": fail_reason or "",
-                    "fail_detail": r.get("fail_detail") or "",
+                    "fail_detail": detail or r.get("fail_detail") or "",
                     "opted_out_at": opted_out_at or "",
                 })
 
@@ -2250,16 +2251,15 @@ def _classify_broadcast_outcomes(
 
         delivery = msg_status_by_lead.get(lead_id) if lead_id else None
         if delivery == "failed":
-            fail_reason = "delivery_failed"
+            # Short code in fail_reason; WhatsApp's own words (with its error number) in fail_detail.
+            detail = ""
             err = msg_error_by_lead.get(lead_id)
             if err:
                 code, title = err
-                parts = [p for p in (str(code) if code is not None else "", title or "") if p]
-                if parts:
-                    fail_reason = "delivery_failed:" + ":".join(parts)
+                detail = " ".join(p for p in (f"(#{code})" if code is not None else "", title or "") if p)
             if not stopped_at:
                 failed += 1
-                _add_failure("failed", fail_reason, None)
+                _add_failure("failed", "delivery_failed", None, detail)
         elif delivery == "read":
             sent += 1
             delivered += 1
@@ -2318,7 +2318,7 @@ async def get_reached_csv(
     writer = csv.DictWriter(output, fieldnames=["phone", "name", "status", "said_stop_at", "broadcast_id", "broadcast_timestamp"])
     writer.writeheader()
     for r in rows:
-        writer.writerow({**r, "broadcast_id": broadcast_id, "broadcast_timestamp": ts})
+        writer.writerow({**r, "phone": phone_cell(r["phone"]), "broadcast_id": broadcast_id, "broadcast_timestamp": ts})
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
@@ -2390,32 +2390,31 @@ async def get_failed_csv(
                     lead_ids_fb = [r["lead_id"] for r in failed_msgs.data if r.get("lead_id")]
                     leads_fb = db.table("leads").select("id,phone,name").in_("id", lead_ids_fb).eq("tenant_id", tenant_id).execute()
                     output = io.StringIO()
-                    writer = csv.DictWriter(output, fieldnames=["phone", "name", "reason", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"])
+                    writer = csv.DictWriter(output, fieldnames=["phone", "name", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"])
                     writer.writeheader()
                     for lead in (leads_fb.data or []):
-                        writer.writerow({"phone": lead.get("phone", ""), "name": lead.get("name", ""), "reason": "failed", "fail_reason": "delivery_failed", "fail_detail": "", "broadcast_id": broadcast_id, "broadcast_timestamp": broadcast_ts})
+                        writer.writerow({"phone": phone_cell(lead.get("phone")), "name": lead.get("name", ""), "fail_reason": "delivery_failed", "fail_detail": "", "broadcast_id": broadcast_id, "broadcast_timestamp": broadcast_ts})
                     return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=failed_{broadcast_id[:8]}.csv"})
         except Exception as e:
             logger.warning(f"Fallback failed-csv lookup failed: {e}")
         # Return empty CSV instead of 404 JSON
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["phone", "name", "reason", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"])
+        writer = csv.DictWriter(output, fieldnames=["phone", "name", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"])
         writer.writeheader()
         return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=failed_{broadcast_id[:8]}.csv"})
 
     output = io.StringIO()
     writer = csv.DictWriter(
         output,
-        fieldnames=["phone", "name", "reason", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"],
+        fieldnames=["phone", "name", "fail_reason", "fail_detail", "broadcast_id", "broadcast_timestamp"],
     )
     writer.writeheader()
     for row in outcome["failures"]:
         if row.get("reason") == "not_interested":
             continue
         writer.writerow({
-            "phone": row.get("phone", ""),
+            "phone": phone_cell(row.get("phone")),
             "name": row.get("name", ""),
-            "reason": row.get("reason", "failed"),
             "fail_reason": row.get("fail_reason", ""),
             "fail_detail": row.get("fail_detail", ""),
             "broadcast_id": broadcast_id,
@@ -2668,7 +2667,7 @@ async def download_broadcast_scores_csv(
         seg = r.get("segment", "C")
         writer.writerow({
             "Name": lead.get("name", ""),
-            "Phone": lead.get("phone", ""),
+            "Phone": phone_cell(lead.get("phone", "")),
             "Score": r.get("score", 5),
             "Segment": seg,
             "Arc Score": r.get("arc_score", 5),
@@ -2899,7 +2898,7 @@ async def download_tag_csv(
                     continue
                 writer.writerow({
                     "Name": row.get("name", ""),
-                    "Phone": row.get("phone", ""),
+                    "Phone": phone_cell(row.get("phone", "")),
                     "Template": template_name,
                     "From Broadcast ID": bid,
                     "Reason": row.get("fail_reason") or "opted_out",
@@ -2963,7 +2962,7 @@ async def download_tag_csv(
                 hot, warm, cold = _segment_to_flags(cur_seg)
                 writer.writerow({
                     "Name": r.get("name") or "",
-                    "Phone": phone,
+                    "Phone": phone_cell(phone),
                     "Template": template_name,
                     "Broadcast ID": bid,
                     "HOT": hot,
@@ -3102,7 +3101,7 @@ def _collect_successful_tag_segment_rows(db, tenant_id: str, tags: list[dict]) -
                 hot, warm, cold = _segment_to_flags(seg)
                 all_rows.append({
                     "Name": recipient.get("name") or "",
-                    "Phone": phone,
+                    "Phone": phone_cell(phone),
                     "Tag": tag_name,
                     "Template": template_name,
                     "Broadcast ID": bid,
@@ -3258,7 +3257,7 @@ async def download_all_tags_combined(
 
                 all_rows.append({
                     "Name": r.get("name") or "",
-                    "Phone": r.get("phone") or "",
+                    "Phone": phone_cell(r.get("phone") or ""),
                     "Tag": tag_name,
                     "Template": template_name,
                     "Broadcast ID": bid,
@@ -3382,7 +3381,7 @@ async def download_broadcast_tag_csv(
                 continue
             writer.writerow({
                 "Name": row.get("name", ""),
-                "Phone": row.get("phone", ""),
+                "Phone": phone_cell(row.get("phone", "")),
                 "Template": template_name,
                 "From Broadcast ID": broadcast_id,
                 "Reason": row.get("fail_reason") or "opted_out",
@@ -3490,7 +3489,7 @@ async def download_broadcast_tag_csv(
                 continue
         writer.writerow({
             "Name": r.get("name") or "",
-            "Phone": r.get("phone") or "",
+            "Phone": phone_cell(r.get("phone") or ""),
             "Template": template_name,
             "From Broadcast ID": broadcast_id,
             "HOT": hot,

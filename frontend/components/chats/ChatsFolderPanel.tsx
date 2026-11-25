@@ -4,6 +4,7 @@ import { Archive, Ban, Download, Info, Loader2, Search, Undo2, X } from "lucide-
 import { toast } from "sonner";
 import { API_URL, getAuthHeaders, Lead, api } from "@/lib/api";
 import { cn, formatConvoTime, formatPhone, stripMarkdown } from "@/lib/utils";
+import { phoneCell } from "@/lib/csvPhone";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { ChannelAvatar } from "@/components/channel-avatar";
@@ -69,7 +70,7 @@ const WITHIN_OPTIONS = [
 
 const BLOCKED_COLUMNS: CsvColumn<Lead>[] = [
   { header: "Name", value: (l) => l.name },
-  { header: "Phone", value: (l) => l.phone },
+  { header: "Phone", value: (l) => phoneCell(l.phone) },
   { header: "Channel", value: (l) => channelLabel(l.source) },
   { header: "Blocked at", value: (l) => istDateTime(l.blocked_at) },
   { header: "Blocked by", value: (l) => l.blocked_by_name },
@@ -89,7 +90,7 @@ async function fetchAll(view: FolderView, f: ArchivedFilters): Promise<Lead[]> {
 
 const COLUMNS: CsvColumn<Lead>[] = [
   { header: "Name", value: (l) => l.name },
-  { header: "Phone", value: (l) => l.phone },
+  { header: "Phone", value: (l) => phoneCell(l.phone) },
   { header: "Channel", value: (l) => channelLabel(l.source) },
   { header: "Interest", value: (l) => segmentLabel(l.segment) },
   { header: "Last message", value: (l) => l.last_message_content },

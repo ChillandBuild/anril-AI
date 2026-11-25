@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dripTimeProblem, scheduleProblem } from "./reachSchedule";
+import { dripTimeProblem, scheduleChoices, scheduleProblem } from "./reachSchedule";
 
 describe("Reach schedule hours", () => {
   it("accepts 9 AM to 8:59 PM India time and refuses the night", () => {
@@ -35,5 +35,26 @@ describe("time left while sending", () => {
     expect(timeLeftText(312, 772, 3 * 60_000)).toBe("about 4 minutes left");
     expect(timeLeftText(2, 772, 10_000)).toBeNull();
     expect(timeLeftText(770, 772, 600_000)).toBe("less than a minute left");
+  });
+});
+
+describe("one-tap schedule choices", () => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const at = (day: number, hour: number) => `2026-11-${pad(day)}T${pad(hour)}:00`;
+  it("offers all three in the morning", () => {
+    const c = scheduleChoices(new Date(2026, 10, 25, 10, 0));
+    expect(c.map((x) => x.label)).toEqual(["Today 6 PM", "Tomorrow 10 AM", "Tomorrow 6 PM"]);
+    expect(c.map((x) => x.value)).toEqual([at(25, 18), at(26, 10), at(26, 18)]);
+    c.forEach((x) => expect(scheduleProblem(x.value)).toBeNull());
+  });
+  it("drops Today 6 PM once it has passed", () => {
+    const c = scheduleChoices(new Date(2026, 10, 25, 19, 0));
+    expect(c.map((x) => x.label)).toEqual(["Tomorrow 10 AM", "Tomorrow 6 PM"]);
+    expect(c.map((x) => x.value)).toEqual([at(26, 10), at(26, 18)]);
+  });
+  it("each value parses back to the local date-time", () => {
+    const [first] = scheduleChoices(new Date(2026, 10, 25, 10, 0));
+    const d = new Date(first.value);
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 10, 25, 18, 0]);
   });
 });

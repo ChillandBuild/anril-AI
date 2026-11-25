@@ -386,7 +386,7 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
       </SectionCard>
 
       {canEdit && dirty && (
-        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#0A1528] px-5 py-3 text-white shadow-[0_12px_32px_rgba(10,21,40,0.28)]">
+        <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] lg:bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#0A1528] px-5 py-3 text-white shadow-[0_12px_32px_rgba(10,21,40,0.28)]">
           <p className="flex items-center gap-2.5 text-sm font-semibold">
             <span className="h-2 w-2 shrink-0 rounded-full bg-[#f79009]" aria-hidden="true" />
             You have unsaved changes

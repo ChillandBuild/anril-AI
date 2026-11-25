@@ -236,7 +236,7 @@ export default function RepliesAndHandoverPage() {
         </Step>
       </div>
 
-      <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+      <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] lg:bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
         <div className="min-w-0">
           {errors.length > 0 ? (
             <ul role="alert" className="font-body text-sm text-danger">

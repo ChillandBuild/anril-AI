@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useRouter } from "next/navigation";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import Link from "next/link";
 import {
   Plus,
@@ -368,6 +369,7 @@ export default function TemplatesPage() {
     setSelectedLanguage("ALL");
     setSelectedUsedIn("ALL");
   };
+  const isPhone = useIsPhone();
   const openBuilderWith = (p: TemplatePrefill) => {
     savePrefill(p);
     router.push("/dashboard/templates/new");
@@ -903,16 +905,36 @@ export default function TemplatesPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-border-subtle bg-white flex items-center justify-end gap-2.5">
-              <button onClick={() => setSelectedTemplate(null)} className="btn-ghost text-xs">Close</button>
+            <div className="p-4 border-t border-border-subtle bg-white flex flex-wrap items-center justify-end gap-2.5">
+              <button onClick={() => setSelectedTemplate(null)} className="btn-ghost text-xs max-lg:min-h-10">Close</button>
+              {canManageTemplates && (
+                <button
+                  onClick={() => {
+                    const tmpl = selectedTemplate;
+                    setSelectedTemplate(null);
+                    openBuilderWith(prefillFromTemplate(tmpl));
+                  }}
+                  className="btn-ghost text-xs lg:hidden max-lg:min-h-10"
+                >
+                  Duplicate
+                </button>
+              )}
+              {selectedTemplate.status === "APPROVED" && (
+                <button
+                  onClick={() => router.push(`/dashboard/outbound-leads?template=${encodeURIComponent(selectedTemplate.name)}`)}
+                  className="btn-primary text-xs lg:hidden max-lg:order-first max-lg:min-h-10"
+                >
+                  Send to customers
+                </button>
+              )}
               {canManageTemplates && (["APPROVED", "REJECTED", "PAUSED"].includes(selectedTemplate.status) || !selectedTemplate.meta_template_id)
                 && !(selectedTemplate.status === "APPROVED" && selectedTemplate.edit_allowance && !selectedTemplate.edit_allowance.allowed) && (
                 <button
                   onClick={() => {
                     setSelectedTemplate(null);
-                    router.push(`/dashboard/templates/${selectedTemplate.id}`);
+                    router.push(`/dashboard/templates/${selectedTemplate.id}${isPhone ? "?edit=1" : ""}`);
                   }}
-                  className="btn-primary text-xs"
+                  className={`btn-primary text-xs max-lg:min-h-10 ${selectedTemplate.status === "APPROVED" ? "" : "max-lg:order-first"}`}
                 >
                   {selectedTemplate.status === "APPROVED" ? "Edit" : "Edit and Resubmit"}
                 </button>

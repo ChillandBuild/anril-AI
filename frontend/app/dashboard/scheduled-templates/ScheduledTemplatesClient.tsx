@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { clockOf, formatSendTime, toIstInputs, untilSend } from "@/lib/schedule-time";
 import { cn } from "@/lib/utils";
+import { phoneCell } from "@/lib/csvPhone";
 import { buildCsv, downloadCsv } from "./exportCsv";
 import { RescheduleDialog } from "./RescheduleDialog";
 
@@ -404,7 +405,7 @@ export function ScheduledTemplatesClient() {
       const list = block.kind === "batch" ? block.rows : [block.row];
       for (const t of list) {
         rows.push([
-          "Template", t.lead_name || "", t.lead_phone || "", block.kind === "batch" ? block.label : "", t.template_name,
+          "Template", t.lead_name || "", phoneCell(t.lead_phone), block.kind === "batch" ? block.label : "", t.template_name,
           formatSendTime(new Date(t.send_at)), t.created_by_name, STATUS_LABEL[t.status], t.reason ?? "", "", "",
         ]);
       }
@@ -1104,7 +1105,7 @@ export function ScheduledTemplatesClient() {
         <div
           role="region"
           aria-label="Selection"
-          className="fixed bottom-5 left-1/2 z-30 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-[#0A1528] py-2.5 pl-5 pr-3 text-sm text-white shadow-xl"
+          className="fixed bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.75rem)] lg:bottom-5 left-1/2 z-30 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-[#0A1528] py-2.5 pl-5 pr-3 text-sm text-white shadow-xl"
         >
           <span className="whitespace-nowrap">
             <b className="tabular-nums">{selectedRefs.length}</b> selected

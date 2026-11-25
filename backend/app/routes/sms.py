@@ -22,6 +22,7 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_owner, require_permission
 from app.services import bulk9_client, sms_campaigns as camp, sms_setup, sms_wallet
 from app.services.bulk9_client import Bulk9Error, Bulk9NotConfigured, Bulk9Timeout
+from app.services.reports_common import phone_cell
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -640,7 +641,7 @@ async def export_messages(campaign_id: Optional[str] = None, status: Optional[st
         rows = _messages_query(db, tid, campaign_id, status, from_, to, search) \
             .range(start, start + 999).execute().data or []
         for m in camp.public_messages(db, tid, rows):
-            w.writerow([cell(m["lead_name"]), cell(m["phone"]), cell(m["content"]), m["status"],
+            w.writerow([cell(m["lead_name"]), phone_cell(m["phone"]), cell(m["content"]), m["status"],
                         cell(m["failure_reason"]), m["sms_count"] if m["sms_count"] is not None else "",
                         m["submitted_at"] or "", m["delivered_at"] or ""])
         if len(rows) < 1000:

@@ -637,7 +637,7 @@ export function CartBuilder({
         </div>
       )}
 
-      <div className="sticky bottom-0 flex items-center justify-between rounded-2xl border border-border bg-white/95 p-4 shadow-lg backdrop-blur">
+      <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px))] lg:bottom-0 z-10 flex items-center justify-between rounded-2xl border border-border bg-white/95 p-4 shadow-lg backdrop-blur">
         <div>
           <p className="text-xs font-medium text-ink-muted">{mode === "addon" ? "Due now" : "Total"}</p>
           <p className="text-2xl font-bold text-ink">
@@ -658,7 +658,7 @@ export function CartBuilder({
           onClick={submit}
           disabled={submitting || Object.keys(selected).length === 0 || !canSubmit}
           title={canSubmit ? "Submit subscription request" : "Read-only role: submission is disabled"}
-          className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-dark hover:scale-[1.02] active:scale-[0.98] transition-all duration-150 shadow-sm disabled:opacity-40 disabled:blur-[0.5px] disabled:scale-100 disabled:shadow-none"
+          className="flex items-center gap-1.5 px-4 py-2 max-lg:min-h-11 max-lg:text-sm bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-dark hover:scale-[1.02] active:scale-[0.98] transition-all duration-150 shadow-sm disabled:opacity-40 disabled:blur-[0.5px] disabled:scale-100 disabled:shadow-none"
         >
           {submitting ? "Submitting…" : mode === "addon" ? "Request Increase" : "Submit for Approval"}
         </button>

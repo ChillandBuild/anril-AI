@@ -20,7 +20,7 @@ import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, ty
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { CampaignResultsDrawer } from "./CampaignResultsDrawer";
-import { SCHEDULE_HOURS_NOTE, dripTimeProblem, scheduleProblem } from "./reachSchedule";
+import { SCHEDULE_HOURS_NOTE, dripTimeProblem, scheduleChoices, scheduleProblem } from "./reachSchedule";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2363,6 +2363,23 @@ export default function OutboundLeadsPage() {
                     <label className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider mb-2">
                       Send At
                     </label>
+                    <div className="mb-2 flex gap-2 overflow-x-auto">
+                      {scheduleChoices(new Date()).map((c) => (
+                        <button
+                          key={c.value}
+                          type="button"
+                          onClick={() => setScheduleAt(c.value)}
+                          className={cn(
+                            "h-8 shrink-0 whitespace-nowrap rounded-full border px-3 font-label text-xs font-bold transition-colors",
+                            scheduleAt === c.value
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-surface-mid bg-surface-low text-on-surface hover:border-primary/40",
+                          )}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
                     <input
                       type="datetime-local"
                       value={scheduleAt}

@@ -54,7 +54,7 @@ export function CampaignResultsDrawer({ broadcastId, title, onClose }: { broadca
   const showMoney = data?.cost_inr !== undefined;
   return (
     <div
-      className={cn("fixed inset-0 z-50 flex justify-end bg-gray-900/30 backdrop-blur-[2px] transition-opacity duration-200", shown ? "opacity-100" : "opacity-0")}
+      className={cn("fixed inset-0 z-dialog flex justify-end bg-gray-900/30 backdrop-blur-[2px] transition-opacity duration-200", shown ? "opacity-100" : "opacity-0")}
       onClick={onClose}
     >
       <aside

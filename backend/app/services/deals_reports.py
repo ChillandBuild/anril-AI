@@ -16,6 +16,7 @@ from app.db.supabase import get_supabase
 from app.services.business_details import get_business_details
 from app.services.deals import LOW_STOCK_THRESHOLD, SOURCES, format_deal_number, held_quantities
 from app.services.intake_csv import _csv_safe
+from app.services.reports_common import phone_cell
 
 IST = ZoneInfo("Asia/Kolkata")
 MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
@@ -177,7 +178,8 @@ def _is_intake_deal(deal: dict) -> bool:
     return bool(deal.get("intake_session_id")) or deal.get("source") == "form"
 
 
-def _register_rows(deals: list[dict], sign: int, date_key: str, include_gst: bool, profile: dict) -> list[list]:
+def _register_rows(deals: list[dict], sign: int, date_key: str, include_gst: bool, profile: dict,
+                   phone_fn=_csv_safe) -> list[list]:
     rows = []
     for deal in deals:
         lead = deal.get("leads") or {}
@@ -190,7 +192,7 @@ def _register_rows(deals: list[dict], sign: int, date_key: str, include_gst: boo
                 _ist_date(deal[date_key]),
                 format_deal_number(deal["deal_number"]) + (" (refund)" if sign < 0 else ""),
                 _csv_safe(lead.get("name") or ""),
-                _csv_safe(lead.get("phone") or ""),
+                phone_fn(lead.get("phone") or ""),
                 _csv_safe(line["name"]),
                 sign * line["qty"],
                 line["unit_price_paise"] / 100,
@@ -230,7 +232,9 @@ def sales_register(tenant_id: str, month: str, fmt: str, db=None) -> tuple[bytes
     headers = ["Date", "Deal #", "Customer", "Phone", "Item", "Qty", "Rate (₹)"]
     headers += (["Taxable value (₹)", "GST %", "CGST (₹)", "SGST (₹)", "IGST (₹)", "Amount (₹)"] if include_gst else ["Amount (₹)"])
     headers += ["Paid by", "Payment ref", "Source"]
-    body = _register_rows(won, 1, "won_at", include_gst, profile) + _register_rows(refunds, -1, "lost_at", include_gst, profile)
+    phone_fn = phone_cell if fmt == "csv" else _csv_safe  # the CSV writes a number Excel shows in full; the xlsx keeps its old cell
+    body = (_register_rows(won, 1, "won_at", include_gst, profile, phone_fn)
+            + _register_rows(refunds, -1, "lost_at", include_gst, profile, phone_fn))
     amount_col = headers.index("Amount (₹)")
     total = round(sum(r[amount_col] for r in body), 2)
 

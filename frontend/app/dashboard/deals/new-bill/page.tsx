@@ -100,6 +100,11 @@ export default function NewBillPage() {
   const [done, setDone] = useState<NewBillResult | null>(null);
   // v9.2 #74: one "send once" key per bill, kept across retries of the same bill until it is saved or reset.
   const clientRef = useRef<string | null>(null);
+  // Phone: the size/colour picker opens below the item grid, so bring it into view.
+  const pickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (picking && typeof window !== "undefined" && window.innerWidth < 1024) pickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [picking]);
   const [waitFor, setWaitFor] = useState<NewBillVariant | null>(null);
 
   // Who is this number? (so a returning customer's name fills in)
@@ -400,7 +405,7 @@ export default function NewBillPage() {
           )}
 
           {picking && (
-            <div className="rounded-2xl border-2 border-primary bg-white p-4 shadow-lg">
+            <div ref={pickerRef} className="rounded-2xl border-2 border-primary bg-white p-4 shadow-lg">
               <div className="flex items-start justify-between">
                 <h2 className="font-label text-sm font-bold text-[#0A1528]">{picking.name} · pick {picking.variants.some((v) => v.colour) ? "colour and size" : "size"}</h2>
                 <button type="button" onClick={() => setPicking(null)} aria-label="Close" className="text-[#94a3b8] hover:text-[#0A1528]"><X size={16} /></button>
@@ -517,9 +522,9 @@ export default function NewBillPage() {
                       ) : null)}
                     </span>
                     <span className="flex items-center rounded-lg border border-[#e2e8f0]">
-                      <button type="button" onClick={() => changeQty(l.key, -1)} aria-label="One less" className="px-1.5 py-1 text-[#475569]"><Minus size={12} /></button>
+                      <button type="button" onClick={() => changeQty(l.key, -1)} aria-label="One less" className="flex h-8 w-8 items-center justify-center text-[#475569]"><Minus size={14} /></button>
                       <span className="w-6 text-center text-xs font-bold tabular-nums">{l.qty}</span>
-                      <button type="button" onClick={() => changeQty(l.key, 1)} aria-label="One more" className="px-1.5 py-1 text-[#475569]"><Plus size={12} /></button>
+                      <button type="button" onClick={() => changeQty(l.key, 1)} aria-label="One more" className="flex h-8 w-8 items-center justify-center text-[#475569]"><Plus size={14} /></button>
                     </span>
                     <span className="w-20 text-right text-sm font-bold tabular-nums">{rupees(linePrice(l) * l.qty)}</span>
                   </li>
@@ -626,7 +631,7 @@ export default function NewBillPage() {
       {/* Phones: the bill is below the items, so keep the total in reach. */}
       {lines.length > 0 && (
         <a href="#the-bill"
-          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-primary px-4 py-3 font-label text-sm font-bold text-white shadow-xl lg:hidden">
+          className="fixed inset-x-4 bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] z-30 flex items-center justify-between rounded-2xl bg-primary px-4 py-3 font-label text-sm font-bold text-white shadow-xl lg:hidden">
           <span>{lines.reduce((a, l) => a + l.qty, 0)} {lines.reduce((a, l) => a + l.qty, 0) === 1 ? "item" : "items"} · {rupees(totals.total_paise)}</span>
           <span>Go to bill ↓</span>
         </a>

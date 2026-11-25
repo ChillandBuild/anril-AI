@@ -35,3 +35,16 @@ export function timeLeftText(done: number, total: number, elapsedMs: number): st
   if (min < 1) return "less than a minute left";
   return `about ${min} ${min === 1 ? "minute" : "minutes"} left`;
 }
+
+/** One-tap times for the "Later" option: future, inside the allowed hours. `value` is a datetime-local string. */
+export function scheduleChoices(now: Date): { label: string; value: string }[] {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const make = (dayOffset: number, hour: number, label: string) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, 0, 0, 0);
+    const value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
+    return { label, value, when: d.getTime() };
+  };
+  return [make(0, 18, "Today 6 PM"), make(1, 10, "Tomorrow 10 AM"), make(1, 18, "Tomorrow 6 PM")]
+    .filter((c) => c.when > now.getTime() && scheduleProblem(c.value) === null)
+    .map(({ label, value }) => ({ label, value }));
+}

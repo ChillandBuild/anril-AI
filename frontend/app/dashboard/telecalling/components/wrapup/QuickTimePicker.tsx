@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import { CalendarClock, X } from "lucide-react";
+import { CalendarClock, ChevronDown, X } from "lucide-react";
 import { formatIstWhen, fromIstInputs, quickTimes, toIstInputs } from "@/lib/call-wrapup";
+import { TOMORROW_HOURS, tomorrowAt } from "./quickTimes";
 
 interface QuickTimePickerProps {
   value: string | null;
@@ -14,11 +15,13 @@ interface QuickTimePickerProps {
 const CHIP = "px-3 py-1.5 rounded-full border font-label text-[11px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed";
 const ON = "bg-primary border-primary text-white shadow-sm";
 const OFF = "bg-white border-[#e2e8f0] text-[#334155] hover:border-primary-muted hover:text-primary";
+const HOUR_CHIP = "h-8 shrink-0 whitespace-nowrap px-3 rounded-full border font-label text-xs font-bold transition-all";
 const INPUT = "flex-1 min-w-0 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-body text-xs focus:outline-none focus:ring-2 focus:ring-primary";
 
 /** In 1 hour · This evening 6 PM · Tomorrow 10 AM · Pick a date & time — all in IST. */
 export default function QuickTimePicker({ value, onChange, now, optional = false, suggested = null }: QuickTimePickerProps) {
   const [custom, setCustom] = useState(false);
+  const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const quick = quickTimes(now);
   const picked = value ? new Date(value) : null;
   const matched = picked ? quick.find((q) => Math.abs(q.at.getTime() - picked.getTime()) < 60_000)?.key ?? null : null;
@@ -50,6 +53,14 @@ export default function QuickTimePicker({ value, onChange, now, optional = false
         ))}
         <button
           type="button"
+          onClick={() => setTomorrowOpen((o) => !o)}
+          aria-expanded={tomorrowOpen}
+          className={`${CHIP} inline-flex items-center gap-1 ${tomorrowOpen ? ON : OFF}`}
+        >
+          Tomorrow at <ChevronDown size={11} className={tomorrowOpen ? "rotate-180" : ""} />
+        </button>
+        <button
+          type="button"
           onClick={() => {
             setCustom(true);
             if (!picked) onChange(quick[0].at.toISOString());
@@ -71,6 +82,27 @@ export default function QuickTimePicker({ value, onChange, now, optional = false
           </button>
         )}
       </div>
+      {tomorrowOpen && (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TOMORROW_HOURS.map((h) => {
+            const at = tomorrowAt(h.hour, now);
+            const on = picked !== null && Math.abs(at.getTime() - picked.getTime()) < 60_000 && !custom;
+            return (
+              <button
+                key={h.hour}
+                type="button"
+                onClick={() => {
+                  setCustom(false);
+                  onChange(at.toISOString());
+                }}
+                className={`${HOUR_CHIP} ${on ? ON : OFF}`}
+              >
+                {h.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {showCustom && (
         <div className="flex items-center gap-2">
           <input type="date" aria-label="Date" value={inputs.date} min={toIstInputs(now).date} onChange={(e) => setPart("date", e.target.value)} className={INPUT} />

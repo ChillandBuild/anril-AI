@@ -79,7 +79,9 @@ export default function TeachPage() {
             <MediaRuleCard canEdit={canEdit} />
             <LikedCard items={liked} canEdit={canEdit} onChange={() => void load()} />
           </div>
-          <OffersCard offers={offers ?? []} canEdit={canEdit} onChange={() => void load()} />
+          <div className="order-first lg:order-none">
+            <OffersCard offers={offers ?? []} canEdit={canEdit} onChange={() => void load()} />
+          </div>
         </div>
       )}
     </div>

@@ -20,6 +20,7 @@ import type {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PAGE_SIZE } from "@/lib/pagination";
+import { phoneCell } from "@/lib/csvPhone";
 import { Pagination } from "@/components/ui/Pagination";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
 import { deliveryLook } from "./instantFormsDelivery";
@@ -165,7 +166,7 @@ function buildCsv(detail: InstantFormDetailData, leads: InstantFormLead[]): stri
   const lines = leads.map((lead) => [
     dateTimeText(lead.meta_created_at),
     lead.name ?? "",
-    lead.phone ?? "",
+    phoneCell(lead.phone),
     lead.email ?? "",
     ...detail.questions.map((question) => answerText(lead, question.key)),
     lead.ad_name ?? "",

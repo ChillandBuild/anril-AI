@@ -4,6 +4,7 @@ import { Pencil, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { HomeBox, HomeLayout, HomeToday } from "@/lib/api";
 import { TargetRow } from "./HomeBoxes";
+import { PhoneQuickActions } from "./PhoneQuickActions";
 import { LowStockList } from "./LowStockList";
 import { BookingsTodayList } from "./BookingsTodayList";
 import { FeedbackTodayList } from "./FeedbackTodayList";
@@ -69,6 +70,7 @@ export function PhoneToday({ today, layout, onEdit }: { today: HomeToday; layout
 
   return (
     <div className="flex flex-col gap-3.5">
+      <PhoneQuickActions />
       {showNeedsYou && (
         <section aria-labelledby="needs-you" className="flex flex-col gap-3 rounded-3xl bg-navy p-4 text-white">
           <div className="flex items-center justify-between gap-3">

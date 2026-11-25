@@ -336,6 +336,7 @@ export function LeadsClient() {
   const canManageLeads = role === "owner" || permissions.includes("leads.manage");
   // Sending a chat message needs the same right as replying in Conversations.
   const canReply = role === "owner" || permissions.includes("conversations.reply");
+  const canOpenChats = role === "owner" || permissions.includes("conversations.view") || permissions.includes("conversations.reply");
   const canImportList = role === "owner" || permissions.includes("telecalling.upload");
   const canGetQr = role === "owner" || permissions.includes("numbers.manage");
   const [refreshing, setRefreshing] = useState(false);
@@ -1929,6 +1930,15 @@ export function LeadsClient() {
                                 <ChevronDown size={14} aria-hidden="true" className={cn("transition-transform", isOpen && "rotate-180")} />
                               </button>
                             </div>
+                            {canOpenChats && (
+                              <Link
+                                href={`/dashboard/conversations?lead=${encodeURIComponent(lead.id)}`}
+                                aria-label={`Chat with ${name}`}
+                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white"
+                              >
+                                <MessageSquare size={18} aria-hidden="true" />
+                              </Link>
+                            )}
                             {lead.phone && (
                               <a
                                 href={`tel:${lead.phone.replace(/[\s()-]/g, "")}`}

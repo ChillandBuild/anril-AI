@@ -346,7 +346,7 @@ export function Drawer({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[60] bg-[#0A1528]/30" onClick={onClose} aria-hidden="true" />
+      <div className="fixed inset-0 z-dialog bg-[#0A1528]/30" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
@@ -354,7 +354,7 @@ export function Drawer({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "fixed inset-y-0 right-0 z-[61] flex w-full max-w-[480px] flex-col bg-white shadow-2xl transition-transform duration-200 focus:outline-none",
+          "fixed inset-y-0 right-0 z-dialog flex w-full max-w-[480px] flex-col bg-white shadow-2xl transition-transform duration-200 focus:outline-none",
           entered ? "translate-x-0" : "translate-x-full",
         )}
       >

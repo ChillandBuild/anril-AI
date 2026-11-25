@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import require_any_permission, require_permission
 from app.services import form_texts
+from app.services.reports_common import phone_cell
 from app.services import whatsapp_form_reach as reach
 from app.services import whatsapp_live_forms as live
 from app.services import whatsapp_forms as wf
@@ -340,7 +341,7 @@ def form_responses_csv(design_id: str, ctx: dict = Depends(require_read)):
     writer = csv.writer(out)
     writer.writerow(["Submitted", "Name", "Phone", *[_cell(label) for label in labels], "Offers on WhatsApp"])
     for r in rows:
-        writer.writerow([r["submitted_at"], _cell(r["name"]), r["phone"] or "",
+        writer.writerow([r["submitted_at"], _cell(r["name"]), phone_cell(r["phone"]),
                          *[_cell(r["answers"].get(label, "")) for label in labels], "Yes" if r["offers"] else "No"])
     if truncated:
         writer.writerow([f"Showing the newest {len(raw)} of {total} answers."])

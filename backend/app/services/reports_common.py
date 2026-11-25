@@ -8,6 +8,7 @@ Profit, expenses, GST paid and supplier dues also need purchases.view. A person 
 permission gets the key left OUT (not zero) and "money_hidden": true.
 """
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -146,6 +147,23 @@ def safe_cell(value):
     if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + value
     return value
+
+
+_PHONE_CELL_RE = re.compile(r"\+?\d[\d \-()]{3,24}")
+
+
+def phone_cell(value) -> str:
+    """A phone number Excel shows in full. A bare "+919659950974" opens as 9.19660E+11 (and
+    safe_cell's leading quote would show as a stray "'"), so a plain number is written as
+    ="+919659950974", which Excel and Google Sheets show as the text +919659950974. Our own
+    uploads read it back fine (they keep only digits and +). Anything that is not a plain
+    number gets safe_cell instead, so this can never smuggle a formula in."""
+    if value in (None, ""):
+        return ""
+    s = str(value).strip()
+    if _PHONE_CELL_RE.fullmatch(s):
+        return f'="{s}"'
+    return safe_cell(s)
 
 
 def chunks(items: list, size: int = CHUNK):

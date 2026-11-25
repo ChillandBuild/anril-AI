@@ -139,7 +139,7 @@ export default function AccountSettingsPage() {
           ))
         )}
 
-        <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(10,21,40,0.10)]">
+        <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] lg:bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(10,21,40,0.10)]">
           <div className="flex min-h-[20px] items-center">
             <SaveStatus state={saveState} dirty={isDirty} />
           </div>

@@ -1,12 +1,15 @@
 /** CSV downloads for the Chats pages (Archived, Needs you). Built in the browser from rows the
  *  viewer can already see; the Export buttons are owner-only, like Segments' export. */
 
+import { isPhoneFormula } from "@/lib/csvPhone";
+
 export type CsvColumn<T> = { header: string; value: (row: T) => string | number | null | undefined };
 
 /** A cell a spreadsheet would run as a formula (=, @, or +/- before a non-digit) gets a leading
  *  apostrophe. Customer names and messages are typed by customers, so this matters. Phone
  *  numbers like +919876543210 are left alone. */
 function safeCell(value: string): string {
+  if (isPhoneFormula(value)) return value;
   if (/^[=@\t\r]/.test(value) || /^[+-][^\d\s]/.test(value)) return `'${value}`;
   return value;
 }

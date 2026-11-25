@@ -585,7 +585,7 @@ export function SaidStopPanel() {
 
       {addOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          className="fixed inset-0 z-dialog flex items-center justify-center bg-black/30 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setAddOpen(false);
           }}

@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role, get_tenant_id, require_owner, require_permission
 from app.services.download_gate import log_download, require_download
+from app.services.reports_common import phone_cell
 from app.services.inbound_leads_logic import INBOUND_SOURCES, lead_result
 from app.services.google_ads_attribution import build_tracked_wa_link, slugify_campaign
 from app.routes.leads import _sanitize_search
@@ -734,7 +735,7 @@ async def export_inbound_leads(
         handled = lead.get("handled_by") or {}
         writer.writerow({
             "name": lead["name"],
-            "phone": lead["phone"],
+            "phone": phone_cell(lead["phone"]),
             "business": lead.get("business") or "",
             "city": lead.get("city") or "",
             "interest": lead["segment_label"],

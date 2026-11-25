@@ -175,7 +175,7 @@ function NewFormDialog({ setup, onClose }: { setup: NonNullable<ReturnType<typeo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0A1528]/40 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="new-form-title">
+    <div className="fixed inset-0 z-dialog flex items-end justify-center bg-[#0A1528]/40 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="new-form-title">
       <div className="w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom, 0px))" }}>
         <div className="flex items-start justify-between gap-3">
           <div>

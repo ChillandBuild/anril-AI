@@ -7,7 +7,7 @@ could run as a formula (a customer or ad name starting with =, +, -, @) is defus
 import csv
 import io
 
-from app.services.reports_common import safe_cell
+from app.services.reports_common import phone_cell, safe_cell
 
 TABS = ("overview", "customers", "ads", "team", "items", "campaigns")
 
@@ -16,6 +16,7 @@ TABLES = (("cards", "Cards"), ("todo", "To do"), ("funnel", "Funnel"), ("came_fr
           ("rows", "Rows"), ("sales_by_person", "Sales by person"), ("stars_by_person", "Stars by person"),
           ("top_items", "Top items"), ("low_stock", "Running low"), ("orders_by_stage", "Orders by stage"))
 SKIP_COLUMNS = {"people", "href", "kind"}
+PHONE_COLUMNS = {"phone"}  # a person's number: written so Excel shows it in full
 
 
 def label(key: str) -> str:
@@ -30,6 +31,8 @@ def _cell(key: str, value):
         return round(value / 100, 2)
     if isinstance(value, (dict, list)):
         return ""
+    if key in PHONE_COLUMNS:
+        return phone_cell(value)
     return safe_cell(value)
 
 

@@ -23,6 +23,7 @@ from app.db.supabase import get_supabase
 from app.dependencies.tenant import _has_permission, require_permission
 from app.routes.auto_messages import _client_ip, _SlidingWindow
 from app.services.download_gate import log_download, require_download
+from app.services.reports_common import phone_cell
 from app.services import booking_setup as bsetup
 from app.services import bookings as bk
 from app.services.booking_setup import BookingError
@@ -339,7 +340,7 @@ def export_bookings(
         local = bk.parse_ts(b["start_at"]).astimezone(bk.IST)
         row = {
             "date": local.date().isoformat(), "time": local.strftime("%H:%M"), "code": b["code"],
-            "customer": _csv_cell(b.get("customer_name")), "phone": b.get("phone") or "",
+            "customer": _csv_cell(b.get("customer_name")), "phone": phone_cell(b.get("phone")),
             "service": _csv_cell(b.get("service_name")), "staff_or_chair": _csv_cell(names.get(b.get("resource_id"))),
             "status": _STATUS_WORDS.get(b["status"], b["status"]), "source": b.get("source") or "",
             "advance_paid": ("Yes" if b["advance_paid"] else "No") if b["advance_needed"] else "",

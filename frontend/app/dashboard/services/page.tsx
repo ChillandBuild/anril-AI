@@ -439,7 +439,7 @@ export default function ServicesPage() {
         />
       </Row>
 
-      <div className="sticky bottom-0 z-10 -mx-4 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}>
+      <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px))] lg:bottom-0 z-10 -mx-3 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}>
         <div className="flex flex-wrap items-center justify-between gap-3" aria-live="polite">
           {loadFailed || saveError ? (
             <span className="font-body text-xs font-semibold text-red-600">

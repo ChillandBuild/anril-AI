@@ -17,6 +17,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_and_role
 from app.services.pagination import fetch_all_rows
+from app.services.reports_common import phone_cell
 from app.services.inbound_leads_logic import INBOUND_SOURCES, aggregate_inbound
 from app.services.assignment import get_telecalling_config
 from app.services.call_evaluation import strip_evaluation
@@ -981,7 +982,7 @@ async def export_telecalling(
             "caller_name": (row.get("callers") or {}).get("name") or "",
             "lead_id": row.get("lead_id") or "",
             "lead_name": (row.get("leads") or {}).get("name") or "",
-            "lead_phone": (row.get("leads") or {}).get("phone") or "",
+            "lead_phone": phone_cell((row.get("leads") or {}).get("phone")),
             "duration_seconds": row.get("duration_seconds") or 0,
             "outcome": row.get("outcome") or "",
             "disposition": row.get("disposition") or "",

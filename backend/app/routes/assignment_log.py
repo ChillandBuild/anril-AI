@@ -10,6 +10,7 @@ from app.dependencies.tenant import _has_permission, require_any_permission
 from app.services.call_rules import phone_mask_for
 from app.services.call_teams import caller_scope
 from app.services.download_gate import log_download, require_download
+from app.services.reports_common import phone_cell
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -139,7 +140,7 @@ async def list_assignment_log(
         ])
         writer.writeheader()
         for it in items:
-            writer.writerow({k: it.get(k) for k in writer.fieldnames})
+            writer.writerow({k: (phone_cell(it.get(k)) if k == "lead_phone" else it.get(k)) for k in writer.fieldnames})
         output.seek(0)
         log_download(db, ctx, list_name="Assignment log", row_count=len(items), filters={
             "caller_id": caller_id, "segment": segment, "from_date": from_date, "to_date": to_date,

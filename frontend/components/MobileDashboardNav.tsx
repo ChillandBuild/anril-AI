@@ -7,7 +7,8 @@ import { CreditCard, Home, LayoutGrid, MessageSquare, Phone, Users } from "lucid
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { useNavAccess } from "@/components/nav/useNavAccess";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { cn, getHomeHref, isActive } from "@/lib/utils";
+import { cn, getHomeHref } from "@/lib/utils";
+import { pickActiveTab } from "@/components/nav/mobileNavActive";
 import { useIsPhone } from "@/hooks/useIsPhone";
 
 type NavTab = {
@@ -76,10 +77,7 @@ export function MobileDashboardNav() {
         { href: "/dashboard/subscription", icon: CreditCard, label: "Subscription" },
       ];
 
-  // Home is "/dashboard", which every page starts with: only an exact match lights it.
-  const activeHref = tabs
-    .filter((t) => (t.href === "/dashboard" ? pathname === t.href : isActive(pathname, t.href)))
-    .map((t) => t.href)[0];
+  const activeHref = pickActiveTab(tabs.map((t) => t.href), pathname, MORE_HREF);
 
   return (
     <nav
