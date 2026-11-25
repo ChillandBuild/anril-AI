@@ -10,11 +10,11 @@ import { MAX_QUERY, PLACEHOLDER, canUseSearch, flatRows, isFreshAnswer, isSlashS
 import { useSearchResults } from "./useSearchResults";
 
 /**
- * The search in the top bar. On wide screens a box with a "/" hint and a dropdown; on phones (and for the
- * "icon" variant, used on Chats) a magnifier that opens a full-screen sheet. "/" from any page focuses the
- * box, or opens the sheet where the box is not showing.
+ * The search in the top bar. On wide screens a box with a "/" hint and a dropdown; on phones a magnifier
+ * that opens a full-screen sheet. "/" from any page focuses the box, or opens the sheet where the box is
+ * not showing.
  */
-export function GlobalSearch({ variant = "header" }: { variant?: "header" | "icon" }) {
+export function GlobalSearch() {
   const router = useRouter();
   const { role, permissions } = useAuthRole();
   const enabled = canUseSearch(role, permissions);
@@ -167,33 +167,31 @@ export function GlobalSearch({ variant = "header" }: { variant?: "header" | "ico
 
   return (
     <>
-      {variant === "header" && (
-        <div ref={boxRef} className="relative hidden lg:block">
-          <div
-            className={cn(
-              "flex h-[34px] items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-2.5 transition-[width] duration-150",
-              "lg:w-48 xl:w-72 lg:focus-within:w-80 focus-within:border-primary",
-            )}
-          >
-            <Search size={14} className="shrink-0 text-ink-muted" aria-hidden="true" />
-            <input
-              ref={inlineRef}
-              type="text"
-              {...inputProps(false)}
-              onFocus={() => setDropdownOpen(true)}
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-muted"
-            />
-            {query === "" && (
-              <kbd className="shrink-0 rounded border border-[#e2e8f0] px-1.5 text-[12px] font-semibold leading-5 text-ink-muted" aria-hidden="true">/</kbd>
-            )}
-          </div>
-          {dropdownOpen && !sheetOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-[440px] max-w-[90vw] overflow-y-auto overscroll-contain rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
-              {panel}
-            </div>
+      <div ref={boxRef} className="relative hidden lg:block">
+        <div
+          className={cn(
+            "flex h-[34px] items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-2.5 transition-[width] duration-150",
+            "lg:w-48 xl:w-72 lg:focus-within:w-80 focus-within:border-primary",
+          )}
+        >
+          <Search size={14} className="shrink-0 text-ink-muted" aria-hidden="true" />
+          <input
+            ref={inlineRef}
+            type="text"
+            {...inputProps(false)}
+            onFocus={() => setDropdownOpen(true)}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-muted"
+          />
+          {query === "" && (
+            <kbd className="shrink-0 rounded border border-[#e2e8f0] px-1.5 text-[12px] font-semibold leading-5 text-ink-muted" aria-hidden="true">/</kbd>
           )}
         </div>
-      )}
+        {dropdownOpen && !sheetOpen && (
+          <div className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] w-[440px] max-w-[90vw] overflow-y-auto overscroll-contain rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
+            {panel}
+          </div>
+        )}
+      </div>
 
       <button
         ref={iconRef}
@@ -201,10 +199,7 @@ export function GlobalSearch({ variant = "header" }: { variant?: "header" | "ico
         onClick={() => setSheetOpen(true)}
         aria-label="Search"
         aria-haspopup="dialog"
-        className={cn(
-          "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-[#e2e8f0] bg-white text-ink transition-transform hover:scale-105",
-          variant === "header" && "lg:hidden",
-        )}
+        className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-[#e2e8f0] bg-white text-ink transition-transform hover:scale-105 lg:hidden"
       >
         <Search size={16} aria-hidden="true" />
       </button>

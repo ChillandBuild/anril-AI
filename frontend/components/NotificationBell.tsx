@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Bell, X, Clock, AlertCircle, Info, CheckCircle2, CheckSquare, Smartphone, MessageCircle, Phone, IndianRupee, Package, MessageSquare } from "lucide-react";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -62,6 +63,32 @@ export function NotificationBell() {
     if (recentRef.current?.some((n) => n.id === newestUnreadId)) return;
     void loadRecent();
   }, [isOpen, newestUnreadId, loadRecent]);
+
+  // On laptops the panel opens under the bell but always stays on screen and clear of the
+  // sidebar: on Chats the bell sits near the sidebar, where a right-aligned panel ran under it.
+  // It is drawn on <body> so no parent box can clip it or put it behind the sidebar.
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const placePanel = useCallback(() => {
+    const bell = bellRef.current;
+    if (!bell || !window.matchMedia("(min-width: 768px)").matches) {
+      setAnchor(null);
+      return;
+    }
+    const r = bell.getBoundingClientRect();
+    const width = 384;
+    const gap = 12;
+    const sidebar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width")) || 0;
+    const left = Math.max(sidebar + gap, Math.min(r.right - width, window.innerWidth - width - gap));
+    const top = r.bottom + gap;
+    setAnchor({ top, left, maxHeight: Math.min(window.innerHeight * 0.8, window.innerHeight - top - gap) });
+  }, []);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    placePanel();
+    window.addEventListener("resize", placePanel);
+    return () => window.removeEventListener("resize", placePanel);
+  }, [isOpen, placePanel]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -140,6 +167,7 @@ export function NotificationBell() {
     <div className="relative">
       {/* Bell Button */}
       <button
+        ref={bellRef}
         onClick={() => setIsOpen(!isOpen)}
         className="relative flex items-center justify-center w-[34px] h-[34px] rounded-full bg-primary-50 ring-1 ring-inset ring-primary-200 transition hover:scale-105 hover:bg-primary-100 group"
         title="Alerts"
@@ -155,10 +183,13 @@ export function NotificationBell() {
       </button>
 
       {/* Dropdown Panel */}
-      {isOpen && (
+      {isOpen && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="fixed inset-x-3 top-[calc(4.5rem+env(safe-area-inset-top))] bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-50 flex flex-col overflow-hidden rounded-3xl border border-[#e2e8f0]/60 bg-white/95 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200 md:absolute md:inset-auto md:right-0 md:top-full md:mt-3 md:max-h-[80vh] md:w-96">
+          <div
+            style={anchor ?? undefined}
+            className="fixed inset-x-3 top-[calc(4.5rem+env(safe-area-inset-top))] bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-50 flex flex-col overflow-hidden rounded-3xl border border-[#e2e8f0]/60 bg-white/95 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200 md:inset-auto md:max-h-[80vh] md:w-96"
+          >
             {/* Header */}
             <div className="px-5 py-4 bg-gradient-to-br from-primary-light/65 to-primary-50/65 border-b border-[#f1f5f9] flex items-center justify-between">
               <h3 className="font-display text-sm font-black text-[#13284A]">
@@ -364,7 +395,8 @@ export function NotificationBell() {
               </Link>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

@@ -10,7 +10,6 @@ import { formatRupees } from "./deals/money";
 import { ChatFilterPopover } from "./chats/ChatFilterPopover";
 import { SaveGroupDialog } from "./chats/SaveGroupDialog";
 import { NotificationBell } from "./NotificationBell";
-import { GlobalSearch } from "./search/GlobalSearch";
 import {
   activeFilterCount,
   filterPills,
@@ -182,7 +181,6 @@ export function ConversationList(props: Props) {
           <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
           <div className="flex items-center gap-1">
             {/* Chats has no top bar, so search and alerts live here (the top bar has them on every other page). */}
-            <GlobalSearch variant="icon" />
             <NotificationBell />
             {!fullScreen && (
               <div className="relative" ref={menuRef}>
