@@ -80,7 +80,7 @@ export default function WrapupModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="wrapup-title"
-        className="flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-3xl border border-[#e2e8f0] bg-white shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:max-h-[92vh] sm:rounded-3xl sm:zoom-in-95"
+        className="flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-3xl border border-[#e2e8f0] bg-white shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:max-h-[92dvh] sm:rounded-3xl sm:zoom-in-95"
       >
         <div className="border-b border-[#f1f5f9] px-5 pb-4 pt-5 sm:px-7 sm:pt-6">
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-label text-[10px] font-black uppercase tracking-wider text-amber-700">

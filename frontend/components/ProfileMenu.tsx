@@ -1,38 +1,18 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { LogOut, MessageSquarePlus, TrendingUp, UserCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLogout } from "@/hooks/useLogout";
 import { FeedbackModal } from "@/components/FeedbackModal";
 
 export function ProfileMenu() {
   const { tenantName, role } = useAuthRole();
   const isTelecaller = role === "caller";
-  const [email, setEmail] = useState<string>("");
-  const [fullName, setFullName] = useState<string>("");
+  const { email, fullName } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-
-  useEffect(() => {
-    const supabase = createClient();
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const userEmail = data.user?.email ?? "";
-      setEmail(userEmail);
-
-      const metaName = data.user?.user_metadata?.full_name;
-      if (metaName) {
-        setFullName(metaName);
-      } else {
-        const parts = userEmail.split("@")[0].split(/[._-]/);
-        const capitalized = parts.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
-        setFullName(capitalized || "User");
-      }
-    };
-    loadUser();
-  }, []);
 
   const logout = useLogout();
   const initials = email ? email.charAt(0).toUpperCase() : "U";

@@ -263,7 +263,7 @@ export function ChatsFolderPanel({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 md:px-6">
         <div className={cn("mx-auto grid min-w-0 items-start gap-4", mode === "archived" ? "max-w-[1440px] xl:grid-cols-[minmax(0,1fr)_340px]" : "max-w-[1100px]")}>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-card">

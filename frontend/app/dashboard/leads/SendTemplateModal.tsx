@@ -25,7 +25,7 @@ export function SendTemplateModal({ leadId, onClose, onScheduleChange }: SendTem
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-display text-lg font-bold text-[#0A1528]">Send template</h3>
-          <button onClick={onClose} aria-label="Close" className="text-[#64748b] hover:text-[#0A1528]">
+          <button onClick={onClose} aria-label="Close" className="-m-3 p-3 text-[#64748b] hover:text-[#0A1528]">
             <X size={20} />
           </button>
         </div>

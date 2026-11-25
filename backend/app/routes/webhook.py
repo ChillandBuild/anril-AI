@@ -164,22 +164,21 @@ async def _record_per_broadcast_opt_out(lead_id: str, phone: str, tenant_id: str
         logger.error(f"Per-broadcast opt-out: recipient lookup failed for {phone}: {e}")
 
     if recipient_row:
+        # opted_out_at is what Broadcast history counts as "said stop". send_status stays 'sent':
+        # the message really went out, so it keeps counting as sent / delivered / opened (and for
+        # "paid within 7 days"). If the full write fails (e.g. the fail_reason column is missing,
+        # as it was in prod until 2026-11-25), retry without fail_reason so the stop still shows.
+        stamp = {"opted_out_at": datetime.now(timezone.utc).isoformat()}
         try:
-            db.table("broadcast_recipients").update({
-                "send_status": "opted_out_skip",
-                "opted_out_at": datetime.now(timezone.utc).isoformat(),
-                "fail_reason": "opted_out",
-            }).eq("id", recipient_row["id"]).eq("tenant_id", tenant_id).execute()
+            db.table("broadcast_recipients").update({**stamp, "fail_reason": "opted_out"}) \
+                .eq("id", recipient_row["id"]).eq("tenant_id", tenant_id).execute()
         except Exception as e:
-            logger.warning(f"Per-broadcast opt-out: opted_out_at update failed (migration 085?): {e}")
+            logger.warning(f"Per-broadcast opt-out: full update failed for {phone}, retrying without fail_reason: {e}")
             try:
-                db.table("broadcast_recipients").update({
-                    "send_status": "opted_out_skip",
-                    "fail_reason": "opted_out",
-                }).eq("id", recipient_row["id"]).eq("tenant_id", tenant_id).execute()
-                logger.info(f"Per-broadcast opt-out: fell back to send_status-only update for {phone}")
+                db.table("broadcast_recipients").update(stamp) \
+                    .eq("id", recipient_row["id"]).eq("tenant_id", tenant_id).execute()
             except Exception as e2:
-                logger.error(f"Per-broadcast opt-out: send_status update also failed for {phone}: {e2}")
+                logger.error(f"Per-broadcast opt-out: stop NOT recorded on broadcast row for {phone}: {e2}")
 
     try:
         if tag_id:

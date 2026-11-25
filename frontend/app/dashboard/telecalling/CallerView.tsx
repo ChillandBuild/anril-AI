@@ -16,6 +16,8 @@ import { SegmentBadge } from "@/components/segment-badge";
 import { isClosedLeadStatus, isWorkingLeadStatus } from "@/lib/call-wrapup";
 import { AiraLoader } from "@/components/AiraLoader";
 import { KpiCard } from "@/components/kpi-card";
+import PhoneCallerView from "./PhoneCallerView";
+import { useIsPhone } from "@/hooks/useIsPhone";
 
 export default function CallerView({ callerId, readOnly = false }: { callerId: string | null; readOnly?: boolean }) {
   const searchParams = useSearchParams();
@@ -59,6 +61,8 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
   const cockpit = useCallingCockpit({ callerId, blockingWrapups: true, refreshQueue: loadQueue });
+  // Phone and desktop layouts each hold a lead panel that fetches: mount only the one on screen.
+  const isPhone = useIsPhone();
 
   const lastProcessedLeadId = useRef<string | null>(null);
 
@@ -132,8 +136,29 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
     upload: `${uploadQueueCount} CSV lead${uploadQueueCount === 1 ? "" : "s"}`,
   };
 
+  const phoneQueueLeads = [...newLeads, ...workingLeads];
+
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
+    <>
+      {isPhone && <PhoneCallerView
+        cockpit={cockpit}
+        callerId={callerId}
+        readOnly={readOnly}
+        myStatus={myStatus}
+        onStatusChange={setMyStatus}
+        queueLoading={queueLoading}
+        queueLeads={phoneQueueLeads}
+        scheduledLeads={callbackLeads}
+        doneLeads={closedLeads}
+        allLeads={myLeads}
+        lastCalledMap={lastCalledMap}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        setHistoryLead={setHistoryLead}
+        onExportCsv={handleDownloadCSV}
+        exporting={exporting}
+      />}
+    <div className="hidden min-h-[calc(100vh-8rem)] flex-col bg-transparent lg:flex xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
       <div className="grid flex-1 grid-cols-1 gap-4 pb-4 xl:grid-cols-12 xl:min-h-0 xl:pb-0">
         {/* Left Side: Lead List (4/12) */}
         <div className="flex flex-col gap-5 pr-0 xl:col-span-4 xl:min-h-0 xl:pr-1">
@@ -334,15 +359,16 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
                   <KpiCard stacked label="Today Callbacks" value={cockpit.todayCallbacks.length} edge="bg-amber-400" />
                 </div>
               </div>
-            ) : (
+            ) : !isPhone ? (
               <LeadDetailPanel {...cockpit.leadDetailProps} setHistoryLead={setHistoryLead} readOnly={readOnly} />
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
+    </div>
       {historyLead && <NotesHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
       <CockpitModals cockpit={cockpit} />
-    </div>
+    </>
   );
 }

@@ -150,7 +150,7 @@ export function SendMessageModal({ selectedLeads, onClose, onAfterSend, batchLab
           <h3 className="font-display text-lg font-bold text-[#0A1528]">
             Send message <span className="font-body text-sm font-semibold text-[#64748b]">· {selectedLeads.length} selected</span>
           </h3>
-          <button onClick={onClose} aria-label="Close" className="text-[#64748b] hover:text-[#0A1528]">
+          <button onClick={onClose} aria-label="Close" className="-m-3 p-3 text-[#64748b] hover:text-[#0A1528]">
             <X size={20} />
           </button>
         </div>

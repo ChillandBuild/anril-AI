@@ -427,6 +427,10 @@ canvas {
 
 :root { --sidebar-width: 256px; }
 
+/* Phone (< lg) bottom bar height, without the iPhone home-indicator inset (components/MobileDashboardNav.tsx).
+   Anything that must sit above the bar uses calc(var(--mobile-nav-h) + env(safe-area-inset-bottom)). */
+:root { --mobile-nav-h: 4.25rem; }
+
 /* --shell-left is where the header and page content start on lg+ screens. */
 :root { --shell-left: var(--sidebar-width); }
 

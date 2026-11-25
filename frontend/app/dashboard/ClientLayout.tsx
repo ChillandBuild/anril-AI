@@ -15,7 +15,6 @@ import { ClaimBanner } from "@/components/ClaimBanner";
 import { WhatsAppDisconnectedBanner } from "@/components/WhatsAppDisconnectedBanner";
 import { WaitingLeadsPrompt } from "@/components/WaitingLeadsPrompt";
 import { MobileDashboardNav } from "@/components/MobileDashboardNav";
-import { MoreMenu } from "@/components/MoreMenu";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { useAuthRole } from "./contexts/AuthRoleContext";
 import { AiraLoader } from "@/components/AiraLoader";
@@ -135,15 +134,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <NotificationProvider>
               <SessionTracker />
               <DashboardAuthGuard>
-                <div className="h-screen bg-background overflow-hidden relative">
+                <div className="relative h-[100dvh] overflow-hidden bg-background">
                   {/* Collapsed Dashboard Rail (md+) */}
                   <div className="hidden lg:block">
                     <Sidebar />
                   </div>
                   {children}
-                  <div className="fixed top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[65] lg:hidden">
-                    <MoreMenu />
-                  </div>
                   <MobileDashboardNav />
                 </div>
                 <CalendarPanel isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} />
@@ -162,12 +158,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           <NotificationProvider>
             <SessionTracker />
             <DashboardAuthGuard>
-              <div className="flex min-h-screen overflow-x-clip bg-background">
+              <div className="flex min-h-[100dvh] overflow-x-clip bg-background">
                 <div className="hidden lg:block">
                   {isAgents ? <AgentsSidebar /> : <Sidebar />}
                 </div>
 
-                <main className="flex min-h-screen min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--shell-left)] md:pt-16">
+                <main className="flex min-h-[100dvh] min-w-0 flex-1 flex-col pt-14 lg:ml-[var(--shell-left)] md:pt-16">
                   <Suspense fallback={<div className="fixed inset-x-0 top-0 z-40 h-14 border-b border-[#e2e8f0] bg-background lg:left-[var(--shell-left)] md:h-16" />}>
                     <AppHeader onOpenCalendar={() => setIsCalendarOpen(true)} />
                   </Suspense>
@@ -177,9 +173,9 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                   <div className={isCallReviewPage
                     ? "w-full min-w-0 max-w-none"
                     : isMetaAds
-                    ? "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:px-5 md:py-5"
+                    ? "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom)+1.5rem)] sm:px-4 lg:pb-28 md:px-5 md:py-5"
                     // Every page uses the Customers spacing: 20px under the header, 28px at the sides
-                    : "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-28 sm:px-4 md:px-7 md:py-5"}>
+                    : "w-full min-w-0 max-w-none overflow-x-clip px-3 py-4 pb-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom)+1.5rem)] sm:px-4 lg:pb-28 md:px-7 md:py-5"}>
                     {children}
                   </div>
                 </main>

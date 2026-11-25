@@ -2,7 +2,7 @@
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Phone, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/Pagination";
@@ -29,7 +29,7 @@ import {
   type TagCount,
 } from "@/lib/customersApi";
 import { useSearchParams, useRouter } from "next/navigation";
-import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
+import { MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import { FilterMenu, FilterMenuOption } from "./FilterMenu";
 import { Select } from "@/components/ui/Select";
 import { CheckTick } from "@/components/ui/controls";
@@ -136,6 +136,22 @@ const STATUS_OPTIONS: FilterMenuOption[] = [
   { value: "B", label: "Warm" },
   { value: "C", label: "Cold" },
   { value: "buyers", label: "Buyers" },
+];
+
+/** Phone list chips and avatar tints, one per interest level. */
+const PHONE_SEGMENT: Record<string, string> = {
+  A: "bg-rose-100 text-rose-800",
+  B: "bg-amber-100 text-amber-900",
+  C: "bg-slate-200 text-slate-700",
+  D: "bg-slate-100 text-slate-500",
+};
+
+const PHONE_CHIPS: { key: StatusFilter; label: string }[] = [
+  { key: "ALL", label: "All" },
+  { key: "A", label: "Hot" },
+  { key: "B", label: "Warm" },
+  { key: "C", label: "Cold" },
+  { key: "D", label: "Not interested" },
 ];
 
 const STATUS_BY_OPTION: Record<string, StatusFilter> = { A: "A", B: "B", C: "C", D: "D", buyers: "BUYERS" };
@@ -254,17 +270,17 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, ac
   title?: string;
 }) {
   const className = cn(
-    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border bg-white px-5 py-4 text-left",
+    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border bg-white px-3 py-3 text-left sm:px-5 sm:py-4",
     active ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-[#e2e8f0]",
   );
   const body = (
     <>
-      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[#334155]">
+      <div className="flex min-w-0 max-w-full items-center gap-1.5 text-sm font-semibold text-[#334155]">
         <span aria-hidden className="text-base leading-none">{emoji}</span>
         <span className="truncate">{label}</span>
       </div>
-      <div className={cn("font-display text-2xl font-bold sm:text-3xl", STAT_TONES[tone])}>{value}</div>
-      <div className="text-xs text-[#64748b]">{hint}</div>
+      <div className={cn("max-w-full font-display text-xl font-bold max-sm:truncate sm:text-3xl", STAT_TONES[tone])}>{value}</div>
+      <div className="max-w-full text-xs text-[#64748b] max-sm:truncate">{hint}</div>
     </>
   );
   if (!onClick) return <div className={className}>{body}</div>;
@@ -314,6 +330,8 @@ function FirstDayEmpty({ canImport, canQr }: { canImport: boolean; canQr: boolea
 const fmtCount = (n: number | undefined) => (n === undefined ? "—" : n.toLocaleString("en-IN"));
 
 export function LeadsClient() {
+  // Phone only: the full filter bar folds behind one "Filters" button so the list starts near the top.
+  const [phoneFiltersOpen, setPhoneFiltersOpen] = useState(false);
   const { role, permissions } = useAuthRole();
   const canManageLeads = role === "owner" || permissions.includes("leads.manage");
   // Sending a chat message needs the same right as replying in Conversations.
@@ -331,6 +349,8 @@ export function LeadsClient() {
   const [campaigns, setCampaigns] = useState<{ id: string; campaign_name: string; platform: string; created_at?: string; meta_created_at?: string | null }[]>([]);
   const [broadcastHistory, setBroadcastHistory] = useState<BroadcastHistoryItem[]>([]);
   const [searchInput, setSearchInput] = useState("");
+  // Phone list: which row has its details open.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
@@ -1037,11 +1057,58 @@ export function LeadsClient() {
 
           {/* Main card with filters and table */}
           <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
-            {/* Filter bar: one line. It wraps (never overlaps) only when the card is too narrow for
+            {/* Phone: a big search box and wrapping interest chips. The filter bar below stays for everything else. */}
+            <div className="space-y-3 border-b border-[#e2e8f0] p-3 md:hidden">
+              <label className="relative block">
+                <span className="sr-only">Search customers</span>
+                <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted" />
+                <input
+                  type="search"
+                  inputMode="search"
+                  placeholder="Name, phone or what they asked for"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="min-h-[48px] w-full rounded-2xl border border-border bg-white pl-11 pr-4 font-body text-base text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary/25"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Interest">
+                {PHONE_CHIPS.map((chip) => {
+                  const on = status === chip.key;
+                  return (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setStatus(chip.key)}
+                      className={cn(
+                        "min-h-11 rounded-full px-4 font-label text-sm font-bold transition-colors",
+                        on ? "bg-navy text-white" : "bg-surface-mid text-ink-secondary",
+                      )}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  aria-expanded={phoneFiltersOpen}
+                  onClick={() => setPhoneFiltersOpen((open) => !open)}
+                  className={cn(
+                    "ml-auto flex min-h-11 items-center gap-1.5 rounded-full border px-4 font-label text-sm font-bold",
+                    phoneFiltersOpen ? "border-navy bg-navy text-white" : "border-border bg-white text-ink",
+                  )}
+                >
+                  <SlidersHorizontal size={16} aria-hidden="true" />
+                  {phoneFiltersOpen ? "Hide filters" : "Filters"}
+                </button>
+              </div>
+            </div>
+
+            {/* Filter bar: one line. On a phone it opens from the Filters button above. It wraps (never overlaps) only when the card is too narrow for
                 every control, e.g. a small screen with the sidebar open and long filter values. */}
-            <div className="flex flex-wrap items-center gap-1.5 p-4 border-b border-[#e2e8f0]">
+            <div className={cn("flex-wrap items-center gap-1.5 p-4 border-b border-[#e2e8f0] md:flex", phoneFiltersOpen ? "flex" : "hidden")}>
               {/* Search input */}
-              <div className="relative min-w-[120px] flex-1">
+              <div className="relative hidden min-w-[120px] flex-1 md:block">
                 <Search size={14} className="absolute left-3 top-2.5 text-[#64748b]" />
                 <input
                   type="text"
@@ -1781,8 +1848,8 @@ export function LeadsClient() {
               )}
             </div>
 
-            {/* Mobile view */}
-            <div className="block md:hidden space-y-3 p-3">
+            {/* Mobile view: one slim row per person; "Details" opens everything the table shows. */}
+            <div className="block p-3 md:hidden">
               {isLoading && !leads.length ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">Loading...</div>
               ) : leads.length === 0 && firstDay ? (
@@ -1790,69 +1857,151 @@ export function LeadsClient() {
               ) : leads.length === 0 ? (
                 <div className="p-8 text-center text-xs text-[#64748b]">No leads match these filters</div>
               ) : (
-                leads.map((lead) => (
-                  <MobileRecordCard
-                    key={lead.id}
-                    onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
-                    className="cursor-pointer"
-                  >
-                    <MobileRecordHeader
-                      title={getPrimaryLine(lead)}
-                      subtitle={getSecondaryLine(lead) as string | undefined}
+                <>
+                  <label className="mb-1 flex min-h-11 items-center gap-3 px-1 font-body text-sm font-semibold text-ink-secondary">
+                    <CheckTick
+                      checked={selectedIds.size === leads.length && leads.length > 0}
+                      indeterminate={selectedIds.size > 0 && selectedIds.size < leads.length}
+                      onChange={(next) => setSelectedIds(next ? new Set(leads.map((l) => l.id)) : new Set())}
+                      aria-label="Select all leads on this page"
                     />
-                    {lead.opted_out && <div className="-mt-1 mb-2"><SaidStopMark /></div>}
-                    <MobileRecordGrid>
-                      <MobileRecordField label="Status" value={<StatusCell lead={lead} />} className="col-span-2" />
-                      <MobileRecordField
-                        label="Spent"
-                        value={lead.spent_paise ? `₹${(lead.spent_paise / 100).toLocaleString("en-IN")}` : "—"}
-                      />
-                      <MobileRecordField label="Came from" value={sourceLabel(lead.source)} />
-                      <MobileRecordField label="Last" value={lead.last_activity_at ? timeAgo(lead.last_activity_at) : "—"} />
-                      <MobileRecordField
-                        label="Reply window"
-                        value={(() => {
-                          const status = getReplyWindowStatus(lead);
-                          if (status.isOpen) {
-                            return status.isUrgent ? `⚠ ${status.minutes}m left` : `${status.hours}h ${status.minutes}m left`;
-                          }
-                          return "Closed";
-                        })()}
-                      />
-                      <MobileRecordField label="Assigned" value={lead.assigned_to ? callers.find((c) => c.id === lead.assigned_to)?.name || "Caller" : "Unassigned"} />
-                      <MobileRecordField label="Groups" value={<GroupsCell lead={lead} />} className="col-span-2" />
-                      {(lead.tags?.length ?? 0) > 0 && (
-                        <MobileRecordField label="Tags" value={<TagChips tags={lead.tags} onPick={(t) => setUrlParam("tag", t)} />} className="col-span-2" />
-                      )}
-                    </MobileRecordGrid>
-                    <div className="mt-4 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                      <div>
-                        {role === "owner" && (
-                          <AssignButton
-                            leadId={lead.id}
-                            currentAssignedTo={lead.assigned_to}
-                            callers={callers}
-                            onAssigned={() => mutateList()}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <button
-                          onClick={() => setSendTemplateLeadId(lead.id)}
-                          className="whitespace-nowrap rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5"
+                    Select all on this page
+                  </label>
+                  <ul className="space-y-2">
+                    {leads.map((lead) => {
+                      const seg = lead.broadcast_score?.segment ?? lead.segment;
+                      const tint = PHONE_SEGMENT[seg] ?? "bg-slate-100 text-slate-600";
+                      const name = lead.name || getPrimaryLine(lead);
+                      const isSelected = selectedIds.has(lead.id);
+                      const isOpen = expandedId === lead.id;
+                      const line = [
+                        sourceLabel(lead.source),
+                        lead.came_from || null,
+                        lead.last_activity_at ? timeAgo(lead.last_activity_at) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <li
+                          key={lead.id}
+                          className={cn(
+                            "rounded-2xl border bg-white",
+                            isSelected ? "border-primary bg-primary-light/40" : "border-border",
+                          )}
                         >
-                          Send template
-                        </button>
-                      </div>
-                    </div>
-                  </MobileRecordCard>
-                ))
+                          <div className="flex items-center gap-3 p-3">
+                            <button
+                              type="button"
+                              aria-label={`Select ${name}`}
+                              aria-pressed={isSelected}
+                              onClick={() => {
+                                const next = new Set(selectedIds);
+                                if (isSelected) next.delete(lead.id);
+                                else next.add(lead.id);
+                                setSelectedIds(next);
+                              }}
+                              className={cn(
+                                "flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold",
+                                isSelected ? "bg-primary text-white" : tint,
+                              )}
+                            >
+                              {isSelected ? <Check size={18} aria-hidden="true" /> : getAvatarInitials(lead).text}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
+                                className="block w-full min-w-0 text-left"
+                              >
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  <span className="min-w-0 truncate font-body text-sm font-bold text-ink">{name}</span>
+                                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 font-label text-[10px] font-bold", tint)}>
+                                    {SEGMENT_LABELS[seg] ?? seg}
+                                  </span>
+                                </span>
+                                <span className="mt-0.5 block truncate font-body text-xs text-ink-muted">{line || "—"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                aria-expanded={isOpen}
+                                onClick={() => setExpandedId(isOpen ? null : lead.id)}
+                                className="relative mt-1 inline-flex items-center gap-1 font-label text-xs font-bold text-primary before:absolute before:-inset-x-2 before:-inset-y-3.5 before:content-['']"
+                              >
+                                {isOpen ? "Hide details" : "Details"}
+                                <ChevronDown size={14} aria-hidden="true" className={cn("transition-transform", isOpen && "rotate-180")} />
+                              </button>
+                            </div>
+                            {lead.phone && (
+                              <a
+                                href={`tel:${lead.phone.replace(/[\s()-]/g, "")}`}
+                                aria-label={`Call ${name}`}
+                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white"
+                              >
+                                <Phone size={18} aria-hidden="true" />
+                              </a>
+                            )}
+                          </div>
+                          {isOpen && (
+                            <div className="border-t border-border p-3">
+                              {lead.opted_out && <div className="mb-2"><SaidStopMark /></div>}
+                              <MobileRecordGrid className="mt-0">
+                                <MobileRecordField label="Status" value={<StatusCell lead={lead} />} className="col-span-2" />
+                                <MobileRecordField
+                                  label="Spent"
+                                  value={lead.spent_paise ? `₹${(lead.spent_paise / 100).toLocaleString("en-IN")}` : "—"}
+                                />
+                                <MobileRecordField label="Came from" value={sourceLabel(lead.source)} />
+                                <MobileRecordField label="Last" value={lead.last_activity_at ? timeAgo(lead.last_activity_at) : "—"} />
+                                <MobileRecordField
+                                  label="Reply window"
+                                  value={(() => {
+                                    const status = getReplyWindowStatus(lead);
+                                    if (status.isOpen) {
+                                      return status.isUrgent ? `⚠ ${status.minutes}m left` : `${status.hours}h ${status.minutes}m left`;
+                                    }
+                                    return "Closed";
+                                  })()}
+                                />
+                                <MobileRecordField label="Assigned" value={lead.assigned_to ? callers.find((c) => c.id === lead.assigned_to)?.name || "Caller" : "Unassigned"} />
+                                <MobileRecordField label="Groups" value={<GroupsCell lead={lead} />} className="col-span-2" />
+                                {(lead.tags?.length ?? 0) > 0 && (
+                                  <MobileRecordField label="Tags" value={<TagChips tags={lead.tags} onPick={(t) => setUrlParam("tag", t)} />} className="col-span-2" />
+                                )}
+                              </MobileRecordGrid>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  {role === "owner" && (
+                                    <AssignButton
+                                      leadId={lead.id}
+                                      currentAssignedTo={lead.assigned_to}
+                                      callers={callers}
+                                      onAssigned={() => mutateList()}
+                                    />
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSendTemplateLeadId(lead.id)}
+                                  disabled={lead.opted_out}
+                                  title={lead.opted_out ? "They said stop: no offers or campaign messages go to them" : undefined}
+                                  className="min-h-11 whitespace-nowrap rounded-xl border border-primary px-4 text-xs font-bold text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                                >
+                                  Send template
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               )}
             </div>
 
             {/* Pagination */}
             {!isLoading && leads.length > 0 && (
-              <Pagination page={page} total={totalLeads} pageSize={PAGE_SIZE} onPageChange={setPage} noun={listName} />
+              <Pagination page={page} total={totalLeads} pageSize={PAGE_SIZE} onPageChange={setPage} noun={listName} className="max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11" />
             )}
           </div>
         </div>

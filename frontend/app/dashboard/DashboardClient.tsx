@@ -16,11 +16,34 @@ import { isSmsOnly } from "@/lib/utils";
 import { TodayBlock } from "./home/TodayBlock";
 import { MoreDetails } from "./home/MoreDetails";
 import { FinishSetupCard } from "@/components/first-setup/FinishSetupCard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useIsPhone } from "@/hooks/useIsPhone";
+
+/** Phone only: today's date and a hello, above the "Needs you" card. Time of day is India time. */
+function PhoneGreeting() {
+  const { fullName } = useCurrentUser();
+  const now = new Date();
+  const hour = Number(now.toLocaleString("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }));
+  const part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const date = now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const first = fullName.split(" ")[0];
+  return (
+    <div className="px-1 lg:hidden">
+      <p suppressHydrationWarning className="font-label text-[13px] font-bold text-ink-secondary">{date}</p>
+      <p suppressHydrationWarning className="font-display text-2xl font-extrabold leading-tight text-ink">
+        {part}
+        {first ? `, ${first}` : ""}
+      </p>
+    </div>
+  );
+}
 
 export function DashboardClient({ fallbackOverview }: { fallbackOverview: AnalyticsOverview | null }) {
   const { role, permissions, enabledFeatures, loading: roleLoading } = useAuthRole();
   const router = useRouter();
   const { status: subStatus } = useSubscription();
+  // The greeting is phone-only and asks Supabase for the name: mount it only on a phone.
+  const isPhone = useIsPhone();
 
   // Seeded from the server for owners (instant paint); callers get null and are
   // redirected below. Enable the SWR key when role confirms owner OR we already
@@ -123,6 +146,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
 
   return (
     <div className="dashboard-swiss space-y-5">
+      {isPhone && <PhoneGreeting />}
       <FinishSetupCard />
       <TodayBlock />
       <MoreDetails overview={overview} telecalling={enabledFeatures.includes("telecalling")} />

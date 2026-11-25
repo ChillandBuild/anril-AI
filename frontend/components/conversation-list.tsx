@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, Fragment } from "react";
 import { api, Lead } from "@/lib/api";
-import { ChannelAvatar } from "./channel-avatar";
+import { ChannelAvatar, CHANNEL_LABEL, getChannel } from "./channel-avatar";
+import { PhoneAvatar, SegmentChip } from "./chats/PhoneAvatar";
 import { formatConvoTime, formatPhone, cn } from "@/lib/utils";
 import { Trash2, MoreVertical, MoreHorizontal, Search, X, SearchX, Pin, RefreshCw, Archive, Ban, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -174,25 +175,28 @@ export function ConversationList(props: Props) {
     <>
       {/* ── Header ── */}
       <div className={cn(
-        "shrink-0 pr-4 pl-16 lg:pl-4",
-        fullScreen ? "pt-4 pb-2" : "flex h-[68px] items-center border-b border-[#e2e8f0]"
+        "shrink-0 px-4",
+        fullScreen ? "pt-4 pb-2" : "flex h-14 items-center border-b border-[#e2e8f0] md:h-[68px]"
       )}>
         <div className="flex w-full items-center justify-between">
-          <h2 className="font-display text-[19px] font-bold text-[#0A1528]">Conversations</h2>
+          <h2 className="font-display text-[19px] font-bold text-[#0A1528]">
+            <span className="md:hidden">Chats</span>
+            <span className="hidden md:inline">Conversations</span>
+          </h2>
           <div className="flex items-center gap-1">
             {/* Chats has no top bar, so search and alerts live here (the top bar has them on every other page). */}
             <NotificationBell />
             {!fullScreen && (
               <div className="relative" ref={menuRef}>
-                <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors">
+                <button onClick={() => setMenuOpen(!menuOpen)} aria-label="More" className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors md:h-auto md:w-auto md:p-1.5">
                   <MoreVertical size={18} />
                 </button>
                 {menuOpen && (
-                  <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20 py-1.5">
-                    <button onClick={() => { setSelectionMode(true); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                  <div className="absolute right-0 top-full mt-1 w-40 md:w-36 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20 py-1.5">
+                    <button onClick={() => { setSelectionMode(true); setMenuOpen(false); }} className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                       Select chats
                     </button>
-                    <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                    <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                       Select all
                     </button>
                   </div>
@@ -206,8 +210,8 @@ export function ConversationList(props: Props) {
       {/* ── Tabs row ── */}
       <div
         className={cn(
-          "flex shrink-0 items-center border-b border-[#e2e8f0] px-4",
-          fullScreen ? "gap-4" : "justify-between gap-2 overflow-x-auto"
+          "flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e2e8f0] px-4 py-2.5 md:flex-nowrap md:py-0",
+          fullScreen ? "md:gap-4" : "md:justify-between md:gap-2 md:overflow-x-auto"
         )}
         role="tablist"
       >
@@ -220,20 +224,26 @@ export function ConversationList(props: Props) {
               aria-selected={isActive}
               onClick={() => onViewChange(tab.id)}
               className={cn(
-                "py-3 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap relative transition-colors",
-                isActive ? "text-primary" : "text-[#64748b] hover:text-[#0A1528]"
+                "relative flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition-colors md:min-h-0 md:rounded-none md:px-0 md:py-3 md:text-[12px]",
+                isActive
+                  ? "bg-[#0A1528] text-white md:bg-transparent md:text-primary"
+                  : "bg-slate-100 text-[#334155] md:bg-transparent md:text-[#64748b] md:hover:text-[#0A1528]"
               )}
             >
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[9px] font-bold",
-                  tab.urgent ? "bg-red-50 text-red-600" : "bg-primary-light text-primary"
+                  "rounded-full px-1.5 py-0.5 text-[11px] font-bold md:text-[9px]",
+                  tab.urgent
+                    ? "bg-rose-800 text-white md:bg-red-50 md:text-red-600"
+                    : isActive
+                      ? "bg-white/20 text-white md:bg-primary-light md:text-primary"
+                      : "bg-white text-primary md:bg-primary-light"
                 )}>
                   {tabCount(tab.count)}
                 </span>
               )}
-              {isActive && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-primary" />}
+              {isActive && <div className="absolute bottom-0 inset-x-0 hidden h-0.5 bg-primary md:block" />}
             </button>
           );
         })}
@@ -257,7 +267,7 @@ export function ConversationList(props: Props) {
     <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
       {headerAndTabs}
       {/* ── Channel chips: each shows its own count under the current tab and filters ── */}
-      <div className="mx-4 mt-3 flex flex-wrap gap-1">
+      <div className="mx-4 mt-3 flex flex-wrap gap-2 md:gap-1">
         {CHANNEL_CHIPS.filter((c) => c.value === "all" || c.value === channel || (counts.channels[c.value] ?? 0) > 0).map((chip) => {
           const active = channel === chip.value;
           const n = counts.channels[chip.value];
@@ -267,7 +277,7 @@ export function ConversationList(props: Props) {
               onClick={() => onChannelChange(chip.value)}
               aria-pressed={active}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold whitespace-nowrap transition-all",
+                "inline-flex min-h-10 items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-semibold whitespace-nowrap transition-all md:min-h-0 md:px-2 md:text-[10.5px]",
                 active
                   ? "bg-primary-light text-primary border-primary/30"
                   : "bg-white text-[#334155] border-[#e2e8f0] hover:border-slate-300"
@@ -290,10 +300,10 @@ export function ConversationList(props: Props) {
             placeholder="Search name or phone"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-12 py-2 bg-white border border-[#e2e8f0] rounded-xl text-[12.5px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-9"
+            className="w-full pl-9 pr-16 md:pr-12 py-2 bg-white border border-[#e2e8f0] rounded-xl text-[16px] md:text-[12.5px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-11 md:h-9"
           />
           {searchQuery && (
-            <button onClick={() => onSearchChange("")} aria-label="Clear search" className="absolute right-7 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors">
+            <button onClick={() => onSearchChange("")} aria-label="Clear search" className="absolute right-10 md:right-7 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 md:p-0.5 rounded-full hover:bg-slate-100 transition-colors">
               <X size={14} />
             </button>
           )}
@@ -302,7 +312,7 @@ export function ConversationList(props: Props) {
             title="Refresh"
             aria-label="Refresh"
             disabled={isRefreshing}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-60"
+            className="absolute right-1 md:right-1.5 top-1/2 -translate-y-1/2 p-2.5 md:p-1 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-60"
           >
             <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
           </button>
@@ -313,7 +323,7 @@ export function ConversationList(props: Props) {
           onClick={() => setFilterOpen((o) => !o)}
           aria-expanded={filterOpen}
           className={cn(
-            "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12.5px] font-semibold transition-colors",
+            "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12.5px] md:h-9 font-semibold transition-colors",
             filterCount > 0 || filterOpen
               ? "border-primary/40 bg-primary-light text-primary"
               : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
@@ -372,7 +382,7 @@ export function ConversationList(props: Props) {
       )}
 
       {/* ── Conversation list ── */}
-      <div className="mt-2.5 flex-1 overflow-y-auto border-t border-[#f1f5f9]">
+      <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto border-t border-[#f1f5f9]">
         {loading ? (
           <AiraLoader inline className="min-h-[200px] h-full" />
         ) : leads.length === 0 ? (
@@ -430,13 +440,113 @@ export function ConversationList(props: Props) {
                     {SECTION_TITLE[group]}
                   </div>
                 )}
+                {/* Phone row: 46px avatar, name + time, one preview line, chips. Hidden from md up. */}
                 <div
                   onClick={() => onSelect(lead)}
                   onKeyDown={(e) => { if (e.key === "Enter") onSelect(lead); }}
                   role="button"
                   tabIndex={0}
                   className={cn(
-                    "w-full text-left px-4 py-3 border-b border-[#f1f5f9] transition-all duration-150 group flex items-start gap-3 relative cursor-pointer",
+                    "relative flex min-h-[72px] w-full cursor-pointer items-start gap-3 border-b border-[#f1f5f9] px-4 py-3 text-left active:bg-slate-50 md:hidden",
+                    selectedId === lead.id && "bg-primary-light/50"
+                  )}
+                >
+                  {selectionMode && (
+                    <div className="shrink-0 self-center" onClick={(e) => e.stopPropagation()}>
+                      <CheckTick
+                        checked={selectedIds.has(lead.id)}
+                        onChange={() => toggleSelect(lead.id)}
+                        size="sm"
+                        aria-label="Select conversation"
+                      />
+                    </div>
+                  )}
+                  <PhoneAvatar name={lead.name} segment={lead.segment} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <span className="truncate font-display text-[15px] font-bold text-ink">
+                          {lead.name || formatPhone(lead.phone) || "Unknown"}
+                        </span>
+                        {lead.pinned_at && <Pin size={11} className="shrink-0 fill-current text-amber-500" aria-label="Pinned" />}
+                      </span>
+                      <span className={cn("shrink-0 whitespace-nowrap text-[11.5px]", waitingSince || needsYou ? "font-bold text-rose-700" : "text-ink-muted")}>
+                        {formatConvoTime((lead as ConversationLead).last_reply_at || lead.created_at)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <p className={cn("min-w-0 flex-1 truncate text-[13.5px]", unread > 0 ? "font-semibold text-ink" : "text-ink-secondary")}>
+                        {lead.last_message_direction === "outbound" && (isBot ? "Anril: " : "You: ")}
+                        {preview}
+                      </p>
+                      {unread > 0 && (
+                        <span className="min-w-[20px] shrink-0 rounded-full bg-primary px-1.5 text-center text-[11px] font-bold leading-5 text-white" aria-label={`${unread} unread`}>
+                          {unread > 98 ? "99+" : unread}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      <SegmentChip segment={lead.segment} />
+                      {needsYou && (
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-rose-800 px-2 py-0.5 text-[10.5px] font-bold leading-4 text-white">Needs you</span>
+                      )}
+                      {aiHandling && (
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-primary-light px-2 py-0.5 text-[10.5px] font-bold leading-4 text-primary-900">Anril replying</span>
+                      )}
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold leading-4 text-ink-secondary">
+                        {CHANNEL_LABEL[getChannel(lead.source)]}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative shrink-0" data-card-menu onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setCardMenuId(cardMenuId === lead.id ? null : lead.id)}
+                      aria-label="Chat options"
+                      className="-mr-2 flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                    {cardMenuId === lead.id && (
+                      <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                        {onPin && (
+                          <button
+                            onClick={() => { setCardMenuId(null); onPin(lead.id); }}
+                            className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                          >
+                            <Pin size={14} className="text-slate-500" />
+                            {lead.pinned_at ? "Unpin" : "Pin"}
+                          </button>
+                        )}
+                        {onArchive && (
+                          <button
+                            onClick={() => { setCardMenuId(null); onArchive(lead.id); }}
+                            disabled={!canArchive}
+                            className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Archive size={14} className="text-slate-500" />
+                            Archive
+                          </button>
+                        )}
+                        {onBlock && (
+                          <button onClick={() => { setCardMenuId(null); onBlock(lead.id); }} className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50">
+                            <Ban size={14} className="text-slate-500" />
+                            Block
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteOne(lead.id)} className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-red-600 hover:bg-red-50">
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div
+                  onClick={() => onSelect(lead)}
+                  onKeyDown={(e) => { if (e.key === "Enter") onSelect(lead); }}
+                  role="button"
+                  tabIndex={0}
+                  className={cn(
+                    "hidden w-full text-left px-4 py-3 border-b border-[#f1f5f9] transition-all duration-150 group md:flex items-start gap-3 relative cursor-pointer",
                     selectedId === lead.id
                       ? "bg-primary-light/50 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-primary"
                       : "hover:bg-[#f8fafc]"

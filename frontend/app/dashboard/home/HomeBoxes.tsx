@@ -65,7 +65,7 @@ function NumberRow({ boxKey, box, labels }: { boxKey: BoxKey; box: HomeBox; labe
 const RING_R = 26;
 
 /** The target box: a ring that fills as money comes in. No target set yet: a dashed empty ring and "Set a target". */
-function TargetRow({ box }: { box: HomeBox }) {
+export function TargetRow({ box }: { box: HomeBox }) {
   const meta = BOX_META.target_month;
   const pct = targetPct(box);
   const unset = box.unit === "set_target";

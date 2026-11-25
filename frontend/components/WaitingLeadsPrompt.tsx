@@ -110,7 +110,7 @@ export function WaitingLeadsPrompt() {
       <div
         role="alertdialog"
         aria-label="Leads waiting"
-        className="fixed bottom-4 right-4 z-50 w-[360px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-white p-5 shadow-[0_12px_32px_rgba(10,21,40,0.12)]"
+        className="fixed bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 z-50 lg:bottom-4 w-[360px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-white p-5 shadow-[0_12px_32px_rgba(10,21,40,0.12)]"
       >
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light text-primary">
@@ -155,7 +155,7 @@ export function WaitingLeadsPrompt() {
       <div
         role="status"
         aria-live="polite"
-        className="fixed bottom-4 right-4 z-50 w-[300px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-white p-4 shadow-[0_12px_32px_rgba(10,21,40,0.12)]"
+        className="fixed bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 z-50 lg:bottom-4 w-[300px] max-w-[calc(100vw-32px)] rounded-2xl border border-border bg-white p-4 shadow-[0_12px_32px_rgba(10,21,40,0.12)]"
       >
         <p className="font-body text-sm text-ink">
           You&apos;re in. Handing out the leads in {formatCountdown(secondsLeft)}&hellip;

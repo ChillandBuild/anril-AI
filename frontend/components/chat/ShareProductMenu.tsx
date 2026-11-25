@@ -71,19 +71,21 @@ export function ShareProductMenu({
   }
 
   return (
-    <div className="relative" ref={ref}>
+    // Phone: the wrapper fills its share of the action row and is not positioned, so the list opens
+    // across the whole row (the row is `relative`) instead of running off the screen edge.
+    <div className="relative max-md:static max-md:flex max-md:min-w-0 max-md:flex-1" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={!!disabledReason}
         title={disabledReason ?? "Send a product's photo, name and price"}
-        className={cn(className, "disabled:cursor-not-allowed disabled:opacity-50")}
+        className={cn(className, "max-md:w-full disabled:cursor-not-allowed disabled:opacity-50")}
       >
         <ShoppingBag size={13} />
         Share product
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-40 mb-2 w-[300px] overflow-hidden rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
+        <div className="absolute bottom-full left-0 z-40 mb-2 w-[300px] overflow-hidden max-md:right-0 max-md:w-auto rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
           <div className="border-b border-[#f1f5f9] p-2">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />

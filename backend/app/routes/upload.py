@@ -2017,15 +2017,17 @@ def _classify_broadcast_outcomes(
             "failures": list[dict],   # one row per failure, ready for CSV writer
         }
 
-    Rules (top to bottom, first match wins):
+    Rules (top to bottom):
       1. send_status in {failed, rejected}             -> failed (send error)
-      2. broadcast_recipients.opted_out_at IS NOT NULL  -> failed (per-broadcast opt-out event)
-      3. send_status == opted_out_skip                  -> failed (opted out at send time)
+      2. broadcast_recipients.opted_out_at IS NOT NULL  -> opted_out (said stop after this send)
+      3. send_status == opted_out_skip                  -> opted_out (on Said stop before it; never sent)
       4. messages.delivery_status == failed in window   -> failed (delivery failure)
       5. messages.delivery_status == read               -> opened (+delivered +sent)
       6. messages.delivery_status == delivered          -> delivered (+sent)
       7. everything else                                -> sent
-      8. fallback: lead.opted_out_at >= recipient.created_at -> failed (webhook missed update)
+      8. fallback: lead.opted_out_at >= recipient.created_at -> opted_out (webhook missed update)
+    Rules 2 and 8 do NOT stop the row there: the message was really sent, so the person is ALSO
+    counted by rules 4-7. Saying stop adds to "opted_out" and never lowers sent/delivered/opened.
 
     Rule 4 (legacy "lead currently opted_out=True" fallback) is intentionally NOT a rule —
     it caused cross-broadcast contamination (a lead opted out in broadcast N would falsely
@@ -2197,92 +2199,75 @@ def _classify_broadcast_outcomes(
                 skipped_blocked += 1
             continue
 
-        reason: str | None = None
-        fail_reason: str | None = None
-        opted_out_at: str | None = None
+        def _add_failure(reason: str, fail_reason: str | None, opted_out_at: str | None) -> None:
+            if phone and phone not in seen_phones:
+                seen_phones.add(phone)
+                failures.append({
+                    "lead_id": lead_id or "",
+                    "phone": phone,
+                    "name": name,
+                    "reason": reason,
+                    "fail_reason": fail_reason or "",
+                    "fail_detail": r.get("fail_detail") or "",
+                    "opted_out_at": opted_out_at or "",
+                })
 
         if send_status in ("failed", "rejected"):
-            reason = send_status
-            fail_reason = r.get("fail_reason") or "api_error"
-        elif r.get("opted_out_at"):
-            reason = "not_interested"
-            fail_reason = r.get("fail_reason") or "opted_out"
-            opted_out_at = r.get("opted_out_at")
-        elif send_status == "opted_out_skip":
-            row_fail_reason = r.get("fail_reason") or "opted_out"
-            if row_fail_reason == "negative_reply_excluded":
-                reason = "failed"
-                fail_reason = row_fail_reason
-            else:
-                reason = "not_interested"
-                fail_reason = row_fail_reason
-                opted_out_at = opted_out_map.get(lead_id)
-        elif lead_id and lead_id in opted_out_map and r.get("created_at") and opted_out_map[lead_id]:
-            # Rule 8 (scoped fallback): the per-broadcast row wasn't stamped (Rules 2/3
-            # didn't fire) but leads.opted_out is set. Attribute the opt-out to ONLY the
-            # single owning broadcast (most recent send at/before the opt-out). Every
-            # broadcast is an independent block — a later opt-out must not rewrite an
-            # earlier broadcast, so an earlier send stays in its own segment CSV.
+            failed += 1
+            _add_failure(send_status, r.get("fail_reason") or "api_error", None)
+            continue
+
+        # Said stop AFTER this campaign reached them (Rule 2: the row's own stamp; Rule 8: the row
+        # wasn't stamped but this is the one send that owns the lead's opt-out). The message really
+        # was sent, so they ALSO stay in sent / delivered / opened below: saying stop never rewrites
+        # what happened to the message.
+        stopped_at: str | None = r.get("opted_out_at") or None
+        if not stopped_at and send_status != "opted_out_skip" and lead_id and opted_out_map.get(lead_id) and r.get("created_at"):
             own = owning_send_at.get(lead_id)
             try:
                 br_dt = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
             except (ValueError, TypeError):
                 br_dt = None
             if own is not None and br_dt is not None and br_dt == own:
-                reason = "not_interested"
-                fail_reason = "opted_out"
-                opted_out_at = opted_out_map[lead_id]
-        # Rule 4 (legacy leads.opted_out fallback) removed: per-broadcast opted_out_at
-        # (Rule 2) and send-time skip (Rule 3) cover all opt-out cases; reading the
-        # global leads.opted_out flag here caused cross-broadcast contamination when
-        # a prior broadcast's opt-out leaked into a later broadcast's CSV.
-        if reason is None:
-            delivery = msg_status_by_lead.get(lead_id) if lead_id else None
-            if delivery == "failed":
-                reason = "failed"
-                err = msg_error_by_lead.get(lead_id)
-                if err:
-                    code, title = err
-                    code_part = str(code) if code is not None else ""
-                    title_part = title or ""
-                    if code_part and title_part:
-                        fail_reason = f"delivery_failed:{code_part}:{title_part}"
-                    elif code_part:
-                        fail_reason = f"delivery_failed:{code_part}"
-                    elif title_part:
-                        fail_reason = f"delivery_failed:{title_part}"
-                    else:
-                        fail_reason = "delivery_failed"
-                else:
-                    fail_reason = "delivery_failed"
-            elif delivery == "read":
-                sent += 1
-                delivered += 1
-                opened += 1
-                continue
-            elif delivery == "delivered":
-                sent += 1
-                delivered += 1
-                continue
-            else:
-                sent += 1
-                continue
-
-        if reason == "not_interested":
+                stopped_at = opted_out_map[lead_id]
+        if stopped_at:
             opted_out += 1
+            _add_failure("not_interested", r.get("fail_reason") or "opted_out", stopped_at)
+        elif send_status == "opted_out_skip":
+            # Rule 3: on Said stop (or excluded for a "no" reply) BEFORE this campaign: never sent.
+            row_fail_reason = r.get("fail_reason") or "opted_out"
+            if row_fail_reason == "negative_reply_excluded":
+                failed += 1
+                _add_failure("failed", row_fail_reason, None)
+            else:
+                opted_out += 1
+                _add_failure("not_interested", row_fail_reason, opted_out_map.get(lead_id))
+            continue
+        # Rule 4 (legacy leads.opted_out fallback) removed: reading the global leads.opted_out
+        # flag here caused cross-broadcast contamination (a prior broadcast's opt-out leaked
+        # into a later broadcast's CSV).
+
+        delivery = msg_status_by_lead.get(lead_id) if lead_id else None
+        if delivery == "failed":
+            fail_reason = "delivery_failed"
+            err = msg_error_by_lead.get(lead_id)
+            if err:
+                code, title = err
+                parts = [p for p in (str(code) if code is not None else "", title or "") if p]
+                if parts:
+                    fail_reason = "delivery_failed:" + ":".join(parts)
+            if not stopped_at:
+                failed += 1
+                _add_failure("failed", fail_reason, None)
+        elif delivery == "read":
+            sent += 1
+            delivered += 1
+            opened += 1
+        elif delivery == "delivered":
+            sent += 1
+            delivered += 1
         else:
-            failed += 1
-        if phone and phone not in seen_phones:
-            seen_phones.add(phone)
-            failures.append({
-                "lead_id": lead_id or "",
-                "phone": phone,
-                "name": name,
-                "reason": reason,
-                "fail_reason": fail_reason or "",
-                "fail_detail": r.get("fail_detail") or "",
-                "opted_out_at": opted_out_at or "",
-            })
+            sent += 1
 
     if failures:
         sample = [{"reason": f["reason"], "fail_reason": f["fail_reason"]} for f in failures[:3]]

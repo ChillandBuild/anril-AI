@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { toast } from "sonner";
 import {
   BellOff,
+  Tag as TagIcon,
   CalendarCheck,
   CalendarX,
   IndianRupee,
@@ -71,6 +72,77 @@ const SEGMENT_INFO: Partial<Record<string, { label: string; tone: string }>> = {
   C: { label: "Cold", tone: "text-[#175cd3]" },
   D: { label: "Not interested", tone: "text-[#64748b]" },
 };
+
+/** Phone header: the interest word as a chip, and the same tint behind the avatar. */
+const PHONE_SEGMENT: Record<string, string> = {
+  A: "bg-rose-100 text-rose-800",
+  B: "bg-amber-100 text-amber-900",
+  C: "bg-slate-200 text-slate-700",
+  D: "bg-slate-100 text-slate-500",
+};
+
+function initialsOf(name: string | null | undefined, phone: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length > 0) return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits ? digits.slice(-2) : "?";
+}
+
+/** One of the four round-square actions under the phone header. */
+function PhoneAction({
+  label,
+  icon: Icon,
+  href,
+  onClick,
+  disabled,
+  tone = "soft",
+}: {
+  label: string;
+  icon: LucideIcon;
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  tone?: "primary" | "soft" | "danger";
+}) {
+  const box = cn(
+    "flex h-[52px] w-[52px] items-center justify-center rounded-2xl transition-colors",
+    disabled
+      ? "bg-slate-100 text-slate-400"
+      : tone === "primary"
+        ? "bg-primary text-white"
+        : tone === "danger"
+          ? "bg-rose-50 text-rose-700"
+          : "bg-primary-light text-primary-900",
+  );
+  const wrap = "flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 font-label text-[11px] font-bold text-ink";
+  const inner = (
+    <>
+      <span className={box}>
+        <Icon size={20} aria-hidden="true" />
+      </span>
+      <span className="max-w-full truncate">{label}</span>
+    </>
+  );
+  if (disabled) {
+    return (
+      <span aria-disabled="true" className={cn(wrap, "opacity-70")}>
+        {inner}
+      </span>
+    );
+  }
+  if (href) {
+    return (
+      <a href={href} className={wrap}>
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={wrap}>
+      {inner}
+    </button>
+  );
+}
 
 const YEAR_OPTS: Intl.DateTimeFormatOptions = { year: "numeric", timeZone: "Asia/Kolkata" };
 
@@ -438,9 +510,85 @@ export default function CustomerPage() {
   const extraTotals = t && ("refunds_paise" in t || "visits" in t || "no_shows" in t || "avg_stars" in t) ? t : null;
   const tags = profile.tags ?? [];
 
+  function jumpToTags() {
+    const card = document.getElementById("customer-tags");
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("customer-tag-input")?.focus({ preventScroll: true });
+  }
+
+  const segmentChip = lead.segment ? PHONE_SEGMENT[lead.segment] : undefined;
+  const phoneSubParts = [
+    lead.created_at ? `Customer since ${monthYear(lead.created_at)}` : null,
+    lead.source ? `from ${sourceLabel(lead.source)}${lead.ad_name ? ` · ad "${lead.ad_name}"` : ""}` : null,
+    lead.handled_by ? `handled by ${lead.handled_by}` : null,
+  ];
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
+      {/* Phone: a centred header with four big actions. Larger screens keep the header below. */}
+      <header className="relative rounded-2xl border border-border bg-white px-4 pb-5 pt-4 text-center shadow-sm lg:hidden">
+        <Link
+          href="/dashboard/leads"
+          className="absolute left-1 top-1 flex min-h-[44px] items-center px-3 font-label text-xs font-bold text-primary"
+        >
+          ‹ Customers
+        </Link>
+        <div
+          aria-hidden="true"
+          className={cn(
+            "mx-auto mt-5 flex h-16 w-16 items-center justify-center rounded-full font-display text-xl font-bold",
+            segmentChip ?? "bg-slate-100 text-slate-600",
+          )}
+        >
+          {initialsOf(lead.name, lead.phone)}
+        </div>
+        <div className="mt-3 flex min-w-0 flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <h1 className="min-w-0 break-words font-display text-xl font-bold text-ink">{displayName}</h1>
+          {segment && segmentChip && (
+            <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 font-label text-[11px] font-bold", segmentChip)}>
+              {segment.label}
+            </span>
+          )}
+        </div>
+        {lead.phone && <p className="mt-1 break-words font-body text-sm text-ink-secondary">{maskPhone(lead.phone)}</p>}
+        <p className="mt-1 break-words font-body text-xs text-ink-muted">{joinParts(phoneSubParts)}</p>
+        {lead.score != null && (
+          <p className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full bg-surface-mid px-3 py-1.5 font-body text-xs text-ink-secondary">
+            <span className="shrink-0 font-bold text-ink">Score {lead.score}</span>
+            <span className="min-w-0 truncate">from their chats</span>
+          </p>
+        )}
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          <PhoneAction
+            label="Call"
+            icon={Phone}
+            tone="primary"
+            href={lead.phone ? `tel:${lead.phone.replace(/[\s()-]/g, "")}` : undefined}
+            disabled={!lead.phone}
+          />
+          <PhoneAction
+            label="Chat"
+            icon={MessageCircle}
+            onClick={() => router.push(`/dashboard/conversations?lead=${lead.id}`)}
+          />
+          <PhoneAction label="Tags" icon={TagIcon} onClick={jumpToTags} />
+          {canManage && !said_stop.on_list && (
+            <PhoneAction label="Said stop" icon={BellOff} tone="danger" onClick={() => setStopDialog("add")} />
+          )}
+          {canManage && said_stop.on_list && (
+            <PhoneAction label="Allow again" icon={RotateCcw} onClick={() => setStopDialog("remove")} />
+          )}
+          {!canManage && (
+            <PhoneAction
+              label="Notes"
+              icon={Star}
+              onClick={() => document.getElementById("customer-notes")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            />
+          )}
+        </div>
+      </header>
+
+      <header className="hidden flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm lg:flex">
         <div className="min-w-0">
           <Link href="/dashboard/leads" className="text-xs font-bold text-primary hover:underline">
             ‹ Customers
@@ -477,7 +625,33 @@ export default function CustomerPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-3 gap-2 lg:hidden">
+        <div className="min-w-0 rounded-2xl border border-border bg-white px-2.5 py-3 text-center shadow-sm">
+          <div className="truncate font-label text-[11px] font-semibold text-ink-muted">Total spent</div>
+          <div className="mt-1 truncate font-display text-base font-bold text-[#067647]">{rupees(totals.spent_paise)}</div>
+          <div className="mt-0.5 truncate text-[11px] text-ink-muted">
+            {totals.orders_won > 0 ? `avg ${rupees(totals.average_paise)}` : "nothing bought yet"}
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl border border-border bg-white px-2.5 py-3 text-center shadow-sm">
+          <div className="truncate font-label text-[11px] font-semibold text-ink-muted">Bought</div>
+          <div className="mt-1 truncate font-display text-base font-bold text-ink">
+            {totals.orders_won === 0 ? "Not yet" : plural(totals.orders_won, "time", "times")}
+          </div>
+          <div className="mt-0.5 truncate text-[11px] text-ink-muted">
+            {totals.last_bought_at ? `last ${dateLabel(totals.last_bought_at)}` : " "}
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl border border-border bg-white px-2.5 py-3 text-center shadow-sm">
+          <div className="truncate font-label text-[11px] font-semibold text-ink-muted">Still to pay</div>
+          <div className="mt-1 truncate font-display text-base font-bold text-ink">{rupees(totals.to_pay_paise)}</div>
+          <div className="mt-0.5 truncate text-[11px] text-ink-muted">
+            {totals.orders_waiting > 0 ? `${totals.orders_waiting} waiting` : "nothing pending"}
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-5">
         <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
           <div className="text-xs font-semibold text-[#64748b]">Total spent</div>
           <div className="mt-1 text-xl font-bold text-[#067647]">{rupees(totals.spent_paise)}</div>
@@ -569,7 +743,7 @@ export default function CustomerPage() {
                     aria-pressed={active}
                     onClick={() => setFilter(chip.key)}
                     className={cn(
-                      "rounded-full px-2.5 py-1 text-xs font-semibold",
+                      "rounded-full px-2.5 py-1 text-xs font-semibold max-lg:min-h-11 max-lg:px-3.5",
                       active ? "bg-primary text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
                     )}
                   >
@@ -644,7 +818,7 @@ export default function CustomerPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+          <div id="customer-tags" className="scroll-mt-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-bold text-[#0A1528]">Tags</h2>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {tags.length === 0 && <p className="text-xs text-[#556274]">No tags yet</p>}
@@ -662,7 +836,7 @@ export default function CustomerPage() {
                       onClick={() => void changeTags("remove", [tag])}
                       disabled={tagBusy}
                       aria-label={`Remove tag ${tag}`}
-                      className="rounded-full p-0.5 hover:bg-slate-200 disabled:opacity-50"
+                      className="relative rounded-full p-0.5 hover:bg-slate-200 disabled:opacity-50 max-lg:before:absolute max-lg:before:-inset-3 max-lg:before:content-['']"
                     >
                       <X size={12} />
                     </button>
@@ -684,12 +858,13 @@ export default function CustomerPage() {
                   maxLength={120}
                   placeholder="Add a tag, e.g. VIP"
                   aria-label="Add a tag"
-                  className="min-w-0 flex-1 rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  id="customer-tag-input"
+                  className="min-w-0 flex-1 rounded-lg border border-[#e2e8f0] px-2.5 py-1.5 text-xs max-lg:min-h-11 max-lg:text-base text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
                 <button
                   type="submit"
                   disabled={tagBusy || !cleanTag(tagInput)}
-                  className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-40 max-lg:min-h-11 max-lg:px-4"
                 >
                   <Plus size={12} aria-hidden="true" /> Add
                 </button>
@@ -724,7 +899,7 @@ export default function CustomerPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+          <div id="customer-notes" className="scroll-mt-4 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
             <h2 className="text-sm font-bold text-[#0A1528]">Team notes</h2>
             {profile.notes.length === 0 ? (
               <p className="mt-2.5 text-xs text-[#64748b]">No notes yet. Notes added in Chats show here.</p>

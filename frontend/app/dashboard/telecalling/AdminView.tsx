@@ -17,6 +17,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { SegmentBadge } from "@/components/segment-badge";
 import { AiraLoader } from "@/components/AiraLoader";
+import PhoneLeadSheet from "./PhoneLeadSheet";
+import { useIsPhone } from "@/hooks/useIsPhone";
 
 export default function AdminView({ fallbackData, readOnly = false }: { fallbackData?: AdminDashboardData; readOnly?: boolean }) {
   const searchParams = useSearchParams();
@@ -30,6 +32,11 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
   // Left-panel: Queue vs Manual Dial
   const [leftTab, setLeftTab] = useState<"queue" | "dialer" | "recent">("queue");
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
+  // Phones have no side panel: tapping a lead opens it as a full-screen sheet.
+  const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
+  // The full-screen lead sheet is phone-only; on desktop the lead opens in the right-hand column.
+  const isPhone = useIsPhone();
+  const closePhoneSheet = useCallback(() => setPhoneSheetOpen(false), []);
 
   // Queue filters
   const [queueSegment, setQueueSegment] = useState<string>("all");
@@ -63,7 +70,8 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
   useEffect(() => {
     const leadId = searchParams.get("lead_id");
     if (leadId) cockpit.setSelectedLeadId(leadId);
-  }, [searchParams, cockpit.setSelectedLeadId]);
+    if (leadId && isPhone) setPhoneSheetOpen(true);
+  }, [searchParams, cockpit.setSelectedLeadId, isPhone]);
 
   const filteredQueueLeads = (queueLeadsData ?? []).filter((lead) => {
     if (queueStatus !== "all" && lead.call_status !== queueStatus) return false;
@@ -76,7 +84,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
   const selectedCallerName = callers.find((c) => c.id === selectedCallerId)?.name ?? "Admin (me)";
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
+    <div className="flex min-h-0 flex-col lg:min-h-[calc(100vh-8rem)] bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
       <div className="grid flex-1 grid-cols-1 gap-4 pb-4 xl:grid-cols-12 xl:min-h-0 xl:pb-0">
         {/* Left Side: Admin Queue (4/12) */}
         <div className="flex flex-col gap-5 pr-0 xl:col-span-4 xl:min-h-0 xl:pr-1">
@@ -145,13 +153,13 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
                 </div>
 
                 {/* Filters */}
-                <div className="grid grid-cols-3 gap-2 mb-4 shrink-0">
+                <div className="grid grid-cols-2 gap-2 mb-4 shrink-0 sm:grid-cols-3">
                   {[
                     { value: queueSegment, set: setQueueSegment, label: "Segment", opts: [["all", "All Seg"], ["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"]] },
                     { value: queueStatus, set: setQueueStatus, label: "Status", opts: [["all", "All"], ...LEAD_CALL_STATUSES.map((s) => [s, LEAD_STATUS_LABEL[s]] as [string, string])] },
                     { value: queueAssignedTo, set: setQueueAssignedTo, label: "Assigned", opts: [["all", "All"], ["unassigned", "Unassigned"], ...callers.map((c) => [c.id, c.name] as [string, string])] },
                   ].map((f) => (
-                    <div key={f.label}>
+                    <div key={f.label} className="min-w-0">
                       <label className="block font-label text-[8px] text-[#94a3b8] uppercase tracking-widest mb-1 font-extrabold">{f.label}</label>
                       <Select
                         size="sm"
@@ -199,8 +207,8 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
                       return (
                         <div
                           key={lead.id}
-                          onClick={() => cockpit.setSelectedLeadId(lead.id)}
-                          className={`rounded-2xl border-y border-r border-l-[6px] transition-all duration-200 cursor-pointer p-3 flex items-center justify-between gap-3 ${borderAccent} ${
+                          onClick={() => { cockpit.setSelectedLeadId(lead.id); if (isPhone) setPhoneSheetOpen(true); }}
+                          className={`min-w-0 rounded-2xl border-y border-r border-l-[6px] transition-all duration-200 cursor-pointer p-3 flex items-center justify-between gap-3 ${borderAccent} ${
                             isSelected
                               ? "bg-gradient-to-r from-primary-light/70 to-primary-50/20 border-primary-muted shadow-[0_4px_15px_rgba(var(--primary-800-rgb),0.06)] ring-1 ring-primary/10 translate-x-1"
                               : "bg-[#f8fafc]/30 border-[#f1f5f9] hover:bg-[#f8fafc] hover:shadow-sm"
@@ -257,13 +265,21 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
                   Pick a lead from the queue on the left to review attribution, call history, and log feedback — then dial as {selectedCallerName}.
                 </p>
               </div>
-            ) : (
+            ) : !isPhone ? (
               <LeadDetailPanel {...cockpit.leadDetailProps} setHistoryLead={setHistoryLead} readOnly={readOnly} />
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
+      {isPhone && phoneSheetOpen && cockpit.selectedLeadId && (
+        <PhoneLeadSheet
+          title={cockpit.selectedLead?.name || formatPhone(cockpit.selectedLead?.phone) || "Lead"}
+          onClose={closePhoneSheet}
+        >
+          <LeadDetailPanel {...cockpit.leadDetailProps} setHistoryLead={setHistoryLead} readOnly={readOnly} />
+        </PhoneLeadSheet>
+      )}
       {historyLead && <NotesHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
 
 

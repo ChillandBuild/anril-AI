@@ -22,12 +22,13 @@ import {
   FileText, Image as ImageIcon,
   Music, Video, Download, X, Eraser, MoreVertical,
   ArrowLeft, Check, CheckCheck, Smile, SendHorizontal, Paperclip, CreditCard, Lock,
-  PanelRightOpen, PanelRightClose, UserRound, Loader2,
+  PanelRightOpen, PanelRightClose, UserRound, Loader2, Phone,
 } from "lucide-react";
 import { SendTemplateModal } from "@/app/dashboard/leads/SendTemplateModal";
 import { ReplyFeedback } from "@/components/ai-setup/ReplyFeedback";
 import { LikeReply } from "@/components/ai-setup/LikeReply";
 import { VoiceNote } from "@/components/chats/VoiceNote";
+import { PhoneAvatar, SegmentChip } from "@/components/chats/PhoneAvatar";
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -154,7 +155,7 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
   return (
     <div className={cn("flex", isOutbound && "justify-end")}>
       <div className={cn(
-        "max-w-[82%] md:max-w-[62%] px-3.5 py-2 rounded-2xl font-body text-[12.5px] leading-relaxed",
+        "max-w-[82%] md:max-w-[62%] break-words px-3.5 py-2 rounded-2xl font-body text-[12.5px] leading-relaxed",
         isOutbound
           ? isAi
             ? "bg-[#e6f6f5] text-[#0A1528] border border-primary/10 rounded-tr-md"
@@ -306,6 +307,8 @@ export function ChatThread({
   const pendingHandover = handovers.find((h) => h.lead_id === current.id);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  // Phone only: while typing, the quick-action row folds away so the messages keep room above the keyboard.
+  const [composerFocused, setComposerFocused] = useState(false);
   const [resolvingHandover, setResolvingHandover] = useState(false);
 
   // Templates waiting to go out show in the thread as dashed bubbles.
@@ -635,15 +638,15 @@ export function ChatThread({
 
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0">
+    <div className="flex-1 flex flex-col h-full min-h-0 min-w-0">
       {/* Header */}
       {/* Same 68px band as the chat list header and the customer panel header. */}
-      <div className="flex h-[68px] shrink-0 items-center gap-3 border-b border-[#e2e8f0] bg-white px-5">
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[#e2e8f0] bg-white px-2 md:h-[68px] md:gap-3 md:px-5">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[#0A1528] hover:bg-slate-200 md:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[#0A1528] hover:bg-slate-100 md:hidden"
             title="Back to conversations"
           >
             <ArrowLeft size={18} />
@@ -651,10 +654,12 @@ export function ChatThread({
         )}
 
         {/* Lead initials avatar */}
-        <ChannelAvatar source={current.source} size={38} />
+        <span className="hidden md:contents"><ChannelAvatar source={current.source} size={38} /></span>
+        <PhoneAvatar name={current.name} segment={current.segment} size={40} className="md:hidden" />
 
         {/* Name, then phone · channel · ad */}
-        <div className="min-w-[120px] flex-1">
+        <div className="min-w-0 flex-1 md:min-w-[120px]">
+          <div className="flex min-w-0 items-center gap-1.5">
           {editingName ? (
             <input
               autoFocus
@@ -671,7 +676,7 @@ export function ChatThread({
           ) : (
             <button
               onClick={() => { setNameDraft(current.name || ""); setEditingName(true); }}
-              className="group flex max-w-full items-center gap-1.5"
+              className="group flex min-w-0 max-w-full items-center gap-1.5"
               title="Click to rename"
             >
               <span className="font-display text-[15px] font-bold leading-tight text-[#0A1528] truncate">
@@ -680,7 +685,9 @@ export function ChatThread({
               <Pencil size={13} className="opacity-0 group-hover:opacity-50 text-[#94a3b8] shrink-0" />
             </button>
           )}
-          <p className="mt-0.5 font-label text-[11.5px] text-[#64748b] flex items-center gap-1 min-w-0">
+          <SegmentChip segment={current.segment} className="md:hidden" />
+          </div>
+          <p className="mt-0.5 font-label text-[11.5px] text-[#64748b] flex items-center gap-1 min-w-0 overflow-hidden">
             {/* The phone is already the title when there's no name, so don't repeat it. */}
             {current.phone && current.name && <span className="whitespace-nowrap">{formatPhone(current.phone)}</span>}
             {current.phone && current.name && <span className="text-[#cbd5e1]">·</span>}
@@ -695,7 +702,7 @@ export function ChatThread({
         </div>
 
         {/* Right side controls */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
           {/* Who handles this chat. Only the owner can change it (the API is owner-only). */}
           <div
             className="hidden w-[132px] shrink-0 md:block"
@@ -720,7 +727,7 @@ export function ChatThread({
 
           {/* AI agent switch */}
           <label
-            className={cn("flex items-center gap-2 rounded-xl px-2 py-1.5", !masterAiEnabled && "opacity-50")}
+            className={cn("hidden items-center gap-2 rounded-xl px-2 py-1.5 md:flex", !masterAiEnabled && "opacity-50")}
             title={masterAiEnabled ? (aiEnabled ? "The AI agent replies in this chat" : "The AI agent is off for this chat") : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
           >
             <span className="hidden text-[12.5px] font-semibold text-[#334155] 2xl:inline">AI agent</span>
@@ -745,11 +752,22 @@ export function ChatThread({
             </button>
           )}
 
+          {/* Call (phone only) */}
+          {isWhatsApp && current.phone && (
+            <a
+              href={`tel:${current.phone.replace(/[\s()-]/g, "")}`}
+              aria-label="Call"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-primary hover:bg-primary-light md:hidden"
+            >
+              <Phone size={19} />
+            </a>
+          )}
+
           {/* More menu */}
           <div className="relative shrink-0" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((v) => !v)}
-              className="p-1.5 rounded-lg hover:bg-slate-100 text-[#64748b] hover:text-[#0A1528] transition-colors"
+              className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-slate-100 text-[#64748b] hover:text-[#0A1528] transition-colors md:h-auto md:w-auto md:p-1.5"
               title="More actions"
             >
               <MoreVertical size={16} />
@@ -760,7 +778,7 @@ export function ChatThread({
                   <button
                     onClick={() => { setDropdownOpen(false); markConverted(); }}
                     disabled={converting}
-                    className="w-full text-left px-4 py-2 text-[13px] font-medium text-primary hover:bg-primary/5 transition-colors flex items-center gap-2 disabled:opacity-40"
+                    className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-primary hover:bg-primary/5 transition-colors flex items-center gap-2 disabled:opacity-40"
                   >
                     <CheckCircle2 size={13} /> {converting ? "Saving…" : "Mark Converted"}
                   </button>
@@ -770,7 +788,7 @@ export function ChatThread({
                   <button
                     onClick={() => { setDropdownOpen(false); clearData(); }}
                     disabled={clearing}
-                    className="w-full text-left px-4 py-2 text-[13px] font-medium text-orange-600 hover:bg-orange-50 transition-colors flex items-center gap-2 disabled:opacity-40"
+                    className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-orange-600 hover:bg-orange-50 transition-colors flex items-center gap-2 disabled:opacity-40"
                   >
                     <Eraser size={13} /> {clearing ? "Clearing…" : "Clear Data"}
                   </button>
@@ -778,7 +796,7 @@ export function ChatThread({
                 <button
                   onClick={() => { setDropdownOpen(false); deleteConversation(); }}
                   disabled={deleting}
-                  className="w-full text-left px-4 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 disabled:opacity-40"
+                  className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 disabled:opacity-40"
                 >
                   <Trash2 size={13} /> {deleting ? "Deleting…" : "Delete"}
                 </button>
@@ -788,8 +806,38 @@ export function ChatThread({
         </div>
       </div>
 
+      {/* Phone only: who is replying in this chat. Same toggle and disabled rule as the header switch on wider screens. */}
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-3 border-b px-3 py-1.5 md:hidden",
+          !masterAiEnabled ? "border-[#e2e8f0] bg-slate-50" : aiEnabled ? "border-primary/10 bg-primary-light" : "border-amber-200 bg-amber-50"
+        )}
+      >
+        <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-ink">
+          {!masterAiEnabled ? (
+            <>AI is off for your whole account. Turn it on in Settings → Auto-Reply.</>
+          ) : aiEnabled ? (
+            <span className="font-bold text-primary-900">Anril is replying</span>
+          ) : (
+            <><span className="font-bold">You are replying</span> · Anril is paused for this chat</>
+          )}
+        </p>
+        {masterAiEnabled && (
+          <button
+            type="button"
+            onClick={() => toggleAI()}
+            className={cn(
+              "inline-flex h-11 shrink-0 items-center rounded-xl px-4 text-[13px] font-bold transition-colors",
+              aiEnabled ? "border border-primary/30 bg-white text-primary-900 hover:bg-primary-light" : "bg-primary text-white hover:bg-[var(--primary-900)]"
+            )}
+          >
+            {aiEnabled ? "Take over" : "Hand back to Anril"}
+          </button>
+        )}
+      </div>
+
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-white">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-white px-3 py-4 md:px-5">
         {loading ? (
           <div className="flex items-center justify-center h-full text-[#64748b] font-body text-sm">
             Loading messages…
@@ -823,7 +871,7 @@ export function ChatThread({
 
       {/* The AI handed this chat over: say why, and let a person take it. */}
       {hasEscalation && !teach && (
-        <div className="flex items-center gap-3 border-t border-amber-200 bg-amber-50 px-5 py-1.5">
+        <div className="flex shrink-0 items-center gap-3 border-t border-amber-200 bg-amber-50 px-3 py-2 md:px-5 md:py-1.5">
           <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-amber-900">
             <span className="mr-1">🙋</span>
             <span className="font-bold">The AI agent needs you:</span>{" "}
@@ -835,7 +883,7 @@ export function ChatThread({
                 type="button"
                 onClick={() => void claimHandover()}
                 disabled={claiming}
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[12px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
+                className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 md:h-8 text-[12px] font-bold text-white shadow-sm hover:bg-[var(--primary-900)] disabled:opacity-50"
               >
                 {claiming && <Loader2 size={13} className="animate-spin" />} I&apos;ll reply
               </button>
@@ -845,7 +893,7 @@ export function ChatThread({
                 onClick={markResolved}
                 disabled={resolvingHandover}
                 title="The customer has what they needed: close this handover"
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3.5 text-[12px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 md:h-8 bg-white px-3.5 text-[12px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
               >
                 <Check size={14} /> {resolvingHandover ? "Closing…" : "Mark done"}
               </button>
@@ -856,7 +904,7 @@ export function ChatThread({
 
       {/* Teach the Anril AI: turn the reply just sent into an answer it can give next time. */}
       {teach && (
-        <div className="border-t border-sky-200 bg-sky-50 px-5 py-3">
+        <div className="shrink-0 border-t border-sky-200 bg-sky-50 px-3 py-3 md:px-5">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] leading-snug text-[#0c4a6e]">
@@ -898,7 +946,7 @@ export function ChatThread({
       )}
 
       {/* Input area */}
-      <div className="border-t border-[#e2e8f0] bg-white px-5 pt-3 pb-4">
+      <div className="shrink-0 border-t border-[#e2e8f0] bg-white px-3 pt-2 pb-3 md:px-5 md:pt-3 md:pb-4">
         {!current.blocked_at && outsideWindow && isWhatsApp && (
           <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -910,11 +958,11 @@ export function ChatThread({
 
         {/* Quick actions row. Templates, products and payment links go out on WhatsApp only. */}
         {!current.blocked_at && isWhatsApp && canReplyToConversations && (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className={cn("relative mb-2 flex gap-1.5 md:flex-wrap md:gap-2", composerFocused && "max-md:hidden")}>
           <button
             type="button"
             onClick={() => setTemplateModalOpen(true)}
-            className="rounded-lg bg-[#f1f5f9] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center gap-1.5 transition-colors"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             title="Send an approved WhatsApp template (works any time)"
           >
             <FileText size={13} />
@@ -923,7 +971,7 @@ export function ChatThread({
 
           <ShareProductMenu
             leadId={current.id}
-            className="rounded-lg bg-[#f1f5f9] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center gap-1.5 transition-colors"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             disabledReason={outsideWindow ? "WhatsApp only delivers this within 24 hours of the customer's last message. Send a template instead." : null}
             onSent={() => void pollMessages()}
           />
@@ -932,7 +980,7 @@ export function ChatThread({
             <button
               type="button"
               onClick={() => setPaymentDealOpen(true)}
-              className="rounded-lg bg-[#f1f5f9] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center gap-1.5 transition-colors"
+              className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
               title="Record a payment or send a payment link on WhatsApp"
             >
               <CreditCard size={13} />
@@ -944,7 +992,7 @@ export function ChatThread({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={!canSendMedia}
-            className="rounded-lg bg-[#f1f5f9] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px] disabled:cursor-not-allowed disabled:opacity-50"
             title={canSendMedia ? "Attach a file" : "Turn AI replies off to send a file yourself"}
           >
             <Paperclip size={13} />
@@ -1024,10 +1072,13 @@ export function ChatThread({
         ) : (
           /* Main input bar */
           <div className="relative">
+            {replyWindowLeft && (
+              <p className="mb-1 px-1 text-[11.5px] text-ink-muted md:hidden">free to reply for {replyWindowLeft}</p>
+            )}
             <div
               aria-hidden={replyLocked || undefined}
               className={cn(
-                "rounded-2xl border border-[#e2e8f0] focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 flex items-center gap-2 px-4 py-2.5 transition-all",
+                "rounded-2xl border border-[#e2e8f0] focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 flex items-center gap-1 px-3 py-1 md:gap-2 md:px-4 md:py-2.5 transition-all max-md:min-h-12",
                 replyLocked && "pointer-events-none select-none blur-[3px]"
               )}
             >
@@ -1041,19 +1092,21 @@ export function ChatThread({
                 rows={1}
                 disabled={!canReplyToConversations || replyLocked || sending}
                 placeholder={canReplyToConversations ? "Type a message…" : "Read-only conversation"}
-                className="flex-1 bg-transparent font-body text-[13px] resize-none focus:outline-none disabled:opacity-50 max-h-28 leading-relaxed"
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
+                className="flex-1 bg-transparent font-body text-[16px] md:text-[13px] resize-none focus:outline-none disabled:opacity-50 max-h-[132px] md:max-h-28 leading-relaxed max-md:py-2"
                 style={{ minHeight: "24px" }}
                 onInput={(e) => {
                   const t = e.currentTarget;
                   t.style.height = "auto";
-                  t.style.height = `${Math.min(t.scrollHeight, 112)}px`;
+                  t.style.height = `${Math.min(t.scrollHeight, window.innerWidth < 768 ? 132 : 112)}px`;
                 }}
               />
 
               {/* WhatsApp's free-reply window: how long a normal message still goes through. */}
               {replyWindowLeft && (
                 <span
-                  className="hidden shrink-0 whitespace-nowrap text-[11.5px] text-[#94a3b8] sm:inline"
+                  className="hidden shrink-0 whitespace-nowrap text-[11.5px] text-[#94a3b8] md:inline"
                   title="WhatsApp lets you send normal messages for 24 hours after the customer's last message. After that, only templates."
                 >
                   free to reply for {replyWindowLeft}
@@ -1061,16 +1114,17 @@ export function ChatThread({
               )}
 
               {/* Emoji button */}
-              <div className="relative" ref={emojiRef}>
+              <div className="md:relative" ref={emojiRef}>
                 <button
                   onClick={() => setEmojiOpen(!emojiOpen)}
-                  className="p-1 text-[#94a3b8] hover:text-[#0A1528] transition-colors"
+                  className="flex h-11 w-11 items-center justify-center text-[#94a3b8] hover:text-[#0A1528] transition-colors md:h-auto md:w-auto md:p-1"
                   title="Add emoji"
+                  aria-label="Add emoji"
                 >
                   <Smile size={16} />
                 </button>
                 {emojiOpen && (
-                  <div className="absolute bottom-full right-0 z-40 mb-2 grid w-[288px] grid-cols-8 gap-0.5 rounded-xl border border-[#e2e8f0] bg-white p-2 shadow-xl">
+                  <div className="absolute bottom-full left-0 right-0 z-40 mb-2 grid w-full grid-cols-8 md:left-auto md:w-[288px] gap-0.5 rounded-xl border border-[#e2e8f0] bg-white p-2 shadow-xl">
                     {["😊", "🙏", "👍", "❤️", "🎉", "😀", "😂", "🤝", "✅", "🔥", "💐", "🌟", "📞", "📅", "💰", "🙌"].map((emoji) => (
                       <button
                         key={emoji}
@@ -1093,7 +1147,8 @@ export function ChatThread({
                 onClick={sendReply}
                 disabled={!canReplyToConversations || sending || !draft.trim()}
                 title={canReplyToConversations ? "Send message" : "You have read-only access to conversations"}
-                className="h-9 w-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                aria-label="Send message"
+                className="h-11 w-11 md:h-9 md:w-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-[var(--primary-900)] disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
               >
                 <SendHorizontal size={16} />
               </button>
@@ -1103,7 +1158,7 @@ export function ChatThread({
                 <button
                   type="button"
                   onClick={() => setTemplateModalOpen(true)}
-                  className="flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-white px-4 py-2 text-xs font-bold text-[#0A1528] shadow-sm transition-colors hover:border-primary hover:text-primary"
+                  className="flex min-h-11 max-w-full items-center gap-2 rounded-full border border-[#e2e8f0] bg-white px-4 py-2 text-xs font-bold text-[#0A1528] shadow-sm transition-colors hover:border-primary hover:text-primary"
                 >
                   <Lock size={13} className="text-[#64748b]" />
                   Reply window closed · Send template

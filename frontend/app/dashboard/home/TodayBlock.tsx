@@ -11,6 +11,7 @@ import { BookingsTodayList } from "./BookingsTodayList";
 import { FeedbackTodayList } from "./FeedbackTodayList";
 import { todayIst } from "../bookings/bookingsTime";
 import { EditTodayModal } from "./EditTodayModal";
+import { PhoneToday } from "./PhoneToday";
 import { listIsOn, resolveBoxes, waitingFor, type BoxKey, type TodaysBookings } from "./todayLayout";
 
 const swrOpts = {
@@ -60,7 +61,16 @@ export function TodayBlock() {
         </div>
       )}
 
-      {today && <TodayBody today={today} layout={layout} onEdit={() => setEditing(true)} />}
+      {today && (
+        <>
+          <div className="lg:hidden">
+            <PhoneToday today={today} layout={layout} onEdit={() => setEditing(true)} />
+          </div>
+          <div className="hidden lg:block">
+            <TodayBody today={today} layout={layout} onEdit={() => setEditing(true)} />
+          </div>
+        </>
+      )}
 
       {editing && today && (
         <EditTodayModal

@@ -108,7 +108,7 @@ export function CallbackNotifier() {
   if (dueCallbacks.length === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-6 z-[9999] space-y-3 max-w-md w-full pointer-events-none">
+    <div className="pointer-events-none fixed inset-x-3 bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom)+0.75rem)] z-[9999] max-w-md space-y-3 lg:inset-x-auto lg:bottom-6 lg:left-6 lg:w-full">
       {dueCallbacks.map((cb) => {
         const timeStr = new Date(cb.scheduled_for).toLocaleTimeString([], {
           hour: "2-digit",
