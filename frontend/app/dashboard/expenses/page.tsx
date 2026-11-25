@@ -8,6 +8,7 @@ import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { ExpenseCategory, ExpenseMethod, ExpenseRepeat, ExpensesMonth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 
@@ -213,7 +214,8 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
 
   const empty = data.expenses.length === 0 && data.auto.length === 0;
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+    <div className="rounded-card border border-border bg-white shadow-sm md:overflow-x-auto">
+      <div className="hidden md:block">
       <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -271,6 +273,55 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
           ))}
         </tbody>
       </table>
+      </div>
+      <div className="space-y-3 p-3 md:hidden">
+        {empty && <p className="px-1 py-6 text-center text-sm text-ink-muted">Nothing spent in {data.month_label} yet.</p>}
+        {expenseRows.pageItems.map((e) => {
+          const rep = e.repeat_id ? repeats.get(e.repeat_id) : undefined;
+          return (
+            <MobileRecordCard key={e.id} className="p-3">
+              <MobileRecordHeader
+                title={<><span aria-hidden>{ICON[e.category] ?? "🧾"}</span> {e.label}</>}
+                subtitle={<>{e.label !== e.category_label ? `${e.category_label} · ` : ""}{shortDay(e.day)} · {e.method_label}</>}
+                aside={<span className="text-sm font-bold tabular-nums text-ink">{rupees(e.amount_paise)}</span>}
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {e.repeat_id && (
+                  <button type="button" disabled={!rep || !onEditRepeat} onClick={() => rep && onEditRepeat?.(rep)}
+                    className="rounded-full bg-surface-low px-2 py-0.5 text-xs text-ink-muted enabled:hover:text-ink">every month</button>
+                )}
+                {e.has_bill && (
+                  <button type="button" onClick={() => openBill(e.id)} aria-label="Open the bill"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-primary"><Paperclip size={13} /> Bill</button>
+                )}
+                {canAdd && (
+                  <span className="ml-auto">
+                    {confirm === e.id ? (
+                      <span className="inline-flex items-center gap-3 text-[13px]">
+                        <button type="button" onClick={() => remove(e.id)} className="min-h-8 font-semibold text-danger">Delete</button>
+                        <button type="button" onClick={() => setConfirm(null)} className="min-h-8 text-ink-muted">Keep</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setConfirm(e.id)} aria-label="Delete"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:text-danger"><Trash2 size={16} /></button>
+                    )}
+                  </span>
+                )}
+              </div>
+            </MobileRecordCard>
+          );
+        })}
+        {data.auto.map((a) => (
+          <MobileRecordCard key={a.key} className="bg-surface-low/40 p-3">
+            <MobileRecordHeader
+              title={<><span aria-hidden>{AUTO_ICON[a.key] ?? "🧾"}</span> {a.label}</>}
+              subtitle={`${a.note} · this month`}
+              aside={<span className="text-sm font-bold tabular-nums text-ink">{rupees(a.amount_paise)}</span>}
+            />
+            <span className="mt-2 inline-block rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700">added by itself</span>
+          </MobileRecordCard>
+        ))}
+      </div>
       <Pagination page={expenseRows.page} total={expenseRows.total} onPageChange={expenseRows.setPage} noun="expenses" />
     </div>
   );

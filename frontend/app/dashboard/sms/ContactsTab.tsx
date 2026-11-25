@@ -13,6 +13,7 @@ import { api, type SmsContactGroup } from "@/lib/api";
 import { Pagination } from "@/components/ui/Pagination";
 import { PAGE_SIZE } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { AddContactPanel, PastePanel, UploadPanel } from "./ContactPanels";
 import { GroupsPanel } from "./GroupsPanel";
 import { SEND_PREFILL_KEY, formatCount, friendlyError, parseContactsSub } from "./helpers";
@@ -249,6 +250,39 @@ function ContactsPanel({ toolbarSlot }: { toolbarSlot: HTMLElement | null }) {
         />
       ) : (
         <>
+          <div className="space-y-3 md:hidden">
+            {rows.map((c) => (
+              <MobileRecordCard key={c.id} className="p-3">
+                <div className="flex items-start gap-3">
+                  {canManage && (
+                    <div className="pt-0.5">
+                      <CheckTick checked={selected.has(c.id)} onChange={() => {
+                          remember([c]);
+                          toggle(c.id);
+                        }} aria-label={`Select ${c.name || c.phone}`} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <MobileRecordHeader
+                      title={c.name || c.phone}
+                      subtitle={c.name ? <span className="tabular-nums">{c.phone}</span> : undefined}
+                      aside={c.promo_consent ? <Badge tone="success">Promo OK</Badge> : undefined}
+                    />
+                    {c.group_ids.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {c.group_ids.map((id) => (
+                          <Badge key={id} tone="info">
+                            {groupName.get(id) ?? "Group"}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </MobileRecordCard>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <TableWrap>
             <table className="w-full min-w-[640px]">
               <thead>
@@ -296,6 +330,7 @@ function ContactsPanel({ toolbarSlot }: { toolbarSlot: HTMLElement | null }) {
               </tbody>
             </table>
           </TableWrap>
+          </div>
           <Pagination page={Math.floor(offset / PAGE_SIZE) + 1} total={total} onPageChange={(p) => setOffset((p - 1) * PAGE_SIZE)} noun="contacts" />
         </>
       )}

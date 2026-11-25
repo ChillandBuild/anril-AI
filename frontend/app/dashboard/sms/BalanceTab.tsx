@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { useSms } from "./SmsShell";
 import {
   WALLET_KIND_LABELS,
@@ -85,6 +86,24 @@ export function BalanceTab() {
         ) : items.length === 0 ? (
           <Empty title="No balance changes yet." />
         ) : (
+          <>
+          <div className="space-y-3 p-3 md:hidden">
+            {paged.pageItems.map((item, i) => (
+              <MobileRecordCard key={`${item.at}-${i}`} className="p-3">
+                <MobileRecordHeader
+                  title={item.label || WALLET_KIND_LABELS[item.kind] || item.kind}
+                  subtitle={formatIst(item.at)}
+                  aside={<Badge tone={walletKindTone(item.kind)}>{WALLET_KIND_LABELS[item.kind] ?? item.kind}</Badge>}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 text-[13px] text-on-surface-muted">
+                  <span className={`font-bold ${item.sms > 0 ? "text-[#15803d]" : "text-[#0A1528]"}`}>{formatSignedSms(item.sms)} SMS</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{item.amount == null ? "—" : formatRupees(item.amount)}</span>
+                </div>
+              </MobileRecordCard>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <TableWrap>
             <table className="w-full min-w-[520px]">
               <thead>
@@ -112,6 +131,8 @@ export function BalanceTab() {
               </tbody>
             </table>
           </TableWrap>
+          </div>
+          </>
         )}
         {items.length > 0 && (
           <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="entries" />

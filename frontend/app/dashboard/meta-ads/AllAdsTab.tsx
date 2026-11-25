@@ -28,6 +28,7 @@ import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { buildAllAdsCsv, computeTotals, fieldsToFetch, totalExplanation } from "./allAdsReport";
 import { HoverTip } from "./HoverTip";
+import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { LeadsDownloadButton } from "./LeadsDownloadButton";
 import { fieldHelp } from "./metaFieldHelp";
 import {
@@ -543,6 +544,79 @@ export function AllAdsTab() {
     );
   }
 
+  function renderPhoneCards() {
+    const spendField = CARD_FIELDS[0];
+    const clicksField = CARD_FIELDS[2];
+    const resultsField = CARD_FIELDS[3];
+    const costField = CARD_FIELDS[5];
+    if (!data) {
+      return (
+        <div className="space-y-2 p-3 md:hidden">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-28 animate-pulse rounded-2xl bg-stone-200/70" />
+          ))}
+        </div>
+      );
+    }
+    const tiles = (values: Record<string, unknown>) => (
+      <MobileRecordGrid className="mt-3 gap-2">
+        <MobileRecordField label="Spent" value={cellValue(values.spend, spendField)} />
+        <MobileRecordField label="Results" value={cellValue(values.results, resultsField)} />
+        <MobileRecordField label="Link clicks" value={cellValue(values.inline_link_clicks, clicksField)} />
+        <MobileRecordField label="Cost per result" value={cellValue(values.cost_per_result, costField)} />
+      </MobileRecordGrid>
+    );
+    return (
+      <div className="space-y-2 p-3 md:hidden">
+        {adPages.pageItems.map((row) => {
+          const drills = row.level !== "ad";
+          const sub = [row.subtitle, row.breakdown ? `Breakdown: ${row.breakdown}` : null].filter(Boolean).join(" · ");
+          return (
+            <MobileRecordCard
+              key={row.key}
+              onClick={drills ? () => openRow(row) : undefined}
+              className={cn("p-3", drills && "cursor-pointer")}
+            >
+              <MobileRecordHeader
+                title={row.title}
+                subtitle={sub || undefined}
+                aside={
+                  <span className="flex items-center gap-1.5">
+                    {row.type && <AdTypeBadge type={row.type} />}
+                    {drills && <ChevronRight size={14} className="text-[#cbd5e1]" />}
+                  </span>
+                }
+              />
+              {tiles(row.values)}
+              {row.values.delivery != null && row.values.delivery !== "" && (
+                <div className="mt-2 font-body text-[11px] text-on-surface-muted">Delivery: {cellValue(row.values.delivery, { key: "delivery" } as MetaField)}</div>
+              )}
+              {hasFormLeads(row.values) && (
+                <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+                  <LeadsDownloadButton
+                    label="Download these leads"
+                    download={() => api.instantForms.downloadAdLeads(row.adIds, { date_from: data.date_from, date_to: data.date_to })}
+                  />
+                </div>
+              )}
+            </MobileRecordCard>
+          );
+        })}
+        {filteredRows.length > 0 && (
+          <div className="rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-label text-sm font-bold text-on-surface">Total</span>
+              <span className="font-body text-[11px] text-on-surface-muted">
+                {filteredAdIds.length} {filteredAdIds.length === 1 ? "ad" : "ads"}
+              </span>
+            </div>
+            {tiles(totals.values)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderEmptyState(): ReactNode {
     if (loadError) {
       return (
@@ -703,13 +777,16 @@ export function AllAdsTab() {
 
         <div className="overflow-hidden rounded-b-2xl">
           {emptyState ?? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px]">
-                {renderHeader()}
-                {renderBody()}
-                {renderTotal()}
-              </table>
-            </div>
+            <>
+              {renderPhoneCards()}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[960px]">
+                  {renderHeader()}
+                  {renderBody()}
+                  {renderTotal()}
+                </table>
+              </div>
+            </>
           )}
         </div>
         {!emptyState && (

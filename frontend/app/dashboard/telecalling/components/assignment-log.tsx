@@ -9,6 +9,7 @@ import { PAGE_SIZE } from "@/lib/pagination";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { assignmentReasonLabel } from "../lib/assignmentReason";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 const SEGMENT_LABEL: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not interested" };
 const SEGMENT_STYLE: Record<string, string> = {
@@ -179,7 +180,7 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-surface shadow-sm ring-1 ring-[#c4c7c7]/15">
+      <div className="hidden overflow-hidden rounded-2xl bg-surface shadow-sm ring-1 ring-[#c4c7c7]/15 md:block">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-surface-mid bg-surface-low/60">
@@ -224,6 +225,42 @@ export default function AssignmentLog({ callers }: { callers: Caller[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Phone cards */}
+      <div className="space-y-2 md:hidden">
+        {loading ? (
+          <p className="rounded-2xl bg-surface px-4 py-8 text-center font-body text-sm text-on-surface-muted ring-1 ring-[#c4c7c7]/15">Loading…</p>
+        ) : entries.length === 0 ? (
+          <p className="rounded-2xl bg-surface px-4 py-8 text-center font-body text-sm text-on-surface-muted ring-1 ring-[#c4c7c7]/15">No assignments recorded yet.</p>
+        ) : entries.map((e) => (
+          <MobileRecordCard key={e.id} className="p-3">
+            <MobileRecordHeader
+              title={e.lead_name || "—"}
+              subtitle={e.lead_phone ? formatPhone(e.lead_phone) : undefined}
+              aside={
+                <span className="flex flex-col items-end gap-1">
+                  <span className={`rounded-lg border px-2 py-0.5 font-label text-xs font-semibold ${SEGMENT_STYLE[e.segment || "C"] || SEGMENT_STYLE.C}`}>
+                    {SEGMENT_LABEL[e.segment || "C"] || e.segment}
+                  </span>
+                  <span className="font-body text-xs text-on-surface-muted">{timeAgo(e.created_at)}</span>
+                </span>
+              }
+            />
+            <div className="mt-2 font-body text-[13px] text-on-surface">
+              {e.event_type === "reassigned" && e.prev_caller_name ? (
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-on-surface-muted line-through">{e.prev_caller_name}</span>
+                  <ArrowRight size={12} className="text-amber-500" aria-hidden />
+                  <span className="font-medium">{e.caller_name || "—"}</span>
+                </span>
+              ) : (
+                <span className="font-medium">{e.caller_name || "—"}</span>
+              )}
+            </div>
+            <div className="mt-1 font-body text-xs text-on-surface-muted">{assignmentReasonLabel(e.reason, e.prev_caller_name)}</div>
+          </MobileRecordCard>
+        ))}
       </div>
 
       {/* Pagination */}

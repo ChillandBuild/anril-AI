@@ -9,6 +9,7 @@ import type { WaFormResponseRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/Pagination";
 import { AiraLoader } from "@/components/AiraLoader";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { useWhatsappForm, useWhatsappFormResponses } from "@/hooks/useApi";
 import { CatalogueTabs } from "../../../catalog/CatalogueTabs";
 import { SectionLoadGate } from "../../../settings/SettingsSection";
@@ -88,7 +89,35 @@ export default function FormAnswersPage() {
           <p className="mt-1 font-body text-xs text-ink-secondary">They show here as soon as someone submits the form on WhatsApp.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl bg-surface ring-1 ring-surface-mid">
+        <>
+        <div className="space-y-3 md:hidden">
+          {data.data.map((row) => (
+            <MobileRecordCard key={row.id}>
+              <MobileRecordHeader
+                title={row.name || row.phone || "—"}
+                subtitle={<>{row.name && row.phone ? <span className="tabular-nums">{row.phone} · </span> : null}{when(row.submitted_at)}</>}
+                aside={
+                  <span className={cn("rounded-full px-2 py-0.5 font-label text-[11px] font-semibold", OUTCOME[row.outcome].cls)}>
+                    {OUTCOME[row.outcome].label}
+                  </span>
+                }
+              />
+              <dl className="mt-3 space-y-2.5">
+                {data.columns.map((col) => (
+                  <div key={col}>
+                    <dt className="text-xs text-ink-muted">{col}</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{row.answers[col] || "—"}</dd>
+                  </div>
+                ))}
+                <div>
+                  <dt className="text-xs text-ink-muted">Offers</dt>
+                  <dd className="mt-0.5 text-sm text-ink">{row.offers ? "Yes" : "No"}</dd>
+                </div>
+              </dl>
+            </MobileRecordCard>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto rounded-2xl bg-surface ring-1 ring-surface-mid md:block">
           <table className="w-full min-w-[640px] text-left">
             <thead className="border-b border-surface-mid bg-surface-low">
               <tr>
@@ -121,6 +150,7 @@ export default function FormAnswersPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <Pagination page={page} total={total} onPageChange={setPage} noun="answers" className="rounded-2xl border border-border-subtle bg-white shadow-sm" />

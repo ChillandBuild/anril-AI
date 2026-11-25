@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { usePurchaseOrders, useStockIns, useSuppliers } from "@/hooks/useApi";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { StatCard } from "../catalog/ItemsTab";
@@ -133,8 +134,40 @@ function OrdersTab({ canManage, canTemplates }: { canManage: boolean; canTemplat
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-        <table className="w-full min-w-[900px] text-sm">
+      <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+        <div className="space-y-2 md:hidden">
+          {data.orders.length === 0 && (
+            <p className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted">No purchase orders yet.</p>
+          )}
+          {paged.pageItems.map((po) => {
+            const open = ["sent", "confirmed", "part_received"].includes(po.status);
+            return (
+              <MobileRecordCard key={po.id} className="p-3">
+                <MobileRecordHeader
+                  title={<Link href={`/dashboard/purchases/orders/${po.id}`}>{po.po_number} · {po.supplier_name}</Link>}
+                  subtitle={`${po.sent_at ? `Sent ${shortDate(po.sent_at)}` : "Not sent"} · Expected ${shortDate(po.need_by)}`}
+                  aside={<PoStatusChip status={po.status} lateDays={po.late_days} ordered={po.ordered} received={po.received} />}
+                />
+                {po.date_change_asked_at && open && <p className="mt-1 text-xs font-semibold text-amber-700">Asked to change the date</p>}
+                <p className="mt-2 truncate text-[13px] text-ink">{po.items_text}</p>
+                <p className="mt-1 text-[13px] text-ink-muted">{po.ordered} pcs · <span className="font-bold tabular-nums text-ink">{rupees(po.total_paise)}</span></p>
+                <div className="mt-2">
+                  {canManage && open && po.late_days > 0 && po.status !== "part_received" ? (
+                    <button type="button" onClick={() => remind(po.id)}
+                      className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-border px-3 text-[13px] font-semibold text-ink hover:bg-surface-low">
+                      <MessageCircle size={14} /> Remind
+                    </button>
+                  ) : canManage && open ? (
+                    <Link href={`/dashboard/purchases/stock-in?po=${po.id}`} className="btn-primary inline-flex min-h-9 w-full items-center justify-center !py-0 text-[13px]">📥 Goods came</Link>
+                  ) : (
+                    <Link href={`/dashboard/purchases/orders/${po.id}`} className="inline-flex min-h-9 w-full items-center justify-center rounded-xl border border-border text-[13px] font-semibold text-primary">Open ›</Link>
+                  )}
+                </div>
+              </MobileRecordCard>
+            );
+          })}
+        </div>
+        <table className="hidden w-full min-w-[900px] text-sm md:table">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
               <th className="px-4 py-3">PO no. · Supplier</th>
@@ -239,8 +272,28 @@ function StockInTab({ canManage }: { canManage: boolean }) {
         )}
       </Toolbar>
       {!data ? <AiraLoader inline className="min-h-[30vh]" /> : (
-        <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-          <table className="w-full min-w-[720px] text-sm">
+        <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+          <div className="space-y-2 md:hidden">
+            {data.data.length === 0 && (
+              <p className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted">Nothing came in yet. Tap “Stock in” when goods arrive.</p>
+            )}
+            {paged.pageItems.map((row) => (
+              <MobileRecordCard key={row.id} className="p-3">
+                <MobileRecordHeader
+                  title={row.supplier_name || "—"}
+                  subtitle={`${shortDate(row.bill_date)}${row.bill_no ? ` · Bill ${row.bill_no}` : ""}`}
+                  aside={
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold",
+                      row.pay_status === "paid" ? "bg-emerald-50 text-emerald-700" : row.pay_status === "part" ? "bg-amber-50 text-amber-800" : "bg-surface-mid text-ink-secondary")}>
+                      {row.pay_status === "paid" ? "Paid" : row.pay_status === "part" ? "Part paid" : "Pay later"}
+                    </span>
+                  }
+                />
+                <p className="mt-2 text-[13px] text-ink-muted">Total <span className="font-bold tabular-nums text-ink">{rupees(row.total_paise)}</span> · GST {rupees(row.gst_paise)}</p>
+              </MobileRecordCard>
+            ))}
+          </div>
+          <table className="hidden w-full min-w-[720px] text-sm md:table">
             <thead>
               <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                 <th className="px-4 py-3">Date</th>
@@ -344,8 +397,45 @@ function SuppliersTab({ canManage }: { canManage: boolean }) {
       </div>
       {view === "corrections" ? <StockCorrections /> : <>
       {adding && <SupplierForm onClose={() => setAdding(false)} onSaved={() => { setAdding(false); mutate(); }} />}
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-        <table className="w-full min-w-[900px] text-sm">
+      <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+        <div className="space-y-2 md:hidden">
+          {data.suppliers.length === 0 && (
+            <p className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted">No suppliers yet. Add one, or they are added when you stock in.</p>
+          )}
+          {paged.pageItems.map((row) => (
+            <MobileRecordCard key={row.id} className="p-3">
+              <MobileRecordHeader
+                title={row.name}
+                subtitle={[row.city, maskPhone(row.phone)].filter(Boolean).join(" · ") || undefined}
+                aside={row.overdue_days ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">Overdue {row.overdue_days} {row.overdue_days === 1 ? "day" : "days"}</span>
+                  : row.owe_paise ? <span className="font-bold tabular-nums text-rose-700">{rupees(row.owe_paise)}</span>
+                    : <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Nothing owed</span>}
+              />
+              {row.supplies && <p className="mt-2 truncate text-[13px] text-ink">{row.supplies}</p>}
+              <p className="mt-1 text-[13px] text-ink-muted">
+                Bought this month <span className="font-bold tabular-nums text-ink">{rupees(row.bought_this_month_paise)}</span>
+                {row.owe_paise ? <> · Due {shortDate(row.due_date)}</> : null}
+              </p>
+              {canManage && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {paying === row.id ? (
+                    <PaymentForm supplier={row} onDone={(saved) => { setPaying(null); if (saved) mutate(); }} />
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => setPaying(row.id)}
+                        className="inline-flex min-h-9 flex-1 items-center justify-center rounded-xl border border-border px-3 text-[13px] font-semibold text-ink hover:bg-surface-low">Record payment</button>
+                      <button type="button" onClick={() => reorder(row)}
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-xl border border-border px-3 text-[13px] font-semibold text-ink hover:bg-surface-low">
+                        <MessageCircle size={13} /> Reorder
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </MobileRecordCard>
+          ))}
+        </div>
+        <table className="hidden w-full min-w-[900px] text-sm md:table">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
               <th className="px-4 py-3">Supplier</th>
@@ -417,8 +507,23 @@ function StockCorrections() {
   if (error) return <ErrorBox onRetry={() => mutate()} />;
   if (!data) return <AiraLoader inline className="min-h-[30vh]" />;
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-      <table className="w-full min-w-[760px] text-sm">
+    <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+      <div className="space-y-2 md:hidden">
+        {data.data.length === 0 && (
+          <p className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted">No corrections yet. Counts, write-offs and corrected stock show here.</p>
+        )}
+        {paged.pageItems.map((r, i) => (
+          <MobileRecordCard key={`${r.at}-${i}`} className="p-3">
+            <MobileRecordHeader
+              title={`${r.name}${r.variant_label ? ` · ${r.variant_label}` : ""}`}
+              subtitle={`${CORRECTION_LABEL[r.reason] ?? r.reason} · ${new Date(r.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}${r.by ? ` · ${r.by}` : ""}`}
+              aside={<span className={cn("text-sm font-bold tabular-nums", r.delta < 0 ? "text-rose-700" : "text-emerald-700")}>{r.delta > 0 ? `+${r.delta}` : r.delta}</span>}
+            />
+            {r.note && <p className="mt-2 text-[13px] text-ink-muted">{r.note}</p>}
+          </MobileRecordCard>
+        ))}
+      </div>
+      <table className="hidden w-full min-w-[760px] text-sm md:table">
         <thead>
           <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
             <th className="px-4 py-3">Item</th>

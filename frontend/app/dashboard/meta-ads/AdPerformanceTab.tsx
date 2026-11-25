@@ -56,6 +56,7 @@ import {
 import { AdDetailPanel } from "./AdDetailPanel";
 import { HoverTip } from "./HoverTip";
 import { adviceFor, type Advice, type AdviceKey } from "./adAdvice";
+import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 
 type MetricKey =
   | "delivery_status"
@@ -1182,7 +1183,45 @@ export function AdPerformanceTab() {
               <p className="max-w-md text-xs leading-relaxed text-[#94a3b8]">Pick another card above, or clear the search and filters.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="space-y-2 p-3 md:hidden">
+              {adPages.pageItems.map((item) => {
+                const { row } = item;
+                const removed = item.level === "ad" && isRemoved(row.delivery_status);
+                return (
+                  <MobileRecordCard
+                    key={item.key}
+                    onClick={() => openRow(item)}
+                    className={cn("cursor-pointer p-3", removed && "opacity-60")}
+                  >
+                    <MobileRecordHeader
+                      title={<span className={cn(removed && "line-through decoration-stone-400")}>{item.title}</span>}
+                      subtitle={item.subtitle}
+                      aside={item.level === "ad" ? <ChannelMarks channels={row.messaging_channels} multiDestination={row.is_multi_destination} /> : <ChevronRight size={14} className="text-[#cbd5e1]" />}
+                    />
+                    <MobileRecordGrid className="mt-3 gap-2">
+                      <MobileRecordField label="Spent" value={metricValue("spend", row)} />
+                      <MobileRecordField label="Messages" value={metricValue("messages", row)} />
+                      <MobileRecordField label="Clicks" value={metricValue("inline_link_clicks", row)} />
+                      <MobileRecordField label="Rate" value={metricValue("conversation_rate", row)} />
+                    </MobileRecordGrid>
+                  </MobileRecordCard>
+                );
+              })}
+              <div className="rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-label text-sm font-bold text-on-surface">Total</span>
+                  <span className="font-body text-[11px] font-medium text-[#64748b]">{rows.length} {rows.length === 1 ? "ad" : "ads"}</span>
+                </div>
+                <MobileRecordGrid className="mt-3 gap-2">
+                  <MobileRecordField label="Spent" value={metricValue("spend", totals)} />
+                  <MobileRecordField label="Messages" value={metricValue("messages", totals)} />
+                  <MobileRecordField label="Clicks" value={metricValue("inline_link_clicks", totals)} />
+                  <MobileRecordField label="Rate" value={metricValue("conversation_rate", totals)} />
+                </MobileRecordGrid>
+              </div>
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[1080px]">
                 <thead>
                   <tr className="border-b border-[#eef2f6]">
@@ -1276,6 +1315,7 @@ export function AdPerformanceTab() {
                 </tfoot>
               </table>
             </div>
+            </>
           )}
           <Pagination page={adPages.page} total={adPages.total} onPageChange={adPages.setPage} noun={plural} />
         </div>

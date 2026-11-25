@@ -7,6 +7,7 @@ import { Check, Loader2, X } from "lucide-react";
 import { api, API_URL, getAuthHeaders, type Caller } from "@/lib/api";
 import { cn, istTodayIso } from "@/lib/utils";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
+import { MobileRecordCard } from "@/components/MobileRecord";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import TeamAttendanceGrid from "./TeamAttendanceGrid";
 import ShiftHoursCard from "./ShiftHoursCard";
@@ -143,7 +144,8 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
             Only you so far. <Link href="/dashboard/roles" className="font-bold text-primary underline">Add a telecaller.</Link>
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
+          <>
+          <div className="mt-3 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[560px] border-collapse text-left font-label text-sm">
               <thead>
                 <tr className="border-b border-[#c4c7c7]/40 text-ink-secondary">
@@ -205,6 +207,55 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
               </tbody>
             </table>
           </div>
+          <div className="mt-3 space-y-2 md:hidden">
+            {peoplePages.pageItems.map((c) => {
+              const shift = effectiveShift(shiftConfig, c);
+              const target = targets[c.id] ?? c.target ?? 0;
+              const isSelected = selectedId === c.id;
+              return (
+                <MobileRecordCard key={c.id} className={cn("p-3", isSelected && "bg-primary/5")}>
+                  <button
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedId(isSelected ? null : c.id)}
+                    className="flex min-h-10 w-full flex-wrap items-center gap-2 text-left font-label text-sm font-bold text-primary"
+                  >
+                    {c.name}
+                    {c.team_name ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{c.team_name}</span> : null}
+                  </button>
+                  <div className="font-label text-[13px] text-ink-secondary">
+                    {c.phone || "Not set"} · {formatHour(shift.start)} to {formatHour(shift.end)}
+                  </div>
+                  {cloud ? <div className="font-label text-[13px] text-ink-secondary">User ID: {c.telecmi_agent_id || "Not set"}</div> : null}
+                  <div className="mt-2 flex items-center gap-2 font-label text-[13px] font-bold text-ink-secondary">
+                    <label htmlFor={`target-m-${c.id}`}>Daily target</label>
+                    <input
+                      id={`target-m-${c.id}`}
+                      type="number"
+                      min={0}
+                      aria-label={`Daily target for ${c.name}`}
+                      value={target}
+                      disabled={!canSetTargets}
+                      onChange={(e) => setTargets((prev) => ({ ...prev, [c.id]: parseInt(e.target.value, 10) || 0 }))}
+                      className="min-h-10 w-20 rounded-lg bg-white px-2 text-center text-base font-bold text-primary ring-1 ring-[#c4c7c7]/50 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+                    />
+                    {targets[c.id] !== undefined ? (
+                      <button
+                        type="button"
+                        onClick={() => saveTarget(c.id)}
+                        disabled={savingTargetId === c.id}
+                        aria-label={`Save daily target for ${c.name}`}
+                        className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50"
+                      >
+                        {savingTargetId === c.id ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Check size={14} aria-hidden />}
+                      </button>
+                    ) : null}
+                  </div>
+                </MobileRecordCard>
+              );
+            })}
+          </div>
+          </>
         )}
         {shown.length > 0 ? (
           <Pagination page={peoplePages.page} total={peoplePages.total} onPageChange={peoplePages.setPage} noun="people" className="mt-3" />

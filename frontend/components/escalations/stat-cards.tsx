@@ -30,7 +30,17 @@ function isFigure(value: string): boolean {
 /** Header KPI cards. Sized to be read at a glance without costing the table its fold */
 export function StatCards({ items }: { items: StatItem[] }) {
   return (
-    <div className="flex flex-1 flex-wrap gap-2.5">
+    <div className="min-w-0 flex-1 max-md:basis-full">
+      {/* Phones: one compact line of figures, so the list starts on the first screen. */}
+      <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+        {items.map((item) => (
+          <div key={item.label} className="flex shrink-0 items-baseline gap-1.5 rounded-xl border border-border bg-white px-3 py-1.5">
+            <span className={cn("max-w-[9rem] truncate font-display text-base font-bold leading-none tabular-nums", TONE[item.tone ?? "neutral"].value)}>{item.value}</span>
+            <span className="whitespace-nowrap text-xs text-ink-muted">{item.label}</span>
+          </div>
+        ))}
+      </div>
+    <div className="hidden flex-wrap gap-2.5 md:flex">
       {items.map((item) => {
         const tone = TONE[item.tone ?? "neutral"];
         const figure = isFigure(item.value);
@@ -52,6 +62,7 @@ export function StatCards({ items }: { items: StatItem[] }) {
           />
         );
       })}
+    </div>
     </div>
   );
 }

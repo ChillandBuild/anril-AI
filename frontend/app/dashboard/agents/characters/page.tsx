@@ -6,6 +6,7 @@ import { Archive, Plus, RotateCcw, Trash2, UserRound } from "lucide-react";
 import { companionsApi, type Companion } from "@/lib/api";
 import { LANGUAGE_LABEL, nextDraftName } from "@/components/agents/characterForm";
 import { CharacterDeleteDialog, type DeleteChoice } from "@/components/agents/CharacterDeleteDialog";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { Tabs } from "@/components/agents/collectionUi";
 import { BTN_PRIMARY, BTN_ROW_DANGER, BTN_SECONDARY, CARD, ErrorNote, LoadingRows, StatusPill } from "@/components/agents/ui";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
@@ -133,7 +134,50 @@ function Characters() {
                   )}
                 </div>
               ) : characters ? (
-                <div className="overflow-x-auto">
+                <>
+                <div className="space-y-3 md:hidden">
+                  {characterPages.pageItems.map((c) => (
+                    <MobileRecordCard key={c.id} className="p-3">
+                      <MobileRecordHeader
+                        title={
+                          <Link href={`/dashboard/agents/characters/${c.id}`} className="hover:text-primary hover:underline">
+                            {c.name}
+                          </Link>
+                        }
+                        subtitle={c.role || undefined}
+                        aside={
+                          archivedView ? (
+                            <span className="text-xs text-ink-secondary">{c.archived_at ? new Date(c.archived_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
+                          ) : (
+                            <StatusPill status={c.status} />
+                          )
+                        }
+                      />
+                      <div className="mt-2 text-[13px] text-ink-secondary">
+                        {LANGUAGE_LABEL[c.language] ?? c.language} · Memory level {c.memory_level}
+                      </div>
+                      <div className="mt-3 flex justify-end gap-2">
+                        {archivedView ? (
+                          <>
+                            <button type="button" onClick={() => restore(c)} disabled={restoring === c.id} className={BTN_SECONDARY}>
+                              <RotateCcw size={14} aria-hidden="true" />
+                              {restoring === c.id ? "Restoring…" : "Restore"}
+                            </button>
+                            <button type="button" onClick={() => setTarget(c)} className={BTN_ROW_DANGER}>
+                              Delete permanently
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => setTarget(c)} aria-label={`Delete ${c.name}`} className={BTN_ROW_DANGER}>
+                            <Trash2 size={14} aria-hidden="true" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </MobileRecordCard>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[560px] text-left text-sm">
                     <thead className="border-b border-border-subtle text-xs uppercase tracking-wide text-ink-muted">
                       <tr>
@@ -190,6 +234,7 @@ function Characters() {
                     </tbody>
                   </table>
                 </div>
+                </>
               ) : null}
               <Pagination page={characterPages.page} total={characterPages.total} onPageChange={characterPages.setPage} noun="characters" className="-mx-4 -mb-4" />
             </div>

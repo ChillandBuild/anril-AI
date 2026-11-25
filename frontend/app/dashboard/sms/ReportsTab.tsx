@@ -469,6 +469,19 @@ function LogsBody() {
           {logs.length === 0 ? (
             <Empty title="No logs in these days." />
           ) : (
+            <>
+            <div className="space-y-3 p-3 md:hidden">
+              {logs.map((row, i) => (
+                <MobileRecordCard key={i} className="p-3">
+                  <MobileRecordGrid className="mt-0">
+                    {cols.map((c) => (
+                      <MobileRecordField key={c} label={humanizeKind(c)} className="break-words" value={<LogCell column={c} value={row[c]} />} />
+                    ))}
+                  </MobileRecordGrid>
+                </MobileRecordCard>
+              ))}
+            </div>
+            <div className="hidden md:block">
             <TableWrap>
               <table className="w-full min-w-[640px]">
                 <thead>
@@ -493,6 +506,8 @@ function LogsBody() {
                 </tbody>
               </table>
             </TableWrap>
+            </div>
+            </>
           )}
           <div className="flex items-center justify-between border-t border-[#f1f5f9] px-4 py-3 text-xs text-[#64748b]">
             <span>Page {page}</span>

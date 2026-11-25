@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { PriceListPreview, PriceListRow, PriceListRowInput } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { CatalogueTabs } from "../CatalogueTabs";
 
 /* Upload price list (backend services/price_list.py): Excel/CSV read directly, a PDF or photo read
@@ -137,7 +138,8 @@ export default function PriceListPage() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Phones: the price cards run long, so Check and Save stay pinned under the header. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 max-md:sticky max-md:top-14 max-md:z-20 max-md:-mx-3 max-md:border-b max-md:border-border max-md:bg-background max-md:px-3 max-md:py-2">
             <div className="flex flex-wrap gap-2 text-sm">
               {(["new", "new_size", "update", "same", "problem"] as const).map((s) => counts && counts[s] > 0 && (
                 <span key={s} className={cn("rounded-full px-2.5 py-0.5 font-semibold", STATUS[s].cls)}>{counts[s]} {STATUS[s].text.toLowerCase()}</span>
@@ -161,7 +163,44 @@ export default function PriceListPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+          <div className="space-y-3 md:hidden">
+            {preview.rows.map((row, i) => {
+              const r = rows[i];
+              const field = (key: keyof PriceListRowInput, label: string, opts?: { changed?: boolean; numeric?: boolean; wide?: boolean }) => (
+                <label key={key} className={cn("block min-w-0", opts?.wide && "col-span-2")}>
+                  <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">{label}</span>
+                  <input value={r?.[key] ?? ""} onChange={(e) => edit(i, { [key]: e.target.value })} aria-label={`${key} on row ${row.row}`}
+                    inputMode={opts?.numeric ? "decimal" : undefined}
+                    className={cn("mt-1 min-h-10 w-full rounded-lg border px-2 text-base", opts?.changed ? "border-blue-300 bg-blue-50/50" : "border-border focus:border-primary/40")} />
+                </label>
+              );
+              return (
+                <MobileRecordCard key={`${row.row}-${i}`} className={cn("p-3", row.status === "same" && "opacity-60")}>
+                  <MobileRecordHeader
+                    title={`Row ${row.row}`}
+                    aside={<span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", STATUS[row.status].cls)}>{STATUS[row.status].text}</span>}
+                  />
+                  {row.problems.length > 0 && <p className="mt-1 text-xs text-amber-800">{row.problems.join(" · ")}</p>}
+                  {row.status === "update" && row.current && (
+                    <p className="mt-1 text-xs text-ink-muted">
+                      {row.changes.includes("price") && `Price ${rupees(row.current.price_paise)} → ${rupees(row.price_paise)} `}
+                      {row.changes.includes("stock") && `Stock ${row.current.stock ?? "—"} → ${row.stock}`}
+                    </p>
+                  )}
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {field("name", "Item name", { wide: true })}
+                    {field("size", "Size")}
+                    {field("colour", "Colour")}
+                    {field("price", "Price ₹", { changed: row.changes.includes("price"), numeric: true })}
+                    {field("gst_rate", "GST %", { changed: row.changes.includes("gst"), numeric: true })}
+                    {field("hsn", "HSN", { changed: row.changes.includes("hsn") })}
+                    {field("stock", "Stock", { changed: row.changes.includes("stock"), numeric: true })}
+                  </div>
+                </MobileRecordCard>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto rounded-card border border-border bg-white shadow-sm md:block">
             <table className="w-full min-w-[1000px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">

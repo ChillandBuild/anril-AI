@@ -8,6 +8,7 @@ import { phoneCell } from "@/lib/csvPhone";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { ChannelAvatar } from "@/components/channel-avatar";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { channelLabel, downloadCsv, istDateTime, segmentLabel, today, type CsvColumn } from "./exportCsv";
 
 const PAGE = 50;
@@ -268,13 +269,13 @@ export function ChatsFolderPanel({
         <div className={cn("mx-auto grid min-w-0 items-start gap-4", mode === "archived" ? "max-w-[1440px] xl:grid-cols-[minmax(0,1fr)_340px]" : "max-w-[1100px]")}>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-card">
-            <div className="flex flex-col gap-3 border-b border-border/70 px-5 py-3">
+            <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 md:px-5">
               <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink">
                 <Icon size={15} className={mode === "blocked" ? "text-red-500" : "text-ink-muted"} /> {cfg.title}
                 <span className="font-body text-[13px] font-semibold text-ink-muted">{total.toLocaleString("en-IN")}</span>
               </h3>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative h-8 w-[220px]">
+                <div className="relative h-8 w-full md:w-[220px]">
                   <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     value={query}
@@ -289,9 +290,9 @@ export function ChatsFolderPanel({
                     </button>
                   )}
                 </div>
-                <Select size="sm" className="w-[132px] rounded-xl" aria-label="Channel" value={channel} onChange={setChannel} options={CHANNEL_OPTIONS} />
-                <Select size="sm" className="w-[128px] rounded-xl" aria-label="Interest" value={segment} onChange={setSegment} options={INTEREST_OPTIONS} />
-                <Select size="sm" className="w-[176px] rounded-xl" aria-label="Last message" value={within} onChange={setWithin} options={WITHIN_OPTIONS} />
+                <Select size="sm" className="w-full rounded-xl md:w-[132px]" aria-label="Channel" value={channel} onChange={setChannel} options={CHANNEL_OPTIONS} />
+                <Select size="sm" className="w-full rounded-xl md:w-[128px]" aria-label="Interest" value={segment} onChange={setSegment} options={INTEREST_OPTIONS} />
+                <Select size="sm" className="w-full rounded-xl md:w-[176px]" aria-label="Last message" value={within} onChange={setWithin} options={WITHIN_OPTIONS} />
                 {anyFilter && (
                   <button type="button" onClick={clearFilters} className="h-8 rounded-xl px-2.5 text-xs font-semibold text-primary hover:bg-primary-light">
                     Clear
@@ -313,7 +314,7 @@ export function ChatsFolderPanel({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[820px] border-collapse">
                 <thead>
                   <tr className="border-b border-border/70 bg-slate-50/70 text-left font-heading text-[12px] font-bold uppercase tracking-[0.06em] text-slate-500">
@@ -418,6 +419,74 @@ export function ChatsFolderPanel({
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="space-y-3 p-3 md:hidden">
+              {loading ? (
+                <p className="px-2 py-8 text-center text-sm text-ink-muted">Loading…</p>
+              ) : rows.length === 0 ? (
+                <div className="px-2 py-8 text-center">
+                  <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : cfg.emptyTitle}</p>
+                  <p className="mt-1 text-[13px] text-ink-muted">
+                    {anyFilter ? `No ${cfg.noun} chat matches these filters.` : cfg.emptyText}
+                  </p>
+                </div>
+              ) : (
+                rows.map((l) => {
+                  const why = mode === "archived" ? archiveWhy(l) : l.blocked_reason;
+                  return (
+                    <MobileRecordCard key={l.id} className="p-3">
+                      <div className="flex items-start gap-2">
+                        {canExport && (
+                          <div className="pt-1">
+                            <CheckTick
+                              size="sm"
+                              checked={picked.has(l.id)}
+                              onChange={() => setPicked((prev) => { const next = new Set(prev); if (next.has(l.id)) next.delete(l.id); else next.add(l.id); return next; })}
+                              aria-label={`Select ${displayName(l)}`}
+                            />
+                          </div>
+                        )}
+                        <button type="button" onClick={() => onOpenChat(l.id)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left" title="Open this chat">
+                          <ChannelAvatar source={l.source} size={30} />
+                          <div className="min-w-0 flex-1">
+                            <MobileRecordHeader
+                              title={displayName(l)}
+                              subtitle={l.name && l.phone ? formatPhone(l.phone) : undefined}
+                            />
+                          </div>
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[13px] text-on-surface-muted">
+                        {mode === "archived" ? (
+                          <>
+                            Archived {shortDate(l.archived_at)}
+                            {l.archived_reason === "idle_30d" || l.archived_reason === "order_delivered"
+                              ? " · by itself"
+                              : l.archived_by_name
+                                ? ` · by ${l.archived_by_name}`
+                                : ""}
+                          </>
+                        ) : (
+                          <>
+                            Blocked {shortDate(l.blocked_at)}
+                            {l.blocked_by_name ? ` · by ${l.blocked_by_name}` : ""}
+                          </>
+                        )}
+                        {why ? ` · ${why}` : ""}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void putBack(l)}
+                        disabled={!canReply || busyId === l.id}
+                        title={readOnly ?? cfg.actionTitle}
+                        className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 font-label text-[13px] font-bold text-ink hover:border-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {mode === "archived" && <Undo2 size={13} />} {cfg.actionLabel}
+                      </button>
+                    </MobileRecordCard>
+                  );
+                })
+              )}
             </div>
             {rows.length < total && !loading && (
               <div className="border-t border-border/70 p-3">

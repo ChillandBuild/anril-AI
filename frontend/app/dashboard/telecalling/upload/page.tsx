@@ -28,6 +28,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 import { createPortal } from "react-dom";
 import { takenOutReasons, takenOutTotal } from "./takenOut";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 function Portal({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -962,7 +963,7 @@ function HistoryTab() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-mid">
@@ -1039,6 +1040,59 @@ function HistoryTab() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="space-y-2 md:hidden">
+              {history.map((item) => {
+                const out = takenOutTotal(item.taken_out_counts);
+                return (
+                  <MobileRecordCard key={item.id} className="p-3">
+                    <MobileRecordHeader title={item.file_name} subtitle={formatDate(item.created_at)} />
+                    {item.undone_at && (
+                      <p className="mt-1 font-body text-xs text-amber-700">
+                        Undone by {item.undone_by_name || "the owner"} on {formatDate(item.undone_at)} · {item.undone_count ?? 0} removed
+                      </p>
+                    )}
+                    <p className="mt-2 font-label text-[13px] text-on-surface">
+                      Inserted {item.inserted} · Called {results[item.id]?.called ?? "—"} · Converted {results[item.id]?.converted ?? "—"}
+                    </p>
+                    <p className="mt-1 font-label text-xs text-on-surface-muted">
+                      Total {item.total_contacts} · Duplicates {item.duplicates} · Assigned {item.assigned} · Taken out {out ?? "—"} · Reached {results[item.id]?.reached ?? "—"}
+                    </p>
+                    {takenOutReasons(item.taken_out_counts) && (
+                      <p className="mt-1 font-body text-[11px] text-on-surface-muted">{takenOutReasons(item.taken_out_counts)}</p>
+                    )}
+                    {(canDownload || item.can_undo) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {canDownload && (
+                          <button
+                            onClick={() => handleDownloadCsv(item.id, item.file_name)}
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 font-label text-[13px] font-semibold text-primary ring-1 ring-primary/20 hover:bg-primary/10"
+                          >
+                            <Download size={13} /> Download CSV
+                          </button>
+                        )}
+                        {canDownload && (out ?? 0) > 0 && (
+                          <button
+                            onClick={() => handleDownloadTakenOut(item.id, item.file_name)}
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 font-label text-[13px] font-semibold text-primary ring-1 ring-primary/20 hover:bg-primary/10"
+                          >
+                            <Download size={13} /> Taken out
+                          </button>
+                        )}
+                        {item.can_undo && (
+                          <button
+                            onClick={() => openUndo(item)}
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 font-label text-[13px] font-semibold text-red-600 ring-1 ring-red-200 hover:bg-red-50"
+                          >
+                            <Undo2 size={13} /> Undo upload
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </MobileRecordCard>
+                );
+              })}
             </div>
 
             {/* Pagination */}

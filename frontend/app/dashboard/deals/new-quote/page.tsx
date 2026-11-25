@@ -202,7 +202,7 @@ export default function NewQuotePage() {
           </section>
 
           <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-[#f8fafc] font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
                   <tr>
@@ -239,6 +239,38 @@ export default function NewQuotePage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="space-y-3 md:hidden">
+              {lines.map((l) => (
+                <div key={l.key} className="rounded-xl border border-[#e2e8f0] p-3">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      {l.item ? <span className="block truncate font-label text-sm font-bold text-[#0A1528]">{l.name}</span> : (
+                        <input value={l.name} onChange={(e) => update(l.key, { name: e.target.value })} placeholder="Item name" aria-label="Item name"
+                          className="min-h-10 w-full rounded-lg border border-[#e2e8f0] px-2 text-base focus:outline-none focus:ring-2 focus:ring-primary-200" />
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setLines((cur) => cur.filter((x) => x.key !== l.key))} aria-label="Remove item"
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94a3b8] hover:bg-rose-50 hover:text-rose-600"><Trash2 size={16} /></button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <label className="block">
+                      <span className="font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Qty</span>
+                      <input value={l.qty} onChange={(e) => update(l.key, { qty: e.target.value.replace(/\D/g, "") })} inputMode="numeric" aria-label="Quantity"
+                        className="mt-1 min-h-10 w-full rounded-lg border border-[#e2e8f0] px-2 text-right text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200" />
+                    </label>
+                    <label className="block">
+                      <span className="font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Price each</span>
+                      <input value={l.price} onChange={(e) => update(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} inputMode="decimal" aria-label="Price each" placeholder="₹"
+                        className="mt-1 min-h-10 w-full rounded-lg border border-[#e2e8f0] px-2 text-right text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200" />
+                    </label>
+                    <div>
+                      <span className="font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">Total</span>
+                      <div className="mt-1 flex min-h-10 items-center justify-end text-sm font-bold tabular-nums">{rupees(paise(l.price) * Math.max(1, Number(l.qty) || 1))}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Select value={pick} onChange={addItem} options={catalogue} placeholder="＋ Add item from catalogue" className="w-full sm:w-72 text-xs" />

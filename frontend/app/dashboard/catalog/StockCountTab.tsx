@@ -10,6 +10,7 @@ import type { CountLine, CountReason, StockCountFull, StockCountsView } from "@/
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import { useStockCounts } from "@/hooks/useApi";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { StatCard } from "./ItemsTab";
 import { ScanBox } from "./ScanBox";
 import { formatPaise } from "./money";
@@ -282,7 +283,13 @@ function OpenCount({ count, canCount, isOwner, toolbarSlot, onChanged }: {
         </section>
       )}
 
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+      <div className="space-y-3 md:hidden">
+        {count.lines.length === 0 && (
+          <p className="rounded-card border border-border bg-white px-4 py-8 text-center text-sm text-ink-muted">Nothing counted yet. Scan a piece or find an item above.</p>
+        )}
+        {count.lines.map((l) => <CountRow key={l.id} card line={l} countId={count.id} canCount={canCount && !paused} onChanged={onChanged} />)}
+      </div>
+      <div className="hidden overflow-x-auto rounded-card border border-border bg-white shadow-sm md:block">
         <table className="w-full min-w-[920px] text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -325,7 +332,7 @@ function TypeCount({ label, onSave }: { label: string; onSave: (qty: number) => 
   );
 }
 
-function CountRow({ line: l, countId, canCount, onChanged }: { line: CountLine; countId: string; canCount: boolean; onChanged: () => void }) {
+function CountRow({ line: l, countId, canCount, onChanged, card }: { line: CountLine; countId: string; canCount: boolean; onChanged: () => void; card?: boolean }) {
   const [qty, setQty] = useState(String(l.counted_qty));
   useEffect(() => setQty(String(l.counted_qty)), [l.counted_qty]);
   const reasons = l.difference < 0 ? LESS : l.difference > 0 ? MORE : [];
@@ -338,6 +345,55 @@ function CountRow({ line: l, countId, canCount, onChanged }: { line: CountLine; 
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't save. Try again.");
     }
+  }
+
+  const diffCls = l.difference < 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700";
+  const diffText = l.difference > 0 ? `+${l.difference}` : l.difference;
+
+  if (card) {
+    const title = `${l.name}${l.variant_label ? ` · ${l.variant_label}` : ""}`;
+    return (
+      <MobileRecordCard className="p-3">
+        <MobileRecordHeader
+          title={title}
+          subtitle={[l.section, l.counted_by_name && `Counted by ${l.counted_by_name}`].filter(Boolean).join(" · ") || undefined}
+          aside={<span className={cn("rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums", diffCls)}>{diffText}</span>}
+        />
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <div>
+            <p className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">In system</p>
+            <p className="mt-1 flex min-h-10 items-center text-base font-bold tabular-nums text-ink">{l.system_qty}</p>
+          </div>
+          <div>
+            <label htmlFor={`cnt-${l.id}`} className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Counted</label>
+            {canCount ? (
+              <input id={`cnt-${l.id}`} value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" aria-label={`Counted ${l.name}`}
+                onBlur={() => { if (qty !== "" && Number(qty) !== l.counted_qty) save({ qty: Number(qty) }); }}
+                className="mt-1 min-h-10 w-full rounded-lg border border-border px-2 text-right text-base font-bold tabular-nums outline-none focus:border-primary" />
+            ) : <p className="mt-1 flex min-h-10 items-center text-base font-bold tabular-nums text-ink">{l.counted_qty}</p>}
+          </div>
+          <div>
+            <p className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Difference</p>
+            <p className="mt-1 flex min-h-10 items-center text-base font-bold tabular-nums text-ink">{diffText}</p>
+          </div>
+        </div>
+        {reasons.length > 0 && (
+          <div className="mt-3">
+            <p className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Why</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {reasons.map((r) => (
+                <button key={r.value} type="button" disabled={!canCount} onClick={() => save({ reason: l.reason === r.value ? null : r.value })}
+                  className={cn("min-h-9 rounded-full border px-3 text-[13px] font-semibold",
+                    l.reason === r.value ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink-secondary",
+                    !l.reason && "border-amber-300")}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </MobileRecordCard>
+    );
   }
 
   return (

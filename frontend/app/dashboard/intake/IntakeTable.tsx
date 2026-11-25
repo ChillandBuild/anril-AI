@@ -100,7 +100,7 @@ export function IntakeTable({
             <th className="sticky left-0 z-20 w-[180px] min-w-[180px] max-w-[180px] bg-surface-subtle px-4 py-2 font-label text-[10px] font-bold uppercase tracking-wide text-ink-muted">
               Lead
             </th>
-            <th className="sticky left-[180px] z-20 w-[140px] min-w-[140px] max-w-[140px] border-r border-border bg-surface-subtle px-4 py-2 font-label text-[10px] font-bold uppercase tracking-wide text-ink-muted shadow-[inset_-1px_0_0_0_#e2e8f0]">
+            <th className="md:sticky md:left-[180px] md:z-20 w-[140px] min-w-[140px] max-w-[140px] border-r border-border bg-surface-subtle px-4 py-2 font-label text-[10px] font-bold uppercase tracking-wide text-ink-muted shadow-[inset_-1px_0_0_0_#e2e8f0]">
               Phone
             </th>
             <th className="whitespace-nowrap px-4 py-2 font-label text-[10px] font-bold uppercase tracking-wide text-ink-muted">Status</th>
@@ -131,7 +131,7 @@ export function IntakeTable({
                 </td>
                 <td
                   title={leadPhone}
-                  className="sticky left-[180px] z-10 w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap border-r border-border bg-surface px-4 py-3 font-body text-sm text-ink-muted shadow-[inset_-1px_0_0_0_#e2e8f0] group-hover:bg-surface-subtle"
+                  className="md:sticky md:left-[180px] md:z-10 w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap border-r border-border bg-surface px-4 py-3 font-body text-sm text-ink-muted shadow-[inset_-1px_0_0_0_#e2e8f0] group-hover:bg-surface-subtle"
                 >
                   <div className="truncate" title={leadPhone}>
                     {leadPhone}

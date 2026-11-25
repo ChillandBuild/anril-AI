@@ -31,6 +31,7 @@ import {
 import { RangeValue } from "@/components/analytics/RangePicker";
 import { canLoadComparison } from "@/components/analytics/periodSelection";
 import { AiraLoader } from "@/components/AiraLoader";
+import { MobileRecordCard, MobileRecordField, MobileRecordGrid, MobileRecordHeader } from "@/components/MobileRecord";
 import { KpiCard as BaseKpiCard, edgeFromTone } from "@/components/kpi-card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://aira-ai-5tfr.onrender.com";
@@ -442,7 +443,25 @@ export function TemplatesSection({ range }: { range: RangeValue }) {
               No broadcasts sent yet. Performance appears here once templates go out.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="space-y-3 md:hidden">
+              {rows.map((r) => (
+                <MobileRecordCard key={r.template_name} className="p-3">
+                  <MobileRecordHeader
+                    title={r.template_name}
+                    subtitle={`Last sent ${r.last_sent ? new Date(r.last_sent).toLocaleDateString() : "—"}`}
+                  />
+                  <MobileRecordGrid className="mt-3">
+                    <MobileRecordField label="Broadcasts" value={r.broadcasts} />
+                    <MobileRecordField label="Sent" value={r.sent.toLocaleString()} />
+                    <MobileRecordField label="Read" value={<>{r.read.toLocaleString()} <span className="text-on-surface-muted">({pct(r.read, r.sent)})</span></>} />
+                    <MobileRecordField label="Replied" value={<>{r.replied.toLocaleString()} <span className="text-on-surface-muted">({pct(r.replied, r.sent)})</span></>} />
+                    <MobileRecordField label="Hot Leads" value={<span className="text-emerald-600">{r.hot_leads.toLocaleString()}</span>} />
+                  </MobileRecordGrid>
+                </MobileRecordCard>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-surface-mid">
@@ -474,6 +493,7 @@ export function TemplatesSection({ range }: { range: RangeValue }) {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </SectionCard>
       )}

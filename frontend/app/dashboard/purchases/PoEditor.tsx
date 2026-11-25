@@ -9,6 +9,7 @@ import { API_URL, api, getAuthHeaders } from "@/lib/api";
 import type { PurchaseOrder, ReorderSuggestion } from "@/lib/api";
 import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
+import { MobileRecordCard } from "@/components/MobileRecord";
 import { usePurchaseOptions } from "@/hooks/useApi";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Field, GST_RATES, ItemPicker, PoStatusChip, inputCls, lastCost, openShare, rupees, shortDate, toPaise, variantLabel } from "./shared";
@@ -231,8 +232,55 @@ export function PoEditor({ po, suggestions }: { po?: PurchaseOrder; suggestions?
             <p className="text-sm text-ink-muted">No suppliers yet. <Link href="/dashboard/purchases?tab=suppliers" className="font-semibold text-primary hover:underline">Add one</Link> first.</p>
           )}
 
-          <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-            <table className="w-full min-w-[760px] text-sm">
+          <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+            <div className="space-y-2 md:hidden">
+              {lines.length === 0 && (
+                <p className="rounded-2xl border border-surface-mid bg-white px-4 py-8 text-center text-sm text-ink-muted">Add the items you want to order.</p>
+              )}
+              {lines.map((li) => {
+                const poLine = po?.lines.find((l) => lineKey(l.catalog_item_id, l.variant_id) === li.key);
+                return (
+                  <MobileRecordCard key={li.key} className="p-3">
+                    <p className="text-sm font-bold text-ink">{li.label}</p>
+                    {!po && (
+                      <p className="mt-1 text-xs text-ink-muted">
+                        In stock <span className={li.stock === 0 ? "font-bold text-rose-700" : "font-semibold text-ink"}>{li.stock ?? "—"}</span>
+                        {" · "}Sold 30 days <span className="font-semibold text-ink">{li.sold_30d ?? "—"}</span>
+                        {" · "}Suggested <span className="font-semibold text-primary">{li.suggested ?? "—"}</span>
+                      </p>
+                    )}
+                    {po && po.status !== "draft" && <p className="mt-1 text-xs text-ink-muted">Came <span className="font-semibold text-ink">{poLine?.qty_received ?? 0}</span></p>}
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <label className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Order</span>
+                        <input value={li.qty} disabled={!editable} inputMode="numeric" aria-label={`Order ${li.label}`}
+                          onChange={(e) => update(li.key, { qty: e.target.value.replace(/\D/g, "") })}
+                          className="min-h-10 w-full rounded-lg border border-border px-2 text-base tabular-nums text-center font-bold disabled:bg-surface-low" />
+                      </label>
+                      <label className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Cost each</span>
+                        <input value={li.cost} disabled={!editable} inputMode="decimal" aria-label={`Cost of ${li.label}`}
+                          onChange={(e) => update(li.key, { cost: e.target.value })}
+                          className="min-h-10 w-full rounded-lg border border-border px-2 text-base tabular-nums disabled:bg-surface-low" />
+                      </label>
+                      <div className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">GST</span>
+                        <Select size="md" value={String(li.gst_rate)} disabled={!editable} aria-label={`GST on ${li.label}`}
+                          onChange={(v) => update(li.key, { gst_rate: Number(v) })} options={GST_RATES.map((r) => ({ value: String(r), label: `${r}%` }))} />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <p className="text-[13px] text-ink-muted">Total <b className="tabular-nums text-ink">{rupees((Number(li.qty) || 0) * (toPaise(li.cost) || 0))}</b></p>
+                      {editable && (
+                        <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== li.key))} aria-label={`Remove ${li.label}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
+                      )}
+                    </div>
+                  </MobileRecordCard>
+                );
+              })}
+            </div>
+            <table className="hidden w-full min-w-[760px] text-sm md:table">
               <thead>
                 <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                   <th className="px-4 py-3">Item</th>
@@ -286,7 +334,7 @@ export function PoEditor({ po, suggestions }: { po?: PurchaseOrder; suggestions?
                 })}
               </tbody>
             </table>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 md:border-t md:border-border md:px-4">
               {editable ? (
                 <ItemPicker items={opts.items} onPick={(item, variantId) => {
                   const key = lineKey(item.id, variantId);

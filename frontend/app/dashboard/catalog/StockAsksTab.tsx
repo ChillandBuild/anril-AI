@@ -13,6 +13,7 @@ import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useStockAsks } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 /* Asked but out of stock (backend services/stock_asks.py). Customers who asked for something sold
  * out: the AI notes them in chat, staff add them from Orders. "Mark back in stock" tells everyone
@@ -114,7 +115,8 @@ export function StockAsksTab({ canManage, canSubmitTemplate, toolbarSlot }: {
 
       {data && <MessageCard data={data} canManage={canManage} canSubmit={canSubmitTemplate} onChanged={() => mutate()} />}
 
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+      <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+        <div className="hidden md:block">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -178,6 +180,62 @@ export function StockAsksTab({ canManage, canSubmitTemplate, toolbarSlot }: {
             })}
           </tbody>
         </table>
+        </div>
+        <div className="space-y-2 md:hidden">
+          {isLoading && (
+            <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+              <Loader2 size={16} className="mr-2 inline animate-spin" />Loading...
+            </div>
+          )}
+          {data && data.rows.length === 0 && (
+            <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+              Nobody has asked for anything out of stock in the last {DAYS} days.
+            </div>
+          )}
+          {paged.pageItems.map((row) => {
+            const key = rowKey(row);
+            return (
+              <MobileRecordCard key={key} className="p-3">
+                <MobileRecordHeader
+                  title={
+                    <Link href={`/dashboard/catalog/items/${row.catalog_item_id}`}>
+                      {row.name}{row.variant_label ? ` \· ${row.variant_label}` : ""}
+                    </Link>
+                  }
+                  subtitle={
+                    <span className={row.in_stock ? "text-emerald-700" : undefined}>
+                      {row.in_stock ? (row.stock == null ? "Available" : `${row.stock} in stock now`) : "Still out of stock"}
+                    </span>
+                  }
+                  aside={<span className="text-xs text-ink-muted">{lastAsked(row.last_asked_at)}</span>}
+                />
+                <p className="mt-2 text-[13px] text-ink">
+                  <b className="tabular-nums">{row.asked}</b> {row.asked === 1 ? "person" : "people"} asked
+                  <span className="text-ink-muted"> \· </span>
+                  <b className="tabular-nums text-rose-700">{formatPaise(row.missed_paise)}</b> missed
+                  <span className="text-ink-muted"> \· {row.waiting} want a message</span>
+                </p>
+                {canManage && row.waiting > 0 && (
+                  confirming === key ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-ink-muted">Message {row.waiting} {row.waiting === 1 ? "person" : "people"}?</span>
+                      <button type="button" onClick={() => markBack(row)} disabled={sending !== null}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-primary px-3 text-[13px] font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
+                        {sending === key ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Send
+                      </button>
+                      <button type="button" onClick={() => setConfirming(null)} className="min-h-9 px-2 text-[13px] font-semibold text-ink-muted hover:text-ink">Cancel</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setConfirming(key)} disabled={!row.in_stock || sending !== null}
+                      className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-white px-3 text-[13px] font-semibold text-ink hover:bg-surface-low disabled:cursor-not-allowed disabled:opacity-50">
+                      <BellRing size={14} /> Mark back in stock
+                    </button>
+                  )
+                )}
+              </MobileRecordCard>
+            );
+          })}
+        </div>
         <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="asks" />
       </div>
 

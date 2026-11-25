@@ -29,6 +29,7 @@ import { channelLabel, downloadCsv, istDateTime, segmentLabel, today, type CsvCo
 import { Select } from "@/components/ui/Select";
 import { StatCards, type StatItem } from "@/components/escalations/stat-cards";
 import { HistoryTab } from "@/components/escalations/history-tab";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { ChannelCell, DurationCell, LeadCell, PersonCell, TableEmpty, TableSkeleton, TriggerChip } from "@/components/escalations/atoms";
 
 type Tab = "active" | "history";
@@ -374,7 +375,7 @@ export function EscalationPanel({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* ── header + tabs ── */}
-      <div className="flex-shrink-0 px-6 pt-6">
+      <div className="flex-shrink-0 px-3 pt-6 md:px-6">
         <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-shrink-0">
             <div className="flex items-center gap-3">
@@ -392,7 +393,7 @@ export function EscalationPanel({
           {!loading && <StatCards items={tab === "active" ? activeStats : historyCards} />}
         </div>
 
-        <div className="-mx-6 mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border/80 px-6 pb-2.5">
+        <div className="-mx-3 mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border/80 px-3 pb-2.5 md:-mx-6 md:px-6">
           <div className="flex items-center p-1 rounded-xl bg-primary-50/60 border border-primary-100/80 gap-1" role="tablist" aria-label="Escalation views">
             {([
               { key: "active", label: "Active", count: visibleHandovers.length },
@@ -426,8 +427,8 @@ export function EscalationPanel({
           </div>
 
           {/* Search + filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative h-8 w-[220px]">
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+            <div className="relative h-8 w-full md:w-[220px]">
               <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -518,7 +519,7 @@ export function EscalationPanel({
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* ── list ── */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
           {!loading && visibleHandovers.length === 0 ? (
             <TableEmpty
               icon={<CheckCircle2 size={26} className="text-success" />}
@@ -533,7 +534,7 @@ export function EscalationPanel({
             />
           ) : (
             <div className="rounded-2xl border border-border/80 bg-surface shadow-card overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[920px] border-collapse">
                   <thead>
                     <tr className="border-b border-border/70 bg-slate-50/70">
@@ -693,6 +694,115 @@ export function EscalationPanel({
                     </tbody>
                   )}
                 </table>
+              </div>
+              <div className="space-y-3 p-3 md:hidden">
+                {loading ? (
+                  [0, 1, 2].map((i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100" />)
+                ) : (
+                  filteredHandovers.map((h) => {
+                    const waited = secondsSince(h.opened_at);
+                    const severity = severityForWait(waited);
+                    const isMine = h.assigned_to === currentCallerId;
+                    return (
+                      <MobileRecordCard key={h.id} className="p-3">
+                        <div className="flex items-start gap-2">
+                          {canExport && (
+                            <div className="pt-1">
+                              <CheckTick size="sm" checked={pickedActive.has(h.id)} onChange={() => toggleActive(h.id)} aria-label="Select this lead" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <MobileRecordHeader
+                              title={<LeadCell lead={h.leads} />}
+                              subtitle={<TriggerChip reason={h.reason} />}
+                              aside={
+                                <DurationCell
+                                  text={formatDuration(waited)}
+                                  severity={severity}
+                                  sub={new Date(h.opened_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                />
+                              }
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[13px] text-on-surface-muted">
+                          {h.assigned_to ? `Assigned to ${h.caller_name ?? "a teammate"}` : "Unassigned"}
+                        </p>
+                        <div className="mt-3 flex items-center gap-2">
+                          {role === "owner" || isMine ? (
+                            <>
+                              <button
+                                onClick={() => canReplyToConversations && onReply(h.lead_id)}
+                                disabled={!canReplyToConversations}
+                                title={readOnlyTitle}
+                                className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary text-[13px] font-bold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <MessageSquare size={14} /> Reply
+                              </button>
+                              <button
+                                onClick={() => handleResolve(h)}
+                                disabled={!canReplyToConversations}
+                                title={readOnlyTitle}
+                                className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-surface text-[13px] font-bold text-success transition-colors hover:border-success hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <CheckCircle2 size={14} /> Resolve
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleClaim(h)}
+                              disabled={!canReplyToConversations || !currentCallerId}
+                              title={
+                                !canReplyToConversations
+                                  ? readOnlyTitle
+                                  : !currentCallerId
+                                    ? "A telecaller profile is required to pick up an escalation"
+                                    : undefined
+                              }
+                              className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary text-[13px] font-bold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <MessageSquare size={14} /> Pick up
+                            </button>
+                          )}
+                          {role === "owner" && (
+                            <div className="relative" ref={assigningId === h.id ? dropdownRef : null}>
+                              <button
+                                onClick={() => setAssigningId(assigningId === h.id ? null : h.id)}
+                                disabled={!canReplyToConversations}
+                                title={canReplyToConversations ? "Assign to a telecaller" : readOnlyTitle}
+                                aria-label="Assign to a telecaller"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-ink transition-colors hover:border-ink-muted disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <UserCog size={14} />
+                              </button>
+                              {assigningId === h.id && (
+                                <div className="absolute bottom-full right-0 z-30 mb-1.5 min-w-[180px] rounded-xl border border-border bg-surface py-1 text-left shadow-card-hover">
+                                  <p className="px-3 py-1 font-heading text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-muted">
+                                    Assign to
+                                  </p>
+                                  <div className="my-0.5 border-t border-border-subtle" />
+                                  {callers.length === 0 ? (
+                                    <p className="px-3 py-2 font-body text-xs text-ink-muted">No active callers</p>
+                                  ) : (
+                                    callers.map((c) => (
+                                      <button
+                                        key={c.id}
+                                        onClick={() => handleAssign(h.id, c.id, c.name)}
+                                        className="w-full px-3 py-2 text-left font-body text-xs text-ink transition-colors hover:bg-primary-light hover:text-primary"
+                                      >
+                                        {c.name}
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </MobileRecordCard>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}

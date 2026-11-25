@@ -9,6 +9,7 @@ import { bookingsApi, type SiteVisit } from "@/lib/bookingsApi";
 import { cn } from "@/lib/utils";
 import { STATUS_CLASS, STATUS_LABEL, canMarkNoShow, canMarkVisit, customerLabel } from "./bookingsLogic";
 import { formatDay, formatTime, istOf, todayIst } from "./bookingsTime";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { BTN_PRIMARY, BTN_SECONDARY, Notice, errorText } from "./bookingsUi";
 
 const SEGMENT: Record<string, { label: string; cls: string }> = {
@@ -114,7 +115,62 @@ export function SiteVisitsTab({ canManage, myResourceId }: { canManage: boolean;
       {rows.length === 0 ? (
         <Notice>No site visits from 2 days ago to 2 weeks ahead.</Notice>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border bg-white shadow-card">
+        <>
+        <div className="space-y-3 md:hidden">
+          {rows.map((v) => {
+            const seg = v.segment ? SEGMENT[v.segment] : null;
+            const canAct = canManage || (myResourceId !== null && myResourceId === v.resource_id);
+            const open = v.status === "booked" || v.status === "held";
+            return (
+              <MobileRecordCard key={v.id}>
+                <MobileRecordHeader
+                  title={
+                    v.lead_id ? (
+                      <Link href={`/dashboard/conversations?lead=${encodeURIComponent(v.lead_id)}`} className="hover:text-primary">{customerLabel(v)}</Link>
+                    ) : (
+                      customerLabel(v)
+                    )
+                  }
+                  subtitle={<>{v.property_name || "Property not linked"}{seg && <span className={cn("ml-2 font-semibold", seg.cls)}>{seg.label}</span>}</>}
+                  aside={
+                    <span className={cn("rounded-full border px-2 py-0.5 text-xs font-bold", STATUS_CLASS[v.status])}>
+                      {open && !v.confirmed_at && v.call_now ? "No reply yet" : open && v.confirmed_at ? "Confirmed" : STATUS_LABEL[v.status]}
+                    </span>
+                  }
+                />
+                <p className="mt-2 text-sm font-semibold text-ink">{whenLabel(v.start_at)}</p>
+                {v.shown_by && <p className="mt-1 text-[13px] text-ink-secondary">Shown by {v.shown_by}</p>}
+                <div className="mt-1 flex items-center gap-2 text-[13px] text-ink-secondary">
+                  <span className="shrink-0">Pickup</span>
+                  <div className="min-w-0 flex-1"><Pickup v={v} canEdit={canAct} onSaved={() => void mutate()} /></div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 empty:hidden">
+                  {v.status === "came" && canAct && v.visit_outcome !== "token_paid" && v.visit_outcome !== "liked_thinking" && (
+                    <>
+                      <button type="button" disabled={busy === v.id} onClick={() => void tokenPaid(v)} className={cn(BTN_PRIMARY, "min-h-9 px-3 py-1 text-[13px]")}>🪙 Token paid</button>
+                      <button type="button" disabled={busy === v.id} onClick={() => void act(v.id, () => bookingsApi.visitOutcome(v.id, "liked_thinking"), "Saved. Loan help goes in 2 days.")} className={cn(BTN_SECONDARY, "min-h-9 px-3 py-1 text-[13px]")}>Liked, thinking</button>
+                    </>
+                  )}
+                  {v.visit_outcome === "token_paid" && <span className="text-xs font-semibold text-[#067647]">🪙 Token paid</span>}
+                  {v.visit_outcome === "liked_thinking" && <span className="text-xs text-ink-secondary">Loan help in 2 days ✓</span>}
+                  {open && canMarkVisit(v, who) && canMarkNoShow(v, who) && (
+                    <>
+                      <button type="button" disabled={busy === v.id} onClick={() => void act(v.id, () => bookingsApi.came(v.id), "Marked as came")} className={cn(BTN_SECONDARY, "min-h-9 px-3 py-1 text-[13px]")}>✓ Came</button>
+                      <button type="button" disabled={busy === v.id} onClick={() => void act(v.id, () => bookingsApi.noShow(v.id), "Marked as didn't come")} className={cn(BTN_SECONDARY, "min-h-9 px-3 py-1 text-[13px] text-ink-secondary")}>Didn&apos;t come</button>
+                    </>
+                  )}
+                  {open && !canMarkNoShow(v, who) && v.call_now && (
+                    <a href={`tel:${v.phone}`} className="inline-flex min-h-9 items-center gap-1 text-[13px] font-bold text-primary hover:underline"><Phone size={12} /> Call to confirm ›</a>
+                  )}
+                  {v.status === "no_show" && canAct && (
+                    <button type="button" disabled={busy === v.id} onClick={() => void rebook(v)} className="inline-flex min-h-9 items-center text-[13px] font-bold text-primary hover:underline">Send a new time ›</button>
+                  )}
+                </div>
+              </MobileRecordCard>
+            );
+          })}
+        </div>
+        <div className="hidden overflow-x-auto rounded-2xl border border-border bg-white shadow-card md:block">
           <table className="w-full min-w-[960px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-low text-left text-[11px] font-bold uppercase tracking-wider text-ink-muted">
@@ -182,6 +238,7 @@ export function SiteVisitsTab({ canManage, myResourceId }: { canManage: boolean;
             </tbody>
           </table>
         </div>
+        </>
       )}
       <div className="rounded-2xl border border-border bg-white px-5 py-4 text-sm text-ink-secondary shadow-card">
         <p className="font-display text-[15px] font-bold text-ink">After each visit <span className="font-body text-xs font-normal text-ink-muted">one tap, the rest goes by itself</span></p>

@@ -8,6 +8,7 @@ import { coursesApi, type CoursesSummary, type FeeInstalment } from "@/lib/cours
 import { cn } from "@/lib/utils";
 import { Notice, errorText } from "@/app/dashboard/bookings/bookingsUi";
 import { dayText, rupees } from "./coursesLogic";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 /** Students now · Seats left · Demo classes · Fees due this week · Waitlist. */
 export function CourseTiles({ money }: { money: boolean }) {
@@ -85,7 +86,7 @@ export function FeeInstalments({ canManage }: { canManage: boolean }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">{chip("all", "All students")}{chip("due", "Due this week")}{chip("late", "Late")}</div>
-      <div className="overflow-x-auto rounded-xl border border-[#e2e8f0] bg-white">
+      <div className="hidden overflow-x-auto rounded-xl border border-[#e2e8f0] bg-white md:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-[#e2e8f0] bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-ink-secondary">
@@ -124,6 +125,37 @@ export function FeeInstalments({ canManage }: { canManage: boolean }) {
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="space-y-3 md:hidden">
+        {shown.map((r) => (
+          <MobileRecordCard key={r.plan_id} className="p-3">
+            <MobileRecordHeader
+              title={r.student_name || r.phone}
+              subtitle={[r.course_name, r.batch_name].filter(Boolean).join(" · ")}
+              aside={<span className={cn("rounded-full px-2.5 py-0.5 text-xs font-bold", STATUS[r.status].cls)}>{STATUS[r.status].label(r)}</span>}
+            />
+            <p className="mt-2 text-[13px] tabular-nums text-ink">
+              Total {rupees(r.total_paise)} · {r.parts} {r.parts === 1 ? "part" : "parts"} · Paid {rupees(r.paid_paise)}
+            </p>
+            <p className="mt-0.5 text-[13px] tabular-nums text-ink-secondary">
+              Next due: {r.next_due ? `${rupees(r.next_paise)} · ${dayText(r.next_due)}` : "—"}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              {r.status === "late" && r.phone && (
+                <a href={`tel:${r.phone}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[#e2e8f0] px-3 text-[13px] font-bold text-ink"><Phone size={13} /> Call</a>
+              )}
+              {r.status !== "paid" && canManage && (
+                <button type="button" disabled={busy === r.plan_id} onClick={() => void payLink(r)}
+                  className="min-h-9 rounded-lg bg-primary px-3 text-[13px] font-bold text-white disabled:opacity-50">
+                  {busy === r.plan_id ? "Making…" : "Send pay link"}
+                </button>
+              )}
+              <Link href={`/dashboard/deals/orders/${encodeURIComponent(r.deal_id)}`} className="inline-flex min-h-9 items-center px-2 text-[13px] font-bold text-primary">
+                {r.status === "paid" ? "Receipts ›" : "Open ›"}
+              </Link>
+            </div>
+          </MobileRecordCard>
+        ))}
       </div>
       <p className="text-xs text-ink-secondary">Reminders go by themselves 3 days before, on the day and 3 days late when Fee reminders are on (above). Late students are worth a call.</p>
     </div>

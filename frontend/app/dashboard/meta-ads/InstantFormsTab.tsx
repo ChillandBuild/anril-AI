@@ -13,6 +13,7 @@ import type { InstantFormHelloStatus, InstantFormRange, InstantFormSummary } fro
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
 import { LeadsDownloadButton } from "./LeadsDownloadButton";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { DatesMenu, TOOLBAR_BUTTON } from "./reportControls";
 import { formTemplateText, helloLook } from "./instantFormsDelivery";
 import {
@@ -200,6 +201,48 @@ function FormRow({
       <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">{countText(form.replied)}</td>
       <td className="whitespace-nowrap px-4 py-3 text-xs text-on-surface-muted">{dateTimeText(form.last_lead_at)}</td>
     </tr>
+  );
+}
+
+function FormCard({
+  form,
+  hello,
+  canManage,
+  busy,
+  onToggleHello,
+  onOpen,
+}: {
+  form: InstantFormSummary;
+  hello: InstantFormHelloStatus | undefined;
+  canManage: boolean;
+  busy: boolean;
+  onToggleHello: (next: boolean) => void;
+  onOpen: () => void;
+}) {
+  const ads = form.ad_names?.length ? form.ad_names : form.past_ad_names;
+  const adsText = ads && ads.length > 0 ? `${ads.length === 1 ? "Ad" : "Ads"}${form.ad_names?.length ? "" : " (before)"}: ${ads.join(", ")}` : null;
+  return (
+    <MobileRecordCard onClick={onOpen} className="cursor-pointer p-3">
+      <MobileRecordHeader
+        title={form.name}
+        subtitle={adsText ?? `${form.questions} ${form.questions === 1 ? "question" : "questions"}`}
+        aside={<FormStatusBadge status={form.status} />}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-x-1 text-[13px] text-on-surface">
+        <span className="font-semibold tabular-nums">{countText(form.leads)} {form.leads === 1 ? "lead" : "leads"}</span>
+        <LeadsDownloadButton
+          label="Download every lead on this form"
+          download={() => api.instantForms.downloadFormLeads(form.form_id, form.name)}
+        />
+        <span className="text-on-surface-muted">· Cost per lead {inrText(form.cost_per_lead)} · Sent {countText(form.template_sent)} · Replied {countText(form.replied)}</span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <span className="text-on-surface-muted">Last lead {dateTimeText(form.last_lead_at)}</span>
+        <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
+          <TemplateCell form={form} hello={hello} canManage={canManage} busy={busy} onToggle={onToggleHello} />
+        </div>
+      </div>
+    </MobileRecordCard>
   );
 }
 
@@ -426,7 +469,25 @@ export function InstantFormsTab() {
               {overview && overview.forms.length === 0 ? (
                 <p className="px-4 py-16 text-center font-body text-sm text-[#94a3b8]">No instant forms on this Page yet.</p>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                <div className="space-y-2 p-3 md:hidden">
+                  {overview
+                    ? formPages.pageItems.map((form) => (
+                        <FormCard
+                          key={form.form_id}
+                          form={form}
+                          hello={overview.hello_template?.status}
+                          canManage={canManage}
+                          busy={helloBusy === form.form_id}
+                          onToggleHello={(next) => handleToggleHello(form.form_id, next)}
+                          onOpen={() => openForm(form.form_id)}
+                        />
+                      ))
+                    : Array.from({ length: 4 }, (_, index) => (
+                        <div key={index} className="h-24 animate-pulse rounded-2xl bg-stone-200/70" />
+                      ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[860px]">
                     <thead>
                       <tr className="border-b border-[#eef2f6]">
@@ -468,6 +529,7 @@ export function InstantFormsTab() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
               <Pagination page={formPages.page} total={formPages.total} onPageChange={formPages.setPage} noun="forms" />
             </section>

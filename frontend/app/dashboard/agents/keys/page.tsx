@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { KeyRound, Plus } from "lucide-react";
 import { companionsApi, type CompanionApiKey } from "@/lib/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { CopyButton } from "@/components/agents/CodeBlock";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ErrorNote, LoadingRows, formatDate } from "@/components/agents/ui";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
@@ -105,7 +106,25 @@ export default function KeysPage() {
         </div>
       ) : keys ? (
         <div className={`${CARD} overflow-x-auto p-0`}>
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <div className="space-y-3 p-3 md:hidden">
+            {keyPages.pageItems.map((k) => (
+              <MobileRecordCard key={k.id} className="p-3">
+                <MobileRecordHeader
+                  title={<span className="break-all font-mono text-xs">{k.key_prefix}…</span>}
+                  subtitle={`Created ${formatDate(k.created_at)} · Last used ${k.last_used_at ? formatDate(k.last_used_at) : "Never"}`}
+                  aside={<span className={`text-xs ${k.status === "active" ? "text-success" : "text-ink-muted"}`}>{k.status === "active" ? "Active" : `Revoked ${formatDate(k.revoked_at)}`}</span>}
+                />
+                {k.status === "active" && (
+                  <div className="mt-3 flex justify-end">
+                    <button type="button" onClick={() => setRevoking(k)} className={`${BTN_SECONDARY} min-h-8 px-3 text-[13px] text-danger`}>
+                      Revoke
+                    </button>
+                  </div>
+                )}
+              </MobileRecordCard>
+            ))}
+          </div>
+          <table className="hidden w-full min-w-[560px] text-left text-sm md:table">
             <thead className="border-b border-border-subtle text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th scope="col" className="px-5 py-3 font-medium">Key</th>

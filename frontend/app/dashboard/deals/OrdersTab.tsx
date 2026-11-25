@@ -12,6 +12,7 @@ import { api, type OrderChip, type OrderRow, type OrdersPage, type RemindAllResu
 import { Select } from "@/components/ui/Select";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { cn } from "@/lib/utils";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { DeliveryBadge, PaymentBadge, reportSend, rupees, whenShort } from "./orders/orderUi";
 
 const CHIPS: { key: OrderChip; label: string }[] = [
@@ -305,7 +306,8 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[960px]">
               <thead>
                 <tr className="border-b border-[#eef2f6] text-left font-label text-[10px] font-bold uppercase tracking-wider text-on-surface-muted">
@@ -353,6 +355,30 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
               </tbody>
             </table>
           </div>
+          <div className="space-y-3 p-3 md:hidden">
+            {orderPages.pageItems.map((row) => (
+              <MobileRecordCard key={row.id} className={cn("p-3", row.payment === "waiting" && "bg-amber-50/40")}
+                onClick={() => router.push(`/dashboard/deals/orders/${row.id}`)}>
+                <MobileRecordHeader
+                  title={row.customer.name || row.customer.phone || "Walk-in"}
+                  subtitle={`${row.label} · ${whenShort(row.created_at)}`}
+                  aside={<PaymentBadge state={row.payment} />}
+                />
+                <p className="mt-2 text-[13px] tabular-nums text-on-surface">
+                  {rupees(row.total_paise)} · paid {rupees(row.paid_paise)} · due {rupees(row.balance_paise)}
+                </p>
+                {row.items && <p className="mt-1 truncate text-xs text-on-surface-muted">{row.items}</p>}
+                {(canManage || row.next_action === "open") && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); rowAction(row); }} disabled={busy === row.id}
+                    className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-xl border border-primary-200 bg-primary-50 px-3 text-[13px] font-bold text-primary-700 disabled:opacity-50">
+                    {busy === row.id && <Loader2 size={12} className="animate-spin" />}
+                    {ACTION_LABEL[row.next_action]}{row.next_action === "open" && <ChevronRight size={13} />}
+                  </button>
+                )}
+              </MobileRecordCard>
+            ))}
+          </div>
+          </>
         )}
         {rows.length > 0 && (
           <Pagination page={orderPages.page} total={orderPages.total} onPageChange={orderPages.setPage} noun="orders" />

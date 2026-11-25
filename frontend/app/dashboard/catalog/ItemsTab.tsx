@@ -12,6 +12,7 @@ import { ItemThumb } from "./ItemThumb";
 import { MetaCatalogueBar } from "./MetaCatalogueBar";
 import { formatPaise, isLow, stockValuePaise } from "./money";
 import { costsHidden } from "@/lib/billBrand";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 type Filter = "all" | "out" | "low" | "waiting" | "not_selling" | "draft";
 
@@ -258,7 +259,8 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
 
       {error && <div className="rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>}
 
-      <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+      <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+        <div className="hidden md:block">
         <table className="w-full min-w-[920px] text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -322,6 +324,57 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
             })}
           </tbody>
         </table>
+        </div>
+        <div className="space-y-2 md:hidden">
+          {isLoading && (
+            <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+              <Loader2 size={16} className="mr-2 inline animate-spin" />Loading items...
+            </div>
+          )}
+          {!isLoading && shown.length === 0 && (
+            <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+              {items.length === 0 ? "No items yet. Tap \“Add item\” to add your first one." : "Nothing here."}
+            </div>
+          )}
+          {!isLoading && paged.pageItems.map((item) => {
+            const value = stockValuePaise(item);
+            const href = `/dashboard/catalog/items/${item.id}`;
+            const kind = (item.variant_group_id && groupName.get(item.variant_group_id)) || (item.item_type === "product" ? "" : item.item_type);
+            const sizes = sizesText(item);
+            return (
+              <MobileRecordCard key={item.id} className="cursor-pointer p-3" onClick={() => router.push(href)}>
+                <div className="flex items-start gap-3">
+                  <ItemThumb name={item.name} thumbnailUrl={item.thumbnail_url} />
+                  <div className="min-w-0 flex-1">
+                    <MobileRecordHeader
+                      title={
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate">{item.name}</span>
+                          <SyncDot item={item} />
+                          {item.status === "draft" && <span className="rounded-full bg-surface-low px-1.5 text-[10px] font-bold uppercase text-ink-muted">Draft</span>}
+                        </span>
+                      }
+                      subtitle={[sizes !== "\—" ? sizes : "", kind].filter(Boolean).join(" \· ") || undefined}
+                      aside={<StockCell item={item} />}
+                    />
+                    <p className="mt-1.5 text-[13px] text-ink">
+                      <span className="font-bold tabular-nums">{item.price_paise != null ? formatPaise(item.price_paise) : "\—"}</span>
+                      {item.gst_rate != null && <span className="text-ink-muted"> \· GST {item.gst_rate}%</span>}
+                      {value != null && <span className="text-ink-muted"> \· Stock value {formatPaise(value)}</span>}
+                      {item.waiting ? <span className="text-ink-muted"> \· {item.waiting} waiting</span> : null}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <Link href={href} onClick={(e) => e.stopPropagation()}
+                    className="inline-flex min-h-9 items-center text-[13px] font-semibold text-primary">
+                    Open <ChevronRight size={14} />
+                  </Link>
+                </div>
+              </MobileRecordCard>
+            );
+          })}
+        </div>
         <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="items" />
       </div>
       <p className="text-xs text-ink-muted">

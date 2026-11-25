@@ -7,6 +7,7 @@ import { ChevronRight, RotateCw, Search } from "lucide-react";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { api, type OtpHistoryFilters, type OtpHistoryItem, type OtpStats } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { formatCount, formatIst, type Tone } from "../sms/helpers";
 import { Btn, LoadError, Notice, Skeleton, TableWrap, inputCls, tdCls, thCls } from "../sms/ui";
 import { Drawer, ChannelIcon, KpiTile, SectionCard, StatusPill, Timeline, ResultStatus, ChannelStatus, percent } from "./otpUi";
@@ -292,7 +293,34 @@ export function HistoryTab() {
               </div>
             )
           ) : (
-            <div className="relative overflow-hidden rounded-xl border border-[#e2e8f0]">
+            <>
+            <div className="space-y-3 md:hidden">
+              {items.map((it) => (
+                <MobileRecordCard key={it.otp_id} className="p-3" onClick={() => setOpenId(it.otp_id)}>
+                  <MobileRecordHeader
+                    title={<span className="tabular-nums">{it.phone}</span>}
+                    subtitle={formatIst(it.created_at)}
+                    aside={
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <ResultStatus status={it.status} />
+                        {it.not_requested && it.status !== "not_requested" && <StatusPill tone="danger">Didn&apos;t ask</StatusPill>}
+                      </div>
+                    }
+                  />
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-on-surface-muted">
+                    <span>{modeShortLabel(it.mode)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{ORIGIN_LABELS[it.origin]}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>SMS</span>
+                    <ChannelStatus status={it.sms.status} />
+                    <span>WhatsApp</span>
+                    <ChannelStatus status={it.whatsapp.status} />
+                  </div>
+                </MobileRecordCard>
+              ))}
+            </div>
+            <div className="relative hidden overflow-hidden rounded-xl border border-[#e2e8f0] md:block">
               <TableWrap>
                 <table className="w-full min-w-[880px]">
                   <thead className="bg-[#f8fafc]">
@@ -318,6 +346,7 @@ export function HistoryTab() {
                 </table>
               </TableWrap>
             </div>
+            </>
           )}
 
           {data && items.length > 0 && (

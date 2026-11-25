@@ -13,6 +13,7 @@ import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useStockOverview } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 /* Shop & godown (backend services/stock_places.py, migration 309). Stock in each place, moves
  * between them (counted only when the other place taps Received), and suggested moves. */
@@ -130,7 +131,8 @@ export function ShopGodownTab({ canManage, toolbarSlot }: { canManage: boolean; 
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search items"
                   className="h-9 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary" />
               </label>
-              <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+              <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+                <div className="hidden md:block">
                 <table className="w-full min-w-[640px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -177,6 +179,43 @@ export function ShopGodownTab({ canManage, toolbarSlot }: { canManage: boolean; 
                     ))}
                   </tbody>
                 </table>
+                </div>
+                <div className="space-y-2 md:hidden">
+                  {shown.length === 0 && (
+                    <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+                      {data.lines.length ? "No item matches that search." : "No items track stock yet. Add stock to an item to see it here."}
+                    </div>
+                  )}
+                  {paged.pageItems.map((line) => (
+                    <MobileRecordCard key={line.key} className="p-3">
+                      <MobileRecordHeader
+                        title={<Link href={`/dashboard/catalog/items/${line.item_id}`}>{lineName(line)}</Link>}
+                        subtitle={`Sold ${line.sold} in ${data.sold_days} days`}
+                      />
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+                        {places.map((p) => {
+                          const qty = line.by_place[p.id] ?? 0;
+                          const low = p.id === bill?.id && line.suggestion;
+                          return (
+                            <span key={p.id} className="text-ink-muted">
+                              {p.name} <b className={cn("tabular-nums", low ? "text-rose-700" : qty ? "text-ink" : "text-ink-muted")}>{qty}</b>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {line.suggestion && (
+                        canManage ? (
+                          <button type="button" onClick={() => openMove(line)}
+                            className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-semibold text-ink hover:border-primary/50 hover:bg-primary-50/50">
+                            <ArrowLeftRight size={13} /> Move {line.suggestion.quantity} to {name(line.suggestion.to_place_id)}
+                          </button>
+                        ) : (
+                          <p className="mt-2 text-[13px] text-ink">Move {line.suggestion.quantity} to {name(line.suggestion.to_place_id)}</p>
+                        )
+                      )}
+                    </MobileRecordCard>
+                  ))}
+                </div>
                 <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="items" />
               </div>
             </div>

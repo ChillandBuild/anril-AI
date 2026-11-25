@@ -14,6 +14,7 @@ import {
 
 import { ChannelCell, DurationCell, LeadCell, PersonCell, TableEmpty, TableSkeleton, TriggerChip } from "@/components/escalations/atoms";
 import { CheckTick } from "@/components/ui/controls";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { Pagination } from "@/components/ui/Pagination";
 import { PAGE_SIZE } from "@/lib/pagination";
 
@@ -128,7 +129,7 @@ export function HistoryTab({
     <div className="flex flex-1 flex-col overflow-hidden">
 
       {/* ── list (only this scrolls; filters stay in the header) ── */}
-      <div className="flex flex-1 flex-col overflow-y-auto px-6 py-4">
+      <div className="flex flex-1 flex-col overflow-y-auto px-3 py-4 md:px-6">
       {error ? (
         <TableEmpty
           icon={<Info size={24} className="text-ink-muted" />}
@@ -149,7 +150,7 @@ export function HistoryTab({
         <>
           {/* shrink-0: in this scrolling column a shrinkable card clipped the last rows instead of scrolling. */}
           <div className="shrink-0 rounded-2xl border border-border/80 bg-surface shadow-card overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[1040px] border-collapse">
                 <thead>
                   <tr className="border-b border-border/70 bg-slate-50/70">
@@ -247,6 +248,55 @@ export function HistoryTab({
                   </tbody>
                 )}
               </table>
+            </div>
+            <div className="space-y-3 p-3 md:hidden">
+              {loading ? (
+                [0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-100" />)
+              ) : (
+                rows.map((row) => (
+                  <MobileRecordCard key={row.id} className="p-3">
+                    <div className="flex items-start gap-2">
+                      {selectable && (
+                        <div className="pt-1">
+                          <CheckTick size="sm" checked={picked.has(row.id)} onChange={() => togglePick(row.id)} aria-label="Select this lead" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <MobileRecordHeader
+                          title={<LeadCell lead={row.leads} />}
+                          subtitle={<TriggerChip reason={row.reason} />}
+                          aside={
+                            <DurationCell
+                              text={formatDuration(row.duration_seconds)}
+                              severity={severityForWait(row.duration_seconds)}
+                            />
+                          }
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[13px] text-on-surface-muted">
+                      {row.resolved_by_name ? `Resolved by ${row.resolved_by_name}` : "Resolved, not recorded who"}
+                      {row.resolved_at ? ` · ${formatDateTime(row.resolved_at)}` : ""}
+                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        onClick={() => onOpenChat(row.lead_id)}
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface text-[13px] font-bold text-ink transition-colors hover:border-ink-muted"
+                      >
+                        <MessageSquare size={14} /> Open chat
+                      </button>
+                      <button
+                        onClick={() => handleReopen(row)}
+                        disabled={!canReply}
+                        title={canReply ? "Put this back in the active queue" : "You have read-only access to conversations"}
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface text-[13px] font-bold text-ink-secondary transition-colors hover:border-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <RotateCcw size={13} /> Reopen
+                      </button>
+                    </div>
+                  </MobileRecordCard>
+                ))
+              )}
             </div>
             <Pagination page={page} total={total} onPageChange={setPage} noun="chats" />
           </div>

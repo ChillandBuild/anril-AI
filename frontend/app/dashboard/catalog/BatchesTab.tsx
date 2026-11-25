@@ -13,6 +13,7 @@ import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { useBatches } from "@/hooks/useApi";
 import { StatCard } from "./ItemsTab";
 import { formatPaise } from "./money";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 
 /* Batches & expiry (backend services/stock_batches.py, migration 310). Each batch has its own stock
  * and expiry. Bills take Sell-first batches, then the earliest expiry, never an expired one. */
@@ -113,7 +114,8 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
             )}
           </div>
 
-          <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
+          <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+            <div className="hidden md:block">
             <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -135,6 +137,15 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
                 {paged.pageItems.map((b) => <BatchRow key={b.id} batch={b} canManage={canManage} noMoney={noMoney} onChanged={() => mutate()} />)}
               </tbody>
             </table>
+            </div>
+            <div className="space-y-2 md:hidden">
+              {shown.length === 0 && (
+                <div className="rounded-2xl border border-surface-mid bg-white px-4 py-10 text-center text-sm text-ink-muted shadow-sm">
+                  {data.batches.length ? "No batch matches this filter." : "No batch has stock right now."}
+                </div>
+              )}
+              {paged.pageItems.map((b) => <BatchCard key={b.id} batch={b} canManage={canManage} noMoney={noMoney} onChanged={() => mutate()} />)}
+            </div>
             <Pagination page={paged.page} total={paged.total} onPageChange={paged.setPage} noun="batches" />
           </div>
 
@@ -156,7 +167,8 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
   );
 }
 
-function BatchRow({ batch: b, canManage, noMoney, onChanged }: { batch: StockBatch; canManage: boolean; noMoney: boolean; onChanged: () => void }) {
+/* The action buttons of one batch (same handlers for the table row and the phone card). */
+function BatchActions({ batch: b, canManage, onChanged }: { batch: StockBatch; canManage: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"return" | "remove" | null>(null);
   const [editingDiscount, setEditingDiscount] = useState(false);
@@ -181,29 +193,7 @@ function BatchRow({ batch: b, canManage, noMoney, onChanged }: { batch: StockBat
   const btn = "inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-semibold disabled:opacity-50";
 
   return (
-    <tr className="border-b border-border-subtle align-top last:border-b-0">
-      <td className="px-4 py-3">
-        <Link href={`/dashboard/catalog/items/${b.catalog_item_id}`} className="font-bold text-ink hover:underline">
-          {b.name}{b.variant_label ? ` · ${b.variant_label}` : ""}
-        </Link>
-        <p className="text-xs text-ink-muted">{b.place}</p>
-      </td>
-      <td className="px-3 py-3 font-mono text-[13px] text-ink">{b.batch_no || <span className="font-sans text-ink-muted">No batch no.</span>}</td>
-      <td className="px-3 py-3">
-        <span className={cn("whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", CHIP[b.bucket])}>{expiry(b.expiry_date)}</span>
-        <div className="mt-1 flex flex-wrap gap-1">
-          {b.sell_first && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-800">Sell first</span>}
-          {b.discount_pct > 0 && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">{b.discount_pct}% off</span>}
-        </div>
-      </td>
-      <td className="px-3 py-3 font-bold tabular-nums text-ink">{b.quantity}</td>
-      {!noMoney && (
-        <td className="px-3 py-3 tabular-nums text-ink" title={b.value_at === "cost" ? "At cost" : "At selling price (no cost on this batch)"}>
-          {formatPaise(b.value_paise)}
-        </td>
-      )}
-      <td className="px-3 py-3 text-ink">{b.supplier ?? <span className="text-ink-muted">—</span>}</td>
-      <td className="px-3 py-3">
+    <>
         {!canManage ? <span className="text-ink-muted">—</span> : confirm ? (
           <span className="inline-flex flex-wrap items-center gap-2">
             <span className="text-xs text-ink-muted">
@@ -255,7 +245,69 @@ function BatchRow({ batch: b, canManage, noMoney, onChanged }: { batch: StockBat
             )}
           </span>
         )}
+    </>
+  );
+}
+
+function BatchRow({ batch: b, canManage, noMoney, onChanged }: { batch: StockBatch; canManage: boolean; noMoney: boolean; onChanged: () => void }) {
+  return (
+    <tr className="border-b border-border-subtle align-top last:border-b-0">
+      <td className="px-4 py-3">
+        <Link href={`/dashboard/catalog/items/${b.catalog_item_id}`} className="font-bold text-ink hover:underline">
+          {b.name}{b.variant_label ? ` · ${b.variant_label}` : ""}
+        </Link>
+        <p className="text-xs text-ink-muted">{b.place}</p>
+      </td>
+      <td className="px-3 py-3 font-mono text-[13px] text-ink">{b.batch_no || <span className="font-sans text-ink-muted">No batch no.</span>}</td>
+      <td className="px-3 py-3">
+        <span className={cn("whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", CHIP[b.bucket])}>{expiry(b.expiry_date)}</span>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {b.sell_first && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-800">Sell first</span>}
+          {b.discount_pct > 0 && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">{b.discount_pct}% off</span>}
+        </div>
+      </td>
+      <td className="px-3 py-3 font-bold tabular-nums text-ink">{b.quantity}</td>
+      {!noMoney && (
+        <td className="px-3 py-3 tabular-nums text-ink" title={b.value_at === "cost" ? "At cost" : "At selling price (no cost on this batch)"}>
+          {formatPaise(b.value_paise)}
+        </td>
+      )}
+      <td className="px-3 py-3 text-ink">{b.supplier ?? <span className="text-ink-muted">—</span>}</td>
+      <td className="px-3 py-3">
+        <BatchActions batch={b} canManage={canManage} onChanged={onChanged} />
       </td>
     </tr>
+  );
+}
+
+function BatchCard({ batch: b, canManage, noMoney, onChanged }: { batch: StockBatch; canManage: boolean; noMoney: boolean; onChanged: () => void }) {
+  return (
+    <MobileRecordCard className="p-3">
+      <MobileRecordHeader
+        title={
+          <Link href={`/dashboard/catalog/items/${b.catalog_item_id}`}>
+            {b.name}{b.variant_label ? ` · ${b.variant_label}` : ""}
+          </Link>
+        }
+        subtitle={[b.batch_no || "No batch no.", b.place].filter(Boolean).join(" · ")}
+        aside={<span className={cn("whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", CHIP[b.bucket])}>{expiry(b.expiry_date)}</span>}
+      />
+      <p className="mt-2 text-[13px] text-ink">
+        <b className="tabular-nums">{b.quantity}</b> in stock
+        {!noMoney && <span className="text-ink-muted"> · {formatPaise(b.value_paise)}</span>}
+        {b.supplier && <span className="text-ink-muted"> · {b.supplier}</span>}
+      </p>
+      {(b.sell_first || b.discount_pct > 0) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {b.sell_first && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-800">Sell first</span>}
+          {b.discount_pct > 0 && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">{b.discount_pct}% off</span>}
+        </div>
+      )}
+      {canManage && (
+        <div className="mt-2">
+          <BatchActions batch={b} canManage={canManage} onChanged={onChanged} />
+        </div>
+      )}
+    </MobileRecordCard>
   );
 }

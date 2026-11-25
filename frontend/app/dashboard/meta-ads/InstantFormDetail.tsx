@@ -1,5 +1,6 @@
 "use client";
 
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -540,6 +541,67 @@ export function InstantFormDetail({ formId }: { formId: string }) {
     );
   }
 
+  function renderLeadCards() {
+    if (!leads) {
+      return (
+        <div className="space-y-2 p-3 md:hidden">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-24 animate-pulse rounded-2xl bg-stone-200/70" />
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2 p-3 md:hidden">
+        {leads.data.map((lead) => {
+          const canSend = canManage && Boolean(lead.phone) && CAN_SEND_AGAIN.has(lead.template_status);
+          const adLine = lead.is_organic ? "Organic" : [lead.ad_name, lead.campaign_name].filter(Boolean).join(" · ");
+          return (
+            <MobileRecordCard key={lead.id} className="p-3">
+              <MobileRecordHeader
+                title={lead.name || "—"}
+                subtitle={[lead.phone, dateTimeText(lead.meta_created_at)].filter(Boolean).join(" · ")}
+                aside={<TemplateStatusBadge status={lead.template_status} error={lead.template_error} />}
+              />
+              {(adLine || lead.replied) && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-on-surface-muted">
+                  <span className="min-w-0 truncate">{adLine}</span>
+                  {lead.replied && (
+                    <span className="inline-flex shrink-0 items-center gap-1 font-label font-bold text-emerald-700">
+                      <Check size={13} aria-hidden="true" /> Replied
+                    </span>
+                  )}
+                </div>
+              )}
+              {(canSend || lead.lead_id) && (
+                <div className="mt-3 flex items-center gap-2">
+                  {canSend && (
+                    <button
+                      type="button"
+                      onClick={() => handleSend(lead)}
+                      disabled={sendingId === lead.id}
+                      className="min-h-9 flex-1 rounded-xl bg-primary px-3 font-label text-[13px] font-bold text-white transition-colors hover:bg-primary/90 disabled:opacity-40"
+                    >
+                      {sendingId === lead.id ? "Sending…" : "Send"}
+                    </button>
+                  )}
+                  {lead.lead_id && (
+                    <Link
+                      href={`/dashboard/conversations?lead=${encodeURIComponent(lead.lead_id)}`}
+                      className="flex min-h-9 flex-1 items-center justify-center rounded-xl border border-primary-200 bg-primary-50 px-3 font-label text-[13px] font-bold text-primary-800"
+                    >
+                      Open lead
+                    </Link>
+                  )}
+                </div>
+              )}
+            </MobileRecordCard>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderLeadRows() {
     if (!leads) {
       return (
@@ -746,7 +808,9 @@ export function InstantFormDetail({ formId }: { formId: string }) {
               ) : leads && leads.data.length === 0 ? (
                 <p className="px-4 py-16 text-center font-body text-sm text-[#94a3b8]">No leads in these dates.</p>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                {renderLeadCards()}
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[960px]">
                     <thead>
                       <tr className="border-b border-[#eef2f6]">
@@ -766,6 +830,7 @@ export function InstantFormDetail({ formId }: { formId: string }) {
                     {renderLeadRows()}
                   </table>
                 </div>
+                </>
               )}
             </div>
 

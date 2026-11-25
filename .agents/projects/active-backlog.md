@@ -486,6 +486,8 @@ Supersedes the 2026-09-23 Mac notes. Work now happens on Windows (Git Bash + Pow
   now falls back to Grep/Glob. **Next step, if the wiki is wanted back:** install graphify into
   `.venv` (confirm the right package name first), run `make wiki-refresh`, and drop the
   "neither exists" note from both routers.
+- **Port 8000 is OS-reserved on this Windows machine.** For local UI QA use the `.claude/launch.json`
+  configs `backend-safe-win` (port 8002) + `frontend-local-8002`, not the 8000 ones.
 
 ## AI reply context — gaps found while building the persona simulator (open, 2026-09-22)
 Measured against Astro Tamil (`eba3ed94`) with `backend/scripts/sim/`, which runs the real
@@ -675,6 +677,21 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 
 ## Catalogue "Insights" tab — deferred (2026-11-23)
 - Every other commerce screen (Shop & godown, batches, barcodes, stock count, expenses, purchases gaps, staff per place, item advance + AI card) is built, live (309–315) and browser-checked. The user said to leave Insights for now. Nothing has been built for it.
+
+## Phone (PWA) fixes — wave 4 open (audit 2026-11-25)
+- A full phone-view audit found 213 issues in 11 areas (report artifact, private to the owner:
+  https://claude.ai/artifact/PZTUr9bMGCAed7Ng4DhDXi). Waves 1–2 shipped in `7a514ed1`
+  (plan `docs/superpowers/plans/2026-11-25-phone-ux-fixes.md`): Save bars above the bottom nav,
+  z-dialog sweep, phone tab strip (`components/nav/headerTabs.ts`), `AppToaster`, chat Customer sheet.
+- **Wave 3 done 2026-11-25 (built, not yet committed when written):** ~35 desktop tables show as
+  `components/MobileRecord.tsx` cards below `md` (plan `docs/superpowers/plans/2026-11-25-phone-ux-wave3-cards.md`);
+  Roles permissions are "Can see / Can change" chips; the shared Reports `DataTable` renders cards itself;
+  Needs-you stat tiles are one compact line on phones (`components/escalations/stat-cards.tsx`). Left as
+  tables on purpose: Reports' 4-column metric comparison (fits 360px) and the Intake table (only its first
+  column stays pinned below md).
+- **Open, wave 4:** sizes and words (chat action chips are 55px tall; New bill back row; 44px
+  secondary buttons and tall hint tiles; sub-28px often-tapped controls).
+- `CallbackNotifier` is dead code (not mounted).
 
 ## Services page removal → Forms only — ON HOLD (2026-11-25)
 The user no longer needs the Services page (`/dashboard/services`, intake_config, `services/intake.py`, `intake_sessions`) and wants Forms only; a plan was written, then put on hold. Do not start until the user brings it back, and re-check live usage first.

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Printer, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiraLoader } from "@/components/AiraLoader";
+import { MobileRecordCard, MobileRecordField, MobileRecordGrid } from "@/components/MobileRecord";
 import {
   deltaOf, formatValue, getPeople, leadHref, lowerIsBetter,
   type MetricKind, type PeopleRef, type PersonRow,
@@ -148,7 +149,13 @@ export interface Column<R> { key: string; label: string; right?: boolean; render
 export function DataTable<R>({ columns, rows, rowKey, empty }: { columns: Column<R>[]; rows: R[]; rowKey: (row: R, i: number) => string; empty: string }) {
   if (rows.length === 0) return <Empty>{empty}</Empty>;
   return (
-    <div className="overflow-x-auto">
+    <>
+    <div className="space-y-3 md:hidden">
+      {rows.map((row, i) => (
+        <PhoneRow key={rowKey(row, i)} columns={columns} row={row} />
+      ))}
+    </div>
+    <div className="hidden overflow-x-auto md:block">
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-surface-mid">
@@ -170,6 +177,38 @@ export function DataTable<R>({ columns, rows, rowKey, empty }: { columns: Column
         </tbody>
       </table>
     </div>
+    </>
+  );
+}
+
+const PHONE_PAIRS = 6;
+
+/** Phone card for one DataTable row: first column is the title, the rest are label/value tiles. */
+function PhoneRow<R>({ columns, row }: { columns: Column<R>[]; row: R }) {
+  const [more, setMore] = useState(false);
+  const [first, ...rest] = columns;
+  const shown = more ? rest : rest.slice(0, PHONE_PAIRS);
+  return (
+    <MobileRecordCard className="p-3">
+      <div className="min-w-0 break-words font-body text-sm font-bold text-on-surface">{first.render(row)}</div>
+      {shown.length > 0 && (
+        <MobileRecordGrid className="mt-3">
+          {shown.map((c) => (
+            <MobileRecordField key={c.key} label={c.label} value={c.render(row)} />
+          ))}
+        </MobileRecordGrid>
+      )}
+      {rest.length > PHONE_PAIRS && (
+        <button
+          type="button"
+          onClick={() => setMore((m) => !m)}
+          aria-expanded={more}
+          className="mt-3 min-h-9 w-full rounded-xl border border-surface-mid text-[13px] font-semibold text-on-surface-muted"
+        >
+          {more ? "Less" : `More (${rest.length - PHONE_PAIRS})`}
+        </button>
+      )}
+    </MobileRecordCard>
   );
 }
 

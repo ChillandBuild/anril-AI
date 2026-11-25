@@ -779,7 +779,7 @@ export default function RolesPage() {
             </div>
           </aside>
 
-          <form ref={editorRef} onSubmit={saveRole} className="card flex min-h-0 flex-col overflow-hidden rounded-3xl p-0 xl:h-full">
+          <form ref={editorRef} onSubmit={saveRole} className="card scroll-mt-20 flex min-h-0 flex-col overflow-hidden rounded-3xl p-0 xl:h-full">
             <div className="shrink-0 border-b border-border-subtle bg-gradient-to-br from-surface-subtle via-white to-primary-light/20 px-5 py-3 sm:px-6">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -808,7 +808,65 @@ export default function RolesPage() {
             </div>
 
             <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto overflow-x-auto p-3 sm:p-4">
-              <table className="w-full min-w-[760px] border-separate border-spacing-0 overflow-hidden rounded-2xl border border-border-subtle bg-white">
+              <div className="space-y-4 md:hidden">
+                {moduleGroups.map((group) => (
+                  <section key={group.name} className="space-y-2">
+                    <div className="flex items-center gap-1.5 px-1 font-label text-[10px] font-black uppercase tracking-widest text-primary/80">
+                      <Folder size={11} /> {group.name}
+                    </div>
+                    {group.modules.map((module) => {
+                      const effectiveReadKeys = module.readKeys.filter((key) => catalogKeys.size === 0 || catalogKeys.has(key));
+                      const effectiveWriteKeys = module.writeKeys.filter((key) => catalogKeys.size === 0 || catalogKeys.has(key));
+                      const readChecked = hasAnyPermission(roleDraft.permissions, [...effectiveReadKeys, ...effectiveWriteKeys]);
+                      const writeChecked = hasAnyPermission(roleDraft.permissions, effectiveWriteKeys);
+                      const writeAvailable = effectiveWriteKeys.length > 0;
+                      const chipBase = "inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-[13px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+                      const chipOn = "border-primary bg-primary/10 text-primary";
+                      const chipOff = "border-border-subtle bg-white text-ink-muted";
+                      return (
+                        <article key={module.id} className="rounded-2xl border border-border-subtle bg-white p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-body text-sm font-bold text-ink">{module.title}</p>
+                              <p className="mt-0.5 font-body text-xs text-ink-muted">{module.description}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => clearModule(module)}
+                              disabled={!canWrite}
+                              aria-label={`Clear ${module.title} access`}
+                              className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-xl px-2 font-label text-xs font-bold text-ink-muted hover:bg-surface-subtle hover:text-ink disabled:opacity-50"
+                            >
+                              <RotateCcw size={12} /> Clear
+                            </button>
+                          </div>
+                          <div className="mt-2.5 flex gap-2">
+                            <button
+                              type="button"
+                              aria-pressed={readChecked}
+                              disabled={!canWrite}
+                              onClick={() => setModuleAccess(module, "read", !readChecked)}
+                              className={`${chipBase} ${readChecked ? chipOn : chipOff}`}
+                            >
+                              {readChecked && <CheckCircle2 size={14} />} Can see
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={writeChecked}
+                              disabled={!canWrite || !writeAvailable}
+                              onClick={() => setModuleAccess(module, "write", !writeChecked)}
+                              className={`${chipBase} ${writeChecked ? chipOn : chipOff}`}
+                            >
+                              {writeChecked && <CheckCircle2 size={14} />} Can change
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </section>
+                ))}
+              </div>
+              <table className="hidden w-full min-w-[760px] md:table border-separate border-spacing-0 overflow-hidden rounded-2xl border border-border-subtle bg-white">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-subtle shadow-[0_1px_0_0_var(--color-border-subtle)]">
                     <th className="w-[48%] px-4 py-3 text-left font-label text-[10px] font-black uppercase tracking-wider text-ink-muted">Module / Resource</th>
@@ -905,7 +963,7 @@ export default function RolesPage() {
       ) : tab === "users" ? (
         <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
           {canWrite && (
-          <form ref={editorRef} onSubmit={saveUser} className="card rounded-3xl space-y-4">
+          <form ref={editorRef} onSubmit={saveUser} className="card scroll-mt-20 rounded-3xl space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-base font-bold text-ink">

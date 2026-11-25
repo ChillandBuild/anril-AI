@@ -14,6 +14,7 @@ import {
   RESULTS_PERIODS, canDownloadCalls, canSeeCallCharts, getResults, periodDates, pickedUpText, showsMoney, sortResults, talkText,
   type ResultsPeriod, type ResultsResponse, type ResultsRow, type ResultsSortKey,
 } from "@/lib/callIqApi";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { Card, ErrorBox, PeriodPicker, Stat } from "./CallIqShell";
 import { useCallIqData } from "./useCallIqData";
 
@@ -61,7 +62,7 @@ function PeopleTable({ data, money }: { data: ResultsResponse; money: boolean })
     <Card>
       <h2 className="font-display text-base font-bold text-primary">Each telecaller</h2>
       <p className="mt-1 font-label text-xs text-ink-secondary">Tap a column name to sort by it.</p>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[560px] border-collapse text-left font-label text-sm">
           <thead>
             <tr className="border-b border-[#c4c7c7]/40">
@@ -97,6 +98,47 @@ function PeopleTable({ data, money }: { data: ResultsResponse; money: boolean })
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="mt-3 md:hidden">
+        <label htmlFor="results-sort" className="font-label text-xs font-bold text-ink-secondary">Sort by</label>
+        <div className="mt-1 flex items-center gap-2">
+          <select
+            id="results-sort"
+            value={sortKey}
+            onChange={(e) => {
+              const key = e.target.value as ResultsSortKey;
+              setSortKey(key);
+              setDir(key === "name" ? "asc" : "desc");
+            }}
+            className="h-9 min-w-0 flex-1 rounded-lg bg-white px-2 font-label text-sm text-on-surface ring-1 ring-[#c4c7c7]/50"
+          >
+            {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => setDir((d) => (d === "asc" ? "desc" : "asc"))}
+            aria-label={dir === "asc" ? "Lowest first. Tap to show highest first" : "Highest first. Tap to show lowest first"}
+            className="inline-flex h-9 items-center gap-1 rounded-lg px-3 font-label text-[13px] font-bold text-primary ring-1 ring-[#c4c7c7]/40"
+          >
+            {dir === "asc" ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+            {dir === "asc" ? "Low first" : "High first"}
+          </button>
+        </div>
+        <div className="mt-3 space-y-2">
+          {rows.map((p) => (
+            <MobileRecordCard key={p.caller_id} className="p-3">
+              <MobileRecordHeader title={p.name} />
+              <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 font-label text-[13px] text-on-surface">
+                <span>Calls {p.calls}</span>
+                <span>Picked up {p.connected}{p.calls ? ` (${Math.round((p.connected / p.calls) * 100)}%)` : ""}</span>
+                <span>Orders {p.orders}</span>
+                {money ? <span>Money {formatRupees(p.revenue_paise ?? 0)}</span> : null}
+                <span>Time {talkText(p.talk_seconds)}</span>
+                <span>Visits {p.visits ?? 0}</span>
+              </div>
+            </MobileRecordCard>
+          ))}
+        </div>
       </div>
     </Card>
   );

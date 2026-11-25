@@ -10,6 +10,7 @@ import type { DamagedAction, StockInResult, SupplierPayMethod } from "@/lib/api"
 import { cn } from "@/lib/utils";
 import { AiraLoader } from "@/components/AiraLoader";
 import { Select } from "@/components/ui/Select";
+import { MobileRecordCard } from "@/components/MobileRecord";
 import { usePurchaseOptions, usePurchaseOrder } from "@/hooks/useApi";
 import { Field, GST_RATES, ItemPicker, inputCls, lastCost, rupees, toPaise, todayIso, variantLabel } from "../shared";
 import { ScanBox } from "../../catalog/ScanBox";
@@ -226,8 +227,87 @@ export default function StockInPage() {
             <Field label="Received by"><input className={inputCls} value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Meena" /></Field>
           </div>
 
-          <div className="overflow-x-auto rounded-card border border-border bg-white shadow-sm">
-            <table className="w-full min-w-[820px] text-sm">
+          <div className="md:overflow-x-auto md:rounded-card md:border md:border-border md:bg-white md:shadow-sm">
+            <div className="space-y-2 md:hidden">
+              {lines.length === 0 && (
+                <p className="rounded-2xl border border-surface-mid bg-white px-4 py-8 text-center text-sm text-ink-muted">Add what came, or take a photo of the supplier&apos;s bill.</p>
+              )}
+              {lines.map((li) => {
+                const damaged = Number(li.damaged) || 0;
+                const kept = (Number(li.good) || 0) + (li.action === "discount" ? damaged : 0);
+                const still = li.still != null ? Math.max(0, li.still - (Number(li.good) || 0)) : null;
+                return (
+                  <MobileRecordCard key={li.key} className="p-3">
+                    <p className="text-sm font-bold text-ink">
+                      {li.label}
+                      {li.newVariant && <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">new size/colour: added on Save</span>}
+                    </p>
+                    {poId && (
+                      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+                        Ordered <span className="font-semibold text-ink">{li.ordered}</span>
+                        {" · "}Still to come{" "}
+                        {still ? <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">{still} pcs</span>
+                          : <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700"><Check size={12} className="inline" /></span>}
+                      </p>
+                    )}
+                    {opts.items.find((it) => it.id === li.catalog_item_id)?.tracks_batches && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <input value={li.batch_no ?? ""} maxLength={40} placeholder="Batch no." aria-label={`Batch no. of ${li.label}`}
+                          onChange={(e) => update(li.key, { batch_no: e.target.value })}
+                          className="min-h-10 w-32 rounded-lg border border-border px-2 font-mono text-base uppercase" />
+                        <input type="date" value={li.expiry ?? ""} aria-label={`Expiry of ${li.label}`}
+                          onChange={(e) => update(li.key, { expiry: e.target.value })}
+                          className={cn("min-h-10 rounded-lg border px-2 text-base", li.expiry ? "border-border" : "border-amber-300")} />
+                        {!li.expiry && <span className="w-full text-[11px] text-amber-700">Add the expiry so Anril can warn you before it.</span>}
+                      </div>
+                    )}
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <label className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">{poId ? "Good" : "Qty"}</span>
+                        <input value={li.good} inputMode="numeric" aria-label={`Good pieces of ${li.label}`}
+                          onChange={(e) => update(li.key, { good: e.target.value.replace(/\D/g, "") })}
+                          className="min-h-10 w-full rounded-lg border border-border px-2 text-base tabular-nums text-center font-bold text-emerald-700" />
+                      </label>
+                      <label className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Damaged</span>
+                        <input value={li.damaged} inputMode="numeric" aria-label={`Damaged pieces of ${li.label}`}
+                          onChange={(e) => update(li.key, { damaged: e.target.value.replace(/\D/g, "") })}
+                          className={cn("min-h-10 w-full rounded-lg border px-2 text-center text-base tabular-nums", damaged ? "border-rose-300 text-rose-700" : "border-border")} />
+                      </label>
+                      <label className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">Cost each</span>
+                        <input value={li.cost} inputMode="decimal" aria-label={`Cost of ${li.label}`} onChange={(e) => update(li.key, { cost: e.target.value })}
+                          className="min-h-10 w-full rounded-lg border border-border px-2 text-base tabular-nums" />
+                      </label>
+                      <div className="block min-w-0 space-y-1">
+                        <span className="font-label text-[10px] font-bold uppercase tracking-wider text-ink-muted">GST</span>
+                        <Select size="md" value={String(li.gst_rate)} aria-label={`GST on ${li.label}`}
+                          onChange={(v) => update(li.key, { gst_rate: Number(v) })} options={GST_RATES.map((r) => ({ value: String(r), label: `${r}%` }))} />
+                      </div>
+                    </div>
+                    {damaged > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {DAMAGED.map((d) => (
+                          <button key={d.value} type="button" onClick={() => update(li.key, { action: d.value })}
+                            className={cn("min-h-8 rounded-lg border px-2 py-1 text-left text-xs font-semibold",
+                              li.action === d.value ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink-secondary hover:bg-surface-low")}>
+                            {d.label}{d.value === "less_on_bill" ? ` (${rupees(damaged * (toPaise(li.cost) || 0))})` : ""}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <p className="text-[13px] text-ink-muted">Total <b className="tabular-nums text-ink">{rupees(kept * (toPaise(li.cost) || 0))}</b></p>
+                      {!li.po_line_id && (
+                        <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== li.key))} aria-label={`Remove ${li.label}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
+                      )}
+                    </div>
+                  </MobileRecordCard>
+                );
+              })}
+            </div>
+            <table className="hidden w-full min-w-[820px] text-sm md:table">
               <thead>
                 <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                   <th className="px-4 py-3">Item</th>
@@ -314,7 +394,7 @@ export default function StockInPage() {
                 })}
               </tbody>
             </table>
-            <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3 px-1 py-3 md:border-t md:border-border md:px-4">
               <ItemPicker items={opts.items} label="Add item" onPick={addPicked} />
               <span className="text-sm text-ink-muted">or</span>
               <ScanBox className="min-w-[220px] flex-1" placeholder="Scan barcode (each scan adds 1)" onFound={(found) => {

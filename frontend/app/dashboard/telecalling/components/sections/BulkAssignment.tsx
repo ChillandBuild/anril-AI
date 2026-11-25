@@ -2,15 +2,24 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { Users, Search, Loader2 } from "lucide-react";
+import { Users, Search, Loader2, Check } from "lucide-react";
 import { api, type Caller, type Lead } from "@/lib/api";
-import { formatPhone } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { LEAD_STATUS_LABEL, TONE_CHIP, leadStatusTone } from "@/lib/call-wrapup";
 
 interface BulkAssignmentProps {
   callers: Caller[];
+}
+
+/** Phone-row tick: a look-only box, the whole row is the button. */
+function PhoneTick({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border", on ? "border-primary bg-primary text-white" : "border-[#cbd5e1] bg-white")}>
+      {on && <Check size={12} strokeWidth={3} />}
+    </span>
+  );
 }
 
 export default function BulkAssignment({ callers }: BulkAssignmentProps) {
@@ -106,7 +115,54 @@ export default function BulkAssignment({ callers }: BulkAssignmentProps) {
         ) : filteredLeads.length === 0 ? (
           <p className="text-xs text-[#94a3b8] text-center py-12">No leads matching search query.</p>
         ) : (
-          <table className="w-full text-left text-xs border-collapse">
+          <>
+          {/* Phones: one tappable row per lead (the whole row ticks it), no sideways scroll. */}
+          <ul className="divide-y divide-[#f1f5f9] md:hidden">
+            <li>
+              <button
+                type="button"
+                onClick={() => toggleSelectAll()}
+                className="flex min-h-11 w-full items-center gap-3 bg-[#f8fafc]/50 px-3 text-left font-label text-xs font-bold text-[#475569]"
+              >
+                <PhoneTick on={filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.includes(l.id))} />
+                Select all ({filteredLeads.length})
+              </button>
+            </li>
+            {filteredLeads.map((lead) => {
+              const isSelected = selectedLeadIds.includes(lead.id);
+              const assignedCaller = callers.find((c) => c.id === lead.assigned_to);
+              return (
+                <li key={lead.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectLead(lead.id)}
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${lead.name || "lead"}`}
+                    className={cn("flex w-full items-start gap-3 px-3 py-2.5 text-left", isSelected && "bg-primary/5")}
+                  >
+                    <PhoneTick on={isSelected} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-sm font-bold text-[#13284A]">{lead.name || "Unnamed"}</span>
+                        <span className="shrink-0 text-xs font-medium text-[#475569]">{formatPhone(lead.phone)}</span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="rounded bg-[#f1f5f9] px-1.5 py-0.5 text-[10px] font-black uppercase">{lead.segment || "—"}</span>
+                        <span className={`rounded border px-1.5 py-0.5 font-label text-[10px] font-black uppercase ${TONE_CHIP[leadStatusTone(lead.call_status ?? "new")]}`}>
+                          {LEAD_STATUS_LABEL[lead.call_status ?? "new"]}
+                          {lead.do_not_call ? " (DNC)" : ""}
+                        </span>
+                        <span className="truncate font-semibold text-[#475569]">
+                          {assignedCaller ? assignedCaller.name : <span className="text-amber-500">Unassigned</span>}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <table className="hidden w-full text-left text-xs border-collapse md:table">
             <thead>
               <tr className="border-b border-[#f1f5f9] bg-[#f8fafc]/50 sticky top-0 font-label text-[10px] text-[#94a3b8] uppercase font-bold">
                 <th className="py-2.5 px-3 w-8">
@@ -161,6 +217,7 @@ export default function BulkAssignment({ callers }: BulkAssignmentProps) {
               })}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

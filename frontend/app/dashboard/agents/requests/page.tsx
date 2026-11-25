@@ -5,6 +5,7 @@ import { companionsApi, type CompanionRequestKind, type CompanionRequestLog } fr
 import { formatMs } from "@/components/agents/playground";
 import { KIND_LABEL, barMax, dailyBars, errorRate } from "@/components/agents/requestsView";
 import { CARD, ErrorNote, LoadingRows } from "@/components/agents/ui";
+import { MobileRecordCard, MobileRecordHeader } from "@/components/MobileRecord";
 import { Select } from "@/components/ui/Select";
 
 const DAY_OPTIONS = [1, 7, 30];
@@ -124,7 +125,29 @@ export default function RequestsPage() {
                 No calls yet in this range. They show up here once your site or server talks to a character.
               </p>
             ) : (
-              <table className="w-full min-w-[640px] text-sm">
+              <>
+              <div className="space-y-3 p-3 md:hidden">
+                {log.requests.map((r) => (
+                  <MobileRecordCard key={r.id} className="p-3">
+                    <MobileRecordHeader
+                      title={r.companion_name ?? "—"}
+                      subtitle={timeLabel(r.created_at)}
+                      aside={
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium tabular-nums", r.status < 400 ? "bg-success/10 text-success" : "bg-danger/10 text-danger")}>
+                          {r.status < 400 ? "OK" : "Failed"} · {r.status}
+                        </span>
+                      }
+                    />
+                    <div className="mt-2 text-[13px] text-ink-secondary">
+                      {KIND_LABEL[r.kind] ?? r.kind} · {formatMs(r.ms)}
+                    </div>
+                    {r.external_user_id && (
+                      <div className="mt-1 break-all font-mono text-xs text-ink-secondary">User {r.external_user_id}</div>
+                    )}
+                  </MobileRecordCard>
+                ))}
+              </div>
+              <table className="hidden w-full min-w-[640px] text-sm md:table">
                 <thead className="border-b border-border-subtle text-left text-xs text-ink-muted">
                   <tr>
                     <th className="px-4 py-2 font-medium">Time</th>
@@ -152,6 +175,7 @@ export default function RequestsPage() {
                   ))}
                 </tbody>
               </table>
+              </>
             )}
             {log.requests.length >= 100 && <p className="border-t border-border-subtle px-4 py-2 text-xs text-ink-muted">Showing the newest 100.</p>}
           </section>
