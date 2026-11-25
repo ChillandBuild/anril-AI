@@ -1,9 +1,8 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
 import { Flame, Pencil, Phone } from "lucide-react";
-import { api, type HomeBox, type HomeLayout, type HomeToday } from "@/lib/api";
+import type { HomeBox, HomeLayout, HomeToday } from "@/lib/api";
 import { HomeBoxes } from "./HomeBoxes";
 import { WaitingList } from "./WaitingList";
 import { LowStockList } from "./LowStockList";
@@ -13,30 +12,16 @@ import { todayIst } from "../bookings/bookingsTime";
 import { EditTodayModal } from "./EditTodayModal";
 import { PhoneToday } from "./PhoneToday";
 import { listIsOn, resolveBoxes, waitingFor, type BoxKey, type TodaysBookings } from "./todayLayout";
-
-const swrOpts = {
-  revalidateOnFocus: true,
-  revalidateOnReconnect: true,
-  dedupingInterval: 5_000,
-  errorRetryCount: 2,
-  shouldRetryOnError: (error: unknown) => {
-    const status = (error as { status?: number } | undefined)?.status;
-    return !status || ![401, 403, 404].includes(status);
-  },
-};
+import { useHomeLayout, useHomeToday } from "./useHomeData";
 
 /**
  * Home's top half. Left two-thirds: the red Hot bar, "Waiting for your reply" and the other lists, one under
  * the other. Right third: the Today boxes as rows. If it can't load it shows a small retry and nothing else breaks.
  */
 export function TodayBlock() {
-  const { data: today, error: todayError, isLoading, mutate: reloadToday } = useSWR<HomeToday>(
-    "home/today",
-    () => api.home.today(),
-    { ...swrOpts, refreshInterval: 120_000 },
-  );
+  const { data: today, error: todayError, isLoading, mutate: reloadToday } = useHomeToday();
   // A missing or failing layout is not an error for the person: they just get the suggested set.
-  const { data: layout, mutate: setLayout } = useSWR<HomeLayout>("home/layout", () => api.home.layout(), swrOpts);
+  const { data: layout, mutate: setLayout } = useHomeLayout();
   const [editing, setEditing] = useState(false);
 
   return (

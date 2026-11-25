@@ -15,6 +15,7 @@ import { AiraLoader } from "@/components/AiraLoader";
 import { isSmsOnly } from "@/lib/utils";
 import { TodayBlock } from "./home/TodayBlock";
 import { MoreDetails } from "./home/MoreDetails";
+import { useHomeGate } from "./home/useHomeData";
 import { FinishSetupCard } from "@/components/first-setup/FinishSetupCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useIsPhone } from "@/hooks/useIsPhone";
@@ -70,6 +71,18 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
   useEffect(() => {
     if (smsHome) router.replace("/dashboard/sms");
   }, [smsHome, router]);
+
+  // Home opens whole: the loader stays up until its own data is in (the rule is homeIsReady), so the lists,
+  // numbers and cards appear together instead of one after another. Off for people being sent elsewhere.
+  const telecalling = enabledFeatures.includes("telecalling");
+  const showsHome =
+    !roleLoading &&
+    !smsHome &&
+    !overviewError &&
+    subStatus !== "none" &&
+    subStatus !== "pending_approval" &&
+    !(role === "caller" && !permissions.includes("dashboard.view"));
+  const homeOpen = useHomeGate(showsHome, telecalling);
 
   if (roleLoading || smsHome) {
     return <AiraLoader />;
@@ -140,7 +153,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
     );
   }
 
-  if (!overview) {
+  if (!overview || !homeOpen) {
     return <AiraLoader showRetryAfterMs={15000} onRetry={() => window.location.reload()} />;
   }
 
@@ -149,7 +162,7 @@ export function DashboardClient({ fallbackOverview }: { fallbackOverview: Analyt
       {isPhone && <PhoneGreeting />}
       <FinishSetupCard />
       <TodayBlock />
-      <MoreDetails overview={overview} telecalling={enabledFeatures.includes("telecalling")} />
+      <MoreDetails overview={overview} telecalling={telecalling} />
     </div>
   );
 }

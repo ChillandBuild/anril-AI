@@ -1,34 +1,16 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, type TelecallingAnalytics } from "@/lib/api";
 import { CARD, ChartCard, ChartCardSkeleton } from "./ChartCard";
 import { barPct } from "./homeCharts";
+import { useTeamCalls } from "./useHomeData";
 
 const CALLER_ROWS = 8;
 
 /** Calls per caller today: the whole bar is calls made, the dark part of it is calls that connected. */
 export function TeamCallsCard() {
-  const [data, setData] = useState<TelecallingAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    api.analytics
-      .telecalling()
-      .then((res) => {
-        if (active) setData(res);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data, isLoading } = useTeamCalls();
 
   // Hold the slot while the first answer is in flight so the cards beside it don't jump.
-  if (loading) return <ChartCardSkeleton />;
+  if (!data && isLoading) return <ChartCardSkeleton />;
   if (!data) return null;
 
   const callers = [...(data.per_caller ?? [])]

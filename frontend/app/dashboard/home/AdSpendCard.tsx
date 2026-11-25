@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, type AdPerformanceSummary } from "@/lib/api";
 import { CARD, ChartCard } from "./ChartCard";
 import { formatRupees } from "./todayLayout";
+import { useAdSpend } from "./useHomeData";
 
 const CAMPAIGNS = 6;
 const BAR_MAX_PX = 96;
@@ -13,20 +12,7 @@ const BAR_MAX_PX = 96;
  * Hidden when the client has no campaigns, as the old section was.
  */
 export function AdSpendCard() {
-  const [data, setData] = useState<AdPerformanceSummary | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    api.analytics
-      .adPerformance()
-      .then((res) => {
-        if (active) setData(res);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data } = useAdSpend();
 
   if (!data || data.campaigns.length === 0) return null;
 

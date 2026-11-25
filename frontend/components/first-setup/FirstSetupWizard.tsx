@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import { useSWRConfig } from "swr";
 import Link from "next/link";
 import { OpenHoursEditor } from "@/components/OpenHoursEditor";
 import { api } from "@/lib/api";
@@ -10,6 +11,7 @@ import { fillFromGstin, readGstin } from "@/lib/gstin";
 import { GSTIN_PATTERN, asksForGstin, gstTypeFor, type GstChoice } from "./helpers";
 import { ConnectStep } from "./ConnectStep";
 import { setupHelpApi } from "@/lib/setupHelpApi";
+import { SETUP_PROGRESS_KEY } from "@/app/dashboard/home/useHomeData";
 
 // The 6 first-setup steps. Every step can be skipped, "Finish later" is always on screen, and each
 // step saves through the screen that already owns that setting. Progress is remembered on the server,
@@ -271,6 +273,7 @@ function AiStep({ done, onNext }: { done: FirstSetupStep[]; onNext: () => void }
 }
 
 export function FirstSetupWizard({ onFinish }: { onFinish: () => void }) {
+  const { mutate } = useSWRConfig();
   const [step, setStep] = useState<FirstSetupStep>("business");
   const [done, setDone] = useState<FirstSetupStep[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -293,8 +296,11 @@ export function FirstSetupWizard({ onFinish }: { onFinish: () => void }) {
     const nextDone = markDone && !done.includes(step) ? [...done, step] : done;
     const next = FIRST_SETUP_STEPS[index + 1];
     setDone(nextDone);
+    const saved = { step: next ?? step, done_steps: nextDone };
     // Saved in the background: a slow save never blocks the owner.
-    firstSetupApi.saveProgress({ step: next ?? step, done_steps: nextDone }).catch(() => {});
+    firstSetupApi.saveProgress(saved).catch(() => {});
+    // Home keeps its own copy of this progress: update it, or its "Finish setup" card shows the old step count.
+    void mutate(SETUP_PROGRESS_KEY, saved, { revalidate: false });
     if (next) setStep(next);
     else onFinish();
   }

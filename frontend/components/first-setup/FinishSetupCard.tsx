@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Link2, ListChecks } from "lucide-react";
-import { firstSetupApi } from "@/lib/firstSetupApi";
+import { useSetupProgress } from "@/app/dashboard/home/useHomeData";
 import { finishSetupCard, homeSetupCardKind } from "./helpers";
 
 /**
@@ -13,23 +12,10 @@ import { finishSetupCard, homeSetupCardKind } from "./helpers";
  * to customers until Meta is connected, so that one step matters most.
  */
 export function FinishSetupCard() {
-  const [doneSteps, setDoneSteps] = useState<string[] | null>(null);
-  const [step, setStep] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    firstSetupApi
-      .progress()
-      .then((p) => {
-        if (cancelled) return;
-        setDoneSteps(p.already_live ? null : (p.done_steps ?? []));
-        setStep(p.step ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Home's gate asks for this too (same SWR name), so the card is there when the page opens instead of popping in.
+  const { data: progress } = useSetupProgress();
+  const doneSteps: string[] | null = !progress || progress.already_live ? null : (progress.done_steps ?? []);
+  const step: string | null = progress?.step ?? null;
 
   if (doneSteps === null) return null;
   const kind = homeSetupCardKind(doneSteps, step);
