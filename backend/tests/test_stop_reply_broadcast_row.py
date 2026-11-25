@@ -109,3 +109,8 @@ def test_said_stop_keeps_sent_delivered_opened():
     out = upload._classify_broadcast_outcomes(DB(), "t1", "b1", "2026-11-24T07:55:00+00:00")
     c = out["counts"]
     assert (c["sent"], c["delivered"], c["opened"], c["opted_out"], c["failed"]) == (2, 2, 1, 2, 0)
+    # The Delivered / Opened CSVs come from the same pass, so they match the cards.
+    reached = {r["phone"]: r for r in out["reached"]}
+    assert set(reached) == {"+911", "+912"}  # delivered card = 2
+    assert [p for p, r in reached.items() if r["status"] == "opened"] == ["+911"]  # opened card = 1
+    assert reached["+911"]["said_stop_at"] and not reached["+912"]["said_stop_at"]

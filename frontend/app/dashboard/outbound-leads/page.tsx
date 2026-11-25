@@ -607,6 +607,87 @@ function BroadcastSegmentDropdown({ broadcastId, tagId, onDownload }: {
   );
 }
 
+// ─── Per-broadcast "Download leads" Dropdown (Delivered / Opened / Failed) ───
+type ReachedKind = "delivered" | "opened" | "failed";
+
+function BroadcastLeadsDropdown({ broadcastId, counts, onDownload }: {
+  broadcastId: string;
+  counts: Record<ReachedKind, number>;
+  onDownload: (broadcastId: string, kind: ReachedKind) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        btnRef.current && !btnRef.current.contains(t) &&
+        dropdownRef.current && !dropdownRef.current.contains(t)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const options: { kind: ReachedKind; label: string; icon: typeof CheckCircle2; tone: string }[] = [
+    { kind: "delivered", label: "Delivered", icon: CheckCircle2, tone: "text-emerald-600" },
+    { kind: "opened", label: "Opened", icon: Eye, tone: "text-amber-600" },
+    { kind: "failed", label: "Failed", icon: XCircle, tone: "text-red-600" },
+  ];
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpen(!open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg font-label text-[11px] font-semibold transition-colors border border-gray-200"
+      >
+        <Download size={12} />
+        Download leads
+        <ChevronDown size={10} className={cn("transition-transform", open && "rotate-180")} />
+      </button>
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          role="menu"
+          className="fixed w-48 bg-white rounded-xl shadow-xl border border-surface-mid z-[9999] overflow-hidden py-1"
+          style={{ top: position.top, right: position.right }}
+        >
+          {options.map(({ kind, label, icon: Icon, tone }) => {
+            const n = counts[kind] || 0;
+            return (
+              <button
+                key={kind}
+                role="menuitem"
+                disabled={n === 0}
+                onClick={() => { onDownload(broadcastId, kind); setOpen(false); }}
+                className="w-full flex items-center gap-2 text-left text-xs px-3 py-2 font-label font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-white"
+              >
+                <Icon size={13} className={n === 0 ? "text-gray-300" : tone} />
+                <span className="flex-1">{label}</span>
+                <span className="tabular-nums text-[11px] font-medium text-gray-400">{n.toLocaleString()}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 // ─── Export All Dropdown ──────────────────────────────────────────────────────
 
 function ExportAllDropdown({ tagCount }: { tagCount: number }) {
@@ -1074,6 +1155,26 @@ export default function OutboundLeadsPage() {
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
       toast.error("Failed to open CSV");
+    }
+  }
+
+  async function downloadLeadsCsv(broadcastId: string, kind: ReachedKind) {
+    if (kind === "failed") return downloadFailedCsv(broadcastId);
+    try {
+      const auth = await getAuthHeaders();
+      const res = await fetch(`${API_URL}/api/v1/upload/reached-csv?broadcast_id=${broadcastId}&kind=${kind}`, { headers: auth });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${kind}_${broadcastId.slice(0, 8)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download CSV");
     }
   }
 
@@ -3416,22 +3517,16 @@ export default function OutboundLeadsPage() {
 
       {activeTab === "history" && (
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
-        <div className="border-b border-primary-100/70 bg-gradient-to-r from-primary-50/80 via-primary-50/30 to-white px-4 py-5 md:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3 md:gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-100 to-primary-100 border border-primary-200/60 shadow-xs md:h-12 md:w-12">
-                <Clock size={22} className="text-[var(--primary-800)]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  {historyRefreshing && (
-                    <span className="inline-flex items-center gap-1 font-label text-[11px] font-semibold text-[var(--primary-800)]">
-                      <RefreshCw size={11} className="animate-spin" /> Updating…
-                    </span>
-                  )}
-                </div>
-                <p className="font-body text-sm text-gray-500 mt-0.5">Last 50 campaign dispatches for your account · live counts</p>
-              </div>
+        <div className="border-b border-primary-100/70 bg-gradient-to-r from-primary-50/80 via-primary-50/30 to-white px-4 py-2.5 md:px-6">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="shrink-0 text-[var(--primary-800)]" />
+              <p className="font-body text-xs text-gray-500">Last 50 campaign dispatches for your account · live counts</p>
+              {historyRefreshing && (
+                <span className="inline-flex items-center gap-1 font-label text-[11px] font-semibold text-[var(--primary-800)]">
+                  <RefreshCw size={11} className="animate-spin" /> Updating…
+                </span>
+              )}
             </div>
             {!historyLoading && broadcastHistory.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -3570,21 +3665,16 @@ export default function OutboundLeadsPage() {
                     </button>
                   )}
                   
-                  {/* Failed CSV Download */}
-                  {item.failed > 0 && item.broadcast_id ? (
-                    <button
-                      onClick={() => downloadFailedCsv(item.broadcast_id!)}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-md font-label text-[10px] font-semibold transition-colors border border-red-200 shrink-0 whitespace-nowrap"
-                    >
-                      <Download size={10} />
-                      Failed Leads
-                    </button>
-                  ) : item.failed === 0 ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-md font-label text-[10px] font-medium border border-green-100 shrink-0 whitespace-nowrap">
-                      <CheckCircle2 size={10} />
-                      No failures
-                    </span>
-                  ) : null}
+                  {/* Delivered / Opened / Failed leads CSV */}
+                  {item.broadcast_id && (
+                    <div className="shrink-0">
+                      <BroadcastLeadsDropdown
+                        broadcastId={item.broadcast_id}
+                        counts={{ delivered: item.delivered, opened: item.opened, failed: item.failed }}
+                        onDownload={downloadLeadsCsv}
+                      />
+                    </div>
+                  )}
 
                   {/* Interest CSV Download */}
                   {item.broadcast_id && (

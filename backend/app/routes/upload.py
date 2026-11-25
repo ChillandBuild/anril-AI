@@ -2183,6 +2183,7 @@ def _classify_broadcast_outcomes(
     skipped_monthly = skipped_blocked = 0
     failures: list[dict] = []
     seen_phones: set[str] = set()
+    reached: list[dict] = []  # everyone counted as delivered (opened ones included), for the Delivered/Opened CSVs
 
     for r in recipients:
         phone = r.get("phone") or ""
@@ -2263,9 +2264,11 @@ def _classify_broadcast_outcomes(
             sent += 1
             delivered += 1
             opened += 1
+            reached.append({"phone": phone, "name": name, "status": "opened", "said_stop_at": stopped_at or ""})
         elif delivery == "delivered":
             sent += 1
             delivered += 1
+            reached.append({"phone": phone, "name": name, "status": "delivered", "said_stop_at": stopped_at or ""})
         else:
             sent += 1
 
@@ -2279,7 +2282,48 @@ def _classify_broadcast_outcomes(
                    "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked,
                    "total": len(recipients)},
         "failures": failures,
+        "reached": reached,
     }
+
+
+def _history_timestamp(db, tenant_id: str, broadcast_id: str) -> str | None:
+    """The broadcast's timestamp from the saved history (anchors the delivery-status window)."""
+    try:
+        row = db.table("app_settings").select("value").eq("tenant_id", tenant_id)             .eq("key", "broadcast_history").maybe_single().execute()
+        if row and row.data and row.data.get("value"):
+            for record in json.loads(row.data["value"]):
+                if record.get("broadcast_id") == broadcast_id:
+                    return record.get("timestamp")
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/reached-csv")
+async def get_reached_csv(
+    broadcast_id: str = Query(..., description="Broadcast UUID"),
+    kind: str = Query("delivered", pattern="^(delivered|opened)$"),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """CSV of the people a campaign reached: kind=delivered (everyone delivered, opened ones
+    included, same as the Delivered card) or kind=opened (only those who read it). Built by the
+    same classifier as the history cards, so the row count always matches the card."""
+    db = get_supabase()
+    ts = _history_timestamp(db, tenant_id, broadcast_id) or datetime.now(timezone.utc).isoformat()
+    outcome = await asyncio.to_thread(_classify_broadcast_outcomes, db, tenant_id, broadcast_id, ts)
+    rows = outcome.get("reached") or []
+    if kind == "opened":
+        rows = [r for r in rows if r["status"] == "opened"]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["phone", "name", "status", "said_stop_at", "broadcast_id", "broadcast_timestamp"])
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({**r, "broadcast_id": broadcast_id, "broadcast_timestamp": ts})
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={kind}_{broadcast_id[:8]}.csv"},
+    )
 
 
 @router.get("/failed-csv")
