@@ -1,10 +1,10 @@
 "use client";
 import { toast } from "sonner";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles, Users } from "lucide-react";
+import { Upload, Check, AlertTriangle, ChevronRight, ChevronDown, RotateCcw, MessageSquare, Clock, Send, Download, CheckCircle2, BarChart3, Eye, XCircle, Calendar, Phone, Search, Smartphone, ShieldCheck, FileSpreadsheet, PlayCircle, MapPin, Copy, Globe, Image as ImageIcon, FileText, Tag, Plus, Trash2, RefreshCw, Info, Sparkles, Users } from "lucide-react";
 import { API_URL, api, getAuthHeaders, type CustomerGroup } from "@/lib/api";
 import { convertScanToCsv } from "@/lib/scanUpload";
 import { timeLeftText } from "./reachSchedule";
@@ -573,7 +573,7 @@ function BroadcastSegmentDropdown({ broadcastId, tagId, onDownload }: {
       <button
         ref={btnRef}
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-700 rounded-lg font-label text-[11px] font-semibold transition-colors border border-primary-200"
+        className="inline-flex h-8 items-center gap-1.5 px-3 rounded-lg border font-label text-[11px] font-semibold transition-colors shrink-0 whitespace-nowrap bg-primary-50 hover:bg-primary-100 text-primary-700 border-primary-200"
       >
         <Download size={12} />
         Segment Leads
@@ -652,7 +652,7 @@ function BroadcastLeadsDropdown({ broadcastId, counts, onDownload }: {
         onClick={() => setOpen(!open)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg font-label text-[11px] font-semibold transition-colors border border-gray-200"
+        className="inline-flex h-8 items-center gap-1.5 px-3 rounded-lg border font-label text-[11px] font-semibold transition-colors shrink-0 whitespace-nowrap bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
       >
         <Download size={12} />
         Download leads
@@ -3604,7 +3604,7 @@ export default function OutboundLeadsPage() {
             {historyPages.pageItems.map((item, i) => (
               <div key={i} className="p-4 first:pt-4 last:pb-4 md:p-6">
                 {/* Campaign Info Bar */}
-                <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gray-100 flex-wrap xl:flex-nowrap">
+                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100 flex-wrap xl:flex-nowrap">
                   {/* Date */}
                   <div className="flex min-w-0 items-center gap-1.5 sm:min-w-[140px] sm:shrink-0">
                     <Calendar size={14} className="text-gray-400 shrink-0" />
@@ -3656,9 +3656,9 @@ export default function OutboundLeadsPage() {
                   {(item.csv_file_path || item.csv_file_url) && (
                     <button
                       onClick={() => openBroadcastCsv(item)}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-md font-label text-[10px] font-semibold transition-colors border border-gray-200 shrink-0 whitespace-nowrap"
+                      className="inline-flex h-8 items-center gap-1.5 px-3 rounded-lg border font-label text-[11px] font-semibold transition-colors shrink-0 whitespace-nowrap bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
                     >
-                      <Download size={10} />
+                      <Download size={12} />
                       {item.csv_file_name && item.csv_file_name.length > 15
                         ? item.csv_file_name.slice(0, 8) + "..." + item.csv_file_name.slice(-4)
                         : item.csv_file_name || "CSV"}
@@ -3691,8 +3691,9 @@ export default function OutboundLeadsPage() {
                   {item.broadcast_id && item.sent > 0 && (
                     <button
                       onClick={() => setResultsFor({ id: item.broadcast_id!, title: item.template_name })}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 text-gray-700 rounded-md font-label text-[10px] font-semibold transition-colors border border-gray-200 shrink-0 whitespace-nowrap"
+                      className="inline-flex h-8 items-center gap-1.5 px-3 rounded-lg border font-label text-[11px] font-semibold transition-colors shrink-0 whitespace-nowrap bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
                     >
+                      <BarChart3 size={12} />
                       Results
                     </button>
                   )}
@@ -3703,76 +3704,53 @@ export default function OutboundLeadsPage() {
                       onClick={() => handleDeleteHistoryEntry(item.broadcast_id!)}
                       disabled={deletingHistoryId === item.broadcast_id}
                       title="Remove from history"
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-md transition-colors border border-gray-200 hover:border-red-200 shrink-0 disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200 shrink-0 disabled:opacity-50"
                     >
                       <Trash2 size={12} />
                     </button>
                   )}
                 </div>
                 
-                {/* People left out when it went out, and what the campaign earned */}
-                {((item.skipped_monthly_limit ?? 0) > 0 || (item.skipped_blocked ?? 0) > 0 || (item.said_stop ?? 0) > 0 || (item.paid_count !== undefined && item.paid_count !== null)) && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {item.paid_count !== undefined && item.paid_count !== null && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-800" title="People who bought within 7 days of getting this message. Each person counts once, for their first order.">
-                        Paid within 7 days: {item.paid_count.toLocaleString()}
-                        {item.paid_amount_inr !== undefined && item.paid_amount_inr !== null && ` · ₹${item.paid_amount_inr.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
-                        {item.paid_window_open && <span className="font-normal text-green-700">(still counting)</span>}
-                      </span>
-                    )}
-                    {item.back_per_rupee !== undefined && item.back_per_rupee !== null && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-800" title="Rupees paid by these people, divided by the cost of the messages sent (an estimate at the standard rate).">
-                        ₹{item.back_per_rupee.toLocaleString("en-IN", { maximumFractionDigits: 2 })} back per ₹1 (estimated)
-                      </span>
-                    )}
-                    {(item.said_stop ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
-                        {item.said_stop!.toLocaleString()} said stop
-                      </span>
-                    )}
-                    {(item.skipped_monthly_limit ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
-                        {item.skipped_monthly_limit!.toLocaleString()} skipped: monthly limit
-                      </span>
-                    )}
-                    {(item.skipped_blocked ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-700">
-                        {item.skipped_blocked!.toLocaleString()} skipped: blocked
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Reply Sentiment + Interest row */}
-                {((item.replied_positive ?? 0) + (item.replied_negative ?? 0) + (item.replied_neutral ?? 0) > 0 || (item.hot ?? 0) + (item.warm ?? 0) > 0) && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {(item.replied_positive ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 rounded-full font-label text-xs font-semibold text-green-700">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />{item.replied_positive} positive repl{item.replied_positive === 1 ? "y" : "ies"}
-                      </span>
-                    )}
-                    {(item.replied_negative ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 border border-red-200 rounded-full font-label text-xs font-semibold text-red-700">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{item.replied_negative} said no
-                      </span>
-                    )}
-                    {(item.replied_neutral ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 border border-gray-200 rounded-full font-label text-xs font-semibold text-gray-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />{item.replied_neutral} neutral
-                      </span>
-                    )}
-                    {(item.hot ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-50 border border-orange-200 rounded-full font-label text-xs font-semibold text-orange-700">
-                        🔥 {item.hot} hot
-                      </span>
-                    )}
-                    {(item.warm ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full font-label text-xs font-semibold text-amber-700">
-                        ✦ {item.warm} warm
-                      </span>
-                    )}
-                  </div>
-                )}
+                {/* One line: what it earned, who said stop / was left out, how people replied and how warm they are */}
+                {(() => {
+                  const chip = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-label text-xs font-semibold";
+                  const chips: ReactNode[] = [];
+                  if (item.paid_count !== undefined && item.paid_count !== null) chips.push(
+                    <span key="paid" className={cn(chip, "bg-green-50 border-green-200 text-green-800")} title="People who bought within 7 days of getting this message. Each person counts once, for their first order.">
+                      Paid within 7 days: {item.paid_count.toLocaleString()}
+                      {item.paid_amount_inr !== undefined && item.paid_amount_inr !== null && ` · ₹${item.paid_amount_inr.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                      {item.paid_window_open && <span className="font-normal text-green-700">(still counting)</span>}
+                    </span>);
+                  if (item.back_per_rupee !== undefined && item.back_per_rupee !== null) chips.push(
+                    <span key="roi" className={cn(chip, "bg-green-50 border-green-200 text-green-800")} title="Rupees paid by these people, divided by the cost of the messages sent (an estimate at the standard rate).">
+                      ₹{item.back_per_rupee.toLocaleString("en-IN", { maximumFractionDigits: 2 })} back per ₹1 (estimated)
+                    </span>);
+                  if ((item.said_stop ?? 0) > 0) chips.push(
+                    <span key="stop" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.said_stop!.toLocaleString()} said stop</span>);
+                  if ((item.skipped_monthly_limit ?? 0) > 0) chips.push(
+                    <span key="monthly" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.skipped_monthly_limit!.toLocaleString()} skipped: monthly limit</span>);
+                  if ((item.skipped_blocked ?? 0) > 0) chips.push(
+                    <span key="blocked" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.skipped_blocked!.toLocaleString()} skipped: blocked</span>);
+                  if ((item.replied_positive ?? 0) > 0) chips.push(
+                    <span key="pos" className={cn(chip, "bg-green-50 border-green-200 text-green-700")}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />{item.replied_positive} positive repl{item.replied_positive === 1 ? "y" : "ies"}
+                    </span>);
+                  if ((item.replied_negative ?? 0) > 0) chips.push(
+                    <span key="neg" className={cn(chip, "bg-red-50 border-red-200 text-red-700")}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{item.replied_negative} said no
+                    </span>);
+                  if ((item.replied_neutral ?? 0) > 0) chips.push(
+                    <span key="neu" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-600")}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />{item.replied_neutral} neutral
+                    </span>);
+                  if ((item.hot ?? 0) > 0) chips.push(
+                    <span key="hot" className={cn(chip, "bg-orange-50 border-orange-200 text-orange-700")}>🔥 {item.hot} hot</span>);
+                  if ((item.warm ?? 0) > 0) chips.push(
+                    <span key="warm" className={cn(chip, "bg-amber-50 border-amber-200 text-amber-700")}>✦ {item.warm} warm</span>);
+                  if ((item.cold ?? 0) > 0) chips.push(
+                    <span key="cold" className={cn(chip, "bg-sky-50 border-sky-200 text-sky-700")}>❄ {item.cold} cold</span>);
+                  return chips.length > 0 ? <div className="flex flex-wrap gap-2 mb-3">{chips}</div> : null;
+                })()}
 
                 {/* Metrics Grid - 4 Equal Columns */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

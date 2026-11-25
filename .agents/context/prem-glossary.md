@@ -1,8 +1,8 @@
 # The founder's words (Prem's glossary)
 
 These are **the founder's own words and what he means by them**. They are not everyone's vocabulary; teammates
-(for example keerthi-sarav) may use the same words differently. Read by `interview-me` (the sprint's front
-door, see CLAUDE.md) to decode rough, voice-typed asks. When Prem corrects how an ask was read, add the new term
+(for example keerthi-sarav) may use the same words differently. Read by `superpowers:brainstorming` (the sprint's
+front door, see CLAUDE.md) to decode rough, voice-typed asks. When Prem corrects how an ask was read, add the new term
 here (one line).
 
 | His words | Meaning |

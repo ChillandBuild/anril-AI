@@ -26,4 +26,4 @@ Read this when touching: auth, webhooks (WhatsApp/Instagram/Facebook/Telegram), 
 4. Full `security-review` skill for generic code-pattern examples (Next.js/TS-flavored — adapt, don't copy verbatim since backend is FastAPI/Python).
 
 ## When to escalate to a full pass
-Run `security-reviewer` agent (not just this checklist) when: new auth/authz code, new webhook endpoint, new payment code path, or any change touching RLS policies directly.
+Run `/security-review` on the diff (not just this checklist) when: new auth/authz code, new webhook endpoint, new payment code path, or any change touching RLS policies directly.

@@ -16,24 +16,25 @@
 
 ## How we work — the sprint (every task, no need to be told)
 
-- Skills and commands below are Addy Osmani's agent-skills (installed globally in `~/.claude/`).
-- Front door: new feature, idea or behavior change → `interview-me`, one question at a time, until
-  ~95% sure what the user wants (glossary of Prem's terms: `.agents/context/prem-glossary.md`).
-  A new vague idea → `idea-refine` first, then `interview-me`. Bug → `debugging-and-error-recovery`
-  first (interview only if the report is unclear). A fully specified one-liner skips the interview.
-- Flow: `/spec` → `/plan` (show the plan, wait for approval) → `/build` → `/test` → `/review` →
-  `/code-simplify` → `/ship`. Bug fixes: a regression test that fails before the fix and passes after.
+- Skills below are the `superpowers` plugin (`superpowers:` prefix) plus Claude Code's built-in `/code-review`,
+  `/simplify` and `/security-review`. Never `/ship`: the built-in one commits and pushes.
+- Front door: new feature, idea or behavior change → `superpowers:brainstorming`, one question at a time,
+  until ~95% sure what the user wants (glossary of Prem's terms: `.agents/context/prem-glossary.md`).
+  Bug → `superpowers:systematic-debugging` first. A fully specified one-liner skips the questions.
+- Flow: `superpowers:writing-plans` (show the plan, wait for approval) → `superpowers:executing-plans`
+  (or `superpowers:subagent-driven-development` for workers) → `superpowers:test-driven-development` →
+  `/code-review` → `/simplify` → `superpowers:verification-before-completion`. Bug fix: a regression test first.
 - Who does the work: the model running the session plans and allocates. Opus → Sonnet and Haiku
   workers; Sonnet → Haiku workers. Haiku: search, renames, running tests/lint, docs, boilerplate
   from an exact spec. Sonnet: logic changes. Never delegated down (the planner does it itself):
-  auth, webhooks, payments, RLS, migrations. The planner runs `code-review-and-quality` on every
+  auth, webhooks, payments, RLS, migrations. The planner runs `/code-review` on every
   worker diff before showing it. Flat only: workers do not spawn workers.
-- UI change → `frontend-ui-engineering` for the design in the plan; after building, run a UI QA pass
-  as the UI test tenant — on the live site, or locally (backend via `make dev-backend` only, frontend
-  pointed at it with NEXT_PUBLIC_API_URL=http://localhost:8000).
-- Auth, webhooks, payments, RLS → also `security-and-hardening` + the security-checklist.md;
-  anything irreversible → `doubt-driven-development`.
-- Before any commit → run the checks that fit the change (`/review` on the diff, `python -m pytest` for
+- UI change → review the design in the plan before building; after building, run a UI QA pass as the UI
+  test tenant — on the live site, or locally (backend via `make dev-backend` only, frontend pointed at it
+  with NEXT_PUBLIC_API_URL=http://localhost:8000).
+- Auth, webhooks, payments, RLS → also `/security-review` + the security-checklist.md;
+  anything irreversible → stop and double-check with the user first.
+- Before any commit → run the checks that fit the change (`/code-review` on the diff, `python -m pytest` for
   backend, typecheck + lint for frontend), without asking. Do NOT repeat a check that already passed on the same
   code: if no code or test file changed since the last passing run, or the change is docs/config only, skip it and
   just commit. Commit to `main`, no branch.
@@ -41,7 +42,7 @@
   same files; if any, rebase and re-run the tests.
 - Weekly → a short retro: what shipped, what broke.
 - A push to `main` auto-deploys the backend on Render. Push or deploy only when the user says so, every time;
-  `/ship` is the go/no-go checklist, not permission to push.
+  `superpowers:verification-before-completion` is the go/no-go check, not permission to push.
 
 ## Agent Routing Instructions
 Read ONLY the file your task's scope points to:
@@ -51,8 +52,11 @@ Read ONLY the file your task's scope points to:
 3. [.agents/decisions/log.md](.agents/decisions/log.md) — why a module was dropped (e.g. Bot Flow Builder), migration history, schema structure.
 4. [.agents/projects/active-backlog.md](.agents/projects/active-backlog.md) — backlog tasks, known tech debt (e.g. orphaned tables).
 5. [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md) — broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, operator console: the *why* and the traps the wiki can't hold.
-6. [.agents/context/security-checklist.md](.agents/context/security-checklist.md) — auth, webhooks, payments (Razorpay), file uploads, RLS, any route reading `tenant_id`. New auth/webhook/payment code or RLS changes → escalate to the `security-reviewer` agent.
+6. [.agents/context/security-checklist.md](.agents/context/security-checklist.md) — auth, webhooks, payments (Razorpay), file uploads, RLS, any route reading `tenant_id`. New auth/webhook/payment code or RLS changes → run `/security-review` on the diff.
 7. [docs/whatsapp-master-prompt.md](docs/whatsapp-master-prompt.md) — `_build_base_prompt()` / `ai_reply.py` prompt assembly, or the `ai_prompts` `master` row. Canonical text; explains why the per-channel rows (`whatsapp_reply` etc.) are dead weight.
+
+## Project conventions
+- Customer-facing copy says "Anril", never "Aira" (the repo and code still say Aira).
 
 ## Agent skills
 - Issues: GitHub Issues for `ChillandBuild/anril-AI` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
