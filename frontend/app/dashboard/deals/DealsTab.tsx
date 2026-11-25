@@ -15,7 +15,7 @@ type StageKey = DealStage | "all";
 
 const STAGE_CARDS: { key: StageKey; label: string; hint: string; edge: string }[] = [
   { key: "all", label: "All deals", hint: "Every deal", edge: "bg-primary" },
-  { key: "quoted", label: "Quoted", hint: "Price sent · follow up", edge: "bg-slate-400" },
+  { key: "quoted", label: "Quoted", hint: "Follow up", edge: "bg-slate-400" },
   { key: "awaiting_payment", label: "Awaiting payment", hint: "Link sent · chase it", edge: "bg-amber-400" },
   { key: "won", label: "Won", hint: "Paid", edge: "bg-emerald-500" },
   { key: "lost", label: "Lost", hint: "Didn't close", edge: "bg-rose-500" },

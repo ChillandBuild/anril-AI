@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api, type TeachItem } from "@/lib/api";
+import { stripMarkdown } from "@/lib/utils";
 import { likedMarks } from "@/components/ai-setup/likedMarks";
 
 const FIELD =
@@ -117,7 +118,7 @@ export function LikedCard({ items, canEdit, onChange }: { items: TeachItem[]; ca
         {shown.map((item) => (
           <li key={item.id} className="rounded-xl bg-surface-low p-3">
             <p className="break-words font-body text-sm text-ink-secondary">Customer: &ldquo;{item.prompt}&rdquo;</p>
-            <p className="mt-1 whitespace-pre-wrap break-words font-body text-sm text-ink">AI: &ldquo;{item.reply}&rdquo;</p>
+            <p className="mt-1 whitespace-pre-wrap break-words font-body text-sm text-ink">AI: &ldquo;{stripMarkdown(item.reply)}&rdquo;</p>
             {canEdit && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {confirming === item.id ? (

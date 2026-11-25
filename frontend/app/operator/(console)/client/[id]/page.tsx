@@ -131,7 +131,7 @@ export default function ClientDetailPage() {
   const SECTION_TITLES: Record<string, { title: string; desc: string }> = {
     overview: { title: "Product Overview", desc: "Here's what's happening with your client's leads." },
     conversations: { title: "Conversations", desc: "All lead conversations across channels." },
-    segments: { title: "Segments", desc: "Leads grouped by segment — Hot, Warm, Cold, Not Interested." },
+    segments: { title: "Segments", desc: "Leads grouped by segment — Hot, Warm, Cold, Not interested." },
     inbound: { title: "Inbound Leads", desc: "Leads from organic and advertising channels." },
     outbound: { title: "Outbound Leads", desc: "Leads imported via CSV upload." },
     templates: { title: "Templates", desc: "WhatsApp message templates and their approval status." },

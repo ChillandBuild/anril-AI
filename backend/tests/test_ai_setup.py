@@ -268,6 +268,12 @@ class ReportCardTests(_Base):
         self.assertLessEqual(len(many), svc.FIX_CAP)
         self.assertIn("...", many[0]["text"])
 
+    def test_fix_these_says_once_not_1_times(self):
+        once = svc.fix_these([{"question": "Price?", "count": 1}], {}, 0)[0]["text"]
+        twice = svc.fix_these([{"question": "Price?", "count": 2}], {}, 0)[0]["text"]
+        self.assertIn("(once)", once)
+        self.assertIn("(2 times)", twice)
+
 
 class ScoringTests(_Base):
     def test_read_only_view_in_plain_words(self):

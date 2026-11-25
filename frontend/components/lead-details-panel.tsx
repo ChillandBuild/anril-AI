@@ -345,10 +345,6 @@ export function LeadDetailsPanel({ lead, team = [], onCollapse, onLeadUpdate }: 
             </p>
           </Section>
 
-          <Section icon={<TrendingUp size={12} />} title="Segment">
-            <SegmentBadge segment={lead.segment} />
-          </Section>
-
           <Section icon={<TrendingUp size={12} />} title="Group history">
             {loadingHistory && <p className="font-body text-xs text-on-surface-muted">Loading…</p>}
             {!loadingHistory && historyError && <p className="font-body text-xs text-red-500">Failed to load history.</p>}

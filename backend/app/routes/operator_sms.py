@@ -16,8 +16,8 @@ from app.dependencies.system_admin import get_system_admin
 from app.services import bulk9_client
 from app.services.audit_log import record_audit_event
 from app.services.bulk9_client import Bulk9Error, Bulk9Timeout
-from app.services import sms_setup
-from app.services.sms_campaigns import BATCH_SETTING, SmsError
+from app.services import sms_campaigns, sms_setup
+from app.services.sms_campaigns import ALLOWED_SENDERS_SETTING, BATCH_SETTING, SmsError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,11 +60,18 @@ async def _state(db, tenant_id: str) -> dict:
     _tenant(db, tenant_id)
     key = get_setting("bulk9_api_key", tenant_id=tenant_id)
     sms_count = None
+    account_senders: list[str] = []
     if key:
         try:
             sms_count = (await bulk9_client.wallet(key))["sms_count"]
         except (Bulk9Error, Bulk9Timeout):
             pass  # the panel still loads; the count just shows as unknown
+        try:
+            body = await bulk9_client.list_dlt(key, "sender")
+            account_senders = sorted({str(i["sender_id"]).upper() for v in body.values() if isinstance(v, list)
+                                      for i in v if isinstance(i, dict) and i.get("sender_id")})
+        except (Bulk9Error, Bulk9Timeout):
+            pass
     return {
         "connected": bool(key),
         "key_masked": _mask(key),
@@ -72,6 +79,9 @@ async def _state(db, tenant_id: str) -> dict:
         "webhook_error": get_setting("bulk9_webhook_error", tenant_id=tenant_id) or None,
         "sms_count": sms_count,
         "batch_send": (get_setting(BATCH_SETTING, tenant_id=tenant_id) or "").strip().lower() == "true",
+        # Senders on the Bulk9 account, and the ones this client may see and use (empty = all).
+        "account_senders": account_senders,
+        "allowed_senders": sorted(sms_campaigns.allowed_senders(tenant_id) or []),
     }
 
 
@@ -170,6 +180,28 @@ async def set_batch_send(tenant_id: str, body: BatchIn, admin: dict = Depends(ge
     _tenant(db, tid)
     _put(db, tid, BATCH_SETTING, "true" if body.enabled else "false")
     _audit(db, admin, tid, "operator.sms_batch_send_on" if body.enabled else "operator.sms_batch_send_off")
+    return await _state(db, tid)
+
+
+class SendersIn(BaseModel):
+    sender_ids: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("sender_ids")
+    @classmethod
+    def clean_ids(cls, value: list[str]) -> list[str]:
+        ids = sorted({v.strip().upper() for v in value if v and v.strip()})
+        if any(not v.isalnum() or len(v) > 20 for v in ids):
+            raise ValueError("Sender IDs are letters and numbers only")
+        return ids
+
+
+@router.put("/clients/{tenant_id}/sms/senders")
+async def set_allowed_senders(tenant_id: str, body: SendersIn, admin: dict = Depends(get_system_admin)):
+    """Which senders on a shared Bulk9 account belong to this client. Others are hidden and blocked."""
+    tid, db = _tenant_id(tenant_id), get_supabase()
+    _tenant(db, tid)
+    _put(db, tid, ALLOWED_SENDERS_SETTING, ",".join(body.sender_ids) or None)
+    _audit(db, admin, tid, "operator.sms_senders_set")
     return await _state(db, tid)
 
 

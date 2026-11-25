@@ -21,7 +21,7 @@ const SEGMENT_CONFIG = {
     border: "border-segment-c-border",
   },
   D: {
-    label: "Not Interested",
+    label: "Not interested",
     bg: "bg-segment-d-bg",
     text: "text-segment-d-text",
     border: "border-segment-d-border",
@@ -39,7 +39,7 @@ export function SegmentBadge({ segment }: { segment: "A" | "B" | "C" | "D" }) {
         cfg.border
       )}
     >
-      <span>{segment} · {cfg.label}</span>
+      <span>{cfg.label}</span>
     </span>
   );
 }

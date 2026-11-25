@@ -46,7 +46,7 @@ const SEGMENT_STYLES: Record<string, { bg: string; text: string; label: string }
   A: { bg: "bg-green-50", text: "text-success", label: "Hot" },
   B: { bg: "bg-amber-50", text: "text-warning", label: "Warm" },
   C: { bg: "bg-blue-50", text: "text-blue-600", label: "Cold" },
-  D: { bg: "bg-stone-100", text: "text-ink-muted", label: "Not Interested" },
+  D: { bg: "bg-stone-100", text: "text-ink-muted", label: "Not interested" },
 };
 
 export function LeadsView({ tenantId, subSection }: { tenantId: string; subSection: "segments" | "inbound" | "outbound" }) {

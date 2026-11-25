@@ -346,6 +346,8 @@ export default function KnowledgePage() {
 
   // Document Upload
   const [uploading, setUploading] = useState(false);
+  // A chosen file waits here while there are older files it could replace; with none, it uploads straight away.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [campaignTags, setCampaignTags] = useState<CampaignTag[]>([]);
   const [selectedCampaignTag, setSelectedCampaignTag] = useState<string>("");
@@ -623,6 +625,15 @@ export default function KnowledgePage() {
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) {
+      chooseFile(file);
+    }
+  }
+
+  function chooseFile(file: File) {
+    if (documents.length > 0 && canManageKnowledge) {
+      setPendingFile(file);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } else {
       processUpload(file);
     }
   }
@@ -648,7 +659,7 @@ export default function KnowledgePage() {
     if (uploading || !canUpload) return;
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      processUpload(file);
+      chooseFile(file);
     }
   }
 
@@ -1003,8 +1014,8 @@ export default function KnowledgePage() {
               </div>
 
               <div className="flex flex-col sm:items-end gap-2 shrink-0">
-              {canManageKnowledge && documents.length > 0 && (
-                <div className="flex items-center gap-2">
+              {canManageKnowledge && documents.length > 0 && pendingFile && (
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-label text-xs font-semibold text-on-surface-muted">
                     Replaces:
                   </span>
@@ -1024,6 +1035,17 @@ export default function KnowledgePage() {
                       ]}
                     />
                   </span>
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => { const f = pendingFile; setPendingFile(null); void processUpload(f); }}
+                    className="btn-primary min-h-9 max-w-[12rem] truncate disabled:opacity-50"
+                  >
+                    Upload {pendingFile.name}
+                  </button>
+                  <button type="button" disabled={uploading} onClick={() => { setPendingFile(null); setReplaceTarget(""); }} className="btn-secondary min-h-9">
+                    Cancel
+                  </button>
                 </div>
               )}
               {campaignTags.length > 0 && (
@@ -1124,18 +1146,6 @@ export default function KnowledgePage() {
                 <p className="font-body text-xs text-on-surface-muted mt-1 max-w-md">
                   Supports PDF, DOCX, PPTX, XLSX, CSV, TXT, MD, and Images up to 25 MB.
                 </p>
-
-                {/* Formats badge row */}
-                <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3">
-                  {["PDF", "DOCX", "EXCEL", "CSV", "PPTX", "TXT", "MD", "IMAGES"].map((fmt) => (
-                    <span
-                      key={fmt}
-                      className="px-2 py-0.5 rounded-md bg-white border border-surface-mid/80 text-[10px] font-mono font-bold text-on-surface-muted"
-                    >
-                      {fmt}
-                    </span>
-                  ))}
-                </div>
 
                 {/* Scope pill reminder */}
                 {selectedCampaignTag && (

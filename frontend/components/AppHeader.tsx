@@ -257,7 +257,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
   if (pathname === "/dashboard") {
     return {
       title: "Home",
-      description: "Here's what's happening with your leads.",
+      description: "Today at a glance.",
     };
   }
   if (pathname === "/dashboard/outbound-leads") {
@@ -481,7 +481,7 @@ function getBaseRouteMetadata(pathname: string, searchParams: URLSearchParams) {
     return SMS_TITLES[pathname.split("/")[3] ?? ""] ?? SMS_TITLES[""];
   }
   if (pathname === "/dashboard/deals/day-closing") {
-    return { title: "Orders & payments / Day closing", description: "Check today's money against your cash drawer, in one minute." };
+    return { title: "Orders & payments / Close today's cash", description: "Check today's money against your cash drawer, in one minute." };
   }
   if (pathname === "/dashboard/deals/new-quote") {
     return { title: "Orders & payments / New quote", description: "Send a price offer. When they tap Accept, it becomes an order." };

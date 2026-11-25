@@ -35,7 +35,7 @@ const TABLE_ROWS: { key: string; label: string }[] = [
   { key: "hot", label: "Hot leads" },
   { key: "warm", label: "Warm leads" },
   { key: "cold", label: "Cold leads" },
-  { key: "disqualified", label: "Not Interested" },
+  { key: "disqualified", label: "Not interested" },
   { key: "avg_score", label: "Average score" },
   { key: "messages_in", label: "Messages received" },
   { key: "messages_out", label: "Messages sent" },
@@ -197,7 +197,7 @@ function PerformanceKpi({ card }: { card: PerformanceCard }) {
 }
 
 const SEGMENT_LABEL: Record<string, string> = {
-  A: "Hot", B: "Warm", C: "Cold", D: "Not Interested",
+  A: "Hot", B: "Warm", C: "Cold", D: "Not interested",
 };
 
 function MovementFlows({ flows }: { flows: CompareMovement["flows"] }) {
@@ -264,7 +264,7 @@ function SegmentMixChart({
           <Bar dataKey="hot" stackId="mix" fill={SEGMENT_MIX_COLORS.hot} name="Hot" />
           <Bar dataKey="warm" stackId="mix" fill={SEGMENT_MIX_COLORS.warm} name="Warm" />
           <Bar dataKey="cold" stackId="mix" fill={SEGMENT_MIX_COLORS.cold} name="Cold" />
-          <Bar dataKey="disqualified" stackId="mix" fill={SEGMENT_MIX_COLORS.disqualified} name="Not Interested" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="disqualified" stackId="mix" fill={SEGMENT_MIX_COLORS.disqualified} name="Not interested" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

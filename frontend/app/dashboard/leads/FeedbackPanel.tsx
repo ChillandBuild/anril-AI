@@ -302,7 +302,14 @@ export function FeedbackPanel() {
                 <span className="text-xs text-[#556274]">
                   {settings.review_link
                     ? "Sent with your Google review link."
-                    : "No Google review link yet. Add it in your Orders settings."}
+                    : (
+                        <>
+                          No Google review link yet.{" "}
+                          <Link href="/dashboard/deals?orderSettings=1" className="font-semibold text-primary underline">
+                            Add it in your Orders settings.
+                          </Link>
+                        </>
+                      )}
                 </span>
                 {canManage && (
                   <button

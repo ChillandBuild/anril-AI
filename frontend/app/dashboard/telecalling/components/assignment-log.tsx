@@ -10,7 +10,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
 import { assignmentReasonLabel } from "../lib/assignmentReason";
 
-const SEGMENT_LABEL: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not Interested" };
+const SEGMENT_LABEL: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not interested" };
 const SEGMENT_STYLE: Record<string, string> = {
   A: "bg-red-50 text-red-600 border-red-200",
   B: "bg-amber-50 text-amber-600 border-amber-200",

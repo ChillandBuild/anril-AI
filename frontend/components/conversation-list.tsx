@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, Fragment } from "react";
 import { api, Lead } from "@/lib/api";
 import { ChannelAvatar, CHANNEL_LABEL, getChannel } from "./channel-avatar";
 import { PhoneAvatar, SegmentChip } from "./chats/PhoneAvatar";
-import { formatConvoTime, formatPhone, cn } from "@/lib/utils";
+import { formatConvoTime, formatPhone, cn, stripMarkdown } from "@/lib/utils";
 import { Trash2, MoreVertical, MoreHorizontal, Search, X, SearchX, Pin, RefreshCw, Archive, Ban, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { CheckTick } from "@/components/ui/controls";
@@ -432,7 +432,7 @@ export function ConversationList(props: Props) {
             const group = lead.inbox_group ?? 1;
             const prevGroup = i > 0 ? leads[i - 1].inbox_group ?? 1 : null;
             const isBot = lead.last_message_direction === "outbound" && lead.last_message_is_ai === true;
-            const preview = lead.last_message_content || (lead.phone ? formatPhone(lead.phone) : "No messages yet");
+            const preview = stripMarkdown(lead.last_message_content) || (lead.phone ? formatPhone(lead.phone) : "No messages yet");
             const needsYou = group === 0;
             const aiHandling = group === 1;
             const customerWaiting = lead.last_message_direction === "inbound";

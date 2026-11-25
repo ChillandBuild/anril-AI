@@ -623,7 +623,7 @@ export function GroupsPanel({ choices }: { choices: RuleChoices }) {
             Lists of customers: picked by hand, or filled by rules that keep themselves up to date.
           </p>
         </div>
-        {newButtons}
+        {!(isEmpty && !draft) && newButtons}
       </div>
 
       {groups === null && !loadFailed && (

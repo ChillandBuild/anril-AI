@@ -116,7 +116,7 @@ export function CampaignResultsDrawer({ broadcastId, title, onClose }: { broadca
               })()}
 
               {/* The numbers */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <Stat icon={Send} tone="blue" label="Sent" value={data.sent.toLocaleString("en-IN")} />
                 <Stat
                   icon={Hand}
@@ -208,15 +208,15 @@ function Stat({ icon: Icon, tone, label, value, note, badge }: {
   badge?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-      <div className="flex items-center gap-2">
-        <span className={cn("flex h-7 w-7 items-center justify-center rounded-lg ring-1", TONES[tone])}>
-          <Icon size={14} />
+    <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <div className="flex items-center gap-1.5">
+        <span className={cn("flex h-6 w-6 items-center justify-center rounded-md ring-1", TONES[tone])}>
+          <Icon size={12} />
         </span>
         <p className="font-label text-[11px] font-semibold text-gray-500">{label}</p>
       </div>
-      <p className="mt-2.5 font-display text-2xl font-bold tabular-nums text-gray-900">{value}</p>
-      <div className="mt-0.5 flex min-h-[18px] flex-wrap items-center gap-1.5">
+      <p className="mt-1.5 font-display text-xl font-bold leading-tight tabular-nums text-gray-900">{value}</p>
+      <div className="flex min-h-[16px] flex-wrap items-center gap-1.5">
         {note && <span className="font-body text-[11px] text-gray-400">{note}</span>}
         {badge && (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-px font-label text-[10px] font-semibold text-emerald-700">

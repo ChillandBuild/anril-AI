@@ -40,3 +40,14 @@ export function addDays(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** An example word and meaning that fits the kind of business; businessType is free text and may be empty. */
+export function wordExample(businessType: string | null | undefined): { word: string; meaning: string } {
+  const text = (businessType ?? "").toLowerCase();
+  const has = (...words: string[]) => words.some((w) => text.includes(w));
+  if (has("astro", "jothid", "jyotish", "service")) return { word: "jathagam", meaning: "birth chart" };
+  if (has("real estate", "property", "builder")) return { word: "plot", meaning: "land" };
+  if (has("education", "coaching", "school", "tuition", "institute", "training", "academy", "college")) return { word: "batch", meaning: "class group" };
+  if (has("retail", "textile", "saree", "fashion", "boutique", "shop", "store", "jewel", "wholesale")) return { word: "pattu", meaning: "silk saree" };
+  return { word: "COD", meaning: "cash on delivery" };
+}

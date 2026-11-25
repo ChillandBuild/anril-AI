@@ -551,6 +551,7 @@ export function SaidStopPanel() {
                 <X size={14} className="mt-0.5 shrink-0 text-[#b42318]" aria-hidden="true" />
                 <span>
                   {item}
+                  {item === "Telecaller calls" && " "}
                   {item === "Telecaller calls" && (
                     <span className="ml-2 inline-block rounded-full bg-[#ecfdf3] px-2 py-0.5 align-middle text-xs font-semibold text-[#067647]">
                       new

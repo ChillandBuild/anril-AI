@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Archive, Ban, Download, Info, Loader2, Search, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, getAuthHeaders, Lead, api } from "@/lib/api";
-import { cn, formatConvoTime, formatPhone } from "@/lib/utils";
+import { cn, formatConvoTime, formatPhone, stripMarkdown } from "@/lib/utils";
 import { CheckTick } from "@/components/ui/controls";
 import { Select } from "@/components/ui/Select";
 import { ChannelAvatar } from "@/components/channel-avatar";
@@ -371,7 +371,7 @@ export function ChatsFolderPanel({
                             </button>
                           </td>
                           <td className="max-w-[280px] px-4 py-3 align-middle">
-                            <p className="truncate text-[13px] text-ink-secondary">{l.last_message_content || "No messages"}</p>
+                            <p className="truncate text-[13px] text-ink-secondary">{stripMarkdown(l.last_message_content) || "No messages"}</p>
                             {lastAt && <p className="text-[12px] text-ink-muted">{formatConvoTime(lastAt)}</p>}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] text-ink-secondary">

@@ -196,10 +196,13 @@ def _dlt_items(body: dict) -> list[dict]:
     return [i for v in body.values() if isinstance(v, list) for i in v if isinstance(i, dict)]
 
 
-def _approved_senders(body: dict) -> list[dict]:
+def _approved_senders(body: dict, tenant_id: str) -> list[dict]:
+    """Approved senders on the Bulk9 account that belong to this client (a shared account can hold
+    other businesses' senders too: camp.allowed_senders)."""
+    allowed = camp.allowed_senders(tenant_id)
     seen, out = set(), []
     for i in _dlt_items(body):
-        if not i.get("sender_id"):
+        if not i.get("sender_id") or not camp.sender_allowed(allowed, i.get("sender_id")):
             continue
         key = (i.get("sender_id"), i.get("entity_id"))
         if key in seen:
@@ -213,7 +216,8 @@ def _approved_senders(body: dict) -> list[dict]:
 @router.get("/senders")
 async def senders(ctx: dict = Depends(view)):
     """Approved senders only: what Send SMS can use."""
-    return {"senders": _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")))}
+    return {"senders": _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")),
+                                         ctx["tenant_id"])}
 
 
 @router.get("/dlt/entities")
@@ -222,7 +226,7 @@ async def dlt_entities(ctx: dict = Depends(view)):
     can't be read, the submitted ones still show and `error` says why (HTTP 200)."""
     error = None
     try:
-        approved = _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")))
+        approved = _approved_senders(await _bulk9(bulk9_client.list_dlt(ctx["api_key"], "sender")), ctx["tenant_id"])
     except HTTPException as e:
         approved, error = [], str(e.detail)
     db, tid = get_supabase(), ctx["tenant_id"]
@@ -243,6 +247,8 @@ def _public_template(r: dict) -> dict:
 def _cached_templates(db, tenant_id: str, error: str | None = None) -> dict:
     rows = (db.table("sms_templates").select("*").eq("tenant_id", tenant_id)
             .order("created_at", desc=True).execute()).data or []
+    allowed = camp.allowed_senders(tenant_id)
+    rows = [r for r in rows if camp.sender_allowed(allowed, r.get("sender_id"))]
     synced = [r["last_synced_at"] for r in rows if r.get("last_synced_at")]
     return {"templates": [_public_template(r) for r in rows],
             "last_synced_at": max(synced) if synced else None, "error": error}
@@ -266,8 +272,15 @@ async def refresh_templates(ctx: dict = Depends(manage)):
     existing = (db.table("sms_templates").select("*").eq("tenant_id", tid).execute()).data or []
     by_msg = {str(r["message_id"]): r for r in existing if r.get("message_id")}
     submitted = [r for r in existing if not r.get("message_id")]
+    allowed = camp.allowed_senders(tid)
+    # Another business's templates on a shared Bulk9 account: drop any cached copy, never add one.
+    foreign = [r["id"] for r in existing if r.get("message_id") and not camp.sender_allowed(allowed, r.get("sender_id"))]
+    if foreign:
+        db.table("sms_templates").delete().in_("id", foreign).eq("tenant_id", tid).execute()
     logged = False
     for group in _dlt_items(body):
+        if not camp.sender_allowed(allowed, group.get("sender_id")):
+            continue
         for t in group.get("templates") or []:
             mid, text = t.get("message_id"), t.get("message")
             if mid is None or not text:

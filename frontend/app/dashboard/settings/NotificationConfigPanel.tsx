@@ -36,7 +36,7 @@ const AUDIENCE_OPTIONS: { value: NotificationConfig["claimable_audience"]; label
 ];
 
 const SEGMENTS = ["A", "B", "C", "D"] as const;
-const SEGMENT_LABELS: Record<(typeof SEGMENTS)[number], string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not Interested" };
+const SEGMENT_LABELS: Record<(typeof SEGMENTS)[number], string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not interested" };
 const SEGMENT_STYLES: Record<(typeof SEGMENTS)[number], string> = {
   A: "bg-segment-a-bg text-segment-a-text border-segment-a-border",
   B: "bg-segment-b-bg text-segment-b-text border-segment-b-border",

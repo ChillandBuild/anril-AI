@@ -94,7 +94,7 @@ export function KpiCard({
       ) : (
         <>
           {value}
-          {suffix && <span className="ml-1 text-sm font-semibold text-[#64748b]">{suffix}</span>}
+          {suffix && <> <span className="ml-1 text-sm font-semibold text-[#64748b]">{suffix}</span></>}
         </>
       )}
     </div>

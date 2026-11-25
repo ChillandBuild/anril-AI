@@ -178,3 +178,51 @@ async def test_wallet_rejects_unverified_credit_count(value):
 async def test_wallet_accepts_a_verified_zero_balance():
     with patch.object(bulk9_client, "_request", AsyncMock(return_value={"return": "true", "sms_count": "0"})):
         assert await bulk9_client.wallet("dummy") == {"sms_count": 0, "wallet": None}
+
+
+def _only(monkeypatch, ids):
+    monkeypatch.setattr(camp, "get_setting", lambda key, fallback=None, tenant_id=None:
+                        ids if key == camp.ALLOWED_SENDERS_SETTING and tenant_id == T else fallback)
+
+
+def test_allowed_senders_parsing():
+    assert camp.sender_allowed(None, "KELIR") is True
+    assert camp.sender_allowed({"ASTTML"}, " asttml ") is True
+    assert camp.sender_allowed({"ASTTML"}, "KELIR") is False
+    assert camp.sender_allowed({"ASTTML"}, None) is False
+
+
+@pytest.mark.asyncio
+async def test_sync_drops_and_skips_other_businesses_templates(monkeypatch):
+    _only(monkeypatch, "ASTTML")
+    db = FakeSupabase()
+    db.add("sms_templates", tenant_id=T, message_id="9", message="Kelir OTP", sender_id="KELIR", status="ready")
+    db.add("sms_templates", tenant_id="other", message_id="9", message="Kelir OTP", sender_id="KELIR", status="ready")
+    response = {"data": [{"sender_id": "ASTTML", "templates": [{"message_id": "1", "message": "Astro"}]},
+                         {"sender_id": "KELIR", "templates": [{"message_id": "2", "message": "Kelir"}]}]}
+    with patch.object(sms, "get_supabase", return_value=db),          patch.object(bulk9_client, "list_dlt", AsyncMock(return_value=response)):
+        out = await sms.refresh_templates(CTX)
+    mine = [r for r in db.rows("sms_templates") if r["tenant_id"] == T]
+    assert {r["sender_id"] for r in mine} == {"ASTTML"}
+    assert {t["sender_id"] for t in out["templates"]} == {"ASTTML"}
+    assert any(r["tenant_id"] == "other" for r in db.rows("sms_templates"))  # other clients untouched
+
+
+@pytest.mark.asyncio
+async def test_sender_list_hides_other_businesses(monkeypatch):
+    _only(monkeypatch, "ASTTML")
+    response = {"data": [{"sender_id": "ASTTML", "entity_id": "1"}, {"sender_id": "KELIR", "entity_id": "1"}]}
+    with patch.object(bulk9_client, "list_dlt", AsyncMock(return_value=response)):
+        out = await sms.senders(CTX)
+    assert [s["sender_id"] for s in out["senders"]] == ["ASTTML"]
+
+
+def test_sending_from_another_businesss_sender_is_blocked(monkeypatch):
+    _only(monkeypatch, "ASTTML")
+    db, lead, template = setup_campaign()
+    with pytest.raises(camp.SmsError) as err:
+        camp.preview(db, T, {**template, "template_type": "service"}, [], [lead["id"]])
+    assert err.value.status == 403
+    manual = camp.manual_template(sender_id="kelir", entity_id="1", dlt_template_id="2", message="Hi")
+    with pytest.raises(camp.SmsError):
+        camp.preview(db, T, manual, [], [lead["id"]])

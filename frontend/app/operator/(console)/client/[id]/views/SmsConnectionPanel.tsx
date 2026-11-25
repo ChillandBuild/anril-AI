@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { Loader2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
-import { getOperatorSms, putOperatorSmsBatch, putOperatorSmsKey, registerOperatorSmsWebhook } from "@/lib/operator";
+import { getOperatorSms, putOperatorSmsBatch, putOperatorSmsKey, putOperatorSmsSenders, registerOperatorSmsWebhook } from "@/lib/operator";
 import { OperatorToggle } from "../../../components/operator-toggle";
 
 const buttonClass = "inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold text-ink hover:bg-surface-low disabled:opacity-50";
@@ -15,7 +15,7 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
 }) {
   const connection = useSWR(["operator:sms", tenantId], () => getOperatorSms(tenantId));
   const [key, setKey] = useState("");
-  const [busy, setBusy] = useState<"key" | "webhook" | "batch" | null>(null);
+  const [busy, setBusy] = useState<"key" | "webhook" | "batch" | "senders" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function connect(action: "key" | "webhook") {
@@ -51,7 +51,26 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
     }
   }
 
+  async function toggleSender(senderId: string, on: boolean) {
+    if (busy || !connection.data) return;
+    const current = connection.data.allowed_senders ?? [];
+    const next = on ? [...current, senderId] : current.filter((s) => s !== senderId);
+    setBusy("senders");
+    setError(null);
+    try {
+      await connection.mutate(await putOperatorSmsSenders(tenantId, next), { revalidate: false });
+      toast.success(next.length ? `This client now sees only: ${next.join(", ")}.` : "This client now sees every sender on the account.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the senders.");
+      void connection.mutate();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const data = connection.data;
+  const accountSenders = data?.account_senders ?? [];
+  const allowed = data?.allowed_senders ?? [];
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -81,6 +100,22 @@ export function SmsConnectionPanel({ tenantId, enabled, featureSaving, onToggle 
               <p>Up to 50 SMS per Bulk9 call instead of one. Each SMS still gets its own delivery status. Test with 2 of your own numbers before leaving it on.</p>
             </div>
             <OperatorToggle checked={!!data.batch_send} onChange={(next) => void setBatch(next)} loading={busy === "batch"} disabled={!!busy && busy !== "batch"} aria-label="Send SMS in batches" />
+          </div>
+        )}
+        {data?.connected && accountSenders.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-3 text-xs text-ink-muted">
+            <div>
+              <p className="font-semibold text-ink">This client&apos;s senders</p>
+              <p>One SMS account can hold other businesses&apos; senders. Tick only this client&apos;s own. The others are hidden from them and can&apos;t be used to send.{allowed.length === 0 && " Nothing ticked: they see every sender."}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {accountSenders.map((senderId) => (
+                <label key={senderId} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-1.5 font-mono text-ink">
+                  <input type="checkbox" checked={allowed.includes(senderId)} disabled={!!busy} onChange={(event) => void toggleSender(senderId, event.target.checked)} />
+                  {senderId}
+                </label>
+              ))}
+            </div>
           </div>
         )}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}

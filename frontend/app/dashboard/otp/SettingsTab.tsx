@@ -90,6 +90,14 @@ function isHttpsUrl(s: string): boolean {
   }
 }
 
+/** Minutes the SMS text promises ("Valid for 10 min"), or null when it doesn't say. Same rule as the server. */
+function smsValidMinutes(message: string, range: [number, number]): number | null {
+  const match = /\bvalid\s+(?:for\s+|till\s+|upto\s+|up to\s+)?(\d{1,3})\s*min/i.exec(message);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return n >= range[0] && n <= range[1] ? n : null;
+}
+
 /** Only the fields that differ from what is saved, plus any problems with the draft. */
 function buildPatch(saved: OtpSettings, d: Draft, limits: OtpOverview["limits"]): { patch: Patch; errors: DraftErrors } {
   const base = toDraft(saved);
@@ -190,6 +198,14 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
 
   const draft: Draft = { ...toDraft(saved), ...edits };
   const { patch, errors } = buildPatch(saved, draft, limits);
+  // The SMS text is fixed by DLT, so the code must last exactly as long as the SMS says.
+  const smsTemplates = useSWR(SMS_TEMPLATES_KEY, () => api.otp.smsTemplates(), { revalidateOnFocus: false });
+  const smsTemplateList = smsTemplates.data?.templates ?? [];
+  const chosenSms = smsTemplateList.find((t) => `${t.sender_id}|${t.message_id}` === draft.smsKey);
+  const smsMinutes = chosenSms ? smsValidMinutes(chosenSms.message, limits.expiry_minutes) : null;
+  if (smsMinutes !== null && !errors.expiry && Number(draft.expiry) !== smsMinutes) {
+    errors.expiry = `Your SMS tells the customer the code is valid for ${smsMinutes} min. Set this to ${smsMinutes}, or pick another SMS.`;
+  }
   const dirty = Object.keys(patch).length > 0;
   const hasErrors = Object.keys(errors).length > 0;
   const disabled = !canEdit || saving;
@@ -200,6 +216,12 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setEdits((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function pickSms(key: string) {
+    const t = smsTemplateList.find((x) => `${x.sender_id}|${x.message_id}` === key);
+    const n = t ? smsValidMinutes(t.message, limits.expiry_minutes) : null;
+    setEdits((prev) => ({ ...prev, smsKey: key, ...(n !== null ? { expiry: String(n) } : {}) }));
   }
 
   function discard() {
@@ -290,7 +312,11 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
             <NumberField
               label="Expires after"
               unit="minutes"
-              hint={`${formatCount(limits.expiry_minutes[0])} to ${formatCount(limits.expiry_minutes[1])} minutes.`}
+              hint={
+                smsMinutes !== null
+                  ? `Set by your SMS template: it tells the customer "valid for ${smsMinutes} min".`
+                  : `${formatCount(limits.expiry_minutes[0])} to ${formatCount(limits.expiry_minutes[1])} minutes.`
+              }
               value={draft.expiry}
               onChange={(v) => set("expiry", v)}
               disabled={disabled}
@@ -324,7 +350,7 @@ function SettingsForm({ overview, canEdit, isOwner }: { overview: OtpOverview; c
 
       <SectionCard title="Templates">
         <div>
-          <SmsTemplateRow value={draft.smsKey} onChange={(v) => set("smsKey", v)} disabled={disabled} />
+          <SmsTemplateRow value={draft.smsKey} onChange={pickSms} disabled={disabled} />
           <WhatsappTemplateRow
             value={draft.waKey}
             onChange={(v) => set("waKey", v)}

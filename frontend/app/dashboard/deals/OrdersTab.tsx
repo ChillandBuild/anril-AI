@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { CalendarCheck, ChevronRight, Download, Hourglass, IndianRupee, Loader2, MessageCircle, Package, ReceiptText, Search, Settings2 } from "lucide-react";
@@ -83,7 +83,8 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
   const [days, setDays] = useState("30");
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // /dashboard/deals?tab=orders&orderSettings=1 opens the order settings straight away (linked from Feedback).
+  const [settingsOpen, setSettingsOpen] = useState(useSearchParams().get("orderSettings") === "1");
   const { role } = useAuthRole();
 
   const query = { chip, channel, days: Number(days), q: search.trim() || undefined };
@@ -259,7 +260,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           )}
           <Link href="/dashboard/deals/day-closing" title="Check today's money against the cash drawer"
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 font-label text-xs font-bold text-[#334155] hover:border-slate-300">
-            <CalendarCheck size={13} /> Day closing
+            <CalendarCheck size={13} /> Close today&apos;s cash
           </Link>
           <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Order settings" title="Order settings"
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300">
@@ -360,7 +361,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
           <div className="flex items-center justify-between gap-2 border-t border-[#eef2f6] px-4 py-2.5 text-[11px] text-[#64748b]">
             <span>{period}</span>
             <Link href="/dashboard/deals?tab=insights" className="inline-flex items-center gap-1 font-bold text-primary-700 hover:text-primary-900">
-              <Download size={12} /> Monthly file for your auditor: Insights
+              <Download size={12} /> Download monthly GST file
             </Link>
           </div>
         )}

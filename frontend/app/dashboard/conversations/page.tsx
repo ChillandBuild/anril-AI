@@ -85,9 +85,7 @@ function SharedInboxEmpty() {
           <div className="h-7 w-3/4 rounded-lg bg-primary/10" />
         </div>
       </div>
-      <h2 className="font-display text-2xl font-bold text-primary mb-2">Shared Inbox</h2>
-      <p className="font-body text-sm font-semibold text-on-surface mb-1">Connect Multiple Platforms &ndash; all in one inbox!</p>
-      <p className="font-body text-sm text-on-surface-muted">Easily manage messages from multiple platforms in a single inbox.</p>
+      <h2 className="font-display text-2xl font-bold text-primary mb-2">Pick a chat on the left.</h2>
     </div>
   );
 }

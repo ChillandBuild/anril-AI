@@ -37,6 +37,7 @@ from app.config import settings as app_config
 from app.config_dynamic import get_setting
 from app.db.supabase import get_supabase
 from app.services import bulk9_client
+from app.services import sms_campaigns as camp
 from app.services.number_jobs import sender_for
 
 logger = logging.getLogger(__name__)
@@ -241,10 +242,38 @@ def validate_settings(patch: dict) -> dict:
     return clean
 
 
+# "Valid for 10 min" / "valid 10 mins" / "valid till 10 minutes" in the DLT-approved SMS text.
+_SMS_VALID_MIN_RE = re.compile(r"\bvalid\s+(?:for\s+|till\s+|upto\s+|up to\s+)?(\d{1,3})\s*min", re.IGNORECASE)
+
+
+def sms_valid_minutes(db, tenant_id: str, message_id: Any) -> int | None:
+    """How many minutes the chosen SMS tells the customer the code lasts, or None if it doesn't say."""
+    if not message_id:
+        return None
+    rows = (db.table("sms_templates").select("message").eq("tenant_id", tenant_id)
+            .eq("message_id", str(message_id)).limit(1).execute()).data or []
+    match = _SMS_VALID_MIN_RE.search(rows[0].get("message") or "") if rows else None
+    if not match:
+        return None
+    low, high = LIMITS["expiry_minutes"]
+    minutes = int(match.group(1))
+    return minutes if low <= minutes <= high else None
+
+
 def save_settings(db, tenant_id: str, patch: dict) -> dict:
     clean = validate_settings(patch)
+    if clean.get("sms_sender_id") and not camp.sender_allowed(camp.allowed_senders(tenant_id), clean["sms_sender_id"]):
+        raise OtpError(403, "sender_not_allowed", camp.SENDER_NOT_ALLOWED)
     merged = {**get_settings(db, tenant_id), **clean}
     merged.pop("has_webhook_secret", None)
+    # The DLT SMS text is fixed ("Valid for 10 min"), so the code's real expiry must match it.
+    said = sms_valid_minutes(db, tenant_id, merged.get("sms_message_id"))
+    if said is not None and merged["expiry_minutes"] != said:
+        if "expiry_minutes" in clean:
+            raise OtpError(409, "expiry_mismatch",
+                           f"Your SMS tells the customer the code is valid for {said} min. "
+                           f"Set the code to {said} min, or pick another SMS.")
+        clean["expiry_minutes"] = merged["expiry_minutes"] = said
     # Only when the mode itself changes: a new account (default sms_then_whatsapp) must be able
     # to save its SMS template before WhatsApp is connected. Sends check readiness anyway.
     problems = mode_problems(db, tenant_id, merged["default_mode"], merged) if "default_mode" in clean else []
@@ -278,6 +307,8 @@ def sms_problem(db, tenant_id: str, cfg: dict) -> str | None:
         return "Connect your SMS account first."
     if not cfg.get("sms_sender_id") or not cfg.get("sms_message_id"):
         return "Pick the SMS template the code goes in (OTP settings)."
+    if not camp.sender_allowed(camp.allowed_senders(tenant_id), cfg.get("sms_sender_id")):
+        return camp.SENDER_NOT_ALLOWED
     return None
 
 

@@ -57,6 +57,22 @@ class SmsError(Exception):
         self.status = status
 
 
+# One Bulk9 account can hold several businesses' senders (Bloom Matrix's holds ASTTML and KELIR).
+# The operator lists which senders belong to this client; an empty list means no limit.
+ALLOWED_SENDERS_SETTING = "sms_allowed_senders"
+SENDER_NOT_ALLOWED = "This SMS sender isn't on your account. Pick one of your own senders."
+
+
+def allowed_senders(tenant_id: str) -> set[str] | None:
+    raw = get_setting(ALLOWED_SENDERS_SETTING, tenant_id=tenant_id) or ""
+    ids = {s.strip().upper() for s in raw.split(",") if s.strip()}
+    return ids or None
+
+
+def sender_allowed(allowed: set[str] | None, sender_id: Any) -> bool:
+    return allowed is None or str(sender_id or "").strip().upper() in allowed
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -353,6 +369,8 @@ EXCLUDED_SHOWN = 1000
 
 def _plan(db, tenant_id: str, template: dict, variable_map: list[dict], audience: "Audience"):
     """(clean variable map, eligible, excluded) for this template + audience."""
+    if not sender_allowed(allowed_senders(tenant_id), template.get("sender_id")):
+        raise SmsError(SENDER_NOT_ALLOWED, 403)
     if template.get("kind") == "manual" and variable_map:
         raise SmsError("A message sent with DLT IDs has no variables.")
     vmap = validate_variable_map(variable_map, template["message"], allow_cols=audience.source == "contacts",

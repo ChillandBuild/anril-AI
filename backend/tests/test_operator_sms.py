@@ -31,6 +31,10 @@ def _settings_from(db):
 
 def _patches(db, hooks=None):
     stack = ExitStack()
+    stack.enter_context(patch.object(operator_sms.sms_campaigns, "get_setting",
+                                     lambda key, fallback=None, tenant_id=None: _settings_from(db)(key, tenant_id)))
+    stack.enter_context(patch.object(operator_sms.bulk9_client, "list_dlt", AsyncMock(return_value={"data": [
+        {"sender_id": "ASTTML"}, {"sender_id": "kelir"}]})))
     for name, value in (("get_supabase", lambda: db), ("get_setting", _settings_from(db)),
                         ("invalidate_cache", lambda *a: None), ("record_audit_event", lambda *a, **k: None)):
         stack.enter_context(patch.object(operator_sms, name, value))
@@ -49,7 +53,7 @@ async def test_minimal_state_does_not_infer_registration_from_secret():
     with _patches(db):
         state = await operator_sms.get_sms(T, ADMIN)
     assert state == {"connected": False, "key_masked": None, "webhook_registered": False, "webhook_error": None,
-                     "sms_count": None, "batch_send": False}
+                     "sms_count": None, "batch_send": False, "account_senders": [], "allowed_senders": []}
 
 
 @pytest.mark.asyncio
@@ -74,7 +78,8 @@ async def test_good_key_uses_trusted_host_and_never_echoes_secrets():
     assert [c.kwargs for c in calls] == [{"url": URL, "secret": secret}]
     assert KEY not in json.dumps(out) and secret not in json.dumps(out)
     assert out == {"connected": True, "key_masked": "live••••••••mnop", "webhook_registered": True, "webhook_error": None,
-                   "sms_count": 50, "batch_send": False}
+                   "sms_count": 50, "batch_send": False, "account_senders": ["ASTTML", "KELIR"],
+                   "allowed_senders": []}
 
 
 @pytest.mark.asyncio
@@ -119,6 +124,7 @@ def test_removed_reseller_routes_are_absent():
     assert {route.path for route in operator_sms.router.routes} == {
         "/clients/{tenant_id}/sms", "/clients/{tenant_id}/sms/key", "/clients/{tenant_id}/sms/webhook",
         "/clients/{tenant_id}/sms/batch",  # batch sending switch (2026-11-05)
+        "/clients/{tenant_id}/sms/senders",  # which senders on a shared Bulk9 account are this client's
         # Anril-side bookkeeping only (no Bulk9 call): Add credit requests. The setup checklist,
         # PE-TM approvals and template requests were removed on 2026-11-04.
         "/sms/credit-requests", "/sms/credit-requests/{request_id}/done"}
@@ -137,3 +143,20 @@ async def test_batch_send_switch_is_per_tenant_and_audited():
     assert audits == ["operator.sms_batch_send_on", "operator.sms_batch_send_off"]
     with _patches(db), pytest.raises(HTTPException):
         await operator_sms.set_batch_send("not-a-uuid", operator_sms.BatchIn(enabled=True), ADMIN)
+
+
+@pytest.mark.asyncio
+async def test_allowed_senders_are_per_tenant_cleaned_and_audited():
+    db = _db()
+    db.add("tenants", id=OTHER, name="Other", enabled_features=["sms"])
+    db.add("app_settings", tenant_id=T, key="bulk9_api_key", value=KEY)
+    audits = []
+    with _patches(db), patch.object(operator_sms, "record_audit_event", lambda *a, **k: audits.append(k["action"])):
+        state = await operator_sms.set_allowed_senders(T, operator_sms.SendersIn(sender_ids=[" asttml", "ASTTML"]), ADMIN)
+        other = await operator_sms.get_sms(OTHER, ADMIN)
+        cleared = await operator_sms.set_allowed_senders(T, operator_sms.SendersIn(sender_ids=[]), ADMIN)
+    assert state["allowed_senders"] == ["ASTTML"] and state["account_senders"] == ["ASTTML", "KELIR"]
+    assert other["allowed_senders"] == [] and cleared["allowed_senders"] == []
+    assert audits == ["operator.sms_senders_set", "operator.sms_senders_set"]
+    with pytest.raises(ValueError):
+        operator_sms.SendersIn(sender_ids=["AST TML"])

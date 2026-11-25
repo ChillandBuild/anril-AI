@@ -365,7 +365,8 @@ def fix_these(top_questions: list[dict], feedback_counts: dict[str, int], gap_ch
     if top_questions:
         top = top_questions[0]
         more = len(top_questions) - 1
-        text = f"The AI agent could not answer \"{_preview(top['question'])}\" ({top['count']} times)."
+        times = "once" if top["count"] == 1 else f"{top['count']} times"
+        text = f"The AI agent could not answer \"{_preview(top['question'])}\" ({times})."
         if more:
             text += f" {more} more question{'s' if more != 1 else ''} also waiting."
         fixes.append({"kind": "couldnt_answer", "text": text,

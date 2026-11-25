@@ -139,7 +139,9 @@ export default function PeopleView({ callers, adminCaller, callingProvider, team
         <p className="mt-1 font-label text-xs text-ink-secondary">Tap a person to see their attendance and today&apos;s timeline below.</p>
         {adminCaller ? <div className="mt-3"><AdminCallerCard caller={adminCaller} cloud={cloud} /></div> : null}
         {shown.length === 0 ? (
-          <p className="mt-3 font-label text-sm text-ink-secondary">No telecallers yet.</p>
+          <p className="mt-3 font-label text-sm text-ink-secondary">
+            Only you so far. <Link href="/dashboard/roles" className="font-bold text-primary underline">Add a telecaller.</Link>
+          </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-left font-label text-sm">

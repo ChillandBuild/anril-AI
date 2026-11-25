@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies.tenant import get_tenant_and_role
 from app.routes import otp as routes
-from app.services import bulk9_client, meta_cloud, sms_delivery
+from app.services import bulk9_client, meta_cloud, sms_campaigns, sms_delivery
 from app.services import otp as svc
 from fake_supabase import FakeSupabase
 
@@ -91,6 +91,7 @@ def env(monkeypatch):
 
     monkeypatch.setattr(svc, "get_setting", get_setting)
     monkeypatch.setattr(routes, "get_setting", get_setting)
+    monkeypatch.setattr(sms_campaigns, "get_setting", get_setting)
     monkeypatch.setattr(svc, "get_supabase", lambda: db)
     monkeypatch.setattr(routes, "get_supabase", lambda: db)
     spawned = []
@@ -557,3 +558,75 @@ def test_stats_and_filtered_history_routes(env):
     assert client.get("/api/v1/otp-console/stats?days=30").json()["total"] == 1
     assert client.get("/api/v1/otp-console/stats?days=91").status_code == 422
     assert len(client.get("/api/v1/otp-console/history?status=verified&channel=sms&q=9876").json()["items"]) == 1
+
+
+# ---------------------------------------------------------------- code expiry follows the SMS text
+
+def _sms_template(env, message_id="14892", text="<#> AstroTamil OTP: {#VAR#}. Valid for 10 min. Do not share."):
+    env.db.rows("sms_templates").append({"tenant_id": TENANT, "sender_id": "ASTTML", "message_id": message_id,
+                                         "message": text, "status": "ready"})
+
+
+def test_sms_valid_minutes_reads_the_approved_text(env):
+    _sms_template(env)
+    _sms_template(env, "2", "Your code {#VAR#}. valid 5 mins only")
+    _sms_template(env, "3", "Your code is {#VAR#}")
+    assert svc.sms_valid_minutes(env.db, TENANT, "14892") == 10
+    assert svc.sms_valid_minutes(env.db, TENANT, "2") == 5
+    assert svc.sms_valid_minutes(env.db, TENANT, "3") is None
+    assert svc.sms_valid_minutes(env.db, OTHER, "14892") is None  # another client's template
+    assert svc.sms_valid_minutes(env.db, TENANT, None) is None
+
+
+def test_expiry_that_disagrees_with_the_sms_is_refused(env):
+    _sms_template(env)
+    with pytest.raises(svc.OtpError) as err:
+        svc.save_settings(env.db, TENANT, {"expiry_minutes": 1})
+    assert err.value.code == "expiry_mismatch" and "10 min" in err.value.message
+    assert svc.save_settings(env.db, TENANT, {"expiry_minutes": 10})["expiry_minutes"] == 10
+
+
+def test_picking_an_sms_sets_the_expiry_to_what_it_says(env):
+    _sms_template(env, "77", "OTP {#VAR#}. Valid for 5 min.")
+    env.db.rows("otp_settings")[0]["expiry_minutes"] = 1
+    assert svc.save_settings(env.db, TENANT, {"sms_message_id": "77"})["expiry_minutes"] == 5
+
+
+def test_an_old_mismatch_is_corrected_on_the_next_save(env):
+    _sms_template(env)
+    env.db.rows("otp_settings")[0]["expiry_minutes"] = 1
+    assert svc.save_settings(env.db, TENANT, {"max_attempts": 3})["expiry_minutes"] == 10
+
+
+def test_sms_without_a_time_leaves_expiry_free(env):
+    _sms_template(env, "14892", "Your code is {#VAR#}")
+    assert svc.save_settings(env.db, TENANT, {"expiry_minutes": 3})["expiry_minutes"] == 3
+
+
+# ---------------------------------------------------------------- senders on a shared Bulk9 account
+
+def test_otp_refuses_a_sender_not_on_the_clients_list(env):
+    env.settings[(TENANT, sms_campaigns.ALLOWED_SENDERS_SETTING)] = "ASTTML"
+    with pytest.raises(svc.OtpError) as err:
+        svc.save_settings(env.db, TENANT, {"sms_sender_id": "KELIR"})
+    assert err.value.code == "sender_not_allowed"
+    assert svc.save_settings(env.db, TENANT, {"sms_sender_id": "asttml"})["sms_sender_id"] == "asttml"
+
+
+def test_otp_sms_not_ready_when_saved_sender_is_not_allowed(env):
+    env.settings[(TENANT, sms_campaigns.ALLOWED_SENDERS_SETTING)] = "ASTTML"
+    env.db.rows("otp_settings")[0]["sms_sender_id"] = "KELIR"
+    cfg = svc.get_settings(env.db, TENANT)
+    assert svc.sms_problem(env.db, TENANT, cfg) == sms_campaigns.SENDER_NOT_ALLOWED
+
+
+def test_otp_sms_template_picker_hides_other_businesses(env, monkeypatch):
+    env.settings[(TENANT, sms_campaigns.ALLOWED_SENDERS_SETTING)] = "ASTTML"
+    monkeypatch.setattr(bulk9_client, "list_dlt", AsyncMock(return_value={"data": [
+        {"sender_id": "ASTTML", "templates": [{"message_id": 1, "message": "AstroTamil OTP {#VAR#}", "var_count": 1}]},
+        {"sender_id": "KELIR", "templates": [{"message_id": 2, "message": "Kelir OTP {#VAR#}", "var_count": 1}]},
+    ]}))
+    import asyncio
+    import json
+    body = json.loads(asyncio.run(routes.console_sms_templates(ctx={"tenant_id": TENANT})).body)
+    assert {t["sender_id"] for t in body["templates"]} == {"ASTTML"}

@@ -84,7 +84,7 @@ function StepLogPanel({ stepId }: { stepId: string }) {
 }
 
 const SEGMENTS = ["A", "B", "C", "D"] as const;
-const SEGMENT_LABELS: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not Interested" };
+const SEGMENT_LABELS: Record<string, string> = { A: "Hot", B: "Warm", C: "Cold", D: "Not interested" };
 const SOURCES = ["organic", "meta_ads", "csv", "telegram", "instagram", "facebook"] as const;
 const SOURCE_LABELS: Record<string, string> = {
   organic: "Organic WhatsApp",

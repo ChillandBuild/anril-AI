@@ -60,7 +60,6 @@ export const SETTINGS_ITEMS: SettingsNavItem[] = [
   { href: "/dashboard/settings/your-account", icon: UserCircle, label: "Your account", group: "My business", permissionAny: [], openToAll: true, needsSubscription: true },
   settingsPage("/dashboard/settings/account", Building2, "Business details", "My business"),
   settingsPage("/dashboard/settings/business-hours", Clock, "Open hours", "My business"),
-  settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "My business", "claude"),
   settingsPage("/dashboard/settings/payments", Wallet, "Payments & advance", "My business"),
   settingsPage("/dashboard/settings/target", Target, "Target & profit", "My business"),
   // Every person picks their own text size, telecallers included, so this row has no permission gate.
@@ -69,6 +68,7 @@ export const SETTINGS_ITEMS: SettingsNavItem[] = [
   settingsPage("/dashboard/settings/telecalling-behavior", Headset, "Calling", "Connections"),
   settingsPage("/dashboard/settings/calling-rules", Clock, "Calling rules", "Connections"),
   settingsPage("/dashboard/settings/meta-charges", Receipt, "Limits & Meta charges", "Connections"),
+  settingsPage(CLAUDE_SETTINGS_HREF, Sparkles, "Anril AI for Claude", "Connections", "claude"),
   { href: ROLES_HREF, icon: ShieldCheck, label: "Team & roles", group: "Team & roles", permissionAny: ROLES_PERMS, needsSubscription: true },
   settingsPage("/dashboard/settings/alerts", Megaphone, "Alerts", "Alerts & automations", "notifications"),
   settingsPage("/dashboard/settings/notifications", BellRing, "Push & lead claims", "Alerts & automations", "notifications"),

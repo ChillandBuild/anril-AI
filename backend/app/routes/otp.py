@@ -26,6 +26,7 @@ from app.dependencies.tenant import require_any_permission, require_owner, requi
 from app.routes.auto_messages import _client_ip, _SlidingWindow
 from app.services import bulk9_client
 from app.services import otp as svc
+from app.services import sms_campaigns as sms_camp
 from app.services.audit_log import record_audit_event
 
 logger = logging.getLogger(__name__)
@@ -327,8 +328,11 @@ async def console_sms_templates(ctx: dict = Depends(view)):
                 walk(value, sender)
 
     walk(body)
+    allowed = sms_camp.allowed_senders(ctx["tenant_id"])
     seen, unique = set(), []
     for t in out:
+        if not sms_camp.sender_allowed(allowed, t["sender_id"]):
+            continue  # another business's sender on a shared Bulk9 account
         if (t["sender_id"], t["message_id"]) not in seen:
             seen.add((t["sender_id"], t["message_id"]))
             unique.append(t)

@@ -2,7 +2,7 @@
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { api, Lead, Caller, CustomerGroup, GroupRule, BroadcastHistoryItem, WabaTemplate, getAuthHeaders, API_URL } from "@/lib/api";
-import { ArrowUp, Check, ChevronDown, Phone, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode, SlidersHorizontal } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Phone, Download, Pencil, X, RefreshCw, MessageSquare, UserPlus, ArrowLeftRight, Search, Info, FolderPlus, BellOff, Bookmark, Tag, PhoneForwarded, Megaphone, Users, Upload, QrCode, SlidersHorizontal, User } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/Pagination";
@@ -826,8 +826,9 @@ export function LeadsClient() {
     );
   }
 
-  function getAvatarInitials(lead: Lead): { text: string; bgColor: string } {
-    if (lead.name) {
+  /** text is null when there is no real name to take letters from: the row then shows a plain person icon. */
+  function getAvatarInitials(lead: Lead): { text: string | null; bgColor: string } {
+    if (lead.name && !/^[+\d]/.test(lead.name.trim())) {
       const parts = lead.name.trim().split(" ");
       const initials = parts.map(p => p[0]).join("").toUpperCase().slice(0, 2);
       return { text: initials, bgColor: getInitialColor(lead.id) };
@@ -835,10 +836,7 @@ export function LeadsClient() {
     if (lead.source === "instagram") return { text: "IG", bgColor: getInitialColor(lead.id) };
     if (lead.source === "telegram") return { text: "TG", bgColor: getInitialColor(lead.id) };
     if (lead.source === "facebook") return { text: "FB", bgColor: getInitialColor(lead.id) };
-    if (lead.phone) {
-      return { text: lead.phone.replace(/\s/g, "").slice(0, 3), bgColor: getInitialColor(lead.id) };
-    }
-    return { text: "??", bgColor: getInitialColor(lead.id) };
+    return { text: null, bgColor: getInitialColor(lead.id) };
   }
 
   function getChannelDot(lead: Lead): { color: string; title: string } {
@@ -1769,7 +1767,7 @@ export function LeadsClient() {
                                   className="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
                                   style={{ backgroundColor: avatar.bgColor }}
                                 >
-                                  {avatar.text}
+                                  {avatar.text ?? <User size={16} aria-hidden="true" />}
                                 </div>
                                 <div
                                   className="h-3 w-3 rounded-full ring-2 ring-white absolute bottom-0 right-0"
@@ -1905,7 +1903,7 @@ export function LeadsClient() {
                                 isSelected ? "bg-primary text-white" : tint,
                               )}
                             >
-                              {isSelected ? <Check size={18} aria-hidden="true" /> : getAvatarInitials(lead).text}
+                              {isSelected ? <Check size={18} aria-hidden="true" /> : (getAvatarInitials(lead).text ?? <User size={18} aria-hidden="true" />)}
                             </button>
                             <div className="min-w-0 flex-1">
                               <button

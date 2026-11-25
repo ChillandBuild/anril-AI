@@ -97,7 +97,6 @@ describe("the Settings list", () => {
       ["My business", "Your account", "/dashboard/settings/your-account"],
       ["My business", "Business details", "/dashboard/settings/account"],
       ["My business", "Open hours", "/dashboard/settings/business-hours"],
-      ["My business", "Anril AI for Claude", "/dashboard/settings/claude"],
       ["My business", "Payments & advance", "/dashboard/settings/payments"],
       ["My business", "Target & profit", "/dashboard/settings/target"],
       ["My business", "Text size", "/dashboard/settings/display"],
@@ -105,6 +104,7 @@ describe("the Settings list", () => {
       ["Connections", "Calling", "/dashboard/settings/telecalling-behavior"],
       ["Connections", "Calling rules", "/dashboard/settings/calling-rules"],
       ["Connections", "Limits & Meta charges", "/dashboard/settings/meta-charges"],
+      ["Connections", "Anril AI for Claude", "/dashboard/settings/claude"],
       ["Team & roles", "Team & roles", "/dashboard/roles"],
       ["Alerts & automations", "Alerts", "/dashboard/settings/alerts"],
       ["Alerts & automations", "Push & lead claims", "/dashboard/settings/notifications"],
@@ -139,8 +139,8 @@ describe("per-item gates (desktop)", () => {
 
   it("an active owner sees everything (with Claude switched on)", () => {
     expect(labels(access("owner", []))).toEqual([
-      "Your account", "Business details", "Open hours", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
-      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
+      "Your account", "Business details", "Open hours", "Payments & advance", "Target & profit", "Text size",
+      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Anril AI for Claude", "Team & roles", "Alerts", "Push & lead claims", "Automations", "Plans & subscription",
     ]);
   });
 
@@ -151,8 +151,8 @@ describe("per-item gates (desktop)", () => {
 
   it("a settings-only member sees the settings pages but not Team & roles or Plans", () => {
     expect(labels(access("caller", ["settings.view"]))).toEqual([
-      "Your account", "Business details", "Open hours", "Anril AI for Claude", "Payments & advance", "Target & profit", "Text size",
-      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Alerts", "Push & lead claims", "Automations",
+      "Your account", "Business details", "Open hours", "Payments & advance", "Target & profit", "Text size",
+      "Channels", "Calling", "Calling rules", "Limits & Meta charges", "Anril AI for Claude", "Alerts", "Push & lead claims", "Automations",
     ]);
   });
 

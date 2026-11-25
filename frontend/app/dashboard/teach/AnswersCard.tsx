@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type TeachItem } from "@/lib/api";
+import { stripMarkdown } from "@/lib/utils";
 import { SOURCE_LABEL, filterItems, taughtLabel } from "./teachLogic";
 
 const FIELD =
@@ -118,7 +119,7 @@ export function AnswersCard({ items, canEdit, onChange }: { items: TeachItem[]; 
             ) : (
               <>
                 <p className="break-words font-body text-sm font-bold text-ink">{item.prompt}</p>
-                <p className="mt-1 whitespace-pre-wrap break-words font-body text-sm text-ink-secondary">{item.reply}</p>
+                <p className="mt-1 whitespace-pre-wrap break-words font-body text-sm text-ink-secondary">{stripMarkdown(item.reply)}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-surface-low px-2 py-0.5 font-label text-xs text-ink-secondary">{SOURCE_LABEL[item.source]}</span>
                   {taughtLabel(item.times_taught) && (

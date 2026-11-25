@@ -108,3 +108,8 @@ export function secondsSince(dateStr: string | null | undefined): number | null 
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   return Number.isFinite(diff) ? Math.max(diff, 0) : null;
 }
+
+/** Plain-text preview of a message: drops markdown stars (**bold**, *italic*). */
+export function stripMarkdown(text: string | null | undefined): string {
+  return (text ?? "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\n]+)\*/g, "$1");
+}

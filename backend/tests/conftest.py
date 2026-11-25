@@ -34,6 +34,22 @@ def _no_live_astro_settings(monkeypatch):
     monkeypatch.setattr(astro_bridge, "get_setting", lambda key, fallback=None, tenant_id=None: fallback)
 
 
+@pytest.fixture(autouse=True)
+def _no_live_sms_sender_list(monkeypatch):
+    """Every SMS route and send reads the client's allowed senders, a settings read that would
+    reach the real database. Default every test to "no list" (all senders); other keys still go
+    through, and a test about the list patches sms_campaigns.get_setting itself."""
+    from app.services import sms_campaigns
+
+    real = sms_campaigns.get_setting
+
+    def get_setting(key, fallback=None, tenant_id=None):
+        if key == sms_campaigns.ALLOWED_SENDERS_SETTING:
+            return fallback
+        return real(key, fallback, tenant_id=tenant_id)
+    monkeypatch.setattr(sms_campaigns, "get_setting", get_setting)
+
+
 def fake_embedding(text: str) -> list[float]:
     """A deterministic 768-dim bag-of-words vector: texts sharing words point the same way."""
     import hashlib

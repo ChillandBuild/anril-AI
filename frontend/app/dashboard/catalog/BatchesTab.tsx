@@ -146,7 +146,7 @@ export function BatchesTab({ canManage, toolbarSlot }: { canManage: boolean; too
             </p>
             <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm leading-relaxed text-ink">
               <span aria-hidden>🔔</span> Owners get one bell a day at 9:30 AM when something has expired or expires within
-              30 days, and Day closing lists them. A small discount lowers the price on bills and in the AI agent&apos;s replies
+              30 days, and Close today&apos;s cash lists them. A small discount lowers the price on bills and in the AI agent&apos;s replies
               while that batch is the one being sold.
             </p>
           </div>
