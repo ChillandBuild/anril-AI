@@ -1895,27 +1895,40 @@ async def list_opted_out_leads(tenant_id: str = Depends(get_tenant_id)):
         for r in (global_rows.data or [])
     ]
 
-    tag_rows = (
-        db.table("lead_tag_opt_outs")
-        .select("lead_id,tag_id,opted_out_at,leads!inner(phone,name),broadcast_tags(name)")
-        .eq("tenant_id", tenant_id)
-        .not_.is_("tag_id", "null")
-        .order("opted_out_at", desc=True)
-        .limit(500)
-        .execute()
-    )
-    tag_out = [
-        {
-            "lead_id": r["lead_id"],
-            "phone": (r.get("leads") or {}).get("phone"),
-            "name": (r.get("leads") or {}).get("name"),
-            "opted_out_at": r.get("opted_out_at"),
-            "scope": "tag",
-            "tag_id": r.get("tag_id"),
-            "tag_name": (r.get("broadcast_tags") or {}).get("name"),
-        }
-        for r in (tag_rows.data or [])
-    ]
+    # Tag names are looked up on their own: lead_tag_opt_outs has no foreign key to broadcast_tags,
+    # so embedding broadcast_tags(name) made PostgREST fail the whole request and the tab showed
+    # nobody, even people who said stop. A tag problem must never hide the global list.
+    tag_out: list[dict] = []
+    try:
+        tag_rows = (
+            db.table("lead_tag_opt_outs")
+            .select("lead_id,tag_id,opted_out_at,leads!inner(phone,name)")
+            .eq("tenant_id", tenant_id)
+            .not_.is_("tag_id", "null")
+            .order("opted_out_at", desc=True)
+            .limit(500)
+            .execute()
+        ).data or []
+        tag_ids = sorted({r["tag_id"] for r in tag_rows if r.get("tag_id")})
+        tag_names: dict[str, str] = {}
+        if tag_ids:
+            for t in (db.table("broadcast_tags").select("id,name").eq("tenant_id", tenant_id)
+                      .in_("id", tag_ids).execute()).data or []:
+                tag_names[t["id"]] = t.get("name")
+        tag_out = [
+            {
+                "lead_id": r["lead_id"],
+                "phone": (r.get("leads") or {}).get("phone"),
+                "name": (r.get("leads") or {}).get("name"),
+                "opted_out_at": r.get("opted_out_at"),
+                "scope": "tag",
+                "tag_id": r.get("tag_id"),
+                "tag_name": tag_names.get(r.get("tag_id")),
+            }
+            for r in tag_rows
+        ]
+    except Exception as e:
+        logger.warning("Opted-out list: per-tag opt-outs failed, showing global only: %s", e)
 
     return {"data": global_out + tag_out}
 

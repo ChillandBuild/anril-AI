@@ -1008,6 +1008,7 @@ export default function OutboundLeadsPage() {
   const [optedOutList, setOptedOutList] = useState<OptedOutLead[]>([]);
   const [optedOutLoading, setOptedOutLoading] = useState(false);
   const [optedOutLoaded, setOptedOutLoaded] = useState(false);
+  const [optedOutError, setOptedOutError] = useState(false);
   const [reactivatingId, setReactivatingId] = useState<string | null>(null);
 
   const [testSendPhone, setTestSendPhone] = useState("");
@@ -1015,15 +1016,18 @@ export default function OutboundLeadsPage() {
 
   const loadOptedOut = useCallback(async () => {
     setOptedOutLoading(true);
+    setOptedOutError(false);
     try {
       const auth = await getAuthHeaders();
       const res = await fetch(`${API_URL}/api/v1/upload/opted-out`, { headers: auth });
+      if (!res.ok) throw new Error(String(res.status));
       const data: { data: OptedOutLead[] } = await res.json();
       setOptedOutList(data.data || []);
-      setOptedOutLoaded(true);
     } catch {
-      // best-effort
+      // Never show "nobody opted out" when we simply couldn't load the list.
+      setOptedOutError(true);
     } finally {
+      setOptedOutLoaded(true); // also on failure, so the tab doesn't retry in a loop
       setOptedOutLoading(false);
     }
   }, []);
@@ -3493,6 +3497,22 @@ export default function OutboundLeadsPage() {
           {optedOutLoading || !optedOutLoaded ? (
             <div className="py-12 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : optedOutError ? (
+            <div className="py-16 flex flex-col items-center justify-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
+                <AlertTriangle size={24} className="text-red-400" />
+              </div>
+              <div className="text-center">
+                <p className="font-display text-sm font-semibold text-gray-700">Couldn&apos;t load the opted-out list</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Something went wrong on our side. Your opt-outs are safe.</p>
+              </div>
+              <button
+                onClick={loadOptedOut}
+                className="inline-flex h-8 items-center gap-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 font-label text-xs font-semibold text-gray-700 transition-colors"
+              >
+                <RotateCcw size={12} /> Try again
+              </button>
             </div>
           ) : optedOutList.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center gap-3">
