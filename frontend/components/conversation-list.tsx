@@ -74,7 +74,7 @@ const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
 
 const SECTION_TITLE: Record<number, string> = {
   0: "Needs you · oldest first",
-  1: "AI agent is handling",
+  1: "Anril is handling",
   2: "Your team is handling",
 };
 
@@ -282,7 +282,7 @@ export function ConversationList(props: Props) {
     <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
       {headerAndTabs}
       {/* ── Channel chips: each shows its own count under the current tab and filters ── */}
-      <div className="mx-4 mt-2 flex flex-wrap gap-1.5 md:mt-3 md:gap-1">
+      <div className="mx-4 mt-2 flex flex-nowrap gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mt-3 md:flex-wrap md:gap-1 md:overflow-visible">
         {CHANNEL_CHIPS.filter((c) => c.value === "all" || c.value === channel || (counts.channels[c.value] ?? 0) > 0).map((chip) => {
           const active = channel === chip.value;
           const n = counts.channels[chip.value];
@@ -292,7 +292,7 @@ export function ConversationList(props: Props) {
               onClick={() => onChannelChange(chip.value)}
               aria-pressed={active}
               className={cn(
-                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold whitespace-nowrap transition-all md:h-auto md:px-2 md:py-1 md:text-[10.5px]",
+                "inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold whitespace-nowrap transition-all md:h-auto md:px-2 md:py-1 md:text-[10.5px]",
                 active
                   ? "bg-primary-light text-primary border-primary/30"
                   : "bg-white text-[#334155] border-[#e2e8f0] hover:border-slate-300"
@@ -375,13 +375,13 @@ export function ConversationList(props: Props) {
       {filterCount > 0 && (
         <div className="mx-4 mt-2 flex flex-wrap items-center gap-1.5">
           {filterPills(filters, team, tags).map((pill) => (
-            <span key={pill.id} className="inline-flex h-6 items-center gap-0.5 rounded-full bg-primary-light pl-2.5 pr-1 text-[11.5px] font-semibold text-primary">
+            <span key={pill.id} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-primary-light pl-2.5 pr-0.5 text-[11.5px] font-semibold text-primary">
               {pill.label}
               <button
                 type="button"
                 onClick={() => onFiltersChange(pill.without)}
                 aria-label={`Remove ${pill.label}`}
-                className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-primary/15"
+                className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-primary/15"
               >
                 <X size={12} strokeWidth={2.5} />
               </button>
@@ -390,7 +390,7 @@ export function ConversationList(props: Props) {
           <button
             type="button"
             onClick={() => onFiltersChange({ segments: [], results: [], cameFrom: [], handledBy: [], waiting: [], date: "any", customFrom: "", tagId: "" })}
-            className="h-6 rounded-full px-2 text-[11.5px] font-semibold text-[#64748b] hover:bg-slate-100 hover:text-[#0A1528]"
+            className="h-7 rounded-full px-2 text-[11.5px] font-semibold text-[#64748b] hover:bg-slate-100 hover:text-[#0A1528]"
           >
             Clear
           </button>
@@ -444,7 +444,7 @@ export function ConversationList(props: Props) {
             const line2 = needsYou
               ? `🙋 ${lead.needs_reason || "Waiting for your reply"}`
               : aiHandling
-                ? customerWaiting ? "🤖 AI agent is replying" : `🤖 ${preview}`
+                ? customerWaiting ? "🤖 Anril is replying" : `🤖 ${preview}`
                 : `${isBot ? "AI: " : ""}${preview}`;
             return (
               <Fragment key={lead.id}>
@@ -527,7 +527,7 @@ export function ConversationList(props: Props) {
                         {onPin && (
                           <button
                             onClick={() => { setCardMenuId(null); onPin(lead.id); }}
-                            className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                            className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50"
                           >
                             <Pin size={14} className="text-slate-500" />
                             {lead.pinned_at ? "Unpin" : "Pin"}
@@ -537,19 +537,19 @@ export function ConversationList(props: Props) {
                           <button
                             onClick={() => { setCardMenuId(null); onArchive(lead.id); }}
                             disabled={!canArchive}
-                            className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Archive size={14} className="text-slate-500" />
                             Archive
                           </button>
                         )}
                         {onBlock && (
-                          <button onClick={() => { setCardMenuId(null); onBlock(lead.id); }} className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50">
+                          <button onClick={() => { setCardMenuId(null); onBlock(lead.id); }} className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-50">
                             <Ban size={14} className="text-slate-500" />
                             Block
                           </button>
                         )}
-                        <button onClick={() => handleDeleteOne(lead.id)} className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[13px] text-red-600 hover:bg-red-50">
+                        <button onClick={() => handleDeleteOne(lead.id)} className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-[13px] text-red-600 hover:bg-red-50">
                           <Trash2 size={14} /> Delete
                         </button>
                       </div>

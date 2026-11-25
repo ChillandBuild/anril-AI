@@ -242,7 +242,7 @@ export default function DayClosingPage() {
                     <span className="min-w-0 flex-1 truncate text-[#334155]">{e.label}{e.spent_by ? <span className="text-on-surface-muted"> · {e.spent_by}</span> : null}</span>
                     <span className="font-bold tabular-nums">{rupees(e.amount_paise)}</span>
                     {canManage && !data.closed && (
-                      <button type="button" onClick={() => removeExpense(e.id)} aria-label={`Remove ${e.label}`} className="rounded p-1 text-[#94a3b8] hover:text-rose-600"><Trash2 size={13} /></button>
+                      <button type="button" onClick={() => removeExpense(e.id)} aria-label={`Remove ${e.label}`} className="inline-flex h-8 w-8 items-center justify-center rounded text-[#94a3b8] hover:text-rose-600"><Trash2 size={14} /></button>
                     )}
                   </li>
                 ))}

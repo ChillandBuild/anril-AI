@@ -63,7 +63,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-surface-mid bg-white shadow-xs">
+    <section className="rounded-2xl border border-surface-mid bg-white shadow-sm">
       <header className="flex items-start justify-between gap-3 border-b border-surface-mid/70 px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -330,7 +330,7 @@ export default function KnowledgeReviewModal({ documentId, canManage, isOwner, o
         role="dialog"
         aria-modal="true"
         aria-label="Review sorted file"
-        className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-surface-mid bg-surface shadow-2xl"
+        className="flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-surface-mid bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -688,12 +688,12 @@ export default function KnowledgeReviewModal({ documentId, canManage, isOwner, o
                 Description after Apply: {finalWords.toLocaleString()} words
                 {overLimit && ` — over the ${review.soft_word_limit.toLocaleString()}-word guide`}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
                 {canManage && (
                   <button
                     onClick={discard}
                     disabled={busy !== null}
-                    className="flex items-center gap-1.5 rounded-xl border border-surface-mid bg-surface px-4 py-2 font-label text-xs font-semibold text-on-surface transition-colors hover:bg-surface-mid disabled:opacity-50"
+                    className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-surface-mid bg-surface px-4 py-2 font-label text-xs font-semibold text-on-surface transition-colors hover:bg-surface-mid disabled:opacity-50"
                   >
                     {busy === "discard" && <Loader2 size={12} className="animate-spin" />}
                     {review.origin === "upload" ? "Discard file" : "Discard changes"}
@@ -702,7 +702,7 @@ export default function KnowledgeReviewModal({ documentId, canManage, isOwner, o
                 <button
                   onClick={apply}
                   disabled={busy !== null || blockReason !== null}
-                  className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2 font-label text-xs font-semibold text-white shadow-xs transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-2 font-label text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {busy === "apply" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={3} />}
                   Apply

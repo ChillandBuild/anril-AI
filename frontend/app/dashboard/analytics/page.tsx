@@ -68,7 +68,7 @@ function ReportsPage() {
                 href={`/dashboard/analytics?tab=${t}`}
                 aria-current={t === active ? "page" : undefined}
                 className={cn(
-                  "-mb-px block whitespace-nowrap border-b-[3px] px-3 py-3 font-label text-sm font-bold transition-colors",
+                  "-mb-px flex items-center whitespace-nowrap border-b-[3px] px-3 py-3 font-label text-sm font-bold transition-colors max-md:h-8 max-md:py-0 max-md:text-xs",
                   t === active ? "border-primary text-primary" : "border-transparent text-[#556274] hover:text-on-surface",
                 )}
               >
@@ -91,7 +91,7 @@ function ReportsPage() {
               <Select
                 size="sm"
                 aria-label="Compare with the days before"
-                className="h-9 w-[170px] shrink-0"
+                className="h-9 w-[170px] shrink-0 max-md:w-full max-md:min-w-0 max-md:shrink"
                 value={compare}
                 onChange={(v) => setCompare(v === "off" ? "off" : "previous")}
                 options={[

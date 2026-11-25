@@ -75,7 +75,7 @@ export function KpiCard({
 }: KpiCardProps) {
   const interactive = Boolean(href || onClick);
   const shell = cn(
-    "relative flex flex-col overflow-hidden rounded-2xl border bg-white py-4 pl-5 pr-4 text-left transition-all",
+    "relative flex flex-col overflow-hidden rounded-2xl border bg-white py-3 pl-4 pr-3 text-left transition-all md:py-4 md:pl-5 md:pr-4",
     selected ? "border-2 border-primary ring-4 ring-primary/10" : "border-[#e2e8f0]",
     interactive && !selected && "hover:border-slate-300",
     className
@@ -104,7 +104,8 @@ export function KpiCard({
     <div className="min-w-0">
       <div className="truncate text-sm font-bold text-[#0A1528]">{label}</div>
       {hint && (
-        <div className="truncate text-xs text-[#64748b]" title={typeof hint === "string" ? hint : undefined}>
+        // Phones: no hint line, so tiles stay compact and the list below starts sooner.
+        <div className="truncate text-xs text-[#64748b] max-md:hidden" title={typeof hint === "string" ? hint : undefined}>
           {hint}
         </div>
       )}

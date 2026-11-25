@@ -8,7 +8,7 @@ import { useAuthRole } from "@/app/dashboard/contexts/AuthRoleContext";
 /** The page frame every Call IQ report screen shares: title, one plain line, then the content. */
 export function CallIqPage({ intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
-    <div className="w-full min-w-0 max-w-[1400px] space-y-5 overflow-x-hidden px-4 py-4 pb-28 md:p-7">
+    <div className="w-full min-w-0 max-w-[1400px] space-y-5 overflow-x-hidden px-0 py-0 pb-4 md:p-7">
       <header>
         <p className="font-label text-sm text-ink-secondary">{intro}</p>
       </header>

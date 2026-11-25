@@ -177,7 +177,7 @@ export default function PhoneCallerView({
           onClick={toggleStatus}
           disabled={statusBusy}
           aria-label={myStatus === "active" ? "You are available. Tap to take a break" : "Tap to become available"}
-          className={`inline-flex min-h-[44px] items-center gap-2 rounded-full px-4 font-label text-sm font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-60 ${statusStyle}`}
+          className={`inline-flex h-8 items-center gap-2 rounded-full px-3 font-label text-sm font-bold shadow-sm transition active:scale-[0.98] disabled:opacity-60 ${statusStyle}`}
         >
           {myStatus === "active" ? <span className="h-2.5 w-2.5 rounded-full bg-white" /> : <Coffee size={16} />}
           {statusLabel}
@@ -189,12 +189,12 @@ export default function PhoneCallerView({
 
       {/* 2. Your day */}
       {(stats.calls !== undefined || stats.booked !== undefined) && (
-        <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-white p-3 shadow-sm">
           <p className="font-label text-xs font-bold uppercase tracking-wide text-ink-muted">Your day</p>
-          <div className="mt-2 flex items-end gap-6">
+          <div className="mt-1.5 flex items-end gap-6">
             {stats.calls !== undefined && (
               <div className="min-w-0">
-                <p className="font-display text-2xl font-extrabold text-ink">
+                <p className="font-display text-xl font-extrabold text-ink">
                   {hasTarget ? `${stats.calls} / ${stats.target}` : stats.calls}
                 </p>
                 <p className="font-body text-xs text-ink-secondary">Calls today</p>
@@ -202,7 +202,7 @@ export default function PhoneCallerView({
             )}
             {stats.booked !== undefined && (
               <div className="min-w-0">
-                <p className="font-display text-2xl font-extrabold text-ink">{stats.booked}</p>
+                <p className="font-display text-xl font-extrabold text-ink">{stats.booked}</p>
                 <p className="font-body text-xs text-ink-secondary">Booked today</p>
               </div>
             )}
@@ -270,18 +270,18 @@ export default function PhoneCallerView({
             role="tab"
             aria-selected={group === id}
             onClick={() => setGroup(id)}
-            className={`flex h-10 min-w-0 flex-col items-center justify-center rounded-xl px-1 font-label leading-tight transition ${
+            className={`flex h-9 min-w-0 items-center justify-center gap-1 rounded-xl px-1 font-label leading-tight transition ${
               group === id ? "bg-white text-primary-900 shadow-sm" : "text-ink-secondary"
             }`}
           >
             <span className="max-w-full truncate text-[12.5px] font-bold">{label}</span>
-            <span className="text-[10.5px] font-semibold opacity-80">{count(n)}</span>
+            <span className="text-[12px] font-semibold opacity-80">{count(n)}</span>
           </button>
         ))}
       </div>
 
       {/* Dial a number, recent calls and the CSV export: the old phone layout had all three. */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="flex gap-2">
         {([
           ["dialer", "Dial", Grid3X3],
           ["recent", "Recent", History],
@@ -292,7 +292,7 @@ export default function PhoneCallerView({
             aria-pressed={group === id}
             aria-label={id === "dialer" ? "Dial a number" : "Recent calls"}
             onClick={() => setGroup(group === id ? "queue" : id)}
-            className={`flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-2 font-label text-xs font-bold ${
+            className={`flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 font-label text-xs font-bold ${
               group === id ? "border-navy bg-navy text-white" : "border-border bg-white text-ink"
             }`}
           >
@@ -305,10 +305,9 @@ export default function PhoneCallerView({
           onClick={onExportCsv}
           disabled={exporting || allLeads.length === 0}
           aria-label="Export your leads as CSV"
-          className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-white px-2 font-label text-xs font-bold text-ink disabled:opacity-50"
+          title="Export CSV" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-white font-label text-xs font-bold text-ink disabled:opacity-50"
         >
           {exporting ? <RefreshCw size={15} className="shrink-0 animate-spin" aria-hidden /> : <Download size={15} className="shrink-0" aria-hidden />}
-          <span className="truncate">Export</span>
         </button>
       </div>
 

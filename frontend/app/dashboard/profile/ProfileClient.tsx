@@ -106,17 +106,17 @@ export function ProfileClient({
 
     return (
       <div>
-        <div className="mb-8">
+        <div className="mb-4 md:mb-8">
           <p className="font-body text-on-surface-muted">{greeting}, {adminName.split(" ")[0]}</p>
         </div>
 
         {/* Admin Identity Card */}
-        <div className="bg-gradient-to-br from-[#0A1528] via-[#13284A] to-[#0A1528] rounded-[2rem] p-8 shadow-xl mb-8 relative overflow-hidden">
+        <div className="bg-gradient-to-br from-[#0A1528] via-[#13284A] to-[#0A1528] rounded-[2rem] p-4 md:p-8 shadow-xl mb-4 md:mb-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-primary/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/3" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-amber-500/10 to-transparent rounded-full translate-y-1/2 -translate-x-1/4" />
 
           <div className="relative flex items-center gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
+            <div className="w-12 h-12 md:w-20 md:h-20 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
               <span className="font-display text-3xl font-bold text-white">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
@@ -395,7 +395,7 @@ export function ProfileClient({
       </div>
 
       {/* Attendance History */}
-      <div className="mb-8">
+      <div className="mb-4 md:mb-8">
         <AttendanceMini callerId={stats.caller_id} readOnly={true} />
       </div>
 

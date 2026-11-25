@@ -215,24 +215,24 @@ export default function LeadDetailPanel({
     <div className="flex flex-col bg-[#f8fafc]">
       <div className="sticky top-0 z-20">
       {/* Header */}
-      <div className="bg-gradient-to-br from-[#1a1c3d] via-[#12132e] to-[#0c0d1f] text-white p-6 relative overflow-hidden shadow-md">
+      <div className="bg-gradient-to-br from-[#1a1c3d] via-[#12132e] to-[#0c0d1f] text-white p-3 md:p-6 relative overflow-hidden shadow-md">
         <div className="absolute right-0 bottom-0 top-0 w-1/3 bg-radial-gradient from-orange-500/10 to-transparent pointer-events-none" />
-        <div className="flex justify-between items-center gap-4 relative z-10">
-          <div className="flex gap-4 items-center min-w-0">
-            <div className="relative w-[66px] h-[66px] flex-shrink-0">
-              <svg width="66" height="66" viewBox="0 0 66 66" className="absolute top-0 left-0">
+        <div className="flex justify-between items-center gap-3 md:gap-4 max-md:flex-wrap relative z-10">
+          <div className="flex gap-3 md:gap-4 items-center min-w-0">
+            <div className="relative w-10 h-10 md:w-[66px] md:h-[66px] flex-shrink-0">
+              <svg viewBox="0 0 66 66" className="absolute top-0 left-0 w-full h-full">
                 <circle cx="33" cy="33" r="28" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="4" />
                 <circle cx="33" cy="33" r="28" fill="none" stroke={ringColor} strokeWidth="4"
                   strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round" transform="rotate(-90 33 33)" className="transition-all duration-500" />
               </svg>
-              <div className={`absolute inset-[5px] bg-gradient-to-br ${ringBgGradient} rounded-full flex items-center justify-center font-display text-xl font-bold text-white shadow-inner`}>
+              <div className={`absolute inset-[3px] md:inset-[5px] bg-gradient-to-br ${ringBgGradient} rounded-full flex items-center justify-center font-display text-base md:text-xl font-bold text-white shadow-inner`}>
                 {selectedLead.name ? selectedLead.name.charAt(0).toUpperCase() : <User size={20} />}
               </div>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="font-display text-2xl font-extrabold tracking-tight truncate">
+                <h2 className="font-display text-lg md:text-2xl font-extrabold tracking-tight truncate">
                   {selectedLead.name || "Unnamed Lead"}
                 </h2>
                 <SegmentBadge segment={selectedLead.segment} />
@@ -256,7 +256,7 @@ export default function LeadDetailPanel({
                     </span>
                   )}
                   <p className="text-[#d6cfc9] font-label text-xs italic">
-                    Hint: Reject on your phone to cancel/hang up this call.
+                    To hang up, end the call on your phone
                   </p>
                 </div>
               ) : (
@@ -273,11 +273,11 @@ export default function LeadDetailPanel({
             </div>
           </div>
           {!isCallingThisLead && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 max-md:w-full">
               <button
                 onClick={() => handleRelease(selectedLead.id)}
                 disabled={readOnly}
-                className={`px-4 py-2.5 rounded-2xl border font-label text-xs font-bold transition-all text-[#d6cfc9] hover:text-white ${
+                className={`px-3 h-9 md:h-auto md:px-4 md:py-2.5 rounded-2xl border font-label text-xs font-bold transition-all text-[#d6cfc9] hover:text-white ${
                   confirmRelease === selectedLead.id
                     ? "bg-red-600 border-red-500 text-white animate-pulse"
                     : "border-[#1e293b]/60 bg-[#0A1528]/40 hover:bg-[#0A1528]"
@@ -288,7 +288,7 @@ export default function LeadDetailPanel({
               <button
                 onClick={() => dialWithGuard(selectedLead.id, selectedLead)}
                 disabled={readOnly || dialing === selectedLead.id}
-                className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-2xl font-label text-sm font-extrabold shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                className="flex items-center justify-center max-md:flex-1 max-md:min-h-11 gap-2 px-4 md:px-6 py-2 md:py-3 bg-primary hover:bg-primary-dark text-white rounded-2xl font-label text-sm font-extrabold shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
                 <Phone size={14} className="fill-white" />
                 {dialing === selectedLead.id ? "Dialing…" : "Call Lead"}
@@ -308,7 +308,7 @@ export default function LeadDetailPanel({
           <button
             key={t.id}
             onClick={() => setActiveProfileTab(t.id as "overview" | "notes" | "attribution" | "script")}
-            className={`px-6 py-4 font-display text-xs font-black tracking-wider uppercase border-b-2 text-center transition-all ${
+            className={`px-3 py-2.5 md:px-6 md:py-4 font-display text-xs font-black tracking-wider uppercase border-b-2 text-center transition-all ${
               activeProfileTab === t.id
                 ? "border-orange-500 text-orange-700"
                 : "border-transparent text-[#94a3b8] hover:text-[#334155]"

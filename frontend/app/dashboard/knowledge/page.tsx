@@ -718,7 +718,7 @@ export default function KnowledgePage() {
       return (
         <button
           onClick={() => setReviewingDocId(doc.id)}
-          className="flex items-center gap-1 px-2.5 py-1 mr-1 rounded-lg bg-primary text-white font-label text-[11px] font-bold hover:bg-primary/90 transition-colors shadow-xs"
+          className="flex min-h-9 items-center gap-1 px-2.5 py-1 mr-1 rounded-lg bg-primary text-white font-label text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
         >
           <ClipboardCheck size={12} /> Review
         </button>
@@ -809,14 +809,14 @@ export default function KnowledgePage() {
           {renderSortAction(doc)}
           <button
             onClick={() => openDocument(doc.id)}
-            title="What Anril looks up from this file"
+            title="What Anril looks up from this file" aria-label="What Anril looks up from this file"
             className="p-2 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
           >
             <Eye size={16} />
           </button>
           <button
             onClick={() => downloadDocument(doc.id)}
-            title="Download original file"
+            title="Download original file" aria-label="Download original file"
             className="p-2 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
           >
             <Download size={16} />
@@ -824,7 +824,7 @@ export default function KnowledgePage() {
           {canManageKnowledge && (
             <button
               onClick={() => setDeletingDoc(doc)}
-              title="Delete document"
+              title="Delete document" aria-label="Delete document"
               className="p-2 text-on-surface-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
               <Trash2 size={16} />
@@ -871,9 +871,9 @@ export default function KnowledgePage() {
       });
       if (!res.ok) throw new Error("Save failed");
       setSavedRubric(scoringRubric);
-      toast.success("Scoring rubric saved.");
+      toast.success("Hot/Warm/Cold rules saved.");
     } catch {
-      toast.error("Failed to save rubric. Please try again.");
+      toast.error("Failed to save rules. Please try again.");
     } finally {
       setRubricSaving(false);
     }
@@ -892,8 +892,8 @@ export default function KnowledgePage() {
       setRubricAutoUpdate(next);
       toast.success(
         next
-          ? "Rubric will update automatically when you save your description."
-          : "Rubric will no longer change when you save your description."
+          ? "Rules will update automatically when you save your description."
+          : "Rules will no longer change when you save your description."
       );
     } catch {
       toast.error("Could not change setting. Please try again.");
@@ -918,7 +918,10 @@ export default function KnowledgePage() {
       {tab === "documents" ? (
         <div className="space-y-6">
           {/* ── Top Overview Stats ────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <p className="md:hidden font-body text-sm font-semibold text-ink">
+            {loading ? "Loading documents…" : `${stats.total.toLocaleString()} ${stats.total === 1 ? "document" : "documents"}${stats.review > 0 ? ` · ${stats.review} to review` : ""}`}
+          </p>
+          <div className="max-md:hidden grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               label="Total Documents"
               value={stats.total.toLocaleString()}
@@ -953,7 +956,7 @@ export default function KnowledgePage() {
                     ? "—"
                     : stats.notSearchable > 0
                     ? `${stats.notSearchable} not searchable`
-                    : "Ready for AI RAG retrieval"}
+                    : "Ready for Anril"}
                 </span>
               }
             />
@@ -962,7 +965,7 @@ export default function KnowledgePage() {
               label="Storage Footprint"
               value={formatBytes(stats.totalBytes)}
               loading={loading}
-              hint="Indexed vector data"
+              hint="Ready for Anril"
               edge="bg-amber-400"
               stacked
             />
@@ -1090,10 +1093,10 @@ export default function KnowledgePage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-display text-sm font-bold text-on-surface">
-                      No lead scoring rubric yet
+                      No Hot/Warm/Cold rules yet
                     </p>
                     <p className="font-body text-xs text-on-surface-muted mt-1 leading-relaxed max-w-2xl">
-                      The rubric tells Anril how to classify leads as Hot, Warm, or Cold. It&rsquo;s written for you from
+                      The rules tell Anril how to classify leads as Hot, Warm, or Cold. It&rsquo;s written for you from
                       your Description the first time you save one, or you can write your own. It
                       doesn&rsquo;t hold up uploads &mdash; nothing here does.
                     </p>
@@ -1101,9 +1104,9 @@ export default function KnowledgePage() {
                   <button
                     type="button"
                     onClick={goToDescription}
-                    className="self-start shrink-0 flex items-center gap-2 px-4 py-2 bg-white border border-surface-mid text-primary rounded-xl font-label text-xs font-semibold hover:bg-primary/5 transition-colors shadow-xs"
+                    className="self-start shrink-0 flex items-center gap-2 px-4 py-2 bg-white border border-surface-mid text-primary rounded-xl font-label text-xs font-semibold hover:bg-primary/5 transition-colors shadow-sm"
                   >
-                    Write a rubric <ArrowRight size={14} />
+                    Write the rules <ArrowRight size={14} />
                   </button>
                 </div>
               )}
@@ -1113,7 +1116,7 @@ export default function KnowledgePage() {
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 className={cn(
-                  "relative rounded-2xl border-2 border-dashed p-8 transition-colors flex flex-col items-center justify-center text-center group",
+                  "relative rounded-2xl border-2 border-dashed p-4 sm:p-8 transition-colors flex flex-col items-center justify-center text-center group",
                   isDragging
                     ? "border-primary bg-primary/[0.08] shadow-inner"
                     : "border-primary/30 bg-primary/[0.02] hover:border-primary/60 hover:bg-primary/[0.04]",
@@ -1122,7 +1125,7 @@ export default function KnowledgePage() {
               >
                 <div
                   className={cn(
-                    "w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-xs mb-3",
+                    "w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-sm mb-3",
                     isDragging || uploading
                       ? "bg-primary text-white"
                       : "bg-primary/10 text-primary group-hover:bg-primary/20"
@@ -1140,10 +1143,10 @@ export default function KnowledgePage() {
                     ? "Uploading…"
                     : isDragging
                     ? "Drop your file here to upload"
-                    : "Drop your file here or browse from computer"}
+                    : (<><span className="max-sm:hidden">Drop your file here or choose a file</span><span className="sm:hidden">Choose a file</span></>)}
                 </p>
 
-                <p className="font-body text-xs text-on-surface-muted mt-1 max-w-md">
+                <p className="max-sm:hidden font-body text-xs text-on-surface-muted mt-1 max-w-md">
                   Supports PDF, DOCX, PPTX, XLSX, CSV, TXT, MD, and Images up to 25 MB.
                 </p>
 
@@ -1161,10 +1164,10 @@ export default function KnowledgePage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading || !canUpload}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     <Plus size={16} />
-                    Choose File to Upload
+                    Choose a file
                   </button>
                   <input
                     ref={fileInputRef}
@@ -1288,7 +1291,7 @@ export default function KnowledgePage() {
                     className={cn(
                       "p-1.5 rounded-lg transition-colors",
                       viewMode === "table"
-                        ? "bg-white text-primary shadow-xs"
+                        ? "bg-white text-primary shadow-sm"
                         : "text-on-surface-muted hover:text-on-surface"
                     )}
                   >
@@ -1300,7 +1303,7 @@ export default function KnowledgePage() {
                     className={cn(
                       "p-1.5 rounded-lg transition-colors",
                       viewMode === "grid"
-                        ? "bg-white text-primary shadow-xs"
+                        ? "bg-white text-primary shadow-sm"
                         : "text-on-surface-muted hover:text-on-surface"
                     )}
                   >
@@ -1419,7 +1422,7 @@ export default function KnowledgePage() {
                   return (
                     <div
                       key={doc.id}
-                      className="bg-white rounded-2xl border border-surface-mid p-5 shadow-xs hover:shadow-card hover:border-primary/30 transition-all flex flex-col justify-between group"
+                      className="bg-white rounded-2xl border border-surface-mid p-5 shadow-sm hover:shadow-card hover:border-primary/30 transition-all flex flex-col justify-between group"
                     >
                       <div>
                         {/* Top card bar: icon + type badge + status */}
@@ -1496,14 +1499,14 @@ export default function KnowledgePage() {
                           {renderSortAction(doc)}
                           <button
                             onClick={() => openDocument(doc.id)}
-                            title="What Anril looks up from this file"
+                            title="What Anril looks up from this file" aria-label="What Anril looks up from this file"
                             className="p-1.5 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                           >
                             <Eye size={16} />
                           </button>
                           <button
                             onClick={() => downloadDocument(doc.id)}
-                            title="Download original file"
+                            title="Download original file" aria-label="Download original file"
                             className="p-1.5 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                           >
                             <Download size={16} />
@@ -1511,7 +1514,7 @@ export default function KnowledgePage() {
                           {canManageKnowledge && (
                             <button
                               onClick={() => setDeletingDoc(doc)}
-                              title="Delete document"
+                              title="Delete document" aria-label="Delete document"
                               className="p-1.5 text-on-surface-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             >
                               <Trash2 size={16} />
@@ -1636,14 +1639,14 @@ export default function KnowledgePage() {
                               {renderSortAction(doc)}
                               <button
                                 onClick={() => openDocument(doc.id)}
-                                title="What Anril looks up from this file"
+                                title="What Anril looks up from this file" aria-label="What Anril looks up from this file"
                                 className="p-2 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                               >
                                 <Eye size={16} />
                               </button>
                               <button
                                 onClick={() => downloadDocument(doc.id)}
-                                title="Download original file"
+                                title="Download original file" aria-label="Download original file"
                                 className="p-2 text-on-surface-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                               >
                                 <Download size={16} />
@@ -1651,7 +1654,7 @@ export default function KnowledgePage() {
                               {canManageKnowledge && (
                                 <button
                                   onClick={() => setDeletingDoc(doc)}
-                                  title="Delete document"
+                                  title="Delete document" aria-label="Delete document"
                                   className="p-2 text-on-surface-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 >
                                   <Trash2 size={16} />
@@ -1694,22 +1697,22 @@ export default function KnowledgePage() {
           <div className="bg-surface rounded-2xl p-6 md:p-8 border border-surface-mid shadow-sm space-y-4">
             <div>
               <h2 className="font-display text-lg font-bold text-primary">
-                Lead Scoring Rubric (Hot / Warm / Cold)
+                Hot/Warm/Cold rules
               </h2>
               <p className="font-body text-xs text-on-surface-muted mt-1 leading-relaxed">
-                The criteria used by Anril to classify leads into Hot, Warm, or Cold categories based on conversation transcripts. You can edit this rubric manually or toggle auto-update to sync with your product description.
+                The criteria used by Anril to classify leads into Hot, Warm, or Cold categories based on conversation transcripts. You can edit these rules manually or toggle auto-update to sync with your product description.
               </p>
             </div>
 
             <div className="flex items-start justify-between gap-4 rounded-xl border border-surface-mid bg-surface-low p-4">
               <div>
                 <p className="font-label text-sm font-semibold text-on-surface">
-                  Auto-generate rubric from product description
+                  Auto-generate rules from product description
                 </p>
                 <p className="font-body text-xs text-on-surface-muted mt-0.5 leading-relaxed">
                   {rubricAutoUpdate
-                    ? "Active: saving your description will automatically update this rubric based on your updated products/services."
-                    : "Disabled: manual rubric changes below will be preserved and won't be modified when editing your product description."}
+                    ? "Active: saving your description will automatically update these rules based on your updated products/services."
+                    : "Disabled: manual changes to the rules below will be preserved and won't be modified when editing your product description."}
                 </p>
               </div>
 
@@ -1719,7 +1722,7 @@ export default function KnowledgePage() {
                   onChange={toggleRubricAutoUpdate}
                   loading={rubricToggleSaving}
                   disabled={!canManageKnowledge || !setupLoaded || rubricLoadFailed}
-                  aria-label="Auto-generate rubric from product description"
+                  aria-label="Auto-generate rules from product description"
                 />
               </div>
             </div>
@@ -1747,9 +1750,9 @@ export default function KnowledgePage() {
                   <button
                     onClick={saveRubric}
                     disabled={rubricSaving || scoringRubric === savedRubric || !canManageKnowledge}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
-                    <Save size={14} /> {rubricSaving ? "Saving…" : "Save Rubric"}
+                    <Save size={14} /> {rubricSaving ? "Saving…" : "Save Rules"}
                   </button>
                 </div>
               </>
@@ -1870,7 +1873,7 @@ export default function KnowledgePage() {
                   />
                 </div>
               ) : viewingDoc.full_text ? (
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-on-surface bg-white p-4 rounded-xl border border-surface-mid/80 shadow-xs">
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-on-surface bg-white p-4 rounded-xl border border-surface-mid/80 shadow-sm">
                   {viewerSearch
                     ? viewingDoc.full_text
                         .split(new RegExp(`(${viewerSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"))
@@ -1904,7 +1907,7 @@ export default function KnowledgePage() {
                     setFactsDraft(viewingDoc.full_text || "");
                     setFactsEditing(true);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-sm"
                 >
                   <Pencil size={13} /> Edit
                 </button>
@@ -1914,7 +1917,7 @@ export default function KnowledgePage() {
                   <button
                     onClick={saveFacts}
                     disabled={factsSaving || factsDraft === viewingDoc.full_text}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-white rounded-xl font-label text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-xs"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-white rounded-xl font-label text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-sm"
                   >
                     {factsSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
                   </button>
@@ -1932,7 +1935,7 @@ export default function KnowledgePage() {
                   onClick={() =>
                     setHistoryTarget({ kind: "facts", documentId: viewingDoc.id, title: viewingDoc.name })
                   }
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-sm"
                 >
                   <History size={13} /> History
                 </button>
@@ -1941,7 +1944,7 @@ export default function KnowledgePage() {
               <button
                 onClick={copyExtractedText}
                 disabled={!viewingDoc.full_text}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-mid text-on-surface rounded-xl font-label text-xs font-semibold border border-surface-mid transition-colors shadow-sm"
               >
                 {copiedText ? (
                   <>
@@ -1963,7 +1966,7 @@ export default function KnowledgePage() {
                   <button
                     onClick={() => downloadDocument(viewingDoc.id)}
                     disabled={downloading}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl font-label text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-xs"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl font-label text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-colors shadow-sm"
                   >
                     <Download size={14} />
                     {downloading ? "Preparing…" : "Download Original File"}
@@ -2079,7 +2082,7 @@ export default function KnowledgePage() {
                   setSameNamePrompt(null);
                   processUpload(file, existing.id);
                 }}
-                className="px-4 py-2 rounded-xl bg-primary text-white font-label text-xs font-semibold hover:bg-primary/90 transition-colors shadow-xs"
+                className="px-4 py-2 rounded-xl bg-primary text-white font-label text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
               >
                 Replace it
               </button>

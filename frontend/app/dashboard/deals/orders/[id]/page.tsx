@@ -242,7 +242,7 @@ export default function OrderPage() {
               {o.refunded_paise > 0 && <p className="mt-1 text-xs text-on-surface-muted">{rupees(o.refunded_paise)} given back. See the refund under Payments.</p>}
             </Panel>
           ) : o.stage === "quoted" ? (
-            <Panel title="Quote" right={<span className="text-[11px] text-on-surface-muted">{o.quote.valid_until ? `valid till ${dayOnly(o.quote.valid_until)}` : ""}</span>}>
+            <Panel title="Quote" right={<span className="text-[11px] text-on-surface-muted">{o.quote.valid_until ? `price offer · valid till ${dayOnly(o.quote.valid_until)}` : "price offer"}</span>}>
               <dl className="grid gap-2 text-sm sm:grid-cols-3">
                 <div><dt className="text-xs text-on-surface-muted">Sent</dt><dd className="font-label font-bold text-[#0A1528]">{o.quote.sent_at ? dateTime(o.quote.sent_at) : "Not yet (draft)"}</dd></div>
                 <div><dt className="text-xs text-on-surface-muted">Advance on Accept</dt><dd className="font-label font-bold text-[#0A1528]">{o.quote.advance_paise ? rupees(o.quote.advance_paise) : "None"}</dd></div>
@@ -464,7 +464,7 @@ export default function OrderPage() {
           )}
           {o.customer_full.lead_id && (o.payment === "advance" || o.payment === "paid") && (
             <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 text-xs leading-6 text-[#334155] shadow-sm">
-              <h2 className="font-label text-sm font-bold text-[#0A1528]">In Engage</h2>
+              <h2 className="font-label text-sm font-bold text-[#0A1528]">Customer status</h2>
               {o.payment === "advance" ? (
                 <p>{first} shows <span className="rounded-full bg-sky-50 px-2 py-0.5 font-bold text-sky-700">Advance paid · {rupees(o.paid_paise)}</span> until the balance is paid. Then they become <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">Came / Paid · {rupees(o.total_paise)}</span> by themselves.</p>
               ) : (

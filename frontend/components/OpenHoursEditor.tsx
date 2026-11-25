@@ -56,6 +56,16 @@ export function OpenHoursEditor({
     setError(null);
   }
 
+  // Copies Monday's on/open/close into the chosen days in the draft only (nothing is saved).
+  function copyMonday(through: number) {
+    setDays((all) => {
+      const mon = all[0];
+      if (!mon) return all;
+      return all.map((d, j) => (j >= 1 && j <= through ? { ...d, on: mon.on, open: mon.open, close: mon.close } : d));
+    });
+    setError(null);
+  }
+
   async function save() {
     const problem = openHoursProblem(days);
     if (problem) {
@@ -89,6 +99,18 @@ export function OpenHoursEditor({
 
   return (
     <div className="space-y-4">
+      {canManage && (
+        <div className="flex flex-nowrap gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button type="button" disabled={busy} onClick={() => copyMonday(days.length - 1)}
+            className="h-8 shrink-0 whitespace-nowrap rounded-full border border-border-subtle bg-white px-3 font-label text-xs font-bold text-ink hover:border-primary/40 disabled:opacity-60">
+            Same as Monday for all days
+          </button>
+          <button type="button" disabled={busy} onClick={() => copyMonday(5)}
+            className="h-8 shrink-0 whitespace-nowrap rounded-full border border-border-subtle bg-white px-3 font-label text-xs font-bold text-ink hover:border-primary/40 disabled:opacity-60">
+            Mon–Sat same as Monday
+          </button>
+        </div>
+      )}
       <fieldset className="divide-y divide-border-subtle rounded-2xl border border-border-subtle" disabled={!canManage || busy}>
         <legend className="sr-only">Open hours for each day (India time)</legend>
         {days.map((d, i) => (
@@ -120,10 +142,10 @@ export function OpenHoursEditor({
         <p className="font-body text-xs text-ink-muted" aria-live="polite">Right now: {saved.status}. Times are India time.</p>
       )}
       {error && <p role="alert" className="font-body text-sm text-danger">{error}</p>}
-      <div className="flex flex-wrap items-center justify-end gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3 max-lg:sticky max-lg:bottom-[calc(var(--mobile-nav-h,0px)+env(safe-area-inset-bottom,0px)+0.5rem)] max-lg:z-10 max-lg:rounded-2xl max-lg:border max-lg:border-border-subtle max-lg:bg-white max-lg:p-3 max-lg:shadow-lg">
         {footerNote && <span className="font-body text-xs text-ink-muted">{footerNote}</span>}
         {canManage && (
-          <button type="button" onClick={() => void save()} disabled={busy} className="btn-primary inline-flex items-center gap-2">
+          <button type="button" onClick={() => void save()} disabled={busy} className="btn-primary inline-flex min-h-11 items-center gap-2">
             {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
             {saveLabel}
           </button>

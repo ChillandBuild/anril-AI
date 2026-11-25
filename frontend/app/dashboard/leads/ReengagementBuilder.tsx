@@ -428,17 +428,17 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
                     <p className="max-w-xl truncate text-sm text-on-surface">&ldquo;{s.message_content}&rdquo;</p>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 sm:gap-3">
                   <button
                     onClick={() => setExpandedLog(expandedLog === s.id ? null : s.id)}
-                    className="text-xs text-on-surface-muted hover:text-on-surface"
+                    className="inline-flex min-h-8 items-center px-2 text-xs text-on-surface-muted hover:text-on-surface"
                   >
                     {expandedLog === s.id ? "Hide history" : "History"}
                   </button>
-                  <button onClick={() => startEdit(s)} disabled={!canManage} className="text-xs text-on-surface hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">
+                  <button onClick={() => startEdit(s)} disabled={!canManage} className="inline-flex min-h-8 items-center px-2 text-xs text-on-surface hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">
                     Edit
                   </button>
-                  <button onClick={() => removeStep(s.id)} disabled={!canManage} className="text-xs text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button onClick={() => removeStep(s.id)} disabled={!canManage} className="inline-flex min-h-8 items-center px-2 text-xs text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40">
                     Remove
                   </button>
                 </div>
@@ -456,7 +456,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
       {/* Add form */}
       {showAdd ? (
         <div className="space-y-4 rounded-2xl border border-on-surface/15 p-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div role="group" aria-labelledby="delay-label">
               <span id="delay-label" className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Wait</span>
               <div className="mt-1 flex gap-2">
@@ -489,7 +489,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
               )}
             </div>
             <div role="group" aria-labelledby="seg-label">
-              <span id="seg-label" className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Target segments</span>
+              <span id="seg-label" className="font-label text-xs uppercase tracking-widest text-on-surface-muted">Who to message</span>
               <div className="mt-1 flex gap-2">
                 {SEGMENTS.map((s) => (
                   <button
@@ -554,7 +554,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
               onClick={() => setMessageType("freeform")}
               className={`rounded-xl px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 ${messageType === "freeform" ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`}
             >
-              Freeform (window only)
+              Within 24 hours (any text)
             </button>
             <button
               type="button"
@@ -562,7 +562,7 @@ export default function ReengagementBuilder({ type, broadcastId, templates, canM
               onClick={() => setMessageType("template")}
               className={`rounded-xl px-4 py-2 text-sm ${messageType === "template" ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`}
             >
-              Approved template (always sent)
+              After 24 hours (approved template)
             </button>
           </div>
 

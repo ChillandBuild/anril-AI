@@ -137,7 +137,7 @@ export default function ReportCardPage() {
                 <h2 id="sales-h" className="font-display text-base font-bold text-ink">Sales from AI chats</h2>
                 <p className="font-display text-3xl font-bold text-ink">{rupees(card.revenue_from_ai_paise)}</p>
                 <p className="font-body text-xs text-ink-secondary">
-                  {card.paid_orders_by_ai ?? 0} paid {card.paid_orders_by_ai === 1 ? "order" : "orders"} the AI agent closed, before GST
+                  {card.paid_orders_by_ai ?? 0} paid {card.paid_orders_by_ai === 1 ? "order" : "orders"} Anril closed, before GST
                 </p>
                 <Change value={changeVs(card.revenue_from_ai_paise, card.previous?.revenue_from_ai_paise)} unit="rupees" label={vsLabel} />
               </section>
@@ -177,10 +177,10 @@ export default function ReportCardPage() {
           )}
           <section className="card flex flex-wrap items-start gap-3 !py-0 !pl-2" aria-labelledby="fix-h">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/login/healy-poster.png" alt="" width={150} height={150} className="h-[150px] w-[150px] shrink-0 object-contain" />
+            <img src="/login/healy-poster.png" alt="" width={150} height={150} className="hidden h-[150px] w-[150px] shrink-0 object-contain sm:block" />
             <div className="min-w-0 flex-[1_1_400px] py-[18px]">
               <h2 id="fix-h" className="font-display text-base font-bold text-ink">Fix these</h2>
-              <p className="font-body text-xs text-ink-secondary">Each fix makes the AI agent better next time.</p>
+              <p className="font-body text-xs text-ink-secondary">Each fix makes Anril better next time.</p>
               {card.fix_these.length === 0 ? (
                 <p className="mt-3 font-body text-sm text-ink-secondary">Nothing to fix right now.</p>
               ) : (

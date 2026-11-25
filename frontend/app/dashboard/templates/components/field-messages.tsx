@@ -97,7 +97,7 @@ export function SampleInputs({
   samples,
   onChange,
   idPrefix,
-  label = "Variable samples",
+  label = "Example values",
   chipLabel = (n: number) => `{{${n}}}`,
 }: {
   variables: number[];

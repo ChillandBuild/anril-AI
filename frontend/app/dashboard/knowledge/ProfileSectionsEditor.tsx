@@ -232,7 +232,7 @@ export default function ProfileSectionsEditor({
 
           <button
             onClick={() => setShowConvertModal(true)}
-            className="w-full px-4 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 transition-colors shadow-xs"
+            className="w-full px-4 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
           >
             Convert to sections
           </button>
@@ -292,7 +292,7 @@ export default function ProfileSectionsEditor({
       {!isStructured && !other && (
         <button
           onClick={() => setShowConvertModal(true)}
-          className="w-full px-4 py-2.5 bg-surface border border-surface-mid text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-low transition-colors shadow-xs"
+          className="w-full px-4 py-2.5 bg-surface border border-surface-mid text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-low transition-colors shadow-sm"
         >
           Convert to sections
         </button>
@@ -302,7 +302,7 @@ export default function ProfileSectionsEditor({
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={onOpenHistory}
-          className="flex items-center gap-2 px-4 py-2.5 bg-surface border border-surface-mid text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-low transition-colors shadow-xs"
+          className="flex items-center gap-2 px-4 py-2.5 bg-surface border border-surface-mid text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-low transition-colors shadow-sm"
         >
           <History size={14} /> History
         </button>
@@ -310,7 +310,7 @@ export default function ProfileSectionsEditor({
         <button
           onClick={handleSave}
           disabled={saving || !isDirty || currentTotal > hardLimit}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
           <Save size={14} /> {saving ? "Saving…" : "Save"}
         </button>

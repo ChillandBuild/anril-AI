@@ -145,8 +145,8 @@ function FunnelSteps({ steps }: { steps: FunnelStep[] }) {
           : Math.min(Math.round((step.count / firstCount) * 100), 100);
 
         return (
-          <div key={step.label} className="flex items-center gap-3">
-            <span className="font-label text-xs text-on-surface-muted w-20 text-right shrink-0">
+          <div key={step.label} className="flex items-center gap-3 max-md:flex-wrap max-md:gap-y-1">
+            <span className="font-label text-xs text-on-surface-muted w-20 text-right shrink-0 max-md:w-full max-md:text-left">
               {step.label}
             </span>
             <div className="flex-1 bg-surface-mid rounded-full h-6 overflow-hidden">
@@ -185,7 +185,7 @@ function PerformanceKpi({ card }: { card: PerformanceCard }) {
       edge={edgeFromTone(card.tone ?? "border-t-primary-500")}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-label text-xs">
-        <span className="text-on-surface-muted">{card.scope}</span>
+        <span className="text-on-surface-muted max-md:hidden">{card.scope}</span>
         {deltaLabel && (
           <span className={improved ? "text-emerald-600" : card.delta === 0 ? "text-on-surface-muted" : "text-red-600"}>
             {deltaLabel}
@@ -216,8 +216,8 @@ function MovementFlows({ flows }: { flows: CompareMovement["flows"] }) {
       {flows.map((f) => {
         const up = (RANK[f.to] ?? 0) > (RANK[f.from] ?? 0);
         return (
-          <div key={`${f.from}-${f.to}`} className="flex items-center gap-3">
-            <span className="w-36 shrink-0 font-label text-xs text-on-surface-muted">
+          <div key={`${f.from}-${f.to}`} className="flex items-center gap-3 max-md:flex-wrap max-md:gap-y-1">
+            <span className="w-36 shrink-0 max-md:w-full font-label text-xs text-on-surface-muted">
               {SEGMENT_LABEL[f.from] ?? f.from} → {SEGMENT_LABEL[f.to] ?? f.to}
             </span>
             <div className="h-4 flex-1 overflow-hidden rounded-full bg-surface-mid">
@@ -290,7 +290,9 @@ function LeadHeatmap({ points }: { points: ComparePeriod["heatmap"] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <>
+    <p className="font-label text-xs text-on-surface-muted md:hidden">Open on a bigger screen to see the hour-by-hour chart.</p>
+    <div className="overflow-x-auto max-md:hidden">
       <div className="grid gap-0.5" style={{ gridTemplateColumns: "40px repeat(24, minmax(0, 1fr))" }}>
         <div />
         {Array.from({ length: 24 }, (_, h) => (
@@ -317,6 +319,7 @@ function LeadHeatmap({ points }: { points: ComparePeriod["heatmap"] }) {
         ))}
       </div>
     </div>
+    </>
   );
 }
 
@@ -635,11 +638,11 @@ export function CompareTab({
                 tone="border-t-sky-400"
               />
               <StatCard
-                label="Slowest 10%"
+                label="Slowest replies"
                 value={seconds(data.current.response.p90_seconds)}
                 delta={hasComparison ? data.response_metrics.p90_seconds?.delta_pct : undefined}
                 sense="lower"
-                sub="90th percentile"
+                sub="slowest 1 in 10"
                 tone="border-t-amber-400"
               />
               <StatCard
@@ -658,14 +661,14 @@ export function CompareTab({
             </div>
           )}
 
-          {/* What the AI did -- straight from lead_stage_events. */}
+          {/* What Anril did -- straight from lead_stage_events. */}
           {data.current.movement.flows.length > 0 && (
             <div className="min-w-0 rounded-card bg-surface p-4 shadow-card ring-1 ring-[#c4c7c7]/15 sm:p-6">
               <h2 className="font-display text-base font-bold text-primary">
-                What the AI did with your leads
+                What Anril did with your leads
               </h2>
               <p className="mb-4 mt-1 font-label text-xs text-on-surface-muted">
-                The AI moved {data.current.movement.promoted} leads up and{" "}
+                Anril moved {data.current.movement.promoted} leads up and{" "}
                 {data.current.movement.demoted} down.{" "}
                 {data.current.movement.promoted_to_hot} became hot leads.
               </p>

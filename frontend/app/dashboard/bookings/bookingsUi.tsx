@@ -54,8 +54,8 @@ export function DownloadListButton({ start, end, disabled }: { start: string; en
     }
   }
   return (
-    <button type="button" className={BTN_SECONDARY} onClick={() => void go()} disabled={busy || disabled} title="Download this list">
-      <Download size={16} aria-hidden /> Download the list
+    <button type="button" className={cn(BTN_SECONDARY, "max-md:h-8 max-md:min-h-8 max-md:w-8 max-md:px-0 max-md:py-0")} onClick={() => void go()} disabled={busy || disabled} title="Download this list" aria-label="Download the list">
+      <Download size={16} aria-hidden /> <span className="max-md:hidden">Download the list</span>
     </button>
   );
 }

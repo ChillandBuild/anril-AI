@@ -94,7 +94,7 @@ export default function ExpensesPage() {
         <div className="flex items-center justify-center gap-2 rounded-card border border-border bg-white py-16 text-sm text-ink-muted"><Loader2 size={16} className="animate-spin" /> Loading…</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {canAdd && data.is_current && <QuickAdd onAdded={() => mutate()} />}
             <ExpenseTable data={data} canAdd={canAdd} onChanged={() => mutate()} onEditRepeat={canManage ? (r) => setRepeat(r) : undefined} />
             <p className="text-sm text-ink-muted">
@@ -102,7 +102,7 @@ export default function ExpensesPage() {
               stock counts. You only type the rest. Rent and salary set under <b>Every month</b> are added by themselves on their day.
             </p>
           </div>
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <Profit data={data} />
             <p className="rounded-card border border-primary/20 bg-primary-50/60 px-4 py-3 text-sm leading-relaxed text-ink">
               Purchases are not counted twice: stock you bought becomes &ldquo;cost of items sold&rdquo; when it sells (at its cost price).
@@ -152,32 +152,34 @@ function QuickAdd({ onAdded }: { onAdded: () => void }) {
 
   return (
     <section className="rounded-card border border-border bg-white p-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="px-1 font-display text-sm font-bold text-ink">Quick add</span>
-        <label className="relative">
+      <div className="flex flex-wrap items-center gap-2 max-md:contents">
+        <span className="px-1 font-display text-sm font-bold text-ink max-md:hidden">Quick add</span>
+        <label className="relative max-md:order-1 max-md:min-w-0 max-md:flex-1">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">₹</span>
           <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="1,200" aria-label="Amount"
             onKeyDown={(e) => { if (e.key === "Enter" && toPaise(amount) > 0) save(); }}
-            className="h-10 w-28 rounded-xl border border-border pl-7 pr-2 text-sm tabular-nums outline-none focus:border-primary" />
+            className="h-10 w-28 rounded-xl border border-border pl-7 pr-2 text-sm tabular-nums max-md:w-full outline-none focus:border-primary" />
         </label>
+        <div className="contents max-md:order-3 max-md:flex max-md:w-full max-md:flex-nowrap max-md:gap-2 max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
         {CATEGORIES.map((c) => (
           <button key={c.value} type="button" onClick={() => setCategory(c.value)} aria-pressed={category === c.value}
-            className={cn("h-9 rounded-xl border px-3 text-sm font-semibold", category === c.value ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink hover:bg-surface-low")}>
+            className={cn("h-9 rounded-xl border px-3 text-sm font-semibold max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap max-md:text-xs", category === c.value ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink hover:bg-surface-low")}>
             {c.label}
           </button>
         ))}
+        </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2 max-md:contents">
         <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} placeholder="What for (optional), e.g. Auto to godown"
-          className="h-10 min-w-[200px] flex-1 rounded-xl border border-border px-3 text-sm outline-none focus:border-primary" />
-        <Select value={method} onChange={(v) => setMethod(v as ExpenseMethod)} options={METHODS} className="w-28" aria-label="Paid by" />
+          className="h-10 min-w-[200px] flex-1 rounded-xl border border-border px-3 text-sm outline-none focus:border-primary max-md:order-4 max-md:w-full" />
+        <Select value={method} onChange={(v) => setMethod(v as ExpenseMethod)} options={METHODS} className="w-28 max-md:order-5" aria-label="Paid by" />
         <input ref={file} type="file" hidden accept="image/jpeg,image/png,application/pdf" onChange={(e) => setBill(e.target.files?.[0] ?? null)} />
         <button type="button" onClick={() => file.current?.click()}
-          className={cn("inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold", bill ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink hover:bg-surface-low")}>
+          className={cn("inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold max-md:order-5", bill ? "border-primary bg-primary-50 text-primary-800" : "border-border text-ink hover:bg-surface-low")}>
           <Camera size={15} /> {bill ? "Bill added" : "Bill"}
         </button>
         <button type="button" onClick={save} disabled={busy || toPaise(amount) <= 0}
-          className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-50">
+          className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-50 max-md:order-2 max-md:min-h-11">
           {busy && <Loader2 size={14} className="animate-spin" />} Save
         </button>
       </div>
@@ -255,7 +257,7 @@ function ExpenseTable({ data, canAdd, onChanged, onEditRepeat }: {
                       <button type="button" onClick={() => setConfirm(null)} className="text-ink-muted">Keep</button>
                     </span>
                   ) : (
-                    <button type="button" onClick={() => setConfirm(e.id)} aria-label="Delete" className="text-ink-muted hover:text-danger"><Trash2 size={14} /></button>
+                    <button type="button" onClick={() => setConfirm(e.id)} aria-label="Delete" className="inline-flex h-8 w-8 items-center justify-center text-ink-muted hover:text-danger"><Trash2 size={14} /></button>
                   ))}
                 </td>
               </tr>

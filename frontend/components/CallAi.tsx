@@ -15,7 +15,7 @@ export function anyProcessing(logs: CallLog[]): boolean {
   return logs.some(isProcessing);
 }
 
-const PILL = "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-label text-[9px] font-bold";
+const PILL = "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-label text-[9px] max-md:text-xs font-bold";
 
 /** First and last line only; the middle is never sent to the browser.
  *  With callLogId, a "Show in English" toggle sits above the lines: one request, then kept on the call. */
@@ -135,7 +135,7 @@ function ProcessingBanner({ log, onRetried }: { log: CallLog; onRetried?: () => 
         type="button"
         onClick={() => void retry()}
         disabled={retrying}
-        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-white border border-rose-200 px-2.5 py-1.5 font-label text-[10px] font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-60 transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-white border border-rose-200 px-2.5 py-1.5 max-md:min-h-8 font-label text-[10px] max-md:text-xs font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-60 transition-colors"
       >
         <RefreshCw size={11} className={retrying ? "animate-spin" : ""} /> Retry
       </button>

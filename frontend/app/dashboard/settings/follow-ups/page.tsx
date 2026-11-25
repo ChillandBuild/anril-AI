@@ -144,7 +144,7 @@ export default function FollowUpsSettingsPage() {
         id="silence-nudge"
         icon={Timer}
         accent="emerald"
-        title="Quick nudges (inside 24 hours, free text)"
+        title="Within 24 hours (any text)"
         description="After the AI answers, if the lead stays silent, send one short message about what they were discussing. Never sent while your team has taken over the chat, or during a paid consultation."
         status={{ label: enabled ? "On" : "Off", tone: enabled ? "on" : "off" }}
         dirty={dirty}
@@ -265,7 +265,7 @@ export default function FollowUpsSettingsPage() {
                                       type="button"
                                       onClick={() => removeReminder(i)}
                                       aria-label={`Remove reminder ${i + 1}`}
-                                      className="rounded-lg p-0.5 text-ink-muted transition-colors hover:bg-white hover:text-red-600 hover:shadow-xs"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-white hover:text-red-600 hover:shadow-xs"
                                     >
                                       <X className="h-3.5 w-3.5" />
                                     </button>
@@ -313,7 +313,7 @@ export default function FollowUpsSettingsPage() {
                                           key={p.mins}
                                           type="button"
                                           onClick={() => setReminder(i, p.mins)}
-                                          className={`rounded px-1.5 py-0.5 font-label text-[10px] font-medium transition ${
+                                          className={`h-7 rounded px-2.5 font-label text-xs font-medium transition ${
                                             mins === p.mins
                                               ? "bg-emerald-600 text-white shadow-xs"
                                               : "bg-white text-ink-secondary border border-border hover:border-emerald-300 hover:text-emerald-700"

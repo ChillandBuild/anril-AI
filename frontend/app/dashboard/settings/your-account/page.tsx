@@ -40,10 +40,6 @@ export default function YourAccountPage() {
           {memberSince && (
             <span className="font-label text-xs text-ink-muted">Member since {memberSince}</span>
           )}
-          <span className="flex items-center gap-1.5 font-label text-xs text-emerald-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            All systems online
-          </span>
         </div>
       </section>
 

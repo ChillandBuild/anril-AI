@@ -125,7 +125,7 @@ export default function ChannelsOverview({
           </div>
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/login/tealy-poster.png" alt="" width={150} height={150} className="-my-2 mr-2 h-[150px] w-[150px] flex-none object-contain" />
+        <img src="/login/tealy-poster.png" alt="" width={150} height={150} className="-my-2 mr-2 hidden h-[150px] w-[150px] flex-none object-contain sm:block" />
       </section>
 
       {TILE_GROUPS.map((group, gi) => (
@@ -181,7 +181,7 @@ export default function ChannelsOverview({
       <section className="overflow-hidden rounded-2xl border border-border bg-white shadow-card">
         <div className="flex flex-wrap items-center gap-3 pl-2 pr-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/login/healy-poster.png" alt="" width={150} height={150} className="-my-2 h-[150px] w-[150px] flex-none object-contain" />
+          <img src="/login/healy-poster.png" alt="" width={150} height={150} className="-my-2 hidden h-[150px] w-[150px] flex-none object-contain sm:block" />
           <div className="min-w-0 flex-[1_1_300px] py-4">
             <div className="font-display font-extrabold text-ink">Advanced: your own API keys and webhooks</div>
             <div className="font-body text-[13px] text-ink-secondary">For a business account you manage yourself. Telegram and Razorpay keys also go here.</div>

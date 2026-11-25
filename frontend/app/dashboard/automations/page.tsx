@@ -42,7 +42,7 @@ export default function AutomationsPage() {
   const paused = (data?.automations ?? []).filter((a) => a.paused || a.paused_reason);
 
   return (
-    <div className="w-full space-y-4 p-4">
+    <div className="w-full space-y-4 md:p-4">
       {data && data.paused_count > 0 && (
         <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-3 font-body text-sm text-red-900">
           <p className="font-bold">

@@ -11,7 +11,6 @@ import { FeedbackTodayList } from "./FeedbackTodayList";
 import { todayIst } from "../bookings/bookingsTime";
 import {
   BOX_META,
-  boxSub,
   formatBoxValue,
   isLoss,
   listIsOn,
@@ -150,20 +149,18 @@ export function PhoneToday({ today, layout, onEdit }: { today: HomeToday; layout
         <ul className="grid grid-cols-2 gap-2.5" aria-label="Today in numbers">
           {tiles.map((key) => {
             const box = boxes[key] as HomeBox;
-            const sub = boxSub(key, box);
             return (
               <li key={key} className="min-w-0">
-                <Link href={box.href} className="flex h-full min-w-0 flex-col gap-1 rounded-2xl border border-border bg-white p-3.5 text-ink active:bg-surface-mid">
+                <Link href={box.href} className="flex h-full min-w-0 flex-col gap-1 rounded-2xl border border-border bg-white p-2.5 text-ink active:bg-surface-mid">
                   <span className="font-label text-[13px] font-bold leading-tight text-ink-secondary">{BOX_META[key].label}</span>
                   <span
                     className={cn(
-                      "truncate font-display text-2xl font-extrabold leading-tight tabular-nums",
+                      "truncate font-display text-xl font-extrabold leading-tight tabular-nums",
                       isLoss(key, box) ? "text-rose-700" : "text-ink",
                     )}
                   >
                     {formatBoxValue(box)}
                   </span>
-                  {sub && <span className="line-clamp-2 font-label text-xs font-medium text-ink-muted">{sub}</span>}
                 </Link>
               </li>
             );

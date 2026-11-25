@@ -170,7 +170,7 @@ export default function KnowledgeHistoryModal({ kind, documentId, title, canRest
                       <button
                         onClick={restore}
                         disabled={restoring}
-                        className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 font-label text-xs font-semibold text-white shadow-xs transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 font-label text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
                       >
                         {restoring ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Restore this version
                       </button>

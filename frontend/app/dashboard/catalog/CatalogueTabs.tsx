@@ -64,14 +64,14 @@ export function CatalogueTabs() {
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex w-full flex-wrap gap-1 rounded-xl border border-border bg-white p-1 shadow-sm md:hidden">
+    <div className="flex w-full flex-nowrap gap-1 overflow-x-auto rounded-xl border border-border bg-white p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden">
       {tabs.map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}
           aria-current={tab.active ? "page" : undefined}
           className={cn(
-            "inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
+            "inline-flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition-colors",
             tab.active ? "bg-primary text-white" : "text-ink-muted hover:bg-surface-low hover:text-ink"
           )}
         >

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MetaCharges } from "@/lib/connectionsApi";
-import { barTone, barWidth, dailyLimitText, formatCount, formatMoney, inShort } from "./chargesText";
+import { barTone, barWidth, formatCount, formatMoney, inShort } from "./chargesText";
 
 const charges = (cost: number, currency = "INR"): MetaCharges => ({
   available: true,
@@ -63,9 +63,4 @@ describe("inShort", () => {
       "Meta charged ₹0 this month. You have used 1,200 AI replies this month.",
     );
   });
-});
-
-describe("dailyLimitText", () => {
-  it("shows the number", () => expect(dailyLimitText(10000)).toBe("Up to 10,000 different customers a day"));
-  it("says so when unknown", () => expect(dailyLimitText(null)).toBe("Meta hasn't told us your limit yet."));
 });

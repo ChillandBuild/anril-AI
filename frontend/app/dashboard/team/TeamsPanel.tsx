@@ -231,12 +231,12 @@ function TeamCard({ team, everyone, allTeams, busy, run, setNote }: TeamCardProp
         ) : (
           <>
             <h3 className="min-w-0 truncate font-display text-sm font-bold text-ink">{team.name}</h3>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1 max-md:gap-2">
               <button
                 type="button"
                 aria-label={`Rename ${team.name}`}
                 onClick={() => setRenaming(true)}
-                className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-soft"
+                className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-soft max-md:inline-flex max-md:h-9 max-md:w-9 max-md:items-center max-md:justify-center"
               >
                 <Pencil size={14} />
               </button>
@@ -245,7 +245,7 @@ function TeamCard({ team, everyone, allTeams, busy, run, setNote }: TeamCardProp
                 aria-label={`Delete ${team.name}`}
                 onClick={() => void removeTeam()}
                 disabled={busy}
-                className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50 max-md:inline-flex max-md:h-9 max-md:w-9 max-md:items-center max-md:justify-center"
               >
                 <Trash2 size={14} />
               </button>
@@ -260,7 +260,7 @@ function TeamCard({ team, everyone, allTeams, busy, run, setNote }: TeamCardProp
           <button
             type="button"
             onClick={() => setPickLeaders((v) => !v)}
-            className="font-body text-xs font-semibold text-primary hover:underline"
+            className="inline-flex min-h-8 items-center px-2 font-body text-xs font-semibold text-primary hover:underline"
           >
             {pickLeaders ? "Done" : "Pick leaders"}
           </button>
@@ -285,7 +285,7 @@ function TeamCard({ team, everyone, allTeams, busy, run, setNote }: TeamCardProp
           <button
             type="button"
             onClick={() => setPickMembers((v) => !v)}
-            className="font-body text-xs font-semibold text-primary hover:underline"
+            className="inline-flex min-h-8 items-center px-2 font-body text-xs font-semibold text-primary hover:underline"
           >
             {pickMembers ? "Done" : "Pick telecallers"}
           </button>

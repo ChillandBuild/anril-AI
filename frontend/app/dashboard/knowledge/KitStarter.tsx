@@ -33,7 +33,7 @@ export default function KitStarter({ compact }: { compact: boolean }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-3 font-label text-xs font-semibold text-primary hover:underline"
+        className="mt-2 inline-flex min-h-8 items-center font-label text-xs font-semibold text-primary hover:underline"
       >
         Need the template or AI prompt?
       </button>
@@ -46,7 +46,7 @@ export default function KitStarter({ compact }: { compact: boolean }) {
       <button
         type="button"
         onClick={copyPrompt}
-        className="flex items-center gap-1.5 rounded-xl border border-primary-200 bg-white px-3.5 py-2 font-label text-xs font-semibold text-primary shadow-xs transition-colors hover:bg-primary/5"
+        className="flex items-center gap-1.5 rounded-xl border border-primary-200 bg-white px-3.5 py-2 font-label text-xs font-semibold text-primary shadow-sm transition-colors hover:bg-primary/5"
       >
         {copied ? <Check size={13} strokeWidth={3} /> : <Copy size={13} />}
         {copied ? "Copied" : "Copy AI prompt"}
@@ -56,7 +56,7 @@ export default function KitStarter({ compact }: { compact: boolean }) {
         onClick={() => setMenuOpen((v) => !v)}
         aria-expanded={menuOpen}
         aria-controls="kit-industries"
-        className="flex items-center gap-1.5 rounded-xl border border-surface-mid bg-white px-3.5 py-2 font-label text-xs font-semibold text-on-surface shadow-xs transition-colors hover:bg-surface-low"
+        className="flex items-center gap-1.5 rounded-xl border border-surface-mid bg-white px-3.5 py-2 font-label text-xs font-semibold text-on-surface shadow-sm transition-colors hover:bg-surface-low"
       >
         <Download size={13} />
         Download template

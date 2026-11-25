@@ -213,7 +213,7 @@ export default function FormBuilderPage() {
     <div className="w-full pb-28">
       <CatalogueTabs />
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <Link href="/dashboard/forms" className="inline-flex items-center gap-1.5 font-label text-xs font-semibold text-ink-secondary hover:text-ink">
+        <Link href="/dashboard/forms" className="inline-flex items-center gap-1.5 font-label text-xs font-semibold text-ink-secondary hover:text-ink max-md:hidden">
           <ArrowLeft size={14} /> All forms
         </Link>
         <div className="flex flex-wrap items-center gap-3">
@@ -319,7 +319,7 @@ export default function FormBuilderPage() {
                         aria-label={`Question ${index + 1} type`}
                         value={field.type}
                         disabled={!canManage}
-                        className="w-44"
+                        className="w-full sm:w-44"
                         onChange={(v) => updateField(index, {
                           type: v as WaFormFieldType,
                           options: CHOICE_TYPES.includes(v as WaFormFieldType) && field.options.length === 0 ? ["", ""] : field.options,
@@ -350,7 +350,7 @@ export default function FormBuilderPage() {
                                 type="button"
                                 aria-label={`Remove option ${oi + 1}`}
                                 onClick={() => updateField(index, { options: field.options.filter((_, j) => j !== oi) })}
-                                className="rounded-lg p-1 text-ink-muted hover:bg-red-50 hover:text-red-600"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-red-600"
                               >
                                 <X size={14} />
                               </button>
@@ -382,12 +382,12 @@ export default function FormBuilderPage() {
                       {canManage && (
                         <div className="flex items-center gap-1">
                           <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => moveField(index, -1)}
-                            className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-mid disabled:opacity-30"><ArrowUp size={14} /></button>
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-mid disabled:opacity-30"><ArrowUp size={14} /></button>
                           <button type="button" aria-label="Move down" disabled={index === draft.fields.length - 1} onClick={() => moveField(index, 1)}
-                            className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-mid disabled:opacity-30"><ArrowDown size={14} /></button>
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-mid disabled:opacity-30"><ArrowDown size={14} /></button>
                           <button type="button" aria-label={`Delete question ${index + 1}`}
                             onClick={() => update({ fields: draft.fields.filter((_, i) => i !== index) })}
-                            className="rounded-lg p-1.5 text-ink-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                            className="ml-2 inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
                         </div>
                       )}
                     </div>
@@ -463,7 +463,7 @@ export default function FormBuilderPage() {
 
       {canManage && (
         <div
-          className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px))] z-10 lg:bottom-0 -mx-4 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5"
+          className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px))] z-10 lg:bottom-0 -mx-3 sm:-mx-4 mt-8 border-t border-surface-mid bg-surface-low/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-surface-low/80 sm:mx-0 sm:rounded-2xl sm:border sm:px-5"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3" aria-live="polite">

@@ -321,7 +321,7 @@ export default function NewBillPage() {
 
   return (
     <div className="space-y-4 md:-mt-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 max-md:hidden">
         <Link href="/dashboard/deals" className="inline-flex items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-label text-xs font-bold text-[#334155] shadow-sm hover:border-slate-300">
           <ArrowLeft size={14} /> Orders
         </Link>
@@ -383,14 +383,14 @@ export default function NewBillPage() {
                 const inCart = lines.filter((l) => l.item.id === item.id).reduce((a, l) => a + l.qty, 0);
                 return (
                   <button key={item.id} type="button" onClick={() => tapItem(item)}
-                    className={cn("flex flex-col gap-1 rounded-2xl border bg-white p-3.5 text-left shadow-sm transition-all hover:-translate-y-px hover:shadow",
+                    className={cn("flex flex-col gap-0.5 rounded-2xl border bg-white p-2.5 text-left shadow-sm transition-all md:gap-1 md:p-3.5 hover:-translate-y-px hover:shadow",
                       picking?.id === item.id ? "border-primary ring-2 ring-primary/15" : "border-[#e2e8f0]")}>
                     <span className="flex items-start justify-between gap-2">
                       <span className="font-label text-sm font-bold text-[#0A1528]">{item.name}</span>
                       {inCart > 0 && <span className="rounded-full bg-primary px-1.5 font-label text-[10px] font-bold text-white">{inCart}</span>}
                     </span>
                     {optionsText(item) && <span className="text-[11px] text-on-surface-muted">{optionsText(item)}</span>}
-                    <span className="mt-1 flex items-end justify-between">
+                    <span className="flex items-end justify-between md:mt-1">
                       <span className="font-display text-base font-bold tabular-nums text-[#0A1528]">{item.price_paise != null ? rupees(item.price_paise) : "No price"}</span>
                       {stock != null && item.kind !== "service" && (
                         <span className={cn("text-[11px] font-semibold", stock === 0 ? "text-rose-600" : stock <= 2 ? "text-amber-700" : "text-on-surface-muted")}>

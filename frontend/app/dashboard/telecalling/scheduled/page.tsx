@@ -401,7 +401,7 @@ export default function ScheduledCallsPage() {
                           {(isAssignedToMe || role === "owner" || permissions.includes("team.view")) && (
                             <button
                               onClick={() => setMoving(cb)}
-                              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-[#e2e8f0] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#f8fafc] transition-all"
+                              className="flex items-center gap-1.5 px-4 py-2 max-md:min-h-9 max-md:text-xs bg-white border border-[#e2e8f0] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#f8fafc] transition-all"
                             >
                               <CalendarClock size={12} /> Move
                             </button>
@@ -410,14 +410,14 @@ export default function ScheduledCallsPage() {
                             <>
                               <button
                                 onClick={() => handleCallLead(cb)}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-label text-[10px] font-bold transition-all shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                                className="flex items-center gap-1.5 px-4 py-2 max-md:min-h-11 max-md:text-sm bg-primary hover:bg-primary-dark text-white rounded-xl font-label text-[10px] font-bold transition-all shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
                               >
                                 <Phone size={12} className="fill-white text-white" /> Call
                               </button>
                               <button
                                 onClick={() => handleMarkDone(cb.id)}
                                 disabled={markingDone === cb.id}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-[#f1f5f9] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#e2e8f0] transition-all disabled:opacity-50"
+                                className="flex items-center gap-1.5 px-4 py-2 max-md:min-h-9 max-md:text-xs bg-[#f1f5f9] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#e2e8f0] transition-all disabled:opacity-50"
                               >
                                 {markingDone === cb.id ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                                 Done
@@ -445,7 +445,7 @@ export default function ScheduledCallsPage() {
                             <button
                               onClick={() => handleMarkDone(cb.id)}
                               disabled={markingDone === cb.id}
-                              className="flex items-center gap-1.5 px-4 py-2 bg-[#f1f5f9] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#e2e8f0] transition-all disabled:opacity-50"
+                              className="flex items-center gap-1.5 px-4 py-2 max-md:min-h-9 max-md:text-xs bg-[#f1f5f9] text-[#334155] rounded-xl font-label text-[10px] font-bold hover:bg-[#e2e8f0] transition-all disabled:opacity-50"
                             >
                               {markingDone === cb.id ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                               Done (Admin)

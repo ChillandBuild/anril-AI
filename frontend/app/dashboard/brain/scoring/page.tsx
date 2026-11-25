@@ -39,7 +39,7 @@ export default function ScoringPage() {
           <section className="card flex flex-col gap-3" aria-labelledby="pts-h">
             <div>
               <h2 id="pts-h" className="font-display text-base font-bold text-ink">Points from 0 to 10</h2>
-              <p className="font-body text-xs text-ink-secondary">After every message the AI agent gives the customer a score. The score picks the type.</p>
+              <p className="font-body text-xs text-ink-secondary">After every message Anril gives the customer a score. The score picks the type.</p>
             </div>
             <div className="flex gap-0.5" role="img" aria-label="Not interested 0 points, Cold 1 to 3, Warm 4 to 7, Hot 8 to 10">
               {BAR.map((b, i) => (
@@ -47,9 +47,12 @@ export default function ScoringPage() {
                   className={`h-3.5 ${i === 0 ? "rounded-l-full" : ""} ${i === BAR.length - 1 ? "rounded-r-full" : ""}`} />
               ))}
             </div>
-            <div className="-mt-1 flex gap-0.5 font-body text-xs text-ink-secondary" aria-hidden>
+            <div className="-mt-1 hidden gap-0.5 font-body text-xs text-ink-secondary md:flex" aria-hidden>
               {BAR.map((b) => <span key={b.key} style={{ flex: b.weight }}>{b.label} · {b.range}</span>)}
             </div>
+            <ul className="space-y-1 font-body text-xs text-ink-secondary md:hidden">
+              {BAR.map((b) => (<li key={b.key} className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: b.color }} aria-hidden />{b.label} · {b.range}</li>))}
+            </ul>
           </section>
           <ul className="flex flex-wrap items-stretch gap-3">
             {[...levels].reverse().map(({ bar, level }) => level && (

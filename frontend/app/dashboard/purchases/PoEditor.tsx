@@ -221,7 +221,7 @@ export function PoEditor({ po, suggestions }: { po?: PurchaseOrder; suggestions?
                 placeholder={opts.suppliers.length ? "Pick a supplier" : "Add a supplier first"}
                 options={opts.suppliers.map((s) => ({ value: s.id, label: s.name }))} />
             </Field>
-            <Field label="PO no."><input className={inputCls} disabled value={po?.po_number ?? "Given when saved"} /></Field>
+            <Field label="Purchase order no."><input className={inputCls} disabled value={po?.po_number ?? "Given when saved"} /></Field>
             <Field label="Need by"><input type="date" className={inputCls} value={needBy} disabled={!editable} onChange={(e) => setNeedBy(e.target.value)} /></Field>
             <Field label="Deliver to">
               <Select size="md" value={placeId} onChange={setPlaceId} disabled={!editable} aria-label="Deliver to"

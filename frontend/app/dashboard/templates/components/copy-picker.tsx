@@ -59,7 +59,7 @@ export default function CopyPicker({ onPick, onClose }: { onPick: (t: Template) 
           <X size={14} />
         </button>
       </div>
-      <div className="max-h-80 overflow-y-auto py-1">
+      <div className="max-h-[60dvh] overflow-y-auto py-1">
         {error ? (
           <p className="px-4 py-6 text-center text-sm text-red-700">{error}</p>
         ) : list === null ? (

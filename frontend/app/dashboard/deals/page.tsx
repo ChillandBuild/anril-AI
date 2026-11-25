@@ -74,7 +74,7 @@ export default function DealsPage() {
     // full 28px gap above the first row read as empty space.
     <div className="min-w-0 md:-mt-3">
       {/* The tabs live in the app header from md up; phones get them here. */}
-      <div className="mb-4 flex items-center justify-between gap-2 md:hidden">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 md:hidden">
         <div className="flex w-max gap-1 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-1">
           {visibleTabs.map(({ id, label }) => (
             <button

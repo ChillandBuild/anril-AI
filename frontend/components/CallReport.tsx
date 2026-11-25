@@ -16,7 +16,7 @@ const CARD = "rounded-xl border border-[#f1f5f9] bg-white px-3 py-2.5";
 const HEADING = "font-label text-[9px] uppercase tracking-widest font-extrabold text-primary mb-1.5";
 const BODY = "font-body text-[11px] leading-relaxed text-[#1e293b] break-words";
 const MUTED = "font-label text-[10px] text-[#475569] break-words";
-const CHIP = "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-label text-[9px] font-bold";
+const CHIP = "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-label text-[9px] max-md:text-xs font-bold";
 
 function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <span className={`${CHIP} ${TONE_CHIP[tone]}`}>{children}</span>;
@@ -79,7 +79,7 @@ function Mood({ items, onSeek }: { items: ReportData["mood"]; onSeek: Seek }) {
               <span>{moodLabel(m.mood)}</span>
             </>
           );
-          const cls = `inline-flex items-center gap-1 px-2 py-1 rounded-full border font-label text-[10px] font-bold ${TONE_CHIP[moodTone(m.mood)]}`;
+          const cls = `inline-flex items-center gap-1 px-2 py-1 rounded-full border font-label text-[10px] max-md:text-xs font-bold ${TONE_CHIP[moodTone(m.mood)]}`;
           return (
             <li key={`${m.start}-${i}`}>
               {onSeek ? (

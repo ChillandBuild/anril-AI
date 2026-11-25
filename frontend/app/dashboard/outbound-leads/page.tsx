@@ -332,7 +332,14 @@ const STEPS = ["Upload", "Opt-in", "Preview", "Template", "Confirm", "Done"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="-mx-1 mb-8 flex w-[calc(100%+0.5rem)] items-start overflow-x-auto px-1 pb-2 md:mb-10 md:w-full md:overflow-visible">
+    <>
+    <div className="mb-4 md:hidden">
+      <p className="font-label text-xs font-semibold text-primary">Step {current} of {STEPS.length} · {STEPS[current - 1]}</p>
+      <div className="mt-1.5 h-1 w-full rounded-full bg-surface-mid">
+        <div className="h-1 rounded-full bg-primary transition-all" style={{ width: `${(current / STEPS.length) * 100}%` }} />
+      </div>
+    </div>
+    <div className="-mx-1 mb-8 flex w-[calc(100%+0.5rem)] items-start overflow-x-auto px-1 pb-2 max-md:hidden md:mb-10 md:w-full md:overflow-visible">
       {STEPS.map((label, i) => {
         const step = i + 1;
         const done = step < current;
@@ -353,6 +360,7 @@ function StepIndicator({ current }: { current: number }) {
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -459,7 +467,7 @@ function SendingProgress({ names, index, total }: { names: string[]; index: numb
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Your offer is going out</h2>
+        <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Your offer is going out</h2>
         <p className="font-body text-sm text-on-surface-muted">
           You can close this page: it keeps sending. Replies come to Chats and the AI agent answers them. Tomorrow at
           9 AM you get a summary in your Anril alerts: sent, read and replied.
@@ -1793,7 +1801,7 @@ export default function OutboundLeadsPage() {
               {/* Left Column: Upload Controls (7 cols) */}
                 <div className="lg:col-span-7 space-y-6">
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-on-surface mb-1">
+                    <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1 break-words">
                       {isGroup ? "Pick a Customers group" : "Upload your CSV, Excel, or scanned notebook"}
                     </h2>
                     <p className="font-body text-sm text-on-surface-muted">
@@ -1864,18 +1872,18 @@ export default function OutboundLeadsPage() {
                   <label
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
-                    className={`relative flex flex-col items-center justify-center gap-5 py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-colors group
+                    className={`relative flex flex-col items-center justify-center gap-3 py-6 md:gap-5 md:py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-colors group
                     ${csvFile ? "border-primary bg-primary/5" : "border-primary/30 hover:border-primary/70 hover:bg-primary/[0.04]"}`}
                   >
-                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors shadow-sm
+                    <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-colors shadow-sm
                       ${csvFile ? "bg-primary text-white" : "bg-primary/10 text-primary group-hover:bg-primary/20"}`}>
                       {csvFile ? <Check size={28} /> : <Upload size={28} />}
                     </div>
-                    <div className="text-center px-4">
-                      <p className="font-display text-lg font-bold text-on-surface truncate max-w-md mx-auto">
-                        {csvFile ? csvFile.name : "Drop your CSV, Excel, or scanned notebook photo here"}
+                    <div className="text-center px-4 w-full min-w-0">
+                      <p className="font-display text-base md:text-lg font-bold text-on-surface break-words md:truncate max-w-md mx-auto">
+                        {csvFile ? csvFile.name : (<><span className="md:hidden">Tap to choose a file</span><span className="max-md:hidden">Drop your CSV, Excel, or scanned notebook photo here</span></>)}
                       </p>
-                      <p className="font-body text-xs text-on-surface-muted mt-1.5">
+                      <p className="font-body text-xs text-on-surface-muted mt-1.5 break-words">
                         {csvFile
                           ? `${(csvFile.size / 1024).toFixed(1)} KB · click to change file`
                           : "or click to browse — .csv, .xlsx, .xls, .jpg, .png, .pdf · name and phone columns required"}
@@ -2079,7 +2087,7 @@ export default function OutboundLeadsPage() {
           {currentStep === 2 && (
             <div className="space-y-6 flex-1">
               <div>
-                <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Did these people agree to hear from you?</h2>
+                <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Did these people agree to hear from you?</h2>
                 <p className="font-body text-sm text-on-surface-muted">Pick the one that fits most of the list. Meta doesn&apos;t see this answer — it only decides what we let you send, so answer honestly.</p>
               </div>
 
@@ -2148,7 +2156,7 @@ export default function OutboundLeadsPage() {
           {currentStep === 3 && parsedData && (
             <div className="space-y-6 flex-1">
               <div>
-                <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Preview Data</h2>
+                <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Preview Data</h2>
                 <p className="font-body text-sm text-on-surface-muted">
                   Showing first {parsedData.preview.length} of {parsedData.total_rows.toLocaleString()} rows.
                 </p>
@@ -2202,7 +2210,7 @@ export default function OutboundLeadsPage() {
               {/* Left Column: Template Selection & Settings (7 cols) */}
               <div className="lg:col-span-7 space-y-6">
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Template & Schedule</h2>
+                  <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Template & Schedule</h2>
                   <p className="font-body text-sm text-on-surface-muted">Choose which template to send and when.</p>
                 </div>
 
@@ -2329,11 +2337,11 @@ export default function OutboundLeadsPage() {
                   <label className="block font-label text-xs font-bold text-on-surface-muted uppercase tracking-wider mb-2">
                     Schedule Type
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-1 max-md:rounded-xl max-md:bg-surface-low max-md:p-1 md:gap-2">
                     {(["now", "scheduled", "drip"] as ScheduleType[]).map((type) => (
                       <label
                         key={type}
-                        className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors
+                        className={`flex items-center justify-center gap-3 max-md:h-9 max-md:px-1 md:justify-start md:p-3.5 rounded-xl border cursor-pointer transition-colors
                           ${scheduleType === type ? "border-primary bg-primary/5" : "border-surface-mid bg-surface-low hover:border-primary/40"}`}
                       >
                         <input
@@ -2342,10 +2350,10 @@ export default function OutboundLeadsPage() {
                           value={type}
                           checked={scheduleType === type}
                           onChange={() => setScheduleType(type)}
-                          className="accent-[var(--color-primary)]"
+                          className="accent-[var(--color-primary)] max-md:sr-only"
                         />
-                        <span className="font-label text-xs font-bold text-on-surface">
-                          {type === "now" ? "Send Now" : type === "scheduled" ? "Later" : "Drip Days"}
+                        <span className="font-label text-xs font-bold text-on-surface whitespace-nowrap">
+                          {type === "now" ? "Send Now" : type === "scheduled" ? "Later" : "Spread over days"}
                         </span>
                       </label>
                     ))}
@@ -2663,7 +2671,7 @@ export default function OutboundLeadsPage() {
               {/* Left Column: Confirm details (7 cols) */}
               <div className="lg:col-span-7 space-y-6">
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Confirm & Send</h2>
+                  <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Confirm & Send</h2>
                   <p className="font-body text-sm text-on-surface-muted">Review campaign configurations before dispatches.</p>
                 </div>
 
@@ -2671,12 +2679,12 @@ export default function OutboundLeadsPage() {
                   {[
                     isGroup
                       ? { label: "Will Get It", value: reachLoading && !reachPreview ? "Checking…" : audienceTotal.toLocaleString() }
-                      : { label: "Leads Count", value: audienceTotal.toLocaleString() },
+                      : { label: "People", value: audienceTotal.toLocaleString() },
                     isGroup
                       ? { label: "Customers Group", value: selectedGroup?.name ?? "—" }
                       : { label: "Consent Source", value: optInSource.replace(/_/g, " ") },
                     { label: "Active Template", value: templateName },
-                    { label: "Dispatch Plan", value: scheduleType === "now" ? "Send Immediately" : scheduleType === "scheduled" ? `At ${scheduleAt ? new Date(scheduleAt).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—"}` : `Drip over ${dripDays} days${dripSendTime ? ` · ${dripSendTime} IST daily` : ""}` },
+                    { label: "When to send", value: scheduleType === "now" ? "Send Immediately" : scheduleType === "scheduled" ? `At ${scheduleAt ? new Date(scheduleAt).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—"}` : `Spread over ${dripDays} days${dripSendTime ? ` · ${dripSendTime} IST daily` : ""}` },
                   ].map(({ label, value }) => (
                     <div key={label} className="p-4 bg-surface-low rounded-xl border border-surface-mid">
                       <p className="font-label text-[10px] text-on-surface-muted uppercase tracking-wider mb-1 font-bold">{label}</p>
@@ -2709,7 +2717,7 @@ export default function OutboundLeadsPage() {
                         {rest > cap
                           ? "go out over the next days as Meta's 24-hour limit frees up, between 10:00 AM and 9:00 PM (India time)."
                           : "go out automatically once Meta's 24-hour limit frees up, between 10:00 AM and 9:00 PM (India time)."}
-                        {" "}They&apos;ll show under Broadcast History → Upcoming.
+                        {" "}They&apos;ll show under Scheduled templates.
                       </span>
                     </div>
                   );
@@ -2875,7 +2883,7 @@ export default function OutboundLeadsPage() {
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:blur-[0.5px] disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     <Upload size={14} />
-                    {sendLoading ? "Sending…" : "Confirm & Dispatch"}
+                    {sendLoading ? "Sending…" : scheduleType === "scheduled" ? "Schedule" : "Send now"}
                   </button>
                 </div>
 
@@ -3060,20 +3068,20 @@ export default function OutboundLeadsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
-                <div className="p-4 bg-green-50/50 border border-green-200/50 rounded-xl text-center">
-                  <p className="font-display text-3xl font-bold text-green-700">{sendResult.queued.toLocaleString()}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="p-3 sm:p-4 bg-green-50/50 border border-green-200/50 rounded-xl text-center">
+                  <p className="font-display text-2xl sm:text-3xl font-bold text-green-700">{sendResult.queued.toLocaleString()}</p>
                   <p className="font-label text-[10px] text-green-600 mt-1 uppercase tracking-wide font-bold">Sent</p>
                 </div>
-                <div className="p-4 bg-surface-low border border-surface-mid rounded-xl text-center">
-                  <p className="font-display text-3xl font-bold text-on-surface-muted">{sendResult.failed.toLocaleString()}</p>
+                <div className="p-3 sm:p-4 bg-surface-low border border-surface-mid rounded-xl text-center">
+                  <p className="font-display text-2xl sm:text-3xl font-bold text-on-surface-muted">{sendResult.failed.toLocaleString()}</p>
                   <p className="font-label text-[10px] text-on-surface-muted mt-1 uppercase tracking-wide font-bold">Failed</p>
                 </div>
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center">
-                  <p className="font-display text-3xl font-bold text-gray-600">{sendResult.opted_out_skipped.toLocaleString()}</p>
+                <div className="p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-xl text-center">
+                  <p className="font-display text-2xl sm:text-3xl font-bold text-gray-600">{sendResult.opted_out_skipped.toLocaleString()}</p>
                   <p className="font-label text-[10px] text-gray-500 mt-1 uppercase tracking-wide font-bold">Opted Out</p>
                 </div>
-                <div className="p-4 bg-primary/5 border border-primary/15 rounded-xl text-center">
+                <div className="p-3 sm:p-4 bg-primary/5 border border-primary/15 rounded-xl text-center">
                   <p className="font-display text-sm font-bold text-primary truncate leading-10">{sendResult.number_used}</p>
                   <p className="font-label text-[10px] text-on-surface-muted mt-1 uppercase tracking-wide font-bold">Sender Line</p>
                 </div>
@@ -3090,7 +3098,7 @@ export default function OutboundLeadsPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3 pt-4 border-t border-surface-mid/30">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-4 border-t border-surface-mid/30">
                 <Link
                   href="/dashboard/conversations"
                   className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
@@ -3100,7 +3108,7 @@ export default function OutboundLeadsPage() {
                 </Link>
                 <button
                   onClick={resetAll}
-                  className="flex items-center gap-2 px-5 py-3 bg-surface-low text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-mid transition-colors border border-surface-mid/60"
+                  className="flex items-center justify-center gap-2 px-5 py-3 bg-surface-low text-on-surface rounded-xl font-label text-sm font-semibold hover:bg-surface-mid transition-colors border border-surface-mid/60"
                 >
                   <RotateCcw size={14} />
                   Upload Another
@@ -3562,7 +3570,7 @@ export default function OutboundLeadsPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-label text-xs font-semibold hover:opacity-95 transition-all shadow-[0_2px_8px_rgba(var(--primary-800-rgb),0.25)]"
                 >
                   <Download size={12} />
-                  Broadcast History
+                  Download list
                 </button>
                 <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden">
                   {(["all", "failures", "clean"] as const).map((f) => (
@@ -3647,7 +3655,7 @@ export default function OutboundLeadsPage() {
                     </span>
                   )}
                   {item.broadcast_id && (
-                    <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 font-label text-[10px] font-mono border border-gray-200 shrink-0 whitespace-nowrap" title={`Broadcast ID: ${item.broadcast_id}`}>
+                    <span className="max-md:hidden px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 font-label text-[10px] font-mono border border-gray-200 shrink-0 whitespace-nowrap" title={`Broadcast ID: ${item.broadcast_id}`}>
                       ID: {item.broadcast_id.slice(0, 8)}
                     </span>
                   )}
@@ -3721,7 +3729,7 @@ export default function OutboundLeadsPage() {
                       onClick={() => handleDeleteHistoryEntry(item.broadcast_id!)}
                       disabled={deletingHistoryId === item.broadcast_id}
                       title="Remove from history"
-                      className="inline-flex h-8 w-8 items-center justify-center bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200 shrink-0 disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center max-md:ml-3 bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors border border-gray-200 hover:border-red-200 shrink-0 disabled:opacity-50"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -3770,10 +3778,10 @@ export default function OutboundLeadsPage() {
                 })()}
 
                 {/* Metrics Grid - 4 Equal Columns */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
                   {/* Sent */}
-                  <div className="bg-blue-50/50 rounded-xl p-3 border border-blue-100/50">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-blue-50/50 rounded-xl p-2 md:p-3 border border-blue-100/50">
+                    <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                         <Send size={16} className="text-blue-600" />
                       </div>
@@ -3781,7 +3789,7 @@ export default function OutboundLeadsPage() {
                         <p className="font-display text-sm font-bold text-gray-900">
                           Sent <span className="text-blue-600 font-semibold">({Math.round((item.sent / item.total_leads) * 100)}%)</span>
                         </p>
-                        <p className="font-body text-[11px] text-gray-500 mt-0.5">{item.sent} of {item.total_leads} leads</p>
+                        <p className="font-body text-[11px] text-gray-500 mt-0.5 max-md:hidden">{item.sent} of {item.total_leads} leads</p>
                       </div>
                     </div>
                     <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
@@ -3793,8 +3801,8 @@ export default function OutboundLeadsPage() {
                   </div>
                   
                   {/* Delivered */}
-                  <div className="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-emerald-50/50 rounded-xl p-2 md:p-3 border border-emerald-100/50">
+                    <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                       <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
                         <CheckCircle2 size={16} className="text-emerald-600" />
                       </div>
@@ -3802,7 +3810,7 @@ export default function OutboundLeadsPage() {
                         <p className="font-display text-sm font-bold text-gray-900">
                           Delivered <span className="text-emerald-600 font-semibold">({Math.round(((item.delivered || 0) / item.total_leads) * 100)}%)</span>
                         </p>
-                        <p className="font-body text-[11px] text-gray-500 mt-0.5">{item.delivered || 0} of {item.total_leads} leads</p>
+                        <p className="font-body text-[11px] text-gray-500 mt-0.5 max-md:hidden">{item.delivered || 0} of {item.total_leads} leads</p>
                       </div>
                     </div>
                     <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden">
@@ -3814,8 +3822,8 @@ export default function OutboundLeadsPage() {
                   </div>
                   
                   {/* Opened */}
-                  <div className="bg-amber-50/50 rounded-xl p-3 border border-amber-100/50">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-amber-50/50 rounded-xl p-2 md:p-3 border border-amber-100/50">
+                    <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                       <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                         <Eye size={16} className="text-amber-600" />
                       </div>
@@ -3823,7 +3831,7 @@ export default function OutboundLeadsPage() {
                         <p className="font-display text-sm font-bold text-gray-900">
                           Opened <span className="text-amber-600 font-semibold">({Math.round(((item.opened || 0) / item.total_leads) * 100)}%)</span>
                         </p>
-                        <p className="font-body text-[11px] text-gray-500 mt-0.5">{item.opened || 0} of {item.total_leads} leads</p>
+                        <p className="font-body text-[11px] text-gray-500 mt-0.5 max-md:hidden">{item.opened || 0} of {item.total_leads} leads</p>
                       </div>
                     </div>
                     <div className="w-full h-2 bg-amber-100 rounded-full overflow-hidden">
@@ -3835,8 +3843,8 @@ export default function OutboundLeadsPage() {
                   </div>
                   
                   {/* Failed */}
-                  <div className="bg-red-50/50 rounded-xl p-3 border border-red-100/50">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-red-50/50 rounded-xl p-2 md:p-3 border border-red-100/50">
+                    <div className="flex items-center gap-2 mb-1.5 md:mb-2">
                       <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                         <XCircle size={16} className="text-red-600" />
                       </div>
@@ -3844,7 +3852,7 @@ export default function OutboundLeadsPage() {
                         <p className="font-display text-sm font-bold text-gray-900">
                           Failed <span className="text-red-600 font-semibold">({Math.round(((item.failed || 0) / item.total_leads) * 100)}%)</span>
                         </p>
-                        <p className="font-body text-[11px] text-gray-500 mt-0.5">{item.failed || 0} of {item.total_leads} leads</p>
+                        <p className="font-body text-[11px] text-gray-500 mt-0.5 max-md:hidden">{item.failed || 0} of {item.total_leads} leads</p>
                       </div>
                     </div>
                     <div className="w-full h-2 bg-red-100 rounded-full overflow-hidden">
@@ -3856,7 +3864,7 @@ export default function OutboundLeadsPage() {
                   </div>
                 </div>
 
-                <p className="mt-2.5 flex items-start gap-1.5 font-body text-[11px] text-gray-400">
+                <p className="max-md:hidden mt-2.5 flex items-start gap-1.5 font-body text-[11px] text-gray-400">
                   <Info size={12} className="mt-0.5 shrink-0" />
                   <span>
                     Delivered and Opened are counted <em>within</em> Sent, not extra leads — every Sent lead is either Delivered, Opened, or still waiting on a receipt from WhatsApp (can take a few minutes). Only Failed leads never got the message.

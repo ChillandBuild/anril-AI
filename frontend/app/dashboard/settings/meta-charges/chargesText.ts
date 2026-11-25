@@ -43,9 +43,3 @@ export function inShort(charges: MetaCharges, ai: AiReplies): string {
       : `You have used ${formatCount(ai.used)} AI ${ai.used === 1 ? "reply" : "replies"} this month.`;
   return `${first} ${second}`;
 }
-
-/** What the number means in shop-owner words. Meta's tiers are 1,000 / 10,000 / 100,000 customers in 24 hours. */
-export function dailyLimitText(tier: number | null): string {
-  if (tier == null) return "Meta hasn't told us your limit yet.";
-  return `Up to ${formatCount(tier)} different customers a day`;
-}

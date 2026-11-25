@@ -324,7 +324,7 @@ const WIZARD_STEPS = ["Upload", "Confirm"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="flex items-start w-full mb-10">
+    <div className="flex items-start w-full mb-4 md:mb-10">
       {WIZARD_STEPS.map((label, i) => {
         const step = i + 1;
         const done = step < current;
@@ -503,14 +503,14 @@ function UploadTab() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "aira_sample_contacts.csv");
+    link.setAttribute("download", "anril_sample_contacts.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   }
 
   return (
-    <div className="animate-slide-up bg-surface rounded-[2rem] p-8 shadow-lg ring-1 ring-[#c4c7c7]/20 min-h-[500px] flex flex-col">
+    <div className="animate-slide-up bg-surface rounded-[2rem] p-4 md:p-8 shadow-lg ring-1 ring-[#c4c7c7]/20 min-h-[500px] flex flex-col">
       <StepIndicator current={currentStep} />
 
       {/* ── Step 1: Upload CSV ─────────────────────────────────────────── */}
@@ -519,7 +519,7 @@ function UploadTab() {
           {/* Left Column: Upload controls (7 cols) */}
           <div className="lg:col-span-7 space-y-6 flex flex-col justify-between h-full">
             <div>
-              <h2 className="font-display text-2xl font-bold text-on-surface mb-1">Upload your contacts</h2>
+              <h2 className="font-display text-lg md:text-2xl font-bold text-on-surface mb-1">Upload your contacts</h2>
               <p className="font-body text-sm text-on-surface-muted">Select a CSV or Excel file with contact data, or a photo/PDF scan of a notebook page — we will detect column mappings automatically.</p>
             </div>
 
@@ -532,7 +532,7 @@ function UploadTab() {
 
             <label
               className={cn(
-                "relative flex flex-col items-center justify-center gap-5 py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-all group",
+                "relative flex flex-col items-center justify-center gap-5 py-6 md:py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-all group",
                 file ? "border-primary bg-primary/5" : "border-primary/30 hover:border-primary/70 hover:bg-primary/[0.04]",
                 parseLoading && "pointer-events-none opacity-60"
               )}
@@ -553,14 +553,14 @@ function UploadTab() {
               </div>
               <div className="text-center px-4">
                 <p className="font-display text-lg font-bold text-on-surface truncate max-w-md mx-auto">
-                  {parseLoading ? "Processing & parsing file..." : file ? file.name : "Drop your CSV, Excel, or scanned notebook photo here"}
+                  {parseLoading ? "Processing & parsing file..." : file ? file.name : <><span className="md:hidden">Choose a file</span><span className="hidden md:inline">Drop your CSV, Excel, or scanned notebook photo here</span></>}
                 </p>
                 <p className="font-body text-xs text-on-surface-muted mt-1.5">
                   {parseLoading
                     ? "Analyzing columns, verifying phone numbers, and searching for duplicates..."
                     : file
                     ? `${(file.size / 1024).toFixed(1)} KB${rowCount !== null ? ` · ${rowCount.toLocaleString()} rows` : ""} · click to change file`
-                    : "or click to browse — .csv, .xlsx, .xls, .jpg, .png, .pdf · name and phone columns required"}
+                    : "or click to choose a file — .csv, .xlsx, .xls, .jpg, .png, .pdf · name and phone columns required"}
                 </p>
               </div>
               {!file && !parseLoading && (

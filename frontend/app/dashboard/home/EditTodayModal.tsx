@@ -116,7 +116,7 @@ function SortableRow({
           onClick={() => onMove(boxKey, -1)}
           disabled={index === 0}
           aria-label={`Move ${meta.label} up`}
-          className="flex h-5 w-6 items-center justify-center rounded text-ink-muted hover:bg-slate-100 hover:text-ink disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:bg-slate-100 hover:text-ink disabled:opacity-30"
         >
           <ChevronUp size={14} aria-hidden />
         </button>
@@ -125,7 +125,7 @@ function SortableRow({
           onClick={() => onMove(boxKey, 1)}
           disabled={index === count - 1}
           aria-label={`Move ${meta.label} down`}
-          className="flex h-5 w-6 items-center justify-center rounded text-ink-muted hover:bg-slate-100 hover:text-ink disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:bg-slate-100 hover:text-ink disabled:opacity-30"
         >
           <ChevronDown size={14} aria-hidden />
         </button>

@@ -229,7 +229,7 @@ export default function ButtonBuilder({
           <button
             type="button"
             onClick={() => setShowPicker(!showPicker)}
-            className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+            className="flex min-h-8 items-center gap-1 px-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
           >
             <Plus size={15} />
             Add Button
@@ -317,7 +317,8 @@ export default function ButtonBuilder({
               <button
                 type="button"
                 onClick={() => remove(i)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-ink-muted hover:text-red-500 transition-colors"
+                aria-label="Remove button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50 text-ink-muted hover:text-red-500 transition-colors"
               >
                 <Trash2 size={14} />
               </button>

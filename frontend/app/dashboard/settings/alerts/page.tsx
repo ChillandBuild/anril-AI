@@ -13,6 +13,7 @@ import {
   type AlertsView,
   type WhoChoice,
 } from "@/lib/automationsApi";
+import { changedAlerts, quietChanged, type AlertEdit, type QuietEdit } from "./alertsDraft";
 
 /** The server marks alerts that can never be switched off (money, the AI agent needs a person, number disconnected). */
 type AlertRowView = AlertRow & { locked?: boolean; who_fixed?: boolean };
@@ -23,21 +24,7 @@ function errText(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_time"]; canManage: boolean; onSaved: () => void }) {
-  const [busy, setBusy] = useState(false);
-
-  async function save(on: boolean, start: number, end: number) {
-    setBusy(true);
-    try {
-      await automationsApi.setQuietTime(on, start, end);
-      onSaved();
-    } catch (e) {
-      toast.error(errText(e, "Could not save quiet time."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
+function QuietTimeCard({ view, edit, canManage, onEdit }: { view: AlertsView["quiet_time"]; edit: QuietEdit; canManage: boolean; onEdit: (next: QuietEdit) => void }) {
   const selectCls =
     "min-h-10 rounded-xl border border-border-subtle bg-white px-2 font-body text-sm text-ink disabled:opacity-60";
 
@@ -51,11 +38,10 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
           </p>
         </div>
         <SwitchPill
-          on={view.on}
+          on={edit.on}
           disabled={!canManage}
-          loading={busy}
           aria-label="Quiet time"
-          onChange={(next) => save(next, view.start_hour, view.end_hour)}
+          onChange={(next) => onEdit({ ...edit, on: next })}
         />
       </div>
 
@@ -65,15 +51,15 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
         </p>
       )}
 
-      {view.on && (
+      {edit.on && (
         <div className="mt-3 flex flex-wrap items-center gap-2 font-body text-sm text-ink">
           <label className="flex items-center gap-2">
             From
             <select
               className={selectCls}
-              value={view.start_hour}
-              disabled={!canManage || busy}
-              onChange={(e) => save(true, Number(e.target.value), view.end_hour)}
+              value={edit.start}
+              disabled={!canManage}
+              onChange={(e) => onEdit({ ...edit, start: Number(e.target.value) })}
               aria-label="Quiet time starts"
             >
               {HOURS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
@@ -83,9 +69,9 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
             to
             <select
               className={selectCls}
-              value={view.end_hour}
-              disabled={!canManage || busy}
-              onChange={(e) => save(true, view.start_hour, Number(e.target.value))}
+              value={edit.end}
+              disabled={!canManage}
+              onChange={(e) => onEdit({ ...edit, end: Number(e.target.value) })}
               aria-label="Quiet time ends"
             >
               {HOURS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
@@ -95,7 +81,7 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
         </div>
       )}
 
-      {view.on && view.still_comes_through.length > 0 && (
+      {edit.on && view.still_comes_through.length > 0 && (
         <div className="mt-3">
           <p className="font-body text-sm font-bold text-ink">Still comes through at night</p>
           <ul className="mt-1 list-disc pl-5 font-body text-sm text-[#556274]">
@@ -107,16 +93,9 @@ function QuietTimeCard({ view, canManage, onSaved }: { view: AlertsView["quiet_t
   );
 }
 
-function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage: boolean; onChange: (key: string, on: boolean, who?: WhoChoice[]) => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-
-  async function run(on: boolean, who?: WhoChoice[]) {
-    setBusy(true);
-    try {
-      await onChange(row.key, on, who);
-    } finally {
-      setBusy(false);
-    }
+function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage: boolean; onChange: (key: string, edit: AlertEdit) => void }) {
+  function run(on: boolean, who?: WhoChoice[]) {
+    onChange(row.key, { on, who: who ?? row.who });
   }
 
   function toggleWho(w: WhoChoice) {
@@ -126,7 +105,7 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage:
       toast.error("Pick at least one person to get this alert.");
       return;
     }
-    void run(row.on, next);
+    run(row.on, next);
   }
 
   return (
@@ -144,7 +123,7 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage:
             </p>
           )}
         </div>
-        <SwitchPill on={row.on} disabled={!canManage || !!row.locked} loading={busy} aria-label={row.locked ? `${row.label} (always on)` : row.label} onChange={(next) => run(next)} />
+        <SwitchPill on={row.on} disabled={!canManage || !!row.locked} aria-label={row.locked ? `${row.label} (always on)` : row.label} onChange={(next) => run(next)} />
       </div>
       {row.on && (
         <div role="group" aria-label={`Who gets: ${row.label}`} className="mt-2 flex flex-wrap gap-1.5">
@@ -155,7 +134,7 @@ function AlertLine({ row, canManage, onChange }: { row: AlertRowView; canManage:
                 key={o.value}
                 type="button"
                 aria-pressed={picked}
-                disabled={!canManage || busy || !!row.who_fixed}
+                disabled={!canManage || !!row.who_fixed}
                 onClick={() => toggleWho(o.value)}
                 className={`min-h-9 rounded-full border px-3 font-label text-xs font-bold disabled:opacity-60 ${
                   picked ? "border-primary bg-primary text-white" : "border-border-subtle bg-white text-ink hover:border-primary/40"
@@ -183,12 +162,33 @@ export default function AlertsSettingsPage() {
 
   const { data, error, isLoading, mutate } = useSWR<AlertsView>(canView ? "alerts-view" : null, () => automationsApi.alerts());
 
-  async function changeAlert(key: string, on: boolean, who?: WhoChoice[]) {
+  // Changes are held here and sent only when the person presses Save.
+  const [edits, setEdits] = useState<Record<string, AlertEdit>>({});
+  const [quietEdit, setQuietEdit] = useState<QuietEdit | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const changes = data ? changedAlerts(data.alerts, edits) : [];
+  const quietDirty = data ? quietChanged(data.quiet_time, quietEdit) : false;
+  const dirty = changes.length > 0 || quietDirty;
+
+  function undo() {
+    setEdits({});
+    setQuietEdit(null);
+  }
+
+  async function saveAll() {
+    if (!data || saving) return;
+    setSaving(true);
     try {
-      await automationsApi.setAlert(key, on, who);
-      await mutate();
+      for (const c of changes) await automationsApi.setAlert(c.key, c.on, c.who);
+      if (quietDirty && quietEdit) await automationsApi.setQuietTime(quietEdit.on, quietEdit.start, quietEdit.end);
+      toast.success("Alert settings saved");
     } catch (e) {
-      toast.error(errText(e, "Could not save this alert."));
+      toast.error(errText(e, "Could not save your alert settings."));
+    } finally {
+      await mutate();
+      undo();
+      setSaving(false);
     }
   }
 
@@ -198,7 +198,7 @@ export default function AlertsSettingsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-16">
       <p className="font-body text-sm text-[#556274]">Choose what Anril tells you about, and who hears it.</p>
 
       {isLoading && <div className="card h-24 animate-pulse rounded-3xl bg-border-subtle" />}
@@ -210,16 +210,40 @@ export default function AlertsSettingsPage() {
 
       {data && (
         <>
-          <QuietTimeCard view={data.quiet_time} canManage={canManage} onSaved={() => void mutate()} />
+          <QuietTimeCard
+            view={data.quiet_time}
+            edit={quietEdit ?? { on: data.quiet_time.on, start: data.quiet_time.start_hour, end: data.quiet_time.end_hour }}
+            canManage={canManage}
+            onEdit={setQuietEdit}
+          />
           {groupAlertsByArea(data.alerts).map((g) => (
             <section key={g.area} aria-label={g.area} className="space-y-2">
               <h2 className="font-label text-xs font-bold uppercase tracking-wider text-[#556274]">{g.area}</h2>
               <ul className="space-y-2">
-                {g.rows.map((r) => <AlertLine key={r.key} row={r as AlertRowView} canManage={canManage} onChange={changeAlert} />)}
+                {g.rows.map((r) => (
+                  <AlertLine
+                    key={r.key}
+                    row={{ ...(r as AlertRowView), ...(edits[r.key] ?? {}) }}
+                    canManage={canManage}
+                    onChange={(key, edit) => setEdits((prev) => ({ ...prev, [key]: edit }))}
+                  />
+                ))}
               </ul>
             </section>
           ))}
         </>
+      )}
+
+      {canManage && dirty && (
+        <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] z-10 flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-white p-3 shadow-lg lg:bottom-3">
+          <p className="font-body text-sm font-semibold text-ink">Unsaved changes</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={undo} disabled={saving} className="btn-secondary min-h-10">Undo</button>
+            <button type="button" onClick={() => void saveAll()} disabled={saving} className="btn-primary min-h-11">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

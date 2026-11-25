@@ -113,11 +113,11 @@ export default function NeedsAttention({ onViewLead }: NeedsAttentionProps) {
                 </div>
                 <div className="flex shrink-0 gap-1.5">
                   {leadId && (
-                    <button type="button" onClick={() => onViewLead(leadId)} className="inline-flex items-center gap-1 rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 font-label text-[10px] font-extrabold text-[#334155] hover:bg-[#f8fafc]">
+                    <button type="button" onClick={() => onViewLead(leadId)} className="inline-flex items-center gap-1 rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 max-md:h-8 max-md:text-xs font-label text-[10px] font-extrabold text-[#334155] hover:bg-[#f8fafc]">
                       <Eye size={11} /> Open
                     </button>
                   )}
-                  <button type="button" disabled={busyId === a.id} onClick={() => void markSeen(a)} className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 font-label text-[10px] font-extrabold text-white disabled:opacity-60">
+                  <button type="button" disabled={busyId === a.id} onClick={() => void markSeen(a)} className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 max-md:h-8 max-md:text-xs font-label text-[10px] font-extrabold text-white disabled:opacity-60">
                     {busyId === a.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Seen
                   </button>
                 </div>

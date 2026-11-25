@@ -291,7 +291,17 @@ export default function CallReview() {
   return (
     <div className="flex flex-col gap-3 pb-6 min-h-full lg:h-[calc(100vh-4rem)] lg:min-h-0">
       {/* Locked header: Filter bar + KPI Cards. On desktop the page is one fixed-height frame, so only the panes below scroll. */}
-      <div className="sticky top-14 md:top-16 lg:static lg:shrink-0 z-20 space-y-2 pb-2 pt-2 bg-[#f8fafc]/95 backdrop-blur-md border-b border-[#f1f5f9]/60 px-2 sm:px-3 md:px-4">
+      <label htmlFor="review-search-m" className="md:hidden sticky top-14 z-20 mx-2 sm:mx-3 flex items-center h-10 px-3 gap-2 rounded-xl border border-[#e2e8f0] bg-white shadow-sm">
+        <Search size={14} className="text-[#94a3b8] shrink-0" />
+        <input
+          id="review-search-m"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search lead name or phone"
+          className="w-full bg-transparent font-body text-base focus:outline-none"
+        />
+      </label>
+      <div className="md:sticky md:top-16 lg:static lg:shrink-0 z-20 space-y-2 pb-2 pt-2 bg-[#f8fafc]/95 backdrop-blur-md border-b border-[#f1f5f9]/60 px-2 sm:px-3 md:px-4">
         {/* Filter bar */}
         <div className={cn(CARD, "p-2.5 shadow-sm flex flex-wrap items-center gap-2 bg-white/90 backdrop-blur-sm")}>
           <div className="flex p-0.5 gap-0.5 rounded-xl bg-[#f8fafc] border border-[#f1f5f9]" role="group" aria-label="Date range">
@@ -349,7 +359,7 @@ export default function CallReview() {
               options={[{ value: "", label: "All telecallers" }, ...callers.map((c) => ({ value: c.id, label: c.name }))]}
             />
           </div>
-          <label htmlFor="review-search" className="flex-1 min-w-[200px] flex items-center h-9 px-3 gap-2 rounded-xl border border-[#e2e8f0] bg-white">
+          <label htmlFor="review-search" className="max-md:hidden flex-1 min-w-[200px] flex items-center h-9 px-3 gap-2 rounded-xl border border-[#e2e8f0] bg-white">
             <Search size={14} className="text-[#94a3b8] shrink-0" />
             <input
               id="review-search"
@@ -397,7 +407,7 @@ export default function CallReview() {
         </div>
 
         {/* KPI Cards (Locked with Filter bar) */}
-        <div className={cn(CARD, "grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 overflow-hidden shadow-sm bg-white")}>
+        <div className={cn(CARD, "grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 max-md:flex max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden overflow-hidden shadow-sm bg-white")}>
           {[
             { label: "Calls", value: kpi.calls, sub: `${kpi.leadsCalled} lead${kpi.leadsCalled === 1 ? "" : "s"}` },
             { label: "Connected", value: kpi.connected, sub: kpi.connectRate == null ? "—" : `${kpi.connectRate}% of calls` },
@@ -410,12 +420,12 @@ export default function CallReview() {
               sub: callerId ? `${kpi.uncalled} assigned lead${kpi.uncalled === 1 ? "" : "s"} not called` : "in this range",
             },
           ].map((k) => (
-            <div key={k.label} className="px-3.5 py-2.5 border-[#f1f5f9] border-l border-t -ml-px -mt-px min-w-0">
+            <div key={k.label} className="px-3.5 py-2.5 border-[#f1f5f9] border-l border-t -ml-px -mt-px min-w-0 max-md:shrink-0 max-md:min-w-[92px] max-md:whitespace-nowrap">
               <p className={EYEBROW}>{k.label}</p>
               <p className="font-heading text-xl sm:text-2xl font-extrabold text-[#13284A] tabular-nums mt-0.5 truncate">
                 {loading ? <span className="inline-block w-10 h-6 rounded bg-[#f1f5f9] animate-pulse align-middle" /> : k.value}
               </p>
-              <p className="font-label text-[11px] text-[#475569] truncate">{k.sub}</p>
+              <p className="font-label text-[11px] text-[#475569] truncate max-md:hidden">{k.sub}</p>
             </div>
           ))}
         </div>

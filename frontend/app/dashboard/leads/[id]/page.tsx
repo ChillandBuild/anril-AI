@@ -96,6 +96,7 @@ function PhoneAction({
   onClick,
   disabled,
   tone = "soft",
+  big,
 }: {
   label: string;
   icon: LucideIcon;
@@ -103,9 +104,12 @@ function PhoneAction({
   onClick?: () => void;
   disabled?: boolean;
   tone?: "primary" | "soft" | "danger";
+  /** Call stays big; the other actions are smaller on phones. */
+  big?: boolean;
 }) {
   const box = cn(
     "flex h-[52px] w-[52px] items-center justify-center rounded-2xl transition-colors",
+    !big && "max-md:h-10 max-md:w-10",
     disabled
       ? "bg-slate-100 text-slate-400"
       : tone === "primary"
@@ -529,14 +533,14 @@ export default function CustomerPage() {
       <header className="relative rounded-2xl border border-border bg-white px-4 pb-5 pt-4 text-center shadow-sm lg:hidden">
         <Link
           href="/dashboard/leads"
-          className="absolute left-1 top-1 flex min-h-[44px] items-center px-3 font-label text-xs font-bold text-primary"
+          className="absolute left-1 top-1 flex min-h-[44px] items-center px-3 font-label text-xs font-bold text-primary max-md:hidden"
         >
           ‹ Customers
         </Link>
         <div
           aria-hidden="true"
           className={cn(
-            "mx-auto mt-5 flex h-16 w-16 items-center justify-center rounded-full font-display text-xl font-bold",
+            "mx-auto mt-5 max-md:mt-0 flex h-16 w-16 items-center justify-center rounded-full font-display text-xl font-bold",
             segmentChip ?? "bg-slate-100 text-slate-600",
           )}
         >
@@ -554,8 +558,7 @@ export default function CustomerPage() {
         <p className="mt-1 break-words font-body text-xs text-ink-muted">{joinParts(phoneSubParts)}</p>
         {lead.score != null && (
           <p className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full bg-surface-mid px-3 py-1.5 font-body text-xs text-ink-secondary">
-            <span className="shrink-0 font-bold text-ink">Score {lead.score}</span>
-            <span className="min-w-0 truncate">from their chats</span>
+            <span className="shrink-0 font-bold text-ink">Lead score {lead.score}</span>
           </p>
         )}
         <div className="mt-4 grid grid-cols-4 gap-2">
@@ -563,6 +566,7 @@ export default function CustomerPage() {
             label="Call"
             icon={Phone}
             tone="primary"
+            big
             href={lead.phone ? `tel:${lead.phone.replace(/[\s()-]/g, "")}` : undefined}
             disabled={!lead.phone}
           />
@@ -733,7 +737,7 @@ export default function CustomerPage() {
               <h2 className="inline text-base font-bold text-[#0A1528]">Everything with {firstName}</h2>{" "}
               <span className="text-xs text-[#64748b]">newest first</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex gap-1.5 max-lg:w-full max-lg:flex-nowrap max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden lg:flex-wrap">
               {TIMELINE_CHIPS.map((chip) => {
                 const active = filter === chip.key;
                 return (
@@ -743,7 +747,7 @@ export default function CustomerPage() {
                     aria-pressed={active}
                     onClick={() => setFilter(chip.key)}
                     className={cn(
-                      "rounded-full px-2.5 py-1 text-xs font-semibold max-lg:min-h-11 max-lg:px-3.5",
+                      "rounded-full px-2.5 py-1 text-xs font-semibold max-lg:h-8 max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3",
                       active ? "bg-primary text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
                     )}
                   >

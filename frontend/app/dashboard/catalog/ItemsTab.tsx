@@ -76,14 +76,14 @@ export function StatCard({ icon, label, value, sub, tone, active, onClick }: {
       disabled={!onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-card border bg-white px-4 py-3 text-left shadow-sm transition-colors enabled:hover:border-primary/40",
+        "rounded-card border bg-white px-3 py-2 text-left shadow-sm transition-colors enabled:hover:border-primary/40 md:px-4 md:py-3",
         active ? "border-primary ring-1 ring-primary/30" : "border-border"
       )}
     >
       <p className="text-[13px] font-semibold text-ink-muted"><span aria-hidden>{icon}</span> {label}</p>
       <p className={cn("mt-0.5 font-display text-2xl font-bold tabular-nums",
         tone === "red" ? "text-rose-700" : tone === "amber" ? "text-amber-700" : "text-ink")}>{value}</p>
-      <p className="truncate text-xs text-ink-muted" title={sub}>{sub}</p>
+      <p className="truncate text-xs text-ink-muted max-md:hidden" title={sub}>{sub}</p>
     </button>
   );
 }
@@ -219,7 +219,7 @@ export function ItemsTab({ canManage, toolbarSlot }: { canManage: boolean; toolb
             </Link>
           )}
           {canManage && (
-            <Link href="/dashboard/catalog/items/new" className="btn-primary inline-flex h-9 items-center gap-1.5 !py-0">
+            <Link href="/dashboard/catalog/items/new" className="btn-primary inline-flex h-9 items-center justify-center gap-1.5 !py-0 max-md:order-first max-md:h-11 max-md:w-full">
               <Plus size={16} /> Add item
             </Link>
           )}

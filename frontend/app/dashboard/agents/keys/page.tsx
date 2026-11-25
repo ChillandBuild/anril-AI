@@ -68,7 +68,7 @@ export default function KeysPage() {
   };
 
   return (
-    <div className="w-full space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6 max-md:p-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-secondary">
           {keys ? `${active} of ${maxActive} active keys.` : " "}

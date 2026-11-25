@@ -120,7 +120,7 @@ export default function AiraBrainPage() {
         {data && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="font-body text-xs text-ink-secondary">
+              <p className="hidden font-body text-xs text-ink-secondary md:block">
                 {refreshedAt ? <>Status loaded at <time dateTime={refreshedAt}>{new Date(refreshedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" })} IST</time></> : "Loading current status…"}
                 {" · Conflict check time is shown under Needs attention."}
               </p>

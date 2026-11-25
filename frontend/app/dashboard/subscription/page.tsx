@@ -123,6 +123,11 @@ export default function SubscriptionPage() {
 
   return (
     <div className="w-full space-y-6">
+      {!isPending && !showAddon && (
+        <button onClick={() => setShowAddon(true)} disabled={!canManageSubscription} title={canManageSubscription ? "Request additional capacity" : "Read-only role: subscription requests are disabled"} className="btn-primary flex min-h-11 w-full items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:blur-[0.5px] md:hidden">
+          Request more <ArrowRight size={14} />
+        </button>
+      )}
 
       <div className="rounded-3xl border border-border bg-gradient-to-br from-primary-light to-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
@@ -186,7 +191,7 @@ export default function SubscriptionPage() {
           />
         </div>
       ) : (
-        <button onClick={() => setShowAddon(true)} disabled={!canManageSubscription} title={canManageSubscription ? "Request additional capacity" : "Read-only role: subscription requests are disabled"} className="btn-primary flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:blur-[0.5px]">
+        <button onClick={() => setShowAddon(true)} disabled={!canManageSubscription} title={canManageSubscription ? "Request additional capacity" : "Read-only role: subscription requests are disabled"} className="btn-primary flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:blur-[0.5px] max-md:hidden">
           Request more <ArrowRight size={14} />
         </button>
       )}

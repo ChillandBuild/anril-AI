@@ -57,7 +57,7 @@ function Card({ icon: Icon, tint, label, value, lines, onSee }: {
   lines: { text: string; tone?: string }[]; onSee?: () => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-2xl border border-[#e8edf2] bg-white px-4 py-3.5 shadow-sm sm:px-[18px]">
+    <div className="flex min-w-0 flex-col gap-1 rounded-2xl border border-[#e8edf2] bg-white p-3 shadow-sm sm:px-[18px] sm:py-3.5">
       <span className="flex items-center gap-2">
         <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px]", tint)} aria-hidden>
           <Icon size={15} />
@@ -66,7 +66,7 @@ function Card({ icon: Icon, tint, label, value, lines, onSee }: {
       </span>
       <span className="mt-1 font-display text-2xl font-extrabold leading-none tracking-tight text-[#0A1528] tabular-nums">{value}</span>
       {lines.map((line) => (
-        <span key={line.text} className={cn("truncate font-label text-xs font-semibold text-[#64748b]", line.tone)}>{line.text}</span>
+        <span key={line.text} className={cn("truncate font-label max-md:hidden text-xs font-semibold text-[#64748b]", line.tone)}>{line.text}</span>
       ))}
       {onSee && (
         <button type="button" onClick={onSee} className="mt-0.5 w-fit font-label text-xs font-bold text-primary-700 hover:text-primary-900">
@@ -181,7 +181,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <Card icon={IndianRupee} tint="bg-emerald-50 text-emerald-700" label="Money in"
           value={cards ? rupees(cards.money_in.paise) : "—"}
           lines={[
@@ -233,23 +233,24 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
 
       <section className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f6] p-3.5">
-          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5" role="group" aria-label="Show orders">
+          <div className="flex min-w-0 flex-1 flex-nowrap gap-1.5 overflow-x-auto max-md:w-full max-md:flex-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap" role="group" aria-label="Show orders">
             {CHIPS.map((c) => (
               <button key={c.key} type="button" onClick={() => setChip(c.key)} aria-pressed={chip === c.key}
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1.5 font-label text-xs font-bold transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 max-md:h-8 max-md:py-0 font-label text-xs font-bold transition-colors",
                   chip === c.key ? "border-primary bg-primary text-white" : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300",
                 )}>
                 {c.label}{counts ? <span className={cn("ml-1.5 tabular-nums", chip === c.key ? "text-white/80" : "text-[#94a3b8]")}>{counts[c.key]}</span> : null}
               </button>
             ))}
           </div>
-          <label className="relative w-full sm:w-52">
+          <label className="relative w-full max-md:order-1 sm:w-52">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, phone, order or item"
               aria-label="Search orders" type="search"
               className="h-9 w-full rounded-xl border border-[#e2e8f0] bg-[#f8fafc] pl-9 pr-3 text-xs text-[#0A1528] focus:outline-none focus:ring-2 focus:ring-primary-200" />
           </label>
+          <div className="flex items-center gap-2 max-md:order-2 max-md:w-full max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:h-8 max-md:[&>*]:shrink-0 md:contents">
           <Select size="sm" value={channel} onChange={(v) => setChannel(v as typeof channel)} options={CHANNELS} aria-label="Online or store"
             className="w-auto text-xs font-bold" />
           <Select size="sm" value={days} onChange={setDays} options={DAYS} aria-label="Period" className="w-auto text-xs font-bold" />
@@ -267,6 +268,7 @@ export function OrdersTab({ canManage }: { canManage: boolean }) {
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300">
             <Settings2 size={14} />
           </button>
+          </div>
         </div>
 
         {bulk && (

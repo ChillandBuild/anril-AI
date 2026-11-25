@@ -25,11 +25,11 @@ export default function FollowUpStepsSection({ canManage }: { canManage: boolean
   }, []);
 
   const tab = (id: "inbound" | "broadcast" | "campaign_reply") =>
-    `rounded-xl px-4 py-2 text-sm ${trigger === id ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`;
+    `h-8 shrink-0 whitespace-nowrap rounded-xl px-3 text-xs sm:h-auto sm:px-4 sm:py-2 sm:text-sm ${trigger === id ? "bg-on-surface text-surface" : "bg-on-surface/10 text-on-surface"}`;
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-2">
+      <div className="flex flex-nowrap gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible">
         <button type="button" aria-pressed={trigger === "inbound"} onClick={() => setTrigger("inbound")} className={tab("inbound")}>
           Lead Reply Follow-up
         </button>

@@ -51,6 +51,8 @@ export function SwitchPill({
       onClick={() => !inert && onChange(!on)}
       className={cn(
         "relative shrink-0 rounded-full border p-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        // Invisible finger-size tap area (about 56x40) around the small track.
+        "before:absolute before:-inset-2.5 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
         s.track,
         on
@@ -201,7 +203,9 @@ export function CheckTick({
         if (!disabled) onChange(!checked);
       }}
       className={cn(
-        "inline-grid place-items-center rounded-full p-0 transition-transform duration-200",
+        "relative inline-grid place-items-center rounded-full p-0 transition-transform duration-200",
+        // Invisible tap area: the 16-18px tick is reachable with a finger (about 32px).
+        "before:absolute before:-inset-2 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
         disabled ? "cursor-not-allowed" : "cursor-pointer hover:scale-105 active:scale-95",
         className

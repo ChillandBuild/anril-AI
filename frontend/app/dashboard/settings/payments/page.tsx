@@ -22,6 +22,7 @@ import {
   type AdvanceKind,
 } from "./advanceText";
 import { Card, ErrorBox, PageHeader, StatusDot } from "./MyBusinessUi";
+import { optionsChanged, remindersChanged } from "./paymentsDraft";
 
 const KINDS: { kind: AdvanceKind; label: string; hint: string }[] = [
   { kind: "none", label: "No advance", hint: "The customer pays when they collect." },
@@ -43,9 +44,9 @@ export default function PaymentsPage() {
   const [saving, setSaving] = useState(false);
   // null = could not read it (no Orders access, or the server said no): the card shows the plain text only.
   const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
-  const [remindersSaving, setRemindersSaving] = useState(false);
+  const [remindersDraft, setRemindersDraft] = useState<boolean | null>(null);
   const [options, setOptions] = useState<AdvanceOptions | null>(null);
-  const [optionSaving, setOptionSaving] = useState<keyof AdvanceOptions | null>(null);
+  const [optionsDraft, setOptionsDraft] = useState<AdvanceOptions | null>(null);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -59,8 +60,8 @@ export default function PaymentsPage() {
         ),
       ]);
       setOverview(ov);
-      balanceRemindersApi.get().then((r) => setRemindersOn(r.on), () => setRemindersOn(null));
-      myBusinessApi.advanceOptions().then(setOptions, () => setOptions(null));
+      balanceRemindersApi.get().then((r) => { setRemindersOn(r.on); setRemindersDraft(r.on); }, () => { setRemindersOn(null); setRemindersDraft(null); });
+      myBusinessApi.advanceOptions().then((o) => { setOptions(o); setOptionsDraft(o); }, () => { setOptions(null); setOptionsDraft(null); });
       if (ruleResult.ok) {
         setRule(ruleResult.r);
         setDraft(draftFromRule(ruleResult.r));
@@ -81,54 +82,51 @@ export default function PaymentsPage() {
 
   const error = draftError(draft);
   const draftRule = useMemo(() => ruleFromDraft(draft), [draft]);
-  const dirty = rule != null && !sameRule(draftRule, rule);
+  const ruleDirty = rule != null && !sameRule(draftRule, rule);
+  const optsDirty = optionsChanged(options, optionsDraft);
+  const remDirty = remindersChanged(remindersOn, remindersDraft);
+  const dirty = ruleDirty || optsDirty || remDirty;
 
+  function undo() {
+    if (rule) setDraft(draftFromRule(rule));
+    setOptionsDraft(options);
+    setRemindersDraft(remindersOn);
+  }
+
+  // One Save for everything on this page; each part still calls its own API.
   async function save() {
-    if (!rule || error) return;
+    if (error || saving) return;
     setSaving(true);
     try {
-      const saved = await myBusinessApi.saveAdvanceRule(draftRule);
-      setRule(saved);
-      setDraft(draftFromRule(saved));
-      toast.success("Advance rule saved");
+      if (ruleDirty && rule) {
+        const saved = await myBusinessApi.saveAdvanceRule(draftRule);
+        setRule(saved);
+        setDraft(draftFromRule(saved));
+      }
+      if (optsDirty && optionsDraft) {
+        const o = await myBusinessApi.saveAdvanceOptions(optionsDraft);
+        setOptions(o);
+        setOptionsDraft(o);
+      }
+      if (remDirty && remindersDraft != null) {
+        const r = await balanceRemindersApi.set(remindersDraft);
+        setRemindersOn(r.on);
+        setRemindersDraft(r.on);
+      }
+      toast.success("Saved");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save the advance rule");
+      toast.error(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
   }
 
-  async function toggleOption(key: keyof AdvanceOptions) {
-    if (!options) return;
-    const next = { ...options, [key]: !options[key] };
-    setOptionSaving(key);
-    try {
-      setOptions(await myBusinessApi.saveAdvanceOptions(next));
-      toast.success("Saved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setOptionSaving(null);
-    }
-  }
-
-  async function toggleReminders() {
-    if (remindersOn == null) return;
-    const next = !remindersOn;
-    setRemindersSaving(true);
-    try {
-      const r = await balanceRemindersApi.set(next);
-      setRemindersOn(r.on);
-      toast.success(r.on ? "Balance reminders are on" : "Balance reminders are off");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not change balance reminders");
-    } finally {
-      setRemindersSaving(false);
-    }
+  function toggleOption(key: keyof AdvanceOptions) {
+    setOptionsDraft((o) => (o ? { ...o, [key]: !o[key] } : o));
   }
 
   return (
-    <div className="w-full space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-24">
       <PageHeader icon={Wallet} title="Payments & advance" subtitle="How you ask for money on orders, and what happens around it." />
 
       {state === "loading" ? <AiraLoader inline className="min-h-[200px]" /> : null}
@@ -218,28 +216,22 @@ export default function PaymentsPage() {
                 <p className="text-sm text-ink-muted">
                   {isOwner ? "Orders › Settings changes the same rule." : "Only the owner can change this."}
                 </p>
-                {isOwner ? (
-                  <button type="button" onClick={() => void save()} disabled={!dirty || !!error || saving} className="btn-primary min-h-11">
-                    {saving ? <Loader2 size={14} className="animate-spin" aria-hidden /> : null}
-                    {saving ? "Saving…" : "Save"}
-                  </button>
-                ) : null}
               </div>
             ) : null}
           </Card>
 
           {!ruleHidden && rule ? (
             <Card id="advance-options-heading" title="Who can change it, and what the customer sees">
-              {options ? (
+              {options && optionsDraft ? (
                 <div className="divide-y divide-border/70">
-                  <OptionSwitch id="opt-staff" on={options.staff_can_change} busy={optionSaving === "staff_can_change"} disabled={!isOwner}
-                    onToggle={() => void toggleOption("staff_can_change")}
+                  <OptionSwitch id="opt-staff" on={optionsDraft.staff_can_change} busy={saving} disabled={!isOwner}
+                    onToggle={() => toggleOption("staff_can_change")}
                     title="Staff can change the advance on one order"
-                    text={options.staff_can_change ? "On New bill and New quote, staff can type a different advance. Each change is logged." : "Only you can change an order's advance. Staff get the rule above."} />
-                  <OptionSwitch id="opt-payfull" on={options.ai_pay_full} busy={optionSaving === "ai_pay_full"} disabled={!isOwner}
-                    onToggle={() => void toggleOption("ai_pay_full")}
-                    title="AI agent lets a customer pay the full amount"
-                    text={options.ai_pay_full ? "When a customer asks to pay it all now, the AI sends one link for the whole amount." : "The AI always sends the advance link first."} />
+                    text={optionsDraft.staff_can_change ? "On New bill and New quote, staff can type a different advance. Each change is logged." : "Only you can change an order's advance. Staff get the rule above."} />
+                  <OptionSwitch id="opt-payfull" on={optionsDraft.ai_pay_full} busy={saving} disabled={!isOwner}
+                    onToggle={() => toggleOption("ai_pay_full")}
+                    title="Anril lets a customer pay the full amount"
+                    text={optionsDraft.ai_pay_full ? "When a customer asks to pay it all now, the AI sends one link for the whole amount." : "The AI always sends the advance link first."} />
                 </div>
               ) : (
                 <p className="text-sm text-ink-muted">Couldn&apos;t load these switches.</p>
@@ -254,24 +246,24 @@ export default function PaymentsPage() {
           ) : null}
 
           <Card id="reminders-heading" title="Balance reminders" hint="When an order still has money to pay, the customer gets a gentle reminder by WhatsApp.">
-            {remindersOn == null ? (
+            {remindersDraft == null ? (
               <p className="text-sm font-semibold text-ink">{overview.balance_reminders}</p>
             ) : (
               <div className="flex items-start justify-between gap-4">
-                <p id="reminders-switch-label" className="text-sm font-semibold text-ink">{remindersLine(remindersOn)}</p>
+                <p id="reminders-switch-label" className="text-sm font-semibold text-ink">{remindersLine(remindersDraft)}</p>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={remindersOn}
+                  aria-checked={remindersDraft}
                   aria-labelledby="reminders-switch-label"
-                  disabled={!isOwner || remindersSaving}
-                  onClick={() => void toggleReminders()}
+                  disabled={!isOwner || saving}
+                  onClick={() => setRemindersDraft((v) => (v == null ? v : !v))}
                   className={cn(
                     "relative inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60",
                   )}
                 >
-                  <span aria-hidden className={cn("flex h-7 w-12 items-center rounded-full px-1 transition-colors", remindersOn ? "bg-primary" : "bg-slate-400")}>
-                    <span className={cn("h-5 w-5 rounded-full bg-white shadow transition-transform", remindersOn ? "translate-x-5" : "translate-x-0")} />
+                  <span aria-hidden className={cn("flex h-7 w-12 items-center rounded-full px-1 transition-colors", remindersDraft ? "bg-primary" : "bg-slate-400")}>
+                    <span className={cn("h-5 w-5 rounded-full bg-white shadow transition-transform", remindersDraft ? "translate-x-5" : "translate-x-0")} />
                   </span>
                 </button>
               </div>
@@ -318,6 +310,19 @@ export default function PaymentsPage() {
           </Card>
 
         </>
+      ) : null}
+
+      {state === "ready" && isOwner && dirty ? (
+        <div className="sticky bottom-[calc(var(--mobile-nav-h)+env(safe-area-inset-bottom,0px)+0.5rem)] z-10 flex items-center justify-between gap-3 rounded-2xl border border-border bg-white p-3 shadow-lg lg:bottom-3">
+          <p className="text-sm font-semibold text-ink">{error ? error : "Unsaved changes"}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={undo} disabled={saving} className="btn-secondary min-h-10">Undo</button>
+            <button type="button" onClick={() => void save()} disabled={!!error || saving} className="btn-primary min-h-11">
+              {saving ? <Loader2 size={14} className="animate-spin" aria-hidden /> : null}
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );

@@ -126,9 +126,12 @@ export default function WinnerBanner() {
   }, []);
 
   return (
-    <div className="flex gap-4 mb-7">
-      <WinnerCard type="daily" winner={data?.daily ?? null} loading={loading} />
-      <WinnerCard type="monthly" winner={data?.monthly ?? null} loading={loading} />
+    <div className="mb-7">
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <WinnerCard type="daily" winner={data?.daily ?? null} loading={loading} />
+        <WinnerCard type="monthly" winner={data?.monthly ?? null} loading={loading} />
+      </div>
+      <p className="mt-2 font-label text-xs text-on-surface-muted sm:hidden">{FORMULA}</p>
     </div>
   );
 }

@@ -71,7 +71,7 @@ export default function CockpitModals({ cockpit }: { cockpit: CallingCockpit }) 
               onClick={cancelDial}
               className="mt-6 w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 font-label text-sm font-bold rounded-2xl transition-all border border-red-200"
             >
-              Cancel Dial
+              Cancel
             </button>
           </div>
         </div>
@@ -84,7 +84,7 @@ export default function CockpitModals({ cockpit }: { cockpit: CallingCockpit }) 
             <div className="flex items-start justify-between gap-4 border-b border-[#f1f5f9] px-6 py-5">
               <div>
                 <span className="rounded-full bg-primary-light px-3 py-1 font-label text-[10px] font-black uppercase tracking-wider text-primary">
-                  SIM Basic
+                  Calling from your phone
                 </span>
                 <h3 className="mt-3 font-display text-xl font-extrabold text-[#0A1528]">Open this lead on mobile</h3>
                 <p className="mt-1 font-body text-sm leading-relaxed text-[#475569]">

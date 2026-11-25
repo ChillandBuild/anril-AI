@@ -133,7 +133,7 @@ export function WaitingLeadsPrompt() {
               hideOffer(offerId);
               void respond(offerId, false);
             }}
-            className="rounded-xl border border-border bg-white px-4 py-2 font-label text-xs font-bold text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
+            className="min-h-9 rounded-xl border border-border bg-white px-4 py-2 font-label text-xs font-bold text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
           >
             Not now
           </button>
@@ -141,7 +141,7 @@ export function WaitingLeadsPrompt() {
             type="button"
             disabled={busy}
             onClick={() => void respond(offerId, true)}
-            className="rounded-xl bg-primary px-4 py-2 font-label text-xs font-bold text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+            className="min-h-11 rounded-xl bg-primary px-4 py-2 font-label text-xs font-bold text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
           >
             {n === 1 ? "Take 1 lead" : `Take ${n} leads`}
           </button>

@@ -281,7 +281,7 @@ export default function NewTemplatePage() {
 
   const isAuth = category === "AUTHENTICATION";
   const startChip = (on: boolean) =>
-    `inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold transition ${
+    `inline-flex h-9 max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold transition ${
       on ? "border-primary bg-primary-50 text-primary-800 ring-2 ring-primary-100" : "border-[#e2ddd5] bg-white text-ink hover:border-primary-200"
     }`;
 
@@ -293,7 +293,8 @@ export default function NewTemplatePage() {
         <div className="min-w-0 space-y-4">
           {canManageTemplates && (
             <div className="relative flex flex-wrap items-center gap-2 rounded-2xl border border-primary-100 bg-primary-50/60 px-4 py-3">
-              <span className="mr-1 text-[13.5px] font-bold text-ink">Start from:</span>
+              <div className="max-md:flex max-md:w-full max-md:flex-nowrap max-md:items-center max-md:gap-2 max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents">
+              <span className="mr-1 shrink-0 whitespace-nowrap text-[13.5px] font-bold text-ink">Start from:</span>
               <button type="button" className={startChip(start === "blank")} onClick={startBlank}>
                 <PenLine size={13} aria-hidden="true" /> Blank
               </button>
@@ -306,6 +307,7 @@ export default function NewTemplatePage() {
               <Link href="/dashboard/templates/carousel" className={startChip(false)}>
                 <LayoutGrid size={13} aria-hidden="true" /> Carousel
               </Link>
+              </div>
               {copyOpen && (
                 <CopyPicker
                   onClose={() => setCopyOpen(false)}
@@ -381,7 +383,27 @@ export default function NewTemplatePage() {
               <span className="mb-1.5 block text-[13px] font-semibold text-ink">
                 Type <span className="font-normal text-ink-muted">(Meta calls it Category)</span>
               </span>
-              <div className="grid gap-2.5 sm:grid-cols-3" role="radiogroup" aria-label="Type">
+              <div className="flex gap-1.5 sm:hidden" role="radiogroup" aria-label="Type">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={category === c.value}
+                    onClick={() => selectCategory(c.value)}
+                    className={`h-8 min-w-0 flex-1 truncate rounded-full border px-2 text-[12.5px] font-semibold transition ${
+                      category === c.value ? "border-primary bg-primary-50 text-primary-800 ring-2 ring-primary-100" : "border-[#e2ddd5] bg-white text-ink"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[12px] leading-snug text-ink-muted sm:hidden">
+                {CATEGORIES.find((c) => c.value === category)?.description}
+                <span className={`ml-1 font-bold ${CATEGORY_COST[category].cls}`}>{CATEGORY_COST[category].text}</span>
+              </p>
+              <div className="grid gap-2.5 max-sm:hidden sm:grid-cols-3" role="radiogroup" aria-label="Type">
                 {CATEGORIES.map((c) => {
                   const on = category === c.value;
                   return (
@@ -425,7 +447,7 @@ export default function NewTemplatePage() {
               </p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Header">
+                <div className="flex flex-wrap gap-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden" role="radiogroup" aria-label="Header">
                   {HEADER_KINDS.map((h) => (
                     <button
                       key={h.value}

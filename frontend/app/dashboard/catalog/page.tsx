@@ -67,7 +67,7 @@ export default function CatalogPage() {
     <div className="space-y-4">
       <CatalogueTabs />
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex w-full flex-wrap gap-2 sm:w-fit">
+        <div className="flex w-full flex-nowrap gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-fit md:flex-wrap md:overflow-visible">
           {TABS.map((item) => {
             const active = tab === item.id;
             return (
@@ -77,7 +77,7 @@ export default function CatalogPage() {
                 onClick={() => setTab(item.id)}
                 aria-pressed={active}
                 className={cn(
-                  "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors",
+                  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs font-bold md:h-9 md:px-3.5 md:text-sm transition-colors",
                   active ? "border-primary bg-primary text-white shadow-sm" : "border-border bg-white text-ink hover:bg-surface-low"
                 )}
               >

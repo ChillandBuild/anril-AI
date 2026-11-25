@@ -22,4 +22,4 @@ export const ROW_BUTTON_CLASS =
   "inline-flex min-h-9 items-center justify-center rounded-lg border border-primary-200 bg-primary-50 px-3 font-label text-xs font-bold text-primary transition hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50";
 
 export const ROW_LINK_CLASS =
-  "font-label text-xs font-bold text-primary hover:text-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
+  "inline-flex min-h-8 items-center px-2 font-label text-xs font-bold text-primary hover:text-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";

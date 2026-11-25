@@ -266,7 +266,7 @@ export default function VariableInserter({
           <div
             role="group"
             aria-label="Pick a customer detail"
-            className="absolute left-0 top-full z-20 mt-1 w-[min(22rem,100%)] rounded-xl border border-border-subtle bg-white p-2 shadow-lg"
+            className="absolute left-0 top-full z-20 mt-1 max-h-[60dvh] w-[min(22rem,100%)] overflow-y-auto rounded-xl border border-border-subtle bg-white p-2 shadow-lg"
           >
             {(["filled", "supplied"] as DetailGroup[]).map((group) => (
               <div key={group} className="mb-1 last:mb-0">
@@ -330,7 +330,7 @@ export default function VariableInserter({
         {/* Detected variables */}
         {variables.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-body text-xs text-ink-secondary">Blanks:</span>
+            <span className="font-body text-xs text-ink-secondary">Example values:</span>
             {variables.map((v) => (
               <span
                 key={v}

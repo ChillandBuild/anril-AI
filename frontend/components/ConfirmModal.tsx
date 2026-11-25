@@ -52,7 +52,7 @@ export function ConfirmModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-dialog flex items-center justify-center p-4">
-      <div className="bg-white rounded-card shadow-xl w-full max-w-md p-6">
+      <div className="bg-white rounded-card shadow-xl w-full max-w-md p-6 max-h-[85dvh] overflow-y-auto">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${style.icon}`}>
@@ -60,7 +60,7 @@ export function ConfirmModal({
             </div>
             <h3 className="text-lg font-bold text-ink">{title}</h3>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink" aria-label="Close">
+          <button onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-slate-100 hover:text-ink" aria-label="Close">
             <X size={18} />
           </button>
         </div>

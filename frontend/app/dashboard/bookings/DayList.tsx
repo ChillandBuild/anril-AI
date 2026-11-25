@@ -37,7 +37,7 @@ export function dayCounts(bookings: Pick<Booking, "status" | "source" | "confirm
 export function DayTiles({ bookings }: { bookings: Booking[] }) {
   const c = dayCounts(bookings);
   const tiles = [
-    { label: "Booked", value: c.booked, hint: c.booked ? `${c.byAi} by the AI agent, ${c.booked - c.byAi} by staff` : "none yet", box: "border-border bg-white", num: "text-ink" },
+    { label: "Booked", value: c.booked, hint: c.booked ? `${c.byAi} by Anril, ${c.booked - c.byAi} by staff` : "none yet", box: "border-border bg-white", num: "text-ink" },
     { label: "Came / Paid", value: c.came, hint: "marked came", box: "border-[#abefc6] bg-[#f6fef9]", num: "text-[#067647]" },
     { label: "Still to come", value: c.toCome, hint: c.toCome ? `${c.confirmed} confirmed · ${c.toCome - c.confirmed} no reply` : "nobody left", box: "border-[#c7d7fe] bg-[#f5f8ff]", num: "text-[#3538cd]" },
     { label: "Didn't come", value: c.noShow, hint: c.noShow ? "send them a new time" : "everyone turned up", box: "border-border bg-white", num: "text-ink-secondary" },
@@ -48,7 +48,7 @@ export function DayTiles({ bookings }: { bookings: Booking[] }) {
         <div key={t.label} className={cn("rounded-2xl border px-4 py-3", t.box)}>
           <p className="text-xs font-semibold text-ink-secondary">{t.label}</p>
           <p className={cn("text-2xl font-bold tabular-nums", t.num)}>{t.value}</p>
-          <p className="text-xs text-ink-muted">{t.hint}</p>
+          <p className="text-xs text-ink-muted max-md:hidden">{t.hint}</p>
         </div>
       ))}
     </div>

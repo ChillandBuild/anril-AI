@@ -53,7 +53,7 @@ export default function PlaygroundPage() {
   }, []);
 
   return (
-    <div className="w-full space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4 p-4 sm:p-6 max-md:p-0">
       {error ? (
         <ErrorNote message={error} />
       ) : characters === null ? (
@@ -63,7 +63,7 @@ export default function PlaygroundPage() {
           Make a character first on <Link href="/dashboard/agents/characters" className="text-primary underline">Characters</Link>.
         </div>
       ) : (
-        <section className={`${CARD} p-[18px]`} aria-label="Playground">
+        <section className={`${CARD} p-[18px] max-md:p-3`} aria-label="Playground">
           <PlaygroundChat
             character={selected}
             characters={characters}

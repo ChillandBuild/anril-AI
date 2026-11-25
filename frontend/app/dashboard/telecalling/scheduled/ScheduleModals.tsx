@@ -8,7 +8,7 @@ import QuickTimePicker from "../components/wrapup/QuickTimePicker";
 import { lookupCustomers, worthLooking, type DialMatch } from "../lib/dialLookup";
 
 const INPUT = "w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 font-body text-xs focus:outline-none focus:ring-2 focus:ring-primary";
-const PRIMARY = "rounded-xl bg-primary px-4 py-2 font-label text-xs font-bold text-white disabled:opacity-40";
+const PRIMARY = "rounded-xl bg-primary px-4 py-2 max-md:min-h-11 max-md:text-sm font-label text-xs font-bold text-white disabled:opacity-40";
 const LOOKUP_DELAY_MS = 300;
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -102,7 +102,7 @@ export function ScheduleCallModal({ onClose, onSaved }: { onClose: () => void; o
         <input value={why} maxLength={500} onChange={(e) => setWhy(e.target.value)} placeholder="e.g. Asked to call after the weekend" className={INPUT} />
       </div>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 font-label text-xs font-bold text-[#475569]">Cancel</button>
+        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 max-md:min-h-11 max-md:text-sm font-label text-xs font-bold text-[#475569]">Cancel</button>
         <button type="button" disabled={!picked || !when || saving} onClick={save} className={PRIMARY}>{saving ? "Saving…" : "Schedule"}</button>
       </div>
     </Shell>
@@ -133,7 +133,7 @@ export function MoveCallModal({ jobId, name, onClose, onSaved }: { jobId: string
     <Shell title={`Move call with ${name}`} onClose={onClose}>
       <QuickTimePicker value={when} onChange={setWhen} now={new Date()} />
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 font-label text-xs font-bold text-[#475569]">Cancel</button>
+        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 max-md:min-h-11 max-md:text-sm font-label text-xs font-bold text-[#475569]">Cancel</button>
         <button type="button" disabled={!when || saving} onClick={save} className={PRIMARY}>{saving ? "Saving…" : "Move"}</button>
       </div>
     </Shell>

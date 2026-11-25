@@ -81,13 +81,13 @@ export function DayTab({
       {toolbarSlot &&
         createPortal(
           <>
-            <button type="button" aria-label="Previous day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, -1))}>
+            <button type="button" aria-label="Previous day" className={cn(BTN_SECONDARY, "px-2.5 max-md:h-8 max-md:min-h-8")} onClick={() => onDate(addDays(date, -1))}>
               <ChevronLeft size={16} />
             </button>
-            <button type="button" className={BTN_SECONDARY} onClick={() => onDate(today)} disabled={date === today}>
+            <button type="button" className={cn(BTN_SECONDARY, "max-md:h-8 max-md:min-h-8 max-md:px-3 max-md:py-0")} onClick={() => onDate(today)} disabled={date === today}>
               Today
             </button>
-            <button type="button" aria-label="Next day" className={cn(BTN_SECONDARY, "px-2.5")} onClick={() => onDate(addDays(date, 1))}>
+            <button type="button" aria-label="Next day" className={cn(BTN_SECONDARY, "px-2.5 max-md:h-8 max-md:min-h-8")} onClick={() => onDate(addDays(date, 1))}>
               <ChevronRight size={16} />
             </button>
             {canDownload && <DownloadListButton start={date} disabled={!view || bookings.length === 0} />}

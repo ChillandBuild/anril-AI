@@ -99,7 +99,7 @@ export function BrainOverview({ canManage, canSeeMoney }: { canManage: boolean; 
         <div className={card}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink"><UserRound size={15} className="text-primary" /> Who your AI agent is</h3>
-            {canManage && <Link href={DESCRIPTION_HREF} className="text-xs font-bold text-primary hover:underline">Edit ›</Link>}
+            {canManage && <Link href={DESCRIPTION_HREF} className="inline-flex min-h-8 items-center px-2 text-xs font-bold text-primary hover:underline">Edit ›</Link>}
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {[["About", data.who.about], ["Talks like", data.who.talks_like], ["Language", data.who.language]].map(([label, value]) => (
@@ -145,7 +145,7 @@ export function BrainOverview({ canManage, canSeeMoney }: { canManage: boolean; 
             <p className="font-display text-[15px] font-bold text-ink">Never do <span className="font-body text-xs font-normal text-ink-muted">· {data.never.count} {data.never.count === 1 ? "rule" : "rules"}</span></p>
             <p className="truncate text-[13px] text-ink-secondary">{data.never.first.length ? data.never.first.join(" · ") : "Nothing written yet. Add what your AI agent must never say or promise."}</p>
           </div>
-          {canManage && <Link href={DESCRIPTION_HREF} className="shrink-0 text-xs font-bold text-primary hover:underline">Edit ›</Link>}
+          {canManage && <Link href={DESCRIPTION_HREF} className="inline-flex min-h-8 shrink-0 items-center px-2 text-xs font-bold text-primary hover:underline">Edit ›</Link>}
         </div>
       </div>
 

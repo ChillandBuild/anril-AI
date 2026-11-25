@@ -20,12 +20,12 @@ export function WhatsAppDisconnectedBanner() {
   if (!allowed || !data?.disconnected) return null;
 
   return (
-    <div role="alert" className="sticky top-14 z-30 flex items-center gap-3 border-b border-red-300 bg-red-600 px-5 py-2.5 text-white">
+    <div role="alert" className="sticky top-14 z-30 flex items-center gap-3 border-b border-red-300 bg-red-600 px-3 py-2 text-white md:top-16 md:px-5 md:py-2.5">
       <WifiOff size={18} className="shrink-0" aria-hidden />
-      <p className="flex-1 text-sm font-bold">{disconnectedMessage(data)}</p>
+      <p className="min-w-0 flex-1 truncate text-[13px] font-bold md:text-sm">{disconnectedMessage(data)}</p>
       <Link
         href="/dashboard/settings/connect-channels"
-        className="shrink-0 rounded-lg bg-white px-4 py-1.5 text-xs font-bold text-red-700 transition-colors hover:bg-red-50"
+        className="inline-flex h-8 shrink-0 items-center rounded-lg bg-white px-4 text-xs font-bold text-red-700 transition-colors hover:bg-red-50"
       >
         Reconnect
       </Link>

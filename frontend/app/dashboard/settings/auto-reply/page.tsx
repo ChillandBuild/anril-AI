@@ -151,7 +151,7 @@ export default function RepliesAndHandoverPage() {
   return (
     <div className="space-y-4 pb-24">
       <div className="card flex flex-wrap items-center gap-5 rounded-2xl p-5">
-        <Image src="/login/tealy-poster.png" alt="Tealy" width={150} height={150} className="h-[150px] w-[150px] shrink-0 object-contain" />
+        <Image src="/login/tealy-poster.png" alt="Tealy" width={150} height={150} className="hidden h-[150px] w-[150px] shrink-0 object-contain sm:block" />
         <div className="min-w-0 flex-1">
           <h2 className="font-headline text-lg font-bold text-ink">How Anril handles a new chat, start to finish</h2>
           <p className="mt-1 max-w-prose font-body text-sm text-ink-muted">

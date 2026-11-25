@@ -270,7 +270,7 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, ac
   title?: string;
 }) {
   const className = cn(
-    "flex min-w-0 flex-col items-start gap-0.5 rounded-2xl border bg-white px-3 py-2.5 text-left sm:gap-1 sm:px-5 sm:py-4",
+    "flex min-w-0 flex-col items-start gap-0.5 rounded-2xl border bg-white px-3 py-2 text-left max-sm:min-w-[116px] max-sm:shrink-0 sm:gap-1 sm:px-5 sm:py-4",
     active ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-[#e2e8f0]",
   );
   const body = (
@@ -516,6 +516,7 @@ export function LeadsClient() {
   );
   const firstDay = totalLeads === 0 && !hasFilters;
   const groupName = groups.find((g) => g.id === groupId)?.name ?? "Group";
+  const phoneFilterCount = [sourceFilter !== "ALL", dateFrom || dateTo, assigned, replyWindow, groupId, bought, onlyLeads, cameFrom, tagFilter].filter(Boolean).length;
   const statusValue = status === "ALL" ? "all" : status === "BUYERS" ? "buyers" : status;
   const statusOptions: FilterMenuOption[] =
     status === "D" ? [...STATUS_OPTIONS, { value: "D", label: "Not interested" }] : STATUS_OPTIONS;
@@ -1003,7 +1004,7 @@ export function LeadsClient() {
       {headerView === "people" && pageView === "leads" && (
         <div className="space-y-4">
           {/* Customer summary cards: they follow the same filters as the table below. */}
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 max-sm:flex max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden sm:gap-3 lg:grid-cols-5">
             <LeadStatCard
               emoji="👥"
               label="People"
@@ -1070,7 +1071,8 @@ export function LeadsClient() {
                   className="h-10 w-full rounded-xl border border-border bg-white pl-10 pr-3 font-body text-base text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary/25"
                 />
               </label>
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Interest">
+              <div className="flex items-center gap-1.5">
+              <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Interest">
                 {PHONE_CHIPS.map((chip) => {
                   const on = status === chip.key;
                   return (
@@ -1080,7 +1082,7 @@ export function LeadsClient() {
                       aria-pressed={on}
                       onClick={() => setStatus(chip.key)}
                       className={cn(
-                        "h-8 rounded-full px-3 font-label text-[12.5px] font-bold transition-colors",
+                        "h-8 shrink-0 whitespace-nowrap rounded-full px-3 font-label text-[12.5px] font-bold transition-colors",
                         on ? "bg-navy text-white" : "bg-surface-mid text-ink-secondary",
                       )}
                     >
@@ -1088,17 +1090,23 @@ export function LeadsClient() {
                     </button>
                   );
                 })}
+              </div>
                 <button
                   type="button"
+                  aria-label="Filters"
                   aria-expanded={phoneFiltersOpen}
                   onClick={() => setPhoneFiltersOpen((open) => !open)}
                   className={cn(
-                    "ml-auto flex h-8 items-center gap-1 rounded-full border px-3 font-label text-[12.5px] font-bold",
+                    "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
                     phoneFiltersOpen ? "border-navy bg-navy text-white" : "border-border bg-white text-ink",
                   )}
                 >
                   <SlidersHorizontal size={14} aria-hidden="true" />
-                  {phoneFiltersOpen ? "Hide filters" : "Filters"}
+                  {phoneFilterCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-label text-[10px] font-bold text-white">
+                      {phoneFilterCount}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -1404,7 +1412,8 @@ export function LeadsClient() {
                       // ignore
                     }
                   }}
-                  className="text-primary hover:text-primary/70 shrink-0"
+                  aria-label="Close tip"
+                  className="text-primary hover:text-primary/70 shrink-0 max-md:-m-2 max-md:flex max-md:h-8 max-md:w-8 max-md:items-center max-md:justify-center"
                 >
                   <X size={14} />
                 </button>
@@ -1924,7 +1933,7 @@ export function LeadsClient() {
                                 type="button"
                                 aria-expanded={isOpen}
                                 onClick={() => setExpandedId(isOpen ? null : lead.id)}
-                                className="relative mt-1 inline-flex items-center gap-1 font-label text-xs font-bold text-primary before:absolute before:-inset-x-2 before:-inset-y-3.5 before:content-['']"
+                                className="-ml-2 mt-0.5 inline-flex min-h-8 items-center gap-1 px-2 font-label text-xs font-bold text-primary"
                               >
                                 {isOpen ? "Hide details" : "Details"}
                                 <ChevronDown size={14} aria-hidden="true" className={cn("transition-transform", isOpen && "rotate-180")} />

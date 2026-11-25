@@ -119,7 +119,7 @@ export function Metric({ label, value, before, kind = "count", statKey = "", peo
               {delta.dir === "up" ? "▲" : "▼"} {delta.pct === null ? "" : `${Math.abs(delta.pct)}%`}
             </span>
           )}
-          before: {formatValue(before, kind)}
+          <span className="max-md:hidden">before: {formatValue(before, kind)}</span>
         </span>
       ) : null}
       {hint ? <span className="mt-1 block font-label text-xs text-[#556274]">{hint}</span> : null}

@@ -43,7 +43,7 @@ function AnswerPane({
     setError(null);
     try {
       await aiSetupApi.answer(row.question, text.trim());
-      toast.success("Saved. The AI agent will use this next time.");
+      toast.success("Saved. Anril will use this next time.");
       onSaved(row, thenTest);
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : "Could not save. Please try again.");
@@ -84,7 +84,7 @@ function AnswerPane({
           </div>
           {error && <p role="alert" className="font-body text-xs text-danger">{error}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save(false)} disabled={busy !== null || !text.trim()} className="btn-primary min-h-9 disabled:opacity-50">
+            <button type="button" onClick={() => void save(false)} disabled={busy !== null || !text.trim()} className="btn-primary min-h-11 md:min-h-9 disabled:opacity-50">
               {busy === "save" && <Loader2 size={14} className="animate-spin" aria-hidden />} Save answer
             </button>
             <button type="button" onClick={() => void save(true)} disabled={busy !== null || !text.trim()} className="btn-secondary min-h-9 disabled:opacity-50">
@@ -157,11 +157,11 @@ export default function CouldntAnswerPage() {
             <Stat value={answered} label="answered this visit" accent />
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/login/tealy-poster.png" alt="" width={150} height={150} className="h-[150px] w-[150px] shrink-0 object-contain" />
+          <img src="/login/tealy-poster.png" alt="" width={150} height={150} className="hidden h-[150px] w-[150px] shrink-0 object-contain sm:block" />
         </section>
       )}
       {rows?.length === 0 && (
-        <p className="card font-body text-sm text-ink-secondary">Nothing here. The AI agent had an answer for every question in this period.</p>
+        <p className="card font-body text-sm text-ink-secondary">Nothing here. Anril had an answer for every question in this period.</p>
       )}
       {rows && rows.length > 0 && current && (
         <div className="flex flex-wrap items-start gap-4">

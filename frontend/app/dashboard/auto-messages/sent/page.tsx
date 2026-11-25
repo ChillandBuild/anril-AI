@@ -80,12 +80,12 @@ export default function SentPage() {
   }
 
   const chip = (on: boolean) =>
-    `rounded-full border px-3 py-1.5 font-label text-xs font-semibold transition ${focusRing} ${tapArea} ${
+    `rounded-full border px-3 py-1.5 font-label text-xs font-semibold transition ${focusRing} max-sm:h-8 ${
       on ? "border-primary bg-primary text-white" : "border-border bg-white text-ink-secondary hover:border-primary/40"
     }`;
 
   return (
-    <div className="w-full space-y-4 px-4 py-6 sm:px-6">
+    <div className="w-full space-y-4 sm:px-6 sm:py-6">
       {todayNotSent > 0 && (
         <div role="status" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />

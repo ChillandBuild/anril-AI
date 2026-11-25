@@ -215,7 +215,7 @@ export const SplitAudio = forwardRef<SplitAudioHandle, SplitAudioProps>(function
                 data-mode={m.id}
                 tabIndex={checked ? 0 : -1}
                 onClick={() => choose(m.id)}
-                className={`px-2.5 py-1 rounded-full border font-label text-[10px] font-bold break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
+                className={`px-2.5 py-1 max-md:min-h-8 rounded-full border font-label text-[10px] max-md:text-xs font-bold break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                   checked
                     ? "bg-primary text-white border-primary"
                     : "bg-primary-light text-primary border-primary-muted hover:brightness-95"

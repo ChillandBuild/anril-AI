@@ -659,7 +659,7 @@ export default function TemplateDetailsPage() {
                       {template.meta_template_id || "Not Linked"}
                     </p>
                   </div>
-                  <div>
+                  <div className="max-md:hidden">
                     <p className="font-body text-xs text-ink-muted">Local ID</p>
                     <p className="font-mono text-xs font-semibold text-ink truncate mt-0.5 select-all">
                       {template.id}

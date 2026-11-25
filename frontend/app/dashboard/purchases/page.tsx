@@ -170,7 +170,7 @@ function OrdersTab({ canManage, canTemplates }: { canManage: boolean; canTemplat
         <table className="hidden w-full min-w-[900px] text-sm md:table">
           <thead>
             <tr className="border-b border-border bg-surface-low text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-              <th className="px-4 py-3">PO no. · Supplier</th>
+              <th className="px-4 py-3">Purchase order no. · Supplier</th>
               <th className="px-3 py-3">Items</th>
               <th className="px-3 py-3">Amount</th>
               <th className="px-3 py-3">Sent</th>

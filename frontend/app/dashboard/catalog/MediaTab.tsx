@@ -68,7 +68,7 @@ function SortablePhoto({
             type="button"
             {...attributes}
             {...listeners}
-            className="absolute left-2 top-2 z-10 flex h-6 w-6 cursor-grab items-center justify-center rounded-md bg-white/90 text-ink-muted opacity-0 shadow-sm transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+            className="absolute left-2 top-2 z-10 flex h-8 w-8 cursor-grab items-center justify-center rounded-md bg-white/90 text-ink-muted shadow-sm transition-opacity max-lg:opacity-100 lg:h-6 lg:w-6 lg:opacity-0 lg:group-hover:opacity-100 active:cursor-grabbing"
             aria-label="Drag to reorder"
           >
             <GripVertical size={13} />
@@ -78,7 +78,7 @@ function SortablePhoto({
           <button
             type="button"
             onClick={() => onDelete(media.id)}
-            className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-danger opacity-0 shadow-sm transition-opacity hover:bg-danger hover:text-white group-hover:opacity-100"
+            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-md bg-white/90 text-danger shadow-sm transition-opacity hover:bg-danger hover:text-white max-lg:opacity-100 lg:h-6 lg:w-6 lg:opacity-0 lg:group-hover:opacity-100"
             aria-label="Remove photo"
           >
             <X size={13} />

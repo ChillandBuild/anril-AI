@@ -78,7 +78,7 @@ function LeadsByDayCard({ overview }: { overview: AnalyticsOverview }) {
         {ticks.map((t) => (
           <g key={t}>
             <line x1={LINE.left} x2={LINE.right} y1={tickY(t)} y2={tickY(t)} className="stroke-border-subtle" strokeWidth={1} />
-            <text x={LINE.left - 8} y={tickY(t) + 4} textAnchor="end" fontSize={11} className="fill-ink-muted">
+            <text x={LINE.left - 8} y={tickY(t) + 4} textAnchor="end" fontSize={11} className="fill-ink-muted max-md:[font-size:18px]">
               {t}
             </text>
           </g>
@@ -93,13 +93,13 @@ function LeadsByDayCard({ overview }: { overview: AnalyticsOverview }) {
               </title>
             </circle>
             <circle cx={p.x} cy={p.y} r={4} className="fill-white stroke-primary-800" strokeWidth={2} pointerEvents="none" />
-            <text x={p.x} y={LINE.h - 8} textAnchor="middle" fontSize={11} className="fill-ink-muted">
+            <text x={p.x} y={LINE.h - 8} textAnchor="middle" fontSize={11} className="fill-ink-muted max-md:[font-size:18px]">
               {dayName(days[i].day)}
             </text>
           </g>
         ))}
         {peak >= 0 && (
-          <text x={pts[peak].x} y={Math.max(pts[peak].y - 10, 12)} textAnchor="middle" fontSize={12} fontWeight={800} className="fill-ink">
+          <text x={pts[peak].x} y={Math.max(pts[peak].y - 10, 12)} textAnchor="middle" fontSize={12} fontWeight={800} className="fill-ink max-md:[font-size:19px]">
             {values[peak]}
           </text>
         )}
@@ -154,7 +154,7 @@ function LeadsByTypeCard({ bySegment }: { bySegment: AnalyticsOverview["by_segme
             <text x={60} y={58} textAnchor="middle" fontSize={22} fontWeight={800} className="fill-ink">
               {total}
             </text>
-            <text x={60} y={76} textAnchor="middle" fontSize={11} className="fill-ink-muted">
+            <text x={60} y={76} textAnchor="middle" fontSize={11} className="fill-ink-muted max-md:[font-size:18px]">
               today
             </text>
           </svg>
@@ -216,7 +216,7 @@ function AiGaugeCard({ overview }: { overview: AnalyticsOverview }) {
                 {couldnt > 0 && (
                   <>
                     {" "}
-                    <Link href="/dashboard/brain/couldnt-answer" className="font-label font-bold text-primary-700 hover:text-primary-900">
+                    <Link href="/dashboard/brain/couldnt-answer" className="inline-flex min-h-8 items-center font-label font-bold text-primary-700 hover:text-primary-900">
                       Teach ›
                     </Link>
                   </>

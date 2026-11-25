@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import useSWR from "swr";
-import { ArrowRight, FileText, Gauge } from "lucide-react";
 import { SectionCard } from "@/app/dashboard/otp/otpUi";
 import { LoadError, Notice, Skeleton, TableWrap } from "@/app/dashboard/sms/ui";
 import { connectionsApi, type AiReplies, type ChargesAvailable, type MetaCharges } from "@/lib/connectionsApi";
@@ -11,7 +9,6 @@ import {
   NOT_AVAILABLE_HELP,
   barTone,
   barWidth,
-  dailyLimitText,
   formatCount,
   formatMoney,
   inShort,
@@ -39,12 +36,9 @@ export default function MetaChargesPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-4">
-          <ChargesCard charges={data.charges} />
-          <AiRepliesCard ai={data.ai_replies} />
-        </div>
-        <MovedCard tier={data.daily_limit.tier} numbersLink={data.daily_limit.link} />
+      <div className="min-w-0 space-y-4">
+        <ChargesCard charges={data.charges} />
+        <AiRepliesCard ai={data.ai_replies} />
       </div>
     </div>
   );
@@ -66,7 +60,7 @@ function ChargesCard({ charges }: { charges: MetaCharges }) {
         <>
           <ChargesTable charges={charges} />
           <p className="mt-3 text-sm text-ink-secondary">
-            Meta counts by UTC day, so this is approximately this month.
+            Meta counts by day (UTC), so this is approximately this month.
           </p>
         </>
       ) : (
@@ -148,35 +142,6 @@ function AiRepliesCard({ ai }: { ai: AiReplies }) {
           AI reply allowance.
         </p>
       )}
-    </SectionCard>
-  );
-}
-
-function MovedCard({ tier, numbersLink }: { tier: number | null; numbersLink: string }) {
-  return (
-    <SectionCard title="Moved out of this page" description="These used to be mixed in here. They have their own pages now.">
-      <ul className="space-y-4">
-        <li className="flex items-start gap-3">
-          <Gauge size={18} className="mt-0.5 shrink-0 text-ink-secondary" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">Daily sending limit</p>
-            <p className="text-sm text-ink-secondary">{dailyLimitText(tier)}</p>
-            <Link href={numbersLink} className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
-              WhatsApp › Numbers <ArrowRight size={14} aria-hidden="true" />
-            </Link>
-          </div>
-        </li>
-        <li className="flex items-start gap-3">
-          <FileText size={18} className="mt-0.5 shrink-0 text-ink-secondary" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">Template status</p>
-            <p className="text-sm text-ink-secondary">See which message templates Meta has approved.</p>
-            <Link href="/dashboard/templates" className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
-              Templates <ArrowRight size={14} aria-hidden="true" />
-            </Link>
-          </div>
-        </li>
-      </ul>
     </SectionCard>
   );
 }

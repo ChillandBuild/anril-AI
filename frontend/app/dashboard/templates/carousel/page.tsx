@@ -353,10 +353,10 @@ export default function CarouselTemplateBuilderPage() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[13px] font-bold text-ink">Card {i + 1}</p>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move card left" className="rounded-lg p-1.5 text-ink-muted hover:bg-white hover:text-ink disabled:opacity-30">
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move card left" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-white hover:text-ink disabled:opacity-30">
                     <ChevronLeft size={16} />
                   </button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === cards.length - 1} aria-label="Move card right" className="rounded-lg p-1.5 text-ink-muted hover:bg-white hover:text-ink disabled:opacity-30">
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === cards.length - 1} aria-label="Move card right" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-white hover:text-ink disabled:opacity-30">
                     <ChevronRight size={16} />
                   </button>
                   <button
@@ -480,7 +480,7 @@ export default function CarouselTemplateBuilderPage() {
                                 className="min-w-0 flex-[1.4] basis-full rounded-lg border border-border-subtle bg-white px-2.5 py-1.5 text-sm sm:basis-auto"
                               />
                             )}
-                            <button type="button" onClick={() => removeButton(i, bi)} aria-label={`Remove button ${bi + 1}`} className="shrink-0 rounded-lg p-1.5 text-ink-muted hover:bg-red-50 hover:text-red-500">
+                            <button type="button" onClick={() => removeButton(i, bi)} aria-label={`Remove button ${bi + 1}`} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-red-500">
                               <Trash2 size={13} />
                             </button>
                           </div>

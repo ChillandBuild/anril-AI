@@ -710,7 +710,7 @@ export function InstantFormDetail({ formId }: { formId: string }) {
 
   return (
     <div className="space-y-[18px]">
-      <Link href="/dashboard/meta-ads/instant-forms" className="inline-flex items-center gap-1.5 font-label text-xs font-bold text-primary-700 hover:text-primary-900">
+      <Link href="/dashboard/meta-ads/instant-forms" className="inline-flex items-center gap-1.5 font-label text-xs font-bold text-primary-700 hover:text-primary-900 max-md:hidden">
         <ArrowLeft size={13} aria-hidden="true" />
         All forms
       </Link>

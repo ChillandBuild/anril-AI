@@ -193,14 +193,14 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
           <CalendarCheck size={16} className="text-primary" /> Team Attendance
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-[#f8fafc] p-1.5 rounded-xl border border-[#e2e8f0]">
-            <span className="font-label text-[10px] text-[#475569] font-bold uppercase pl-1">Export Attendance:</span>
+          <div className="flex flex-wrap items-center gap-1.5 bg-[#f8fafc] p-1.5 rounded-xl border border-[#e2e8f0]">
+            <span className="font-label text-[10px] max-md:text-[11px] text-[#475569] font-bold uppercase pl-1">Export Attendance:</span>
             <input
               type="date"
               value={from}
               max={to}
               onChange={(e) => setFrom(e.target.value)}
-              className="px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] font-body text-xs text-[#13284A] focus:outline-none"
+              className="max-md:min-h-9 min-w-0 px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] font-body text-xs text-[#13284A] focus:outline-none"
             />
             <span className="text-[#94a3b8] text-xs">to</span>
             <input
@@ -209,32 +209,32 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
               min={from}
               max={maxHolidayDate}
               onChange={(e) => setTo(e.target.value)}
-              className="px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] font-body text-xs text-[#13284A] focus:outline-none"
+              className="max-md:min-h-9 min-w-0 px-1.5 py-0.5 rounded bg-white border border-[#e2e8f0] font-body text-xs text-[#13284A] focus:outline-none"
             />
             <button
               onClick={handleExportCsv}
               disabled={exporting || !data}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/95 disabled:opacity-50 font-label text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 max-md:min-h-9 bg-primary text-white rounded-lg hover:bg-primary/95 disabled:opacity-50 font-label text-xs font-semibold transition-colors"
             >
               {exporting ? <Loader2 className="animate-spin" size={12} /> : <Download size={12} />} CSV
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-sky-50 p-1.5 rounded-xl border border-sky-200">
-            <span className="font-label text-[10px] text-sky-600 font-bold uppercase pl-1">Mark Holiday:</span>
+          <div className="flex flex-wrap items-center gap-1.5 bg-sky-50 p-1.5 rounded-xl border border-sky-200">
+            <span className="font-label text-[10px] max-md:text-[11px] text-sky-600 font-bold uppercase pl-1">Mark Holiday:</span>
             <input
               type="date"
               value={holidayDate}
               max={maxHolidayDate}
               onChange={(e) => setHolidayDate(e.target.value)}
               disabled={!canManageTeam}
-              className="px-1.5 py-0.5 rounded bg-white border border-sky-200 font-body text-xs text-[#13284A] focus:outline-none"
+              className="max-md:min-h-9 min-w-0 px-1.5 py-0.5 rounded bg-white border border-sky-200 font-body text-xs text-[#13284A] focus:outline-none"
             />
             <button
               onClick={handleMarkHoliday}
               disabled={markingHoliday || !canManageTeam}
               title={canManageTeam ? "Mark holiday" : "Read-only role: holiday marking is disabled"}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:blur-[0.5px] font-label text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 max-md:min-h-9 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 disabled:blur-[0.5px] font-label text-xs font-semibold transition-colors"
             >
               {markingHoliday ? <Loader2 className="animate-spin" size={12} /> : <Sun size={12} />}
               Whole Team
@@ -251,26 +251,26 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
 
       {selectedCallerId && (
         <div className="flex items-center gap-2 mb-4 flex-wrap bg-surface-mid/10 border border-border-subtle rounded-xl px-3 py-2">
-          <span className="font-label text-[10px] text-ink-muted font-bold uppercase">Mark Attendance:</span>
+          <span className="font-label text-[10px] max-md:text-[11px] text-ink-muted font-bold uppercase">Mark Attendance:</span>
           <input
             type="date"
             value={markDate}
             max={today}
             onChange={(e) => setMarkDate(e.target.value)}
             disabled={!canManageTeam}
-            className="px-2 py-1 rounded bg-white border border-[#e2e8f0] font-body text-[11px] text-[#13284A] h-7 focus:outline-none"
+            className="px-2 py-1 rounded bg-white border border-[#e2e8f0] font-body text-[11px] text-[#13284A] h-7 max-md:h-9 focus:outline-none"
           />
           <button
             onClick={() => handleMark("present")}
             disabled={marking || !canManageTeam}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-label text-[11px] font-bold disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 max-md:min-h-9 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-label text-[11px] font-bold disabled:opacity-50 transition-colors"
           >
             <CheckCircle2 size={12} /> Present
           </button>
           <button
             onClick={() => handleMark("absent")}
             disabled={marking || !canManageTeam}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-label text-[11px] font-bold disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 max-md:min-h-9 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-label text-[11px] font-bold disabled:opacity-50 transition-colors"
           >
             <XCircle size={12} /> Absent
           </button>
@@ -283,28 +283,28 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
           <div className="p-1.5 rounded-lg bg-[#f1f5f9] w-fit mb-1 text-[#334155]"><Users size={14} /></div>
           <div>
             <span className="block text-base font-display font-black text-[#13284A] leading-tight">{data?.callers.length ?? 0}</span>
-            <span className="text-[#475569] font-label text-[9px] uppercase font-bold tracking-wider mt-0.5 block">Total Team</span>
+            <span className="text-[#475569] font-label text-[9px] max-md:text-[11px] uppercase font-bold tracking-wider mt-0.5 block">Total Team</span>
           </div>
         </div>
         <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex flex-col justify-between shadow-sm">
           <div className="p-1.5 rounded-lg bg-emerald-100 w-fit mb-1 text-emerald-600"><UserCheck size={14} /></div>
           <div>
             <span className="block text-base font-display font-black text-[#13284A] leading-tight">{data?.summary.present_today ?? 0}</span>
-            <span className="text-emerald-700 font-label text-[9px] uppercase font-bold tracking-wider mt-0.5 block">Present Today</span>
+            <span className="text-emerald-700 font-label text-[9px] max-md:text-[11px] uppercase font-bold tracking-wider mt-0.5 block">Present Today</span>
           </div>
         </div>
         <div className="bg-rose-50 rounded-xl p-3 border border-rose-100 flex flex-col justify-between shadow-sm">
           <div className="p-1.5 rounded-lg bg-rose-100 w-fit mb-1 text-rose-600"><UserX size={14} /></div>
           <div>
             <span className="block text-base font-display font-black text-[#13284A] leading-tight">{data?.summary.absent_today ?? 0}</span>
-            <span className="text-rose-700 font-label text-[9px] uppercase font-bold tracking-wider mt-0.5 block">Absent Today</span>
+            <span className="text-rose-700 font-label text-[9px] max-md:text-[11px] uppercase font-bold tracking-wider mt-0.5 block">Absent Today</span>
           </div>
         </div>
         <div className="bg-sky-50 rounded-xl p-3 border border-sky-100 flex flex-col justify-between shadow-sm">
           <div className="p-1.5 rounded-lg bg-sky-100 w-fit mb-1 text-sky-600"><Sun size={14} /></div>
           <div>
             <span className="block text-base font-display font-black text-[#13284A] leading-tight">{holidayCount}</span>
-            <span className="text-sky-700 font-label text-[9px] uppercase font-bold tracking-wider mt-0.5 block">Holidays (Range)</span>
+            <span className="text-sky-700 font-label text-[9px] max-md:text-[11px] uppercase font-bold tracking-wider mt-0.5 block">Holidays (Range)</span>
           </div>
         </div>
         <div className="bg-primary-light rounded-xl p-3 border border-primary-muted flex flex-col justify-between shadow-sm">
@@ -313,7 +313,7 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
             <span className="block text-base font-display font-black text-[#13284A] leading-tight">
               {data ? Math.round(data.summary.attendance_rate_month * 100) : 0}%
             </span>
-            <span className="text-primary font-label text-[9px] uppercase font-bold tracking-wider mt-0.5 block">Attendance (Month)</span>
+            <span className="text-primary font-label text-[9px] max-md:text-[11px] uppercase font-bold tracking-wider mt-0.5 block">Attendance (Month)</span>
           </div>
         </div>
       </div>
@@ -342,7 +342,7 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
                   <tr
                     key={c.caller_id}
                     className={`border-t border-border-subtle transition-colors ${
-                      isSelected ? "bg-primary/5 font-bold animate-pulse" : "hover:bg-[#f8fafc]/40"
+                      isSelected ? "bg-primary/5 font-bold" : "hover:bg-[#f8fafc]/40"
                     }`}
                   >
                     <td className={`px-2 py-1.5 font-label font-semibold whitespace-nowrap sticky left-0 transition-colors ${
@@ -369,7 +369,7 @@ export default function TeamAttendanceGrid({ selectedCallerId, selectedCallerNam
         </div>
       )}
 
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border-subtle text-[10px] text-ink-muted font-body">
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border-subtle text-[10px] max-md:text-[11px] max-md:flex-wrap text-ink-muted font-body">
         <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Present</div>
         <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Absent</div>
         <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-500 inline-block" /> Holiday</div>

@@ -71,9 +71,9 @@ export function ShareProductMenu({
   }
 
   return (
-    // Phone: the wrapper fills its share of the action row and is not positioned, so the list opens
-    // across the whole row (the row is `relative`) instead of running off the screen edge.
-    <div className="relative max-md:static max-md:flex max-md:min-w-0 max-md:flex-1" ref={ref}>
+    // Phone: the action row scrolls sideways (which would clip a pop-over inside it), so the list
+    // opens as a bottom sheet fixed to the screen instead.
+    <div className="relative max-md:flex max-md:shrink-0" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -85,7 +85,7 @@ export function ShareProductMenu({
         Share product
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-40 mb-2 w-[300px] overflow-hidden max-md:right-0 max-md:w-auto rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
+        <div className="absolute bottom-full left-0 z-40 mb-2 w-[300px] overflow-hidden max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-dialog max-md:mb-0 max-md:w-auto max-md:rounded-b-none max-md:pb-[env(safe-area-inset-bottom)] rounded-xl border border-[#e2e8f0] bg-white shadow-xl">
           <div className="border-b border-[#f1f5f9] p-2">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8]" />

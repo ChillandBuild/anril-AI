@@ -64,8 +64,8 @@ export default function ChangePasswordPage() {
     <button
       type="button"
       onClick={() => setShow((s) => !s)}
-      className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink transition-colors"
-      aria-label={show ? "Hide passwords" : "Show passwords"}
+      className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-ink-muted hover:text-ink transition-colors"
+      aria-label={show ? "Hide password" : "Show password"}
     >
       {show ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>

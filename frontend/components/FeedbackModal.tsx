@@ -44,7 +44,7 @@ export function FeedbackModal({ open, onClose }: { open: boolean; onClose: () =>
   // Drawn on <body>: the header that opens this modal is fixed, so an inline overlay sat under the bottom bar.
   const overlay = (
     <div className="fixed inset-0 z-dialog flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-card bg-white p-6 shadow-xl">
+      <div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-card bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-muted text-primary">
@@ -52,7 +52,7 @@ export function FeedbackModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
             <h3 className="text-lg font-bold text-ink">Feedback</h3>
           </div>
-          <button onClick={handleClose} className="text-ink-muted hover:text-ink" aria-label="Close">
+          <button onClick={handleClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-slate-100 hover:text-ink" aria-label="Close">
             <X size={18} />
           </button>
         </div>

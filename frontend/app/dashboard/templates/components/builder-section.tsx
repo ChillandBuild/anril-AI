@@ -13,7 +13,7 @@ export default function Section({
 }) {
   return (
     <section
-      className={`rounded-2xl border bg-white p-5 shadow-sm md:p-6 ${
+      className={`rounded-2xl border bg-white p-3 shadow-sm md:p-6 ${
         active ? "border-primary-300 ring-4 ring-primary-50" : "border-[#e7e2da]"
       } ${className}`}
     >

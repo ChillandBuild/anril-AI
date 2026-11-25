@@ -24,7 +24,7 @@ export function AgentsMenu() {
         onClick={() => setIsOpen(true)}
         aria-label="Menu"
         aria-expanded={isOpen}
-        className="flex h-[34px] w-[34px] items-center justify-center rounded-full text-white transition-transform hover:scale-105"
+        className="flex h-10 w-10 items-center justify-center rounded-full text-white transition-transform hover:scale-105"
         style={{ background: "var(--primary)" }}
       >
         <Menu size={16} />

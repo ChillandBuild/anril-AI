@@ -61,7 +61,7 @@ export const RESULT_OPTIONS: ResultOption[] = [
   { value: "call_later", emoji: "📅", label: "Call later (customer asked)", time: "required", timeLabel: "Call back at", notes: false, tone: "callback" },
   { value: "converted", emoji: "🎉", label: "Converted", time: null, timeLabel: "", notes: true, tone: "won" },
   { value: "not_interested", emoji: "👎", label: "Not interested", time: null, timeLabel: "", notes: false, tone: "lost" },
-  { value: "disqualified", emoji: "🚫", label: "Disqualified", time: null, timeLabel: "", notes: false, tone: "lost" },
+  { value: "disqualified", emoji: "🚫", label: "Not a fit", time: null, timeLabel: "", notes: false, tone: "lost" },
   { value: "wrong_number", emoji: "❓", label: "Wrong number", time: null, timeLabel: "", notes: false, tone: "blocked" },
   { value: "language_barrier", emoji: "🗣️", label: "Language barrier", time: null, timeLabel: "", notes: false, tone: "attention" },
   { value: "do_not_call", emoji: "⛔", label: "Do not call", time: null, timeLabel: "", notes: false, tone: "blocked" },
@@ -123,7 +123,7 @@ export const LEAD_CALL_STATUSES: LeadCallStatus[] = [
 export const LEAD_STATUS_LABEL: Record<LeadCallStatus, string> = {
   new: "New", trying: "Trying", unreachable: "Unreachable", hot: "Hot", warm: "Warm", cold: "Cold",
   callback: "Call later", converted: "Converted", not_interested: "Not interested",
-  disqualified: "Disqualified", wrong_number: "Wrong number", language_barrier: "Language barrier", dnc: "Do not call",
+  disqualified: "Not a fit", wrong_number: "Wrong number", language_barrier: "Language barrier", dnc: "Do not call",
 };
 
 const LEAD_STATUS_TONE: Record<LeadCallStatus, Tone> = {

@@ -3,12 +3,12 @@
 import { useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Copy, Download, Pencil, Printer } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, Download, Pencil, Printer, Share2 } from "lucide-react";
 import type { QrLink } from "@/lib/qrLinksApi";
 import { pngFileName, statCells } from "@/lib/qrLinks";
 
 const btn =
-  "inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+  "inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface-low focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
 
 export function QrCard({
   link, canManage, onEdit, onPrint, onToggleArchive,
@@ -37,6 +37,18 @@ export function QrCard({
     } catch {
       toast.error("Couldn't copy. Select the link and copy it by hand.");
     }
+  }
+
+  async function share() {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: link.name, url: link.url });
+      } catch {
+        // Person closed the share sheet; nothing to do.
+      }
+      return;
+    }
+    await copyLink();
   }
 
   return (
@@ -68,6 +80,10 @@ export function QrCard({
       </dl>
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => void share()}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark sm:w-auto">
+          <Share2 size={16} /> Share
+        </button>
         <button type="button" onClick={onPrint} className={btn}><Printer size={16} /> Print</button>
         <button type="button" onClick={downloadPng} className={btn}><Download size={16} /> Download PNG</button>
         <button type="button" onClick={copyLink} className={btn}><Copy size={16} /> Copy link</button>

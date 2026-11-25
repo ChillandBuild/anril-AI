@@ -176,7 +176,7 @@ export const inputCls =
   `w-full rounded-xl border border-border bg-white px-3 py-2 font-body text-sm text-ink placeholder:text-ink-muted focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 max-sm:min-h-[44px]`;
 
 export const ghostBtn =
-  `inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 font-label text-xs font-semibold text-ink-secondary transition-all hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 ${focusRing} ${tapArea}`;
+  `inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 font-label text-xs font-semibold text-ink-secondary transition-all hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 ${focusRing} max-sm:h-9`;
 
 export const primaryBtn =
   `inline-flex items-center justify-center gap-1.5 rounded-full bg-primary px-4 py-2 font-label text-xs font-bold text-white shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing} ${tapArea}`;

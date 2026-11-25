@@ -63,7 +63,7 @@ export default function FormAnswersPage() {
       <CatalogueTabs />
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 space-y-1">
-          <Link href={isServices ? "/dashboard/forms" : `/dashboard/forms/${id}`} className="inline-flex items-center gap-1.5 font-label text-xs font-semibold text-ink-secondary hover:text-ink">
+          <Link href={isServices ? "/dashboard/forms" : `/dashboard/forms/${id}`} className="inline-flex items-center gap-1.5 font-label text-xs font-semibold text-ink-secondary hover:text-ink max-md:hidden">
             <ArrowLeft size={14} /> {isServices ? "All forms" : "Back to the form"}
           </Link>
           <h2 className="truncate font-display text-lg font-bold text-ink">{title} · answers</h2>

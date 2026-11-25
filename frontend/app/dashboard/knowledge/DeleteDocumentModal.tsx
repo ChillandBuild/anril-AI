@@ -190,7 +190,7 @@ export default function DeleteDocumentModal({ doc, isOwner, onClose, onDeleted }
             type="button"
             onClick={confirm}
             disabled={deleting || !preview || ownerBlocked}
-            className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 font-label text-xs font-semibold text-white shadow-xs transition-colors hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 font-label text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-50"
           >
             {deleting && <Loader2 size={13} className="animate-spin" />}
             {deleting ? "Deleting…" : "Delete file"}

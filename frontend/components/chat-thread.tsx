@@ -155,7 +155,7 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
   return (
     <div className={cn("flex", isOutbound && "justify-end")}>
       <div className={cn(
-        "max-w-[82%] md:max-w-[62%] break-words px-3.5 py-2 rounded-2xl font-body text-[12.5px] leading-relaxed",
+        "max-w-[82%] md:max-w-[62%] break-words px-3.5 py-2 rounded-2xl font-body text-[12.5px] max-lg:text-sm leading-relaxed",
         isOutbound
           ? isAi
             ? "bg-[#e6f6f5] text-[#0A1528] border border-primary/10 rounded-tr-md"
@@ -187,7 +187,7 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
           </p>
         )}
         <p className={cn(
-          "mt-1 flex items-center gap-1 text-[10px]",
+          "mt-1 flex items-center gap-1 text-[10px] max-lg:text-[11px]",
           isOutbound && !isAi ? "text-white/70" : "text-[#64748b]"
         )}>
           <span>{new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
@@ -239,7 +239,7 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
         <p className="font-label text-xs font-semibold text-[#0A1528] truncate">{file.name}</p>
         <p className="font-label text-[10px] text-[#64748b]">{sizeMB} MB</p>
       </div>
-      <button onClick={onRemove} className="p-1 rounded-lg hover:bg-slate-200 transition-colors text-[#64748b] hover:text-red-500">
+      <button onClick={onRemove} aria-label="Remove file" className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-200 transition-colors text-[#64748b] hover:text-red-500">
         <X size={14} />
       </button>
     </div>
@@ -777,10 +777,10 @@ export function ChatThread({
           {/* AI agent switch */}
           <label
             className={cn("hidden items-center gap-2 rounded-xl px-2 py-1.5 md:flex", !masterAiEnabled && "opacity-50")}
-            title={masterAiEnabled ? (aiEnabled ? "The AI agent replies in this chat" : "The AI agent is off for this chat") : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
+            title={masterAiEnabled ? (aiEnabled ? "Anril replies in this chat" : "Anril is off for this chat") : "AI is off for your whole account — turn it on in Settings → Auto-Reply"}
           >
-            <span className="hidden text-[12.5px] font-semibold text-[#334155] 2xl:inline">AI agent</span>
-            <SwitchPill on={masterAiEnabled && aiEnabled} disabled={!masterAiEnabled} onChange={() => toggleAI()} size="sm" aria-label="AI agent" />
+            <span className="hidden text-[12.5px] font-semibold text-[#334155] 2xl:inline">Anril</span>
+            <SwitchPill on={masterAiEnabled && aiEnabled} disabled={!masterAiEnabled} onChange={() => toggleAI()} size="sm" aria-label="Anril replies in this chat" />
           </label>
 
           {/* Customer panel toggle (wide screens, where the panel fits) */}
@@ -842,7 +842,7 @@ export function ChatThread({
                     disabled={converting}
                     className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-primary hover:bg-primary/5 transition-colors flex items-center gap-2 disabled:opacity-40"
                   >
-                    <CheckCircle2 size={13} /> {converting ? "Saving…" : "Mark Converted"}
+                    <CheckCircle2 size={13} /> {converting ? "Saving…" : "Mark as sold"}
                   </button>
                 )}
                 <div className="border-t border-[#e2e8f0] my-1" />
@@ -871,7 +871,7 @@ export function ChatThread({
       {/* Phone only: who is replying in this chat. Same toggle and disabled rule as the header switch on wider screens. */}
       <div
         className={cn(
-          "flex shrink-0 items-center gap-3 border-b px-3 py-1.5 md:hidden",
+          "flex shrink-0 items-center gap-3 border-b px-3 py-1 md:hidden",
           !masterAiEnabled ? "border-[#e2e8f0] bg-slate-50" : aiEnabled ? "border-primary/10 bg-primary-light" : "border-amber-200 bg-amber-50"
         )}
       >
@@ -889,7 +889,7 @@ export function ChatThread({
             type="button"
             onClick={() => toggleAI()}
             className={cn(
-              "inline-flex h-11 shrink-0 items-center rounded-xl px-4 text-[13px] font-bold transition-colors",
+              "inline-flex h-8 shrink-0 items-center rounded-xl px-3 text-[13px] font-bold transition-colors",
               aiEnabled ? "border border-primary/30 bg-white text-primary-900 hover:bg-primary-light" : "bg-primary text-white hover:bg-[var(--primary-900)]"
             )}
           >
@@ -933,10 +933,10 @@ export function ChatThread({
 
       {/* The AI handed this chat over: say why, and let a person take it. */}
       {hasEscalation && !teach && (
-        <div className="flex shrink-0 items-center gap-3 border-t border-amber-200 bg-amber-50 px-3 py-2 md:px-5 md:py-1.5">
-          <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-amber-900">
+        <div className="flex shrink-0 items-center gap-3 border-t border-amber-200 bg-amber-50 px-3 py-1 md:px-5 md:py-1.5">
+          <p className="min-w-0 flex-1 truncate text-[12.5px] leading-snug text-amber-900 md:whitespace-normal">
             <span className="mr-1">🙋</span>
-            <span className="font-bold">The AI agent needs you:</span>{" "}
+            <span className="font-bold">Anril needs you:</span>{" "}
             {pendingHandover?.reason || current.escalation_reason || "the customer is waiting for a person."}
           </p>
           {canReplyToConversations && (
@@ -1021,11 +1021,11 @@ export function ChatThread({
 
         {/* Quick actions row. Templates, products and payment links go out on WhatsApp only. */}
         {!current.blocked_at && isWhatsApp && canReplyToConversations && (
-        <div className={cn("relative mb-2 flex gap-1.5 md:flex-wrap md:gap-2", composerFocused && "max-md:hidden")}>
+        <div className={cn("relative mb-2 flex gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:gap-2", composerFocused && "max-md:hidden")}>
           <button
             type="button"
             onClick={() => setTemplateModalOpen(true)}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap max-md:gap-1.5 max-md:px-3 max-md:py-0 max-md:text-xs md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             title="Send an approved WhatsApp template (works any time)"
           >
             <FileText size={13} />
@@ -1034,7 +1034,7 @@ export function ChatThread({
 
           <ShareProductMenu
             leadId={current.id}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap max-md:gap-1.5 max-md:px-3 max-md:py-0 max-md:text-xs md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             disabledReason={outsideWindow ? "WhatsApp only delivers this within 24 hours of the customer's last message. Send a template instead." : null}
             onSent={() => void pollMessages()}
           />
@@ -1043,7 +1043,7 @@ export function ChatThread({
             <button
               type="button"
               onClick={() => setPaymentDealOpen(true)}
-              className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+              className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap max-md:gap-1.5 max-md:px-3 max-md:py-0 max-md:text-xs md:gap-1.5 md:px-2.5 md:text-[11.5px]"
               title="Record a payment or send a payment link on WhatsApp"
             >
               <CreditCard size={13} />
@@ -1055,7 +1055,7 @@ export function ChatThread({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={!canSendMedia}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:h-8 max-md:shrink-0 max-md:whitespace-nowrap max-md:gap-1.5 max-md:px-3 max-md:py-0 max-md:text-xs md:gap-1.5 md:px-2.5 md:text-[11.5px] disabled:cursor-not-allowed disabled:opacity-50"
             title={canSendMedia ? "Attach a file" : "Turn AI replies off to send a file yourself"}
           >
             <Paperclip size={13} />
@@ -1126,7 +1126,7 @@ export function ChatThread({
               <button
                 onClick={sendMedia}
                 disabled={sending}
-                className="h-9 w-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-[var(--primary-900)] disabled:opacity-40 transition-colors"
+                className="h-11 w-11 lg:h-9 lg:w-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-[var(--primary-900)] disabled:opacity-40 transition-colors"
               >
                 <SendHorizontal size={16} />
               </button>

@@ -255,7 +255,7 @@ function Chip({ active, onClick, label, count, on, off }: {
 }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors", active ? on : off)}>
+      className={cn("inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-semibold transition-colors", active ? on : off)}>
       {label}
       <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{count ?? "–"}</span>
     </button>
@@ -780,16 +780,17 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
 
         {/* Interest and Result chips, each with its count */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#f1f5f9] px-4 py-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs font-semibold text-[#64748b]">Interest</span>
+          <div className="flex min-w-0 max-w-full items-center gap-x-4 max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents">
+          <div className="flex items-center gap-1.5 max-md:shrink-0 md:flex-wrap">
+            <span className="mr-1 shrink-0 text-xs font-semibold text-[#64748b]">Interest</span>
             {INTEREST_CHIPS.map((c) => (
               <Chip key={c.value} active={segment === c.value} onClick={() => setSegment(segment === c.value ? undefined : c.value)}
                 label={c.label} count={summary?.segments[c.value]} on={c.on} off={c.off} />
             ))}
           </div>
-          <span className="hidden h-5 w-px bg-[#e2e8f0] sm:block" aria-hidden />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs font-semibold text-[#64748b]">Result</span>
+          <span className="hidden h-5 w-px shrink-0 bg-[#e2e8f0] sm:block" aria-hidden />
+          <div className="flex items-center gap-1.5 max-md:shrink-0 md:flex-wrap">
+            <span className="mr-1 shrink-0 text-xs font-semibold text-[#64748b]">Result</span>
             {RESULT_CHIPS.map((c, i) => (
               <span key={c.value} className="inline-flex items-center gap-1.5">
                 {i === 1 && <ChevronRight size={12} className="text-[#94a3b8]" aria-hidden />}
@@ -797,6 +798,7 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
                   label={labels[c.value]} count={summary?.results[c.value]} on={c.on} off={c.off} />
               </span>
             ))}
+          </div>
           </div>
           {role === "owner" && <div className="ml-auto"><RenameSteps labels={labels} onSaved={setLabels} /></div>}
         </div>
@@ -806,27 +808,27 @@ export function InboundLeadsClient({ fallbackInboundLeads, initialResult }: Inbo
       {tab === "all" && <MoneyTodayCards />}
 
       {/* ── Cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 shadow-sm">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-3 py-2.5 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-semibold text-[#64748b]">Leads in this view</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-[#0A1528]">{summary ? summary.total.toLocaleString("en-IN") : "–"}</p>
-          <p className="mt-0.5 text-xs text-[#64748b]">{added === "any" ? "all time" : ADDED_OPTIONS.find((o) => o.value === added)?.label.toLowerCase()}</p>
+          <p className="mt-0.5 text-xs text-[#64748b] max-md:hidden">{added === "any" ? "all time" : ADDED_OPTIONS.find((o) => o.value === added)?.label.toLowerCase()}</p>
         </div>
         <button type="button" onClick={() => setWaiting(!waiting)} aria-pressed={waiting}
-          className={cn("rounded-2xl border px-5 py-4 text-left shadow-sm transition-colors",
+          className={cn("rounded-2xl border px-3 py-2.5 text-left shadow-sm transition-colors sm:px-5 sm:py-4",
             waiting ? "border-[#fdb022] bg-[#fffaeb]" : "border-[#e2e8f0] bg-white hover:border-[#fedf89]")}>
           <p className="text-xs font-semibold text-[#64748b]">Waiting for your reply</p>
           <p className={cn("mt-1 text-2xl font-bold tabular-nums", (summary?.waiting ?? 0) > 0 ? "text-[#b54708]" : "text-[#0A1528]")}>
             {summary ? summary.waiting.toLocaleString("en-IN") : "–"}
           </p>
-          <p className="mt-0.5 text-xs text-[#64748b]">{waiting ? "showing these, longest wait first · tap to show all" : "their message is the latest · tap to see them"}</p>
+          <p className="mt-0.5 text-xs text-[#64748b] max-md:hidden">{waiting ? "showing these, longest wait first · tap to show all" : "their message is the latest · tap to see them"}</p>
         </button>
-        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-3 py-2.5 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-semibold text-[#64748b]">{labels.booked} → {labels.paid.toLowerCase()}</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-[#0A1528]">
             {summary ? <>{bookedOrPaid.toLocaleString("en-IN")} <span className="text-[#94a3b8]">→</span> <span className="text-[#067647]">{paid.toLocaleString("en-IN")}</span></> : "–"}
           </p>
-          <p className="mt-0.5 text-xs text-[#64748b]">
+          <p className="mt-0.5 text-xs text-[#64748b] max-md:hidden">
             {bookedOrPaid > 0 ? `${Math.round((paid / bookedOrPaid) * 100)}% reached ${labels.paid.toLowerCase()}` : "nobody booked yet in this view"}
           </p>
         </div>

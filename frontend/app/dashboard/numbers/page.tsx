@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   X, Check, Trash2, PauseCircle, PlayCircle, Star, RefreshCw,
@@ -86,16 +87,16 @@ const QUALITY_BG: Record<QualityRating, string> = {
 const UNLIMITED_TIER = 1_000_000;
 
 const TIER_LABELS: Record<number, string> = {
-  250: "250 / day · Starter",
-  1000: "1,000 / day · Legacy",
-  2000: "2,000 / day · Tier 1",
-  10000: "10,000 / day · Tier 2",
-  100000: "100,000 / day · Tier 3",
-  [UNLIMITED_TIER]: "Unlimited · Tier 4",
+  250: "250 / day",
+  1000: "1,000 / day",
+  2000: "2,000 / day",
+  10000: "10,000 / day",
+  100000: "100,000 / day",
+  [UNLIMITED_TIER]: "Unlimited",
 };
 
 function getTierLabel(tier: number): string {
-  return TIER_LABELS[tier] ?? `${tier.toLocaleString()} / day`;
+  return `Daily limit: ${TIER_LABELS[tier] ?? `${tier.toLocaleString()} / day`}`;
 }
 
 function formatLimit(tier: number): string {
@@ -212,8 +213,9 @@ function TierGuide({
           <button
             type="button"
             onClick={handleManualDismiss}
-            className="p-1 rounded-lg hover:bg-primary-100 text-on-surface-muted hover:text-on-surface transition-colors ml-1"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-primary-100 text-on-surface-muted hover:text-on-surface transition-colors ml-1"
             title="Dismiss notice"
+            aria-label="Dismiss notice"
           >
             <X size={14} />
           </button>
@@ -811,7 +813,7 @@ function NumbersPageContent() {
         <button
           onClick={() => handleTabChange("pool")}
           className={cn(
-            "px-5 py-2.5 rounded-xl font-label text-xs font-bold transition-all",
+            "h-8 px-3 rounded-xl font-label text-xs font-bold transition-all",
             activeTab === "pool"
               ? "bg-white text-primary shadow-sm"
               : "text-[#475569] hover:text-[#13284A]"
@@ -822,7 +824,7 @@ function NumbersPageContent() {
         <button
           onClick={() => handleTabChange("activity")}
           className={cn(
-            "px-5 py-2.5 rounded-xl font-label text-xs font-bold transition-all",
+            "h-8 px-3 rounded-xl font-label text-xs font-bold transition-all",
             activeTab === "activity"
               ? "bg-white text-primary shadow-sm"
               : "text-[#475569] hover:text-[#13284A]"
@@ -836,7 +838,22 @@ function NumbersPageContent() {
         {activeTab === "pool" ? (
           <>
           {/* ── KPI Overview Grid ───────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-xl border border-border/70 bg-white px-3 py-2 font-label text-xs text-on-surface md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {loading ? (
+              <span className="text-on-surface-muted">Loading…</span>
+            ) : (
+              <>
+                <span className="shrink-0"><strong>{totalPoolUsed}</strong>/{totalPoolLimit} numbers used</span>
+                <span className="shrink-0 text-on-surface-muted">·</span>
+                <span className="shrink-0"><strong>{totalDailySends.toLocaleString()}</strong>/{formatLimit(totalDailyCapacity)} sent today ({Math.round(totalSendPct)}%)</span>
+                <span className="shrink-0 text-on-surface-muted">·</span>
+                <span className="shrink-0"><strong>{healthyCount}</strong> healthy</span>
+                <span className="shrink-0 text-on-surface-muted">·</span>
+                <span className="shrink-0">Primary: <strong>{primaryNumber ? primaryNumber.display_name : "None set"}</strong></span>
+              </>
+            )}
+          </div>
+          <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* KPI 1: Pool Utilization */}
             <KpiCard
               label="Active Pool Capacity"
@@ -1053,6 +1070,12 @@ function NumbersPageContent() {
                     Connect your WhatsApp Business Account in Settings, then click &quot;Sync from Meta&quot; to import your registered sender numbers.
                   </p>
                 </div>
+                <Link
+                  href="/dashboard/settings/connect-channels"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 px-5 rounded-xl border border-primary-200 bg-primary-50 text-[var(--primary-800)] hover:bg-primary-100 font-label text-xs font-bold transition-all"
+                >
+                  Connect WhatsApp
+                </Link>
                 {canManageNumbers && (
                   <button
                     onClick={handleSyncAllMeta}
@@ -1141,7 +1164,7 @@ function NumbersPageContent() {
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-label text-[11px] font-semibold bg-surface-mid/80 text-on-surface-muted border border-border">
-                                  Standby Failover
+                                  Backup number
                                 </span>
                               )}
 
@@ -1183,7 +1206,7 @@ function NumbersPageContent() {
                               {num.health?.state === "warming" && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-label text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
                                   <Sunrise size={11} />
-                                  Warming · day {num.health.warm_up_day} of {num.health.warm_up_days}
+                                  Warming up · day {num.health.warm_up_day} of {num.health.warm_up_days}
                                 </span>
                               )}
                               {num.health?.state === "active" && (
@@ -1208,8 +1231,9 @@ function NumbersPageContent() {
                                 <span className="font-mono text-[13px] font-bold text-on-surface">{formatPhone(num.number)}</span>
                                 <button
                                   onClick={() => handleCopyNumber(num.id, num.number)}
-                                  className="p-1 rounded hover:bg-surface-low text-on-surface-muted hover:text-on-surface transition-colors"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-surface-low text-on-surface-muted hover:text-on-surface transition-colors"
                                   title="Copy phone number"
+                                  aria-label="Copy number"
                                 >
                                   {copiedId === num.id ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                                 </button>
@@ -1324,6 +1348,7 @@ function NumbersPageContent() {
                                 disabled={isSyncing}
                                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-white hover:bg-surface-low text-on-surface font-label text-xs font-semibold transition-all shadow-2xs disabled:opacity-50"
                                 title="Pull the latest status, quality and limit from Meta"
+                                aria-label="Sync"
                               >
                                 <RefreshCw size={12} className={isSyncing ? "animate-spin text-primary" : "text-on-surface-muted"} />
                                 <span className="hidden sm:inline">Sync</span>
@@ -1415,7 +1440,7 @@ function NumbersPageContent() {
 
             {/* ── Which number does what: a number for Reach, OTP codes and alerts ── */}
             {!loading && visible.length > 0 && (
-            <div className="order-first 2xl:order-none 2xl:sticky 2xl:top-4">
+            <div className="order-first min-w-0 2xl:order-none 2xl:sticky 2xl:top-4">
               <NumberJobsPanel
                 jobs={jobs}
                 numbers={visible}

@@ -14,10 +14,10 @@ import BookVisit from "./BookVisit";
 const CONNECT_ICON: Record<CallConnect, typeof PhoneCall> = {
   connected: PhoneCall, not_picked: PhoneMissed, busy: PhoneOff, switched_off: Power,
 };
-const LABEL = "font-label text-[10px] text-[#94a3b8] uppercase tracking-wider font-extrabold block mb-2";
+const LABEL = "font-label text-[11px] text-[#94a3b8] uppercase tracking-wider font-extrabold block mb-2";
 
 function chip(selected: boolean): string {
-  return `px-3 py-1.5 rounded-full border font-label text-[11px] font-bold transition-all ${
+  return `px-3 h-9 sm:h-auto sm:py-1.5 text-xs sm:text-[11px] rounded-full border font-label font-bold transition-all ${
     selected ? "bg-primary border-primary text-white shadow-sm" : "bg-[#f8fafc] border-[#e2e8f0] text-[#334155] hover:border-primary-muted hover:text-primary"
   }`;
 }
@@ -56,6 +56,7 @@ function simSeconds(t: SimTiming): number | null {
 export default function WrapupModal({
   callee, provider, context, draft, onChange, saving, onSubmit, catalogItems, simTiming, now,
 }: WrapupModalProps) {
+  const [editTiming, setEditTiming] = useState(false);
   const [clock, setClock] = useState(() => now ?? new Date());
   useEffect(() => {
     if (now) return; // a fixed value was supplied (tests/previews): never tick
@@ -95,19 +96,27 @@ export default function WrapupModal({
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-7">
           {simTiming && (
             <section className="rounded-2xl border border-primary-muted bg-primary-light/40 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-label text-[10px] font-black uppercase tracking-wider text-primary">Call timing</p>
+                  <p className="font-label text-[11px] font-black tracking-wider text-primary">
+                    Call lasted {seconds !== null ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : "0m"}
+                  </p>
                   <p className="mt-0.5 font-body text-[11px] text-[#475569]">Anril can&apos;t read SIM call time, so check it before saving.</p>
                 </div>
-                <span className="whitespace-nowrap rounded-xl bg-white px-3 py-1.5 font-mono text-xs font-bold text-[#13284A]">
-                  {seconds !== null ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : "0m"}
-                </span>
+                <button
+                  type="button"
+                  aria-expanded={editTiming}
+                  onClick={() => setEditTiming((v) => !v)}
+                  className="inline-flex min-h-8 shrink-0 items-center px-2 font-label text-xs font-bold text-primary underline"
+                >
+                  {editTiming ? "Done" : "Edit"}
+                </button>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
+              {editTiming && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {([["Started", simTiming.startedAt, simTiming.setStartedAt], ["Ended", simTiming.endedAt, simTiming.setEndedAt]] as const).map(([label, value, set]) => (
                   <label key={label} className="block">
-                    <span className="mb-1 block font-label text-[9px] font-black uppercase tracking-wider text-[#94a3b8]">{label}</span>
+                    <span className="mb-1 block font-label text-[11px] font-black uppercase tracking-wider text-[#94a3b8]">{label}</span>
                     <input
                       type="datetime-local"
                       value={value}
@@ -117,6 +126,7 @@ export default function WrapupModal({
                   </label>
                 ))}
               </div>
+              )}
             </section>
           )}
 
@@ -259,7 +269,7 @@ export default function WrapupModal({
               placeholder="What did the customer say? Need, budget, next step…"
               rows={3}
               maxLength={2000}
-              className="w-full resize-none rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3 font-body text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full resize-none rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3 font-body text-base sm:text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </section>
         </div>
@@ -270,7 +280,7 @@ export default function WrapupModal({
             type="button"
             onClick={onSubmit}
             disabled={saving || !!problem}
-            className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-primary py-3 font-label text-xs font-black text-white shadow-md transition-all hover:scale-[1.01] hover:bg-primary-dark active:scale-[0.99] disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-primary h-12 sm:h-auto sm:py-3 font-label text-sm sm:text-xs font-black text-white shadow-md transition-all hover:scale-[1.01] hover:bg-primary-dark active:scale-[0.99] disabled:opacity-50"
           >
             {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
             <span>Save wrap-up</span>

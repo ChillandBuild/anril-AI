@@ -7,7 +7,7 @@ import { canOpenTeamReports } from "@/lib/callIqApi";
 export default function CallIqEvaluationPage() {
   return (
     <CallIqGate allow={canOpenTeamReports}>
-      <CallIqPage title="Evaluation" intro="How well each telecaller talks to customers, scored by the AI, and where each one can improve.">
+      <CallIqPage title="Evaluation" intro="How well each telecaller talks to customers (call scores), and where each one can improve.">
         <EvaluationBoard />
       </CallIqPage>
     </CallIqGate>

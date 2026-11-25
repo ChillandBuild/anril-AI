@@ -47,7 +47,7 @@ export const HEADER_TABS: Record<string, HeaderTabSet> = {
   "/dashboard/knowledge": {
     aliases: { "ai-tune": "description" },
     tabs: [
-      { value: "documents", label: "Documents (RAG)" },
+      { value: "documents", label: "Documents" },
       { value: "description", label: "Description" },
     ],
   },

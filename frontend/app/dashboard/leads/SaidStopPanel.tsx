@@ -171,10 +171,10 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-[#64748b]">{label}</div>
-      <div className={cn("mt-1 text-[28px] font-bold leading-none text-[#0A1528]", valueClass)}>{value}</div>
-      <div className="mt-2 text-xs text-[#64748b]">{hint}</div>
+    <div className="min-w-0 rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm max-sm:p-2.5">
+      <div className="text-sm font-semibold text-[#64748b] max-sm:text-[11px] max-sm:leading-tight">{label}</div>
+      <div className={cn("mt-1 text-[28px] font-bold leading-none text-[#0A1528] max-sm:text-xl", valueClass)}>{value}</div>
+      <div className="mt-2 text-xs text-[#64748b] max-sm:hidden">{hint}</div>
     </div>
   );
 }
@@ -346,7 +346,7 @@ export function SaidStopPanel() {
 
         {summary && (
           <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <StatCard
                 label="On the list"
                 value={String(summary.on_list)}
@@ -388,7 +388,7 @@ export function SaidStopPanel() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search name or number"
-                    className="h-9 w-full rounded-xl border border-[#e2e8f0] bg-white pl-9 pr-3 text-sm text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="h-10 w-full md:h-9 rounded-xl border border-[#e2e8f0] bg-white pl-9 pr-3 text-base md:text-sm text-[#0A1528] placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <FilterMenu label="How" options={HOW_OPTIONS} value={how} onChange={setHow} showValue />
@@ -521,7 +521,7 @@ export function SaidStopPanel() {
                               <button
                                 type="button"
                                 onClick={() => setRemoving(p)}
-                                className="rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50"
+                                className="min-h-9 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-bold text-[#0A1528] hover:bg-slate-50"
                               >
                                 Remove
                               </button>

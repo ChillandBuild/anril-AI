@@ -711,7 +711,10 @@ export default function RolesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <p className="font-label text-xs font-bold text-ink-muted sm:hidden">
+        {roles.length} {roles.length === 1 ? "role" : "roles"} · {users.length} {users.length === 1 ? "user" : "users"} · {telecallerSeats ? `${telecallerSeats.used}/${telecallerSeats.limit}` : "—"} seats
+      </p>
+      <div className="hidden gap-3 sm:grid sm:grid-cols-3">
         <KpiCard label="Roles Defined" value={roles.length} edge="bg-primary" />
         <KpiCard label="Total Users" value={users.length} edge="bg-blue-600" />
         <KpiCard
@@ -1143,6 +1146,7 @@ export default function RolesPage() {
                           type="button"
                           className="btn-secondary px-3"
                           onClick={() => startOwnerCalling(user)}
+                          aria-label={`Edit ${providerLabel(callingProvider)} setup`}
                           title={`Edit ${providerLabel(callingProvider)} setup`}
                         >
                           <Pencil size={14} />
@@ -1151,24 +1155,26 @@ export default function RolesPage() {
                     )}
                     {canWrite && user.role !== "owner" && (
                       <div className="flex shrink-0 gap-2">
-                        <button type="button" className="btn-secondary px-3" onClick={() => startUser(user)}><Pencil size={14} /></button>
-                        <button type="button" className="btn-secondary px-3" onClick={() => resetPassword(user)}><KeyRound size={14} /></button>
+                        <button type="button" className="btn-secondary px-3" aria-label={`Edit ${user.full_name || user.email}`} title="Edit user" onClick={() => startUser(user)}><Pencil size={14} /></button>
+                        <button type="button" className="btn-secondary px-3" aria-label={`Reset password for ${user.full_name || user.email}`} title="Reset password" onClick={() => resetPassword(user)}><KeyRound size={14} /></button>
                         {role === "owner" && callingProvider === "sim_basic" && user.caller_profile && (
                           <button
                             type="button"
                             className="btn-secondary px-3"
                             onClick={() => setSyncTokenDialogUser(user)}
                             title="Anril Sync token"
+                            aria-label="Anril Sync token"
                           >
                             <Smartphone size={14} />
                           </button>
                         )}
                         <button
                           type="button"
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 text-red-700 transition-all hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex h-10 items-center justify-center rounded-xl max-md:ml-3 border border-red-200 bg-red-50 px-3 text-red-700 transition-all hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                           onClick={() => deleteUser(user)}
                           disabled={deleting === `user:${user.user_id}` || saving}
                           title="Delete user"
+                          aria-label={`Delete ${user.full_name || user.email}`}
                         >
                           {deleting === `user:${user.user_id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                         </button>

@@ -92,7 +92,7 @@ export default function QrLinksPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {items.some((l) => !l.archived) && (
-            <button type="button" onClick={() => void downloadAll()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-low">
+            <button type="button" onClick={() => void downloadAll()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-ink hover:bg-surface-low">
               <Download size={16} /> Download all
             </button>
           )}

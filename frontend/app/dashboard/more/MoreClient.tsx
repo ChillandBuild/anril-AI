@@ -196,7 +196,7 @@ export function MoreClient() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex min-h-[52px] items-center gap-3 border-b border-border-subtle px-4 font-body text-[15px] font-bold text-ink last:border-b-0 active:bg-surface-mid"
+                  className="flex min-h-11 items-center gap-3 border-b border-border-subtle px-4 font-body text-[15px] font-bold text-ink last:border-b-0 active:bg-surface-mid"
                 >
                   <Icon size={19} aria-hidden className="shrink-0 text-primary-900" />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -211,7 +211,7 @@ export function MoreClient() {
       <button
         type="button"
         onClick={() => void logout()}
-        className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-white px-4 text-left font-body text-[15px] font-bold text-rose-700 active:bg-rose-50"
+        className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white px-4 text-left font-body text-[15px] font-bold text-rose-700 active:bg-rose-50"
       >
         <LogOut size={20} aria-hidden />
         Sign out

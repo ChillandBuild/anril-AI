@@ -32,7 +32,7 @@ export function RangePicker({
       <Select
         size="sm"
         aria-label="Date range"
-        className="h-9 w-[140px] shrink-0"
+        className="h-9 w-[140px] shrink-0 max-md:w-full max-md:min-w-0 max-md:shrink"
         value={value.preset}
         onChange={(v) => onChange({ ...value, preset: v as Preset })}
         options={PRESET_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}

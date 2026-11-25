@@ -386,7 +386,7 @@ export default function CatalogueItemPage() {
                     <img src={p.url} alt={p.label ?? name} className="h-full w-full object-cover" />
                     {canManage && (
                       <button type="button" onClick={() => removePhoto(p.id)} aria-label="Remove photo"
-                        className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:block">
+                        className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white max-lg:block lg:hidden lg:group-hover:block">
                         <X size={12} />
                       </button>
                     )}

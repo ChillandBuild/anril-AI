@@ -12,7 +12,6 @@ import {
   Filter,
   LayoutGrid,
   List,
-  ChevronDown,
   Upload,
   Shuffle,
   Trash2,
@@ -23,6 +22,7 @@ import {
   X,
   AlertCircle,
   HelpCircle,
+  MoreHorizontal,
 } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
 import { Select } from "@/components/ui/Select";
@@ -87,6 +87,7 @@ export default function TemplatesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   // Search & Filters
@@ -376,7 +377,7 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="flex flex-col min-w-0 h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7.5rem)] overflow-hidden">
+    <div className="flex flex-col min-w-0 md:h-[calc(100dvh-7.5rem)] md:overflow-hidden">
       {/* Top Locked Section: summary, actions & filters */}
       <div className="shrink-0 space-y-3 pb-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -390,7 +391,7 @@ export default function TemplatesPage() {
                   type="button"
                   onClick={() => setSelectedStatus(active ? "ALL" : s.key)}
                   aria-pressed={active}
-                  className={`flex h-16 min-w-0 items-center gap-2 rounded-2xl border border-l-4 bg-white px-2.5 text-left shadow-sm transition-all hover:shadow-md md:gap-3 md:px-4 ${s.edge} ${
+                  className={`flex h-16 max-md:h-11 min-w-0 items-center gap-2 rounded-2xl border border-l-4 bg-white px-2.5 text-left shadow-sm transition-all hover:shadow-md md:gap-3 md:px-4 ${s.edge} ${
                     active ? "border-primary-300 ring-2 ring-primary-100" : "border-[#e7e2da]"
                   }`}
                 >
@@ -411,7 +412,7 @@ export default function TemplatesPage() {
 
           {/* Actions: four tool chips, then Create Template, centred against the summary cards */}
           <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] sm:justify-end">
-            <div role="group" aria-label="Template tools" className="flex flex-nowrap items-center gap-1.5">
+            <div role="group" aria-label="Template tools" className="flex flex-nowrap items-center gap-1.5 max-md:hidden">
               <button
                 onClick={handleSyncAll}
                 disabled={syncing || !canManageTemplates}
@@ -441,6 +442,53 @@ export default function TemplatesPage() {
                   <Upload size={13} aria-hidden="true" className={toolIcon} />
                   Upload
                 </Link>
+              )}
+            </div>
+            <div className="relative shrink-0 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMoreOpen((v) => !v)}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                className={toolBtn}
+              >
+                <MoreHorizontal size={14} aria-hidden="true" className={toolIcon} />
+                More
+              </button>
+              {moreOpen && (
+                <>
+                  <button type="button" aria-label="Close menu" onClick={() => setMoreOpen(false)} className="fixed inset-0 z-dialog cursor-default" />
+                  <div role="menu" className="absolute right-0 top-full z-dialog mt-1.5 w-44 rounded-xl border border-[#e4dfd7] bg-white p-1 shadow-lg">
+                    <button
+                      role="menuitem"
+                      onClick={() => { setMoreOpen(false); handleSyncAll(); }}
+                      disabled={syncing || !canManageTemplates}
+                      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] font-semibold text-ink hover:bg-primary-50 disabled:opacity-50"
+                    >
+                      <RefreshCw size={13} aria-hidden="true" className={`${toolIcon} ${syncing ? "animate-spin" : ""}`} />
+                      {syncing ? "Syncing…" : "Sync"}
+                    </button>
+                    <Link href="/dashboard/templates/carousel" role="menuitem" onClick={() => setMoreOpen(false)} className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-ink hover:bg-primary-50">
+                      <Layers size={13} aria-hidden="true" className={toolIcon} />
+                      Carousel
+                    </Link>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setMoreOpen(false); saveAllTemplates(filteredTemplates, usage, hasFilters); }}
+                      disabled={loading || filteredTemplates.length === 0}
+                      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] font-semibold text-ink hover:bg-primary-50 disabled:opacity-50"
+                    >
+                      <Download size={13} aria-hidden="true" className={toolIcon} />
+                      Excel
+                    </button>
+                    {canManageTemplates && (
+                      <Link href="/dashboard/templates/upload" role="menuitem" onClick={() => setMoreOpen(false)} className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-ink hover:bg-primary-50">
+                        <Upload size={13} aria-hidden="true" className={toolIcon} />
+                        Upload
+                      </Link>
+                    )}
+                  </div>
+                </>
               )}
             </div>
             <Link
@@ -497,10 +545,15 @@ export default function TemplatesPage() {
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-[#e2e8f0] bg-white px-3 text-[13px] font-semibold text-ink md:hidden"
+              aria-label="Filters"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e2e8f0] bg-white text-ink md:hidden"
             >
-              <ChevronDown size={14} className={`transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
-              Filter · {activeFilterCount - (searchQuery ? 1 : 0)}
+              <Filter size={15} aria-hidden="true" className={filtersOpen ? "text-primary" : ""} />
+              {activeFilterCount - (searchQuery ? 1 : 0) > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount - (searchQuery ? 1 : 0)}
+                </span>
+              )}
             </button>
 
             <div className={`${filtersOpen ? "grid" : "hidden"} w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:items-center xl:flex-nowrap`}>
@@ -561,7 +614,7 @@ export default function TemplatesPage() {
               {hasFilters && (
                 <button
                   onClick={clearFilters}
-                  className="flex h-10 items-center gap-1 rounded-xl px-2.5 text-[12.5px] font-semibold text-[#475569] transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="flex h-10 max-md:h-8 items-center gap-1 rounded-xl px-2.5 text-[12.5px] font-semibold text-[#475569] transition-colors hover:bg-red-50 hover:text-red-600"
                 >
                   <X size={12} /> Clear
                 </button>
@@ -593,7 +646,7 @@ export default function TemplatesPage() {
       <div
         ref={scrollRef}
         onScroll={(e) => writeViewState({ scrollTop: e.currentTarget.scrollTop })}
-        className="relative flex-1 overflow-y-auto min-h-0 pr-1 pb-6"
+        className="relative flex-1 overflow-y-auto min-h-0 pr-1 pb-6 max-md:overflow-visible"
       >
         {loading ? (
         <AiraLoader inline className="min-h-[50vh]" />
@@ -809,7 +862,8 @@ export default function TemplatesPage() {
               </div>
               <button
                 onClick={() => setSelectedTemplate(null)}
-                className="p-2 rounded-xl hover:bg-white/80 text-ink-muted hover:text-ink transition-colors"
+                aria-label="Close"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl hover:bg-white/80 text-ink-muted hover:text-ink transition-colors"
               >
                 <X size={16} />
               </button>
@@ -841,7 +895,7 @@ export default function TemplatesPage() {
                       {LANGUAGES.find((l) => l.code === selectedTemplate.language)?.label || selectedTemplate.language}
                     </p>
                   </div>
-                  <div>
+                  <div className="max-md:hidden">
                     <p className="font-body text-[10px] text-ink-muted uppercase font-bold tracking-wider">Meta ID</p>
                     <p className="font-mono text-[10px] font-semibold text-ink truncate mt-0.5 select-all">
                       {selectedTemplate.meta_template_id || "None"}
@@ -965,7 +1019,8 @@ export default function TemplatesPage() {
                     setVariationsModalId(null);
                     setVariationsList([]);
                   }}
-                  className="p-1.5 rounded-lg hover:bg-surface-subtle text-ink-muted"
+                  aria-label="Close"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-subtle text-ink-muted"
                 >
                   <X size={16} />
                 </button>
@@ -990,7 +1045,7 @@ export default function TemplatesPage() {
                         <span key={v} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary-50 text-primary-700 text-xs font-mono font-medium">
                           {v}
                           {canManageTemplates && (
-                            <button onClick={() => handleVariationRemove(v)} className="text-primary-400 hover:text-primary-700">
+                            <button onClick={() => handleVariationRemove(v)} aria-label="Remove variation" className="inline-flex h-8 w-8 items-center justify-center text-primary-400 hover:text-primary-700">
                               <X size={12} />
                             </button>
                           )}

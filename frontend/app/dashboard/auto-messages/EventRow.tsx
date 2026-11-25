@@ -102,7 +102,7 @@ export function EventRow(props: EventRowProps) {
         </span>
 
         {rule && canManage && (
-          <span className="flex shrink-0 items-center justify-center max-sm:min-h-[44px] max-sm:min-w-[44px]">
+          <span className="flex shrink-0 items-center justify-center max-sm:min-h-10 max-sm:min-w-10">
             <SwitchPill
               size="sm"
               on={isOn}
@@ -134,7 +134,7 @@ export function EventRow(props: EventRowProps) {
             tabIndex={-1}
             aria-hidden
             onClick={props.onToggleOpen}
-            className="flex shrink-0 items-center justify-center rounded-lg p-2 text-ink-muted max-sm:min-h-[44px] max-sm:min-w-[44px]"
+            className="flex shrink-0 items-center justify-center rounded-lg p-2 text-ink-muted max-sm:min-h-10 max-sm:min-w-10"
           >
             <ChevronDown size={16} className={`transition-transform ${open ? "rotate-180" : ""}`} />
           </button>

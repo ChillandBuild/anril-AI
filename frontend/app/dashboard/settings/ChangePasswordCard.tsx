@@ -85,9 +85,9 @@ export default function ChangePasswordCard({ defaultOpen = false }: { defaultOpe
     <button
       type="button"
       onClick={() => setShow((s) => !s)}
-      className="p-1 text-ink-muted hover:text-ink-secondary"
+      className="inline-flex h-10 w-10 items-center justify-center text-ink-muted hover:text-ink-secondary"
       tabIndex={-1}
-      aria-label={show ? "Hide passwords" : "Show passwords"}
+      aria-label={show ? "Hide password" : "Show password"}
     >
       {show ? <EyeOff size={14} /> : <Eye size={14} />}
     </button>
@@ -133,7 +133,7 @@ export default function ChangePasswordCard({ defaultOpen = false }: { defaultOpe
                   autoComplete="current-password"
                   className="w-full px-4 py-2.5 pr-10 rounded-xl bg-white border border-border text-sm font-body text-ink focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition"
                 />
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
+                <div className="absolute right-0.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
               </div>
             </div>
             <div>
@@ -147,7 +147,7 @@ export default function ChangePasswordCard({ defaultOpen = false }: { defaultOpe
                   autoComplete="new-password"
                   className="w-full px-4 py-2.5 pr-10 rounded-xl bg-white border border-border text-sm font-body text-ink focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition"
                 />
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
+                <div className="absolute right-0.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
               </div>
             </div>
             <div>
@@ -161,7 +161,7 @@ export default function ChangePasswordCard({ defaultOpen = false }: { defaultOpe
                   autoComplete="new-password"
                   className="w-full px-4 py-2.5 pr-10 rounded-xl bg-white border border-border text-sm font-body text-ink focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition"
                 />
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
+                <div className="absolute right-0.5 top-1/2 -translate-y-1/2">{eyeBtn}</div>
               </div>
             </div>
           </div>

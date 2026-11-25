@@ -678,7 +678,7 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
 ## Catalogue "Insights" tab — deferred (2026-11-23)
 - Every other commerce screen (Shop & godown, batches, barcodes, stock count, expenses, purchases gaps, staff per place, item advance + AI card) is built, live (309–315) and browser-checked. The user said to leave Insights for now. Nothing has been built for it.
 
-## Phone (PWA) fixes — wave 4 open (audit 2026-11-25)
+## Phone (PWA) fixes — waves 1–4 done, feature follow-ups open (audit 2026-11-25)
 - A full phone-view audit found 213 issues in 11 areas (report artifact, private to the owner:
   https://claude.ai/artifact/PZTUr9bMGCAed7Ng4DhDXi). Waves 1–2 shipped in `7a514ed1`
   (plan `docs/superpowers/plans/2026-11-25-phone-ux-fixes.md`): Save bars above the bottom nav,
@@ -689,8 +689,19 @@ Not checked logged in yet (tests/tsc/lint only). Leftovers:
   Needs-you stat tiles are one compact line on phones (`components/escalations/stat-cards.tsx`). Left as
   tables on purpose: Reports' 4-column metric comparison (fits 360px) and the Intake table (only its first
   column stays pinned below md).
-- **Open, wave 4:** sizes and words (chat action chips are 55px tall; New bill back row; 44px
-  secondary buttons and tall hint tiles; sub-28px often-tapped controls).
+- **Wave 4 done 2026-11-26 (built, not yet committed when written):** sizes and words on phones
+  (plan `docs/superpowers/plans/2026-11-25-phone-ux-wave4-sizes-words.md`). Shared: `SwitchPill` and
+  `CheckTick` carry invisible `before:` tap areas; `KpiCard` hides its hint below md. Alerts and three
+  Payments switches now apply on Save (draft helpers `settings/alerts/alertsDraft.ts`,
+  `settings/payments/paymentsDraft.ts`). "AI agent" → Anril on screen; "Disqualified" label → "Not a fit"
+  (value unchanged). Trap seen twice: a one-line `overflow-x-auto` chip row inside a grid column with the
+  default `min-width:auto` stretches the column (Expenses went 621px wide) — give the column `min-w-0`; and a
+  pop-over positioned inside such a row gets clipped — render it `max-md:fixed` as a bottom sheet.
+- **Open (features, not fixes):** add/import/edit a customer on phones; "Didn't get it" list in Reach results;
+  Save & call next (SIM dialer must open from the tap); Calendar & notes and call Scripts on phones; install
+  prompt; customer photos/PDFs in chats (backend); keyboard viewport (`interactiveWidget`, needs a real
+  Android phone). Owner's call: AstroTamil "adminweb" line in templates/page.tsx, the chat list's "Select
+  chats" mode that does nothing, the Brain header's instant AI switch.
 - `CallbackNotifier` is dead code (not mounted).
 
 ## Services page removal → Forms only — ON HOLD (2026-11-25)
