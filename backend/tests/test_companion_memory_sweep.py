@@ -300,3 +300,36 @@ def test_a_retried_batch_does_not_duplicate_facts(env):
                                 '{"op":"add","section":"life","text":"Job hunting","quote":"interview"}]')
     assert sweep() == {"ok": 1}
     assert sorted(facts(env)) == ["Zoho interview on 20th", "job hunting"]
+
+
+def test_the_night_sweep_keeps_the_chart_guard_rule(env, monkeypatch):
+    """Regression: the sweep's character query left chart_guard out, so at 02:00 a guarded character
+    (Jothidar AI) saved rasi and birth details. The fake returns whole rows, so here the characters
+    table answers like Postgres does: only the columns the query asked for."""
+    from tests import fake_supabase
+    select, execute = fake_supabase._Query.select, fake_supabase._Query.execute
+
+    def select_columns(self, columns="*", count=None):
+        self.asked = columns
+        return select(self, columns, count)
+
+    def execute_columns(self):
+        result = execute(self)
+        asked = getattr(self, "asked", "*")
+        if self.name == "companions" and self.op == "select" and asked != "*" and isinstance(result.data, list):
+            keep = {c.strip() for c in asked.split(",")}
+            result.data = [{k: v for k, v in row.items() if k in keep} for row in result.data]
+        return result
+    monkeypatch.setattr(fake_supabase._Query, "select", select_columns)
+    monkeypatch.setattr(fake_supabase._Query, "execute", execute_columns)
+
+    jothidar = env.character("t1", "Jothidar AI")
+    next(c for c in env.db.rows("companions") if c["id"] == jothidar["id"])["chart_guard"] = True
+    env.chat(jothidar, "karthik", ("user", "En rasi Simmam. Born 19 Nov 2003 Madurai. Kalyanam late aagudhu nu worry.", 5),
+             ("assistant", "Kavalaipadaathinga.", 5))
+    env.state["answers"].append('''[
+      {"op":"add","section":"profile","text":"rasi Simmam","quote":"En rasi Simmam"},
+      {"op":"add","section":"profile","text":"born in Madurai","slot":"birth_place","quote":"Madurai"},
+      {"op":"add","section":"threads","text":"worried about a delayed marriage","quote":"Kalyanam late aagudhu nu worry"}]''')
+    assert sweep() == {"ok": 1}
+    assert facts(env) == ["worried about a delayed marriage"]

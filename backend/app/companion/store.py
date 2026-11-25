@@ -1165,7 +1165,7 @@ async def level2_companions() -> list[dict]:
     def _q():
         return (
             get_supabase().table("companions")
-            .select("id, tenant_id, language, memory_level, memory_engine, timezone, history_messages")
+            .select("id, tenant_id, language, memory_level, memory_engine, timezone, history_messages, chart_guard")
             .eq("memory_level", 2).order("created_at").execute().data
         )
     return await asyncio.to_thread(_q) or []
