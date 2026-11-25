@@ -25,7 +25,13 @@ router = APIRouter()
 # test_opt_out_keywords.py's documented gap on decorated forms) so a false positive
 # here -- silently killing re-engagement for a lead who typed something else -- stays
 # effectively impossible.
-_STOP_WORDS = frozenset({"stop", "unsubscribe", "ஆர்வம் இல்லை"})
+_STOP_WORDS = frozenset({
+    "stop", "unsubscribe", "ஆர்வம் இல்லை",
+    # Added 2026-11-25 (owner's list). Still whole-message matches only.
+    "stop please", "please stop", "stop sending", "stop messages", "not interested",
+    "unsubscribe me", "no more messages", "don't message", "dont message", "remove me",
+    "வேண்டாம்", "நிறுத்து", "நிறுத்துங்கள்", "ஆர்வமில்லை", "venam", "vendam", "niruthu",
+})
 
 # Sent for an image/document/video/sticker with no caption -- there is nothing
 # to read (unlike audio, which is transcribed) and total silence was the prior
@@ -40,7 +46,8 @@ _CONTACT_SYNC_CHUNK = 200
 
 
 def _is_opt_out(body: str) -> bool:
-    normalized = body.lower().strip()
+    # Phone keyboards type a curly apostrophe ("don’t"), and spaces can double up.
+    normalized = " ".join(body.replace("’", "'").lower().split())
     return normalized in _STOP_WORDS
 
 
